@@ -417,3 +417,18 @@ Implementation notes:
   - `ACK <cmd>` immediately after a complete line reaches the STM32 parser
 - GUI now shows `USART1 透明链路` health so we can tell whether bytes are arriving at PB15 and whether newline parsing is working
 - next physical check if `READY` appears but `rx_bytes` stays 0 after clicking buttons: Ai-WB2 TX must go to STM32 PB15, Ai-WB2 RX must go to STM32 PB14, both at 115200 8N1
+
+2026-05-05 Ai-WB2 TCP loop test with CH340:
+- CH340 port: `/dev/cu.usbserial-130`
+- PC IP on phone hotspot: `192.168.223.205`
+- Ai-WB2 IP observed from TCP connection: `192.168.223.181`
+- after Wi-Fi module power was restored and the module was power-cycled, it printed boot banner, `+EVENT:WIFI_CONNECT`, `+EVENT:WIFI_GOT_IP`, then `connect success ConID=1`, `OK`, `>`
+- PC TCP server on `0.0.0.0:6666` accepted the module connection
+- downlink verified:
+  - PC TCP sent `TCP_TO_CH340...` / `DOWNLINK_CHECK...`
+  - CH340 serial received those strings from the module
+- uplink failed:
+  - CH340 serial sent repeated `CH340_TO_TCP...` / `UPLINK_ONLY...`
+  - PC TCP received 0 bytes
+- conclusion: TCP connection and socket-to-UART direction work; UART-to-socket direction does not currently pass data in the tested state
+- important: this test used CH340 connected only to Ai-WB2, not to STM32
