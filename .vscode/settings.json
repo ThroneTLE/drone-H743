@@ -1,0 +1,36 @@
+{
+    "cmake.configureOnOpen": true,
+    "cmake.generator": "Ninja",
+    "cmake.buildDirectory": "${workspaceFolder}/build/${buildType}",
+    "cmake.cmakePath": "cube-cmake",
+    "cmake.configureArgs": [
+        "-GNinja",
+        "-DCMAKE_BUILD_TYPE=Debug",
+        "-DCMAKE_TOOLCHAIN_FILE=${workspaceFolder}/cmake/gcc-arm-none-eabi.cmake",
+        "-DCMAKE_COMMAND=cube-cmake"
+    ],
+    "cmake.buildArgs": [
+        "--parallel",
+        "8"
+    ],
+    "cmake.environment": {
+        "CUBE_BUNDLE_PATH": "/Users/misakachiyo/Library/Application Support/stm32cube/bundles",
+        "PATH": "/Users/misakachiyo/.vscode/extensions/stmicroelectronics.stm32cube-ide-core-1.3.0-darwin-arm64/resources/binaries/darwin/aarch64:/Users/misakachiyo/.vscode/extensions/stmicroelectronics.stm32cube-ide-build-cmake-1.45.0-darwin-arm64/resources/cube-cmake/darwin/aarch64:/Users/misakachiyo/Library/Application Support/stm32cube/bundles/gnu-tools-for-stm32/14.3.1+st.2/bin:/opt/homebrew/bin:/usr/local/bin:${env:PATH}"
+    },
+    "cmake.preferredGenerators": [
+        "Ninja"
+    ],
+    "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
+    "stm32cube-ide-clangd.path": "cube",
+    "stm32cube-ide-clangd.arguments": [
+        "starm-clangd",
+        "--query-driver=/Users/misakachiyo/Library/Application Support/stm32cube/bundles/gnu-tools-for-stm32/14.3.1+st.2/bin/arm-none-eabi-gcc*",
+        "--query-driver=/Users/misakachiyo/Library/Application Support/stm32cube/bundles/gnu-tools-for-stm32/14.3.1+st.2/bin/arm-none-eabi-g++*"
+    ],
+    "files.associations": {
+        "*.h": "c",
+        "*.c": "c",
+        "*.s": "arm-assembly",
+        "*.ioc": "xml"
+    }
+}

@@ -1,0 +1,75 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Build STM32",
+            "type": "shell",
+            "command": "/Users/misakachiyo/.vscode/extensions/stmicroelectronics.stm32cube-ide-build-cmake-1.45.0-darwin-arm64/resources/cube-cmake/darwin/aarch64/cube-cmake",
+            "args": [
+                "--build",
+                "${workspaceFolder}/build/Debug",
+                "--parallel",
+                "8"
+            ],
+            "options": {
+                "env": {
+                    "CUBE_BUNDLE_PATH": "/Users/misakachiyo/Library/Application Support/stm32cube/bundles",
+                    "PATH": "/Users/misakachiyo/.vscode/extensions/stmicroelectronics.stm32cube-ide-core-1.3.0-darwin-arm64/resources/binaries/darwin/aarch64:/Users/misakachiyo/.vscode/extensions/stmicroelectronics.stm32cube-ide-build-cmake-1.45.0-darwin-arm64/resources/cube-cmake/darwin/aarch64:/Users/misakachiyo/Library/Application Support/stm32cube/bundles/gnu-tools-for-stm32/14.3.1+st.2/bin:/opt/homebrew/bin:/usr/local/bin:${env:PATH}"
+                }
+            },
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": "$gcc"
+        },
+        {
+            "label": "CMake Configure",
+            "type": "shell",
+            "command": "/Users/misakachiyo/.vscode/extensions/stmicroelectronics.stm32cube-ide-build-cmake-1.45.0-darwin-arm64/resources/cube-cmake/darwin/aarch64/cube-cmake",
+            "args": [
+                "--preset",
+                "Debug"
+            ],
+            "options": {
+                "env": {
+                    "CUBE_BUNDLE_PATH": "/Users/misakachiyo/Library/Application Support/stm32cube/bundles",
+                    "PATH": "/Users/misakachiyo/.vscode/extensions/stmicroelectronics.stm32cube-ide-core-1.3.0-darwin-arm64/resources/binaries/darwin/aarch64:/Users/misakachiyo/.vscode/extensions/stmicroelectronics.stm32cube-ide-build-cmake-1.45.0-darwin-arm64/resources/cube-cmake/darwin/aarch64:/Users/misakachiyo/Library/Application Support/stm32cube/bundles/gnu-tools-for-stm32/14.3.1+st.2/bin:/opt/homebrew/bin:/usr/local/bin:${env:PATH}"
+                }
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Clean Build",
+            "type": "shell",
+            "command": "/Users/misakachiyo/.vscode/extensions/stmicroelectronics.stm32cube-ide-build-cmake-1.45.0-darwin-arm64/resources/cube-cmake/darwin/aarch64/cube-cmake",
+            "args": [
+                "--build",
+                "${workspaceFolder}/build/Debug",
+                "--target",
+                "clean"
+            ],
+            "options": {
+                "env": {
+                    "CUBE_BUNDLE_PATH": "/Users/misakachiyo/Library/Application Support/stm32cube/bundles",
+                    "PATH": "/Users/misakachiyo/.vscode/extensions/stmicroelectronics.stm32cube-ide-core-1.3.0-darwin-arm64/resources/binaries/darwin/aarch64:/Users/misakachiyo/.vscode/extensions/stmicroelectronics.stm32cube-ide-build-cmake-1.45.0-darwin-arm64/resources/cube-cmake/darwin/aarch64:/Users/misakachiyo/Library/Application Support/stm32cube/bundles/gnu-tools-for-stm32/14.3.1+st.2/bin:/opt/homebrew/bin:/usr/local/bin:${env:PATH}"
+                }
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Flash via ST-Link",
+            "type": "shell",
+            "command": "/Users/misakachiyo/Library/Application Support/stm32cube/bundles/stlink-gdbserver/7.13.0+st.3/bin/ST-LINK_gdbserver",
+            "args": [
+                "--swd",
+                "--freq",
+                "18000",
+                "--port",
+                "61234"
+            ],
+            "isBackground": true,
+            "problemMatcher": []
+        }
+    ]
+}

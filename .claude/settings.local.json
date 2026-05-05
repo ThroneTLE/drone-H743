@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find ~/.vscode/extensions/stmicroelectronics.stm32cube-ide-core-* -name \"cube\" -type f)"
+    ]
+  }
+}

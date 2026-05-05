@@ -1,0 +1,56 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+   
+   
+   
+   
+   
+            "name": "ST-Link Fast Mode",
+            "type": "stlinkgdbtarget",
+            "request": "launch",
+            "cwd": "${workspaceFolder}",
+            "origin": "launch",
+            "deviceName": "STM32H743VI",
+            "deviceCore": "Cortex-M7",
+            "preBuild": "${command:st-stm32-ide-debug-launch.build}",
+            "imagesAndSymbols": [
+                {
+                    "imageFileName": "${workspaceFolder}/build/Debug/drone-H743.elf",
+                    "symbolFileName": "${workspaceFolder}/build/Debug/drone-H743.elf"
+                }
+            ],
+            "runEntry": "main",
+            "serverInterface": "SWD",
+            "serverEnvironment": {
+                "PATH": "/Users/misakachiyo/Library/Application Support/stm32cube/bundles/rtos-proxy/0.19.0+st.1/bin:${env:PATH}"
+            },
+            "serverInterfaceFrequency": "21000",
+            "serverPort": "61234",
+            "serverHost": "localhost",
+            "serverRtos": {
+                "enabled": false,
+                "driver": "freertos",
+                "port": "60000"
+            },
+            "serverSemihosting": {
+                "enabled": true,
+                "mode": "console",
+                "port": "61260"
+            },
+            "serverHaltAllCores": false,
+            "liveWatch": {
+                "enabled": true,
+                "samplesPerSecond": 4
+            },
+            "faultDivByZero": true,
+            "faultHaltOnException": true,
+            "faultUnalignedAccess": false,
+            "gdbAsync": true,
+            "gdbNonStop": false,
+            "serverLogFile": "${workspaceFolder}/build/Debug/stlink_server.log",
+            "logFile": "${workspaceFolder}/build/Debug/gdb_client.log"
+        }
+    ]
+}

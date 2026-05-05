@@ -1,0 +1,4 @@
+interface:
+  display_name: "drone-H743"
+  short_description: "Project rules for STM32H743 CubeMX and FreeRTOS work"
+  default_prompt: "Use $drone-h743-project for work in this repository's STM32H743 firmware project."
