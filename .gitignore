@@ -1,20 +1,43 @@
 build/
 mx.scratch/
+Debug/
+Release/
+cmake-build-*/
 
 # Generated compiler/build artifacts
 *.su
 *.elf
+*.elf.proxy_cache
 *.bin
 *.hex
 *.map
+*.o
+*.obj
+*.d
+*.a
+*.log
+
+# CMake/Ninja generated files
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+build.ninja
+.ninja_log
+.ninja_deps
+compile_commands.json
+.cmake/
+.cache/
 
 # Python runtime cache
 __pycache__/
 *.py[cod]
+.pytest_cache/
 
 # Local OS and IDE state
 .DS_Store
 .vscode/
+.idea/
 .settings/
 .mxproject
+*.launch
 CMakeUserPresets.json
