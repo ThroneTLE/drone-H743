@@ -67,6 +67,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     App/Src/app_imu.c
     App/Src/app_led.c
     App/Src/app_message.c
+    App/Src/app_proto.c
     App/Src/app_tasks.c
     App/Src/app_uart.c
 )

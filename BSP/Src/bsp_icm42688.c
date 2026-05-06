@@ -28,7 +28,7 @@
 #define ICM42688_SPI_READ_BIT           0x80U
 #define ICM42688_DEFAULT_TIMEOUT_MS     100U
 #define ICM42688_GYRO_STARTUP_DELAY_MS  50U
-#define ICM42688_SOFT_RESET_DELAY_MS    2U
+#define ICM42688_SOFT_RESET_DELAY_MS    10U
 
 static void icm42688_delay_ms(BSP_ICM42688_Device *dev, uint32_t delay_ms)
 {
@@ -111,6 +111,16 @@ static int16_t icm42688_make_int16(uint8_t msb, uint8_t lsb)
     return (int16_t)(((uint16_t)msb << 8U) | (uint16_t)lsb);
 }
 
+static BSP_ICM42688_Status icm42688_fail(BSP_ICM42688_Device *dev,
+                                         BSP_ICM42688_Status status)
+{
+    if (dev != NULL) {
+        dev->last_error = status;
+    }
+
+    return status;
+}
+
 void BSP_ICM42688_DefaultConfig(BSP_ICM42688_Config *config)
 {
     if (config == NULL) {
@@ -152,65 +162,75 @@ BSP_ICM42688_Status BSP_ICM42688_Init(BSP_ICM42688_Device *dev,
 
     icm42688_cs_high(dev);
 
+    dev->init_stage = BSP_ICM42688_INIT_STAGE_BANK_SELECT;
     status = icm42688_select_bank(dev, 0U);
     if (status != BSP_ICM42688_OK) {
-        return status;
+        return icm42688_fail(dev, status);
     }
 
     if (dev->config.soft_reset_on_init) {
+        dev->init_stage = BSP_ICM42688_INIT_STAGE_RESET;
         status = BSP_ICM42688_Reset(dev);
         if (status != BSP_ICM42688_OK) {
-            return status;
+            return icm42688_fail(dev, status);
         }
     }
 
+    dev->init_stage = BSP_ICM42688_INIT_STAGE_WHO_AM_I;
     status = BSP_ICM42688_ReadWhoAmI(dev, &who_am_i);
     if (status != BSP_ICM42688_OK) {
-        return status;
+        return icm42688_fail(dev, status);
     }
 
     dev->who_am_i = who_am_i;
     if (who_am_i != BSP_ICM42688_WHO_AM_I_VALUE) {
-        return BSP_ICM42688_BAD_ID;
+        return icm42688_fail(dev, BSP_ICM42688_BAD_ID);
     }
 
+    dev->init_stage = BSP_ICM42688_INIT_STAGE_GYRO_CONFIG;
     status = BSP_ICM42688_WriteRegister(dev,
                                         ICM42688_REG_GYRO_CONFIG0,
                                         icm42688_build_gyro_config0(&dev->config));
     if (status != BSP_ICM42688_OK) {
-        return status;
+        return icm42688_fail(dev, status);
     }
 
+    dev->init_stage = BSP_ICM42688_INIT_STAGE_ACCEL_CONFIG;
     status = BSP_ICM42688_WriteRegister(dev,
                                         ICM42688_REG_ACCEL_CONFIG0,
                                         icm42688_build_accel_config0(&dev->config));
     if (status != BSP_ICM42688_OK) {
-        return status;
+        return icm42688_fail(dev, status);
     }
 
+    dev->init_stage = BSP_ICM42688_INIT_STAGE_FILTER_CONFIG;
     status = BSP_ICM42688_WriteRegister(dev,
                                         ICM42688_REG_GYRO_ACCEL_CONFIG0,
                                         icm42688_build_gyro_accel_config0(&dev->config));
     if (status != BSP_ICM42688_OK) {
-        return status;
+        return icm42688_fail(dev, status);
     }
 
+    dev->init_stage = BSP_ICM42688_INIT_STAGE_PWR_MGMT;
     status = BSP_ICM42688_WriteRegister(dev,
                                         ICM42688_REG_PWR_MGMT0,
                                         icm42688_build_pwr_mgmt0(&dev->config));
     if (status != BSP_ICM42688_OK) {
-        return status;
+        return icm42688_fail(dev, status);
     }
 
     icm42688_delay_ms(dev, ICM42688_GYRO_STARTUP_DELAY_MS);
 
+    dev->init_stage = BSP_ICM42688_INIT_STAGE_SIGNAL_RESET;
     status = BSP_ICM42688_WriteRegister(dev,
                                         ICM42688_REG_SIGNAL_PATH_RESET,
                                         ICM42688_SIGNAL_PATH_ABORT_RESET);
     if (status != BSP_ICM42688_OK) {
-        return status;
+        return icm42688_fail(dev, status);
     }
 
+    dev->init_stage = BSP_ICM42688_INIT_STAGE_READY;
+    dev->last_error = BSP_ICM42688_OK;
     return BSP_ICM42688_OK;
 }
 

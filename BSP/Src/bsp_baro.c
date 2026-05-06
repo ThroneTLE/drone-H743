@@ -103,6 +103,12 @@ BSP_SPL06_Status BSP_BARO_ReadRawRegister(uint8_t reg, uint8_t *value)
     return BSP_SPL06_ReadRegister(&baro_dev, reg, value);
 }
 
+BSP_SPL06_Status BSP_BARO_ReadRawRegisters(uint8_t reg, uint8_t *data, uint16_t len)
+{
+    baro_bind_bus();
+    return BSP_SPL06_ReadRegisters(&baro_dev, reg, data, len);
+}
+
 const BSP_SPL06_Device *BSP_BARO_GetDevice(void)
 {
     baro_bind_bus();

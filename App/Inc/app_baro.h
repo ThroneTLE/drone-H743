@@ -16,7 +16,23 @@ typedef struct {
     uint8_t miso_level;
 } APP_Baro_Status;
 
+typedef struct {
+    APP_Baro_Status status;
+    int32_t raw_status;
+    uint8_t raw_regs[14];
+    int32_t pressure_raw;
+    int32_t temperature_raw;
+    uint8_t prs_cfg;
+    uint8_t tmp_cfg;
+    uint8_t meas_cfg;
+    uint8_t cfg_reg;
+    uint8_t int_sts;
+    uint8_t fifo_sts;
+    uint8_t id;
+} APP_Baro_Snapshot;
+
 void APP_Baro_ReportStartup(void);
 void APP_Baro_GetStatus(APP_Baro_Status *status);
+void APP_Baro_ReadSnapshot(APP_Baro_Snapshot *snapshot);
 
 #endif

@@ -432,3 +432,244 @@ Implementation notes:
   - PC TCP received 0 bytes
 - conclusion: TCP connection and socket-to-UART direction work; UART-to-socket direction does not currently pass data in the tested state
 - important: this test used CH340 connected only to Ai-WB2, not to STM32
+
+2026-05-06 Ai-WB2 Xiaomi_11FA TCP bring-up and `+SOCKET:97` fix:
+- requested target WiFi changed to:
+  - SSID: `Xiaomi_11FA`
+  - password: `2325972824`
+- PC is connected to `Xiaomi_11FA` through wired Ethernet; verified PC LAN IP for the module target:
+  - `192.168.31.189`
+- current TCP target:
+  - PC listens on `0.0.0.0:6666`
+  - Ai-WB2 auto transparent TCP client connects to `192.168.31.189:6666`
+- manual AT command rules confirmed:
+  - serial assistant must append `CRLF`
+  - send one AT command at a time; do not paste the whole command block
+  - if commands are pasted without `CRLF`, module may receive one concatenated command and report `Unknown cmd:ATE0AT+WMODE...`
+- optional environment scan before joining WiFi:
+  - `AT+WSCAN`
+  - if needed: `AT+WSCANOPT=1`, then `AT+WSCAN`
+- working manual configuration sequence:
+  - `AT`
+  - `ATE0`
+  - `AT+WMODE=1,1`
+  - `AT+WJAP="Xiaomi_11FA","2325972824"`
+  - `AT+WAUTOCONN=1`
+  - `AT+SOCKETAUTOTT=4,192.168.31.189,6666`
+  - start PC TCP server before reset:
+    `python D:\stm32hal\drone-H743\tools\aiwb2_net_tool.py tcp-server --bind 0.0.0.0 --port 6666`
+  - `AT+RST`
+- observed failure before PC listener was started:
+  - module booted normally
+  - `+EVENT:WIFI_CONNECT`
+  - `+EVENT:WIFI_GOT_IP`
+  - after timeout: `+SOCKET:97` then `ERROR`
+- conclusion for `+SOCKET:97`:
+  - when it appears after `WIFI_GOT_IP`, WiFi association is already OK
+  - first check that the PC TCP server is listening on `192.168.31.189:6666`
+  - local PC test showed `Test-NetConnection 192.168.31.189 -Port 6666` failed when no listener was running
+  - starting `tools/aiwb2_net_tool.py tcp-server --bind 0.0.0.0 --port 6666` resolved it
+- success evidence:
+  - PC output: `TCP client connected from 192.168.31.203:50221`
+- next bidirectional test steps after connection:
+  - serial assistant sends normal payload such as `CH340_TO_TCP_001`; PC TCP server should print it
+  - PowerShell TCP server window sends normal payload such as `TCP_TO_CH340_001`; serial assistant should receive it
+  - once in transparent mode, serial `AT...` commands are forwarded as TCP data; use `+++` with guard time to return to AT mode
+
+2026-05-06 STM32-side Ai-WB2 order/retry state machine:
+- goal:
+  - do not depend on Ai-WB2 automatic transparent mode blindly
+  - make STM32 handle ordering: AT mode detection, WiFi join, TCP auto transparent config, reset, connect wait, and retry
+  - recover from `+SOCKET:97` instead of leaving the application logically stuck
+- implementation files:
+  - `App/Inc/app_aiwb2.h`
+  - `App/Src/app_aiwb2.c`
+  - `App/Src/app_uart.c`
+  - `BSP/Inc/bsp_uart.h`
+  - `CMakeLists.txt`
+- no CubeMX regeneration was required because the existing `UARTTask` and generated `USART1` are reused
+- `BSP_UART_USART1_OUTPUT_ENABLED` was changed back to `1U`; STM32 now actively drives Ai-WB2 RX through USART1 TX
+- important hardware implication:
+  - do not leave CH340 and STM32 TX connected to Ai-WB2 RX at the same time during normal firmware operation
+  - CH340 is for isolated manual module debugging; normal operation should be STM32 USART1 <-> Ai-WB2
+- state machine behavior:
+  - first sends `AT`
+  - if no response, uses guarded `+++` then probes `AT` again
+  - sends one AT command at a time:
+    - `ATE0`
+    - `AT+WMODE=1,1`
+    - `AT+WJAP="Xiaomi_11FA","2325972824"`
+    - `AT+WAUTOCONN=1`
+    - `AT+SOCKETDEL=1`
+    - `AT+SOCKETAUTOTT=4,192.168.31.189,6666`
+    - `AT+RST`
+  - waits for `connect success` after reset before enabling the normal TCP control protocol
+  - consumes Ai-WB2 status/error lines before transparent mode so they do not reach `APP_Control_ProcessLine`
+  - after transparent mode, only module event/error lines are consumed by the WiFi manager; normal TCP lines go to the existing board control parser
+  - on `+SOCKET:97`, `ERROR`, WiFi disconnect, socket event, or connection timeout, enters retry delay and repeats the sequence
+- resource note:
+  - this is low-rate USART control traffic inside existing `UARTTask`
+  - no DMA is used
+  - no cache maintenance is needed
+  - state and line parsing live in normal static data; no H7 linker/MPU changes were made
+- build verification:
+  - `cmake --build --preset Debug` passed
+
+2026-05-06 RX line normalization/debug:
+- observed:
+  - `rx_lines` and `rx_idle` now increase, proving DMA and idle-line fallback are working
+  - control protocol still did not accept `PING`, so the parsed line likely contains prompt/spacing such as `> PING` or another non-exact form
+- implementation:
+  - `App/Src/app_uart.c` now prints the first few raw received lines as:
+    `BOOT uart_line len=... hex=...`
+  - before matching protocol commands, received lines are normalized:
+    - leading control/space characters removed
+    - optional leading `>` prompt removed
+    - trailing control/space characters removed
+  - normalized lines are used for both `APP_AiWB2_IsControlPayload()` and `APP_Control_ProcessLine()`
+- build verification:
+  - `cmake --build --preset Debug` passed
+
+2026-05-06 USART1 RX DMA receive implementation:
+- CubeMX generation check:
+  - `.ioc`: `USART1_RX` on `DMA1_Stream0`, `DMA_CIRCULAR`, byte/byte alignment, memory increment enabled, priority high
+  - `Core/Src/dma.c`: enables DMA1 clock and `DMA1_Stream0_IRQn`
+  - `Core/Src/usart.c`: declares `hdma_usart1_rx`, configures `DMA_REQUEST_USART1_RX`, links it with `__HAL_LINKDMA(uartHandle, hdmarx, hdma_usart1_rx)`, enables `USART1_IRQn`
+  - `Core/Src/stm32h7xx_it.c`: has `DMA1_Stream0_IRQHandler()` and `USART1_IRQHandler()`
+  - `Core/Src/main.c`: calls `MX_DMA_Init()` before `MX_USART1_UART_Init()`
+- manual implementation:
+  - `STM32H743XX_FLASH.ld`: added `.dma_buffer (NOLOAD)` section in `RAM_D2`
+  - `App/Src/app_uart.c`: added 256-byte `app_uart_dma_rx_buffer` in `.dma_buffer`, starts `HAL_UARTEx_ReceiveToIdle_DMA()` in `UARTTask` init, polls the circular DMA write position, and feeds bytes into the existing line parser
+  - half-transfer DMA interrupt is disabled for this stream to reduce IRQ noise; circular DMA and task polling handle the byte stream
+  - removed the earlier manual USART1 FIFO enable hook so CubeMX's FIFO-disabled UART configuration remains the effective configuration
+- H7 resource/cache note:
+  - DMA buffer is in D2 SRAM because default `.bss` lives in DTCM, which DMA1 should not be expected to access
+  - DCache is not enabled in current startup code, so no cache invalidate is needed yet
+  - if DCache is enabled later, this buffer needs MPU non-cacheable attributes or explicit cache maintenance
+- build verification:
+  - `cmake --build --preset Debug` passed
+  - memory report shows `RAM_D2: 256 B`, confirming the DMA buffer placement
+
+2026-05-06 USART1 RX idle-line fallback:
+- observed after DMA receive:
+  - `rx_bytes` increases when the panel sends `PING` / `STATUS?` / `CONFIG?`
+  - `rx_lines` stays `0`
+  - example: `PING` increased `rx_bytes` by 6 bytes, so the downlink physically reaches STM32
+- conclusion:
+  - Ai-WB2 TX -> STM32 PB15 is no longer the primary issue
+  - line termination is not being recognized reliably in the current stream, so relying only on `\r`/`\n` leaves commands buffered forever
+- fix:
+  - `App/Src/app_uart.c` now treats RX idle as a line boundary
+  - if bytes are pending and no new byte arrives for `60 ms`, the pending buffer is terminated and routed through the same line parser
+  - boot diagnostics now include `rx_idle=...` to show how many lines were accepted through this fallback
+- build verification:
+  - `cmake --build --preset Debug` passed
+
+2026-05-06 passive Ai-WB2 policy after hardware EN/RST clarification:
+- clarified hardware fact:
+  - Ai-WB2 EN/RST is not connected to STM32
+  - Ai-WB2 is powered independently and may reset/connect on its own timeline
+  - STM32 boot logs sent before Ai-WB2 TCP connection are simply lost from the PC panel, so absence of early `BOOT ...` lines does not prove the task did not run
+- observed problem:
+  - STM32 active AT manager sent `AT` while Ai-WB2 was already in transparent/auto-connect flow
+  - repeated `AT` strings appeared in the PC panel
+  - manual logs showed `[Busy]Cmd running` and malformed `Unknown cmd:+++AT+SOCKET...`
+- final policy change:
+  - default `APP_AIWB2_PASSIVE_ONLY` is now `1U`
+  - STM32 no longer sends `AT`, `+++`, `AT+SOCKETAUTOTT`, or `AT+RST` by default
+  - firmware passively listens for Ai-WB2 events such as `connect success` / `>`
+  - if a known upper-computer command arrives (`PING`, `STATUS?`, `CONFIG?`, `SAVE`, `LOAD`, `DEFAULTS`, `SERVO ...`), firmware assumes transparent mode and immediately routes it to `APP_Control_ProcessLine()`
+  - disconnect/socket/error events move the manager back to wait state, but passive mode does not attempt active recovery
+- implication:
+  - module persistent configuration must be prepared manually or by a separate tool
+  - normal run order is PC TCP panel starts listening, Ai-WB2 connects using its saved auto-transparent configuration, STM32 passively accepts the transparent channel
+- build verification:
+  - `cmake --build --preset Debug` passed without warnings
+
+2026-05-06 passive-mode downlink diagnostics:
+- observed after passive firmware:
+  - panel receives STM32 `BOOT ...` logs, proving STM32 USART1 TX -> Ai-WB2 RX -> TCP -> PC works
+  - panel `PING` still gets no STM32 reply
+- current leading suspect:
+  - TCP downlink/Ai-WB2 TX -> STM32 PB15 USART1_RX is not reaching the parser, or data arrives without line termination / with UART errors
+- added diagnostics in `App/Src/app_uart.c`:
+  - before control protocol is accepted, firmware periodically prints:
+    `BOOT uart_wait_control rx_bytes=... rx_lines=... rx_overflows=... rx_errors=...`
+  - when a known control payload is actually parsed, firmware prints:
+    `BOOT control_payload`
+  - around `APP_Control_Init()`, firmware prints:
+    `BOOT control_init_begin`
+    `BOOT control_init_done`
+- interpretation:
+  - if `rx_bytes` stays 0 after clicking `PING`, check Ai-WB2 TX -> STM32 PB15 and GND
+  - if `rx_bytes` increases but `rx_lines` stays 0, check line endings / byte stream framing
+  - if `BOOT control_payload` appears but `control_init_done` does not, investigate control init / flash probing path
+- build verification:
+  - `cmake --build --preset Debug` passed
+
+2026-05-06 LED debug semantics cleanup:
+- previous `APP_LED_Task_Step()` toggled `LED_RED`, `LED_2`, `LED_3`, and `LED_4` together every second, which made link debugging ambiguous
+- updated LED meanings:
+  - `LED_RED` / PC13: FreeRTOS heartbeat, slow toggle once per second
+  - `LED_1`: USART1 TX activity pulse, driven from `BSP_UART_Transmit_USART1()` and auto-cleared by `UARTTask`
+  - `LED_2`: Ai-WB2 TCP transparent mode is accepted by the firmware
+  - `LED_3` and `LED_4`: kept off by default
+- implementation files:
+  - `App/Src/app_led.c`
+  - `App/Src/app_uart.c`
+  - `BSP/Inc/bsp_uart.h`
+  - `BSP/Src/bsp_uart.c`
+- build verification:
+  - `cmake --build --preset Debug` passed
+
+2026-05-06 Ai-WB2 busy/autoconnect backoff:
+- observed manual/module log:
+  - repeated `[Busy]Cmd running`
+  - later `+EVENT:WIFI_CONNECT` and `+EVENT:WIFI_GOT_IP`
+  - malformed `Unknown cmd:+++AT+SOCKET=4,192.168.31.189,6666`
+  - several delayed `OK` responses
+- interpretation:
+  - commands were being sent while Ai-WB2 was still executing a previous command or its persisted auto-connect flow
+  - `+++` was concatenated with the next AT command because the guard-time idle window was not preserved
+  - the module was not dead; it was busy and command ordering was being violated
+- firmware adjustment:
+  - `APP_AIWB2_START_DELAY_MS` increased to `8000 ms` so persisted auto-connect can finish before STM32 starts probing
+  - `APP_AIWB2_PROBE_TIMEOUT_MS` increased to `8000 ms`
+  - `[Busy]Cmd running` now extends the current wait by `6000 ms` instead of causing immediate further commands
+  - `+EVENT:WIFI_CONNECT` / `+EVENT:WIFI_GOT_IP` now moves the state machine into boot-connect wait for `25000 ms`
+  - `connect success` or `>` now forces transparent mode from any non-transparent state
+  - `Unknown cmd:` now backs off into retry delay instead of continuing to send commands
+- build verification:
+  - `cmake --build --preset Debug` passed
+
+2026-05-06 already-transparent Ai-WB2 detection:
+- observed after the scheduler fix:
+  - `BOOT os_start`
+  - `BOOT uart_task_init`
+  - panel received `AT`
+  - panel could send `PING`, `STATUS?`, `CONFIG?`, but no STM32 control reply was produced
+- interpretation:
+  - Ai-WB2 may already be connected in TCP transparent mode from its previous persistent configuration
+  - the STM32 state machine's initial `AT` probe is transparently forwarded to the PC, so the state machine still thinks it is not in transparent mode
+  - incoming panel commands such as `PING` prove that the TCP transparent path is already available
+- fix:
+  - `App/Src/app_aiwb2.c`: added `APP_AiWB2_IsControlPayload()` and `APP_AiWB2_AssumeTransparent()`
+  - `App/Src/app_uart.c`: while the WiFi manager has not yet declared transparent mode, an incoming known control line (`PING`, `STATUS?`, `CONFIG?`, `SAVE`, `LOAD`, `DEFAULTS`, `SERVO ...`) now forces transparent mode and is immediately handed to `APP_Control_ProcessLine()`
+- build verification:
+  - `cmake --build --preset Debug` passed
+  - observed memory after build: DTCMRAM `35088 B / 128 KB`, FLASH `102496 B / 2 MB`
+
+2026-05-06 boot log freeze before scheduler fix:
+- observed from `drone_tcp_panel.py`:
+  - TCP client connected from Ai-WB2
+  - STM32 boot logs reached `BOOT freertos_init_done`
+  - no later `BOOT os_start`, no `READY`, and no `ACK PING`
+- conclusion:
+  - PC <-> Ai-WB2 TCP and Ai-WB2 -> PC transparent path are alive
+  - issue is not `PING` text format; panel sends `PING\r\n`
+  - firmware was stopping before `osKernelStart()`, so `UARTTask` and Ai-WB2 state machine never ran
+- fix:
+  - `Core/Src/main.c`: `Main_StagePulse()` now returns immediately after the kernel is initialized, avoiding blocking `HAL_Delay()` during the startup path before `osKernelStart()`
+  - `App/Src/app_uart.c`: `APP_UART_Task_Init()` now emits `BOOT uart_task_init\r\n` so the panel can verify the scheduler and UART task are running
+- build verification:
+  - `cmake --build --preset Debug` passed

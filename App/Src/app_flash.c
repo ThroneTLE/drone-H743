@@ -1,7 +1,9 @@
 #include "app_flash.h"
 
 #include "app_messages.h"
+#include "app_proto.h"
 #include "app_tasks.h"
+#include "app_uart.h"
 #include "bsp_flash.h"
 
 #include <stdarg.h>
@@ -23,6 +25,7 @@ static void app_flash_queue_text(const char *format, ...)
         return;
     }
 
+    tx_message.function = APP_PROTO_MSG_TEXT_LINE;
     tx_message.length = 0U;
     tx_message.text[0] = '\0';
 
@@ -45,6 +48,7 @@ static void app_flash_queue_text(const char *format, ...)
         (void)osMessageQueueGet(uartTxQueueHandle, &dropped, 0U, 0U);
         (void)osMessageQueuePut(uartTxQueueHandle, &tx_message, 0U, 0U);
     }
+    APP_UART_NotifyTxPending();
 }
 
 void APP_Flash_ReportStartup(void)

@@ -3,7 +3,9 @@
 #include "app_baro.h"
 #include "app_flash.h"
 #include "app_messages.h"
+#include "app_proto.h"
 #include "app_tasks.h"
+#include "app_uart.h"
 
 #include <stdio.h>
 
@@ -16,6 +18,7 @@ static void APP_Message_Format(const APP_IMU_SampleMessage *sample,
         return;
     }
 
+    tx_message->function = APP_PROTO_MSG_TEXT_LINE;
     written = snprintf(tx_message->text,
                        sizeof(tx_message->text),
                        "n=%lu,id=0x%02X,ax=%d,ay=%d,az=%d,gx=%ld,gy=%ld,gz=%ld,t=%d\r\n",
@@ -75,4 +78,5 @@ void APP_Message_Task_Step(void)
         (void)osMessageQueueGet(uartTxQueueHandle, &dropped, 0U, 0U);
         (void)osMessageQueuePut(uartTxQueueHandle, &tx_message, 0U, 0U);
     }
+    APP_UART_NotifyTxPending();
 }

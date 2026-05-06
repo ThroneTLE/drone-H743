@@ -6,7 +6,9 @@
 typedef struct {
     uint8_t  initialized;
     uint8_t  who_am_i;
+    uint8_t  init_stage;
     int32_t  last_status;
+    int32_t  last_error;
     uint32_t sample_count;
     int16_t  temperature_cdeg;
     int16_t  accel_x_mg;

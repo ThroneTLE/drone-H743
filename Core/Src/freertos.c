@@ -68,14 +68,14 @@ osThreadId_t messageTaskHandle;
 const osThreadAttr_t messageTask_attributes = {
   .name = "messageTask",
   .stack_size = 512 * 4,
-  .priority = (osPriority_t) osPriorityLow,
+  .priority = (osPriority_t) osPriorityBelowNormal,
 };
 /* Definitions for UARTTask */
 osThreadId_t UARTTaskHandle;
 const osThreadAttr_t UARTTask_attributes = {
   .name = "UARTTask",
   .stack_size = 512 * 4,
-  .priority = (osPriority_t) osPriorityLow,
+  .priority = (osPriority_t) osPriorityNormal,
 };
 /* Definitions for uartTxQueue */
 osMessageQueueId_t uartTxQueueHandle;
@@ -125,7 +125,7 @@ void MX_FREERTOS_Init(void) {
 
   /* Create the queue(s) */
   /* creation of uartTxQueue */
-  uartTxQueueHandle = osMessageQueueNew (8, sizeof(APP_UART_TxMessage), &uartTxQueue_attributes);
+  uartTxQueueHandle = osMessageQueueNew (32, sizeof(APP_UART_TxMessage), &uartTxQueue_attributes);
 
   /* creation of imuSampleQueue */
   imuSampleQueueHandle = osMessageQueueNew (4, sizeof(APP_IMU_SampleMessage), &imuSampleQueue_attributes);

@@ -10,6 +10,8 @@
 typedef struct {
     uint32_t              sample_count;
     BSP_ICM42688_Status   last_status;
+    BSP_ICM42688_Status   last_error;
+    BSP_ICM42688_InitStage init_stage;
     BSP_ICM42688_ScaledData last_sample;
     uint8_t               who_am_i;
     uint8_t               initialized;
@@ -91,6 +93,8 @@ void APP_IMU_Task_Init(void)
     BSP_IMU_Invalidate();
     imu_state.sample_count = 0U;
     imu_state.last_status = BSP_ICM42688_ERROR;
+    imu_state.last_error = BSP_ICM42688_ERROR;
+    imu_state.init_stage = BSP_ICM42688_INIT_STAGE_NONE;
     imu_state.who_am_i = 0U;
     imu_state.initialized = 0U;
 }
@@ -102,11 +106,21 @@ void APP_IMU_Task_Step(void)
     if (imu_state.initialized == 0U) {
         imu_state.last_status = BSP_IMU_Init();
         if (imu_state.last_status != BSP_ICM42688_OK) {
+            const BSP_ICM42688_Device *dev = BSP_IMU_GetDevice();
+            if (dev != 0) {
+                imu_state.who_am_i = dev->who_am_i;
+                imu_state.init_stage = dev->init_stage;
+                imu_state.last_error = dev->last_error;
+            } else {
+                imu_state.last_error = imu_state.last_status;
+            }
             osDelay(50);
             return;
         }
 
         imu_state.who_am_i = BSP_IMU_GetWhoAmI();
+        imu_state.init_stage = BSP_ICM42688_INIT_STAGE_READY;
+        imu_state.last_error = BSP_ICM42688_OK;
         imu_state.initialized = 1U;
         osDelay(10);
         return;
@@ -116,6 +130,8 @@ void APP_IMU_Task_Step(void)
     if (imu_state.last_status != BSP_ICM42688_OK) {
         BSP_IMU_Invalidate();
         imu_state.initialized = 0U;
+        imu_state.init_stage = BSP_ICM42688_INIT_STAGE_NONE;
+        imu_state.last_error = imu_state.last_status;
         osDelay(20);
         return;
     }
@@ -128,6 +144,8 @@ void APP_IMU_Task_Step(void)
         } else {
             BSP_IMU_Invalidate();
             imu_state.initialized = 0U;
+            imu_state.init_stage = BSP_ICM42688_INIT_STAGE_NONE;
+            imu_state.last_error = imu_state.last_status;
             osDelay(20);
             return;
         }
@@ -144,7 +162,9 @@ void APP_IMU_GetStatus(APP_IMU_Status *status)
 
     status->initialized = imu_state.initialized;
     status->who_am_i = imu_state.who_am_i;
+    status->init_stage = (uint8_t)imu_state.init_stage;
     status->last_status = (int32_t)imu_state.last_status;
+    status->last_error = (int32_t)imu_state.last_error;
     status->sample_count = imu_state.sample_count;
     status->temperature_cdeg = APP_IMU_ScaleToInt16(imu_state.last_sample.temperature_c, 100.0f);
     status->accel_x_mg = APP_IMU_ScaleToInt16(imu_state.last_sample.accel_x_g, 1000.0f);

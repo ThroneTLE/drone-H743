@@ -55,10 +55,29 @@ python3 tools/drone_tcp_panel.py
 Default panel behavior:
 
 - listens as a TCP server on `0.0.0.0:6666`
-- displays board status and startup logs
-- sends line commands such as `STATUS?`, `CONFIG?`, `SERVO MOVE 0 1500 500`
+- shows a minimal ground-station layout with module overview/detail pages for
+  GD25Q32 Flash, SPL06 barometer, ICM42688 IMU, and USART1 link diagnostics
+- shows a dedicated SPL06 page with realtime/diagnostic fields, temporary data
+  capture, CSV export, and optional plotting
+- sends line commands such as `STATUS?`, `CONFIG?`, `PARAM?`, `PID?`,
+  `BARO?`, `SERVO MOVE 0 1500 500`
 - controls two Zhongling bus servos, mapped by default to IDs `1` and `2`
 - can ask the board to save/load servo config in the onboard GD25Q32 flash
+- keeps unknown board lines in the raw command log so firmware commands can be
+  added incrementally without breaking the UI
+
+SPL06 plotting uses `matplotlib` when it is installed. The panel still starts
+without it and shows an install hint in the plot area:
+
+```bash
+python3 -m pip install matplotlib
+```
+
+The parameter/PID page is intentionally line-based first. It currently sends
+`CONFIG?`, `PARAM?`, `PID?`, `PARAM SET <name> <value>`,
+`PID SET <axis> kp=<v> ki=<v> kd=<v>`, `SAVE`, and `LOAD`; firmware that does
+not yet implement every command should reply with its normal `ERR` line, which
+the panel logs without crashing.
 
 Optional serial auto-configuration through CH340 requires `pyserial`:
 

@@ -47,6 +47,7 @@
 
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
+#define MAIN_UART_BOOT_DIAG_ENABLED 0U
 
 /* USER CODE END PM */
 
@@ -86,7 +87,7 @@ static void Main_StagePulse(uint32_t stage)
 
 static void Main_DebugUartPrint(const char *text)
 {
-#if (BSP_UART_USART1_OUTPUT_ENABLED == 0U)
+#if (BSP_UART_USART1_OUTPUT_ENABLED == 0U) || (MAIN_UART_BOOT_DIAG_ENABLED == 0U)
   (void)text;
   return;
 #else

@@ -156,6 +156,32 @@ type: project
 - 业务整合优先落到 `App/*`
 - 当前工程的 `.ioc` 继续作为唯一硬件配置入口
 
+## Ai-WB2 WiFi/TCP 调试记忆
+
+当用户调 Ai-WB2-12F、CH340、TCP 透明传输、上位机 `tools/*`，或提到 `+SOCKET:97` 时，先按这里处理：
+
+- 当前常用 WiFi: `Xiaomi_11FA`
+- 当前常用密码: `2325972824`
+- 当前 PC 有线连接 `Xiaomi_11FA` 时的已验证 IP: `192.168.31.189`
+- TCP 透明传输默认端口: `6666`
+- Ai-WB2 作为 TCP client 自动透明连接 PC: `AT+SOCKETAUTOTT=4,192.168.31.189,6666`
+
+手动 AT 配置时必须提醒：
+
+- 串口参数通常是 `115200 8N1`，发送结尾必须是 `CRLF`
+- 不要整段粘贴 AT 命令；一次发一条，等 `OK`/事件/错误后再发下一条
+- 如需先扫描环境 WiFi，用 `AT+WSCAN`；若不识别，再试 `AT+WSCANOPT=1` 后 `AT+WSCAN`
+- 进入透明传输后，串口里的 `AT...` 会被当成 TCP 数据；退回 AT 模式才发 `+++`，且前后保持约 1 秒空闲
+
+`+SOCKET:97` 排障优先级：
+
+1. `+EVENT:WIFI_GOT_IP` 后出现 `+SOCKET:97 ERROR`，优先判断为 TCP socket 连接 PC 失败，不要先怀疑 SSID/密码。
+2. 先确认 PC TCP server 已经在目标端口监听，再让模块重连或 `AT+RST`。常用命令：
+   `python D:\stm32hal\drone-H743\tools\aiwb2_net_tool.py tcp-server --bind 0.0.0.0 --port 6666`
+3. 若本机 `Test-NetConnection 192.168.31.189 -Port 6666` 不通，说明没有监听或被防火墙拦截。
+4. 如端口已监听仍失败，检查目标 IP 是否为 PC 在同一 WiFi/有线 LAN 下的地址，再检查 Windows 防火墙入站规则。
+5. 成功标志是 PC 端出现类似 `TCP client connected from 192.168.31.203:<port>`。
+
 ## 回答格式偏好
 
 当用户要做一个和硬件相关的功能时，优先按下面顺序回答：

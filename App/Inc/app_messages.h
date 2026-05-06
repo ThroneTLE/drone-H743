@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-#define APP_UART_TX_TEXT_SIZE 128U
+#define APP_UART_TX_TEXT_SIZE 256U
 
 typedef struct {
     uint32_t sample_count;
@@ -19,6 +19,7 @@ typedef struct {
 } APP_IMU_SampleMessage;
 
 typedef struct {
+    uint16_t function;
     uint16_t length;
     char     text[APP_UART_TX_TEXT_SIZE];
 } APP_UART_TxMessage;

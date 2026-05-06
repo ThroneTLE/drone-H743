@@ -361,7 +361,7 @@ void APP_AiWB2_ProcessLine(const char *line)
     }
 
     if (aiwb2_state == APP_AIWB2_STATE_TRANSPARENT) {
-        if ((aiwb2_contains(line, "+SOCKET:") != 0U) ||
+        if ((aiwb2_contains(line, "+SOCKET:97") != 0U) ||
             (aiwb2_contains(line, "+EVENT:WIFI_DISCONNECT") != 0U) ||
             (strcmp(line, "ERROR") == 0)) {
             aiwb2_enter_retry_delay();
@@ -381,11 +381,22 @@ uint8_t APP_AiWB2_IsControlPayload(const char *line)
     }
 
     if ((strcmp(line, "PING") == 0) ||
+        (strcmp(line, "MODULES?") == 0) ||
+        (strcmp(line, "CAPS?") == 0) ||
         (strcmp(line, "STATUS?") == 0) ||
         (strcmp(line, "CONFIG?") == 0) ||
+        (strcmp(line, "FLASH?") == 0) ||
+        (strcmp(line, "BARO?") == 0) ||
+        (strcmp(line, "IMU?") == 0) ||
+        (strcmp(line, "PARAM?") == 0) ||
+        (strcmp(line, "PID?") == 0) ||
         (strcmp(line, "SAVE") == 0) ||
         (strcmp(line, "LOAD") == 0) ||
         (strcmp(line, "DEFAULTS") == 0) ||
+        (aiwb2_starts_with(line, "REQ ") != 0U) ||
+        (aiwb2_starts_with(line, "BARO ") != 0U) ||
+        (aiwb2_starts_with(line, "PARAM ") != 0U) ||
+        (aiwb2_starts_with(line, "PID ") != 0U) ||
         (aiwb2_starts_with(line, "SERVO ") != 0U)) {
         return 1U;
     }
@@ -401,6 +412,8 @@ uint8_t APP_AiWB2_ShouldConsumeTransparentLine(const char *line)
 
     if ((aiwb2_starts_with(line, "+EVENT:") != 0U) ||
         (aiwb2_starts_with(line, "+SOCKET:") != 0U) ||
+        (aiwb2_contains(line, "[Busy]Cmd") != 0U) ||
+        (aiwb2_contains(line, "Unknown cmd:") != 0U) ||
         (strcmp(line, "ERROR") == 0) ||
         (aiwb2_contains(line, "connect success") != 0U)) {
         return 1U;

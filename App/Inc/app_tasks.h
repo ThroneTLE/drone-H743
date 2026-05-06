@@ -7,6 +7,7 @@
 
 extern osMessageQueueId_t uartTxQueueHandle;
 extern osMessageQueueId_t imuSampleQueueHandle;
+extern osThreadId_t UARTTaskHandle;
 
 void APP_Task_LED_Init(void);
 void APP_Task_LED_Step(void);

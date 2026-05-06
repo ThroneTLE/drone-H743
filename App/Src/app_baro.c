@@ -1,16 +1,32 @@
 #include "app_baro.h"
 
 #include "app_messages.h"
+#include "app_proto.h"
 #include "app_tasks.h"
+#include "app_uart.h"
 #include "bsp_baro.h"
 
 #include <stdarg.h>
 #include <stdio.h>
+#include <string.h>
 
 #define APP_BARO_BMP280_ID_REG 0xD0U
+#define APP_BARO_SPL06_RAW_REG 0x00U
+#define APP_BARO_SPL06_RAW_LEN 14U
 
 static uint8_t baro_report_done;
 static APP_Baro_Status baro_status;
+
+static int32_t app_baro_make_signed24(uint8_t msb, uint8_t mid, uint8_t lsb)
+{
+    int32_t value = ((int32_t)msb << 16) | ((int32_t)mid << 8) | (int32_t)lsb;
+
+    if ((value & 0x00800000L) != 0L) {
+        value |= (int32_t)0xFF000000L;
+    }
+
+    return value;
+}
 
 static void app_baro_queue_text(const char *format, ...)
 {
@@ -23,6 +39,7 @@ static void app_baro_queue_text(const char *format, ...)
         return;
     }
 
+    tx_message.function = APP_PROTO_MSG_TEXT_LINE;
     tx_message.length = 0U;
     tx_message.text[0] = '\0';
 
@@ -45,6 +62,7 @@ static void app_baro_queue_text(const char *format, ...)
         (void)osMessageQueueGet(uartTxQueueHandle, &dropped, 0U, 0U);
         (void)osMessageQueuePut(uartTxQueueHandle, &tx_message, 0U, 0U);
     }
+    APP_UART_NotifyTxPending();
 }
 
 void APP_Baro_ReportStartup(void)
@@ -113,4 +131,32 @@ void APP_Baro_GetStatus(APP_Baro_Status *status)
     }
 
     *status = baro_status;
+}
+
+void APP_Baro_ReadSnapshot(APP_Baro_Snapshot *snapshot)
+{
+    if (snapshot == 0) {
+        return;
+    }
+
+    memset(snapshot, 0, sizeof(*snapshot));
+    snapshot->status = baro_status;
+    snapshot->raw_status = (int32_t)BSP_BARO_ReadRawRegisters(APP_BARO_SPL06_RAW_REG,
+                                                              snapshot->raw_regs,
+                                                              APP_BARO_SPL06_RAW_LEN);
+    if (snapshot->raw_status == (int32_t)BSP_SPL06_OK) {
+        snapshot->pressure_raw = app_baro_make_signed24(snapshot->raw_regs[0],
+                                                        snapshot->raw_regs[1],
+                                                        snapshot->raw_regs[2]);
+        snapshot->temperature_raw = app_baro_make_signed24(snapshot->raw_regs[3],
+                                                           snapshot->raw_regs[4],
+                                                           snapshot->raw_regs[5]);
+        snapshot->prs_cfg = snapshot->raw_regs[6];
+        snapshot->tmp_cfg = snapshot->raw_regs[7];
+        snapshot->meas_cfg = snapshot->raw_regs[8];
+        snapshot->cfg_reg = snapshot->raw_regs[9];
+        snapshot->int_sts = snapshot->raw_regs[10];
+        snapshot->fifo_sts = snapshot->raw_regs[11];
+        snapshot->id = snapshot->raw_regs[13];
+    }
 }
