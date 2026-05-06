@@ -10,6 +10,7 @@ import socket
 import threading
 import time
 import tkinter as tk
+from abc import ABC, abstractmethod
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
@@ -91,6 +92,17 @@ except Exception as exc:  # pragma: no cover - depends on local optional package
     Figure = None  # type: ignore[assignment]
     HAS_MATPLOTLIB = False
     MATPLOTLIB_ERROR = str(exc)
+
+try:
+    import serial  # type: ignore
+    import serial.tools.list_ports  # type: ignore
+
+    HAS_PYSERIAL = True
+    PYSERIAL_ERROR = ""
+except Exception as exc:  # pragma: no cover - depends on local optional package
+    serial = None  # type: ignore[assignment]
+    HAS_PYSERIAL = False
+    PYSERIAL_ERROR = str(exc)
 
 
 MODULES = [
@@ -174,23 +186,107 @@ def build_proto_frame(direction: int, function: int, payload: bytes) -> bytes:
     return PROTO_HEADER + bytes([direction]) + bytes(body) + bytes([crc])
 
 
-class TcpServer:
+class TransportBase(ABC):
     def __init__(self, rx_queue: "queue.Queue[str]") -> None:
         self.rx_queue = rx_queue
+
+    @property
+    @abstractmethod
+    def is_connected(self) -> bool:
+        raise NotImplementedError
+
+    @abstractmethod
+    def start(self, *args, **kwargs) -> None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def stop(self) -> None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def send_frame(self, function: int, payload: bytes = b"") -> bool:
+        raise NotImplementedError
+
+    def send_line(self, line: str) -> bool:
+        return self.send_frame(
+            PROTO_MSG_CMD_LINE,
+            line.rstrip("\r\n").encode("utf-8"),
+        )
+
+    def _consume_buffer(self, buffer: bytearray) -> None:
+        while buffer:
+            if len(buffer) >= 9 and buffer[0:2] == PROTO_HEADER and buffer[2] in (PROTO_DIR_TO_FC, PROTO_DIR_FROM_FC):
+                payload_length = buffer[6] | (buffer[7] << 8)
+                frame_length = 9 + payload_length
+                if len(buffer) < frame_length:
+                    break
+
+                frame = bytes(buffer[:frame_length])
+                body = frame[3:-1]
+                if proto_crc8_dvb_s2(body) == frame[-1]:
+                    function = frame[4] | (frame[5] << 8)
+                    payload = frame[8:-1]
+                    del buffer[:frame_length]
+
+                    if frame[2] == PROTO_DIR_FROM_FC:
+                        text = payload.decode("utf-8", errors="replace").rstrip("\r\n")
+                        self.rx_queue.put(("proto", function, text))
+                    else:
+                        shown = payload.decode("utf-8", errors="replace").replace("\r", "\\r").replace("\n", "\\n")
+                        self.rx_queue.put(f"RXRAW fn=0x{function:04X} len={len(payload)} data={shown}")
+                    continue
+
+                del buffer[0]
+                continue
+
+            newline_index = buffer.find(b"\n")
+            frame_index = buffer.find(PROTO_HEADER)
+            if newline_index != -1 and (frame_index == -1 or newline_index < frame_index):
+                line = bytes(buffer[:newline_index]).rstrip(b"\r")
+                del buffer[: newline_index + 1]
+                self.rx_queue.put(line.decode("utf-8", errors="replace"))
+                continue
+
+            if frame_index > 0:
+                raw = bytes(buffer[:frame_index])
+                del buffer[:frame_index]
+                shown = raw.decode("utf-8", errors="replace").replace("\r", "\\r").replace("\n", "\\n")
+                self.rx_queue.put(f"RXRAW len={len(raw)} data={shown}")
+                continue
+
+            break
+
+
+class TcpTransport(TransportBase):
+    def __init__(self, rx_queue: "queue.Queue[str]") -> None:
+        super().__init__(rx_queue)
         self.sock: socket.socket | None = None
         self.client: socket.socket | None = None
         self.thread: threading.Thread | None = None
+        self._sender_thread: threading.Thread | None = None
+        self._send_queue: "queue.Queue[bytes | None]" = queue.Queue()
         self.stop_event = threading.Event()
         self.lock = threading.Lock()
+
+    @property
+    def is_connected(self) -> bool:
+        with self.lock:
+            return self.client is not None
 
     def start(self, host: str, port: int) -> None:
         self.stop()
         self.stop_event.clear()
+        self._sender_thread = threading.Thread(target=self._sender_loop, daemon=True)
+        self._sender_thread.start()
         self.thread = threading.Thread(target=self._run, args=(host, port), daemon=True)
         self.thread.start()
 
     def stop(self) -> None:
         self.stop_event.set()
+        try:
+            self._send_queue.put_nowait(None)
+        except queue.Full:
+            pass
         with self.lock:
             sockets = [self.client, self.sock]
             self.client = None
@@ -207,27 +303,32 @@ class TcpServer:
                     pass
 
     def send_frame(self, function: int, payload: bytes = b"") -> bool:
-        payload = build_proto_frame(
-            PROTO_DIR_TO_FC,
-            function,
-            payload,
-        )
+        frame = build_proto_frame(PROTO_DIR_TO_FC, function, payload)
         with self.lock:
-            client = self.client
-        if client is None:
-            return False
+            if self.client is None:
+                return False
         try:
-            client.sendall(payload)
+            self._send_queue.put_nowait(frame)
             return True
-        except OSError as exc:
-            self.rx_queue.put(f"[上位机] 发送失败: {exc}")
+        except queue.Full:
             return False
 
-    def send_line(self, line: str) -> bool:
-        return self.send_frame(
-            PROTO_MSG_CMD_LINE,
-            line.rstrip("\r\n").encode("utf-8"),
-        )
+    def _sender_loop(self) -> None:
+        while not self.stop_event.is_set():
+            try:
+                frame = self._send_queue.get(timeout=0.3)
+            except queue.Empty:
+                continue
+            if frame is None:
+                break
+            with self.lock:
+                client = self.client
+            if client is None:
+                continue
+            try:
+                client.sendall(frame)
+            except OSError as exc:
+                self.rx_queue.put(f"[上位机] 发送失败: {exc}")
 
     def _run(self, host: str, port: int) -> None:
         try:
@@ -276,47 +377,7 @@ class TcpServer:
             if not data:
                 break
             buffer += data
-            while buffer:
-                if len(buffer) >= 9 and buffer[0:2] == PROTO_HEADER and buffer[2] in (PROTO_DIR_TO_FC, PROTO_DIR_FROM_FC):
-                    payload_length = buffer[6] | (buffer[7] << 8)
-                    frame_length = 9 + payload_length
-                    if len(buffer) < frame_length:
-                        break
-
-                    frame = bytes(buffer[:frame_length])
-                    body = frame[3:-1]
-                    if proto_crc8_dvb_s2(body) == frame[-1]:
-                        function = frame[4] | (frame[5] << 8)
-                        payload = frame[8:-1]
-                        del buffer[:frame_length]
-
-                        if frame[2] == PROTO_DIR_FROM_FC:
-                            text = payload.decode("utf-8", errors="replace").rstrip("\r\n")
-                            self.rx_queue.put(("proto", function, text))
-                        else:
-                            shown = payload.decode("utf-8", errors="replace").replace("\r", "\\r").replace("\n", "\\n")
-                            self.rx_queue.put(f"RXRAW fn=0x{function:04X} len={len(payload)} data={shown}")
-                        continue
-
-                    del buffer[0]
-                    continue
-
-                newline_index = buffer.find(b"\n")
-                frame_index = buffer.find(PROTO_HEADER)
-                if newline_index != -1 and (frame_index == -1 or newline_index < frame_index):
-                    line = bytes(buffer[:newline_index]).rstrip(b"\r")
-                    del buffer[: newline_index + 1]
-                    self.rx_queue.put(line.decode("utf-8", errors="replace"))
-                    continue
-
-                if frame_index > 0:
-                    raw = bytes(buffer[:frame_index])
-                    del buffer[:frame_index]
-                    shown = raw.decode("utf-8", errors="replace").replace("\r", "\\r").replace("\n", "\\n")
-                    self.rx_queue.put(f"RXRAW len={len(raw)} data={shown}")
-                    continue
-
-                break
+            self._consume_buffer(buffer)
         with self.lock:
             if self.client is client:
                 self.client = None
@@ -327,20 +388,130 @@ class TcpServer:
         self.rx_queue.put("[上位机] 板子已断开")
 
 
+class SerialTransport(TransportBase):
+    def __init__(self, rx_queue: "queue.Queue[str]") -> None:
+        super().__init__(rx_queue)
+        self.port: "serial.Serial | None" = None
+        self.thread: threading.Thread | None = None
+        self._sender_thread: threading.Thread | None = None
+        self._send_queue: "queue.Queue[bytes | None]" = queue.Queue()
+        self.stop_event = threading.Event()
+        self.lock = threading.Lock()
+
+    @property
+    def is_connected(self) -> bool:
+        with self.lock:
+            return self.port is not None and bool(self.port.is_open)
+
+    def start(self, port_name: str, baudrate: int) -> None:
+        if not HAS_PYSERIAL or serial is None:
+            self.rx_queue.put(f"[上位机] 串口模式不可用: {PYSERIAL_ERROR or '未安装 pyserial'}")
+            return
+        self.stop()
+        self.stop_event.clear()
+        try:
+            opened = serial.Serial(port_name, baudrate=baudrate, timeout=0.2, write_timeout=0.5)
+        except Exception as exc:
+            self.rx_queue.put(f"[上位机] 打开串口失败: {exc}")
+            return
+        with self.lock:
+            self.port = opened
+        self.rx_queue.put(f"[上位机] 串口已连接: {port_name} @ {baudrate}")
+        self._sender_thread = threading.Thread(target=self._sender_loop, daemon=True)
+        self._sender_thread.start()
+        self.thread = threading.Thread(target=self._read_loop, args=(opened,), daemon=True)
+        self.thread.start()
+
+    def stop(self) -> None:
+        self.stop_event.set()
+        try:
+            self._send_queue.put_nowait(None)
+        except queue.Full:
+            pass
+        with self.lock:
+            port = self.port
+            self.port = None
+        if port is not None:
+            threading.Thread(target=self._safe_close, args=(port,), daemon=True).start()
+
+    @staticmethod
+    def _safe_close(port) -> None:
+        try:
+            if hasattr(port, 'cancel_read'):
+                port.cancel_read()
+        except Exception:
+            pass
+        try:
+            port.close()
+        except Exception:
+            pass
+
+    def send_frame(self, function: int, payload: bytes = b"") -> bool:
+        frame = build_proto_frame(PROTO_DIR_TO_FC, function, payload)
+        with self.lock:
+            if self.port is None or not self.port.is_open:
+                return False
+        try:
+            self._send_queue.put_nowait(frame)
+            return True
+        except queue.Full:
+            return False
+
+    def _sender_loop(self) -> None:
+        while not self.stop_event.is_set():
+            try:
+                frame = self._send_queue.get(timeout=0.3)
+            except queue.Empty:
+                continue
+            if frame is None:
+                break
+            with self.lock:
+                port = self.port
+            if port is None or not port.is_open:
+                continue
+            try:
+                port.write(frame)
+            except Exception as exc:
+                self.rx_queue.put(f"[上位机] 串口发送失败: {exc}")
+
+    def _read_loop(self, port: "serial.Serial") -> None:
+        buffer = bytearray()
+        while not self.stop_event.is_set():
+            try:
+                if not port.is_open:
+                    break
+                waiting = port.in_waiting
+                chunk = port.read(waiting or 1)
+            except Exception:
+                break
+            if not chunk:
+                continue
+            buffer += chunk
+            self._consume_buffer(buffer)
+        with self.lock:
+            if self.port is port:
+                self.port = None
+        self.rx_queue.put("[上位机] 串口已断开")
+
+
 class DronePanel(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
-        self.title("drone-H743 TCP 地面站")
+        self.title("drone-H743 地面站")
         self.geometry("1280x820")
         self.minsize(1080, 720)
 
         self.rx_queue: "queue.Queue[str]" = queue.Queue()
-        self.server = TcpServer(self.rx_queue)
+        self.tcp_transport = TcpTransport(self.rx_queue)
+        self.serial_transport = SerialTransport(self.rx_queue)
+        self.transport: TransportBase = self.tcp_transport
         self.last_board_rx = 0.0
         self.last_reply_rx = 0.0
         self.selected_module = "FLASH"
         self.baro_capture_enabled = tk.BooleanVar(value=True)
         self.baro_buffer: list[dict[str, float | str]] = []
+        self._baro_dirty = False
+        self._last_baro_plot_ns = 0
         self.params: dict[str, dict[str, str | bool]] = {}
         self.param_iids: dict[str, str] = {}
         self.param_names_by_iid: dict[str, str] = {}
@@ -352,6 +523,10 @@ class DronePanel(tk.Tk):
         self.config_summary_var = tk.StringVar(value="尚未读取配置")
         self.baro_count_var = tk.StringVar(value="暂存样本: 0")
         self.plot_var = tk.StringVar(value="pressure")
+        self.transport_var = tk.StringVar(value="tcp")
+        self._serial_port_map: dict[str, str] = {}
+        self.serial_port_var = tk.StringVar(value=self._default_serial_port())
+        self.serial_baud_var = tk.IntVar(value=115200)
 
         self.module_state: dict[str, dict[str, tk.StringVar]] = {}
         self.baro_vars: dict[str, tk.StringVar] = {}
@@ -359,7 +534,69 @@ class DronePanel(tk.Tk):
         self._build_ui()
         self.after(1000, self._check_link_health)
         self.after(100, self._drain_rx)
+        self.after(250, self._baro_tick)
         self.protocol("WM_DELETE_WINDOW", self._on_close)
+
+    def _build_port_label(self, p) -> str:
+        desc = (p.description or "").upper()
+        hwid = (p.hwid or "").upper()
+        combined = f"{desc} {hwid}"
+        if "CH340" in combined:
+            return f"CH340 ({p.device})"
+        if "CP210" in combined:
+            return f"CP210x ({p.device})"
+        if "FTDI" in combined or "FT232" in combined or "FT4232" in combined:
+            return f"FTDI ({p.device})"
+        if "BLUETOOTH" in combined or "BLE" in combined:
+            return f"BLE ({p.device})"
+        if "STLINK" in combined or "ST-LINK" in combined:
+            return f"STLink ({p.device})"
+        if desc and desc not in ("USB SERIAL DEVICE", "USB SERIAL", "SERIAL"):
+            return f"{p.device} - {p.description}"
+        return p.device
+
+    def _refresh_serial_ports(self) -> list[str]:
+        if not HAS_PYSERIAL or serial is None:
+            return []
+        try:
+            ports = list(serial.tools.list_ports.comports())  # type: ignore[attr-defined]
+        except Exception:
+            return []
+        self._serial_port_map.clear()
+        names: list[str] = []
+        for p in ports:
+            label = self._build_port_label(p)
+            self._serial_port_map[label] = p.device
+            names.append(label)
+        return names
+
+    def _default_serial_port(self) -> str:
+        names = self._refresh_serial_ports()
+        if names:
+            return names[0]
+        return "COM18"
+
+    def _on_refresh_ports(self) -> None:
+        names = self._refresh_serial_ports()
+        if hasattr(self, '_serial_port_combo'):
+            self._serial_port_combo['values'] = names
+        if names:
+            self.serial_port_var.set(names[0])
+
+    def _on_transport_mode_change(self, *args) -> None:
+        if self.transport_var.get() == "serial":
+            self._tcp_frame.pack_forget()
+            self._serial_frame.pack(side=tk.LEFT, padx=(0, 12), before=self._action_frame)
+            self._on_refresh_ports()
+        else:
+            self._serial_frame.pack_forget()
+            self._tcp_frame.pack(side=tk.LEFT, padx=(0, 12), before=self._action_frame)
+
+    def _current_transport(self) -> TransportBase:
+        return self.serial_transport if self.transport_var.get() == "serial" else self.tcp_transport
+
+    def _transport_connected(self) -> bool:
+        return self.transport.is_connected
 
     def _build_ui(self) -> None:
         root = ttk.Frame(self, padding=10)
@@ -400,24 +637,56 @@ class DronePanel(tk.Tk):
         conn = ttk.Frame(parent)
         conn.pack(fill=tk.X)
 
-        ttk.Label(conn, text="监听地址").pack(side=tk.LEFT)
+        ttk.Label(conn, text="通道").pack(side=tk.LEFT)
+        ttk.Combobox(
+            conn,
+            textvariable=self.transport_var,
+            values=("tcp", "serial"),
+            width=8,
+            state="readonly",
+        ).pack(side=tk.LEFT, padx=(4, 12))
+
+        # --- TCP controls ---
+        self._tcp_frame = ttk.Frame(conn)
+        ttk.Label(self._tcp_frame, text="监听地址").pack(side=tk.LEFT)
         self.host_var = tk.StringVar(value=DEFAULT_HOST)
-        ttk.Entry(conn, textvariable=self.host_var, width=16).pack(side=tk.LEFT, padx=(4, 12))
-
-        ttk.Label(conn, text="端口").pack(side=tk.LEFT)
+        ttk.Entry(self._tcp_frame, textvariable=self.host_var, width=16).pack(side=tk.LEFT, padx=(4, 12))
+        ttk.Label(self._tcp_frame, text="端口").pack(side=tk.LEFT)
         self.port_var = tk.IntVar(value=DEFAULT_PORT)
-        ttk.Entry(conn, textvariable=self.port_var, width=8).pack(side=tk.LEFT, padx=(4, 12))
+        ttk.Entry(self._tcp_frame, textvariable=self.port_var, width=8).pack(side=tk.LEFT)
 
-        ttk.Button(conn, text="启动 TCP 服务", command=self._start).pack(side=tk.LEFT)
-        ttk.Button(conn, text="停止", command=self._stop).pack(side=tk.LEFT, padx=6)
-        ttk.Button(conn, text="PING", command=lambda: self._send_proto(PROTO_REQ_PING, "PING")).pack(side=tk.LEFT, padx=(18, 4))
-        ttk.Button(conn, text="硬件状态", command=self._request_overview_status).pack(side=tk.LEFT, padx=4)
-        ttk.Button(conn, text="读取配置", command=self._read_all_params).pack(side=tk.LEFT, padx=4)
-        ttk.Button(conn, text="保存到 Flash", command=lambda: self._send_proto(PROTO_REQ_SAVE, "SAVE")).pack(side=tk.LEFT, padx=4)
-        ttk.Button(conn, text="从 Flash 读取", command=lambda: self._send_proto(PROTO_REQ_LOAD, "LOAD")).pack(side=tk.LEFT, padx=4)
+        # --- Serial controls (hidden by default) ---
+        self._serial_frame = ttk.Frame(conn)
+        ttk.Label(self._serial_frame, text="串口").pack(side=tk.LEFT)
+        self._serial_port_combo = ttk.Combobox(
+            self._serial_frame,
+            textvariable=self.serial_port_var,
+            values=self._refresh_serial_ports(),
+            width=20,
+        )
+        self._serial_port_combo.pack(side=tk.LEFT, padx=(4, 2))
+        ttk.Button(self._serial_frame, text="刷新", command=self._on_refresh_ports).pack(side=tk.LEFT)
+        ttk.Label(self._serial_frame, text="波特率").pack(side=tk.LEFT)
+        ttk.Entry(self._serial_frame, textvariable=self.serial_baud_var, width=8).pack(side=tk.LEFT, padx=(4, 0))
+
+        # Show TCP frame initially
+        self._tcp_frame.pack(side=tk.LEFT, padx=(0, 12))
+
+        # --- Action buttons (always visible) ---
+        self._action_frame = ttk.Frame(conn)
+        self._action_frame.pack(side=tk.LEFT)
+        ttk.Button(self._action_frame, text="启动连接", command=self._start).pack(side=tk.LEFT)
+        ttk.Button(self._action_frame, text="停止", command=self._stop).pack(side=tk.LEFT, padx=6)
+        ttk.Button(self._action_frame, text="PING", command=lambda: self._send_proto(PROTO_REQ_PING, "PING")).pack(side=tk.LEFT, padx=(18, 4))
+        ttk.Button(self._action_frame, text="硬件状态", command=self._request_overview_status).pack(side=tk.LEFT, padx=4)
+        ttk.Button(self._action_frame, text="读取配置", command=self._read_all_params).pack(side=tk.LEFT, padx=4)
+        ttk.Button(self._action_frame, text="保存到 Flash", command=lambda: self._send_proto(PROTO_REQ_SAVE, "SAVE")).pack(side=tk.LEFT, padx=4)
+        ttk.Button(self._action_frame, text="从 Flash 读取", command=lambda: self._send_proto(PROTO_REQ_LOAD, "LOAD")).pack(side=tk.LEFT, padx=4)
 
         ttk.Label(conn, text="链路").pack(side=tk.LEFT, padx=(18, 4))
         ttk.Label(conn, textvariable=self.link_var).pack(side=tk.LEFT)
+
+        self.transport_var.trace_add("write", self._on_transport_mode_change)
 
     def _build_overview_page(self, parent: ttk.Frame) -> None:
         panes = ttk.PanedWindow(parent, orient=tk.HORIZONTAL)
@@ -809,35 +1078,53 @@ class DronePanel(tk.Tk):
         ttk.Spinbox(parent, from_=minimum, to=maximum, textvariable=variable, width=8).grid(row=row, column=2, padx=(6, 0))
 
     def _start(self) -> None:
-        try:
-            port = int(self.port_var.get())
-        except tk.TclError:
-            messagebox.showerror("端口错误", "端口号无效")
+        self._stop()
+        self.transport = self._current_transport()
+        if self.transport is self.tcp_transport:
+            try:
+                port = int(self.port_var.get())
+            except tk.TclError:
+                messagebox.showerror("输入错误", "端口号无效")
+                return
+            self.transport.start(self.host_var.get(), port)
             return
-        self.server.start(self.host_var.get(), port)
+
+        try:
+            baud = int(self.serial_baud_var.get())
+        except tk.TclError:
+            messagebox.showerror("输入错误", "波特率无效")
+            return
+        port_display = self.serial_port_var.get().strip()
+        if not port_display:
+            messagebox.showerror("输入错误", "请输入串口号")
+            return
+        port_name = self._serial_port_map.get(port_display, port_display)
+        self.transport.start(port_name, baud)
 
     def _stop(self) -> None:
-        self.server.stop()
+        self.tcp_transport.stop()
+        self.serial_transport.stop()
+        self.transport = self._current_transport()
 
     def _send(self, line: str) -> None:
-        self.last_cmd_var.set(f"最近发送: {line}")
+        self.last_cmd_var.set(f"最近命令: {line}")
         self._append(f"> {line}")
-        if not self.server.send_line(line):
-            self._append("[上位机] 板子尚未连接")
+        if not self.transport.send_line(line):
+            self._append("[上位机] 发送失败")
         elif line in {"PING", "STATUS?", "CONFIG?", "PARAM?", "PID?", "BARO?"}:
             sent_at = time.monotonic()
             self.after(CMD_REPLY_TIMEOUT_MS, lambda sent=line, start=sent_at: self._warn_if_no_reply(sent, start))
 
     def _send_proto(self, function: int, label: str, payload: str = "", expect_reply: bool = True) -> None:
         payload_text = payload if payload else label
-        self.last_cmd_var.set(f"最近发送: {label}")
+        self.last_cmd_var.set(f"最近命令: {label}")
         self._append(f"> {label}")
-        if not self.server.send_frame(function, payload_text.encode("utf-8")):
-            self._append("[上位机] 板子尚未连接")
+        if not self.transport.send_frame(function, payload_text.encode("utf-8")):
+            self._append("[上位机] 发送失败")
             return
         sent_at = time.monotonic()
         if self.structured_protocol_supported is False:
-            self.server.send_line(payload_text)
+            self.transport.send_line(payload_text)
         elif self.structured_protocol_supported is None and function != PROTO_REQ_CAPS:
             self.after(
                 PROTO_COMPAT_FALLBACK_DELAY_MS,
@@ -847,21 +1134,21 @@ class DronePanel(tk.Tk):
             self.after(CMD_REPLY_TIMEOUT_MS, lambda sent=label, start=sent_at: self._warn_if_no_reply(sent, start))
 
     def _fallback_proto_request(self, legacy_line: str, started_at: float) -> None:
-        if self.server.client is None:
+        if not self._transport_connected():
             return
         if self.structured_protocol_supported is True:
             return
         if self.last_reply_rx >= started_at:
             return
-        self.server.send_line(legacy_line)
+        self.transport.send_line(legacy_line)
 
     def _begin_protocol_probe(self) -> None:
         self.structured_protocol_supported = None
-        if self.server.client is None:
+        if not self._transport_connected():
             return
 
         started_at = time.monotonic()
-        self.server.send_frame(PROTO_REQ_CAPS, b"CAPS?")
+        self.transport.send_frame(PROTO_REQ_CAPS, b"CAPS?")
         self.after(
             PROTO_COMPAT_FALLBACK_DELAY_MS,
             lambda start=started_at: self._fallback_proto_request("CAPS?", start),
@@ -869,7 +1156,7 @@ class DronePanel(tk.Tk):
         self.after(PROTO_PROBE_SETTLE_MS, self._finalize_protocol_probe)
 
     def _finalize_protocol_probe(self) -> None:
-        if self.server.client is None:
+        if not self._transport_connected():
             self.structured_protocol_supported = None
             return
         if self.structured_protocol_supported is None:
@@ -932,9 +1219,13 @@ class DronePanel(tk.Tk):
         payload = f"SERVO CMD {index} BD {values['baud']}"
         self._send_proto(PROTO_REQ_SERVO_ACTION, payload, payload)
 
+    MAX_LOG_LINES = 2000
+
     def _append(self, line: str) -> None:
         stamp = time.strftime("%H:%M:%S")
         self.status_text.insert(tk.END, f"[{stamp}] {line}\n")
+        if int(self.status_text.index("end-1c").split(".")[0]) > self.MAX_LOG_LINES:
+            self.status_text.delete("1.0", "2.0")
         self.status_text.see(tk.END)
 
     def _handle_proto_frame(self, function: int, text: str) -> None:
@@ -1103,20 +1394,21 @@ class DronePanel(tk.Tk):
             self._refresh_detail()
 
     def _handle_board_line(self, line: str) -> None:
-        if line.startswith("[上位机] 板子已连接"):
+        if line.startswith("[上位机] 板子已连接") or line.startswith("[上位机] 串口已连接"):
             self._begin_protocol_probe()
             return
-        if line.startswith("[上位机] 板子已断开"):
+        if line.startswith("[上位机] 板子已断开") or line.startswith("[上位机] 串口已断开"):
             self.structured_protocol_supported = None
             return
 
         if not line.startswith("[上位机]"):
             self.last_board_rx = time.monotonic()
-            self.link_var.set("已收到 STM32 数据，TCP 与串口透明链路正常")
+            mode = "TCP" if self.transport is self.tcp_transport else "串口"
+            self.link_var.set(f"已收到 STM32 数据，{mode} 链路正常")
 
         if line.startswith("READY"):
             self.last_board_rx = time.monotonic()
-            self.link_var.set("STM32 心跳正常")
+            self.link_var.set("STM32 已就绪")
             self._handle_ready_line(line)
         elif line.startswith("HW "):
             self._update_hardware_line(line)
@@ -1140,7 +1432,7 @@ class DronePanel(tk.Tk):
             self._handle_rsp_line(line)
         elif line.startswith("OK ") or line.startswith("ERR ") or line.startswith("ACK ") or line.startswith("RX "):
             self.last_reply_rx = time.monotonic()
-            self.last_cmd_var.set(f"最近回包: {line}")
+            self.last_cmd_var.set(f"最近命令: {line}")
         elif line.startswith("PONG ") or line.startswith("READY ") or line.startswith("FLASH ") or line.startswith("BARO ") or line.startswith("IMU "):
             self.last_reply_rx = time.monotonic()
 
@@ -1442,27 +1734,39 @@ class DronePanel(tk.Tk):
         self.baro_buffer.append(sample)
         if len(self.baro_buffer) > MAX_BARO_SAMPLES:
             del self.baro_buffer[: len(self.baro_buffer) - MAX_BARO_SAMPLES]
-        self._refresh_baro_samples()
-        self._update_baro_plot()
+        self._baro_dirty = True
+
+    def _baro_tick(self) -> None:
+        if self._baro_dirty:
+            self._baro_dirty = False
+            now_ns = time.monotonic_ns()
+            self._refresh_baro_samples()
+            if now_ns - self._last_baro_plot_ns > 300_000_000:
+                self._last_baro_plot_ns = now_ns
+                self._update_baro_plot()
+        self.after(250, self._baro_tick)
 
     def _refresh_baro_samples(self) -> None:
         self.baro_count_var.set(f"暂存样本: {len(self.baro_buffer)}")
-        for iid in self.baro_sample_tree.get_children():
-            self.baro_sample_tree.delete(iid)
         latest = self.baro_buffer[-80:]
+        children = self.baro_sample_tree.get_children()
+        n_existing = len(children)
+        n_needed = len(latest)
         base = float(latest[0]["time"]) if latest else 0.0
-        for sample in latest:
+        for i, sample in enumerate(latest):
             t = float(sample["time"]) - base
-            self.baro_sample_tree.insert(
-                "",
-                tk.END,
-                values=(
-                    f"{t:.2f}",
-                    self._fmt_sample(sample, "pressure"),
-                    self._fmt_sample(sample, "temperature"),
-                    self._fmt_sample(sample, "altitude"),
-                ),
+            vals = (
+                f"{t:.2f}",
+                self._fmt_sample(sample, "pressure"),
+                self._fmt_sample(sample, "temperature"),
+                self._fmt_sample(sample, "altitude"),
             )
+            if i < n_existing:
+                self.baro_sample_tree.item(children[i], values=vals)
+            else:
+                self.baro_sample_tree.insert("", tk.END, values=vals)
+        for i in range(n_needed, n_existing):
+            self.baro_sample_tree.delete(children[i])
 
     def _fmt_sample(self, sample: dict[str, float | str], key: str) -> str:
         value = sample.get(key)
@@ -1489,7 +1793,9 @@ class DronePanel(tk.Tk):
 
     def _clear_baro_buffer(self) -> None:
         self.baro_buffer.clear()
+        self._baro_dirty = False
         self._refresh_baro_samples()
+        self._last_baro_plot_ns = time.monotonic_ns()
         self._update_baro_plot()
 
     def _export_baro_csv(self) -> None:
@@ -1682,17 +1988,24 @@ class DronePanel(tk.Tk):
             return
         if (time.monotonic() - started_at) < (CMD_REPLY_TIMEOUT_MS / 1000.0):
             return
-        if self.server.client is not None:
-            self.link_var.set("Ai-WB2 已连上 TCP，但没有收到 STM32 回复；请检查 USART1 RX/TX 透明串口链路")
-            self._append(f"[上位机] {sent} 没收到 STM32 回复：TCP 客户端可能只是 Wi-Fi 模块，串口到 STM32 未通")
+        if self._transport_connected():
+            mode = "TCP" if self.transport is self.tcp_transport else "串口"
+            self.link_var.set(f"{mode} 已连接但超时未收到 STM32 回复，请检查固件")
+            self._append(f"[上位机] {sent} 超时: STM32 未通过{mode}回复，请检查固件是否运行")
 
     def _check_link_health(self) -> None:
-        if self.server.client is None:
-            self.link_var.set("等待 Ai-WB2 连接 TCP")
+        if not self._transport_connected():
+            if self.transport is self.tcp_transport:
+                self.link_var.set("等待 Ai-WB2 接入 TCP")
+            else:
+                self.link_var.set("串口未打开")
         elif self.last_board_rx == 0.0:
-            self.link_var.set("Ai-WB2 已连上 TCP，尚未收到 STM32 数据")
+            if self.transport is self.tcp_transport:
+                self.link_var.set("TCP 已连接，等待 STM32 数据")
+            else:
+                self.link_var.set("串口已打开，等待 STM32 数据")
         elif (time.monotonic() - self.last_board_rx) > 5.0:
-            self.link_var.set("超过 5 秒未收到 STM32 心跳")
+            self.link_var.set("超过 5 秒未收到 STM32 数据")
         self.after(1000, self._check_link_health)
 
     def _drain_rx(self) -> None:
@@ -1712,7 +2025,7 @@ class DronePanel(tk.Tk):
         self.after(100, self._drain_rx)
 
     def _on_close(self) -> None:
-        self.server.stop()
+        self._stop()
         self.destroy()
 
 
