@@ -10,13 +10,15 @@ extern "C" {
 #include <stdbool.h>
 #include <stdint.h>
 
-#define BSP_ICM42688_WHO_AM_I_VALUE 0x47U
+#define BSP_ICM42688_CHIP_ID_VALUE 0xA1U
+#define BSP_ICM42688_WHO_AM_I_VALUE BSP_ICM42688_CHIP_ID_VALUE
 
 /*
  * CubeMX / board requirements for this driver:
  * - SPI must run in 8-bit data size.
  * - SPI must use manual chip select (software NSS).
  * - SPI mode 0 is the default choice for bring-up.
+ * - STM32H7 PC2_C needs the PC2 analog switch closed before SPI2 MISO works.
  */
 
 typedef enum {

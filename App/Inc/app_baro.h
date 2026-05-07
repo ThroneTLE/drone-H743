@@ -19,16 +19,31 @@ typedef struct {
 typedef struct {
     APP_Baro_Status status;
     int32_t raw_status;
+    int32_t coef_status;
     uint8_t raw_regs[14];
+    uint8_t coef_regs[18];
     int32_t pressure_raw;
     int32_t temperature_raw;
+    int32_t pressure_pa;
+    int32_t temperature_cdeg;
+    uint8_t scaled_valid;
     uint8_t prs_cfg;
     uint8_t tmp_cfg;
     uint8_t meas_cfg;
     uint8_t cfg_reg;
     uint8_t int_sts;
     uint8_t fifo_sts;
+    uint8_t coef_srce;
     uint8_t id;
+    int16_t c0;
+    int16_t c1;
+    int32_t c00;
+    int32_t c10;
+    int16_t c01;
+    int16_t c11;
+    int16_t c20;
+    int16_t c21;
+    int16_t c30;
 } APP_Baro_Snapshot;
 
 void APP_Baro_ReportStartup(void);

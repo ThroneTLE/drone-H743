@@ -13,9 +13,25 @@
 #define APP_BARO_BMP280_ID_REG 0xD0U
 #define APP_BARO_SPL06_RAW_REG 0x00U
 #define APP_BARO_SPL06_RAW_LEN 14U
+#define APP_BARO_SPL06_COEF_REG 0x10U
+#define APP_BARO_SPL06_COEF_LEN 18U
+#define APP_BARO_SPL06_COEF_SRCE_REG 0x28U
 
 static uint8_t baro_report_done;
 static APP_Baro_Status baro_status;
+
+static int32_t app_baro_sign_extend(uint32_t value, uint8_t bits)
+{
+    uint32_t sign_bit = 1UL << (bits - 1U);
+    uint32_t mask = (1UL << bits) - 1UL;
+
+    value &= mask;
+    if ((value & sign_bit) != 0UL) {
+        value |= ~mask;
+    }
+
+    return (int32_t)value;
+}
 
 static int32_t app_baro_make_signed24(uint8_t msb, uint8_t mid, uint8_t lsb)
 {
@@ -26,6 +42,91 @@ static int32_t app_baro_make_signed24(uint8_t msb, uint8_t mid, uint8_t lsb)
     }
 
     return value;
+}
+
+static int32_t app_baro_scale_factor(uint8_t cfg)
+{
+    switch (cfg & 0x0FU) {
+    case 0x00U:
+        return 524288L;
+    case 0x01U:
+        return 1572864L;
+    case 0x02U:
+        return 3670016L;
+    case 0x03U:
+        return 7864320L;
+    case 0x04U:
+        return 253952L;
+    case 0x05U:
+        return 516096L;
+    case 0x06U:
+        return 1040384L;
+    case 0x07U:
+        return 2088960L;
+    default:
+        return 524288L;
+    }
+}
+
+static void app_baro_decode_coefficients(APP_Baro_Snapshot *snapshot)
+{
+    const uint8_t *c = snapshot->coef_regs;
+
+    snapshot->c0 = (int16_t)app_baro_sign_extend((((uint32_t)c[0] << 4) |
+                                                  ((uint32_t)c[1] >> 4)),
+                                                 12U);
+    snapshot->c1 = (int16_t)app_baro_sign_extend(((((uint32_t)c[1] & 0x0FU) << 8) |
+                                                  (uint32_t)c[2]),
+                                                 12U);
+    snapshot->c00 = app_baro_sign_extend((((uint32_t)c[3] << 12) |
+                                          ((uint32_t)c[4] << 4) |
+                                          ((uint32_t)c[5] >> 4)),
+                                         20U);
+    snapshot->c10 = app_baro_sign_extend(((((uint32_t)c[5] & 0x0FU) << 16) |
+                                          ((uint32_t)c[6] << 8) |
+                                          (uint32_t)c[7]),
+                                         20U);
+    snapshot->c01 = (int16_t)(((uint16_t)c[8] << 8) | (uint16_t)c[9]);
+    snapshot->c11 = (int16_t)(((uint16_t)c[10] << 8) | (uint16_t)c[11]);
+    snapshot->c20 = (int16_t)(((uint16_t)c[12] << 8) | (uint16_t)c[13]);
+    snapshot->c21 = (int16_t)(((uint16_t)c[14] << 8) | (uint16_t)c[15]);
+    snapshot->c30 = (int16_t)(((uint16_t)c[16] << 8) | (uint16_t)c[17]);
+}
+
+static void app_baro_compute_scaled(APP_Baro_Snapshot *snapshot)
+{
+    double k_p;
+    double k_t;
+    double p_raw_sc;
+    double t_raw_sc;
+    double pressure;
+    double temperature;
+
+    if ((snapshot->raw_status != (int32_t)BSP_SPL06_OK) ||
+        (snapshot->coef_status != (int32_t)BSP_SPL06_OK)) {
+        return;
+    }
+
+    app_baro_decode_coefficients(snapshot);
+
+    k_p = (double)app_baro_scale_factor(snapshot->prs_cfg);
+    k_t = (double)app_baro_scale_factor(snapshot->tmp_cfg);
+    p_raw_sc = (double)snapshot->pressure_raw / k_p;
+    t_raw_sc = (double)snapshot->temperature_raw / k_t;
+
+    temperature = ((double)snapshot->c0 * 0.5) + ((double)snapshot->c1 * t_raw_sc);
+    pressure = (double)snapshot->c00 +
+               (p_raw_sc * ((double)snapshot->c10 +
+                            (p_raw_sc * ((double)snapshot->c20 +
+                                         (p_raw_sc * (double)snapshot->c30))))) +
+               (t_raw_sc * (double)snapshot->c01) +
+               (t_raw_sc * p_raw_sc * ((double)snapshot->c11 +
+                                       (p_raw_sc * (double)snapshot->c21)));
+
+    snapshot->temperature_cdeg = (int32_t)((temperature * 100.0) +
+                                          ((temperature >= 0.0) ? 0.5 : -0.5));
+    snapshot->pressure_pa = (int32_t)(pressure + ((pressure >= 0.0) ? 0.5 : -0.5));
+    snapshot->scaled_valid = 1U;
 }
 
 static void app_baro_queue_text(const char *format, ...)
@@ -144,6 +245,9 @@ void APP_Baro_ReadSnapshot(APP_Baro_Snapshot *snapshot)
     snapshot->raw_status = (int32_t)BSP_BARO_ReadRawRegisters(APP_BARO_SPL06_RAW_REG,
                                                               snapshot->raw_regs,
                                                               APP_BARO_SPL06_RAW_LEN);
+    snapshot->coef_status = (int32_t)BSP_BARO_ReadRawRegisters(APP_BARO_SPL06_COEF_REG,
+                                                               snapshot->coef_regs,
+                                                               APP_BARO_SPL06_COEF_LEN);
     if (snapshot->raw_status == (int32_t)BSP_SPL06_OK) {
         snapshot->pressure_raw = app_baro_make_signed24(snapshot->raw_regs[0],
                                                         snapshot->raw_regs[1],
@@ -159,4 +263,7 @@ void APP_Baro_ReadSnapshot(APP_Baro_Snapshot *snapshot)
         snapshot->fifo_sts = snapshot->raw_regs[11];
         snapshot->id = snapshot->raw_regs[13];
     }
+    (void)BSP_BARO_ReadRawRegister(APP_BARO_SPL06_COEF_SRCE_REG,
+                                   &snapshot->coef_srce);
+    app_baro_compute_scaled(snapshot);
 }

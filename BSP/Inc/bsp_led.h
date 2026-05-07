@@ -5,7 +5,7 @@
 
 typedef enum {
     LED_RED = 0,   /* PC13 */
-    LED_1,         /* PC6  */
+    LED_1,         /* PC6, reused as Ai-WB2 EN on current debug wiring */
     LED_2,         /* PC7  */
     LED_3,         /* PC8  */
     LED_4,         /* PC9  */

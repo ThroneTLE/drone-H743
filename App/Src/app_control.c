@@ -1,5 +1,6 @@
 #include "app_control.h"
 
+#include "app_aiwb2.h"
 #include "app_baro.h"
 #include "app_flash.h"
 #include "app_imu.h"
@@ -8,6 +9,7 @@
 #include "app_tasks.h"
 #include "app_uart.h"
 #include "bsp_bus_servo.h"
+#include "bsp_aiwb2_power.h"
 #include "bsp_baro.h"
 #include "bsp_flash.h"
 #include "bsp_icm42688.h"
@@ -24,8 +26,10 @@
 #define APP_CONTROL_CFG_ADDRESS     (BSP_GD25Q32_FLASH_SIZE_BYTES - 4096UL)
 #define APP_CONTROL_CFG_LEGACY_SIZE ((uint16_t)offsetof(APP_ControlConfig, rate_pid))
 #define APP_CONTROL_MAX_LINE        128U
-#define APP_CONTROL_HEARTBEAT_ENABLED 0U
-#define APP_CONTROL_BOOT_READY_ENABLED 0U
+#define APP_CONTROL_HEARTBEAT_ENABLED 1U
+#define APP_CONTROL_BOOT_READY_ENABLED 1U
+#define APP_CONTROL_BARO_STREAM_DEFAULT_PERIOD_MS 50U
+#define APP_CONTROL_BARO_STREAM_MIN_PERIOD_MS 20U
 
 typedef struct {
     uint32_t magic;
@@ -36,15 +40,20 @@ typedef struct {
 } APP_ControlFlashRecord;
 
 static APP_ControlConfig control_config;
+#if (APP_CONTROL_HEARTBEAT_ENABLED != 0U)
 static uint32_t control_last_heartbeat_ms;
 static uint8_t control_reported_hw_once;
+#endif
 static uint8_t control_baro_stream_enabled;
 static uint32_t control_baro_stream_period_ms;
 static uint32_t control_last_baro_stream_ms;
+static uint8_t control_wifi_reset_pending;
+static uint32_t control_wifi_reset_deadline_ms;
 static uint16_t control_response_override_function;
 
 static void app_control_handle_param(char **tokens, uint32_t count);
 static void app_control_report_pid_legacy(void);
+static void app_control_report_wifi(void);
 static void app_control_queue_proto_text(uint16_t function, const char *format, ...);
 static void app_control_process_proto_request(uint16_t function,
                                               const uint8_t *payload,
@@ -56,6 +65,8 @@ static uint8_t app_control_payload_to_line(const uint8_t *payload,
                                            uint16_t payload_length,
                                            char *buffer,
                                            uint16_t buffer_size);
+static void app_control_handle_wifi(char **tokens, uint32_t count);
+static void app_control_service_wifi_reset(void);
 
 static uint16_t app_control_detect_function(const char *format)
 {
@@ -374,8 +385,36 @@ static uint16_t app_control_response_function_for_request(uint16_t function)
     case APP_PROTO_REQ_SERVO_ACTION:
     case APP_PROTO_REQ_SERVO_RAW:
         return APP_PROTO_MSG_SERVO_RESULT;
+    case APP_PROTO_REQ_WIFI:
+        return APP_PROTO_MSG_WIFI_RECORD;
     default:
         return 0U;
+    }
+}
+
+static const char *app_control_aiwb2_state_name(APP_AiWB2_State state)
+{
+    switch (state) {
+    case APP_AIWB2_STATE_START_DELAY:
+        return "start_delay";
+    case APP_AIWB2_STATE_WAIT_PROBE:
+        return "wait_probe";
+    case APP_AIWB2_STATE_ESCAPE_BEFORE:
+        return "escape_before";
+    case APP_AIWB2_STATE_ESCAPE_AFTER:
+        return "escape_after";
+    case APP_AIWB2_STATE_SEND_COMMAND:
+        return "send_command";
+    case APP_AIWB2_STATE_WAIT_COMMAND:
+        return "wait_command";
+    case APP_AIWB2_STATE_WAIT_BOOT_CONNECT:
+        return "wait_connect";
+    case APP_AIWB2_STATE_TRANSPARENT:
+        return "transparent";
+    case APP_AIWB2_STATE_RETRY_DELAY:
+        return "retry_delay";
+    default:
+        return "unknown";
     }
 }
 
@@ -562,9 +601,26 @@ static void app_control_report_caps(void)
     app_control_queue_proto_text(APP_PROTO_MSG_CAPS_RECORD,
                                  "RSP id=0 mod=CAPS op=LIST legacy=PING,STATUS?,CONFIG?,SAVE,LOAD,SERVO raw=custom-tab\r\n");
     app_control_queue_proto_text(APP_PROTO_MSG_CAPS_RECORD,
-                                 "RSP id=0 mod=CAPS op=LIST mods=MODULES,SPL06,ICM42688,PARAM,FLASH\r\n");
+                                 "RSP id=0 mod=CAPS op=LIST mods=MODULES,SPL06,ICM42688,PARAM,FLASH,WIFI\r\n");
     app_control_queue_proto_text(APP_PROTO_MSG_CAPS_RECORD,
                                  "RSP id=0 mod=CAPS op=LIST ops=SPL06:STATUS,READ,SAMPLE ICM42688:STATUS,DIAG\r\n");
+    app_control_queue_proto_text(APP_PROTO_MSG_CAPS_RECORD,
+                                 "RSP id=0 mod=CAPS op=LIST ops=WIFI:STATUS,EN,RESET legacy=WIFI?,WIFI_EN?\r\n");
+}
+
+static void app_control_report_wifi(void)
+{
+    app_control_queue_proto_text(APP_PROTO_MSG_WIFI_RECORD,
+                                 "WIFI en=%u pin=PC6 last=%u writes=%lu state=%s transparent=%u retry=%lu socket=%ld cycling=%u wait_ms=%lu\r\n",
+                                 (unsigned int)BSP_AiWB2_IsEnabled(),
+                                 (unsigned int)BSP_AiWB2_GetLastWrittenState(),
+                                 (unsigned long)BSP_AiWB2_GetWriteCount(),
+                                 app_control_aiwb2_state_name(APP_AiWB2_GetState()),
+                                 (unsigned int)APP_AiWB2_IsTransparent(),
+                                 (unsigned long)APP_AiWB2_GetRetryCount(),
+                                 (long)APP_AiWB2_GetLastSocketError(),
+                                 (unsigned int)APP_AiWB2_IsPowerRecycleActive(),
+                                 (unsigned long)APP_AiWB2_GetDeadlineRemainingMs());
 }
 
 static void app_control_report_config(void)
@@ -587,6 +643,7 @@ static void app_control_report_config(void)
                                      (unsigned int)servo->enabled);
     }
     app_control_report_params();
+    app_control_report_wifi();
 }
 
 static void app_control_report_flash(void)
@@ -630,13 +687,23 @@ static void app_control_report_baro(void)
                                  (unsigned int)snapshot.status.txrx_id,
                                  (unsigned int)snapshot.status.bmp280_id);
     app_control_queue_proto_text(APP_PROTO_MSG_BARO_DIAG,
-                                 "BARO diag exp=0x10 cs=%u miso=%u scaled=na reason=no_compensation_path\r\n",
+                                 "BARO diag exp=0x10 cs=%u miso=%u scaled=%u coef_st=%ld coef_srce=0x%02X tmp_ext=%u c0=%d c1=%d c00=%ld c10=%ld\r\n",
                                  (unsigned int)snapshot.status.cs_level,
-                                 (unsigned int)snapshot.status.miso_level);
+                                 (unsigned int)snapshot.status.miso_level,
+                                 (unsigned int)snapshot.scaled_valid,
+                                 (long)snapshot.coef_status,
+                                 (unsigned int)snapshot.coef_srce,
+                                 (unsigned int)((snapshot.tmp_cfg & 0x80U) != 0U),
+                                 (int)snapshot.c0,
+                                 (int)snapshot.c1,
+                                 (long)snapshot.c00,
+                                 (long)snapshot.c10);
     app_control_queue_proto_text(APP_PROTO_MSG_BARO_RAW,
-                                 "BARO raw pressure=%ld temp=%ld prs_cfg=0x%02X tmp_cfg=0x%02X meas_cfg=0x%02X cfg=0x%02X int=0x%02X fifo=0x%02X\r\n",
+                                 "BARO raw pressure=%ld temp=%ld pressure_pa=%ld temp_cdeg=%ld prs_cfg=0x%02X tmp_cfg=0x%02X meas_cfg=0x%02X cfg=0x%02X int=0x%02X fifo=0x%02X\r\n",
                                  (long)snapshot.pressure_raw,
                                  (long)snapshot.temperature_raw,
+                                 (long)snapshot.pressure_pa,
+                                 (long)snapshot.temperature_cdeg,
                                  (unsigned int)snapshot.prs_cfg,
                                  (unsigned int)snapshot.tmp_cfg,
                                  (unsigned int)snapshot.meas_cfg,
@@ -667,12 +734,21 @@ static void app_control_emit_baro_event(void)
 
     APP_Baro_ReadSnapshot(&snapshot);
     app_control_queue_proto_text(APP_PROTO_MSG_BARO_STREAM,
-                                 "BARO ok=%u stage=%s raw_st=%ld pressure_pa=na pressure=%ld temp=%ld count=%lu\r\n",
+                                 "BARO ok=%u stage=%s raw_st=%ld coef_st=%ld scaled=%u pressure_pa=%ld pressure=%ld temp_cdeg=%ld raw_pressure=%ld raw_temperature=%ld prs_cfg=0x%02X tmp_cfg=0x%02X meas_cfg=0x%02X int=0x%02X count=%lu\r\n",
                                  (unsigned int)app_control_baro_ok(&snapshot.status),
                                  app_control_baro_stage(&snapshot.status),
                                  (long)snapshot.raw_status,
+                                 (long)snapshot.coef_status,
+                                 (unsigned int)snapshot.scaled_valid,
+                                 (long)snapshot.pressure_pa,
+                                 (long)snapshot.pressure_pa,
+                                 (long)snapshot.temperature_cdeg,
                                  (long)snapshot.pressure_raw,
                                  (long)snapshot.temperature_raw,
+                                 (unsigned int)snapshot.prs_cfg,
+                                 (unsigned int)snapshot.tmp_cfg,
+                                 (unsigned int)snapshot.meas_cfg,
+                                 (unsigned int)snapshot.int_sts,
                                  (unsigned long)(snapshot.status.report_done != 0U));
 }
 
@@ -682,13 +758,14 @@ static void app_control_report_imu(void)
 
     APP_IMU_GetStatus(&imu_status);
     app_control_queue_proto_text(APP_PROTO_MSG_IMU_STATE,
-                                 "IMU ok=%u stage=%s stage_id=%u st=%ld err=%ld who=0x%02X exp=0x47 n=%lu\r\n",
+                                 "IMU ok=%u stage=%s stage_id=%u st=%ld err=%ld who=0x%02X exp=0x%02X n=%lu\r\n",
                                  (unsigned int)imu_status.initialized,
                                  app_control_imu_stage_name(imu_status.init_stage),
                                  (unsigned int)imu_status.init_stage,
                                  (long)imu_status.last_status,
                                  (long)imu_status.last_error,
                                  (unsigned int)imu_status.who_am_i,
+                                 (unsigned int)BSP_ICM42688_WHO_AM_I_VALUE,
                                  (unsigned long)imu_status.sample_count);
     app_control_queue_proto_text(APP_PROTO_MSG_IMU_SCALED,
                                  "IMU scaled ax_mg=%d ay_mg=%d az_mg=%d gx_mdps=%ld gy_mdps=%ld gz_mdps=%ld temp_cdeg=%d\r\n",
@@ -719,11 +796,12 @@ static void app_control_report_modules(void)
                                  app_control_baro_stage(&baro_status),
                                  (unsigned int)imu_status.initialized);
     app_control_queue_proto_text(APP_PROTO_MSG_MODULES_SUMMARY,
-                                 "RSP id=0 mod=MODULES op=STATUS imu_stage=%s cfg_valid=%u cfg_loaded=%u servo_slots=%u\r\n",
+                                 "RSP id=0 mod=MODULES op=STATUS imu_stage=%s cfg_valid=%u cfg_loaded=%u servo_slots=%u wifi_en=%u\r\n",
                                  app_control_imu_stage_name(imu_status.init_stage),
                                  (unsigned int)control_config.flash_valid,
                                  (unsigned int)control_config.loaded_from_flash,
-                                 (unsigned int)APP_CONTROL_SERVO_COUNT);
+                                 (unsigned int)APP_CONTROL_SERVO_COUNT,
+                                 (unsigned int)BSP_AiWB2_IsEnabled());
 }
 
 static void app_control_req_spl06(uint32_t id, const char *op)
@@ -757,13 +835,17 @@ static void app_control_req_spl06(uint32_t id, const char *op)
     }
 
     if ((strcmp(op, "SAMPLE") == 0) || (strcmp(op, "READ") == 0)) {
-        app_control_queue_text("RSP id=%lu mod=SPL06 op=%s ok=%u raw_st=%ld press_raw=%ld temp_raw=%ld pressure_pa=na\r\n",
+        app_control_queue_text("RSP id=%lu mod=SPL06 op=%s ok=%u raw_st=%ld coef_st=%ld scaled=%u press_raw=%ld temp_raw=%ld pressure_pa=%ld temp_cdeg=%ld\r\n",
                                (unsigned long)id,
                                op,
                                (snapshot.raw_status == (int32_t)BSP_SPL06_OK) ? 1U : 0U,
                                (long)snapshot.raw_status,
+                               (long)snapshot.coef_status,
+                               (unsigned int)snapshot.scaled_valid,
                                (long)snapshot.pressure_raw,
-                               (long)snapshot.temperature_raw);
+                               (long)snapshot.temperature_raw,
+                               (long)snapshot.pressure_pa,
+                               (long)snapshot.temperature_cdeg);
         app_control_queue_text("RSP id=%lu mod=SPL06 op=%s cfg prs=0x%02X tmp=0x%02X meas=0x%02X cfg=0x%02X int=0x%02X fifo=0x%02X\r\n",
                                (unsigned long)id,
                                op,
@@ -808,13 +890,14 @@ static void app_control_req_icm42688(uint32_t id, const char *op)
     APP_IMU_GetStatus(&imu_status);
 
     if ((strcmp(op, "STATUS") == 0) || (strcmp(op, "DIAG") == 0)) {
-        app_control_queue_text("RSP id=%lu mod=ICM42688 op=%s ok=%u stage=%s stage_id=%u who=0x%02X exp=0x47 code=%ld\r\n",
+        app_control_queue_text("RSP id=%lu mod=ICM42688 op=%s ok=%u stage=%s stage_id=%u who=0x%02X exp=0x%02X code=%ld\r\n",
                                (unsigned long)id,
                                op,
                                (unsigned int)imu_status.initialized,
                                app_control_imu_stage_name(imu_status.init_stage),
                                (unsigned int)imu_status.init_stage,
                                (unsigned int)imu_status.who_am_i,
+                               (unsigned int)BSP_ICM42688_WHO_AM_I_VALUE,
                                (long)imu_status.last_error);
         app_control_queue_text("RSP id=%lu mod=ICM42688 op=%s st=%ld n=%lu ax=%d ay=%d az=%d gx=%ld gy=%ld gz=%ld t=%d\r\n",
                                (unsigned long)id,
@@ -861,6 +944,29 @@ static void app_control_handle_req(char **tokens, uint32_t count)
         return;
     }
 
+    if (strcmp(mod, "WIFI") == 0) {
+        if (op == NULL) {
+            app_control_protocol_err(id, "WIFI", "?", "NO_OP");
+            return;
+        }
+        if (strcmp(op, "STATUS") == 0) {
+            app_control_queue_text("RSP id=%lu mod=WIFI op=STATUS en=%u pin=PC6 last=%u writes=%lu state=%s transparent=%u retry=%lu socket=%ld cycling=%u wait_ms=%lu\r\n",
+                                   (unsigned long)id,
+                                   (unsigned int)BSP_AiWB2_IsEnabled(),
+                                   (unsigned int)BSP_AiWB2_GetLastWrittenState(),
+                                   (unsigned long)BSP_AiWB2_GetWriteCount(),
+                                   app_control_aiwb2_state_name(APP_AiWB2_GetState()),
+                                   (unsigned int)APP_AiWB2_IsTransparent(),
+                                   (unsigned long)APP_AiWB2_GetRetryCount(),
+                                   (long)APP_AiWB2_GetLastSocketError(),
+                                   (unsigned int)APP_AiWB2_IsPowerRecycleActive(),
+                                   (unsigned long)APP_AiWB2_GetDeadlineRemainingMs());
+            return;
+        }
+        app_control_protocol_err(id, "WIFI", op, "BAD_OP");
+        return;
+    }
+
     app_control_protocol_err(id, mod, (op != NULL) ? op : "?", "BAD_MOD");
 }
 
@@ -873,6 +979,9 @@ static void app_control_report_status(void)
     uint32_t uart_rx_lines = 0U;
     uint32_t uart_rx_overflows = 0U;
     uint32_t uart_rx_errors = 0U;
+    uint32_t uart_rx_events = 0U;
+    uint32_t uart_rx_restarts = 0U;
+    uint32_t uart_last_rx_event_size = 0U;
 
     APP_Flash_GetStatus(&flash_status);
     APP_Baro_GetStatus(&baro_status);
@@ -881,6 +990,9 @@ static void app_control_report_status(void)
                       &uart_rx_lines,
                       &uart_rx_overflows,
                       &uart_rx_errors);
+    APP_UART_GetRxEventStats(&uart_rx_events,
+                             &uart_rx_restarts,
+                             &uart_last_rx_event_size);
 
     app_control_queue_proto_text(APP_PROTO_MSG_HW_FLASH,
                                  "HW FLASH ok=%u stage=%s probe=%ld sr=%ld read=%ld id=%02X%02X%02X exp=C84016 sr1=%02X\r\n",
@@ -906,12 +1018,13 @@ static void app_control_report_status(void)
                                  (unsigned int)baro_status.cs_level,
                                  (unsigned int)baro_status.miso_level);
     app_control_queue_proto_text(APP_PROTO_MSG_HW_IMU,
-                                 "HW ICM42688 ok=%u stage=%s st=%ld err=%ld who=%02X exp=47 n=%lu\r\n",
+                                 "HW ICM42688 ok=%u stage=%s st=%ld err=%ld who=%02X exp=%02X n=%lu\r\n",
                                  (unsigned int)imu_status.initialized,
                                  app_control_imu_stage_name(imu_status.init_stage),
                                  (long)imu_status.last_status,
                                  (long)imu_status.last_error,
                                  (unsigned int)imu_status.who_am_i,
+                                 (unsigned int)BSP_ICM42688_WHO_AM_I_VALUE,
                                  (unsigned long)imu_status.sample_count);
 
     app_control_queue_proto_text(APP_PROTO_MSG_STATUS_FLASH,
@@ -950,11 +1063,15 @@ static void app_control_report_status(void)
                                  (long)imu_status.gyro_z_mdps,
                                  (int)imu_status.temperature_cdeg);
     app_control_queue_proto_text(APP_PROTO_MSG_UART_STATS,
-                                 "UART1 rx_bytes=%lu rx_lines=%lu rx_overflows=%lu rx_errors=%lu\r\n",
+                                 "UART1 rx_bytes=%lu rx_lines=%lu rx_overflows=%lu rx_errors=%lu rx_evt=%lu rx_rst=%lu rx_evt_size=%lu\r\n",
                                  (unsigned long)uart_rx_bytes,
                                  (unsigned long)uart_rx_lines,
                                  (unsigned long)uart_rx_overflows,
-                                 (unsigned long)uart_rx_errors);
+                                 (unsigned long)uart_rx_errors,
+                                 (unsigned long)uart_rx_events,
+                                 (unsigned long)uart_rx_restarts,
+                                 (unsigned long)uart_last_rx_event_size);
+    app_control_report_wifi();
 }
 
 static void app_control_report_uart_stats(uint32_t rx_bytes,
@@ -962,12 +1079,22 @@ static void app_control_report_uart_stats(uint32_t rx_bytes,
                                           uint32_t rx_overflows,
                                           uint32_t rx_errors)
 {
+    uint32_t rx_events = 0U;
+    uint32_t rx_restarts = 0U;
+    uint32_t last_rx_event_size = 0U;
+
+    APP_UART_GetRxEventStats(&rx_events,
+                             &rx_restarts,
+                             &last_rx_event_size);
     app_control_queue_proto_text(APP_PROTO_MSG_UART_STATS,
-                                 "UART1 rx_bytes=%lu rx_lines=%lu rx_overflows=%lu rx_errors=%lu\r\n",
+                                 "UART1 rx_bytes=%lu rx_lines=%lu rx_overflows=%lu rx_errors=%lu rx_evt=%lu rx_rst=%lu rx_evt_size=%lu\r\n",
                                  (unsigned long)rx_bytes,
                                  (unsigned long)rx_lines,
                                  (unsigned long)rx_overflows,
-                                 (unsigned long)rx_errors);
+                                 (unsigned long)rx_errors,
+                                 (unsigned long)rx_events,
+                                 (unsigned long)rx_restarts,
+                                 (unsigned long)last_rx_event_size);
 }
 
 static BSP_GD25Q32_Status app_control_load_config(void)
@@ -1263,6 +1390,68 @@ static void app_control_handle_servo(char **tokens, uint32_t count)
     app_control_queue_text("ERR unknown servo subcmd %s\r\n", tokens[1]);
 }
 
+static void app_control_handle_wifi(char **tokens, uint32_t count)
+{
+    uint32_t value;
+    uint32_t pulse_ms = 500U;
+
+    if ((count == 1U) ||
+        ((count >= 2U) &&
+         ((strcmp(tokens[1], "?") == 0) || (strcmp(tokens[1], "STATUS") == 0)))) {
+        app_control_report_wifi();
+        return;
+    }
+
+    if ((strcmp(tokens[1], "EN") == 0) || (strcmp(tokens[1], "ENABLE") == 0)) {
+        if ((count < 3U) || (app_control_parse_u32(tokens[2], &value) == 0U)) {
+            app_control_queue_text("ERR usage WIFI EN 0|1\r\n");
+            return;
+        }
+
+        control_wifi_reset_pending = 0U;
+        BSP_AiWB2_SetEnabled((value != 0U) ? 1U : 0U);
+        app_control_queue_text("OK wifi en=%u pin=PC6\r\n",
+                               (unsigned int)BSP_AiWB2_IsEnabled());
+        return;
+    }
+
+    if (strcmp(tokens[1], "RESET") == 0) {
+        if ((count >= 3U) && (app_control_parse_u32(tokens[2], &pulse_ms) == 0U)) {
+            app_control_queue_text("ERR usage WIFI RESET [ms]\r\n");
+            return;
+        }
+        if (pulse_ms > 5000U) {
+            pulse_ms = 5000U;
+        }
+
+        BSP_AiWB2_SetEnabled(0U);
+        control_wifi_reset_pending = 1U;
+        control_wifi_reset_deadline_ms = HAL_GetTick() + pulse_ms;
+        app_control_queue_text("OK wifi reset queued ms=%lu pin=PC6\r\n",
+                               (unsigned long)pulse_ms);
+        return;
+    }
+
+    app_control_queue_text("ERR unknown wifi subcmd %s\r\n", tokens[1]);
+}
+
+static void app_control_service_wifi_reset(void)
+{
+    if (control_wifi_reset_pending == 0U) {
+        return;
+    }
+
+    if ((int32_t)(HAL_GetTick() - control_wifi_reset_deadline_ms) < 0) {
+        return;
+    }
+
+    control_wifi_reset_pending = 0U;
+    BSP_AiWB2_SetEnabled(1U);
+    APP_AiWB2_Init();
+    app_control_queue_text("OK wifi reset done en=%u\r\n",
+                           (unsigned int)BSP_AiWB2_IsEnabled());
+}
+
 static APP_ControlPidConfig *app_control_find_pid(const char *group, uint32_t index)
 {
     if (group == NULL) {
@@ -1304,9 +1493,13 @@ static void app_control_handle_baro(char **tokens, uint32_t count)
     }
 
     control_baro_stream_enabled = (value != 0U) ? 1U : 0U;
-    control_baro_stream_period_ms = 500U;
+    control_baro_stream_period_ms = APP_CONTROL_BARO_STREAM_DEFAULT_PERIOD_MS;
     if ((count >= 4U) && (app_control_parse_u32(tokens[3], &value) != 0U) && (value > 0U)) {
         control_baro_stream_period_ms = value;
+    }
+    if ((control_baro_stream_enabled != 0U) &&
+        (control_baro_stream_period_ms < APP_CONTROL_BARO_STREAM_MIN_PERIOD_MS)) {
+        control_baro_stream_period_ms = APP_CONTROL_BARO_STREAM_MIN_PERIOD_MS;
     }
     control_last_baro_stream_ms = 0U;
     app_control_queue_text("OK baro stream=%u period_ms=%lu\r\n",
@@ -1456,6 +1649,8 @@ void APP_Control_Init(void)
     BSP_GD25Q32_Status load_status;
 
     app_control_defaults(&control_config);
+    control_wifi_reset_pending = 0U;
+    control_wifi_reset_deadline_ms = 0U;
     load_status = app_control_load_config();
     control_config.last_flash_status = (uint8_t)load_status;
     if (load_status != BSP_GD25Q32_OK) {
@@ -1472,6 +1667,15 @@ void APP_Control_Init(void)
 
 void APP_Control_Tick(void)
 {
+    uint32_t uart_rx_bytes = 0U;
+    uint32_t uart_rx_lines = 0U;
+    uint32_t uart_rx_overflows = 0U;
+    uint32_t uart_rx_errors = 0U;
+    uint32_t uart_rx_events = 0U;
+    uint32_t uart_rx_restarts = 0U;
+    uint32_t uart_last_rx_event_size = 0U;
+
+    app_control_service_wifi_reset();
     app_control_service_streams();
 #if (APP_CONTROL_HEARTBEAT_ENABLED != 0U)
     {
@@ -1481,12 +1685,30 @@ void APP_Control_Tick(void)
             return;
         }
 
+        APP_UART_GetStats(&uart_rx_bytes,
+                          &uart_rx_lines,
+                          &uart_rx_overflows,
+                          &uart_rx_errors);
+        APP_UART_GetRxEventStats(&uart_rx_events,
+                                 &uart_rx_restarts,
+                                 &uart_last_rx_event_size);
         control_last_heartbeat_ms = now_ms;
-        app_control_queue_text("READY ms=%lu servo0_id=%u servo1_id=%u cfg_valid=%u\r\n",
+        app_control_queue_text("READY ms=%lu servo0_id=%u servo1_id=%u cfg_valid=%u wifi=%u wifi_last=%u wifi_writes=%lu trans=%u rx_bytes=%lu rx_lines=%lu rx_ovf=%lu rx_err=%lu rx_evt=%lu rx_rst=%lu rx_evt_size=%lu\r\n",
                                (unsigned long)now_ms,
                                (unsigned int)control_config.servo[0].id,
                                (unsigned int)control_config.servo[1].id,
-                               (unsigned int)control_config.flash_valid);
+                               (unsigned int)control_config.flash_valid,
+                               (unsigned int)BSP_AiWB2_IsEnabled(),
+                               (unsigned int)BSP_AiWB2_GetLastWrittenState(),
+                               (unsigned long)BSP_AiWB2_GetWriteCount(),
+                               (unsigned int)APP_AiWB2_IsTransparent(),
+                               (unsigned long)uart_rx_bytes,
+                               (unsigned long)uart_rx_lines,
+                               (unsigned long)uart_rx_overflows,
+                               (unsigned long)uart_rx_errors,
+                               (unsigned long)uart_rx_events,
+                               (unsigned long)uart_rx_restarts,
+                               (unsigned long)uart_last_rx_event_size);
 
         if (control_reported_hw_once == 0U) {
             control_reported_hw_once = 1U;
@@ -1530,10 +1752,26 @@ static void app_control_dispatch_tokens(char **tokens, uint32_t count, uint8_t e
         app_control_report_pid_legacy();
     } else if (strcmp(tokens[0], "CONFIG?") == 0) {
         app_control_report_config();
+    } else if ((strcmp(tokens[0], "WIFI?") == 0) ||
+               (strcmp(tokens[0], "WIFI_EN?") == 0)) {
+        app_control_report_wifi();
+    } else if (strcmp(tokens[0], "WIFI") == 0) {
+        app_control_handle_wifi(tokens, count);
+    } else if (strcmp(tokens[0], "WIFI_EN") == 0) {
+        char *wifi_tokens[3] = {"WIFI", "EN", NULL};
+        if (count < 2U) {
+            app_control_queue_text("ERR usage WIFI_EN 0|1\r\n");
+            return;
+        }
+        wifi_tokens[2] = tokens[1];
+        app_control_handle_wifi(wifi_tokens, 3U);
     } else if (strcmp(tokens[0], "SAVE") == 0) {
         BSP_GD25Q32_Status save_status = app_control_save_config();
         control_config.last_flash_status = (uint8_t)save_status;
-        control_config.flash_valid = (save_status == BSP_GD25Q32_OK) ? 1U : control_config.flash_valid;
+        if (save_status == BSP_GD25Q32_OK) {
+            control_config.loaded_from_flash = 1U;
+            control_config.flash_valid = 1U;
+        }
         app_control_queue_text("OK save st=%u\r\n", (unsigned int)save_status);
     } else if (strcmp(tokens[0], "LOAD") == 0) {
         BSP_GD25Q32_Status load_status = app_control_load_config();
@@ -1623,6 +1861,24 @@ static void app_control_process_proto_request(uint16_t function,
 
     case APP_PROTO_REQ_CAPS:
         app_control_dispatch_tokens((char *[]){"CAPS?"}, 1U, 0U);
+        break;
+
+    case APP_PROTO_REQ_WIFI:
+        if (app_control_copy_payload_text(text, sizeof(text), payload, payload_length) == 0U) {
+            app_control_dispatch_tokens((char *[]){"WIFI?"}, 1U, 0U);
+        } else if (app_control_payload_to_line(payload, payload_length, text, sizeof(text)) != 0U) {
+            char *tokens[10];
+            uint32_t count = app_control_tokenize(text,
+                                                  tokens,
+                                                  (uint32_t)(sizeof(tokens) / sizeof(tokens[0])));
+            if (count != 0U) {
+                app_control_dispatch_tokens(tokens, count, 0U);
+            } else {
+                app_control_queue_text("ERR empty payload fn=0x%04X\r\n", (unsigned int)function);
+            }
+        } else {
+            app_control_queue_text("ERR invalid payload fn=0x%04X\r\n", (unsigned int)function);
+        }
         break;
 
     case APP_PROTO_REQ_SAVE:

@@ -8,7 +8,6 @@ void APP_LED_Task_Init(void)
 {
     BSP_LED_Off(LED_2);
     BSP_LED_Off(LED_3);
-    BSP_LED_Off(LED_4);
 }
 
 void APP_LED_Task_Step(void)
@@ -22,7 +21,6 @@ void APP_LED_Task_Step(void)
     }
 
     BSP_LED_Off(LED_3);
-    BSP_LED_Off(LED_4);
 
     osDelay(1000);
 }

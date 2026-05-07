@@ -2,33 +2,25 @@
 
 #include <string.h>
 
-#define ICM42688_REG_DEVICE_CONFIG      0x11U
-#define ICM42688_REG_INT_STATUS         0x2DU
-#define ICM42688_REG_SIGNAL_PATH_RESET  0x4BU
-#define ICM42688_REG_PWR_MGMT0          0x4EU
-#define ICM42688_REG_GYRO_CONFIG0       0x4FU
-#define ICM42688_REG_ACCEL_CONFIG0      0x50U
-#define ICM42688_REG_GYRO_ACCEL_CONFIG0 0x52U
-#define ICM42688_REG_WHO_AM_I           0x75U
-#define ICM42688_REG_REG_BANK_SEL       0x76U
+#define ICM42688_REG_ACCEL_XL       0x00U
+#define ICM42688_REG_TEMP_L         0x0CU
+#define ICM42688_REG_INT_STATUS0_H  0x17U
+#define ICM42688_REG_CHIP_ID        0x1FU
+#define ICM42688_REG_ACC_CONFIG0    0x20U
+#define ICM42688_REG_ACC_CONFIG1    0x21U
+#define ICM42688_REG_ACC_CONFIG2    0x22U
+#define ICM42688_REG_GYRO_CONFIG1   0x23U
+#define ICM42688_REG_GYRO_CONFIG2   0x24U
+#define ICM42688_REG_GYRO_CONFIG3   0x25U
+#define ICM42688_REG_SPI_CONFIG     0x34U
+#define ICM42688_REG_ADC_CONFIG     0xD1U
 
-#define ICM42688_REG_TEMP_DATA1         0x1DU
-
-#define ICM42688_DEVICE_CONFIG_SOFT_RESET   0x01U
-#define ICM42688_SIGNAL_PATH_ABORT_RESET    0x08U
-#define ICM42688_INT_STATUS_RESET_DONE      0x10U
-#define ICM42688_INT_STATUS_DATA_READY      0x08U
-
-#define ICM42688_PWR_GYRO_MODE_STANDBY  0x04U
-#define ICM42688_PWR_GYRO_MODE_LN       0x0CU
-#define ICM42688_PWR_ACCEL_MODE_LP      0x02U
-#define ICM42688_PWR_ACCEL_MODE_LN      0x03U
-#define ICM42688_PWR_TEMP_DISABLE       0x20U
-
-#define ICM42688_SPI_READ_BIT           0x80U
+#define ICM42688_SOFT_RESET_CMD     0x73U
+#define ICM42688_SPI_READ_BIT       0x01U
 #define ICM42688_DEFAULT_TIMEOUT_MS     100U
 #define ICM42688_GYRO_STARTUP_DELAY_MS  50U
-#define ICM42688_SOFT_RESET_DELAY_MS    10U
+#define ICM42688_SOFT_RESET_DELAY_MS    20U
+#define ICM42688_DATA_READY_MASK        0x06U
 
 static void icm42688_delay_ms(BSP_ICM42688_Device *dev, uint32_t delay_ms)
 {
@@ -68,47 +60,107 @@ static BSP_ICM42688_Status icm42688_from_hal_status(HAL_StatusTypeDef status)
     }
 }
 
-static BSP_ICM42688_Status icm42688_select_bank(BSP_ICM42688_Device *dev, uint8_t bank)
-{
-    uint8_t value = (uint8_t)(bank & 0x07U);
-    return BSP_ICM42688_WriteRegister(dev, ICM42688_REG_REG_BANK_SEL, value);
-}
-
 static uint8_t icm42688_build_accel_config0(const BSP_ICM42688_Config *config)
 {
-    return (uint8_t)(((uint8_t)config->accel_range << 5U) |
-                     ((uint8_t)config->accel_odr & 0x0FU));
+    uint8_t range;
+    uint8_t odr;
+
+    switch (config->accel_range) {
+    case BSP_ICM42688_ACCEL_RANGE_2G:
+        range = 0U;
+        break;
+    case BSP_ICM42688_ACCEL_RANGE_4G:
+        range = 1U;
+        break;
+    case BSP_ICM42688_ACCEL_RANGE_8G:
+        range = 2U;
+        break;
+    case BSP_ICM42688_ACCEL_RANGE_16G:
+    default:
+        range = 3U;
+        break;
+    }
+
+    switch (config->accel_odr) {
+    case BSP_ICM42688_ODR_200HZ:
+        odr = 1U;
+        break;
+    case BSP_ICM42688_ODR_100HZ:
+        odr = 2U;
+        break;
+    case BSP_ICM42688_ODR_50HZ:
+        odr = 3U;
+        break;
+    case BSP_ICM42688_ODR_1KHZ:
+    default:
+        odr = 0U;
+        break;
+    }
+
+    return (uint8_t)((range << 4U) | (odr & 0x0FU));
 }
 
 static uint8_t icm42688_build_gyro_config0(const BSP_ICM42688_Config *config)
 {
-    return (uint8_t)(((uint8_t)config->gyro_range << 5U) |
-                     ((uint8_t)config->gyro_odr & 0x0FU));
-}
+    uint8_t range;
+    uint8_t odr;
 
-static uint8_t icm42688_build_gyro_accel_config0(const BSP_ICM42688_Config *config)
-{
-    return (uint8_t)(((config->accel_filter_bw & 0x0FU) << 4U) |
-                     (config->gyro_filter_bw & 0x0FU));
-}
-
-static uint8_t icm42688_build_pwr_mgmt0(const BSP_ICM42688_Config *config)
-{
-    uint8_t value = 0U;
-
-    value |= ICM42688_PWR_GYRO_MODE_LN;
-    value |= ICM42688_PWR_ACCEL_MODE_LN;
-
-    if (!config->enable_temp) {
-        value |= ICM42688_PWR_TEMP_DISABLE;
+    switch (config->gyro_range) {
+    case BSP_ICM42688_GYRO_RANGE_31D25DPS:
+        range = 0U;
+        break;
+    case BSP_ICM42688_GYRO_RANGE_62D5DPS:
+        range = 1U;
+        break;
+    case BSP_ICM42688_GYRO_RANGE_125DPS:
+        range = 2U;
+        break;
+    case BSP_ICM42688_GYRO_RANGE_250DPS:
+        range = 3U;
+        break;
+    case BSP_ICM42688_GYRO_RANGE_500DPS:
+        range = 4U;
+        break;
+    case BSP_ICM42688_GYRO_RANGE_1000DPS:
+        range = 5U;
+        break;
+    case BSP_ICM42688_GYRO_RANGE_2000DPS:
+    default:
+        range = 6U;
+        break;
     }
 
-    return value;
+    switch (config->gyro_odr) {
+    case BSP_ICM42688_ODR_200HZ:
+        odr = 1U;
+        break;
+    case BSP_ICM42688_ODR_100HZ:
+        odr = 2U;
+        break;
+    case BSP_ICM42688_ODR_50HZ:
+        odr = 3U;
+        break;
+    case BSP_ICM42688_ODR_1KHZ:
+    default:
+        odr = 0U;
+        break;
+    }
+
+    return (uint8_t)((range << 4U) | (odr & 0x0FU));
 }
 
 static int16_t icm42688_make_int16(uint8_t msb, uint8_t lsb)
 {
     return (int16_t)(((uint16_t)msb << 8U) | (uint16_t)lsb);
+}
+
+static int16_t icm42688_sign_extend_12(uint16_t value)
+{
+    value &= 0x0FFFU;
+    if ((value & 0x0800U) != 0U) {
+        value |= 0xF000U;
+    }
+    return (int16_t)value;
 }
 
 static BSP_ICM42688_Status icm42688_fail(BSP_ICM42688_Device *dev,
@@ -161,12 +213,7 @@ BSP_ICM42688_Status BSP_ICM42688_Init(BSP_ICM42688_Device *dev,
     }
 
     icm42688_cs_high(dev);
-
-    dev->init_stage = BSP_ICM42688_INIT_STAGE_BANK_SELECT;
-    status = icm42688_select_bank(dev, 0U);
-    if (status != BSP_ICM42688_OK) {
-        return icm42688_fail(dev, status);
-    }
+    icm42688_delay_ms(dev, 2U);
 
     if (dev->config.soft_reset_on_init) {
         dev->init_stage = BSP_ICM42688_INIT_STAGE_RESET;
@@ -187,47 +234,57 @@ BSP_ICM42688_Status BSP_ICM42688_Init(BSP_ICM42688_Device *dev,
         return icm42688_fail(dev, BSP_ICM42688_BAD_ID);
     }
 
-    dev->init_stage = BSP_ICM42688_INIT_STAGE_GYRO_CONFIG;
-    status = BSP_ICM42688_WriteRegister(dev,
-                                        ICM42688_REG_GYRO_CONFIG0,
-                                        icm42688_build_gyro_config0(&dev->config));
+    dev->init_stage = BSP_ICM42688_INIT_STAGE_BANK_SELECT;
+    status = BSP_ICM42688_WriteRegister(dev, ICM42688_REG_SPI_CONFIG, 0x00U);
     if (status != BSP_ICM42688_OK) {
         return icm42688_fail(dev, status);
     }
 
     dev->init_stage = BSP_ICM42688_INIT_STAGE_ACCEL_CONFIG;
     status = BSP_ICM42688_WriteRegister(dev,
-                                        ICM42688_REG_ACCEL_CONFIG0,
+                                        ICM42688_REG_ACC_CONFIG0,
+                                        (dev->config.accel_filter_bw == 0U) ? 0x00U : 0x01U);
+    if (status != BSP_ICM42688_OK) {
+        return icm42688_fail(dev, status);
+    }
+
+    status = BSP_ICM42688_WriteRegister(dev,
+                                        ICM42688_REG_ACC_CONFIG1,
                                         icm42688_build_accel_config0(&dev->config));
     if (status != BSP_ICM42688_OK) {
         return icm42688_fail(dev, status);
     }
 
-    dev->init_stage = BSP_ICM42688_INIT_STAGE_FILTER_CONFIG;
     status = BSP_ICM42688_WriteRegister(dev,
-                                        ICM42688_REG_GYRO_ACCEL_CONFIG0,
-                                        icm42688_build_gyro_accel_config0(&dev->config));
+                                        ICM42688_REG_ACC_CONFIG2,
+                                        (uint8_t)(dev->config.accel_filter_bw & 0x0FU));
     if (status != BSP_ICM42688_OK) {
         return icm42688_fail(dev, status);
     }
 
-    dev->init_stage = BSP_ICM42688_INIT_STAGE_PWR_MGMT;
+    dev->init_stage = BSP_ICM42688_INIT_STAGE_GYRO_CONFIG;
     status = BSP_ICM42688_WriteRegister(dev,
-                                        ICM42688_REG_PWR_MGMT0,
-                                        icm42688_build_pwr_mgmt0(&dev->config));
+                                        ICM42688_REG_GYRO_CONFIG1,
+                                        (dev->config.gyro_filter_bw == 0U) ? 0x00U : 0x01U);
+    if (status != BSP_ICM42688_OK) {
+        return icm42688_fail(dev, status);
+    }
+
+    status = BSP_ICM42688_WriteRegister(dev,
+                                        ICM42688_REG_GYRO_CONFIG2,
+                                        icm42688_build_gyro_config0(&dev->config));
+    if (status != BSP_ICM42688_OK) {
+        return icm42688_fail(dev, status);
+    }
+
+    status = BSP_ICM42688_WriteRegister(dev,
+                                        ICM42688_REG_GYRO_CONFIG3,
+                                        (uint8_t)(dev->config.gyro_filter_bw & 0x0FU));
     if (status != BSP_ICM42688_OK) {
         return icm42688_fail(dev, status);
     }
 
     icm42688_delay_ms(dev, ICM42688_GYRO_STARTUP_DELAY_MS);
-
-    dev->init_stage = BSP_ICM42688_INIT_STAGE_SIGNAL_RESET;
-    status = BSP_ICM42688_WriteRegister(dev,
-                                        ICM42688_REG_SIGNAL_PATH_RESET,
-                                        ICM42688_SIGNAL_PATH_ABORT_RESET);
-    if (status != BSP_ICM42688_OK) {
-        return icm42688_fail(dev, status);
-    }
 
     dev->init_stage = BSP_ICM42688_INIT_STAGE_READY;
     dev->last_error = BSP_ICM42688_OK;
@@ -237,46 +294,24 @@ BSP_ICM42688_Status BSP_ICM42688_Init(BSP_ICM42688_Device *dev,
 BSP_ICM42688_Status BSP_ICM42688_Reset(BSP_ICM42688_Device *dev)
 {
     BSP_ICM42688_Status status;
-    uint8_t int_status = 0U;
 
     if (dev == NULL) {
         return BSP_ICM42688_INVALID_ARG;
     }
 
-    status = icm42688_select_bank(dev, 0U);
-    if (status != BSP_ICM42688_OK) {
-        return status;
-    }
-
-    status = BSP_ICM42688_WriteRegister(dev,
-                                        ICM42688_REG_DEVICE_CONFIG,
-                                        ICM42688_DEVICE_CONFIG_SOFT_RESET);
+    status = BSP_ICM42688_WriteRegister(dev, ICM42688_REG_ACCEL_XL, ICM42688_SOFT_RESET_CMD);
     if (status != BSP_ICM42688_OK) {
         return status;
     }
 
     icm42688_delay_ms(dev, ICM42688_SOFT_RESET_DELAY_MS);
 
-    status = icm42688_select_bank(dev, 0U);
-    if (status != BSP_ICM42688_OK) {
-        return status;
-    }
-
-    status = BSP_ICM42688_ReadRegister(dev, ICM42688_REG_INT_STATUS, &int_status);
-    if (status != BSP_ICM42688_OK) {
-        return status;
-    }
-
-    if ((int_status & ICM42688_INT_STATUS_RESET_DONE) == 0U) {
-        return BSP_ICM42688_ERROR;
-    }
-
     return BSP_ICM42688_OK;
 }
 
 BSP_ICM42688_Status BSP_ICM42688_ReadWhoAmI(BSP_ICM42688_Device *dev, uint8_t *who_am_i)
 {
-    return BSP_ICM42688_ReadRegister(dev, ICM42688_REG_WHO_AM_I, who_am_i);
+    return BSP_ICM42688_ReadRegister(dev, ICM42688_REG_CHIP_ID, who_am_i);
 }
 
 BSP_ICM42688_Status BSP_ICM42688_ReadRegister(BSP_ICM42688_Device *dev,
@@ -304,7 +339,7 @@ BSP_ICM42688_Status BSP_ICM42688_ReadRegisters(BSP_ICM42688_Device *dev,
         return BSP_ICM42688_INVALID_ARG;
     }
 
-    reg |= ICM42688_SPI_READ_BIT;
+    reg = (uint8_t)((reg << 1U) | ICM42688_SPI_READ_BIT);
 
     icm42688_cs_low(dev);
     hal_status = HAL_SPI_Transmit(dev->bus.hspi, &reg, 1U, icm42688_timeout_ms(dev));
@@ -327,7 +362,7 @@ BSP_ICM42688_Status BSP_ICM42688_WriteRegisters(BSP_ICM42688_Device *dev,
         return BSP_ICM42688_INVALID_ARG;
     }
 
-    reg &= (uint8_t)~ICM42688_SPI_READ_BIT;
+    reg = (uint8_t)(reg << 1U);
 
     icm42688_cs_low(dev);
     hal_status = HAL_SPI_Transmit(dev->bus.hspi, &reg, 1U, icm42688_timeout_ms(dev));
@@ -352,18 +387,18 @@ BSP_ICM42688_Status BSP_ICM42688_ReadRaw(BSP_ICM42688_Device *dev,
         return BSP_ICM42688_INVALID_ARG;
     }
 
-    status = BSP_ICM42688_ReadRegisters(dev, ICM42688_REG_TEMP_DATA1, buffer, sizeof(buffer));
+    status = BSP_ICM42688_ReadRegisters(dev, ICM42688_REG_ACCEL_XL, buffer, 14U);
     if (status != BSP_ICM42688_OK) {
         return status;
     }
 
-    raw->temperature = icm42688_make_int16(buffer[0], buffer[1]);
-    raw->accel_x     = icm42688_make_int16(buffer[2], buffer[3]);
-    raw->accel_y     = icm42688_make_int16(buffer[4], buffer[5]);
-    raw->accel_z     = icm42688_make_int16(buffer[6], buffer[7]);
-    raw->gyro_x      = icm42688_make_int16(buffer[8], buffer[9]);
-    raw->gyro_y      = icm42688_make_int16(buffer[10], buffer[11]);
-    raw->gyro_z      = icm42688_make_int16(buffer[12], buffer[13]);
+    raw->accel_x     = icm42688_make_int16(buffer[1], buffer[0]);
+    raw->accel_y     = icm42688_make_int16(buffer[3], buffer[2]);
+    raw->accel_z     = icm42688_make_int16(buffer[5], buffer[4]);
+    raw->gyro_x      = icm42688_make_int16(buffer[7], buffer[6]);
+    raw->gyro_y      = icm42688_make_int16(buffer[9], buffer[8]);
+    raw->gyro_z      = icm42688_make_int16(buffer[11], buffer[10]);
+    raw->temperature = icm42688_sign_extend_12((uint16_t)(((uint16_t)(buffer[13] & 0x0FU) << 8U) | buffer[12]));
 
     return BSP_ICM42688_OK;
 }
@@ -396,12 +431,12 @@ BSP_ICM42688_Status BSP_ICM42688_IsDataReady(BSP_ICM42688_Device *dev, bool *rea
         return BSP_ICM42688_INVALID_ARG;
     }
 
-    status = BSP_ICM42688_ReadRegister(dev, ICM42688_REG_INT_STATUS, &int_status);
+    status = BSP_ICM42688_ReadRegister(dev, ICM42688_REG_INT_STATUS0_H, &int_status);
     if (status != BSP_ICM42688_OK) {
         return status;
     }
 
-    *ready = ((int_status & ICM42688_INT_STATUS_DATA_READY) != 0U);
+    *ready = ((int_status & ICM42688_DATA_READY_MASK) != 0U);
     return BSP_ICM42688_OK;
 }
 
@@ -419,7 +454,7 @@ void BSP_ICM42688_ConvertRaw(const BSP_ICM42688_Device *dev,
     accel_lsb_per_g = BSP_ICM42688_AccelLsbPerG(dev->config.accel_range);
     gyro_lsb_per_dps = BSP_ICM42688_GyroLsbPerDps(dev->config.gyro_range);
 
-    scaled->temperature_c = ((float)raw->temperature / 132.48f) + 25.0f;
+    scaled->temperature_c = ((float)raw->temperature / 14.0f) + 25.0f;
     scaled->accel_x_g = (float)raw->accel_x / accel_lsb_per_g;
     scaled->accel_y_g = (float)raw->accel_y / accel_lsb_per_g;
     scaled->accel_z_g = (float)raw->accel_z / accel_lsb_per_g;

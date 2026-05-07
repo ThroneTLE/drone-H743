@@ -18,9 +18,12 @@ from tkinter import filedialog, messagebox, ttk
 DEFAULT_HOST = "0.0.0.0"
 DEFAULT_PORT = 6666
 MAX_BARO_SAMPLES = 2000
+BARO_STREAM_PERIOD_MS = 50
 CMD_REPLY_TIMEOUT_MS = 2500
 PROTO_COMPAT_FALLBACK_DELAY_MS = 400
 PROTO_PROBE_SETTLE_MS = 900
+SERIAL_ASCII_COMPAT_MODE = True
+SERIAL_TX_DEBUG_ENABLED = True
 PROTO_HEADER = b"$X"
 PROTO_DIR_TO_FC = ord("<")
 PROTO_DIR_FROM_FC = ord(">")
@@ -110,6 +113,7 @@ MODULES = [
     ("SPL06", "SPL06 气压计", "STATUS?"),
     ("ICM42688", "ICM42688 IMU", "STATUS?"),
     ("UART1", "USART1 链路", "STATUS?"),
+    ("WIFI", "Ai-WB2 WiFi", "WIFI?"),
 ]
 
 MODULE_ALIASES = {
@@ -121,6 +125,8 @@ MODULE_ALIASES = {
     "IMU": "ICM42688",
     "UART1": "UART1",
     "USART1": "UART1",
+    "WIFI": "WIFI",
+    "AIWB2": "WIFI",
 }
 
 
@@ -275,6 +281,7 @@ class TcpTransport(TransportBase):
 
     def start(self, host: str, port: int) -> None:
         self.stop()
+        self._send_queue = queue.Queue()
         self.stop_event.clear()
         self._sender_thread = threading.Thread(target=self._sender_loop, daemon=True)
         self._sender_thread.start()
@@ -408,6 +415,7 @@ class SerialTransport(TransportBase):
             self.rx_queue.put(f"[上位机] 串口模式不可用: {PYSERIAL_ERROR or '未安装 pyserial'}")
             return
         self.stop()
+        self._send_queue = queue.Queue()
         self.stop_event.clear()
         try:
             opened = serial.Serial(port_name, baudrate=baudrate, timeout=0.2, write_timeout=0.5)
@@ -432,7 +440,7 @@ class SerialTransport(TransportBase):
             port = self.port
             self.port = None
         if port is not None:
-            threading.Thread(target=self._safe_close, args=(port,), daemon=True).start()
+            self._safe_close(port)
 
     @staticmethod
     def _safe_close(port) -> None:
@@ -442,17 +450,40 @@ class SerialTransport(TransportBase):
         except Exception:
             pass
         try:
+            if hasattr(port, 'cancel_write'):
+                port.cancel_write()
+        except Exception:
+            pass
+        try:
             port.close()
         except Exception:
             pass
 
     def send_frame(self, function: int, payload: bytes = b"") -> bool:
+        if SERIAL_ASCII_COMPAT_MODE:
+            try:
+                text = payload.decode("utf-8") if payload else ""
+            except UnicodeDecodeError:
+                text = ""
+            if text:
+                return self.send_line(text)
         frame = build_proto_frame(PROTO_DIR_TO_FC, function, payload)
         with self.lock:
             if self.port is None or not self.port.is_open:
                 return False
         try:
             self._send_queue.put_nowait(frame)
+            return True
+        except queue.Full:
+            return False
+
+    def send_line(self, line: str) -> bool:
+        data = (line.rstrip("\r\n") + "\r\n").encode("utf-8")
+        with self.lock:
+            if self.port is None or not self.port.is_open:
+                return False
+        try:
+            self._send_queue.put_nowait(data)
             return True
         except queue.Full:
             return False
@@ -470,7 +501,11 @@ class SerialTransport(TransportBase):
             if port is None or not port.is_open:
                 continue
             try:
-                port.write(frame)
+                written = port.write(frame)
+                port.flush()
+                if SERIAL_TX_DEBUG_ENABLED:
+                    shown = frame.decode("utf-8", errors="replace").replace("\r", "\\r").replace("\n", "\\n")
+                    self.rx_queue.put(f"[host] serial tx bytes={written} data={shown}")
             except Exception as exc:
                 self.rx_queue.put(f"[上位机] 串口发送失败: {exc}")
 
@@ -489,9 +524,11 @@ class SerialTransport(TransportBase):
             buffer += chunk
             self._consume_buffer(buffer)
         with self.lock:
+            was_current = self.port is port
             if self.port is port:
                 self.port = None
-        self.rx_queue.put("[上位机] 串口已断开")
+        if was_current:
+            self.rx_queue.put("[上位机] 串口已断开")
 
 
 class DronePanel(tk.Tk):
@@ -680,8 +717,8 @@ class DronePanel(tk.Tk):
         ttk.Button(self._action_frame, text="PING", command=lambda: self._send_proto(PROTO_REQ_PING, "PING")).pack(side=tk.LEFT, padx=(18, 4))
         ttk.Button(self._action_frame, text="硬件状态", command=self._request_overview_status).pack(side=tk.LEFT, padx=4)
         ttk.Button(self._action_frame, text="读取配置", command=self._read_all_params).pack(side=tk.LEFT, padx=4)
-        ttk.Button(self._action_frame, text="保存到 Flash", command=lambda: self._send_proto(PROTO_REQ_SAVE, "SAVE")).pack(side=tk.LEFT, padx=4)
-        ttk.Button(self._action_frame, text="从 Flash 读取", command=lambda: self._send_proto(PROTO_REQ_LOAD, "LOAD")).pack(side=tk.LEFT, padx=4)
+        ttk.Button(self._action_frame, text="保存到 Flash", command=lambda: self._send_proto_once(PROTO_REQ_SAVE, "SAVE")).pack(side=tk.LEFT, padx=4)
+        ttk.Button(self._action_frame, text="从 Flash 读取", command=lambda: self._send_proto_once(PROTO_REQ_LOAD, "LOAD")).pack(side=tk.LEFT, padx=4)
 
         ttk.Label(conn, text="链路").pack(side=tk.LEFT, padx=(18, 4))
         ttk.Label(conn, textvariable=self.link_var).pack(side=tk.LEFT)
@@ -776,7 +813,7 @@ class DronePanel(tk.Tk):
         top.pack(fill=tk.X)
         ttk.Button(top, text="请求状态", command=lambda: self._send_proto(PROTO_REQ_STATUS, "STATUS?")).pack(side=tk.LEFT)
         ttk.Button(top, text="请求气压计", command=lambda: self._send_proto(PROTO_REQ_BARO, "BARO?")).pack(side=tk.LEFT, padx=6)
-        ttk.Button(top, text="开始流", command=lambda: self._send_proto(PROTO_REQ_BARO_STREAM, "BARO STREAM 1", "BARO STREAM 1")).pack(side=tk.LEFT)
+        ttk.Button(top, text="开始流", command=lambda: self._send_proto(PROTO_REQ_BARO_STREAM, f"BARO STREAM 1 {BARO_STREAM_PERIOD_MS}", f"BARO STREAM 1 {BARO_STREAM_PERIOD_MS}")).pack(side=tk.LEFT)
         ttk.Button(top, text="停止流", command=lambda: self._send_proto(PROTO_REQ_BARO_STREAM, "BARO STREAM 0", "BARO STREAM 0")).pack(side=tk.LEFT, padx=6)
         ttk.Checkbutton(top, text="暂存新数据", variable=self.baro_capture_enabled).pack(side=tk.LEFT, padx=(12, 0))
         ttk.Button(top, text="清空暂存", command=self._clear_baro_buffer).pack(side=tk.LEFT, padx=6)
@@ -866,8 +903,8 @@ class DronePanel(tk.Tk):
         top = ttk.Frame(parent)
         top.pack(fill=tk.X)
         ttk.Button(top, text="读取参数/PID", command=self._read_all_params).pack(side=tk.LEFT)
-        ttk.Button(top, text="保存到 Flash", command=lambda: self._send_proto(PROTO_REQ_SAVE, "SAVE")).pack(side=tk.LEFT, padx=6)
-        ttk.Button(top, text="从 Flash 读取", command=lambda: self._send_proto(PROTO_REQ_LOAD, "LOAD")).pack(side=tk.LEFT)
+        ttk.Button(top, text="保存到 Flash", command=lambda: self._send_proto_once(PROTO_REQ_SAVE, "SAVE")).pack(side=tk.LEFT, padx=6)
+        ttk.Button(top, text="从 Flash 读取", command=lambda: self._send_proto_once(PROTO_REQ_LOAD, "LOAD")).pack(side=tk.LEFT)
         ttk.Button(top, text="恢复默认", command=lambda: self._send_proto(PROTO_REQ_DEFAULTS, "DEFAULTS")).pack(side=tk.LEFT, padx=6)
         ttk.Label(top, textvariable=self.config_summary_var).pack(side=tk.LEFT, padx=(14, 0))
 
@@ -1123,14 +1160,25 @@ class DronePanel(tk.Tk):
             self._append("[上位机] 发送失败")
             return
         sent_at = time.monotonic()
-        if self.structured_protocol_supported is False:
+        if self.structured_protocol_supported is False and not (self.transport is self.serial_transport and SERIAL_ASCII_COMPAT_MODE):
             self.transport.send_line(payload_text)
-        elif self.structured_protocol_supported is None and function != PROTO_REQ_CAPS:
+        elif self.structured_protocol_supported is None and function != PROTO_REQ_CAPS and self.transport is not self.serial_transport:
             self.after(
                 PROTO_COMPAT_FALLBACK_DELAY_MS,
                 lambda legacy=payload_text, start=sent_at: self._fallback_proto_request(legacy, start),
             )
         if expect_reply:
+            self.after(CMD_REPLY_TIMEOUT_MS, lambda sent=label, start=sent_at: self._warn_if_no_reply(sent, start))
+
+    def _send_proto_once(self, function: int, label: str, payload: str = "", expect_reply: bool = True) -> None:
+        payload_text = payload if payload else label
+        self.last_cmd_var.set(f"最近命令: {label}")
+        self._append(f"> {label}")
+        if not self.transport.send_frame(function, payload_text.encode("utf-8")):
+            self._append("[上位机] 发送失败")
+            return
+        if expect_reply:
+            sent_at = time.monotonic()
             self.after(CMD_REPLY_TIMEOUT_MS, lambda sent=label, start=sent_at: self._warn_if_no_reply(sent, start))
 
     def _fallback_proto_request(self, legacy_line: str, started_at: float) -> None:
@@ -1143,6 +1191,9 @@ class DronePanel(tk.Tk):
         self.transport.send_line(legacy_line)
 
     def _begin_protocol_probe(self) -> None:
+        if self.transport is self.serial_transport and SERIAL_ASCII_COMPAT_MODE:
+            self.structured_protocol_supported = False
+            return
         self.structured_protocol_supported = None
         if not self._transport_connected():
             return
@@ -1221,7 +1272,16 @@ class DronePanel(tk.Tk):
 
     MAX_LOG_LINES = 2000
 
+    def _should_show_raw_log(self, line: str) -> bool:
+        if line.startswith(("READY", "UART1 ")):
+            return False
+        if line.startswith("BARO ok="):
+            return False
+        return True
+
     def _append(self, line: str) -> None:
+        if not self._should_show_raw_log(line):
+            return
         stamp = time.strftime("%H:%M:%S")
         self.status_text.insert(tk.END, f"[{stamp}] {line}\n")
         if int(self.status_text.index("end-1c").split(".")[0]) > self.MAX_LOG_LINES:
@@ -1337,6 +1397,47 @@ class DronePanel(tk.Tk):
             return stripped
         return f"{prefix} {stripped}"
 
+    def _update_servo_ok_line(self, line: str) -> None:
+        values = parse_kv(line)
+        parts = line.split()
+        if len(parts) < 2 or not parts[1].startswith("servo"):
+            return
+        index = safe_int(parts[1].replace("servo", ""), -1)
+        if index < 0:
+            return
+
+        field_map = {
+            "id": "id",
+            "enabled": "enabled",
+            "mode": "mode",
+            "pulse": "pulse",
+            "time": "time",
+        }
+        for src, dst in field_map.items():
+            if src in values:
+                self._set_param(f"servo{index}.{dst}", values[src], "OK", dirty=False)
+        if 0 <= index < len(self.servo_widgets):
+            widgets = self.servo_widgets[index]
+            for src, dst in field_map.items():
+                if src in values and dst in widgets:
+                    widgets[dst].set(safe_int(values[src]))
+
+    def _update_config_result_line(self, line: str) -> None:
+        values = parse_kv(line)
+        status = values.get("st", "-")
+        if line.startswith("OK save"):
+            if status == "0":
+                self._set_param("config.valid", "1", "SAVE", dirty=False)
+            self._set_param("config.last_flash_status", status, "SAVE", dirty=False)
+        elif line.startswith("OK load"):
+            if status == "0":
+                self._set_param("config.loaded", "1", "LOAD", dirty=False)
+            self._set_param("config.last_flash_status", status, "LOAD", dirty=False)
+        elif line.startswith("OK defaults"):
+            self._set_param("config.loaded", "0", "DEFAULTS", dirty=False)
+            self._set_param("config.valid", "0", "DEFAULTS", dirty=False)
+        self._send_proto_once(PROTO_REQ_CONFIG, "CONFIG?")
+
     def _on_module_select(self, _event: tk.Event) -> None:
         selection = self.module_tree.selection()
         if not selection:
@@ -1353,6 +1454,9 @@ class DronePanel(tk.Tk):
             return
         if self.selected_module == "ICM42688":
             self._send_proto(PROTO_REQ_IMU, "IMU?")
+            return
+        if self.selected_module == "WIFI":
+            self._send_proto(PROTO_REQ_WIFI, "WIFI?")
             return
         self._send_proto(PROTO_REQ_STATUS, "STATUS?")
 
@@ -1401,7 +1505,7 @@ class DronePanel(tk.Tk):
             self.structured_protocol_supported = None
             return
 
-        if not line.startswith("[上位机]"):
+        if not (line.startswith("[上位机]") or line.startswith("[host]")):
             self.last_board_rx = time.monotonic()
             mode = "TCP" if self.transport is self.tcp_transport else "串口"
             self.link_var.set(f"已收到 STM32 数据，{mode} 链路正常")
@@ -1428,8 +1532,18 @@ class DronePanel(tk.Tk):
             self._update_baro_line(line)
         elif line.startswith("IMU "):
             self._update_imu_line(line)
+        elif line.startswith("WIFI "):
+            self._update_wifi_line(line)
         elif line.startswith("RSP "):
             self._handle_rsp_line(line)
+        elif line.startswith("OK servo"):
+            self.last_reply_rx = time.monotonic()
+            self.last_cmd_var.set(f"最近命令: {line}")
+            self._update_servo_ok_line(line)
+        elif line.startswith(("OK save", "OK load", "OK defaults")):
+            self.last_reply_rx = time.monotonic()
+            self.last_cmd_var.set(f"最近命令: {line}")
+            self._update_config_result_line(line)
         elif line.startswith("OK ") or line.startswith("ERR ") or line.startswith("ACK ") or line.startswith("RX "):
             self.last_reply_rx = time.monotonic()
             self.last_cmd_var.set(f"最近命令: {line}")
@@ -1522,6 +1636,11 @@ class DronePanel(tk.Tk):
 
         if mod == "FLASH":
             self._update_flash_line("FLASH " + " ".join(f"{key}={value}" for key, value in payload.items()))
+            return
+
+        if mod == "WIFI":
+            self._update_wifi_line("WIFI " + " ".join(f"{key}={value}" for key, value in payload.items()))
+            return
 
     def _update_modules_summary(self, values: dict[str, str], line: str) -> None:
         if "flash" in values or "flash_stage" in values:
@@ -1560,6 +1679,17 @@ class DronePanel(tk.Tk):
             self._set_param("config.loaded", values["cfg_loaded"], "MODULES", dirty=False)
         if "servo_slots" in values:
             self._set_param("system.servo_slots", values["servo_slots"], "MODULES", dirty=False)
+        if "wifi_en" in values:
+            ok = safe_int(values.get("wifi_en"), 0) != 0
+            self._update_module(
+                "WIFI",
+                state="已使能" if ok else "已关闭",
+                stage="-",
+                value=f"en={values.get('wifi_en', '-')}",
+                code="-",
+                hint="等待 Ai-WB2 透明 TCP 连接。" if ok else "PC6 当前关闭 WiFi EN。",
+                line=line,
+            )
         if {"cfg_valid", "cfg_loaded"} & values.keys():
             self.config_summary_var.set(
                 f"配置 loaded={values.get('cfg_loaded', '-')} valid={values.get('cfg_valid', '-')} flash_st=-"
@@ -1633,6 +1763,36 @@ class DronePanel(tk.Tk):
                 hint=self._hardware_hint("ICM42688", ok, values),
                 line=line,
             )
+
+    def _update_wifi_line(self, line: str) -> None:
+        values = parse_kv(line)
+        enabled = safe_int(values.get("en"), 0) != 0
+        transparent = safe_int(values.get("transparent"), 0) != 0
+        cycling = safe_int(values.get("cycling"), 0) != 0
+        state_text = values.get("state", "-")
+
+        if transparent:
+            state = "已连接"
+            hint = "Ai-WB2 已进入 TCP 透明模式，可以通过 TCP 发送控制命令。"
+        elif cycling:
+            state = "重启中"
+            hint = "PC6 正在重启 Ai-WB2，等待模块重新连接上位机 TCP 服务。"
+        elif enabled:
+            state = "等待连接"
+            hint = "先保持上位机 TCP 监听；若连接失败，固件会通过 PC6 自动重启模块重试。"
+        else:
+            state = "已关闭"
+            hint = "WiFi EN 为低；发送 WIFI EN 1 或 WIFI RESET 可重新拉起。"
+
+        self._update_module(
+            "WIFI",
+            state=state,
+            stage=state_text,
+            value=f"en={values.get('en', '-')} trans={values.get('transparent', '-')} wait={values.get('wait_ms', '-')}",
+            code=f"retry={values.get('retry', '-')} socket={values.get('socket', '-')} writes={values.get('writes', '-')}",
+            hint=hint,
+            line=line,
+        )
 
     def _update_uart_line(self, line: str) -> None:
         values = parse_kv(line)
@@ -1936,13 +2096,48 @@ class DronePanel(tk.Tk):
             return
         self._set_param(name, value, "local", dirty=True)
 
+    def _param_value_for_servo(self, index: int, param_key: str, widget_key: str, fallback: str) -> str:
+        param_value = str(self.params.get(f"servo{index}.{param_key}", {}).get("value", "")).strip()
+        if param_value:
+            return param_value
+        if 0 <= index < len(self.servo_widgets):
+            return str(self.servo_widgets[index][widget_key].get()).strip()
+        return fallback
+
+    def _payload_for_param_edit(self, name: str, value: str) -> tuple[int, str]:
+        lowered = name.strip().lower()
+        parts = lowered.split(".")
+        if len(parts) == 2 and parts[0].startswith("servo") and parts[0][5:].isdigit():
+            index = int(parts[0][5:])
+            field = parts[1]
+            if field == "id":
+                payload = f"SERVO ID {index} {value}"
+                return PROTO_REQ_SERVO_ID, payload
+            if field in {"enabled", "en"}:
+                payload = f"SERVO ENABLE {index} {value}"
+                return PROTO_REQ_SERVO_ENABLE, payload
+            if field == "mode":
+                payload = f"SERVO MODE {index} {value}"
+                return PROTO_REQ_SERVO_MODE, payload
+            if field in {"pulse", "pulse_us"}:
+                time_ms = self._param_value_for_servo(index, "time", "time", "500")
+                payload = f"SERVO MOVE {index} {value} {time_ms}"
+                return PROTO_REQ_SERVO_MOVE, payload
+            if field in {"time", "time_ms"}:
+                pulse = self._param_value_for_servo(index, "pulse", "pulse", "1500")
+                payload = f"SERVO MOVE {index} {pulse} {value}"
+                return PROTO_REQ_SERVO_MOVE, payload
+
+        payload = f"PARAM SET {name} {value}"
+        return PROTO_REQ_PARAM_SET, payload
+
     def _send_param_edit(self) -> None:
         self._stage_param_edit()
         name = self.param_name_var.get().strip()
         value = self.param_value_var.get().strip()
         if name:
-            payload = f"PARAM SET {name} {value}"
-            self._send_proto(PROTO_REQ_PARAM_SET, payload, payload)
+            function, payload = self._payload_for_param_edit(name, value)
+            self._send_proto_once(function, payload, payload)
 
     def _send_pid_values(self) -> None:
         for axis, terms in self.pid_vars.items():
@@ -1976,9 +2171,11 @@ class DronePanel(tk.Tk):
         if key == "SPL06":
             return "重点看 SPI4、CS、MISO、器件方向或焊接型号；SPL06 ID 通常应为 0x10。"
         if key == "ICM42688":
-            return "重点看 SPI2/IMU 硬件链路；WHO_AM_I 应为 0x47。"
+            return "重点看 SPI2/IMU 硬件链路；CHIP_ID ?? 0xA1。"
         if key == "UART1":
             return "确认 USART1: PB14 TX 接 Ai-WB2 RX，PB15 RX 接 Ai-WB2 TX，115200 8N1。"
+        if key == "WIFI":
+            return "确认上位机 TCP 服务先监听 6666；固件会用 PC6 自动重启 Ai-WB2 触发重连。"
         return "查看返回码和初始化阶段。"
 
     def _warn_if_no_reply(self, sent: str, started_at: float) -> None:

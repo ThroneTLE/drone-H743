@@ -1,5 +1,6 @@
 #include "app_aiwb2.h"
 
+#include "bsp_aiwb2_power.h"
 #include "bsp_uart.h"
 
 #include "main.h"
@@ -25,9 +26,9 @@
 #define APP_AIWB2_PC_PORT         "6666"
 #endif
 
-/* Ai-WB2 EN/RST is not controlled by STM32 in the current hardware.
-   Keep the firmware passive by default so it cannot disturb the module's
-   persisted auto-connect/transparent-mode flow. */
+/* Keep AT provisioning passive by default so firmware does not collide with
+   the module's persisted auto-transparent flow. PC6 now controls Ai-WB2 EN,
+   so passive mode may power-cycle the module to make it retry TCP connect. */
 #define APP_AIWB2_PASSIVE_ONLY        1U
 #define APP_AIWB2_START_DELAY_MS     8000U
 #define APP_AIWB2_PROBE_TIMEOUT_MS   8000U
@@ -37,6 +38,9 @@
 #define APP_AIWB2_AUTOCONNECT_MS    25000U
 #define APP_AIWB2_RETRY_MIN_MS       3000U
 #define APP_AIWB2_RETRY_MAX_MS      15000U
+#define APP_AIWB2_PASSIVE_ERROR_RETRY_MS 3000U
+#define APP_AIWB2_PASSIVE_POWER_RECYCLE_ENABLED 1U
+#define APP_AIWB2_PASSIVE_POWER_OFF_MS 800U
 
 typedef struct {
     const char *text;
@@ -60,6 +64,7 @@ static uint32_t aiwb2_deadline_ms;
 static uint32_t aiwb2_retry_count;
 static uint32_t aiwb2_command_index;
 static uint8_t aiwb2_probe_escape_used;
+static uint8_t aiwb2_power_recycle_active;
 static int32_t aiwb2_last_socket_error;
 
 static uint8_t aiwb2_starts_with(const char *line, const char *prefix)
@@ -85,12 +90,14 @@ static void aiwb2_send_command(const char *text)
     aiwb2_send_raw(text);
     aiwb2_send_raw("\r\n");
 }
+#endif
 
 static uint8_t aiwb2_time_reached(uint32_t now_ms, uint32_t deadline_ms)
 {
     return ((int32_t)(now_ms - deadline_ms) >= 0) ? 1U : 0U;
 }
 
+#if (APP_AIWB2_PASSIVE_ONLY == 0U)
 static uint32_t aiwb2_retry_delay_ms(void)
 {
     uint32_t delay_ms = APP_AIWB2_RETRY_MIN_MS + (aiwb2_retry_count * 2000U);
@@ -109,7 +116,7 @@ static void aiwb2_enter_retry_delay(void)
 
 #if (APP_AIWB2_PASSIVE_ONLY != 0U)
     aiwb2_state = APP_AIWB2_STATE_WAIT_BOOT_CONNECT;
-    aiwb2_deadline_ms = now_ms + APP_AIWB2_BOOT_TIMEOUT_MS;
+    aiwb2_deadline_ms = now_ms + APP_AIWB2_PASSIVE_ERROR_RETRY_MS;
     return;
 #else
     if (aiwb2_retry_count < 1000U) {
@@ -193,12 +200,45 @@ void APP_AiWB2_Init(void)
     aiwb2_retry_count = 0U;
     aiwb2_command_index = 0U;
     aiwb2_probe_escape_used = 0U;
+    aiwb2_power_recycle_active = 0U;
     aiwb2_last_socket_error = -1;
 }
 
 void APP_AiWB2_Tick(void)
 {
 #if (APP_AIWB2_PASSIVE_ONLY != 0U)
+    uint32_t now_ms = HAL_GetTick();
+
+#if (APP_AIWB2_PASSIVE_POWER_RECYCLE_ENABLED != 0U)
+    if (aiwb2_state == APP_AIWB2_STATE_TRANSPARENT) {
+        return;
+    }
+
+    if (aiwb2_power_recycle_active != 0U) {
+        if (aiwb2_time_reached(now_ms, aiwb2_deadline_ms) != 0U) {
+            aiwb2_power_recycle_active = 0U;
+            BSP_AiWB2_SetEnabled(1U);
+            aiwb2_state = APP_AIWB2_STATE_WAIT_BOOT_CONNECT;
+            aiwb2_deadline_ms = now_ms + APP_AIWB2_BOOT_TIMEOUT_MS;
+        }
+        return;
+    }
+
+    if (BSP_AiWB2_IsEnabled() == 0U) {
+        aiwb2_deadline_ms = now_ms + APP_AIWB2_BOOT_TIMEOUT_MS;
+        return;
+    }
+
+    if (aiwb2_time_reached(now_ms, aiwb2_deadline_ms) != 0U) {
+        if (aiwb2_retry_count < 1000U) {
+            ++aiwb2_retry_count;
+        }
+        BSP_AiWB2_SetEnabled(0U);
+        aiwb2_power_recycle_active = 1U;
+        aiwb2_state = APP_AIWB2_STATE_RETRY_DELAY;
+        aiwb2_deadline_ms = now_ms + APP_AIWB2_PASSIVE_POWER_OFF_MS;
+    }
+#endif
     return;
 #else
     uint32_t now_ms = HAL_GetTick();
@@ -390,11 +430,15 @@ uint8_t APP_AiWB2_IsControlPayload(const char *line)
         (strcmp(line, "IMU?") == 0) ||
         (strcmp(line, "PARAM?") == 0) ||
         (strcmp(line, "PID?") == 0) ||
+        (strcmp(line, "WIFI?") == 0) ||
+        (strcmp(line, "WIFI_EN?") == 0) ||
         (strcmp(line, "SAVE") == 0) ||
         (strcmp(line, "LOAD") == 0) ||
         (strcmp(line, "DEFAULTS") == 0) ||
         (aiwb2_starts_with(line, "REQ ") != 0U) ||
         (aiwb2_starts_with(line, "BARO ") != 0U) ||
+        (aiwb2_starts_with(line, "WIFI ") != 0U) ||
+        (aiwb2_starts_with(line, "WIFI_EN ") != 0U) ||
         (aiwb2_starts_with(line, "PARAM ") != 0U) ||
         (aiwb2_starts_with(line, "PID ") != 0U) ||
         (aiwb2_starts_with(line, "SERVO ") != 0U)) {
@@ -440,4 +484,20 @@ uint32_t APP_AiWB2_GetRetryCount(void)
 int32_t APP_AiWB2_GetLastSocketError(void)
 {
     return aiwb2_last_socket_error;
+}
+
+uint8_t APP_AiWB2_IsPowerRecycleActive(void)
+{
+    return aiwb2_power_recycle_active;
+}
+
+uint32_t APP_AiWB2_GetDeadlineRemainingMs(void)
+{
+    uint32_t now_ms = HAL_GetTick();
+
+    if ((int32_t)(aiwb2_deadline_ms - now_ms) <= 0) {
+        return 0U;
+    }
+
+    return aiwb2_deadline_ms - now_ms;
 }

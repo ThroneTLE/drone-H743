@@ -197,3 +197,28 @@ type: project
 - `用户自管文件`
 
 并始终给出具体路径，避免含糊地说“那个文件”或“原工程里的代码”。
+
+## PC-side Python tool editing safety
+
+When editing `tools/drone_tcp_panel.py`, treat the file as UTF-8 text with many Chinese UI strings. Do not rewrite it with PowerShell `Set-Content`, `Out-File`, or pipeline rewrites without an explicit UTF-8 preserving path; PowerShell defaults can corrupt Chinese text and turn valid strings into syntax errors.
+
+Preferred edit methods:
+
+- Use `apply_patch` for small/manual edits.
+- If a scripted rewrite is necessary, use Python:
+  `Path("tools/drone_tcp_panel.py").read_text(encoding="utf-8")`
+  and
+  `Path("tools/drone_tcp_panel.py").write_text(text, encoding="utf-8", newline="\n")`.
+- Avoid broad string rewrites over the whole file unless the replacement is tightly scoped and reviewed.
+
+Required verification after every edit to `tools/drone_tcp_panel.py`:
+
+1. Run `python -m py_compile tools/drone_tcp_panel.py`.
+2. Inspect the edited hunk with `git diff -- tools/drone_tcp_panel.py`, especially nearby Chinese UI text and quoted strings.
+3. If `py_compile` reports an unterminated string near Chinese text, suspect encoding damage first. Restore from git or a known-good copy, then reapply the intended small patch with UTF-8-safe tooling.
+
+Known recent safe panel changes:
+
+- `BARO_STREAM_PERIOD_MS = 50` and the "start stream" button sends `BARO STREAM 1 50`.
+- Raw log filtering may hide periodic `READY`, `UART1`, and `BARO ok=` stream lines while still parsing them for UI updates.
+- Serial bring-up can use ASCII compatibility mode; keep direct serial command writes as UTF-8 plus `\r\n`, and verify with `py_compile` after changes.

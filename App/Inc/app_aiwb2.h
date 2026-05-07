@@ -25,5 +25,7 @@ void APP_AiWB2_AssumeTransparent(void);
 APP_AiWB2_State APP_AiWB2_GetState(void);
 uint32_t APP_AiWB2_GetRetryCount(void);
 int32_t APP_AiWB2_GetLastSocketError(void);
+uint8_t APP_AiWB2_IsPowerRecycleActive(void);
+uint32_t APP_AiWB2_GetDeadlineRemainingMs(void);
 
 #endif

@@ -8,6 +8,9 @@ void APP_UART_GetStats(uint32_t *rx_bytes,
                        uint32_t *rx_lines,
                        uint32_t *rx_overflows,
                        uint32_t *rx_errors);
+void APP_UART_GetRxEventStats(uint32_t *rx_events,
+                              uint32_t *rx_restarts,
+                              uint32_t *last_rx_event_size);
 void APP_UART_Task_Init(void);
 void APP_UART_Task_Step(void);
 void APP_UART_NotifyTxPending(void);

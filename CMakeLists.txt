@@ -59,6 +59,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     BSP/Src/bsp_imu.c
     BSP/Src/bsp_pwm.c
     BSP/Src/bsp_bus_servo.c
+    BSP/Src/bsp_aiwb2_power.c
     App/Src/app.c
     App/Src/app_aiwb2.c
     App/Src/app_baro.c

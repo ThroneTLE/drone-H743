@@ -15,9 +15,13 @@
 #define APP_UART_BOOT_DIAG_ENABLED    0U
 #define APP_UART_LINE_DEBUG_ENABLED   0U
 #define APP_UART_PERIODIC_STATS_ENABLED 0U
-#define APP_UART_LEGACY_ASCII_CONTROL_ENABLED 0U
+#define APP_UART_DIRECT_CONTROL_ENABLED 1U
+#define APP_UART_TX_WAIT_FOR_TRANSPARENT 1U
+#define APP_UART_LEGACY_ASCII_CONTROL_ENABLED 1U
+#define APP_UART_RX_USE_DMA 1U
 #define APP_UART_RX_LINE_SIZE 128U
 #define APP_UART_DMA_RX_SIZE  256U
+#define APP_UART_TX_LED_ENABLED 0U
 #define APP_UART_TX_LED_PULSE_MS 80U
 #define APP_UART_RX_IDLE_LINE_MS 60U
 #define APP_UART_DEBUG_LINE_LIMIT 64U
@@ -29,6 +33,7 @@
 
 __attribute__((section(".dma_buffer"), aligned(32)))
 static uint8_t app_uart_dma_rx_buffer[APP_UART_DMA_RX_SIZE];
+__attribute__((section(".dma_buffer"), aligned(32)))
 static uint8_t app_uart_tx_frame_buffer[APP_UART_TX_TEXT_SIZE + 16U];
 
 static char app_uart_rx_line[APP_UART_RX_LINE_SIZE];
@@ -40,6 +45,9 @@ static uint32_t app_uart_rx_lines;
 static uint32_t app_uart_rx_idle_lines;
 static uint32_t app_uart_rx_overflows;
 static uint32_t app_uart_rx_errors;
+static uint32_t app_uart_rx_events;
+static uint32_t app_uart_rx_restarts;
+static uint32_t app_uart_last_rx_event_size;
 static uint32_t app_uart_last_stats_ms;
 static uint32_t app_uart_last_rx_byte_ms;
 static uint32_t app_uart_tx_led_until_ms;
@@ -48,12 +56,46 @@ static uint32_t app_uart_last_tx_count;
 static uint32_t app_uart_debug_lines;
 static uint8_t app_uart_control_initialized;
 static volatile uint8_t app_uart_dma_started;
+static volatile uint8_t app_uart_it_rx_ready;
+static volatile uint16_t app_uart_it_rx_size;
 static volatile uint8_t app_uart_tx_busy;
 static uint8_t app_uart_tx_pending_valid;
 
 static char *app_uart_normalize_line(char *line, uint16_t length);
 static void app_uart_ensure_control_ready(void);
+static uint8_t app_uart_rx_dma_needs_restart(void);
 static void app_uart_sync_tx_state(void);
+
+static uint32_t app_uart_cache_line_aligned_addr(const void *address)
+{
+    return ((uint32_t)(uintptr_t)address) & ~31UL;
+}
+
+static int32_t app_uart_cache_line_aligned_size(const void *address, uint32_t size)
+{
+    uint32_t start = app_uart_cache_line_aligned_addr(address);
+    uint32_t end = ((uint32_t)(uintptr_t)address + size + 31UL) & ~31UL;
+
+    return (int32_t)(end - start);
+}
+
+static void app_uart_invalidate_rx_dma_buffer(void)
+{
+    SCB_InvalidateDCache_by_Addr((uint32_t *)app_uart_cache_line_aligned_addr(app_uart_dma_rx_buffer),
+                                 app_uart_cache_line_aligned_size(app_uart_dma_rx_buffer,
+                                                                  APP_UART_DMA_RX_SIZE));
+}
+
+static void app_uart_clean_tx_dma_buffer(uint32_t length)
+{
+    if (length == 0U) {
+        return;
+    }
+
+    SCB_CleanDCache_by_Addr((uint32_t *)app_uart_cache_line_aligned_addr(app_uart_tx_frame_buffer),
+                            app_uart_cache_line_aligned_size(app_uart_tx_frame_buffer,
+                                                             length));
+}
 
 static void app_uart_signal(uint32_t flags)
 {
@@ -91,23 +133,75 @@ static void app_uart_start_rx_dma(void)
 {
     HAL_StatusTypeDef status;
 
+#if (APP_UART_RX_USE_DMA != 0U)
     if (huart1.hdmarx == 0) {
         ++app_uart_rx_errors;
         return;
     }
+#endif
 
     app_uart_dma_rx_pos = 0U;
+#if (APP_UART_RX_USE_DMA != 0U)
     status = HAL_UARTEx_ReceiveToIdle_DMA(&huart1,
                                           app_uart_dma_rx_buffer,
                                           APP_UART_DMA_RX_SIZE);
+#else
+    app_uart_it_rx_ready = 0U;
+    app_uart_it_rx_size = 0U;
+    status = HAL_UARTEx_ReceiveToIdle_IT(&huart1,
+                                         app_uart_dma_rx_buffer,
+                                         APP_UART_DMA_RX_SIZE);
+#endif
     if (status != HAL_OK) {
         ++app_uart_rx_errors;
         app_uart_dma_started = 0U;
         return;
     }
 
+#if (APP_UART_RX_USE_DMA != 0U)
     __HAL_DMA_DISABLE_IT(huart1.hdmarx, DMA_IT_HT);
+    app_uart_invalidate_rx_dma_buffer();
+#endif
     app_uart_dma_started = 1U;
+    ++app_uart_rx_restarts;
+}
+
+static uint8_t app_uart_rx_dma_needs_restart(void)
+{
+#if (APP_UART_RX_USE_DMA != 0U)
+    DMA_HandleTypeDef *hdma = huart1.hdmarx;
+    DMA_Stream_TypeDef *stream;
+
+    if (hdma == 0) {
+        return 1U;
+    }
+
+    if (app_uart_dma_started == 0U) {
+        return 1U;
+    }
+
+    if (huart1.RxState != HAL_UART_STATE_BUSY_RX) {
+        return 1U;
+    }
+
+    stream = (DMA_Stream_TypeDef *)hdma->Instance;
+    if ((stream->CR & DMA_SxCR_EN) == 0U) {
+        return 1U;
+    }
+
+    return 0U;
+#else
+    if (app_uart_dma_started == 0U) {
+        return 1U;
+    }
+
+    if ((app_uart_it_rx_ready == 0U) &&
+        (huart1.RxState != HAL_UART_STATE_BUSY_RX)) {
+        return 1U;
+    }
+
+    return 0U;
+#endif
 }
 
 static char *app_uart_normalize_line(char *line, uint16_t length)
@@ -227,15 +321,24 @@ static void app_uart_clear_errors(void)
 
 void APP_UART_Task_Init(void)
 {
-    static const char boot_text[] = "BOOT uart_task_init\r\n";
+#if (APP_UART_RX_USE_DMA != 0U)
+    static const char boot_text[] = "BOOT uart_task_init rx=dma\r\n";
+#else
+    static const char boot_text[] = "BOOT uart_task_init rx=it\r\n";
+#endif
 
+#if (APP_UART_TX_LED_ENABLED != 0U)
     BSP_LED_Off(LED_1);
+#endif
     app_uart_rx_used = 0U;
     app_uart_rx_bytes = 0U;
     app_uart_rx_lines = 0U;
     app_uart_rx_idle_lines = 0U;
     app_uart_rx_overflows = 0U;
     app_uart_rx_errors = 0U;
+    app_uart_rx_events = 0U;
+    app_uart_rx_restarts = 0U;
+    app_uart_last_rx_event_size = 0U;
     app_uart_last_stats_ms = HAL_GetTick();
     app_uart_last_rx_byte_ms = app_uart_last_stats_ms;
     app_uart_tx_led_until_ms = app_uart_last_stats_ms;
@@ -244,6 +347,8 @@ void APP_UART_Task_Init(void)
     app_uart_debug_lines = 0U;
     app_uart_control_initialized = 0U;
     app_uart_dma_started = 0U;
+    app_uart_it_rx_ready = 0U;
+    app_uart_it_rx_size = 0U;
     app_uart_tx_busy = 0U;
     app_uart_tx_pending_valid = 0U;
 #if (APP_UART_BOOT_DIAG_ENABLED != 0U)
@@ -264,10 +369,19 @@ static void app_uart_ensure_control_ready(void)
     static const char init_begin_text[] = "BOOT control_init_begin\r\n";
     static const char init_done_text[] = "BOOT control_init_done\r\n";
 
-    if ((app_uart_control_initialized != 0U) ||
-        (APP_AiWB2_IsTransparent() == 0U)) {
+    if (app_uart_control_initialized != 0U) {
         return;
     }
+
+#if (APP_UART_DIRECT_CONTROL_ENABLED == 0U)
+    if (APP_AiWB2_IsTransparent() == 0U) {
+        return;
+    }
+#elif (APP_UART_TX_WAIT_FOR_TRANSPARENT != 0U)
+    if (APP_AiWB2_IsTransparent() == 0U) {
+        return;
+    }
+#endif
 
 #if (APP_UART_BOOT_DIAG_ENABLED != 0U)
     (void)BSP_UART_Transmit_USART1((const uint8_t *)init_begin_text,
@@ -394,6 +508,7 @@ static void app_uart_flush_idle_line(uint32_t now_ms)
     ++app_uart_rx_idle_lines;
 }
 
+#if (APP_UART_RX_USE_DMA != 0U)
 static uint16_t app_uart_dma_write_pos(void)
 {
     uint32_t remaining;
@@ -409,16 +524,34 @@ static uint16_t app_uart_dma_write_pos(void)
 
     return (uint16_t)(APP_UART_DMA_RX_SIZE - remaining);
 }
+#endif
 
 static void app_uart_poll_rx(void)
 {
-    uint16_t write_pos;
-
     app_uart_clear_errors();
-    if (app_uart_dma_started == 0U) {
+
+#if (APP_UART_RX_USE_DMA == 0U)
+    if (app_uart_it_rx_ready != 0U) {
+        uint16_t rx_size = app_uart_it_rx_size;
+
+        if (rx_size > APP_UART_DMA_RX_SIZE) {
+            rx_size = APP_UART_DMA_RX_SIZE;
+        }
+
+        for (uint16_t index = 0U; index < rx_size; ++index) {
+            app_uart_process_rx_byte(app_uart_dma_rx_buffer[index]);
+        }
+
+        app_uart_dma_rx_pos = 0U;
+        app_uart_it_rx_ready = 0U;
+        app_uart_it_rx_size = 0U;
+        app_uart_dma_started = 0U;
         app_uart_start_rx_dma();
     }
+#else
+    uint16_t write_pos;
 
+    app_uart_invalidate_rx_dma_buffer();
     write_pos = app_uart_dma_write_pos();
     while (app_uart_dma_rx_pos != write_pos) {
         app_uart_process_rx_byte(app_uart_dma_rx_buffer[app_uart_dma_rx_pos]);
@@ -426,6 +559,12 @@ static void app_uart_poll_rx(void)
         if (app_uart_dma_rx_pos >= APP_UART_DMA_RX_SIZE) {
             app_uart_dma_rx_pos = 0U;
         }
+    }
+#endif
+
+    if (app_uart_rx_dma_needs_restart() != 0U) {
+        app_uart_dma_started = 0U;
+        app_uart_start_rx_dma();
     }
 }
 
@@ -440,10 +579,18 @@ static void app_uart_poll_tx(void)
         return;
     }
 
-    if ((APP_AiWB2_IsTransparent() == 0U) ||
-        (app_uart_control_initialized == 0U)) {
+    if (app_uart_control_initialized == 0U) {
         return;
     }
+#if (APP_UART_DIRECT_CONTROL_ENABLED == 0U)
+    if (APP_AiWB2_IsTransparent() == 0U) {
+        return;
+    }
+#elif (APP_UART_TX_WAIT_FOR_TRANSPARENT != 0U)
+    if (APP_AiWB2_IsTransparent() == 0U) {
+        return;
+    }
+#endif
     if (app_uart_tx_busy != 0U) {
         return;
     }
@@ -460,15 +607,29 @@ static void app_uart_poll_tx(void)
         return;
     }
 
-    if (APP_Proto_BuildFrame((uint8_t)APP_PROTO_DIR_FROM_FC,
-                             (app_uart_tx_pending_message.function != 0U) ? app_uart_tx_pending_message.function : APP_PROTO_MSG_TEXT_LINE,
-                             (const uint8_t *)app_uart_tx_pending_message.text,
-                             app_uart_tx_pending_message.length,
-                             app_uart_tx_frame_buffer,
-                             (uint16_t)sizeof(app_uart_tx_frame_buffer),
-                             &frame_length) == 0U) {
-        app_uart_tx_pending_valid = 0U;
-        return;
+    if (APP_UART_DIRECT_CONTROL_ENABLED != 0U) {
+        frame_length = app_uart_tx_pending_message.length;
+        if (frame_length == 0U) {
+            app_uart_tx_pending_valid = 0U;
+            return;
+        }
+        if (frame_length > (uint16_t)sizeof(app_uart_tx_frame_buffer)) {
+            frame_length = (uint16_t)sizeof(app_uart_tx_frame_buffer);
+        }
+        memcpy(app_uart_tx_frame_buffer,
+               app_uart_tx_pending_message.text,
+               frame_length);
+    } else {
+        if (APP_Proto_BuildFrame((uint8_t)APP_PROTO_DIR_FROM_FC,
+                                 (app_uart_tx_pending_message.function != 0U) ? app_uart_tx_pending_message.function : APP_PROTO_MSG_TEXT_LINE,
+                                 (const uint8_t *)app_uart_tx_pending_message.text,
+                                 app_uart_tx_pending_message.length,
+                                 app_uart_tx_frame_buffer,
+                                 (uint16_t)sizeof(app_uart_tx_frame_buffer),
+                                 &frame_length) == 0U) {
+            app_uart_tx_pending_valid = 0U;
+            return;
+        }
     }
 
     if (huart1.hdmatx == 0) {
@@ -478,12 +639,15 @@ static void app_uart_poll_tx(void)
         if (status == HAL_OK) {
             app_uart_tx_pending_valid = 0U;
             ++app_uart_tx_count;
+#if (APP_UART_TX_LED_ENABLED != 0U)
             BSP_LED_On(LED_1);
+#endif
             app_uart_tx_led_until_ms = HAL_GetTick() + APP_UART_TX_LED_PULSE_MS;
         }
         return;
     }
 
+    app_uart_clean_tx_dma_buffer(frame_length);
     status = HAL_UART_Transmit_DMA(&huart1,
                                    app_uart_tx_frame_buffer,
                                    frame_length);
@@ -491,7 +655,9 @@ static void app_uart_poll_tx(void)
         app_uart_tx_busy = 1U;
         app_uart_tx_pending_valid = 0U;
         ++app_uart_tx_count;
+#if (APP_UART_TX_LED_ENABLED != 0U)
         BSP_LED_On(LED_1);
+#endif
         app_uart_tx_led_until_ms = HAL_GetTick() + APP_UART_TX_LED_PULSE_MS;
     } else if (status != HAL_BUSY) {
         ++app_uart_rx_errors;
@@ -538,6 +704,10 @@ static void app_uart_sync_tx_state(void)
 
 static void app_uart_update_tx_led(uint32_t now_ms)
 {
+#if (APP_UART_TX_LED_ENABLED == 0U)
+    (void)now_ms;
+    return;
+#else
     uint32_t tx_count = app_uart_tx_count;
 
     if (tx_count != app_uart_last_tx_count) {
@@ -550,6 +720,7 @@ static void app_uart_update_tx_led(uint32_t now_ms)
     if (app_uart_time_reached(now_ms, app_uart_tx_led_until_ms) != 0U) {
         BSP_LED_Off(LED_1);
     }
+#endif
 }
 
 void APP_UART_Task_Step(void)
@@ -562,13 +733,18 @@ void APP_UART_Task_Step(void)
     app_uart_flush_idle_line(now_ms);
     APP_AiWB2_Tick();
     app_uart_ensure_control_ready();
-    if ((app_uart_control_initialized != 0U) &&
-        (APP_AiWB2_IsTransparent() != 0U)) {
+    if ((app_uart_control_initialized != 0U)
+#if (APP_UART_DIRECT_CONTROL_ENABLED == 0U)
+        && (APP_AiWB2_IsTransparent() != 0U)
+#endif
+       ) {
         APP_Control_Tick();
     }
 #if (APP_UART_PERIODIC_STATS_ENABLED != 0U)
     if ((app_uart_control_initialized != 0U) &&
+#if (APP_UART_DIRECT_CONTROL_ENABLED == 0U)
         (APP_AiWB2_IsTransparent() != 0U) &&
+#endif
         ((now_ms - app_uart_last_stats_ms) >= 2000U)) {
         app_uart_last_stats_ms = now_ms;
         APP_Control_ReportUartStats(app_uart_rx_bytes,
@@ -577,18 +753,22 @@ void APP_UART_Task_Step(void)
                                     app_uart_rx_errors);
     } else if ((app_uart_control_initialized == 0U) &&
                ((now_ms - app_uart_last_stats_ms) >= 2000U)) {
-        char stats_text[96];
+        char stats_text[192];
         int written;
 
         app_uart_last_stats_ms = now_ms;
         written = snprintf(stats_text,
                            sizeof(stats_text),
-                           "BOOT uart_wait_control rx_bytes=%lu rx_lines=%lu rx_idle=%lu rx_overflows=%lu rx_errors=%lu\r\n",
+                           "BOOT uart_wait_control rx_bytes=%lu rx_lines=%lu rx_idle=%lu rx_overflows=%lu rx_errors=%lu rx_state=%u dma_started=%u trans=%u ctrl=%u\r\n",
                            (unsigned long)app_uart_rx_bytes,
                            (unsigned long)app_uart_rx_lines,
                            (unsigned long)app_uart_rx_idle_lines,
                            (unsigned long)app_uart_rx_overflows,
-                           (unsigned long)app_uart_rx_errors);
+                           (unsigned long)app_uart_rx_errors,
+                           (unsigned int)huart1.RxState,
+                           (unsigned int)app_uart_dma_started,
+                           (unsigned int)APP_AiWB2_IsTransparent(),
+                           (unsigned int)app_uart_control_initialized);
         if (written > 0) {
             uint16_t length = (uint16_t)written;
 
@@ -633,6 +813,21 @@ void APP_UART_GetStats(uint32_t *rx_bytes,
     }
 }
 
+void APP_UART_GetRxEventStats(uint32_t *rx_events,
+                              uint32_t *rx_restarts,
+                              uint32_t *last_rx_event_size)
+{
+    if (rx_events != NULL) {
+        *rx_events = app_uart_rx_events;
+    }
+    if (rx_restarts != NULL) {
+        *rx_restarts = app_uart_rx_restarts;
+    }
+    if (last_rx_event_size != NULL) {
+        *last_rx_event_size = app_uart_last_rx_event_size;
+    }
+}
+
 void APP_UART_NotifyTxPending(void)
 {
     app_uart_signal(APP_UART_EVENT_KICK);
@@ -640,12 +835,17 @@ void APP_UART_NotifyTxPending(void)
 
 void APP_UART_OnRxEvent(UART_HandleTypeDef *huart, uint16_t size)
 {
-    (void)size;
-
     if ((huart == NULL) || (huart->Instance != USART1)) {
         return;
     }
 
+    app_uart_last_rx_event_size = (uint32_t)size;
+    ++app_uart_rx_events;
+#if (APP_UART_RX_USE_DMA == 0U)
+    app_uart_it_rx_size = size;
+    app_uart_it_rx_ready = 1U;
+    app_uart_dma_started = 0U;
+#endif
     app_uart_signal(APP_UART_EVENT_RX);
 }
 
@@ -669,6 +869,8 @@ void APP_UART_OnError(UART_HandleTypeDef *huart)
         app_uart_tx_busy = 0U;
     }
     app_uart_dma_started = 0U;
+    app_uart_it_rx_ready = 0U;
+    app_uart_it_rx_size = 0U;
     app_uart_signal(APP_UART_EVENT_ERROR);
 }
 

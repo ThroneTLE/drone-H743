@@ -3,9 +3,19 @@
 #include <string.h>
 
 #define SPL06_REG_ID             0x0DU
+#define SPL06_REG_PRS_CFG        0x06U
+#define SPL06_REG_TMP_CFG        0x07U
+#define SPL06_REG_MEAS_CFG       0x08U
+#define SPL06_REG_CFG_REG        0x09U
+#define SPL06_REG_COEF_SRCE      0x28U
 #define SPL06_SPI_READ_BIT       0x80U
 #define SPL06_DEFAULT_TIMEOUT_MS 100U
 #define SPL06_SPI_WAKE_DELAY_MS  1U
+#define SPL06_CONFIG_DELAY_MS    40U
+#define SPL06_RATE_8HZ           0x30U
+#define SPL06_OVERSAMPLE_1X      0x00U
+#define SPL06_MEAS_BACKGROUND_PT 0x07U
+#define SPL06_TMP_EXT_BIT        0x80U
 
 static uint32_t spl06_timeout_ms(const BSP_SPL06_Device *dev)
 {
@@ -49,6 +59,7 @@ BSP_SPL06_Status BSP_SPL06_Init(BSP_SPL06_Device *dev, const BSP_SPL06_Bus *bus)
 {
     BSP_SPL06_Status status;
     uint8_t product_id = 0U;
+    uint8_t tmp_cfg = SPL06_TMP_EXT_BIT | SPL06_RATE_8HZ | SPL06_OVERSAMPLE_1X;
 
     if ((dev == NULL) || (bus == NULL) || (bus->hspi == NULL) ||
         (bus->cs_port == NULL)) {
@@ -70,6 +81,32 @@ BSP_SPL06_Status BSP_SPL06_Init(BSP_SPL06_Device *dev, const BSP_SPL06_Bus *bus)
     if (product_id != BSP_SPL06_ID_VALUE) {
         return BSP_SPL06_BAD_ID;
     }
+
+    status = BSP_SPL06_WriteRegister(dev,
+                                     SPL06_REG_PRS_CFG,
+                                     SPL06_RATE_8HZ | SPL06_OVERSAMPLE_1X);
+    if (status != BSP_SPL06_OK) {
+        return status;
+    }
+
+    status = BSP_SPL06_WriteRegister(dev, SPL06_REG_TMP_CFG, tmp_cfg);
+    if (status != BSP_SPL06_OK) {
+        return status;
+    }
+
+    status = BSP_SPL06_WriteRegister(dev, SPL06_REG_CFG_REG, 0x00U);
+    if (status != BSP_SPL06_OK) {
+        return status;
+    }
+
+    status = BSP_SPL06_WriteRegister(dev,
+                                     SPL06_REG_MEAS_CFG,
+                                     SPL06_MEAS_BACKGROUND_PT);
+    if (status != BSP_SPL06_OK) {
+        return status;
+    }
+
+    spl06_delay_ms(dev, SPL06_CONFIG_DELAY_MS);
 
     return BSP_SPL06_OK;
 }

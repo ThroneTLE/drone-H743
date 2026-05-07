@@ -567,8 +567,9 @@ Implementation notes:
 
 2026-05-06 passive Ai-WB2 policy after hardware EN/RST clarification:
 - clarified hardware fact:
-  - Ai-WB2 EN/RST is not connected to STM32
-  - Ai-WB2 is powered independently and may reset/connect on its own timeline
+  - earlier assumption was that Ai-WB2 EN/RST was not connected to STM32
+  - later corrected: Ai-WB2 EN is connected to `PC6` for debugging
+  - Ai-WB2 may still reset/connect on its own timeline unless firmware actively toggles PC6
   - STM32 boot logs sent before Ai-WB2 TCP connection are simply lost from the PC panel, so absence of early `BOOT ...` lines does not prove the task did not run
 - observed problem:
   - STM32 active AT manager sent `AT` while Ai-WB2 was already in transparent/auto-connect flow
@@ -604,6 +605,57 @@ Implementation notes:
   - if `rx_bytes` stays 0 after clicking `PING`, check Ai-WB2 TX -> STM32 PB15 and GND
   - if `rx_bytes` increases but `rx_lines` stays 0, check line endings / byte stream framing
   - if `BOOT control_payload` appears but `control_init_done` does not, investigate control init / flash probing path
+- build verification:
+  - `cmake --build --preset Debug` passed
+
+2026-05-06 Ai-WB2 EN control on PC6:
+- hardware clarification:
+  - `PC6`, previously generated/labeled as `LED1`, has been wired to the Ai-WB2 module enable pin for debugging
+  - the module enable line is pulled high externally, and `PC6` can actively control module on/off
+  - because CubeMX currently still initializes `LED1 / PC6` as GPIO output low, firmware must drive it high early after `MX_GPIO_Init()`
+- implementation:
+  - added `BSP/Inc/bsp_aiwb2_power.h`
+  - added `BSP/Src/bsp_aiwb2_power.c`
+  - `BSP_Init()` now calls `BSP_AiWB2_PowerInit()` to set `PC6` high by default
+  - `BSP_LED_*()` ignores `LED_1 / PC6` so LED logic cannot toggle WiFi EN
+  - `LED_1` remains in the legacy LED enum only as a compatibility name; treat it as Ai-WB2 EN in this hardware setup
+- control protocol additions:
+  - text:
+    - `WIFI?`
+    - `WIFI EN 0|1`
+    - `WIFI ENABLE 0|1`
+    - `WIFI RESET [ms]`
+    - compatibility: `WIFI_EN?`, `WIFI_EN 0|1`
+  - request/response frame IDs:
+    - `APP_PROTO_REQ_WIFI = 0x1018`
+    - `APP_PROTO_MSG_WIFI_RECORD = 0x221A`
+  - `STATUS?`, `CONFIG?`, `MODULES?`, and `CAPS?` now report WiFi enable/status information
+- reset behavior:
+  - `WIFI RESET [ms]` is non-blocking
+  - command pulls `PC6` low, queues a deadline, and `APP_Control_Tick()` restores `PC6` high later
+  - default low pulse is `500 ms`, capped at `5000 ms`
+- recommended CubeMX cleanup later:
+  - rename `PC6` label from `LED1` to `WIFI_EN`
+  - set generated output level to High if the project keeps PC6 as a managed output
+- build verification:
+  - `cmake --build --preset Debug` passed
+  - warning remains from existing disabled heartbeat variables in `App/Src/app_control.c`
+
+2026-05-06 USART1 direct protocol debug mode:
+- question answered:
+  - current firmware does not actively keep probing Ai-WB2 transparent mode when `APP_AIWB2_PASSIVE_ONLY = 1U`
+  - `APP_AiWB2_Tick()` returns immediately in passive mode, so it does not periodically send `AT`, `+++`, or provisioning commands
+  - before this update, UART control init and TX were still gated by the Ai-WB2 transparent-state flag, and legacy ASCII command routing was disabled
+- implementation:
+  - `App/Src/app_uart.c` now sets `APP_UART_DIRECT_CONTROL_ENABLED = 1U`
+  - `APP_UART_LEGACY_ASCII_CONTROL_ENABLED` is enabled again
+  - USART1 receipt of a known text command such as `PING`, `STATUS?`, `CONFIG?`, `WIFI?`, or `SERVO ...` now calls `APP_AiWB2_AssumeTransparent()`, initializes `APP_Control`, and routes the command immediately
+  - binary `$X<...` frame requests also initialize and route the control protocol without waiting for an Ai-WB2 `connect success` or `>` prompt
+  - UART TX only requires `APP_Control` initialization in direct mode; it no longer waits for a real WiFi transparent-mode event
+- important serial-debug note:
+  - accepted text commands can be sent over USART1 for bring-up
+  - responses still use the current framed protocol (`$X>` with typed function IDs), not plain ASCII lines
+  - a temporary serial upper-computer should decode `App/Inc/app_proto.h`; plain serial assistants may display binary-looking data
 - build verification:
   - `cmake --build --preset Debug` passed
 
@@ -671,5 +723,25 @@ Implementation notes:
 - fix:
   - `Core/Src/main.c`: `Main_StagePulse()` now returns immediately after the kernel is initialized, avoiding blocking `HAL_Delay()` during the startup path before `osKernelStart()`
   - `App/Src/app_uart.c`: `APP_UART_Task_Init()` now emits `BOOT uart_task_init\r\n` so the panel can verify the scheduler and UART task are running
+- build verification:
+  - `cmake --build --preset Debug` passed
+
+2026-05-06 USART1 RX DMA restart after first line:
+- observed issue:
+  - user reported that the first serial entry works, but the second entry no longer appears to reach the DMA IRQ path
+  - this is more likely HAL receive state not being re-armed after the first IDLE-driven receive event than a missing DMA IRQ enable
+- generated-code confirmation:
+  - `Core/Src/dma.c` enables `DMA1_Stream0_IRQn` and `DMA1_Stream1_IRQn`
+  - `Core/Src/stm32h7xx_it.c` routes `DMA1_Stream0_IRQHandler()` to `HAL_DMA_IRQHandler(&hdma_usart1_rx)`
+  - `Core/Src/usart.c` links USART1 RX to `DMA1_Stream0` with `DMA_REQUEST_USART1_RX`
+  - `.ioc` has `NVIC.DMA1_Stream0_IRQn=true` and `NVIC.USART1_IRQn=true`
+- implementation fix:
+  - `App/Src/app_uart.c` now checks whether USART1 RX DMA still looks active after draining the circular buffer
+  - if `huart1.RxState` is not `HAL_UART_STATE_BUSY_RX`, or the DMA stream is no longer enabled, the task restarts `HAL_UARTEx_ReceiveToIdle_DMA()`
+  - this keeps the second and later serial entries alive even when the previous IDLE or error path caused HAL to drop receive state
+- practical note:
+  - short text packets usually wake through USART1 IDLE events, not DMA transfer-complete IRQs
+  - with half-transfer IRQ disabled, DMA1_Stream0 may not fire for every short command
+  - only the circular buffer reaching the end should produce a real DMA transfer-complete interrupt
 - build verification:
   - `cmake --build --preset Debug` passed

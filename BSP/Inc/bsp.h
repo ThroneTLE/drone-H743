@@ -19,6 +19,7 @@ extern "C" {
 #include "bsp_pwm.h"
 #include "bsp_bus_servo.h"
 #include "bsp_system.h"
+#include "bsp_aiwb2_power.h"
 
 void BSP_Init(void);
 

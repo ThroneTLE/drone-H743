@@ -14,17 +14,20 @@ void BSP_LED_Init(void) { /* GPIO already init by CubeMX */ }
 void BSP_LED_On(BSP_LED_ID id)
 {
     if (id >= LED_COUNT) return;
+    if (id == LED_1) return;
     BSP_GPIO_Write(led_map[id], 1);
 }
 
 void BSP_LED_Off(BSP_LED_ID id)
 {
     if (id >= LED_COUNT) return;
+    if (id == LED_1) return;
     BSP_GPIO_Write(led_map[id], 0);
 }
 
 void BSP_LED_Toggle(BSP_LED_ID id)
 {
     if (id >= LED_COUNT) return;
+    if (id == LED_1) return;
     BSP_GPIO_Toggle(led_map[id]);
 }
