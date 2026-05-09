@@ -244,14 +244,6 @@ void HAL_SPI_MspInit(SPI_HandleTypeDef* spiHandle)
 
   /* USER CODE END SPI2_MspInit 0 */
 
-  /* USER CODE BEGIN SPI2_MspInit 0.1 */
-    __HAL_RCC_SYSCFG_CLK_ENABLE();
-    HAL_SYSCFG_AnalogSwitchConfig(SYSCFG_SWITCH_PC2, SYSCFG_SWITCH_PC2_CLOSE);
-
-    __HAL_RCC_GPIOB_CLK_ENABLE();
-    HAL_GPIO_WritePin(IMU_CS_GPIO_Port, IMU_CS_Pin, GPIO_PIN_SET);
-  /* USER CODE END SPI2_MspInit 0.1 */
-
   /** Initializes the peripherals clock
   */
     PeriphClkInitStruct.PeriphClockSelection = RCC_PERIPHCLK_SPI2;
@@ -299,6 +291,10 @@ void HAL_SPI_MspInit(SPI_HandleTypeDef* spiHandle)
     GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
     GPIO_InitStruct.Alternate = GPIO_AF5_SPI2;
     HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+    /* Close PC2 analog switch for PC2_C (SPI2_MISO). Without this,
+     * MISO floats and SPI reads return random values on STM32H7. */
+    HAL_SYSCFG_AnalogSwitchConfig(SYSCFG_SWITCH_PC2, SYSCFG_SWITCH_PC2_CLOSE);
 
   /* USER CODE END SPI2_MspInit 1 */
   }

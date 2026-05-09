@@ -156,9 +156,13 @@ void APP_IMU_Task_Step(void)
 
 void APP_IMU_GetStatus(APP_IMU_Status *status)
 {
+    BSP_IMU_Diag diag;
+
     if (status == 0) {
         return;
     }
+
+    BSP_IMU_GetDiag(&diag);
 
     status->initialized = imu_state.initialized;
     status->who_am_i = imu_state.who_am_i;
@@ -173,4 +177,21 @@ void APP_IMU_GetStatus(APP_IMU_Status *status)
     status->gyro_x_mdps = APP_IMU_ScaleToInt32(imu_state.last_sample.gyro_x_dps, 1000.0f);
     status->gyro_y_mdps = APP_IMU_ScaleToInt32(imu_state.last_sample.gyro_y_dps, 1000.0f);
     status->gyro_z_mdps = APP_IMU_ScaleToInt32(imu_state.last_sample.gyro_z_dps, 1000.0f);
+    status->diag_mode0_tokmas = diag.mode0_tokmas;
+    status->diag_mode0_msb = diag.mode0_msb;
+    status->diag_mode0_bit0 = diag.mode0_bit0;
+    status->diag_mode3_tokmas = diag.mode3_tokmas;
+    status->diag_mode3_msb = diag.mode3_msb;
+    status->diag_mode3_bit0 = diag.mode3_bit0;
+    status->diag_burst_m0_b0_1 = diag.burst_m0_b0_1;
+    status->diag_burst_m0_b0_2 = diag.burst_m0_b0_2;
+    status->diag_burst_m0_b0_3 = diag.burst_m0_b0_3;
+    status->diag_burst_m0_b0_4 = diag.burst_m0_b0_4;
+    status->diag_burst_m3_tok_1 = diag.burst_m3_tok_1;
+    status->diag_burst_m3_tok_2 = diag.burst_m3_tok_2;
+    status->diag_burst_m3_tok_3 = diag.burst_m3_tok_3;
+    status->diag_burst_m3_tok_4 = diag.burst_m3_tok_4;
+    status->diag_best_mode = diag.best_mode;
+    status->diag_best_header = diag.best_header;
+    status->diag_valid = diag.valid;
 }

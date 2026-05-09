@@ -17,6 +17,23 @@ typedef struct {
     int32_t  gyro_x_mdps;
     int32_t  gyro_y_mdps;
     int32_t  gyro_z_mdps;
+    uint8_t  diag_mode0_tokmas;
+    uint8_t  diag_mode0_msb;
+    uint8_t  diag_mode0_bit0;
+    uint8_t  diag_mode3_tokmas;
+    uint8_t  diag_mode3_msb;
+    uint8_t  diag_mode3_bit0;
+    uint8_t  diag_burst_m0_b0_1;
+    uint8_t  diag_burst_m0_b0_2;
+    uint8_t  diag_burst_m0_b0_3;
+    uint8_t  diag_burst_m0_b0_4;
+    uint8_t  diag_burst_m3_tok_1;
+    uint8_t  diag_burst_m3_tok_2;
+    uint8_t  diag_burst_m3_tok_3;
+    uint8_t  diag_burst_m3_tok_4;
+    uint8_t  diag_best_mode;
+    uint8_t  diag_best_header;
+    uint8_t  diag_valid;
 } APP_IMU_Status;
 
 void APP_IMU_Task_Init(void);

@@ -35,6 +35,8 @@ typedef struct {
 void APP_Control_Init(void);
 void APP_Control_Tick(void);
 void APP_Control_ProcessLine(const char *line);
+void APP_Control_MaintTick(void);
+void APP_Control_ProcessMaintLine(const char *line);
 void APP_Control_ProcessProtoRequest(uint16_t function,
                                      const uint8_t *payload,
                                      uint16_t payload_length);

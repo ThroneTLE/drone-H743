@@ -10,7 +10,7 @@ extern "C" {
 #include <stdbool.h>
 #include <stdint.h>
 
-#define BSP_ICM42688_CHIP_ID_VALUE 0xA1U
+#define BSP_ICM42688_CHIP_ID_VALUE 0x47U
 #define BSP_ICM42688_WHO_AM_I_VALUE BSP_ICM42688_CHIP_ID_VALUE
 
 /*

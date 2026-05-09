@@ -2,6 +2,7 @@
 
 #include "app_aiwb2.h"
 #include "app_control.h"
+#include "app_maint_uart.h"
 #include "app_proto.h"
 #include "app_tasks.h"
 #include "bsp_led.h"
@@ -360,6 +361,7 @@ void APP_UART_Task_Init(void)
 #endif
     APP_Proto_Init();
     APP_AiWB2_Init();
+    APP_Task_MaintUART_Init();
     app_uart_prepare_tx_dma();
     app_uart_start_rx_dma();
 }
@@ -729,6 +731,7 @@ void APP_UART_Task_Step(void)
     uint32_t now_ms;
 
     app_uart_poll_rx();
+    APP_Task_MaintUART_Step();
     now_ms = HAL_GetTick();
     app_uart_flush_idle_line(now_ms);
     APP_AiWB2_Tick();
@@ -884,7 +887,13 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
     APP_UART_OnTxComplete(huart);
 }
 
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+    APP_MaintUART_OnRxCplt(huart);
+}
+
 void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
 {
     APP_UART_OnError(huart);
+    APP_MaintUART_OnError(huart);
 }

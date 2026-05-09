@@ -17,5 +17,7 @@ void APP_Task_Message_Init(void);
 void APP_Task_Message_Step(void);
 void APP_Task_UART_Init(void);
 void APP_Task_UART_Step(void);
+void APP_Task_MaintUART_Init(void);
+void APP_Task_MaintUART_Step(void);
 
 #endif

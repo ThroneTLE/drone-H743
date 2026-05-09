@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import csv
+import math
 import queue
 import re
 import socket
@@ -19,6 +20,7 @@ DEFAULT_HOST = "0.0.0.0"
 DEFAULT_PORT = 6666
 MAX_BARO_SAMPLES = 2000
 BARO_STREAM_PERIOD_MS = 50
+IMU_POLL_PERIOD_MS = 100
 CMD_REPLY_TIMEOUT_MS = 2500
 PROTO_COMPAT_FALLBACK_DELAY_MS = 400
 PROTO_PROBE_SETTLE_MS = 900
@@ -132,7 +134,7 @@ MODULE_ALIASES = {
 
 def parse_kv(line: str) -> dict[str, str]:
     result: dict[str, str] = {}
-    for match in re.finditer(r"([A-Za-z0-9_.-]+)=([^ \r\n]+)", line):
+    for match in re.finditer(r"([A-Za-z0-9_.-]+)=([^ ,\r\n]+)", line):
         result[match.group(1)] = match.group(2)
     return result
 
@@ -549,6 +551,13 @@ class DronePanel(tk.Tk):
         self.baro_buffer: list[dict[str, float | str]] = []
         self._baro_dirty = False
         self._last_baro_plot_ns = 0
+        self.imu_poll_enabled = tk.BooleanVar(value=True)
+        self.imu_last_poll = 0.0
+        self.imu_last_sample_time = 0.0
+        self.imu_last_count = -1
+        self.imu_roll_deg = 0.0
+        self.imu_pitch_deg = 0.0
+        self.imu_yaw_deg = 0.0
         self.params: dict[str, dict[str, str | bool]] = {}
         self.param_iids: dict[str, str] = {}
         self.param_names_by_iid: dict[str, str] = {}
@@ -567,11 +576,13 @@ class DronePanel(tk.Tk):
 
         self.module_state: dict[str, dict[str, tk.StringVar]] = {}
         self.baro_vars: dict[str, tk.StringVar] = {}
+        self.imu_vars: dict[str, tk.StringVar] = {}
 
         self._build_ui()
         self.after(1000, self._check_link_health)
         self.after(100, self._drain_rx)
         self.after(250, self._baro_tick)
+        self.after(100, self._imu_poll_tick)
         self.protocol("WM_DELETE_WINDOW", self._on_close)
 
     def _build_port_label(self, p) -> str:
@@ -649,19 +660,23 @@ class DronePanel(tk.Tk):
 
         overview = ttk.Frame(self.notebook, padding=10)
         baro = ttk.Frame(self.notebook, padding=10)
+        imu = ttk.Frame(self.notebook, padding=10)
         params = ttk.Frame(self.notebook, padding=10)
         servos = ttk.Frame(self.notebook, padding=10)
         commands = ttk.Frame(self.notebook, padding=10)
         self.baro_tab = baro
+        self.imu_tab = imu
 
         self.notebook.add(overview, text="模块总览")
         self.notebook.add(baro, text="SPL06 气压计")
+        self.notebook.add(imu, text="IMU 姿态")
         self.notebook.add(params, text="参数 / PID")
         self.notebook.add(servos, text="舵机控制")
         self.notebook.add(commands, text="日志 / 原始命令")
 
         self._build_overview_page(overview)
         self._build_baro_page(baro)
+        self._build_imu_page(imu)
         self._build_params_page(params)
         self._build_servo_page(servos)
         self._build_command_page(commands)
@@ -802,6 +817,7 @@ class DronePanel(tk.Tk):
         actions.grid(row=7, column=0, columnspan=2, sticky=tk.EW, pady=(12, 0))
         ttk.Button(actions, text="请求该模块详情", command=self._request_selected_module).pack(side=tk.LEFT)
         ttk.Button(actions, text="打开气压计页", command=self._open_baro_tab).pack(side=tk.LEFT, padx=6)
+        ttk.Button(actions, text="打开姿态页", command=self._open_imu_tab).pack(side=tk.LEFT)
         detail.columnconfigure(1, weight=1)
 
     def _detail_row(self, parent: ttk.Frame, row: int, label: str, variable: tk.StringVar, wrap: int = 0) -> None:
@@ -898,6 +914,47 @@ class DronePanel(tk.Tk):
             self.baro_figure = None
             self.baro_axis = None
             self.baro_canvas = None
+
+    def _build_imu_page(self, parent: ttk.Frame) -> None:
+        top = ttk.Frame(parent)
+        top.pack(fill=tk.X)
+        ttk.Button(top, text="请求 IMU", command=lambda: self._send_proto(PROTO_REQ_IMU, "IMU?")).pack(side=tk.LEFT)
+        ttk.Checkbutton(top, text=f"自动轮询 {IMU_POLL_PERIOD_MS} ms", variable=self.imu_poll_enabled).pack(side=tk.LEFT, padx=(10, 0))
+        ttk.Button(top, text="姿态归零", command=self._reset_imu_attitude).pack(side=tk.LEFT, padx=8)
+
+        body = ttk.PanedWindow(parent, orient=tk.HORIZONTAL)
+        body.pack(fill=tk.BOTH, expand=True, pady=(10, 0))
+
+        attitude = ttk.LabelFrame(body, text="人工地平仪", padding=8)
+        values = ttk.LabelFrame(body, text="实时数值", padding=10)
+        body.add(attitude, weight=3)
+        body.add(values, weight=2)
+
+        self.imu_canvas = tk.Canvas(attitude, width=520, height=380, bg="#101820", highlightthickness=0)
+        self.imu_canvas.pack(fill=tk.BOTH, expand=True)
+        self.imu_canvas.bind("<Configure>", lambda _event: self._draw_imu_attitude())
+
+        fields = [
+            ("roll", "Roll deg"),
+            ("pitch", "Pitch deg"),
+            ("yaw", "Yaw deg"),
+            ("ax", "Accel X mg"),
+            ("ay", "Accel Y mg"),
+            ("az", "Accel Z mg"),
+            ("gx", "Gyro X mdps"),
+            ("gy", "Gyro Y mdps"),
+            ("gz", "Gyro Z mdps"),
+            ("temp", "Temp cdeg"),
+            ("count", "Sample"),
+            ("who", "WHO_AM_I"),
+            ("age", "Age"),
+        ]
+        for row, (key, label) in enumerate(fields):
+            self.imu_vars[key] = tk.StringVar(value="-")
+            ttk.Label(values, text=label).grid(row=row, column=0, sticky=tk.W, padx=(0, 10), pady=3)
+            ttk.Label(values, textvariable=self.imu_vars[key]).grid(row=row, column=1, sticky=tk.W, pady=3)
+        values.columnconfigure(1, weight=1)
+        self._draw_imu_attitude()
 
     def _build_params_page(self, parent: ttk.Frame) -> None:
         top = ttk.Frame(parent)
@@ -1181,6 +1238,11 @@ class DronePanel(tk.Tk):
             sent_at = time.monotonic()
             self.after(CMD_REPLY_TIMEOUT_MS, lambda sent=label, start=sent_at: self._warn_if_no_reply(sent, start))
 
+    def _send_proto_silent(self, function: int, payload: str) -> bool:
+        if not self._transport_connected():
+            return False
+        return self.transport.send_frame(function, payload.encode("utf-8"))
+
     def _fallback_proto_request(self, legacy_line: str, started_at: float) -> None:
         if not self._transport_connected():
             return
@@ -1276,6 +1338,8 @@ class DronePanel(tk.Tk):
         if line.startswith(("READY", "UART1 ")):
             return False
         if line.startswith("BARO ok="):
+            return False
+        if re.search(r"(^|[ ,])ax=", line) and re.search(r"(^|[ ,])az=", line):
             return False
         return True
 
@@ -1464,6 +1528,10 @@ class DronePanel(tk.Tk):
         self.notebook.select(self.baro_tab)
         self._send_proto(PROTO_REQ_BARO, "BARO?")
 
+    def _open_imu_tab(self) -> None:
+        self.notebook.select(self.imu_tab)
+        self._send_proto(PROTO_REQ_IMU, "IMU?")
+
     def _refresh_detail(self) -> None:
         state = self.module_state[self.selected_module]
         for name in self.detail_vars:
@@ -1532,6 +1600,8 @@ class DronePanel(tk.Tk):
             self._update_baro_line(line)
         elif line.startswith("IMU "):
             self._update_imu_line(line)
+        elif re.search(r"(^|[ ,])ax=", line) and re.search(r"(^|[ ,])az=", line):
+            self._update_imu_line("IMU " + line)
         elif line.startswith("WIFI "):
             self._update_wifi_line(line)
         elif line.startswith("RSP "):
@@ -1584,6 +1654,7 @@ class DronePanel(tk.Tk):
     def _update_imu_line(self, line: str) -> None:
         values = parse_kv(line)
         ok = values.get("ok") == "1" if "ok" in values else safe_int(values.get("init"), 0) != 0
+        self._update_imu_attitude(values, line)
         self._update_module(
             "ICM42688",
             state="正常" if ok else "异常",
@@ -1596,6 +1667,138 @@ class DronePanel(tk.Tk):
             code=f"st={first_value(values, 'st', 'code')} err={values.get('err', '-')}",
             hint=self._hardware_hint("ICM42688", ok, values),
             line=line,
+        )
+
+    def _update_imu_attitude(self, values: dict[str, str], line: str) -> None:
+        ax = first_float(values, "ax", "ax_mg")
+        ay = first_float(values, "ay", "ay_mg")
+        az = first_float(values, "az", "az_mg")
+        gx = first_float(values, "gx", "gx_mdps")
+        gy = first_float(values, "gy", "gy_mdps")
+        gz = first_float(values, "gz", "gz_mdps")
+        now = time.monotonic()
+
+        if ax is None or ay is None or az is None:
+            return
+
+        if gx is None:
+            gx = 0.0
+        if gy is None:
+            gy = 0.0
+        if gz is None:
+            gz = 0.0
+
+        roll_acc = math.degrees(math.atan2(ay, az))
+        pitch_acc = math.degrees(math.atan2(-ax, math.sqrt((ay * ay) + (az * az))))
+        dt = 0.0
+        if self.imu_last_sample_time > 0.0:
+            dt = max(0.0, min(now - self.imu_last_sample_time, 0.25))
+
+        if dt <= 0.0:
+            self.imu_roll_deg = roll_acc
+            self.imu_pitch_deg = pitch_acc
+        else:
+            alpha = 0.96
+            self.imu_roll_deg = alpha * (self.imu_roll_deg + (gx / 1000.0) * dt) + (1.0 - alpha) * roll_acc
+            self.imu_pitch_deg = alpha * (self.imu_pitch_deg + (gy / 1000.0) * dt) + (1.0 - alpha) * pitch_acc
+            self.imu_yaw_deg += (gz / 1000.0) * dt
+            if self.imu_yaw_deg > 180.0 or self.imu_yaw_deg < -180.0:
+                self.imu_yaw_deg = ((self.imu_yaw_deg + 180.0) % 360.0) - 180.0
+
+        self.imu_last_sample_time = now
+        self.imu_last_count = safe_int(first_value(values, "n", "count"), self.imu_last_count)
+
+        updates = {
+            "roll": f"{self.imu_roll_deg:.1f}",
+            "pitch": f"{self.imu_pitch_deg:.1f}",
+            "yaw": f"{self.imu_yaw_deg:.1f}",
+            "ax": f"{ax:.0f}",
+            "ay": f"{ay:.0f}",
+            "az": f"{az:.0f}",
+            "gx": f"{gx:.0f}",
+            "gy": f"{gy:.0f}",
+            "gz": f"{gz:.0f}",
+            "temp": first_value(values, "t", "temp_cdeg"),
+            "count": first_value(values, "n", "count"),
+            "who": first_value(values, "who", "id"),
+            "age": "0 ms",
+        }
+        for key, value in updates.items():
+            if key in self.imu_vars and value != "-":
+                self.imu_vars[key].set(value)
+        self._draw_imu_attitude()
+
+    def _reset_imu_attitude(self) -> None:
+        self.imu_roll_deg = 0.0
+        self.imu_pitch_deg = 0.0
+        self.imu_yaw_deg = 0.0
+        self.imu_last_sample_time = 0.0
+        for key, value in {"roll": "0.0", "pitch": "0.0", "yaw": "0.0"}.items():
+            if key in self.imu_vars:
+                self.imu_vars[key].set(value)
+        self._draw_imu_attitude()
+
+    def _draw_imu_attitude(self) -> None:
+        canvas = getattr(self, "imu_canvas", None)
+        if canvas is None:
+            return
+
+        width = max(int(canvas.winfo_width()), 320)
+        height = max(int(canvas.winfo_height()), 240)
+        canvas.delete("all")
+
+        cx = width / 2.0
+        cy = height / 2.0
+        radius = min(width, height) * 0.42
+        roll = math.radians(self.imu_roll_deg)
+        pitch_offset = max(-radius * 0.75, min(radius * 0.75, self.imu_pitch_deg * radius / 45.0))
+
+        def rotate(point: tuple[float, float]) -> tuple[float, float]:
+            x, y = point
+            return (
+                cx + (x * math.cos(roll)) - (y * math.sin(roll)),
+                cy + (x * math.sin(roll)) + (y * math.cos(roll)),
+            )
+
+        span = radius * 2.8
+        sky_poly = [
+            rotate((-span, -span + pitch_offset)),
+            rotate((span, -span + pitch_offset)),
+            rotate((span, pitch_offset)),
+            rotate((-span, pitch_offset)),
+        ]
+        ground_poly = [
+            rotate((-span, pitch_offset)),
+            rotate((span, pitch_offset)),
+            rotate((span, span + pitch_offset)),
+            rotate((-span, span + pitch_offset)),
+        ]
+        canvas.create_polygon(sky_poly, fill="#2878b8", outline="")
+        canvas.create_polygon(ground_poly, fill="#7a4b2a", outline="")
+        canvas.create_line(*rotate((-span, pitch_offset)), *rotate((span, pitch_offset)), fill="#f7f3dc", width=3)
+
+        for deg in range(-60, 75, 15):
+            if deg == 0:
+                continue
+            y = pitch_offset - (deg * radius / 45.0)
+            half = radius * (0.38 if deg % 30 == 0 else 0.22)
+            x1, y1 = rotate((-half, y))
+            x2, y2 = rotate((half, y))
+            canvas.create_line(x1, y1, x2, y2, fill="#f7f3dc", width=2)
+            if deg % 30 == 0:
+                tx, ty = rotate((half + 14, y + 4))
+                canvas.create_text(tx, ty, text=str(abs(deg)), fill="#f7f3dc", font=("Segoe UI", 9))
+
+        canvas.create_oval(cx - radius, cy - radius, cx + radius, cy + radius, outline="#e5e7eb", width=3)
+        canvas.create_line(cx - radius * 0.55, cy, cx - radius * 0.15, cy, fill="#ffd166", width=5)
+        canvas.create_line(cx + radius * 0.15, cy, cx + radius * 0.55, cy, fill="#ffd166", width=5)
+        canvas.create_polygon(cx - 10, cy, cx, cy + 12, cx + 10, cy, fill="#ffd166", outline="")
+        canvas.create_text(
+            cx,
+            height - 26,
+            text=f"roll {self.imu_roll_deg:+.1f}   pitch {self.imu_pitch_deg:+.1f}   yaw {self.imu_yaw_deg:+.1f}",
+            fill="#e5e7eb",
+            font=("Segoe UI", 12, "bold"),
         )
 
     def _handle_rsp_line(self, line: str) -> None:
@@ -1905,6 +2108,17 @@ class DronePanel(tk.Tk):
                 self._last_baro_plot_ns = now_ns
                 self._update_baro_plot()
         self.after(250, self._baro_tick)
+
+    def _imu_poll_tick(self) -> None:
+        now = time.monotonic()
+        if self.imu_last_sample_time > 0.0 and "age" in self.imu_vars:
+            age_ms = int((now - self.imu_last_sample_time) * 1000.0)
+            self.imu_vars["age"].set(f"{age_ms} ms")
+        if self.imu_poll_enabled.get() and self._transport_connected():
+            if now - self.imu_last_poll >= IMU_POLL_PERIOD_MS / 1000.0:
+                self.imu_last_poll = now
+                self._send_proto_silent(PROTO_REQ_IMU, "IMU?")
+        self.after(50, self._imu_poll_tick)
 
     def _refresh_baro_samples(self) -> None:
         self.baro_count_var.set(f"暂存样本: {len(self.baro_buffer)}")

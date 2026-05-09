@@ -48,6 +48,8 @@
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
 #define MAIN_UART_BOOT_DIAG_ENABLED 0U
+#define MAIN_IMU_SPI_WAVEFORM_ONLY  0U
+#define MAIN_IMU_I2C_PROBE_ONLY     0U
 
 /* USER CODE END PM */
 
@@ -103,6 +105,270 @@ static void Main_DebugUartPrint(const char *text)
 #endif
 }
 
+#if MAIN_IMU_SPI_WAVEFORM_ONLY
+static void Main_ImuWaveDelay(void)
+{
+  for (volatile uint32_t i = 0U; i < 8000U; ++i)
+  {
+    __NOP();
+  }
+}
+
+static void Main_ImuWavePinsInit(void)
+{
+  GPIO_InitTypeDef GPIO_InitStruct = {0};
+
+  __HAL_RCC_GPIOA_CLK_ENABLE();
+  __HAL_RCC_GPIOB_CLK_ENABLE();
+  __HAL_RCC_GPIOC_CLK_ENABLE();
+
+  HAL_GPIO_WritePin(IMU_CS_GPIO_Port, IMU_CS_Pin, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_9, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_1, GPIO_PIN_RESET);
+
+  GPIO_InitStruct.Pin = IMU_CS_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(IMU_CS_GPIO_Port, &GPIO_InitStruct);
+
+  GPIO_InitStruct.Pin = GPIO_PIN_9;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+  GPIO_InitStruct.Pin = GPIO_PIN_1;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+
+  GPIO_InitStruct.Pin = GPIO_PIN_2;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+
+  HAL_SYSCFG_AnalogSwitchConfig(SYSCFG_SWITCH_PC2, SYSCFG_SWITCH_PC2_CLOSE);
+}
+
+static void Main_ImuWaveByte(uint8_t value)
+{
+  for (uint8_t mask = 0x80U; mask != 0U; mask >>= 1U)
+  {
+    HAL_GPIO_WritePin(GPIOC, GPIO_PIN_1,
+                      ((value & mask) != 0U) ? GPIO_PIN_SET : GPIO_PIN_RESET);
+    Main_ImuWaveDelay();
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_9, GPIO_PIN_SET);
+    Main_ImuWaveDelay();
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_9, GPIO_PIN_RESET);
+    Main_ImuWaveDelay();
+  }
+}
+
+static void Main_ImuWaveLoop(void)
+{
+  Main_ImuWavePinsInit();
+
+  while (1)
+  {
+    HAL_GPIO_WritePin(IMU_CS_GPIO_Port, IMU_CS_Pin, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_9, GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(GPIOC, GPIO_PIN_1, GPIO_PIN_RESET);
+    HAL_Delay(5U);
+
+    HAL_GPIO_WritePin(IMU_CS_GPIO_Port, IMU_CS_Pin, GPIO_PIN_RESET);
+    Main_ImuWaveDelay();
+    Main_ImuWaveByte(0xF5U);
+    Main_ImuWaveByte(0x00U);
+    Main_ImuWaveDelay();
+    HAL_GPIO_WritePin(IMU_CS_GPIO_Port, IMU_CS_Pin, GPIO_PIN_SET);
+  }
+}
+#endif
+
+#if MAIN_IMU_I2C_PROBE_ONLY
+#define MAIN_IMU_I2C_SCL_PORT GPIOA
+#define MAIN_IMU_I2C_SCL_PIN  GPIO_PIN_9
+#define MAIN_IMU_I2C_SDA_PORT GPIOC
+#define MAIN_IMU_I2C_SDA_PIN  GPIO_PIN_1
+
+static void Main_ImuI2cDelay(void)
+{
+  for (volatile uint32_t i = 0U; i < 1200U; ++i)
+  {
+    __NOP();
+  }
+}
+
+static void Main_ImuI2cSetScl(uint8_t high)
+{
+  HAL_GPIO_WritePin(MAIN_IMU_I2C_SCL_PORT,
+                    MAIN_IMU_I2C_SCL_PIN,
+                    high != 0U ? GPIO_PIN_SET : GPIO_PIN_RESET);
+}
+
+static void Main_ImuI2cSetSda(uint8_t high)
+{
+  HAL_GPIO_WritePin(MAIN_IMU_I2C_SDA_PORT,
+                    MAIN_IMU_I2C_SDA_PIN,
+                    high != 0U ? GPIO_PIN_SET : GPIO_PIN_RESET);
+}
+
+static uint8_t Main_ImuI2cReadSda(void)
+{
+  return (HAL_GPIO_ReadPin(MAIN_IMU_I2C_SDA_PORT, MAIN_IMU_I2C_SDA_PIN) == GPIO_PIN_SET) ? 1U : 0U;
+}
+
+static void Main_ImuI2cPinsInit(void)
+{
+  GPIO_InitTypeDef GPIO_InitStruct = {0};
+
+  __HAL_RCC_GPIOA_CLK_ENABLE();
+  __HAL_RCC_GPIOB_CLK_ENABLE();
+  __HAL_RCC_GPIOC_CLK_ENABLE();
+
+  HAL_GPIO_WritePin(IMU_CS_GPIO_Port, IMU_CS_Pin, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(MAIN_IMU_I2C_SCL_PORT, MAIN_IMU_I2C_SCL_PIN, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(MAIN_IMU_I2C_SDA_PORT, MAIN_IMU_I2C_SDA_PIN, GPIO_PIN_SET);
+
+  GPIO_InitStruct.Pin = IMU_CS_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(IMU_CS_GPIO_Port, &GPIO_InitStruct);
+
+  GPIO_InitStruct.Pin = MAIN_IMU_I2C_SCL_PIN;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_OD;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(MAIN_IMU_I2C_SCL_PORT, &GPIO_InitStruct);
+
+  GPIO_InitStruct.Pin = MAIN_IMU_I2C_SDA_PIN;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_OD;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(MAIN_IMU_I2C_SDA_PORT, &GPIO_InitStruct);
+
+  Main_ImuI2cSetScl(1U);
+  Main_ImuI2cSetSda(1U);
+}
+
+static void Main_ImuI2cStart(void)
+{
+  Main_ImuI2cSetSda(1U);
+  Main_ImuI2cSetScl(1U);
+  Main_ImuI2cDelay();
+  Main_ImuI2cSetSda(0U);
+  Main_ImuI2cDelay();
+  Main_ImuI2cSetScl(0U);
+  Main_ImuI2cDelay();
+}
+
+static void Main_ImuI2cStop(void)
+{
+  Main_ImuI2cSetSda(0U);
+  Main_ImuI2cDelay();
+  Main_ImuI2cSetScl(1U);
+  Main_ImuI2cDelay();
+  Main_ImuI2cSetSda(1U);
+  Main_ImuI2cDelay();
+}
+
+static uint8_t Main_ImuI2cWriteByte(uint8_t value)
+{
+  for (uint8_t mask = 0x80U; mask != 0U; mask >>= 1U)
+  {
+    Main_ImuI2cSetSda((value & mask) != 0U ? 1U : 0U);
+    Main_ImuI2cDelay();
+    Main_ImuI2cSetScl(1U);
+    Main_ImuI2cDelay();
+    Main_ImuI2cSetScl(0U);
+    Main_ImuI2cDelay();
+  }
+
+  Main_ImuI2cSetSda(1U);
+  Main_ImuI2cDelay();
+  Main_ImuI2cSetScl(1U);
+  Main_ImuI2cDelay();
+  uint8_t ack = (Main_ImuI2cReadSda() == 0U) ? 1U : 0U;
+  Main_ImuI2cSetScl(0U);
+  Main_ImuI2cDelay();
+  return ack;
+}
+
+static uint8_t Main_ImuI2cReadByte(uint8_t ack)
+{
+  uint8_t value = 0U;
+
+  Main_ImuI2cSetSda(1U);
+  for (uint8_t i = 0U; i < 8U; ++i)
+  {
+    value <<= 1U;
+    Main_ImuI2cDelay();
+    Main_ImuI2cSetScl(1U);
+    Main_ImuI2cDelay();
+    value |= Main_ImuI2cReadSda();
+    Main_ImuI2cSetScl(0U);
+    Main_ImuI2cDelay();
+  }
+
+  Main_ImuI2cSetSda(ack != 0U ? 0U : 1U);
+  Main_ImuI2cDelay();
+  Main_ImuI2cSetScl(1U);
+  Main_ImuI2cDelay();
+  Main_ImuI2cSetScl(0U);
+  Main_ImuI2cSetSda(1U);
+  Main_ImuI2cDelay();
+
+  return value;
+}
+
+static uint8_t Main_ImuI2cReadReg(uint8_t addr7, uint8_t reg, uint8_t *value)
+{
+  uint8_t ok = 1U;
+
+  Main_ImuI2cStart();
+  ok &= Main_ImuI2cWriteByte((uint8_t)(addr7 << 1U));
+  ok &= Main_ImuI2cWriteByte(reg);
+  Main_ImuI2cStart();
+  ok &= Main_ImuI2cWriteByte((uint8_t)((addr7 << 1U) | 0x01U));
+  *value = Main_ImuI2cReadByte(0U);
+  Main_ImuI2cStop();
+
+  return ok;
+}
+
+static void Main_ImuI2cProbeLoop(void)
+{
+  uint8_t id68 = 0U;
+  uint8_t id69 = 0U;
+  uint8_t ok68;
+  uint8_t ok69;
+
+  Main_ImuI2cPinsInit();
+  HAL_Delay(350U);
+
+  while (1)
+  {
+    ok68 = Main_ImuI2cReadReg(0x68U, 0x75U, &id68);
+    HAL_Delay(2U);
+    ok69 = Main_ImuI2cReadReg(0x69U, 0x75U, &id69);
+
+    if ((ok68 != 0U && id68 == 0x47U) || (ok69 != 0U && id69 == 0x47U))
+    {
+      HAL_GPIO_TogglePin(LED1_GPIO_Port, LED1_Pin);
+      HAL_Delay(80U);
+    }
+    else
+    {
+      HAL_GPIO_TogglePin(LED2_GPIO_Port, LED2_Pin);
+      HAL_Delay(250U);
+    }
+  }
+}
+#endif
+
 /* USER CODE END 0 */
 
 /**
@@ -117,6 +383,7 @@ int main(void)
   /* USER CODE END 1 */
 
   /* MPU Configuration--------------------------------------------------------*/
+
   MPU_Config();
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -138,6 +405,14 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  /* USER CODE BEGIN 2_PRE */
+#if MAIN_IMU_SPI_WAVEFORM_ONLY
+  Main_ImuWaveLoop();
+#endif
+#if MAIN_IMU_I2C_PROBE_ONLY
+  Main_ImuI2cProbeLoop();
+#endif
+  /* USER CODE END 2_PRE */
   MX_DMA_Init();
   MX_I2C1_Init();
   MX_I2C2_Init();
@@ -267,25 +542,6 @@ void MPU_Config(void)
   MPU_InitStruct.SubRegionDisable = 0x87;
   MPU_InitStruct.TypeExtField = MPU_TEX_LEVEL0;
   MPU_InitStruct.AccessPermission = MPU_REGION_NO_ACCESS;
-  MPU_InitStruct.DisableExec = MPU_INSTRUCTION_ACCESS_DISABLE;
-  MPU_InitStruct.IsShareable = MPU_ACCESS_SHAREABLE;
-  MPU_InitStruct.IsCacheable = MPU_ACCESS_NOT_CACHEABLE;
-  MPU_InitStruct.IsBufferable = MPU_ACCESS_NOT_BUFFERABLE;
-
-  HAL_MPU_ConfigRegion(&MPU_InitStruct);
-
-  /*
-   * USART DMA buffers are placed at the start of D2 SRAM by the linker. DMA1
-   * can access this region, and marking it non-cacheable keeps H7 DMA coherent
-   * after BSP_System_Init() enables D-Cache.
-   */
-  MPU_InitStruct.Enable = MPU_REGION_ENABLE;
-  MPU_InitStruct.Number = MPU_REGION_NUMBER1;
-  MPU_InitStruct.BaseAddress = 0x30000000;
-  MPU_InitStruct.Size = MPU_REGION_SIZE_32KB;
-  MPU_InitStruct.SubRegionDisable = 0x00;
-  MPU_InitStruct.TypeExtField = MPU_TEX_LEVEL0;
-  MPU_InitStruct.AccessPermission = MPU_REGION_FULL_ACCESS;
   MPU_InitStruct.DisableExec = MPU_INSTRUCTION_ACCESS_DISABLE;
   MPU_InitStruct.IsShareable = MPU_ACCESS_SHAREABLE;
   MPU_InitStruct.IsCacheable = MPU_ACCESS_NOT_CACHEABLE;

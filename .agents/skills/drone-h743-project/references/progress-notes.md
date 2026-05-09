@@ -745,3 +745,32 @@ Implementation notes:
   - only the circular buffer reaching the end should produce a real DMA transfer-complete interrupt
 - build verification:
   - `cmake --build --preset Debug` passed
+2026-05-07 UART8 maintenance port for WiFi provisioning:
+- UART8 is enabled in CubeMX/generated code and is used as the PC/CH340 maintenance port:
+  - `PE0 = UART8_RX`
+  - `PE1 = UART8_TX`
+  - `115200 8N1`
+- USART1 remains dedicated to STM32 <-> Ai-WB2 traffic.
+- Firmware additions:
+  - `App/Src/app_maint_uart.c` and `App/Inc/app_maint_uart.h` implement a simple UART8 line receiver using `HAL_UART_Receive_IT()` one byte at a time; no UART8 DMA is used by the maintenance CLI.
+  - `BSP_UART_Transmit_UART8()` provides short blocking maintenance-port replies.
+  - `APP_Control_ProcessMaintLine()` routes maintenance commands while suppressing enqueue to the USART1/TCP output queue, so UART8 commands do not pollute Ai-WB2 AT/protocol traffic.
+  - Control responses are mirrored to UART8 for visibility; when the command source is UART8, replies stay on UART8.
+  - `APP_AiWB2_StartProvision()` can queue a dynamic Ai-WB2 AT provisioning sequence.
+- First supported maintenance provisioning command:
+  - `WIFI STA ssid password host port`
+  - example: `WIFI STA Xiaomi_11FA 2325972824 192.168.31.189 6666`
+  - current tokenizer is space-delimited; SSID/password with spaces are not supported yet.
+- Ai-WB2 provisioning sequence:
+  - guard before escape
+  - `+++`
+  - `AT`
+  - `ATE0`
+  - `AT+WMODE=1,1`
+  - `AT+WJAP="ssid","password"`
+  - `AT+WAUTOCONN=1`
+  - `AT+SOCKETDEL=1`
+  - `AT+SOCKETAUTOTT=4,host,port`
+  - `AT+RST`
+- Build verification:
+  - `cmake --build build/Debug --config Debug` passed.

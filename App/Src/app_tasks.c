@@ -3,6 +3,7 @@
 #include "app_led.h"
 #include "app_imu.h"
 #include "app_uart.h"
+#include "app_maint_uart.h"
 
 void APP_Task_LED_Init(void)
 {
@@ -42,4 +43,14 @@ void APP_Task_UART_Init(void)
 void APP_Task_UART_Step(void)
 {
     APP_UART_Task_Step();
+}
+
+void APP_Task_MaintUART_Init(void)
+{
+    APP_MaintUART_Init();
+}
+
+void APP_Task_MaintUART_Step(void)
+{
+    APP_MaintUART_Step();
 }

@@ -36,6 +36,17 @@ HAL_StatusTypeDef BSP_UART_Transmit_USART1(const uint8_t *data,
 #endif
 }
 
+HAL_StatusTypeDef BSP_UART_Transmit_UART8(const uint8_t *data,
+                                          uint16_t length,
+                                          uint32_t timeout_ms)
+{
+    if ((data == 0) || (length == 0U)) {
+        return HAL_OK;
+    }
+
+    return HAL_UART_Transmit(&huart8, (uint8_t *)data, length, timeout_ms);
+}
+
 uint32_t BSP_UART_GetUSART1TxCount(void)
 {
     return bsp_uart_usart1_tx_count;

@@ -22,10 +22,20 @@ uint8_t APP_AiWB2_IsTransparent(void);
 uint8_t APP_AiWB2_IsControlPayload(const char *line);
 uint8_t APP_AiWB2_ShouldConsumeTransparentLine(const char *line);
 void APP_AiWB2_AssumeTransparent(void);
+uint8_t APP_AiWB2_StartProvision(const char *ssid,
+                                 const char *password,
+                                 const char *host,
+                                 const char *port);
+uint8_t APP_AiWB2_SendRawCommand(const char *command);
+void APP_AiWB2_SendDiagCommands(void);
 APP_AiWB2_State APP_AiWB2_GetState(void);
 uint32_t APP_AiWB2_GetRetryCount(void);
 int32_t APP_AiWB2_GetLastSocketError(void);
 uint8_t APP_AiWB2_IsPowerRecycleActive(void);
 uint32_t APP_AiWB2_GetDeadlineRemainingMs(void);
+uint8_t APP_AiWB2_IsProvisionActive(void);
+uint32_t APP_AiWB2_GetCommandIndex(void);
+uint32_t APP_AiWB2_GetCommandCount(void);
+const char *APP_AiWB2_GetCurrentCommand(void);
 
 #endif

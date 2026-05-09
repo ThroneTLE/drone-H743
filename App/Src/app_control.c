@@ -4,6 +4,7 @@
 #include "app_baro.h"
 #include "app_flash.h"
 #include "app_imu.h"
+#include "app_maint_uart.h"
 #include "app_messages.h"
 #include "app_proto.h"
 #include "app_tasks.h"
@@ -50,6 +51,8 @@ static uint32_t control_last_baro_stream_ms;
 static uint8_t control_wifi_reset_pending;
 static uint32_t control_wifi_reset_deadline_ms;
 static uint16_t control_response_override_function;
+static uint8_t control_initialized;
+static uint8_t control_maint_output_active;
 
 static void app_control_handle_param(char **tokens, uint32_t count);
 static void app_control_report_pid_legacy(void);
@@ -67,6 +70,7 @@ static uint8_t app_control_payload_to_line(const uint8_t *payload,
                                            uint16_t buffer_size);
 static void app_control_handle_wifi(char **tokens, uint32_t count);
 static void app_control_service_wifi_reset(void);
+static void app_control_tick_common(uint8_t emit_heartbeat);
 
 static uint16_t app_control_detect_function(const char *format)
 {
@@ -215,11 +219,15 @@ static void app_control_queue_text(const char *format, ...)
         tx_message.length = (uint16_t)written;
     }
 
-    if (osMessageQueuePut(uartTxQueueHandle, &tx_message, 0U, 0U) != osOK) {
-        (void)osMessageQueueGet(uartTxQueueHandle, &dropped, 0U, 0U);
-        (void)osMessageQueuePut(uartTxQueueHandle, &tx_message, 0U, 0U);
+    if (control_maint_output_active == 0U) {
+        if (osMessageQueuePut(uartTxQueueHandle, &tx_message, 0U, 0U) != osOK) {
+            (void)osMessageQueueGet(uartTxQueueHandle, &dropped, 0U, 0U);
+            (void)osMessageQueuePut(uartTxQueueHandle, &tx_message, 0U, 0U);
+        }
+        APP_UART_NotifyTxPending();
+    } else {
+        APP_MaintUART_Write(tx_message.text, tx_message.length);
     }
-    APP_UART_NotifyTxPending();
 }
 
 static void app_control_queue_proto_text(uint16_t function, const char *format, ...)
@@ -249,11 +257,15 @@ static void app_control_queue_proto_text(uint16_t function, const char *format, 
         tx_message.length = (uint16_t)written;
     }
 
-    if (osMessageQueuePut(uartTxQueueHandle, &tx_message, 0U, 0U) != osOK) {
-        (void)osMessageQueueGet(uartTxQueueHandle, &dropped, 0U, 0U);
-        (void)osMessageQueuePut(uartTxQueueHandle, &tx_message, 0U, 0U);
+    if (control_maint_output_active == 0U) {
+        if (osMessageQueuePut(uartTxQueueHandle, &tx_message, 0U, 0U) != osOK) {
+            (void)osMessageQueueGet(uartTxQueueHandle, &dropped, 0U, 0U);
+            (void)osMessageQueuePut(uartTxQueueHandle, &tx_message, 0U, 0U);
+        }
+        APP_UART_NotifyTxPending();
+    } else {
+        APP_MaintUART_Write(tx_message.text, tx_message.length);
     }
-    APP_UART_NotifyTxPending();
 }
 
 static uint32_t app_control_tokenize(char *buffer, char **tokens, uint32_t max_tokens)
@@ -611,7 +623,7 @@ static void app_control_report_caps(void)
 static void app_control_report_wifi(void)
 {
     app_control_queue_proto_text(APP_PROTO_MSG_WIFI_RECORD,
-                                 "WIFI en=%u pin=PC6 last=%u writes=%lu state=%s transparent=%u retry=%lu socket=%ld cycling=%u wait_ms=%lu\r\n",
+                                 "WIFI en=%u pin=PC6 last=%u writes=%lu state=%s transparent=%u retry=%lu socket=%ld cycling=%u wait_ms=%lu prov=%u cmd=%lu/%lu\r\n",
                                  (unsigned int)BSP_AiWB2_IsEnabled(),
                                  (unsigned int)BSP_AiWB2_GetLastWrittenState(),
                                  (unsigned long)BSP_AiWB2_GetWriteCount(),
@@ -620,7 +632,10 @@ static void app_control_report_wifi(void)
                                  (unsigned long)APP_AiWB2_GetRetryCount(),
                                  (long)APP_AiWB2_GetLastSocketError(),
                                  (unsigned int)APP_AiWB2_IsPowerRecycleActive(),
-                                 (unsigned long)APP_AiWB2_GetDeadlineRemainingMs());
+                                 (unsigned long)APP_AiWB2_GetDeadlineRemainingMs(),
+                                 (unsigned int)APP_AiWB2_IsProvisionActive(),
+                                 (unsigned long)APP_AiWB2_GetCommandIndex(),
+                                 (unsigned long)APP_AiWB2_GetCommandCount());
 }
 
 static void app_control_report_config(void)
@@ -776,6 +791,27 @@ static void app_control_report_imu(void)
                                  (long)imu_status.gyro_y_mdps,
                                  (long)imu_status.gyro_z_mdps,
                                  (int)imu_status.temperature_cdeg);
+    app_control_queue_proto_text(APP_PROTO_MSG_IMU_STATE,
+                                 "IMU diag valid=%u m0_tok=0x%02X m0_msb=0x%02X m0_b0=0x%02X m3_tok=0x%02X m3_msb=0x%02X m3_b0=0x%02X best_mode=%u best_hdr=%u\r\n",
+                                 (unsigned int)imu_status.diag_valid,
+                                 (unsigned int)imu_status.diag_mode0_tokmas,
+                                 (unsigned int)imu_status.diag_mode0_msb,
+                                 (unsigned int)imu_status.diag_mode0_bit0,
+                                 (unsigned int)imu_status.diag_mode3_tokmas,
+                                 (unsigned int)imu_status.diag_mode3_msb,
+                                 (unsigned int)imu_status.diag_mode3_bit0,
+                                 (unsigned int)imu_status.diag_best_mode,
+                                 (unsigned int)imu_status.diag_best_header);
+    app_control_queue_proto_text(APP_PROTO_MSG_IMU_STATE,
+                                 "IMU burst m0_b0=%02X%02X%02X%02X m3_tok=%02X%02X%02X%02X\r\n",
+                                 (unsigned int)imu_status.diag_burst_m0_b0_1,
+                                 (unsigned int)imu_status.diag_burst_m0_b0_2,
+                                 (unsigned int)imu_status.diag_burst_m0_b0_3,
+                                 (unsigned int)imu_status.diag_burst_m0_b0_4,
+                                 (unsigned int)imu_status.diag_burst_m3_tok_1,
+                                 (unsigned int)imu_status.diag_burst_m3_tok_2,
+                                 (unsigned int)imu_status.diag_burst_m3_tok_3,
+                                 (unsigned int)imu_status.diag_burst_m3_tok_4);
 }
 
 static void app_control_report_modules(void)
@@ -911,6 +947,29 @@ static void app_control_req_icm42688(uint32_t id, const char *op)
                                (long)imu_status.gyro_y_mdps,
                                (long)imu_status.gyro_z_mdps,
                                (int)imu_status.temperature_cdeg);
+        app_control_queue_text("RSP id=%lu mod=ICM42688 op=%s diag valid=%u m0_tok=0x%02X m0_msb=0x%02X m0_b0=0x%02X m3_tok=0x%02X m3_msb=0x%02X m3_b0=0x%02X best_mode=%u best_hdr=%u\r\n",
+                               (unsigned long)id,
+                               op,
+                               (unsigned int)imu_status.diag_valid,
+                               (unsigned int)imu_status.diag_mode0_tokmas,
+                               (unsigned int)imu_status.diag_mode0_msb,
+                               (unsigned int)imu_status.diag_mode0_bit0,
+                               (unsigned int)imu_status.diag_mode3_tokmas,
+                               (unsigned int)imu_status.diag_mode3_msb,
+                               (unsigned int)imu_status.diag_mode3_bit0,
+                               (unsigned int)imu_status.diag_best_mode,
+                               (unsigned int)imu_status.diag_best_header);
+        app_control_queue_text("RSP id=%lu mod=ICM42688 op=%s burst m0_b0=%02X%02X%02X%02X m3_tok=%02X%02X%02X%02X\r\n",
+                               (unsigned long)id,
+                               op,
+                               (unsigned int)imu_status.diag_burst_m0_b0_1,
+                               (unsigned int)imu_status.diag_burst_m0_b0_2,
+                               (unsigned int)imu_status.diag_burst_m0_b0_3,
+                               (unsigned int)imu_status.diag_burst_m0_b0_4,
+                               (unsigned int)imu_status.diag_burst_m3_tok_1,
+                               (unsigned int)imu_status.diag_burst_m3_tok_2,
+                               (unsigned int)imu_status.diag_burst_m3_tok_3,
+                               (unsigned int)imu_status.diag_burst_m3_tok_4);
         return;
     }
 
@@ -950,7 +1009,7 @@ static void app_control_handle_req(char **tokens, uint32_t count)
             return;
         }
         if (strcmp(op, "STATUS") == 0) {
-            app_control_queue_text("RSP id=%lu mod=WIFI op=STATUS en=%u pin=PC6 last=%u writes=%lu state=%s transparent=%u retry=%lu socket=%ld cycling=%u wait_ms=%lu\r\n",
+            app_control_queue_text("RSP id=%lu mod=WIFI op=STATUS en=%u pin=PC6 last=%u writes=%lu state=%s transparent=%u retry=%lu socket=%ld cycling=%u wait_ms=%lu prov=%u cmd=%lu/%lu\r\n",
                                    (unsigned long)id,
                                    (unsigned int)BSP_AiWB2_IsEnabled(),
                                    (unsigned int)BSP_AiWB2_GetLastWrittenState(),
@@ -960,7 +1019,10 @@ static void app_control_handle_req(char **tokens, uint32_t count)
                                    (unsigned long)APP_AiWB2_GetRetryCount(),
                                    (long)APP_AiWB2_GetLastSocketError(),
                                    (unsigned int)APP_AiWB2_IsPowerRecycleActive(),
-                                   (unsigned long)APP_AiWB2_GetDeadlineRemainingMs());
+                                   (unsigned long)APP_AiWB2_GetDeadlineRemainingMs(),
+                                   (unsigned int)APP_AiWB2_IsProvisionActive(),
+                                   (unsigned long)APP_AiWB2_GetCommandIndex(),
+                                   (unsigned long)APP_AiWB2_GetCommandCount());
             return;
         }
         app_control_protocol_err(id, "WIFI", op, "BAD_OP");
@@ -1026,6 +1088,27 @@ static void app_control_report_status(void)
                                  (unsigned int)imu_status.who_am_i,
                                  (unsigned int)BSP_ICM42688_WHO_AM_I_VALUE,
                                  (unsigned long)imu_status.sample_count);
+    app_control_queue_proto_text(APP_PROTO_MSG_HW_IMU,
+                                 "HW ICM42688 diag valid=%u m0_tok=%02X m0_msb=%02X m0_b0=%02X m3_tok=%02X m3_msb=%02X m3_b0=%02X best_mode=%u best_hdr=%u\r\n",
+                                 (unsigned int)imu_status.diag_valid,
+                                 (unsigned int)imu_status.diag_mode0_tokmas,
+                                 (unsigned int)imu_status.diag_mode0_msb,
+                                 (unsigned int)imu_status.diag_mode0_bit0,
+                                 (unsigned int)imu_status.diag_mode3_tokmas,
+                                 (unsigned int)imu_status.diag_mode3_msb,
+                                 (unsigned int)imu_status.diag_mode3_bit0,
+                                 (unsigned int)imu_status.diag_best_mode,
+                                 (unsigned int)imu_status.diag_best_header);
+    app_control_queue_proto_text(APP_PROTO_MSG_HW_IMU,
+                                 "HW ICM42688 burst m0_b0=%02X%02X%02X%02X m3_tok=%02X%02X%02X%02X\r\n",
+                                 (unsigned int)imu_status.diag_burst_m0_b0_1,
+                                 (unsigned int)imu_status.diag_burst_m0_b0_2,
+                                 (unsigned int)imu_status.diag_burst_m0_b0_3,
+                                 (unsigned int)imu_status.diag_burst_m0_b0_4,
+                                 (unsigned int)imu_status.diag_burst_m3_tok_1,
+                                 (unsigned int)imu_status.diag_burst_m3_tok_2,
+                                 (unsigned int)imu_status.diag_burst_m3_tok_3,
+                                 (unsigned int)imu_status.diag_burst_m3_tok_4);
 
     app_control_queue_proto_text(APP_PROTO_MSG_STATUS_FLASH,
                                  "STATUS flash probe=%ld sr_st=%ld read=%ld id=%02X%02X%02X sr1=%02X\r\n",
@@ -1392,6 +1475,7 @@ static void app_control_handle_servo(char **tokens, uint32_t count)
 
 static void app_control_handle_wifi(char **tokens, uint32_t count)
 {
+    char raw_command[APP_CONTROL_MAX_LINE];
     uint32_t value;
     uint32_t pulse_ms = 500U;
 
@@ -1399,6 +1483,43 @@ static void app_control_handle_wifi(char **tokens, uint32_t count)
         ((count >= 2U) &&
          ((strcmp(tokens[1], "?") == 0) || (strcmp(tokens[1], "STATUS") == 0)))) {
         app_control_report_wifi();
+        return;
+    }
+
+    if (strcmp(tokens[1], "AT") == 0) {
+        uint32_t offset = 0U;
+
+        if (count < 3U) {
+            app_control_queue_text("ERR usage WIFI AT command\r\n");
+            return;
+        }
+
+        raw_command[0] = '\0';
+        for (uint32_t i = 2U; i < count; ++i) {
+            int written = snprintf(&raw_command[offset],
+                                   sizeof(raw_command) - offset,
+                                   "%s%s",
+                                   (i > 2U) ? " " : "",
+                                   tokens[i]);
+            if ((written < 0) || ((uint32_t)written >= (sizeof(raw_command) - offset))) {
+                app_control_queue_text("ERR wifi at too long\r\n");
+                return;
+            }
+            offset += (uint32_t)written;
+        }
+
+        if (APP_AiWB2_SendRawCommand(raw_command) == 0U) {
+            app_control_queue_text("ERR wifi at bad command\r\n");
+            return;
+        }
+
+        app_control_queue_text("OK wifi at %s\r\n", raw_command);
+        return;
+    }
+
+    if (strcmp(tokens[1], "DIAG") == 0) {
+        APP_AiWB2_SendDiagCommands();
+        app_control_queue_text("OK wifi diag queued\r\n");
         return;
     }
 
@@ -1429,6 +1550,24 @@ static void app_control_handle_wifi(char **tokens, uint32_t count)
         control_wifi_reset_deadline_ms = HAL_GetTick() + pulse_ms;
         app_control_queue_text("OK wifi reset queued ms=%lu pin=PC6\r\n",
                                (unsigned long)pulse_ms);
+        return;
+    }
+
+    if ((strcmp(tokens[1], "STA") == 0) || (strcmp(tokens[1], "PROVISION") == 0)) {
+        if (count < 6U) {
+            app_control_queue_text("ERR usage WIFI STA ssid password host port\r\n");
+            return;
+        }
+
+        if (APP_AiWB2_StartProvision(tokens[2], tokens[3], tokens[4], tokens[5]) == 0U) {
+            app_control_queue_text("ERR wifi sta bad args\r\n");
+            return;
+        }
+
+        app_control_queue_text("OK wifi sta queued ssid=%s host=%s port=%s\r\n",
+                               tokens[2],
+                               tokens[4],
+                               tokens[5]);
         return;
     }
 
@@ -1648,6 +1787,10 @@ void APP_Control_Init(void)
 {
     BSP_GD25Q32_Status load_status;
 
+    if (control_initialized != 0U) {
+        return;
+    }
+
     app_control_defaults(&control_config);
     control_wifi_reset_pending = 0U;
     control_wifi_reset_deadline_ms = 0U;
@@ -1663,9 +1806,24 @@ void APP_Control_Init(void)
                            (unsigned int)control_config.loaded_from_flash,
                            (unsigned int)control_config.flash_valid);
 #endif
+    control_initialized = 1U;
 }
 
 void APP_Control_Tick(void)
+{
+    app_control_tick_common(1U);
+}
+
+void APP_Control_MaintTick(void)
+{
+    uint8_t saved_output = control_maint_output_active;
+
+    control_maint_output_active = 1U;
+    app_control_tick_common(0U);
+    control_maint_output_active = saved_output;
+}
+
+static void app_control_tick_common(uint8_t emit_heartbeat)
 {
     uint32_t uart_rx_bytes = 0U;
     uint32_t uart_rx_lines = 0U;
@@ -1677,6 +1835,9 @@ void APP_Control_Tick(void)
 
     app_control_service_wifi_reset();
     app_control_service_streams();
+    if (emit_heartbeat == 0U) {
+        return;
+    }
 #if (APP_CONTROL_HEARTBEAT_ENABLED != 0U)
     {
         uint32_t now_ms = HAL_GetTick();
@@ -1811,6 +1972,15 @@ void APP_Control_ProcessLine(const char *line)
     }
 
     app_control_dispatch_tokens(tokens, count, 1U);
+}
+
+void APP_Control_ProcessMaintLine(const char *line)
+{
+    uint8_t saved_output = control_maint_output_active;
+
+    control_maint_output_active = 1U;
+    APP_Control_ProcessLine(line);
+    control_maint_output_active = saved_output;
 }
 
 static void app_control_process_proto_request(uint16_t function,
