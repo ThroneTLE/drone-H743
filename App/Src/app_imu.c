@@ -6,6 +6,12 @@
 #include "cmsis_os2.h"
 
 #include <limits.h>
+#include <math.h>
+
+#define APP_IMU_ATTITUDE_ALPHA      0.96f
+#define APP_IMU_DEFAULT_DT_SEC      0.01f
+#define APP_IMU_MAX_DT_SEC         0.05f
+#define APP_IMU_RAD_TO_DEG         57.2957795f
 
 typedef struct {
     uint32_t              sample_count;
@@ -13,6 +19,10 @@ typedef struct {
     BSP_ICM42688_Status   last_error;
     BSP_ICM42688_InitStage init_stage;
     BSP_ICM42688_ScaledData last_sample;
+    float                  roll_deg;
+    float                  pitch_deg;
+    float                  yaw_deg;
+    uint32_t               last_sample_tick_ms;
     uint8_t               who_am_i;
     uint8_t               initialized;
 } APP_IMU_State;
@@ -79,6 +89,9 @@ static void APP_IMU_PublishSample(void)
     sample.gyro_x_mdps = APP_IMU_ScaleToInt32(imu_state.last_sample.gyro_x_dps, 1000.0f);
     sample.gyro_y_mdps = APP_IMU_ScaleToInt32(imu_state.last_sample.gyro_y_dps, 1000.0f);
     sample.gyro_z_mdps = APP_IMU_ScaleToInt32(imu_state.last_sample.gyro_z_dps, 1000.0f);
+    sample.roll_cdeg = APP_IMU_ScaleToInt16(imu_state.roll_deg, 100.0f);
+    sample.pitch_cdeg = APP_IMU_ScaleToInt16(imu_state.pitch_deg, 100.0f);
+    sample.yaw_cdeg = APP_IMU_ScaleToInt16(imu_state.yaw_deg, 100.0f);
 
     if (osMessageQueuePut(imuSampleQueueHandle, &sample, 0U, 0U) != osOK) {
         APP_IMU_SampleMessage dropped;
@@ -97,6 +110,55 @@ void APP_IMU_Task_Init(void)
     imu_state.init_stage = BSP_ICM42688_INIT_STAGE_NONE;
     imu_state.who_am_i = 0U;
     imu_state.initialized = 0U;
+    imu_state.roll_deg = 0.0f;
+    imu_state.pitch_deg = 0.0f;
+    imu_state.yaw_deg = 0.0f;
+    imu_state.last_sample_tick_ms = 0U;
+}
+
+static void APP_IMU_UpdateAttitude(void)
+{
+    uint32_t now_ms = osKernelGetTickCount();
+    float dt_sec = APP_IMU_DEFAULT_DT_SEC;
+    float ax = imu_state.last_sample.accel_x_g;
+    float ay = imu_state.last_sample.accel_y_g;
+    float az = imu_state.last_sample.accel_z_g;
+    float roll_acc;
+    float pitch_acc;
+
+    if (imu_state.last_sample_tick_ms != 0U) {
+        uint32_t dt_ms = now_ms - imu_state.last_sample_tick_ms;
+
+        dt_sec = (float)dt_ms * 0.001f;
+        if (dt_sec <= 0.0f) {
+            dt_sec = APP_IMU_DEFAULT_DT_SEC;
+        } else if (dt_sec > APP_IMU_MAX_DT_SEC) {
+            dt_sec = APP_IMU_MAX_DT_SEC;
+        }
+    }
+    imu_state.last_sample_tick_ms = now_ms;
+
+    roll_acc = atan2f(ay, az) * APP_IMU_RAD_TO_DEG;
+    pitch_acc = atan2f(-ax, sqrtf((ay * ay) + (az * az))) * APP_IMU_RAD_TO_DEG;
+
+    if (imu_state.sample_count <= 1U) {
+        imu_state.roll_deg = roll_acc;
+        imu_state.pitch_deg = pitch_acc;
+    } else {
+        imu_state.roll_deg = (APP_IMU_ATTITUDE_ALPHA *
+                              (imu_state.roll_deg + (imu_state.last_sample.gyro_x_dps * dt_sec))) +
+                             ((1.0f - APP_IMU_ATTITUDE_ALPHA) * roll_acc);
+        imu_state.pitch_deg = (APP_IMU_ATTITUDE_ALPHA *
+                               (imu_state.pitch_deg + (imu_state.last_sample.gyro_y_dps * dt_sec))) +
+                              ((1.0f - APP_IMU_ATTITUDE_ALPHA) * pitch_acc);
+        imu_state.yaw_deg += imu_state.last_sample.gyro_z_dps * dt_sec;
+    }
+
+    if (imu_state.yaw_deg > 180.0f) {
+        imu_state.yaw_deg -= 360.0f;
+    } else if (imu_state.yaw_deg < -180.0f) {
+        imu_state.yaw_deg += 360.0f;
+    }
 }
 
 void APP_IMU_Task_Step(void)
@@ -122,6 +184,7 @@ void APP_IMU_Task_Step(void)
         imu_state.init_stage = BSP_ICM42688_INIT_STAGE_READY;
         imu_state.last_error = BSP_ICM42688_OK;
         imu_state.initialized = 1U;
+        imu_state.last_sample_tick_ms = 0U;
         osDelay(10);
         return;
     }
@@ -140,6 +203,7 @@ void APP_IMU_Task_Step(void)
         imu_state.last_status = BSP_IMU_ReadScaled(&imu_state.last_sample);
         if (imu_state.last_status == BSP_ICM42688_OK) {
             imu_state.sample_count++;
+            APP_IMU_UpdateAttitude();
             APP_IMU_PublishSample();
         } else {
             BSP_IMU_Invalidate();
@@ -177,6 +241,9 @@ void APP_IMU_GetStatus(APP_IMU_Status *status)
     status->gyro_x_mdps = APP_IMU_ScaleToInt32(imu_state.last_sample.gyro_x_dps, 1000.0f);
     status->gyro_y_mdps = APP_IMU_ScaleToInt32(imu_state.last_sample.gyro_y_dps, 1000.0f);
     status->gyro_z_mdps = APP_IMU_ScaleToInt32(imu_state.last_sample.gyro_z_dps, 1000.0f);
+    status->roll_cdeg = APP_IMU_ScaleToInt16(imu_state.roll_deg, 100.0f);
+    status->pitch_cdeg = APP_IMU_ScaleToInt16(imu_state.pitch_deg, 100.0f);
+    status->yaw_cdeg = APP_IMU_ScaleToInt16(imu_state.yaw_deg, 100.0f);
     status->diag_mode0_tokmas = diag.mode0_tokmas;
     status->diag_mode0_msb = diag.mode0_msb;
     status->diag_mode0_bit0 = diag.mode0_bit0;

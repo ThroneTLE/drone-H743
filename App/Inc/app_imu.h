@@ -17,6 +17,9 @@ typedef struct {
     int32_t  gyro_x_mdps;
     int32_t  gyro_y_mdps;
     int32_t  gyro_z_mdps;
+    int16_t  roll_cdeg;
+    int16_t  pitch_cdeg;
+    int16_t  yaw_cdeg;
     uint8_t  diag_mode0_tokmas;
     uint8_t  diag_mode0_msb;
     uint8_t  diag_mode0_bit0;

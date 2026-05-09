@@ -21,7 +21,7 @@ static void APP_Message_Format(const APP_IMU_SampleMessage *sample,
     tx_message->function = APP_PROTO_MSG_TEXT_LINE;
     written = snprintf(tx_message->text,
                        sizeof(tx_message->text),
-                       "n=%lu,id=0x%02X,ax=%d,ay=%d,az=%d,gx=%ld,gy=%ld,gz=%ld,t=%d\r\n",
+                       "n=%lu,id=0x%02X,ax=%d,ay=%d,az=%d,gx=%ld,gy=%ld,gz=%ld,t=%d,roll=%d,pitch=%d,yaw=%d\r\n",
                        (unsigned long)sample->sample_count,
                        (unsigned int)sample->who_am_i,
                        (int)sample->accel_x_mg,
@@ -30,7 +30,10 @@ static void APP_Message_Format(const APP_IMU_SampleMessage *sample,
                        (long)sample->gyro_x_mdps,
                        (long)sample->gyro_y_mdps,
                        (long)sample->gyro_z_mdps,
-                       (int)sample->temperature_cdeg);
+                       (int)sample->temperature_cdeg,
+                       (int)sample->roll_cdeg,
+                       (int)sample->pitch_cdeg,
+                       (int)sample->yaw_cdeg);
 
     if (written < 0) {
         tx_message->length = 0U;

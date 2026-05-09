@@ -783,14 +783,17 @@ static void app_control_report_imu(void)
                                  (unsigned int)BSP_ICM42688_WHO_AM_I_VALUE,
                                  (unsigned long)imu_status.sample_count);
     app_control_queue_proto_text(APP_PROTO_MSG_IMU_SCALED,
-                                 "IMU scaled ax_mg=%d ay_mg=%d az_mg=%d gx_mdps=%ld gy_mdps=%ld gz_mdps=%ld temp_cdeg=%d\r\n",
+                                 "IMU scaled ax_mg=%d ay_mg=%d az_mg=%d gx_mdps=%ld gy_mdps=%ld gz_mdps=%ld temp_cdeg=%d roll=%d pitch=%d yaw=%d\r\n",
                                  (int)imu_status.accel_x_mg,
                                  (int)imu_status.accel_y_mg,
                                  (int)imu_status.accel_z_mg,
                                  (long)imu_status.gyro_x_mdps,
                                  (long)imu_status.gyro_y_mdps,
                                  (long)imu_status.gyro_z_mdps,
-                                 (int)imu_status.temperature_cdeg);
+                                 (int)imu_status.temperature_cdeg,
+                                 (int)imu_status.roll_cdeg,
+                                 (int)imu_status.pitch_cdeg,
+                                 (int)imu_status.yaw_cdeg);
     app_control_queue_proto_text(APP_PROTO_MSG_IMU_STATE,
                                  "IMU diag valid=%u m0_tok=0x%02X m0_msb=0x%02X m0_b0=0x%02X m3_tok=0x%02X m3_msb=0x%02X m3_b0=0x%02X best_mode=%u best_hdr=%u\r\n",
                                  (unsigned int)imu_status.diag_valid,

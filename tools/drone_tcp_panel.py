@@ -551,7 +551,7 @@ class DronePanel(tk.Tk):
         self.baro_buffer: list[dict[str, float | str]] = []
         self._baro_dirty = False
         self._last_baro_plot_ns = 0
-        self.imu_poll_enabled = tk.BooleanVar(value=True)
+        self.imu_poll_enabled = tk.BooleanVar(value=False)
         self.imu_last_poll = 0.0
         self.imu_last_sample_time = 0.0
         self.imu_last_count = -1
@@ -919,7 +919,7 @@ class DronePanel(tk.Tk):
         top = ttk.Frame(parent)
         top.pack(fill=tk.X)
         ttk.Button(top, text="请求 IMU", command=lambda: self._send_proto(PROTO_REQ_IMU, "IMU?")).pack(side=tk.LEFT)
-        ttk.Checkbutton(top, text=f"自动轮询 {IMU_POLL_PERIOD_MS} ms", variable=self.imu_poll_enabled).pack(side=tk.LEFT, padx=(10, 0))
+        ttk.Checkbutton(top, text=f"备用轮询 {IMU_POLL_PERIOD_MS} ms", variable=self.imu_poll_enabled).pack(side=tk.LEFT, padx=(10, 0))
         ttk.Button(top, text="姿态归零", command=self._reset_imu_attitude).pack(side=tk.LEFT, padx=8)
 
         body = ttk.PanedWindow(parent, orient=tk.HORIZONTAL)
@@ -1688,22 +1688,30 @@ class DronePanel(tk.Tk):
         if gz is None:
             gz = 0.0
 
-        roll_acc = math.degrees(math.atan2(ay, az))
-        pitch_acc = math.degrees(math.atan2(-ax, math.sqrt((ay * ay) + (az * az))))
-        dt = 0.0
-        if self.imu_last_sample_time > 0.0:
-            dt = max(0.0, min(now - self.imu_last_sample_time, 0.25))
-
-        if dt <= 0.0:
-            self.imu_roll_deg = roll_acc
-            self.imu_pitch_deg = pitch_acc
+        roll_cdeg = first_float(values, "roll", "roll_cdeg")
+        pitch_cdeg = first_float(values, "pitch", "pitch_cdeg")
+        yaw_cdeg = first_float(values, "yaw", "yaw_cdeg")
+        if roll_cdeg is not None and pitch_cdeg is not None and yaw_cdeg is not None:
+            self.imu_roll_deg = roll_cdeg / 100.0
+            self.imu_pitch_deg = pitch_cdeg / 100.0
+            self.imu_yaw_deg = yaw_cdeg / 100.0
         else:
-            alpha = 0.96
-            self.imu_roll_deg = alpha * (self.imu_roll_deg + (gx / 1000.0) * dt) + (1.0 - alpha) * roll_acc
-            self.imu_pitch_deg = alpha * (self.imu_pitch_deg + (gy / 1000.0) * dt) + (1.0 - alpha) * pitch_acc
-            self.imu_yaw_deg += (gz / 1000.0) * dt
-            if self.imu_yaw_deg > 180.0 or self.imu_yaw_deg < -180.0:
-                self.imu_yaw_deg = ((self.imu_yaw_deg + 180.0) % 360.0) - 180.0
+            roll_acc = math.degrees(math.atan2(ay, az))
+            pitch_acc = math.degrees(math.atan2(-ax, math.sqrt((ay * ay) + (az * az))))
+            dt = 0.0
+            if self.imu_last_sample_time > 0.0:
+                dt = max(0.0, min(now - self.imu_last_sample_time, 0.25))
+
+            if dt <= 0.0:
+                self.imu_roll_deg = roll_acc
+                self.imu_pitch_deg = pitch_acc
+            else:
+                alpha = 0.96
+                self.imu_roll_deg = alpha * (self.imu_roll_deg + (gx / 1000.0) * dt) + (1.0 - alpha) * roll_acc
+                self.imu_pitch_deg = alpha * (self.imu_pitch_deg + (gy / 1000.0) * dt) + (1.0 - alpha) * pitch_acc
+                self.imu_yaw_deg += (gz / 1000.0) * dt
+                if self.imu_yaw_deg > 180.0 or self.imu_yaw_deg < -180.0:
+                    self.imu_yaw_deg = ((self.imu_yaw_deg + 180.0) % 360.0) - 180.0
 
         self.imu_last_sample_time = now
         self.imu_last_count = safe_int(first_value(values, "n", "count"), self.imu_last_count)
