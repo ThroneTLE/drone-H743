@@ -9,6 +9,7 @@
 #define BSP_GPS_UBX_MAX_PAYLOAD       100U
 #define BSP_GPS_NMEA_MAX_LINE         96U
 #define BSP_GPS_UART_TIMEOUT_MS       100U
+#define BSP_GPS_UART_BAUD_RATE        38400U
 
 #define BSP_GPS_UBX_CLASS_CFG         0x06U
 #define BSP_GPS_UBX_ID_CFG_RATE       0x08U
@@ -675,6 +676,15 @@ BSP_GPS_StatusCode BSP_GPS_Init(void)
 {
     memset(&gps_ctx, 0, sizeof(gps_ctx));
     gps_parser_reset();
+    gps_ctx.status.baud_rate = BSP_GPS_UART_BAUD_RATE;
+    (void)HAL_UART_AbortReceive(&huart2);
+    (void)HAL_UART_DeInit(&huart2);
+    huart2.Init.BaudRate = BSP_GPS_UART_BAUD_RATE;
+    if (HAL_UART_Init(&huart2) != HAL_OK) {
+        gps_ctx.status.uart_errors++;
+        gps_ctx.status.last_uart_error = huart2.ErrorCode;
+        return BSP_GPS_ERROR;
+    }
     gps_start_rx_it();
 
     return (gps_ctx.status.rx_active != 0U) ? BSP_GPS_OK : BSP_GPS_ERROR;
@@ -738,6 +748,7 @@ void BSP_GPS_OnUartError(UART_HandleTypeDef *huart)
     huart2.ErrorCode = HAL_UART_ERROR_NONE;
     gps_ctx.status.rx_active = 0U;
     gps_ctx.status.uart_errors++;
+    gps_ctx.status.last_uart_error = huart2.ErrorCode;
     (void)HAL_UART_AbortReceive_IT(&huart2);
     gps_start_rx_it();
 }

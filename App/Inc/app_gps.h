@@ -7,6 +7,8 @@ typedef struct {
     uint8_t initialized;
     int32_t init_status;
     uint32_t bytes;
+    uint32_t baud_rate;
+    uint32_t last_uart_error;
     uint32_t packets;
     uint32_t nav_pvt_packets;
     uint32_t nmea_sentences;

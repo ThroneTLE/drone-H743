@@ -153,9 +153,10 @@ static void maint_report_gps_usart2_status(void)
         (void)snprintf(age_text, sizeof(age_text), "%lu", (unsigned long)age_ms);
     }
 
-    APP_MaintUART_WriteFormat("GPS_USART2 ok=%u init=%ld bytes=%lu fix=%u valid=%u sv=%u age_ms=%s lon=%ld lat=%ld hmsl_mm=%ld\r\n",
+    APP_MaintUART_WriteFormat("GPS_USART2 ok=%u init=%ld baud=%lu bytes=%lu fix=%u valid=%u sv=%u age_ms=%s lon=%ld lat=%ld hmsl_mm=%ld\r\n",
                               (unsigned int)gps_status.initialized,
                               (long)gps_status.init_status,
+                              (unsigned long)gps_status.baud_rate,
                               (unsigned long)gps_status.bytes,
                               (unsigned int)gps_status.fix_type,
                               (unsigned int)gps_status.valid_fix,
@@ -164,7 +165,7 @@ static void maint_report_gps_usart2_status(void)
                               (long)gps_status.lon_deg_e7,
                               (long)gps_status.lat_deg_e7,
                               (long)gps_status.hmsl_mm);
-    APP_MaintUART_WriteFormat("GPS_USART2 diag pkts=%lu nav=%lu nmea=%lu gga=%lu cksum=%lu nmea_ck=%lu ovf=%lu nmea_ovf=%lu rst=%lu uerr=%lu cfg=%lu\r\n",
+    APP_MaintUART_WriteFormat("GPS_USART2 diag pkts=%lu nav=%lu nmea=%lu gga=%lu cksum=%lu nmea_ck=%lu ovf=%lu nmea_ovf=%lu rst=%lu uerr=%lu last_err=0x%lX cfg=%lu\r\n",
                               (unsigned long)gps_status.packets,
                               (unsigned long)gps_status.nav_pvt_packets,
                               (unsigned long)gps_status.nmea_sentences,
@@ -175,6 +176,7 @@ static void maint_report_gps_usart2_status(void)
                               (unsigned long)gps_status.nmea_overflows,
                               (unsigned long)gps_status.rx_restarts,
                               (unsigned long)gps_status.uart_errors,
+                              (unsigned long)gps_status.last_uart_error,
                               (unsigned long)gps_status.config_writes);
     APP_MaintUART_WriteFormat("MAG_I2C1 ok=%u init=%ld st=%ld type=%s addr=0x%02X who=0x%02X n=%lu raw=%d,%d,%d mgauss=%ld,%ld,%ld\r\n",
                               (unsigned int)mag_status.initialized,

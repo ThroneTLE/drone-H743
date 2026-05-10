@@ -869,7 +869,8 @@ static void app_control_report_gps(void)
                            (unsigned long)gps_status.nmea_sentences,
                            (unsigned long)gps_status.nmea_gga_sentences,
                            app_control_age_text(age_ms, age_text, (uint16_t)sizeof(age_text)));
-    app_control_queue_text("GPS diag bytes=%lu cksum=%lu nmea_ck=%lu ovf=%lu nmea_ovf=%lu rst=%lu uerr=%lu cfg=%lu\r\n",
+    app_control_queue_text("GPS diag baud=%lu bytes=%lu cksum=%lu nmea_ck=%lu ovf=%lu nmea_ovf=%lu rst=%lu uerr=%lu last_err=0x%lX cfg=%lu\r\n",
+                           (unsigned long)gps_status.baud_rate,
                            (unsigned long)gps_status.bytes,
                            (unsigned long)gps_status.checksum_errors,
                            (unsigned long)gps_status.nmea_checksum_errors,
@@ -877,6 +878,7 @@ static void app_control_report_gps(void)
                            (unsigned long)gps_status.nmea_overflows,
                            (unsigned long)gps_status.rx_restarts,
                            (unsigned long)gps_status.uart_errors,
+                           (unsigned long)gps_status.last_uart_error,
                            (unsigned long)gps_status.config_writes);
     app_control_queue_text("GPS pos lon=%ld lat=%ld hmsl_mm=%ld hacc_mm=%lu vacc_mm=%lu vn=%ld ve=%ld vd=%ld head_e5=%ld utc=%04u-%02u-%02uT%02u:%02u:%02u\r\n",
                            (long)gps_status.lon_deg_e7,
@@ -1127,9 +1129,10 @@ static void app_control_req_m9n(uint32_t id, const char *op)
                                (unsigned long)gps_status.nav_pvt_packets,
                                (unsigned long)gps_status.nmea_sentences,
                                (unsigned long)gps_status.nmea_gga_sentences);
-        app_control_queue_text("RSP id=%lu mod=M9N op=%s bytes=%lu cksum=%lu nmea_ck=%lu ovf=%lu nmea_ovf=%lu rst=%lu uerr=%lu cfg=%lu\r\n",
+        app_control_queue_text("RSP id=%lu mod=M9N op=%s baud=%lu bytes=%lu cksum=%lu nmea_ck=%lu ovf=%lu nmea_ovf=%lu rst=%lu uerr=%lu last_err=0x%lX cfg=%lu\r\n",
                                (unsigned long)id,
                                op,
+                               (unsigned long)gps_status.baud_rate,
                                (unsigned long)gps_status.bytes,
                                (unsigned long)gps_status.checksum_errors,
                                (unsigned long)gps_status.nmea_checksum_errors,
@@ -1137,6 +1140,7 @@ static void app_control_req_m9n(uint32_t id, const char *op)
                                (unsigned long)gps_status.nmea_overflows,
                                (unsigned long)gps_status.rx_restarts,
                                (unsigned long)gps_status.uart_errors,
+                               (unsigned long)gps_status.last_uart_error,
                                (unsigned long)gps_status.config_writes);
         app_control_queue_text("RSP id=%lu mod=M9N op=%s lon=%ld lat=%ld hmsl_mm=%ld hacc_mm=%lu vacc_mm=%lu vn=%ld ve=%ld vd=%ld head_e5=%ld utc=%04u-%02u-%02uT%02u:%02u:%02u\r\n",
                                (unsigned long)id,

@@ -48,6 +48,8 @@ void APP_GPS_GetStatus(APP_GPS_Status *status)
     status->initialized = app_gps_ctx.initialized;
     status->init_status = (int32_t)app_gps_ctx.init_status;
     status->bytes = bsp->bytes;
+    status->baud_rate = bsp->baud_rate;
+    status->last_uart_error = bsp->last_uart_error;
     status->packets = bsp->packets;
     status->nav_pvt_packets = bsp->nav_pvt_packets;
     status->nmea_sentences = bsp->nmea_sentences;
