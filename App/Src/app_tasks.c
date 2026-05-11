@@ -1,4 +1,5 @@
 #include "app_tasks.h"
+#include "app_background.h"
 #include "app_message.h"
 #include "app_led.h"
 #include "app_imu.h"
@@ -75,4 +76,14 @@ void APP_Task_MaintUART_Init(void)
 void APP_Task_MaintUART_Step(void)
 {
     APP_MaintUART_Step();
+}
+
+void APP_Task_Background_Init(void)
+{
+    APP_Background_Init();
+}
+
+void APP_Task_Background_Step(void)
+{
+    APP_Background_Step();
 }

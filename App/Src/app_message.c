@@ -9,6 +9,10 @@
 
 #include <stdio.h>
 
+#define APP_MESSAGE_STARTUP_REPORT_ENABLED 0U
+#define APP_MESSAGE_IMU_STREAM_ENABLED     0U
+
+#if (APP_MESSAGE_IMU_STREAM_ENABLED != 0U)
 static void APP_Message_Format(const APP_IMU_SampleMessage *sample,
                                APP_UART_TxMessage *tx_message)
 {
@@ -49,17 +53,22 @@ static void APP_Message_Format(const APP_IMU_SampleMessage *sample,
 
     tx_message->length = (uint16_t)written;
 }
+#endif
 
 void APP_Message_Task_Init(void)
 {
+#if (APP_MESSAGE_STARTUP_REPORT_ENABLED != 0U)
     APP_Flash_ReportStartup();
     APP_Baro_ReportStartup();
+#endif
 }
 
 void APP_Message_Task_Step(void)
 {
     APP_IMU_SampleMessage sample;
+#if (APP_MESSAGE_IMU_STREAM_ENABLED != 0U)
     APP_UART_TxMessage    tx_message;
+#endif
 
     if ((imuSampleQueueHandle == 0) || (uartTxQueueHandle == 0)) {
         osDelay(10U);
@@ -70,6 +79,9 @@ void APP_Message_Task_Step(void)
         return;
     }
 
+#if (APP_MESSAGE_IMU_STREAM_ENABLED == 0U)
+    return;
+#else
     APP_Message_Format(&sample, &tx_message);
     if (tx_message.length == 0U) {
         return;
@@ -82,4 +94,5 @@ void APP_Message_Task_Step(void)
         (void)osMessageQueuePut(uartTxQueueHandle, &tx_message, 0U, 0U);
     }
     APP_UART_NotifyTxPending();
+#endif
 }

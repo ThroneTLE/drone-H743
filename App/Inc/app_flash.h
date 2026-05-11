@@ -15,6 +15,7 @@ typedef struct {
 } APP_Flash_Status;
 
 void APP_Flash_ReportStartup(void);
+void APP_Flash_RefreshStatus(void);
 void APP_Flash_GetStatus(APP_Flash_Status *status);
 
 #endif

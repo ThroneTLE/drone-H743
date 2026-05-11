@@ -514,6 +514,8 @@ uint8_t APP_AiWB2_IsControlPayload(const char *line)
         (strcmp(line, "STATUS?") == 0) ||
         (strcmp(line, "CONFIG?") == 0) ||
         (strcmp(line, "FLASH?") == 0) ||
+        (strcmp(line, "RTOS?") == 0) ||
+        (aiwb2_starts_with(line, "FLASH ") != 0U) ||
         (strcmp(line, "BARO?") == 0) ||
         (strcmp(line, "IMU?") == 0) ||
         (strcmp(line, "PARAM?") == 0) ||

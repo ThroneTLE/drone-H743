@@ -44,29 +44,42 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
 
 # Add sources to executable
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
+    # Driver layer
+    Driver/Src/drv_imu.c
+    Driver/Src/drv_baro.c
+    Driver/Src/drv_gd25q32.c
+    Driver/Src/drv_mag.c
+    Driver/Src/drv_gps.c
+    Driver/Src/drv_servo.c
+    # Services layer
+    Services/Src/svc_param.c
+    # BSP layer
     BSP/Src/bsp.c
+    BSP/Src/bsp_board.c
+    BSP/Src/bsp_cache.c
     BSP/Src/bsp_gpio.c
     BSP/Src/bsp_led.c
     BSP/Src/bsp_system.c
     BSP/Src/bsp_uart.c
     BSP/Src/bsp_i2c.c
     BSP/Src/bsp_spi.c
-    BSP/Src/bsp_gd25q32.c
-    BSP/Src/bsp_flash.c
-    BSP/Src/bsp_spl06.c
-    BSP/Src/bsp_baro.c
-    BSP/Src/bsp_gps.c
-    BSP/Src/bsp_icm42688.c
     BSP/Src/bsp_imu.c
+    BSP/Src/bsp_baro.c
+    BSP/Src/bsp_flash_bus.c
+    BSP/Src/bsp_gps.c
     BSP/Src/bsp_mag.c
     BSP/Src/bsp_pwm.c
     BSP/Src/bsp_bus_servo.c
     BSP/Src/bsp_aiwb2_power.c
+    # App layer
     App/Src/app.c
     App/Src/app_aiwb2.c
+    App/Src/app_background.c
     App/Src/app_baro.c
     App/Src/app_control.c
+    App/Src/app_diag.c
     App/Src/app_flash.c
+    App/Src/app_flash_service.c
     App/Src/app_gps.c
     App/Src/app_imu.c
     App/Src/app_led.c
@@ -80,6 +93,8 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
 
 # Add include paths
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
+    Driver/Inc
+    Services/Inc
     BSP/Inc
     App/Inc
 )

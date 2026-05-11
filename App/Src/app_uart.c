@@ -8,6 +8,7 @@
 #include "bsp_led.h"
 #include "bsp_gps.h"
 #include "bsp_uart.h"
+#include "bsp_cache.h"
 
 #include "usart.h"
 
@@ -68,35 +69,15 @@ static void app_uart_ensure_control_ready(void);
 static uint8_t app_uart_rx_dma_needs_restart(void);
 static void app_uart_sync_tx_state(void);
 
-static uint32_t app_uart_cache_line_aligned_addr(const void *address)
-{
-    return ((uint32_t)(uintptr_t)address) & ~31UL;
-}
-
-static int32_t app_uart_cache_line_aligned_size(const void *address, uint32_t size)
-{
-    uint32_t start = app_uart_cache_line_aligned_addr(address);
-    uint32_t end = ((uint32_t)(uintptr_t)address + size + 31UL) & ~31UL;
-
-    return (int32_t)(end - start);
-}
-
 static void app_uart_invalidate_rx_dma_buffer(void)
 {
-    SCB_InvalidateDCache_by_Addr((uint32_t *)app_uart_cache_line_aligned_addr(app_uart_dma_rx_buffer),
-                                 app_uart_cache_line_aligned_size(app_uart_dma_rx_buffer,
-                                                                  APP_UART_DMA_RX_SIZE));
+    BSP_Cache_InvalidateDCache(app_uart_dma_rx_buffer, APP_UART_DMA_RX_SIZE);
 }
 
 static void app_uart_clean_tx_dma_buffer(uint32_t length)
 {
-    if (length == 0U) {
-        return;
-    }
-
-    SCB_CleanDCache_by_Addr((uint32_t *)app_uart_cache_line_aligned_addr(app_uart_tx_frame_buffer),
-                            app_uart_cache_line_aligned_size(app_uart_tx_frame_buffer,
-                                                             length));
+    if (length == 0U) { return; }
+    BSP_Cache_CleanDCache(app_uart_tx_frame_buffer, length);
 }
 
 static void app_uart_signal(uint32_t flags)

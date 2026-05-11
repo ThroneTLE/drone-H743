@@ -3,6 +3,7 @@
 #include "app_aiwb2.h"
 #include "app_baro.h"
 #include "app_flash.h"
+#include "app_diag.h"
 #include "app_gps.h"
 #include "app_imu.h"
 #include "app_mag.h"
@@ -14,9 +15,13 @@
 #include "bsp_bus_servo.h"
 #include "bsp_aiwb2_power.h"
 #include "bsp_baro.h"
-#include "bsp_flash.h"
-#include "bsp_icm42688.h"
+#include "app_flash_service.h"
+#include "bsp_imu.h"
 #include "bsp_uart.h"
+
+#include "FreeRTOS.h"
+#include "main.h"
+#include "task.h"
 
 #include <stddef.h>
 #include <stdarg.h>
@@ -26,13 +31,20 @@
 
 #define APP_CONTROL_CFG_MAGIC       0x44524346UL
 #define APP_CONTROL_CFG_VERSION     2U
-#define APP_CONTROL_CFG_ADDRESS     (BSP_GD25Q32_FLASH_SIZE_BYTES - 4096UL)
+#define APP_CONTROL_CFG_ADDRESS     (APP_FLASH_SERVICE_SIZE_BYTES - 4096UL)
 #define APP_CONTROL_CFG_LEGACY_SIZE ((uint16_t)offsetof(APP_ControlConfig, rate_pid))
 #define APP_CONTROL_MAX_LINE        128U
-#define APP_CONTROL_HEARTBEAT_ENABLED 1U
-#define APP_CONTROL_BOOT_READY_ENABLED 1U
+#define APP_CONTROL_HEARTBEAT_ENABLED 0U
+#define APP_CONTROL_BOOT_READY_ENABLED 0U
+#define APP_CONTROL_ASCII_RX_ECHO_ENABLED 0U
+#define APP_CONTROL_ASCII_ACK_ENABLED 0U
 #define APP_CONTROL_BARO_STREAM_DEFAULT_PERIOD_MS 50U
 #define APP_CONTROL_BARO_STREAM_MIN_PERIOD_MS 20U
+#define APP_CONTROL_FLASH_BENCH_MAX_LEN 4096U
+#define APP_CONTROL_FLASH_BENCH_DEFAULT_ADDR 0U
+#define APP_CONTROL_FLASH_BENCH_DEFAULT_LEN 512U
+#define APP_CONTROL_FLASH_BENCH_DEFAULT_LOOPS 100U
+#define APP_CONTROL_FLASH_SCRATCH_ADDR (APP_FLASH_SERVICE_SIZE_BYTES - 4U * 4096UL)
 
 typedef struct {
     uint32_t magic;
@@ -55,6 +67,11 @@ static uint32_t control_wifi_reset_deadline_ms;
 static uint16_t control_response_override_function;
 static uint8_t control_initialized;
 static uint8_t control_maint_output_active;
+static uint8_t control_dwt_ready;
+__attribute__((section(".dma_buffer"), aligned(32)))
+static uint8_t control_flash_buf_a[APP_CONTROL_FLASH_BENCH_MAX_LEN];
+__attribute__((section(".dma_buffer"), aligned(32)))
+static uint8_t control_flash_buf_b[APP_CONTROL_FLASH_BENCH_MAX_LEN];
 
 static void app_control_handle_param(char **tokens, uint32_t count);
 static void app_control_report_pid_legacy(void);
@@ -76,6 +93,8 @@ static void app_control_service_wifi_reset(void);
 static void app_control_tick_common(uint8_t emit_heartbeat);
 static void app_control_report_gps(void);
 static void app_control_report_mag(void);
+static void app_control_report_rtos(void);
+static void app_control_handle_flash(char **tokens, uint32_t count);
 static void app_control_req_m9n(uint32_t id, const char *op);
 static void app_control_req_mag(uint32_t id, const char *op);
 static const char *app_control_age_text(uint32_t age_ms, char *buffer, uint16_t size);
@@ -426,6 +445,8 @@ static uint16_t app_control_response_function_for_request(uint16_t function)
         return APP_PROTO_MSG_GPS_RECORD;
     case APP_PROTO_REQ_MAG:
         return APP_PROTO_MSG_MAG_RECORD;
+    case APP_PROTO_REQ_RTOS:
+        return APP_PROTO_MSG_RTOS_RECORD;
     default:
         return 0U;
     }
@@ -537,6 +558,59 @@ static uint8_t app_control_parse_u32_auto(const char *text, uint32_t *value)
     return 1U;
 }
 
+static uint32_t app_control_crc32_update(uint32_t crc, const uint8_t *data, uint32_t len)
+{
+    for (uint32_t i = 0U; i < len; ++i) {
+        crc ^= data[i];
+        for (uint32_t bit = 0U; bit < 8U; ++bit) {
+            crc = (crc & 1U) ? ((crc >> 1U) ^ 0xEDB88320UL) : (crc >> 1U);
+        }
+    }
+    return crc;
+}
+
+static uint32_t app_control_crc32(const uint8_t *data, uint32_t len)
+{
+    return app_control_crc32_update(0xFFFFFFFFUL, data, len) ^ 0xFFFFFFFFUL;
+}
+
+static uint8_t app_control_token_u32(char **tokens,
+                                     uint32_t count,
+                                     uint32_t index,
+                                     uint32_t default_value,
+                                     uint32_t *value)
+{
+    if (value == NULL) {
+        return 0U;
+    }
+
+    if (index >= count) {
+        *value = default_value;
+        return 1U;
+    }
+
+    return app_control_parse_u32_auto(tokens[index], value);
+}
+
+static uint32_t app_control_time_us(void)
+{
+    if (control_dwt_ready == 0U) {
+        CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
+        DWT->CYCCNT = 0U;
+        DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
+        control_dwt_ready = 1U;
+    }
+
+    if ((DWT->CTRL & DWT_CTRL_CYCCNTENA_Msk) != 0U) {
+        uint32_t hz_per_us = SystemCoreClock / 1000000UL;
+        if (hz_per_us != 0U) {
+            return DWT->CYCCNT / hz_per_us;
+        }
+    }
+
+    return HAL_GetTick() * 1000UL;
+}
+
 static const char *app_control_token_value(char **tokens,
                                            uint32_t count,
                                            const char *key)
@@ -640,11 +714,13 @@ static void app_control_report_caps(void)
     app_control_queue_proto_text(APP_PROTO_MSG_CAPS_RECORD,
                                  "RSP id=0 mod=CAPS op=LIST legacy=PING,STATUS?,CONFIG?,SAVE,LOAD,SERVO raw=custom-tab\r\n");
     app_control_queue_proto_text(APP_PROTO_MSG_CAPS_RECORD,
-                                 "RSP id=0 mod=CAPS op=LIST mods=MODULES,SPL06,ICM42688,M9N,MAG,PARAM,FLASH,WIFI\r\n");
+                                 "RSP id=0 mod=CAPS op=LIST mods=MODULES,SPL06,ICM42688,M9N,MAG,PARAM,FLASH,RTOS,WIFI\r\n");
     app_control_queue_proto_text(APP_PROTO_MSG_CAPS_RECORD,
                                  "RSP id=0 mod=CAPS op=LIST ops=SPL06:STATUS,READ,SAMPLE ICM42688:STATUS,DIAG M9N:STATUS,DIAG MAG:STATUS,DIAG\r\n");
     app_control_queue_proto_text(APP_PROTO_MSG_CAPS_RECORD,
                                  "RSP id=0 mod=CAPS op=LIST ops=WIFI:STATUS,EN,RESET legacy=WIFI?,WIFI_EN?\r\n");
+    app_control_queue_proto_text(APP_PROTO_MSG_CAPS_RECORD,
+                                 "RSP id=0 mod=CAPS op=LIST ops=FLASH:VERIFY,BENCH_READ,SCRATCH RTOS:STATUS legacy=RTOS?\r\n");
 }
 
 static void app_control_report_wifi(void)
@@ -692,6 +768,7 @@ static void app_control_report_flash(void)
 {
     APP_Flash_Status flash_status;
 
+    APP_Flash_RefreshStatus();
     APP_Flash_GetStatus(&flash_status);
     app_control_queue_proto_text(APP_PROTO_MSG_FLASH_RECORD,
                                  "FLASH ok=%u stage=%s probe=%ld status=%ld read=%ld id=%02X%02X%02X exp=C84016 sr1=%02X\r\n",
@@ -708,7 +785,184 @@ static void app_control_report_flash(void)
                                  "FLASH cfg_addr=0x%06lX cfg_valid=%u cfg_last=%u\r\n",
                                  (unsigned long)APP_CONTROL_CFG_ADDRESS,
                                  (unsigned int)control_config.flash_valid,
-                                 (unsigned int)control_config.last_flash_status);
+                                  (unsigned int)control_config.last_flash_status);
+}
+
+static void app_control_report_task_stack(const char *name, osThreadId_t handle)
+{
+    if ((name == NULL) || (handle == NULL)) {
+        return;
+    }
+
+    app_control_queue_proto_text(APP_PROTO_MSG_RTOS_RECORD,
+                                 "RTOS task=%s free_stack_words=%lu\r\n",
+                                 name,
+                                 (unsigned long)uxTaskGetStackHighWaterMark((TaskHandle_t)handle));
+}
+
+static void app_control_report_rtos(void)
+{
+    APP_DiagFaultInfo faults;
+
+    APP_Diag_GetFaultInfo(&faults);
+    app_control_queue_proto_text(APP_PROTO_MSG_RTOS_RECORD,
+                                 "RTOS heap_free=%lu heap_min=%lu q_uart=%lu/%lu q_background_req=%lu/%lu q_background_resp=%lu/%lu fault_stack=%u fault_task=%s fault_malloc=%u malloc_count=%lu\r\n",
+                                 (unsigned long)xPortGetFreeHeapSize(),
+                                 (unsigned long)xPortGetMinimumEverFreeHeapSize(),
+                                 (unsigned long)((uartTxQueueHandle != NULL) ? osMessageQueueGetCount(uartTxQueueHandle) : 0U),
+                                 (unsigned long)((uartTxQueueHandle != NULL) ? osMessageQueueGetCapacity(uartTxQueueHandle) : 0U),
+                                 (unsigned long)((backgroundReqQueueHandle != NULL) ? osMessageQueueGetCount(backgroundReqQueueHandle) : 0U),
+                                 (unsigned long)((backgroundReqQueueHandle != NULL) ? osMessageQueueGetCapacity(backgroundReqQueueHandle) : 0U),
+                                 (unsigned long)((backgroundRespQueueHandle != NULL) ? osMessageQueueGetCount(backgroundRespQueueHandle) : 0U),
+                                 (unsigned long)((backgroundRespQueueHandle != NULL) ? osMessageQueueGetCapacity(backgroundRespQueueHandle) : 0U),
+                                 (unsigned int)faults.stack_overflow_seen,
+                                 (faults.stack_overflow_task[0] != '\0') ? faults.stack_overflow_task : "-",
+                                 (unsigned int)faults.malloc_failed_seen,
+                                 (unsigned long)faults.malloc_failed_count);
+
+    app_control_report_task_stack("LED", LEDtestTaskHandle);
+    app_control_report_task_stack("IMU", imuTaskHandle);
+    app_control_report_task_stack("MSG", messageTaskHandle);
+    app_control_report_task_stack("UART", UARTTaskHandle);
+    app_control_report_task_stack("BACKGROUND", backgroundTaskHandle);
+}
+
+static void app_control_flash_verify(char **tokens, uint32_t count)
+{
+    uint32_t address;
+    uint32_t length;
+    uint32_t crc_blocking;
+    uint32_t crc_dma;
+    APP_FlashService_Status st_blocking;
+    APP_FlashService_Status st_dma;
+    int cmp = 0;
+
+    if (!app_control_token_u32(tokens, count, 2U, APP_CONTROL_FLASH_BENCH_DEFAULT_ADDR, &address) ||
+        !app_control_token_u32(tokens, count, 3U, APP_CONTROL_FLASH_BENCH_DEFAULT_LEN, &length)) {
+        app_control_queue_text("ERR usage FLASH VERIFY [addr] [len]\r\n");
+        return;
+    }
+
+    if ((length == 0U) || (length > APP_CONTROL_FLASH_BENCH_MAX_LEN) ||
+        (address >= APP_FLASH_SERVICE_SIZE_BYTES) ||
+        (length > (APP_FLASH_SERVICE_SIZE_BYTES - address))) {
+        app_control_queue_text("ERR flash verify range addr=0x%06lX len=%lu max=%lu\r\n",
+                               (unsigned long)address,
+                               (unsigned long)length,
+                               (unsigned long)APP_CONTROL_FLASH_BENCH_MAX_LEN);
+        return;
+    }
+
+    st_blocking = APP_FlashService_ReadData(address, control_flash_buf_a, length);
+    st_dma = APP_FlashService_ReadDataFast(address, control_flash_buf_b, length);
+    crc_blocking = app_control_crc32(control_flash_buf_a, length);
+    crc_dma = app_control_crc32(control_flash_buf_b, length);
+    if ((st_blocking == APP_FLASH_SERVICE_OK) && (st_dma == APP_FLASH_SERVICE_OK)) {
+        cmp = memcmp(control_flash_buf_a, control_flash_buf_b, length);
+    }
+
+    app_control_queue_proto_text(APP_PROTO_MSG_FLASH_BENCH,
+                                 "FLASH verify addr=0x%06lX len=%lu st_block=%u st_dma=%u crc_block=0x%08lX crc_dma=0x%08lX match=%u\r\n",
+                                 (unsigned long)address,
+                                 (unsigned long)length,
+                                 (unsigned int)st_blocking,
+                                 (unsigned int)st_dma,
+                                 (unsigned long)crc_blocking,
+                                 (unsigned long)crc_dma,
+                                 (unsigned int)((cmp == 0) &&
+                                                (st_blocking == APP_FLASH_SERVICE_OK) &&
+                                                (st_dma == APP_FLASH_SERVICE_OK)));
+}
+
+static void app_control_flash_bench_read(char **tokens, uint32_t count)
+{
+    uint32_t address;
+    uint32_t length;
+    uint32_t loops;
+    uint32_t mode;
+    uint32_t start_us;
+    uint32_t elapsed_us;
+    uint32_t crc = 0xFFFFFFFFUL;
+    APP_FlashService_Status status = APP_FLASH_SERVICE_OK;
+    uint32_t ok_loops = 0U;
+    uint64_t total_bytes;
+    uint32_t bps;
+
+    if (!app_control_token_u32(tokens, count, 3U, APP_CONTROL_FLASH_BENCH_DEFAULT_ADDR, &address) ||
+        !app_control_token_u32(tokens, count, 4U, APP_CONTROL_FLASH_BENCH_DEFAULT_LEN, &length) ||
+        !app_control_token_u32(tokens, count, 5U, APP_CONTROL_FLASH_BENCH_DEFAULT_LOOPS, &loops) ||
+        !app_control_token_u32(tokens, count, 6U, 1U, &mode)) {
+        app_control_queue_text("ERR usage FLASH BENCH READ [addr] [len] [loops] [mode 0=blocking 1=dma]\r\n");
+        return;
+    }
+
+    if ((length == 0U) || (length > APP_CONTROL_FLASH_BENCH_MAX_LEN) ||
+        (loops == 0U) ||
+        (address >= APP_FLASH_SERVICE_SIZE_BYTES) ||
+        (length > (APP_FLASH_SERVICE_SIZE_BYTES - address))) {
+        app_control_queue_text("ERR flash bench range addr=0x%06lX len=%lu loops=%lu max=%lu\r\n",
+                               (unsigned long)address,
+                               (unsigned long)length,
+                               (unsigned long)loops,
+                               (unsigned long)APP_CONTROL_FLASH_BENCH_MAX_LEN);
+        return;
+    }
+
+    start_us = app_control_time_us();
+    for (uint32_t i = 0U; i < loops; ++i) {
+        if (mode == 0U) {
+            status = APP_FlashService_ReadData(address, control_flash_buf_a, length);
+        } else {
+            status = APP_FlashService_ReadDataFast(address, control_flash_buf_a, length);
+        }
+        if (status != APP_FLASH_SERVICE_OK) {
+            break;
+        }
+        crc = app_control_crc32_update(crc, control_flash_buf_a, length);
+        ok_loops++;
+    }
+    elapsed_us = app_control_time_us() - start_us;
+    crc ^= 0xFFFFFFFFUL;
+    total_bytes = (uint64_t)ok_loops * (uint64_t)length;
+    bps = (elapsed_us != 0U) ?
+          (uint32_t)((total_bytes * 1000000ULL) / (uint64_t)elapsed_us) : 0U;
+
+    app_control_queue_proto_text(APP_PROTO_MSG_FLASH_BENCH,
+                                 "FLASH bench_read mode=%s addr=0x%06lX len=%lu loops=%lu ok=%lu st=%u bytes=%lu time_us=%lu bps=%lu crc=0x%08lX\r\n",
+                                 (mode == 0U) ? "block" : "dma",
+                                 (unsigned long)address,
+                                 (unsigned long)length,
+                                 (unsigned long)loops,
+                                 (unsigned long)ok_loops,
+                                 (unsigned int)status,
+                                 (unsigned long)((total_bytes > 0xFFFFFFFFULL) ?
+                                     0xFFFFFFFFUL : (uint32_t)total_bytes),
+                                 (unsigned long)elapsed_us,
+                                 (unsigned long)bps,
+                                 (unsigned long)crc);
+}
+
+static void app_control_handle_flash(char **tokens, uint32_t count)
+{
+    if (count < 2U) {
+        app_control_report_flash();
+        return;
+    }
+
+    if (strcmp(tokens[1], "VERIFY") == 0) {
+        app_control_flash_verify(tokens, count);
+    } else if ((strcmp(tokens[1], "BENCH") == 0) &&
+               (count >= 3U) &&
+               (strcmp(tokens[2], "READ") == 0)) {
+        app_control_flash_bench_read(tokens, count);
+    } else if (strcmp(tokens[1], "SCRATCH?") == 0) {
+        app_control_queue_proto_text(APP_PROTO_MSG_FLASH_BENCH,
+                                     "FLASH scratch addr=0x%06lX size=%lu note=reserved_test_sector\r\n",
+                                     (unsigned long)APP_CONTROL_FLASH_SCRATCH_ADDR,
+                                     (unsigned long)4096UL);
+    } else {
+        app_control_queue_text("ERR usage FLASH VERIFY|BENCH READ|SCRATCH?\r\n");
+    }
 }
 
 static void app_control_report_baro(void)
@@ -1480,16 +1734,16 @@ static void app_control_report_uart_stats(uint32_t rx_bytes,
                                  (unsigned long)last_rx_event_size);
 }
 
-static BSP_GD25Q32_Status app_control_load_config(void)
+static APP_FlashService_Status app_control_load_config(void)
 {
     APP_ControlFlashRecord record;
-    BSP_GD25Q32_Status status;
+    APP_FlashService_Status status;
     uint32_t checksum;
 
-    status = BSP_FLASH_ReadData(APP_CONTROL_CFG_ADDRESS,
+    status = APP_FlashService_ReadData(APP_CONTROL_CFG_ADDRESS,
                                 (uint8_t *)&record,
                                 sizeof(record));
-    if (status != BSP_GD25Q32_OK) {
+    if (status != APP_FLASH_SERVICE_OK) {
         return status;
     }
 
@@ -1498,13 +1752,13 @@ static BSP_GD25Q32_Status app_control_load_config(void)
           (record.size != sizeof(record.config))) &&
          ((record.version != 1U) ||
           (record.size != APP_CONTROL_CFG_LEGACY_SIZE)))) {
-        return BSP_GD25Q32_BAD_ID;
+        return APP_FLASH_SERVICE_BAD_ID;
     }
 
     checksum = app_control_checksum((const uint8_t *)&record.config,
                                     record.size);
     if (checksum != record.checksum) {
-        return BSP_GD25Q32_ERROR;
+        return APP_FLASH_SERVICE_ERROR;
     }
 
     if (record.version == APP_CONTROL_CFG_VERSION) {
@@ -1523,13 +1777,13 @@ static BSP_GD25Q32_Status app_control_load_config(void)
     }
     control_config.loaded_from_flash = 1U;
     control_config.flash_valid = 1U;
-    return BSP_GD25Q32_OK;
+    return APP_FLASH_SERVICE_OK;
 }
 
-static BSP_GD25Q32_Status app_control_save_config(void)
+static APP_FlashService_Status app_control_save_config(void)
 {
     APP_ControlFlashRecord record;
-    BSP_GD25Q32_Status status;
+    APP_FlashService_Status status;
 
     memset(&record, 0xFF, sizeof(record));
     record.magic = APP_CONTROL_CFG_MAGIC;
@@ -1541,12 +1795,12 @@ static BSP_GD25Q32_Status app_control_save_config(void)
     record.checksum = app_control_checksum((const uint8_t *)&record.config,
                                            sizeof(record.config));
 
-    status = BSP_FLASH_EraseSector(APP_CONTROL_CFG_ADDRESS);
-    if (status != BSP_GD25Q32_OK) {
+    status = APP_FlashService_EraseSector(APP_CONTROL_CFG_ADDRESS);
+    if (status != APP_FLASH_SERVICE_OK) {
         return status;
     }
 
-    return BSP_FLASH_WriteData(APP_CONTROL_CFG_ADDRESS,
+    return APP_FlashService_WriteData(APP_CONTROL_CFG_ADDRESS,
                                (const uint8_t *)&record,
                                sizeof(record));
 }
@@ -2085,7 +2339,7 @@ static void app_control_handle_param(char **tokens, uint32_t count)
 
 void APP_Control_Init(void)
 {
-    BSP_GD25Q32_Status load_status;
+    APP_FlashService_Status load_status;
 
     if (control_initialized != 0U) {
         return;
@@ -2096,7 +2350,7 @@ void APP_Control_Init(void)
     control_wifi_reset_deadline_ms = 0U;
     load_status = app_control_load_config();
     control_config.last_flash_status = (uint8_t)load_status;
-    if (load_status != BSP_GD25Q32_OK) {
+    if (load_status != APP_FLASH_SERVICE_OK) {
         control_config.loaded_from_flash = 0U;
         control_config.flash_valid = 0U;
     }
@@ -2125,6 +2379,7 @@ void APP_Control_MaintTick(void)
 
 static void app_control_tick_common(uint8_t emit_heartbeat)
 {
+#if (APP_CONTROL_HEARTBEAT_ENABLED != 0U)
     uint32_t uart_rx_bytes = 0U;
     uint32_t uart_rx_lines = 0U;
     uint32_t uart_rx_overflows = 0U;
@@ -2132,6 +2387,7 @@ static void app_control_tick_common(uint8_t emit_heartbeat)
     uint32_t uart_rx_events = 0U;
     uint32_t uart_rx_restarts = 0U;
     uint32_t uart_last_rx_event_size = 0U;
+#endif
 
     app_control_service_wifi_reset();
     app_control_service_streams();
@@ -2185,7 +2441,7 @@ static void app_control_dispatch_tokens(char **tokens, uint32_t count, uint8_t e
         return;
     }
 
-    if (emit_ack != 0U) {
+    if ((emit_ack != 0U) && (APP_CONTROL_ASCII_ACK_ENABLED != 0U)) {
         app_control_queue_text("ACK %s\r\n", tokens[0]);
     }
 
@@ -2199,8 +2455,12 @@ static void app_control_dispatch_tokens(char **tokens, uint32_t count, uint8_t e
         app_control_handle_req(tokens, count);
     } else if (strcmp(tokens[0], "STATUS?") == 0) {
         app_control_report_status();
+    } else if (strcmp(tokens[0], "RTOS?") == 0) {
+        app_control_report_rtos();
     } else if (strcmp(tokens[0], "FLASH?") == 0) {
         app_control_report_flash();
+    } else if (strcmp(tokens[0], "FLASH") == 0) {
+        app_control_handle_flash(tokens, count);
     } else if (strcmp(tokens[0], "BARO?") == 0) {
         app_control_report_baro();
     } else if (strcmp(tokens[0], "BARO") == 0) {
@@ -2231,15 +2491,15 @@ static void app_control_dispatch_tokens(char **tokens, uint32_t count, uint8_t e
         wifi_tokens[2] = tokens[1];
         app_control_handle_wifi(wifi_tokens, 3U);
     } else if (strcmp(tokens[0], "SAVE") == 0) {
-        BSP_GD25Q32_Status save_status = app_control_save_config();
+        APP_FlashService_Status save_status = app_control_save_config();
         control_config.last_flash_status = (uint8_t)save_status;
-        if (save_status == BSP_GD25Q32_OK) {
+        if (save_status == APP_FLASH_SERVICE_OK) {
             control_config.loaded_from_flash = 1U;
             control_config.flash_valid = 1U;
         }
         app_control_queue_text("OK save st=%u\r\n", (unsigned int)save_status);
     } else if (strcmp(tokens[0], "LOAD") == 0) {
-        BSP_GD25Q32_Status load_status = app_control_load_config();
+        APP_FlashService_Status load_status = app_control_load_config();
         control_config.last_flash_status = (uint8_t)load_status;
         app_control_queue_text("OK load st=%u\r\n", (unsigned int)load_status);
     } else if (strcmp(tokens[0], "DEFAULTS") == 0) {
@@ -2266,7 +2526,9 @@ void APP_Control_ProcessLine(const char *line)
         return;
     }
 
-    app_control_queue_text("RX %s\r\n", line);
+    if (APP_CONTROL_ASCII_RX_ECHO_ENABLED != 0U) {
+        app_control_queue_text("RX %s\r\n", line);
+    }
 
     (void)snprintf(buffer, sizeof(buffer), "%s", line);
     count = app_control_tokenize(buffer, tokens, (uint32_t)(sizeof(tokens) / sizeof(tokens[0])));
@@ -2335,6 +2597,10 @@ static void app_control_process_proto_request(uint16_t function,
 
     case APP_PROTO_REQ_MAG:
         app_control_dispatch_tokens((char *[]){"MAG?"}, 1U, 0U);
+        break;
+
+    case APP_PROTO_REQ_RTOS:
+        app_control_dispatch_tokens((char *[]){"RTOS?"}, 1U, 0U);
         break;
 
     case APP_PROTO_REQ_MODULES:

@@ -79,6 +79,27 @@ The parameter/PID page is intentionally line-based first. It currently sends
 not yet implement every command should reply with its normal `ERR` line, which
 the panel logs without crashing.
 
+## drone-H743 flash diagnostics
+
+When the board UART is flooded by periodic IMU sample lines, use the filtered
+diagnostic runner instead of pasting commands into a serial terminal:
+
+```bash
+python3 tools/flash_diag_test.py --list-ports
+python3 tools/flash_diag_test.py --serial COM18 --baud 115200 --final-rtos
+```
+
+The default test sends `RTOS?`, `FLASH?`, and the standard `FLASH VERIFY`
+ranges one at a time. It prints only matching RTOS/FLASH responses, filters
+unrelated IMU stream lines, and returns a non-zero exit code if any required
+check fails.
+
+Optional read throughput test:
+
+```bash
+python3 tools/flash_diag_test.py --serial COM18 --baud 115200 --bench --final-rtos
+```
+
 Optional serial auto-configuration through CH340 requires `pyserial`:
 
 ```bash
