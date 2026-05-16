@@ -39,6 +39,8 @@ typedef struct {
 
 DRV_SERVO_Status DRV_SERVO_SendRaw(DRV_SERVO_Device *dev, const char *command);
 uint16_t DRV_SERVO_ReadResponse(DRV_SERVO_Device *dev, char *buf, uint16_t max_len);
+uint32_t DRV_SERVO_GetBaudRate(const DRV_SERVO_Device *dev);
+DRV_SERVO_Status DRV_SERVO_SetBaudRate(DRV_SERVO_Device *dev, uint32_t baud_rate);
 uint16_t DRV_SERVO_PositionToPulse(uint16_t position);
 DRV_SERVO_Status DRV_SERVO_Move(DRV_SERVO_Device *dev, uint8_t id,
                                 uint16_t pulse_us, uint16_t time_ms);

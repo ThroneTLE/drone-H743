@@ -15,6 +15,8 @@ typedef DRV_SERVO_MoveCmd BSP_BusServoMove;
 
 DRV_SERVO_Status BSP_BusServo_SendRaw(const char *command);
 uint16_t BSP_BusServo_ReadResponse(char *buf, uint16_t max_len);
+uint32_t BSP_BusServo_GetBaudRate(void);
+DRV_SERVO_Status BSP_BusServo_SetBaudRate(uint32_t baud_rate);
 uint16_t BSP_BusServo_PositionToPulse(uint16_t position);
 DRV_SERVO_Status BSP_BusServo_Move(uint8_t id, uint16_t pulse_us, uint16_t time_ms);
 DRV_SERVO_Status BSP_BusServo_MovePosition(uint8_t id,

@@ -556,6 +556,8 @@ uint8_t APP_AiWB2_IsControlPayload(const char *line)
         (aiwb2_starts_with(line, "PARAM ") != 0U) ||
         (aiwb2_starts_with(line, "PID ") != 0U) ||
         (aiwb2_starts_with(line, "SERVO ") != 0U) ||
+        (aiwb2_starts_with(line, "Servor") != 0U) ||
+        (aiwb2_starts_with(line, "PWM") != 0U) ||
         (strcmp(line, "Sensor_Data:1") == 0) ||
         (strcmp(line, "Sensor_Data:0") == 0)) {
         return 1U;

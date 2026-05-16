@@ -17,6 +17,7 @@
 #include "bsp_baro.h"
 #include "app_flash_service.h"
 #include "bsp_imu.h"
+#include "bsp_pwm.h"
 #include "bsp_uart.h"
 
 #include "FreeRTOS.h"
@@ -331,37 +332,6 @@ static uint8_t app_control_payload_to_line(const uint8_t *payload,
     return 1U;
 }
 
-static uint16_t app_control_copy_payload_text(char *buffer,
-                                              uint16_t capacity,
-                                              const uint8_t *payload,
-                                              uint16_t payload_length)
-{
-    uint16_t used = 0U;
-
-    if ((buffer == NULL) || (capacity == 0U)) {
-        return 0U;
-    }
-
-    if ((payload == NULL) || (payload_length == 0U)) {
-        buffer[0] = '\0';
-        return 0U;
-    }
-
-    while ((used < payload_length) && (used < (uint16_t)(capacity - 1U))) {
-        uint8_t byte = payload[used];
-
-        if ((byte == 0U) || (byte == (uint8_t)'\r') || (byte == (uint8_t)'\n')) {
-            break;
-        }
-
-        buffer[used] = (char)byte;
-        ++used;
-    }
-
-    buffer[used] = '\0';
-    return used;
-}
-
 static const char *app_control_aiwb2_state_name(APP_AiWB2_State state)
 {
     switch (state) {
@@ -432,6 +402,32 @@ static void app_control_defaults(APP_ControlConfig *config)
 static uint8_t app_control_valid_servo_index(uint32_t index)
 {
     return (index < APP_CONTROL_SERVO_COUNT) ? 1U : 0U;
+}
+
+static uint16_t app_control_servo_angle_to_pulse(uint32_t angle)
+{
+    if (angle > 180U) { angle = 180U; }
+    return (uint16_t)(500U + ((angle * 2000U) / 180U));
+}
+
+static uint8_t app_control_parse_vofa_pwm(const char *text,
+                                          uint32_t *channel,
+                                          uint32_t *percent)
+{
+    unsigned int parsed_channel;
+    unsigned int parsed_percent;
+
+    if ((text == NULL) || (channel == NULL) || (percent == NULL)) {
+        return 0U;
+    }
+
+    if (sscanf(text, "PWM%u:%u", &parsed_channel, &parsed_percent) != 2) {
+        return 0U;
+    }
+
+    *channel = (uint32_t)parsed_channel;
+    *percent = (uint32_t)parsed_percent;
+    return 1U;
 }
 
 static uint8_t app_control_parse_u32(const char *text, uint32_t *value)
@@ -1684,6 +1680,38 @@ static void app_control_handle_servo(char **tokens, uint32_t count)
         return;
     }
 
+    if (strcmp(tokens[1], "ANGLE") == 0) {
+        uint32_t angle;
+        uint32_t time_ms;
+        uint16_t pulse;
+
+        if ((count < 4U) ||
+            (app_control_parse_u32(tokens[2], &index) == 0U) ||
+            (app_control_parse_u32(tokens[3], &angle) == 0U) ||
+            (app_control_valid_servo_index(index) == 0U) ||
+            (angle > 180U)) {
+            APP_Control_QueueText("ERR usage SERVO ANGLE index degree [time_ms]\r\n");
+            return;
+        }
+
+        pulse = app_control_servo_angle_to_pulse(angle);
+
+        if (count >= 5U) {
+            if (app_control_parse_u32(tokens[4], &time_ms) == 0U) { time_ms = 500U; }
+        } else {
+            time_ms = control_config.servo[index].time_ms;
+        }
+
+        control_config.servo[index].pulse_us = pulse;
+        control_config.servo[index].time_ms = (uint16_t)time_ms;
+        status = BSP_BusServo_Move(control_config.servo[index].id, pulse, (uint16_t)time_ms);
+        APP_Control_QueueText("OK servo%lu angle st=%u id=%u deg=%u pulse=%u\r\n",
+                              (unsigned long)index, (unsigned int)status,
+                              (unsigned int)control_config.servo[index].id,
+                              (unsigned int)angle, (unsigned int)pulse);
+        return;
+    }
+
     if (strcmp(tokens[1], "ID") == 0) {
         if ((count < 4U) ||
             (app_control_parse_u32(tokens[2], &index) == 0U) ||
@@ -1839,6 +1867,19 @@ static void app_control_handle_servo(char **tokens, uint32_t count)
         } else {
             APP_Control_QueueText("ERR servo raw tx st=%u\r\n", (unsigned int)status);
         }
+        return;
+    }
+
+    if (strcmp(tokens[1], "BAUDRATE") == 0) {
+        uint32_t rate;
+        if ((count < 3U) || (app_control_parse_u32(tokens[2], &rate) == 0U)) {
+            APP_Control_QueueText("ERR usage SERVO BAUDRATE rate\r\n");
+            return;
+        }
+        status = BSP_BusServo_SetBaudRate(rate);
+        APP_Control_QueueText("OK servo baudrate st=%u rate=%u cur=%u\r\n",
+                              (unsigned int)status, (unsigned int)rate,
+                              (unsigned int)BSP_BusServo_GetBaudRate());
         return;
     }
 
@@ -2287,6 +2328,50 @@ static void app_control_dispatch_tokens(char **tokens, uint32_t count, uint8_t e
         app_control_handle_param(tokens, count);
     } else if (strcmp(tokens[0], "PID") == 0) {
         app_control_handle_pid(tokens, count);
+    } else if (strncmp(tokens[0], "PWM", 3) == 0) {
+        uint32_t channel;
+        uint32_t percent;
+
+        if ((app_control_parse_vofa_pwm(tokens[0], &channel, &percent) != 0U) &&
+            (channel >= 1U) && (channel <= 2U) &&
+            (percent <= BSP_PWM_ESC_MAX_PERCENT)) {
+            uint16_t pulse = BSP_PWM_PercentToPulse(percent);
+            BSP_PWM_Status status = BSP_PWM_SetEscPercent(channel, percent);
+
+            APP_Control_QueueText("OK pwm%lu st=%u pct=%lu pulse=%u\r\n",
+                                  (unsigned long)channel,
+                                  (unsigned int)status,
+                                  (unsigned long)percent,
+                                  (unsigned int)pulse);
+        } else {
+            APP_Control_QueueText("ERR usage PWM1:0..100 or PWM2:0..100\r\n");
+        }
+    } else if (strncmp(tokens[0], "Servor", 6) == 0) {
+        unsigned int parsed_index;
+        unsigned int parsed_angle;
+        uint32_t vofa_index;
+        uint32_t index;
+        uint32_t angle;
+        if ((sscanf(tokens[0], "Servor%u:%u", &parsed_index, &parsed_angle) == 2) &&
+            ((vofa_index = (uint32_t)parsed_index) >= 1U) &&
+            (vofa_index <= APP_CONTROL_SERVO_COUNT) &&
+            ((angle = (uint32_t)parsed_angle) <= 180U)) {
+            uint16_t pulse;
+            BSP_BusServoStatus status;
+
+            index = vofa_index - 1U;
+            pulse = app_control_servo_angle_to_pulse(angle);
+
+            control_config.servo[index].pulse_us = pulse;
+            status = BSP_BusServo_Move(control_config.servo[index].id, pulse,
+                                       control_config.servo[index].time_ms);
+            APP_Control_QueueText("OK servo%lu vofa_angle st=%u id=%u deg=%u pulse=%u\r\n",
+                                  (unsigned long)index,
+                                  (unsigned int)status,
+                                  (unsigned int)control_config.servo[index].id,
+                                  (unsigned int)angle,
+                                  (unsigned int)pulse);
+        }
     } else if (strcmp(tokens[0], "SERVO") == 0) {
         app_control_handle_servo(tokens, count);
     } else if (strcmp(tokens[0], "Sensor_Data:1") == 0) {

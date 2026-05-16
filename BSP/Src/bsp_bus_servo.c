@@ -20,6 +20,12 @@ DRV_SERVO_Status BSP_BusServo_SendRaw(const char *command)
 uint16_t BSP_BusServo_ReadResponse(char *buf, uint16_t max_len)
 { servo_bind_bus(); return DRV_SERVO_ReadResponse(&servo_dev, buf, max_len); }
 
+uint32_t BSP_BusServo_GetBaudRate(void)
+{ servo_bind_bus(); return DRV_SERVO_GetBaudRate(&servo_dev); }
+
+DRV_SERVO_Status BSP_BusServo_SetBaudRate(uint32_t baud_rate)
+{ servo_bind_bus(); return DRV_SERVO_SetBaudRate(&servo_dev, baud_rate); }
+
 uint16_t BSP_BusServo_PositionToPulse(uint16_t position)
 { return DRV_SERVO_PositionToPulse(position); }
 

@@ -3,7 +3,9 @@
 #include <stdio.h>
 #include <string.h>
 
-#define DRV_SERVO_MAX_ID          255U
+#define DRV_SERVO_MAX_BAUDRATE     1000000U
+#define DRV_SERVO_MIN_BAUDRATE     1200U
+#define DRV_SERVO_MAX_ID           255U
 #define DRV_SERVO_MAX_ITEMS       8U
 #define DRV_SERVO_TX_TIMEOUT_MS   100U
 #define DRV_SERVO_MIN_MODE        1U
@@ -77,6 +79,23 @@ uint16_t DRV_SERVO_ReadResponse(DRV_SERVO_Device *dev, char *buf, uint16_t max_l
 
     HAL_HalfDuplex_EnableTransmitter(dev->bus.huart);
     return count;
+}
+
+uint32_t DRV_SERVO_GetBaudRate(const DRV_SERVO_Device *dev)
+{
+    return dev->bus.huart->Init.BaudRate;
+}
+
+DRV_SERVO_Status DRV_SERVO_SetBaudRate(DRV_SERVO_Device *dev, uint32_t baud_rate)
+{
+    UART_HandleTypeDef *huart = dev->bus.huart;
+
+    if ((baud_rate < DRV_SERVO_MIN_BAUDRATE) || (baud_rate > DRV_SERVO_MAX_BAUDRATE)) {
+        return DRV_SERVO_INVALID_PARAM;
+    }
+
+    huart->Init.BaudRate = baud_rate;
+    return servo_from_hal(HAL_HalfDuplex_Init(huart));
 }
 
 uint16_t DRV_SERVO_PositionToPulse(uint16_t position)
