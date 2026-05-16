@@ -5,7 +5,7 @@
 #include "app_flash.h"
 #include "app_diag.h"
 #include "app_gps.h"
-#include "app_imu.h"
+#include "app_sensor.h"
 #include "app_mag.h"
 #include "app_maint_uart.h"
 #include "app_messages.h"
@@ -469,6 +469,8 @@ static const char *app_control_aiwb2_state_name(APP_AiWB2_State state)
         return "wait_command";
     case APP_AIWB2_STATE_WAIT_BOOT_CONNECT:
         return "wait_connect";
+    case APP_AIWB2_STATE_WAIT_TRANSPARENT_OK:
+        return "wait_transparent_ok";
     case APP_AIWB2_STATE_TRANSPARENT:
         return "transparent";
     case APP_AIWB2_STATE_RETRY_DELAY:
@@ -820,8 +822,7 @@ static void app_control_report_rtos(void)
                                  (unsigned int)faults.malloc_failed_seen,
                                  (unsigned long)faults.malloc_failed_count);
 
-    app_control_report_task_stack("LED", LEDtestTaskHandle);
-    app_control_report_task_stack("IMU", imuTaskHandle);
+    app_control_report_task_stack("SENSOR", SensorTaskHandle);
     app_control_report_task_stack("MSG", messageTaskHandle);
     app_control_report_task_stack("UART", UARTTaskHandle);
     app_control_report_task_stack("BACKGROUND", backgroundTaskHandle);
@@ -2108,20 +2109,22 @@ static void app_control_handle_wifi(char **tokens, uint32_t count)
     }
 
     if ((strcmp(tokens[1], "STA") == 0) || (strcmp(tokens[1], "PROVISION") == 0)) {
-        if (count < 6U) {
-            app_control_queue_text("ERR usage WIFI STA ssid password host port\r\n");
+        const char *local_port;
+
+        if (count < 5U) {
+            app_control_queue_text("ERR usage WIFI STA ssid password local_port\r\n");
             return;
         }
 
-        if (APP_AiWB2_StartProvision(tokens[2], tokens[3], tokens[4], tokens[5]) == 0U) {
+        local_port = (count >= 6U) ? tokens[5] : tokens[4];
+        if (APP_AiWB2_StartProvision(tokens[2], tokens[3], local_port) == 0U) {
             app_control_queue_text("ERR wifi sta bad args\r\n");
             return;
         }
 
-        app_control_queue_text("OK wifi sta queued ssid=%s host=%s port=%s\r\n",
+        app_control_queue_text("OK wifi sta queued ssid=%s udp_server_port=%s\r\n",
                                tokens[2],
-                               tokens[4],
-                               tokens[5]);
+                               local_port);
         return;
     }
 
@@ -2511,6 +2514,12 @@ static void app_control_dispatch_tokens(char **tokens, uint32_t count, uint8_t e
         app_control_handle_pid(tokens, count);
     } else if (strcmp(tokens[0], "SERVO") == 0) {
         app_control_handle_servo(tokens, count);
+    } else if (strcmp(tokens[0], "Sensor_Data:1") == 0) {
+        vofaStreamActive = 1U;
+        app_control_queue_text("OK IMU stream started\r\n");
+    } else if (strcmp(tokens[0], "Sensor_Data:0") == 0) {
+        vofaStreamActive = 0U;
+        app_control_queue_text("OK IMU stream stopped\r\n");
     } else {
         app_control_queue_text("ERR unknown cmd %s\r\n", tokens[0]);
     }

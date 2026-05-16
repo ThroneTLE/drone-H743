@@ -179,8 +179,7 @@ class AtConfig:
     baud: int
     ssid: str
     password: str
-    pc_ip: str
-    pc_port: int
+    local_port: int
 
 
 def serial_configure(config: AtConfig) -> None:
@@ -209,7 +208,7 @@ def serial_configure(config: AtConfig) -> None:
         "AT+WMODE=1,1",
         f'AT+WJAP="{config.ssid}","{config.password}"',
         "AT+WAUTOCONN=1",
-        f"AT+SOCKETAUTOTT=4,{config.pc_ip},{config.pc_port}",
+        f"AT+SOCKETAUTOTT=1,{config.local_port}",
         "AT+RST",
     ]
 
@@ -264,8 +263,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_at.add_argument("--password",
                       default=DEFAULT_WIFI_PASSWORD,
                       required=DEFAULT_WIFI_PASSWORD is None)
-    p_at.add_argument("--pc-ip", required=True)
-    p_at.add_argument("--pc-port", type=int, default=DEFAULT_TCP_PORT)
+    p_at.add_argument("--local-port", type=int, default=7777)
 
     return parser
 
@@ -289,8 +287,7 @@ def main(argv: list[str] | None = None) -> int:
                                   args.baud,
                                   args.ssid,
                                   args.password,
-                                  args.pc_ip,
-                                  args.pc_port))
+                                  args.local_port))
     return 0
 
 

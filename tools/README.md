@@ -108,31 +108,21 @@ python3 tools/aiwb2_net_tool.py configure-at \
   --serial-port /dev/cu.wchusbserialXXXX \
   --ssid YOUR_WIFI_SSID \
   --password YOUR_WIFI_PASSWORD \
-  --pc-ip YOUR_PC_LAN_IP \
-  --pc-port 6666
+  --local-port 7777
 ```
 
 For local convenience, `configure-at` and the loop test also read
 `AIWB2_WIFI_SSID`, `AIWB2_WIFI_PASSWORD`, and `AIWB2_TCP_PORT` from the
 environment. Do not commit real WiFi credentials.
 
-## VOFA bridge
+## VOFA UDP direct mode
 
-VOFA is awkward with the module's current UDP-client transparent mode because
-the module sends from a dynamic source port. Use this bridge to convert that
-into fixed local ports for VOFA:
+The Ai-WB2 is configured as an auto-transparent UDP server on module port
+`7777`, so VOFA can talk to it directly without the Python bridge.
 
-```bash
-python3 tools/vofa_udp_bridge.py
-```
-
-Suggested VOFA settings with the default bridge ports:
+Suggested VOFA settings:
 
 - `数据接口`: `UDP`
-- `远程IP`: `127.0.0.1`
-- `远程端口`: `6667`
-- `本地端口`: `6668`
-
-The bridge listens for module data on PC port `6666`, forwards it to VOFA on
-`127.0.0.1:6668`, and forwards VOFA packets from `127.0.0.1:6667` back to the
-module's latest source address.
+- `远程IP`: the Ai-WB2 module IP shown by the router or `WIFI?`
+- `远程端口`: `7777`
+- `本地端口`: any free local UDP port, for example `6668`

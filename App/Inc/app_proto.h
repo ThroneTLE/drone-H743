@@ -75,6 +75,7 @@
 #define APP_PROTO_MSG_RTOS_RECORD       0x221DU
 #define APP_PROTO_MSG_FLASH_BENCH       0x221EU
 
+/* Temporarily disabled for VOFA migration
 typedef struct {
     uint8_t direction;
     uint16_t function;
@@ -92,5 +93,6 @@ uint8_t APP_Proto_BuildFrame(uint8_t direction,
                              uint8_t *out_buffer,
                              uint16_t out_capacity,
                              uint16_t *out_length);
+*/
 
 #endif

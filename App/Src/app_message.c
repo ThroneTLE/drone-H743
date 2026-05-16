@@ -65,23 +65,22 @@ void APP_Message_Task_Init(void)
 
 void APP_Message_Task_Step(void)
 {
+#if (APP_MESSAGE_IMU_STREAM_ENABLED == 0U)
+    osDelay(100U);
+    return;
+#else
     APP_IMU_SampleMessage sample;
-#if (APP_MESSAGE_IMU_STREAM_ENABLED != 0U)
     APP_UART_TxMessage    tx_message;
-#endif
 
-    if ((imuSampleQueueHandle == 0) || (uartTxQueueHandle == 0)) {
+    if ((SensorSampleQueueHandle == 0) || (uartTxQueueHandle == 0)) {
         osDelay(10U);
         return;
     }
 
-    if (osMessageQueueGet(imuSampleQueueHandle, &sample, 0U, osWaitForever) != osOK) {
+    if (osMessageQueueGet(SensorSampleQueueHandle, &sample, 0U, osWaitForever) != osOK) {
         return;
     }
 
-#if (APP_MESSAGE_IMU_STREAM_ENABLED == 0U)
-    return;
-#else
     APP_Message_Format(&sample, &tx_message);
     if (tx_message.length == 0U) {
         return;

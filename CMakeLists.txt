@@ -53,6 +53,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Driver/Src/drv_servo.c
     # Services layer
     Services/Src/svc_param.c
+    Services/Src/svc_timestamp.c
     # BSP layer
     BSP/Src/bsp.c
     BSP/Src/bsp_board.c
@@ -81,7 +82,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     App/Src/app_flash.c
     App/Src/app_flash_service.c
     App/Src/app_gps.c
-    App/Src/app_imu.c
+    App/Src/app_sensor.c
     App/Src/app_led.c
     App/Src/app_mag.c
     App/Src/app_maint_uart.c
@@ -89,6 +90,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     App/Src/app_proto.c
     App/Src/app_tasks.c
     App/Src/app_uart.c
+    App/Src/app_vofa.c
 )
 
 # Add include paths

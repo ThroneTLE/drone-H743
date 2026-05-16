@@ -11,6 +11,7 @@ typedef enum {
     APP_AIWB2_STATE_SEND_COMMAND,
     APP_AIWB2_STATE_WAIT_COMMAND,
     APP_AIWB2_STATE_WAIT_BOOT_CONNECT,
+    APP_AIWB2_STATE_WAIT_TRANSPARENT_OK,
     APP_AIWB2_STATE_TRANSPARENT,
     APP_AIWB2_STATE_RETRY_DELAY
 } APP_AiWB2_State;
@@ -24,8 +25,7 @@ uint8_t APP_AiWB2_ShouldConsumeTransparentLine(const char *line);
 void APP_AiWB2_AssumeTransparent(void);
 uint8_t APP_AiWB2_StartProvision(const char *ssid,
                                  const char *password,
-                                 const char *host,
-                                 const char *port);
+                                 const char *local_port);
 uint8_t APP_AiWB2_SendRawCommand(const char *command);
 void APP_AiWB2_SendDiagCommands(void);
 APP_AiWB2_State APP_AiWB2_GetState(void);

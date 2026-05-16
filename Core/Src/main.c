@@ -32,6 +32,7 @@
 /* USER CODE BEGIN Includes */
 #include "bsp.h"
 #include "app.h"
+#include "svc_timestamp.h"
 #include <string.h>
 /* USER CODE END Includes */
 
@@ -385,6 +386,14 @@ int main(void)
   /* MPU Configuration--------------------------------------------------------*/
   MPU_Config();
 
+  /* Enable the CPU Cache */
+
+  /* Enable I-Cache---------------------------------------------------------*/
+  SCB_EnableICache();
+
+  /* Enable D-Cache---------------------------------------------------------*/
+  SCB_EnableDCache();
+
   /* MCU Configuration--------------------------------------------------------*/
 
   /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
@@ -420,7 +429,9 @@ int main(void)
   MX_SPI3_Init();
   MX_SPI4_Init();
   MX_TIM8_Init();
+  MX_TIM17_Init();
   /* USER CODE BEGIN 2 */
+  SVC_Timestamp_Init();
   Main_DebugUartPrint("BOOT user2_begin\r\n");
   Main_StagePulse(2U);
   BSP_UART_Release_USART1_ForExternalDebug();
@@ -562,7 +573,9 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
     HAL_IncTick();
   }
   /* USER CODE BEGIN Callback 1 */
-
+  if (htim->Instance == TIM17) {
+      SVC_Timestamp_Tick();
+  }
   /* USER CODE END Callback 1 */
 }
 

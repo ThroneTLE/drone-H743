@@ -3,7 +3,6 @@
 #include "app_aiwb2.h"
 #include "app_control.h"
 #include "app_maint_uart.h"
-#include "app_proto.h"
 #include "app_tasks.h"
 #include "bsp_led.h"
 #include "bsp_gps.h"
@@ -19,7 +18,7 @@
 #define APP_UART_LINE_DEBUG_ENABLED   0U
 #define APP_UART_PERIODIC_STATS_ENABLED 0U
 #define APP_UART_DIRECT_CONTROL_ENABLED 1U
-#define APP_UART_TX_WAIT_FOR_TRANSPARENT 1U
+#define APP_UART_TX_WAIT_FOR_TRANSPARENT 1U //是否等待WIFI模块初始化
 #define APP_UART_LEGACY_ASCII_CONTROL_ENABLED 1U
 #define APP_UART_RX_USE_DMA 1U
 #define APP_UART_RX_LINE_SIZE 128U
@@ -341,7 +340,6 @@ void APP_UART_Task_Init(void)
 #else
     (void)boot_text;
 #endif
-    APP_Proto_Init();
     APP_AiWB2_Init();
     APP_Task_MaintUART_Init();
     app_uart_prepare_tx_dma();
@@ -398,21 +396,18 @@ static void app_uart_handle_line(char *line, uint16_t length)
 
     module_event = APP_AiWB2_ShouldConsumeTransparentLine(normalized);
 
+    /* Sensor_Data:1/Stop: 直接到控制，不经过 AiWB2 */
+    if ((strcmp(normalized, "Sensor_Data:1") == 0) ||
+        (strcmp(normalized, "Sensor_Data:0") == 0)) {
+        app_uart_ensure_control_ready();
+        if (app_uart_control_initialized != 0U) {
+            APP_Control_ProcessLine(normalized);
+        }
+        return;
+    }
+
 #if (APP_UART_LEGACY_ASCII_CONTROL_ENABLED != 0U)
     if (APP_AiWB2_IsControlPayload(normalized) != 0U) {
-        if (APP_AiWB2_IsTransparent() == 0U) {
-            static const char payload_text[] = "BOOT control_payload\r\n";
-
-#if (APP_UART_BOOT_DIAG_ENABLED != 0U)
-            (void)BSP_UART_Transmit_USART1((const uint8_t *)payload_text,
-                                           (uint16_t)(sizeof(payload_text) - 1U),
-                                           100U);
-#else
-            (void)payload_text;
-#endif
-            APP_AiWB2_AssumeTransparent();
-        }
-
         app_uart_ensure_control_ready();
         if (app_uart_control_initialized != 0U) {
             APP_Control_ProcessLine(normalized);
@@ -431,30 +426,8 @@ static void app_uart_handle_line(char *line, uint16_t length)
 
 static void app_uart_process_rx_byte(uint8_t byte)
 {
-    APP_ProtoFrame frame;
-
     app_uart_last_rx_byte_ms = HAL_GetTick();
     ++app_uart_rx_bytes;
-
-    if ((APP_Proto_IsReceiving() != 0U) || (byte == (uint8_t)'$')) {
-        if (APP_Proto_ConsumeByte(byte, &frame) != 0U) {
-            if ((frame.direction == (uint8_t)APP_PROTO_DIR_TO_FC) &&
-                (frame.function >= APP_PROTO_REQ_PING) &&
-                (frame.function <= APP_PROTO_MSG_CMD_LINE)) {
-                if (APP_AiWB2_IsTransparent() == 0U) {
-                    APP_AiWB2_AssumeTransparent();
-                }
-                app_uart_ensure_control_ready();
-                if (app_uart_control_initialized != 0U) {
-                    APP_Control_ProcessProtoRequest(frame.function,
-                                                    frame.payload,
-                                                    frame.payload_length);
-                }
-                ++app_uart_rx_lines;
-            }
-        }
-        return;
-    }
 
     if ((byte == '\n') || (byte == '\r')) {
         if (app_uart_rx_used > 0U) {
@@ -591,30 +564,17 @@ static void app_uart_poll_tx(void)
         return;
     }
 
-    if (APP_UART_DIRECT_CONTROL_ENABLED != 0U) {
-        frame_length = app_uart_tx_pending_message.length;
-        if (frame_length == 0U) {
-            app_uart_tx_pending_valid = 0U;
-            return;
-        }
-        if (frame_length > (uint16_t)sizeof(app_uart_tx_frame_buffer)) {
-            frame_length = (uint16_t)sizeof(app_uart_tx_frame_buffer);
-        }
-        memcpy(app_uart_tx_frame_buffer,
-               app_uart_tx_pending_message.text,
-               frame_length);
-    } else {
-        if (APP_Proto_BuildFrame((uint8_t)APP_PROTO_DIR_FROM_FC,
-                                 (app_uart_tx_pending_message.function != 0U) ? app_uart_tx_pending_message.function : APP_PROTO_MSG_TEXT_LINE,
-                                 (const uint8_t *)app_uart_tx_pending_message.text,
-                                 app_uart_tx_pending_message.length,
-                                 app_uart_tx_frame_buffer,
-                                 (uint16_t)sizeof(app_uart_tx_frame_buffer),
-                                 &frame_length) == 0U) {
-            app_uart_tx_pending_valid = 0U;
-            return;
-        }
+    frame_length = app_uart_tx_pending_message.length;
+    if (frame_length == 0U) {
+        app_uart_tx_pending_valid = 0U;
+        return;
     }
+    if (frame_length > (uint16_t)sizeof(app_uart_tx_frame_buffer)) {
+        frame_length = (uint16_t)sizeof(app_uart_tx_frame_buffer);
+    }
+    memcpy(app_uart_tx_frame_buffer,
+           app_uart_tx_pending_message.text,
+           frame_length);
 
     if (huart1.hdmatx == 0) {
         status = BSP_UART_Transmit_USART1(app_uart_tx_frame_buffer,

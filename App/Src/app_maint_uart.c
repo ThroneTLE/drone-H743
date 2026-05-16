@@ -15,6 +15,7 @@
 #define APP_MAINT_UART_RING_SIZE 256U
 #define APP_MAINT_UART_IDLE_LINE_MS 60U
 #define APP_MAINT_UART_BOOT_TEXT_ENABLED 1U
+#define APP_MAINT_UART_PERIODIC_SENSOR_STATUS_ENABLED 0U
 #define APP_MAINT_UART_GPS_STATUS_PERIOD_MS 1000U
 
 static uint8_t maint_rx_byte;
@@ -71,9 +72,6 @@ static void maint_ensure_control_ready(void)
         return;
     }
 
-    if (APP_AiWB2_IsTransparent() == 0U) {
-        APP_AiWB2_AssumeTransparent();
-    }
     APP_Control_Init();
     maint_control_ready = 1U;
 }
@@ -129,6 +127,7 @@ static void maint_flush_idle_line(void)
     maint_rx_used = 0U;
 }
 
+#if (APP_MAINT_UART_PERIODIC_SENSOR_STATUS_ENABLED != 0U)
 static void maint_report_gps_usart2_status(void)
 {
     APP_GPS_Status gps_status;
@@ -193,6 +192,7 @@ static void maint_report_gps_usart2_status(void)
                               (long)mag_status.y_mgauss,
                               (long)mag_status.z_mgauss);
 }
+#endif
 
 void APP_MaintUART_Init(void)
 {
@@ -241,7 +241,9 @@ void APP_MaintUART_Step(void)
 
     maint_flush_idle_line();
 
+#if (APP_MAINT_UART_PERIODIC_SENSOR_STATUS_ENABLED != 0U)
     maint_report_gps_usart2_status();
+#endif
     if (maint_control_ready != 0U) {
         APP_Control_MaintTick();
     }

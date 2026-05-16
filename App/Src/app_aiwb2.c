@@ -20,12 +20,8 @@
 #define APP_AIWB2_WIFI_PASSWORD   "CHANGE_ME"
 #endif
 
-#ifndef APP_AIWB2_PC_IP
-#define APP_AIWB2_PC_IP           "192.168.0.100"
-#endif
-
-#ifndef APP_AIWB2_PC_PORT
-#define APP_AIWB2_PC_PORT         "6666"
+#ifndef APP_AIWB2_UDP_SERVER_PORT
+#define APP_AIWB2_UDP_SERVER_PORT "7777"
 #endif
 
 /* Keep AT provisioning passive by default so firmware does not collide with
@@ -36,6 +32,7 @@
 #define APP_AIWB2_PROBE_TIMEOUT_MS   8000U
 #define APP_AIWB2_ESCAPE_GUARD_MS    1200U
 #define APP_AIWB2_BOOT_TIMEOUT_MS   35000U
+#define APP_AIWB2_TRANSPARENT_OK_TIMEOUT_MS 3000U
 #define APP_AIWB2_BUSY_BACKOFF_MS    6000U
 #define APP_AIWB2_AUTOCONNECT_MS    25000U
 #define APP_AIWB2_RETRY_MIN_MS       3000U
@@ -59,7 +56,7 @@ static const APP_AiWB2Command aiwb2_commands[] = {
     { "AT+WJAP=\"" APP_AIWB2_WIFI_SSID "\",\"" APP_AIWB2_WIFI_PASSWORD "\"", 25000U, 0U, 0U },
     { "AT+WAUTOCONN=1", 1500U, 0U, 0U },
     { "AT+SOCKETDEL=1", 2000U, 1U, 0U },
-    { "AT+SOCKETAUTOTT=4," APP_AIWB2_PC_IP "," APP_AIWB2_PC_PORT, 2500U, 0U, 0U },
+    { "AT+SOCKETAUTOTT=1," APP_AIWB2_UDP_SERVER_PORT, 2500U, 0U, 0U },
     { "AT+RST", 8000U, 0U, 1U },
 };
 
@@ -227,6 +224,12 @@ static void aiwb2_enter_transparent(void)
     aiwb2_retry_count = 0U;
 }
 
+static void aiwb2_wait_transparent_ok(void)
+{
+    aiwb2_state = APP_AIWB2_STATE_WAIT_TRANSPARENT_OK;
+    aiwb2_deadline_ms = HAL_GetTick() + APP_AIWB2_TRANSPARENT_OK_TIMEOUT_MS;
+}
+
 static void aiwb2_parse_socket_error(const char *line)
 {
     const char *cursor = line;
@@ -382,6 +385,12 @@ void APP_AiWB2_Tick(void)
         }
         break;
 
+    case APP_AIWB2_STATE_WAIT_TRANSPARENT_OK:
+        if (aiwb2_time_reached(now_ms, aiwb2_deadline_ms) != 0U) {
+            aiwb2_enter_retry_delay();
+        }
+        break;
+
     case APP_AIWB2_STATE_RETRY_DELAY:
         if (aiwb2_time_reached(now_ms, aiwb2_deadline_ms) != 0U) {
             aiwb2_begin_probe();
@@ -415,9 +424,19 @@ void APP_AiWB2_ProcessLine(const char *line)
         return;
     }
 
-    if ((aiwb2_contains(line, "connect success") != 0U) ||
-        (strcmp(line, ">") == 0)) {
+    if (strcmp(line, ">") == 0) {
         aiwb2_enter_transparent();
+        return;
+    }
+
+    if ((aiwb2_state == APP_AIWB2_STATE_WAIT_TRANSPARENT_OK) &&
+        (strcmp(line, "OK") == 0)) {
+        aiwb2_enter_transparent();
+        return;
+    }
+
+    if (aiwb2_contains(line, "connect success") != 0U) {
+        aiwb2_wait_transparent_ok();
         return;
     }
 
@@ -475,8 +494,11 @@ void APP_AiWB2_ProcessLine(const char *line)
     if (aiwb2_state == APP_AIWB2_STATE_WAIT_BOOT_CONNECT) {
         if ((aiwb2_contains(line, "connect success") != 0U) ||
             (strcmp(line, ">") == 0)) {
-            aiwb2_state = APP_AIWB2_STATE_TRANSPARENT;
-            aiwb2_retry_count = 0U;
+            if (strcmp(line, ">") == 0) {
+                aiwb2_enter_transparent();
+            } else {
+                aiwb2_wait_transparent_ok();
+            }
             return;
         }
 
@@ -531,7 +553,9 @@ uint8_t APP_AiWB2_IsControlPayload(const char *line)
         (aiwb2_starts_with(line, "WIFI_EN ") != 0U) ||
         (aiwb2_starts_with(line, "PARAM ") != 0U) ||
         (aiwb2_starts_with(line, "PID ") != 0U) ||
-        (aiwb2_starts_with(line, "SERVO ") != 0U)) {
+        (aiwb2_starts_with(line, "SERVO ") != 0U) ||
+        (strcmp(line, "Sensor_Data:1") == 0) ||
+        (strcmp(line, "Sensor_Data:0") == 0)) {
         return 1U;
     }
 
@@ -563,13 +587,12 @@ void APP_AiWB2_AssumeTransparent(void)
 
 uint8_t APP_AiWB2_StartProvision(const char *ssid,
                                  const char *password,
-                                 const char *host,
-                                 const char *port)
+                                 const char *local_port)
 {
     int written;
 
-    if ((ssid == 0) || (password == 0) || (host == 0) || (port == 0) ||
-        (*ssid == '\0') || (*host == '\0') || (*port == '\0')) {
+    if ((ssid == 0) || (password == 0) || (local_port == 0) ||
+        (*ssid == '\0') || (*local_port == '\0')) {
         return 0U;
     }
 
@@ -587,9 +610,8 @@ uint8_t APP_AiWB2_StartProvision(const char *ssid,
     (void)snprintf(aiwb2_provision_text[4], sizeof(aiwb2_provision_text[4]), "AT+SOCKETDEL=1");
     written = snprintf(aiwb2_provision_text[5],
                        sizeof(aiwb2_provision_text[5]),
-                       "AT+SOCKETAUTOTT=4,%s,%s",
-                       host,
-                       port);
+                       "AT+SOCKETAUTOTT=1,%s",
+                       local_port);
     if ((written < 0) || ((uint32_t)written >= sizeof(aiwb2_provision_text[5]))) {
         return 0U;
     }

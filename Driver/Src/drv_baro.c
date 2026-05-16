@@ -13,7 +13,9 @@
 #define SPL06_SPI_WAKE_DELAY_MS  1U
 #define SPL06_CONFIG_DELAY_MS    40U
 #define SPL06_RATE_8HZ           0x30U
+#define SPL06_RATE_32HZ          0x50U
 #define SPL06_OVERSAMPLE_1X      0x00U
+#define SPL06_OVERSAMPLE_8X      0x03U
 #define SPL06_MEAS_BACKGROUND_PT 0x07U
 #define SPL06_TMP_EXT_BIT        0x80U
 
@@ -76,7 +78,7 @@ DRV_BARO_Status DRV_BARO_Init(DRV_BARO_Device *dev, const DRV_BARO_Bus *bus)
     if (product_id != DRV_BARO_ID_VALUE) { return DRV_BARO_BAD_ID; }
 
     status = DRV_BARO_WriteRegister(dev, SPL06_REG_PRS_CFG,
-                                    SPL06_RATE_8HZ | SPL06_OVERSAMPLE_1X);
+                                    SPL06_RATE_32HZ | SPL06_OVERSAMPLE_8X);
     if (status != DRV_BARO_OK) { return status; }
 
     status = DRV_BARO_WriteRegister(dev, SPL06_REG_TMP_CFG, tmp_cfg);

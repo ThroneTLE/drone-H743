@@ -13,15 +13,13 @@ static uint8_t        imu_initialized;
 static void BSP_IMU_ConfigureSpiMode(uint32_t polarity, uint32_t phase)
 {
     if ((hspi2.Init.CLKPolarity == polarity) &&
-        (hspi2.Init.CLKPhase == phase) &&
-        (hspi2.Init.BaudRatePrescaler == SPI_BAUDRATEPRESCALER_256)) {
+        (hspi2.Init.CLKPhase == phase)) {
         return;
     }
 
     (void)HAL_SPI_DeInit(&hspi2);
     hspi2.Init.CLKPolarity = polarity;
     hspi2.Init.CLKPhase = phase;
-    hspi2.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_256;
     (void)HAL_SPI_Init(&hspi2);
 }
 
@@ -44,8 +42,8 @@ DRV_IMU_Status BSP_IMU_Init(void)
     DRV_IMU_DefaultConfig(&config);
     config.accel_range = DRV_IMU_ACCEL_RANGE_4G;
     config.gyro_range  = DRV_IMU_GYRO_RANGE_1000DPS;
-    config.accel_odr   = DRV_IMU_ODR_100HZ;
-    config.gyro_odr    = DRV_IMU_ODR_100HZ;
+    config.accel_odr   = DRV_IMU_ODR_1KHZ;
+    config.gyro_odr    = DRV_IMU_ODR_1KHZ;
     config.soft_reset_on_init = false;
 
     status = DRV_IMU_Init(&imu_dev, BSP_Board_GetImuBus(), &config);

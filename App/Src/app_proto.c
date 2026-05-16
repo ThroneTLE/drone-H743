@@ -1,3 +1,10 @@
+/*
+ * app_proto.c — Custom $X framed protocol
+ * Temporarily disabled for VOFA migration.
+ * Kept as reference; will be removed after VOFA is stable.
+ */
+#if 0
+
 #include "app_proto.h"
 
 #include <string.h>
@@ -207,3 +214,5 @@ uint8_t APP_Proto_BuildFrame(uint8_t direction,
     *out_length = offset;
     return 1U;
 }
+
+#endif /* #if 0 — disabled for VOFA migration */

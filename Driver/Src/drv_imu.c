@@ -3,12 +3,15 @@
 #include <string.h>
 
 #define ICM42688_REG_DEVICE_CONFIG       0x11U
+#define ICM42688_REG_INT_CONFIG          0x14U
 #define ICM42688_REG_TEMP_DATA1          0x1DU
 #define ICM42688_REG_INT_STATUS          0x2DU
 #define ICM42688_REG_SIGNAL_PATH_RESET   0x4BU
 #define ICM42688_REG_PWR_MGMT0           0x4EU
 #define ICM42688_REG_GYRO_CONFIG0        0x4FU
 #define ICM42688_REG_ACCEL_CONFIG0       0x50U
+#define ICM42688_REG_INT_CONFIG1         0x64U
+#define ICM42688_REG_INT_SOURCE0         0x65U
 #define ICM42688_REG_WHO_AM_I            0x75U
 #define ICM42688_REG_BANK_SEL            0x76U
 
@@ -23,6 +26,9 @@
 #define ICM42688_PWR_TEMP_ENABLE_MASK    0x20U
 #define ICM42688_PWR_GYRO_ACCEL_LN       0x0FU
 #define ICM42688_DATA_READY_MASK         0x08U
+#define ICM42688_INT1_PUSH_PULL_ACTIVE_HIGH 0x03U
+#define ICM42688_INT_CONFIG1_INT_PINS_OK    0x00U
+#define ICM42688_UI_DRDY_INT1_EN            0x08U
 
 static void icm42688_delay_ms(DRV_IMU_Device *dev, uint32_t delay_ms)
 {
@@ -176,6 +182,18 @@ DRV_IMU_Status DRV_IMU_Init(DRV_IMU_Device *dev, const DRV_IMU_Bus *bus,
     if (status != DRV_IMU_OK) { return icm42688_fail(dev, status); }
 
     icm42688_delay_ms(dev, ICM42688_SENSOR_STARTUP_MS);
+
+    status = DRV_IMU_WriteRegister(dev, ICM42688_REG_INT_CONFIG,
+                                   ICM42688_INT1_PUSH_PULL_ACTIVE_HIGH);
+    if (status != DRV_IMU_OK) { return icm42688_fail(dev, status); }
+
+    status = DRV_IMU_WriteRegister(dev, ICM42688_REG_INT_CONFIG1,
+                                   ICM42688_INT_CONFIG1_INT_PINS_OK);
+    if (status != DRV_IMU_OK) { return icm42688_fail(dev, status); }
+
+    status = DRV_IMU_WriteRegister(dev, ICM42688_REG_INT_SOURCE0,
+                                   ICM42688_UI_DRDY_INT1_EN);
+    if (status != DRV_IMU_OK) { return icm42688_fail(dev, status); }
 
     dev->init_stage = DRV_IMU_INIT_STAGE_READY;
     dev->last_error = DRV_IMU_OK;
