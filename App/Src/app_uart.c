@@ -2,6 +2,7 @@
 
 #include "app_aiwb2.h"
 #include "app_control.h"
+#include "app_elrs.h"
 #include "app_maint_uart.h"
 #include "app_tasks.h"
 #include "bsp_led.h"
@@ -833,11 +834,19 @@ void APP_UART_OnError(UART_HandleTypeDef *huart)
 
 void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
 {
+    if (huart->Instance == UART4) {
+        APP_ELRS_OnRxEvent(Size);
+        return;
+    }
     APP_UART_OnRxEvent(huart, Size);
 }
 
 void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
 {
+    if (huart->Instance == UART4) {
+        APP_ELRS_OnTxComplete();
+        return;
+    }
     APP_UART_OnTxComplete(huart);
 }
 
@@ -849,6 +858,10 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 
 void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
 {
+    if (huart->Instance == UART4) {
+        APP_ELRS_OnError();
+        return;
+    }
     APP_UART_OnError(huart);
     BSP_GPS_OnUartError(huart);
     APP_MaintUART_OnError(huart);

@@ -19,10 +19,12 @@
 #include "bsp_imu.h"
 #include "bsp_pwm.h"
 #include "bsp_uart.h"
+#include "drv_motor.h"
 
 #include "FreeRTOS.h"
 #include "main.h"
 #include "task.h"
+#include "tim.h"
 
 #include <stddef.h>
 #include <stdarg.h>
@@ -46,6 +48,10 @@
 #define APP_CONTROL_FLASH_BENCH_DEFAULT_LEN 512U
 #define APP_CONTROL_FLASH_BENCH_DEFAULT_LOOPS 100U
 #define APP_CONTROL_FLASH_SCRATCH_ADDR (APP_FLASH_SERVICE_SIZE_BYTES - 4U * 4096UL)
+#define APP_CONTROL_IDENT_DEFAULT_MIN_PERCENT 0U
+#define APP_CONTROL_IDENT_DEFAULT_MAX_PERCENT 100U
+#define APP_CONTROL_IDENT_DEFAULT_STEP_PERCENT 5U
+#define APP_CONTROL_IDENT_DEFAULT_DWELL_MS 2000U
 
 typedef struct {
     uint32_t magic;
@@ -65,6 +71,15 @@ static uint32_t control_wifi_reset_deadline_ms;
 static uint8_t control_initialized;
 static uint8_t control_maint_output_active;
 static uint8_t control_dwt_ready;
+static uint8_t ident_active;
+static uint8_t ident_motor;
+static uint32_t ident_min_percent;
+static uint32_t ident_max_percent;
+static uint32_t ident_step_percent;
+static uint32_t ident_dwell_ms;
+static uint32_t ident_current_percent;
+static uint32_t ident_next_ms;
+static uint32_t ident_seq;
 __attribute__((section(".dma_buffer"), aligned(32)))
 static uint8_t control_flash_buf_a[APP_CONTROL_FLASH_BENCH_MAX_LEN];
 __attribute__((section(".dma_buffer"), aligned(32)))
@@ -82,6 +97,9 @@ static uint8_t app_control_payload_to_line(const uint8_t *payload,
                                            char *buffer,
                                            uint16_t buffer_size);
 static void app_control_handle_wifi(char **tokens, uint32_t count);
+static void app_control_handle_motor(char **tokens, uint32_t count);
+static void app_control_handle_ident(char **tokens, uint32_t count);
+static void app_control_ident_step(void);
 static void app_control_service_wifi_reset(void);
 static void app_control_tick_common(uint8_t emit_heartbeat);
 static void app_control_report_rtos(void);
@@ -404,6 +422,11 @@ static uint8_t app_control_valid_servo_index(uint32_t index)
     return (index < APP_CONTROL_SERVO_COUNT) ? 1U : 0U;
 }
 
+static uint8_t app_control_valid_motor(uint32_t motor)
+{
+    return (motor <= DRV_MOTOR_ID_2) ? 1U : 0U;
+}
+
 static uint16_t app_control_servo_angle_to_pulse(uint32_t angle)
 {
     if (angle > 180U) { angle = 180U; }
@@ -464,6 +487,62 @@ static uint8_t app_control_parse_u32_auto(const char *text, uint32_t *value)
 
     *value = (uint32_t)parsed;
     return 1U;
+}
+
+static void app_control_report_pwm(void)
+{
+    uint32_t moder0 = (GPIOA->MODER >> 0U) & 0x3U;
+    uint32_t afr0 = (GPIOA->AFR[0] >> 0U) & 0xFU;
+
+    APP_Control_QueueText("PWM tim2 cr1=0x%08lX ccER=0x%08lX ccmr1=0x%08lX ccmr2=0x%08lX psc=%lu arr=%lu cnt=%lu\r\n",
+                          (unsigned long)TIM2->CR1,
+                          (unsigned long)TIM2->CCER,
+                          (unsigned long)TIM2->CCMR1,
+                          (unsigned long)TIM2->CCMR2,
+                          (unsigned long)TIM2->PSC,
+                          (unsigned long)TIM2->ARR,
+                          (unsigned long)TIM2->CNT);
+    APP_Control_QueueText("PWM ccr=%lu,%lu,%lu,%lu bsp_us=%u,%u,%u,%u start=%u,%u,%u,%u pa0_moder=%lu pa0_af=%lu odr=0x%08lX idr=0x%08lX\r\n",
+                          (unsigned long)TIM2->CCR1,
+                          (unsigned long)TIM2->CCR2,
+                          (unsigned long)TIM2->CCR3,
+                          (unsigned long)TIM2->CCR4,
+                          (unsigned int)BSP_PWM_GetEscPulse(1U),
+                          (unsigned int)BSP_PWM_GetEscPulse(2U),
+                          (unsigned int)BSP_PWM_GetEscPulse(3U),
+                          (unsigned int)BSP_PWM_GetEscPulse(4U),
+                          (unsigned int)BSP_PWM_GetStartStatus(1U),
+                          (unsigned int)BSP_PWM_GetStartStatus(2U),
+                          (unsigned int)BSP_PWM_GetStartStatus(3U),
+                          (unsigned int)BSP_PWM_GetStartStatus(4U),
+                          (unsigned long)moder0,
+                          (unsigned long)afr0,
+                          (unsigned long)GPIOA->ODR,
+                          (unsigned long)GPIOA->IDR);
+}
+
+static void app_control_report_motor(void)
+{
+    APP_Control_QueueText("MOTOR both_id=0 m1_pct=%lu m1_pulse=%u m2_pct=%lu m2_pulse=%u\r\n",
+                          (unsigned long)DRV_Motor_GetPercent(DRV_MOTOR_ID_1),
+                          (unsigned int)DRV_Motor_GetPulse(DRV_MOTOR_ID_1),
+                          (unsigned long)DRV_Motor_GetPercent(DRV_MOTOR_ID_2),
+                          (unsigned int)DRV_Motor_GetPulse(DRV_MOTOR_ID_2));
+}
+
+static void app_control_report_ident(void)
+{
+    APP_Control_QueueText("IDENT active=%u seq=%lu motor=%u pct=%lu min=%lu max=%lu step=%lu dwell_ms=%lu next_ms=%lu now_ms=%lu\r\n",
+                          (unsigned int)ident_active,
+                          (unsigned long)ident_seq,
+                          (unsigned int)ident_motor,
+                          (unsigned long)ident_current_percent,
+                          (unsigned long)ident_min_percent,
+                          (unsigned long)ident_max_percent,
+                          (unsigned long)ident_step_percent,
+                          (unsigned long)ident_dwell_ms,
+                          (unsigned long)ident_next_ms,
+                          (unsigned long)HAL_GetTick());
 }
 
 static uint32_t app_control_crc32_update(uint32_t crc, const uint8_t *data, uint32_t len)
@@ -1989,6 +2068,182 @@ static void app_control_handle_wifi(char **tokens, uint32_t count)
     APP_Control_QueueText("ERR unknown wifi subcmd %s\r\n", tokens[1]);
 }
 
+static void app_control_ident_stop(const char *reason)
+{
+    if (reason == NULL) {
+        reason = "stop";
+    }
+
+    ident_active = 0U;
+    (void)DRV_Motor_StopAll();
+    APP_Control_QueueText("IDENT stop reason=%s seq=%lu ms=%lu\r\n",
+                          reason,
+                          (unsigned long)ident_seq,
+                          (unsigned long)HAL_GetTick());
+}
+
+static void app_control_ident_emit_sample(void)
+{
+    DRV_MOTOR_Status status;
+
+    status = DRV_Motor_SetPercent(ident_motor, ident_current_percent);
+    if (status != DRV_MOTOR_OK) {
+        APP_Control_QueueText("IDENT err seq=%lu motor=%u pct=%lu st=%u\r\n",
+                              (unsigned long)ident_seq,
+                              (unsigned int)ident_motor,
+                              (unsigned long)ident_current_percent,
+                              (unsigned int)status);
+        app_control_ident_stop("motor_error");
+        return;
+    }
+
+    APP_Control_QueueText("IDENT sample seq=%lu motor=%u pct=%lu pulse=%u dwell_ms=%lu ms=%lu\r\n",
+                          (unsigned long)ident_seq,
+                          (unsigned int)ident_motor,
+                          (unsigned long)ident_current_percent,
+                          (unsigned int)DRV_Motor_PercentToPulse(ident_current_percent),
+                          (unsigned long)ident_dwell_ms,
+                          (unsigned long)HAL_GetTick());
+    ++ident_seq;
+}
+
+static void app_control_ident_step(void)
+{
+    uint32_t now_ms;
+
+    if (ident_active == 0U) {
+        return;
+    }
+
+    now_ms = HAL_GetTick();
+    if ((int32_t)(now_ms - ident_next_ms) < 0) {
+        return;
+    }
+
+    if (ident_current_percent > ident_max_percent) {
+        app_control_ident_stop("done");
+        return;
+    }
+
+    app_control_ident_emit_sample();
+    if (ident_current_percent > (ident_max_percent - ident_step_percent)) {
+        ident_current_percent = ident_max_percent + 1U;
+    } else {
+        ident_current_percent += ident_step_percent;
+    }
+    ident_next_ms = now_ms + ident_dwell_ms;
+}
+
+static void app_control_handle_motor(char **tokens, uint32_t count)
+{
+    if (count < 2U) {
+        APP_Control_QueueText("ERR usage MOTOR SET 0|1|2 pct | MOTOR STOP | MOTOR?\r\n");
+        return;
+    }
+
+    if (strcmp(tokens[1], "SET") == 0) {
+        uint32_t motor;
+        uint32_t percent;
+        DRV_MOTOR_Status status;
+
+        if ((count < 4U) ||
+            (app_control_parse_u32(tokens[2], &motor) == 0U) ||
+            (app_control_parse_u32(tokens[3], &percent) == 0U) ||
+            (app_control_valid_motor(motor) == 0U) ||
+            (percent > DRV_MOTOR_PERCENT_MAX)) {
+            APP_Control_QueueText("ERR usage MOTOR SET 0|1|2 0..100\r\n");
+            return;
+        }
+
+        status = DRV_Motor_SetPercent(motor, percent);
+        APP_Control_QueueText("OK motor%lu st=%u pct=%lu pulse=%u\r\n",
+                              (unsigned long)motor,
+                              (unsigned int)status,
+                              (unsigned long)percent,
+                              (unsigned int)DRV_Motor_GetPulse(motor));
+    } else if (strcmp(tokens[1], "STOP") == 0) {
+        ident_active = 0U;
+        APP_Control_QueueText("OK motor stop st=%u\r\n",
+                              (unsigned int)DRV_Motor_StopAll());
+    } else {
+        APP_Control_QueueText("ERR unknown motor subcmd %s\r\n", tokens[1]);
+    }
+}
+
+static void app_control_handle_ident(char **tokens, uint32_t count)
+{
+    if (count < 2U) {
+        APP_Control_QueueText("ERR usage IDENT START 0|1|2 [min max step dwell_ms] | IDENT STOP | IDENT?\r\n");
+        return;
+    }
+
+    if (strcmp(tokens[1], "START") == 0) {
+        uint32_t motor;
+        uint32_t min_percent = APP_CONTROL_IDENT_DEFAULT_MIN_PERCENT;
+        uint32_t max_percent = APP_CONTROL_IDENT_DEFAULT_MAX_PERCENT;
+        uint32_t step_percent = APP_CONTROL_IDENT_DEFAULT_STEP_PERCENT;
+        uint32_t dwell_ms = APP_CONTROL_IDENT_DEFAULT_DWELL_MS;
+
+        if ((count < 3U) ||
+            (app_control_parse_u32(tokens[2], &motor) == 0U) ||
+            (app_control_valid_motor(motor) == 0U)) {
+            APP_Control_QueueText("ERR usage IDENT START 0|1|2 [min max step dwell_ms]\r\n");
+            return;
+        }
+        if ((count >= 4U) && (app_control_parse_u32(tokens[3], &min_percent) == 0U)) {
+            APP_Control_QueueText("ERR ident min\r\n");
+            return;
+        }
+        if ((count >= 5U) && (app_control_parse_u32(tokens[4], &max_percent) == 0U)) {
+            APP_Control_QueueText("ERR ident max\r\n");
+            return;
+        }
+        if ((count >= 6U) && (app_control_parse_u32(tokens[5], &step_percent) == 0U)) {
+            APP_Control_QueueText("ERR ident step\r\n");
+            return;
+        }
+        if ((count >= 7U) && (app_control_parse_u32(tokens[6], &dwell_ms) == 0U)) {
+            APP_Control_QueueText("ERR ident dwell\r\n");
+            return;
+        }
+        if ((min_percent > DRV_MOTOR_PERCENT_MAX) ||
+            (max_percent > DRV_MOTOR_PERCENT_MAX) ||
+            (min_percent > max_percent) ||
+            (step_percent == 0U) ||
+            (dwell_ms == 0U)) {
+            APP_Control_QueueText("ERR ident range min=%lu max=%lu step=%lu dwell=%lu\r\n",
+                                  (unsigned long)min_percent,
+                                  (unsigned long)max_percent,
+                                  (unsigned long)step_percent,
+                                  (unsigned long)dwell_ms);
+            return;
+        }
+
+        (void)DRV_Motor_StopAll();
+        ident_motor = (uint8_t)motor;
+        ident_min_percent = min_percent;
+        ident_max_percent = max_percent;
+        ident_step_percent = step_percent;
+        ident_dwell_ms = dwell_ms;
+        ident_current_percent = min_percent;
+        ident_next_ms = HAL_GetTick();
+        ident_seq = 0U;
+        ident_active = 1U;
+        APP_Control_QueueText("IDENT start motor=%u min=%lu max=%lu step=%lu dwell_ms=%lu ms=%lu\r\n",
+                              (unsigned int)ident_motor,
+                              (unsigned long)ident_min_percent,
+                              (unsigned long)ident_max_percent,
+                              (unsigned long)ident_step_percent,
+                              (unsigned long)ident_dwell_ms,
+                              (unsigned long)HAL_GetTick());
+        app_control_ident_step();
+    } else if (strcmp(tokens[1], "STOP") == 0) {
+        app_control_ident_stop("command");
+    } else {
+        APP_Control_QueueText("ERR unknown ident subcmd %s\r\n", tokens[1]);
+    }
+}
+
 static void app_control_service_wifi_reset(void)
 {
     if (control_wifi_reset_pending == 0U) {
@@ -2201,6 +2456,7 @@ void APP_Control_MaintTick(void)
 static void app_control_tick_common(uint8_t emit_heartbeat)
 {
     app_control_service_wifi_reset();
+    app_control_ident_step();
 
     if (emit_heartbeat == 0U) {
         return;
@@ -2328,12 +2584,22 @@ static void app_control_dispatch_tokens(char **tokens, uint32_t count, uint8_t e
         app_control_handle_param(tokens, count);
     } else if (strcmp(tokens[0], "PID") == 0) {
         app_control_handle_pid(tokens, count);
+    } else if (strcmp(tokens[0], "MOTOR?") == 0) {
+        app_control_report_motor();
+    } else if (strcmp(tokens[0], "MOTOR") == 0) {
+        app_control_handle_motor(tokens, count);
+    } else if (strcmp(tokens[0], "IDENT?") == 0) {
+        app_control_report_ident();
+    } else if (strcmp(tokens[0], "IDENT") == 0) {
+        app_control_handle_ident(tokens, count);
+    } else if (strcmp(tokens[0], "PWM?") == 0) {
+        app_control_report_pwm();
     } else if (strncmp(tokens[0], "PWM", 3) == 0) {
         uint32_t channel;
         uint32_t percent;
 
         if ((app_control_parse_vofa_pwm(tokens[0], &channel, &percent) != 0U) &&
-            (channel >= 1U) && (channel <= 2U) &&
+            (channel >= 1U) && (channel <= BSP_PWM_ESC_CHANNEL_COUNT) &&
             (percent <= BSP_PWM_ESC_MAX_PERCENT)) {
             uint16_t pulse = BSP_PWM_PercentToPulse(percent);
             BSP_PWM_Status status = BSP_PWM_SetEscPercent(channel, percent);
@@ -2344,7 +2610,7 @@ static void app_control_dispatch_tokens(char **tokens, uint32_t count, uint8_t e
                                   (unsigned long)percent,
                                   (unsigned int)pulse);
         } else {
-            APP_Control_QueueText("ERR usage PWM1:0..100 or PWM2:0..100\r\n");
+            APP_Control_QueueText("ERR usage PWM1..4:0..100\r\n");
         }
     } else if (strncmp(tokens[0], "Servor", 6) == 0) {
         unsigned int parsed_index;

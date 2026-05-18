@@ -51,6 +51,8 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Driver/Src/drv_mag.c
     Driver/Src/drv_gps.c
     Driver/Src/drv_servo.c
+    Driver/Src/drv_motor.c
+    Driver/Src/drv_elrs.c
     # Services layer
     Services/Src/svc_param.c
     Services/Src/svc_timestamp.c
@@ -90,6 +92,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     App/Src/app_proto.c
     App/Src/app_tasks.c
     App/Src/app_uart.c
+    App/Src/app_elrs.c
     App/Src/app_vofa.c
 )
 

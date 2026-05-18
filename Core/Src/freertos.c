@@ -33,8 +33,12 @@
 #include <math.h>
 
 #include "app_vofa.h"
+#include "app_elrs.h"
 #include "bsp_baro.h"
 #include "bsp_imu.h"
+#include "bsp_bus_servo.h"
+#include "bsp_pwm.h"
+#include "drv_motor_model.h"
 
 /* USER CODE END Includes */
 
@@ -298,6 +302,9 @@ void StabilizerTask(void *argument)
       if (osMessageQueueGet(SensorSampleQueueHandle, &msg, 0U, 0U) == osOK) {
         stabilizer_seq++;
 
+        /* 0.5 ELRS 遥控数据更新 */
+        APP_ELRS_Step();
+
         /* ① 互补滤波（加速度 + 陀螺仪融合） */
         APP_IMU_UpdateAttitude(&msg.imu, &roll, &pitch, &yaw,
                                &last_tick_ms, stabilizer_seq);
@@ -313,7 +320,74 @@ void StabilizerTask(void *argument)
           (void)osMessageQueuePut(vofaLogQueueHandle, &msg, 0U, 0U);
         }
 
-        /* ③ TODO: 控制输出（电机/PWM） */
+        /* ③ RC 控制输出：CH1→舵机1, CH2→舵机2, CH3→油门, CH4→偏航, CH5→解锁 */
+        {
+            static uint32_t last_out_ms = 0U;
+            static uint8_t  armed = 0U;
+            uint32_t now = HAL_GetTick();
+
+            if ((now - last_out_ms) >= 20U) {
+                last_out_ms = now;
+
+                uint16_t ch[16];
+                APP_ELRS_GetChannels(ch);
+
+                uint16_t s1_us = ch[0];  /* CH1 → 舵机1 */
+                uint16_t s2_us = ch[1];  /* CH2 → 舵机2 */
+                uint8_t  arm_sw = (ch[4] > 1500U) ? 1U : 0U;  /* CH5 解锁开关 */
+
+                /* 解锁状态机：必须油门归零后才能解锁 */
+                if (arm_sw && !armed && ch[2] < 1050U) {
+                    armed = 1U;  /* 油门已归零 → 正式解锁 */
+                } else if (!arm_sw) {
+                    armed = 0U;  /* 关锁 */
+                }
+                /* arm_sw && !armed && ch[2] >= 1050: 油门未归零，拒绝解锁 */
+
+                /* ---- 舵机 ---- */
+                if (s1_us < DRV_SERVO_MIN_PULSE_US) s1_us = DRV_SERVO_MIN_PULSE_US;
+                if (s1_us > DRV_SERVO_MAX_PULSE_US) s1_us = DRV_SERVO_MAX_PULSE_US;
+                if (s2_us < DRV_SERVO_MIN_PULSE_US) s2_us = DRV_SERVO_MIN_PULSE_US;
+                if (s2_us > DRV_SERVO_MAX_PULSE_US) s2_us = DRV_SERVO_MAX_PULSE_US;
+
+                DRV_SERVO_MoveCmd moves[2];
+                moves[0].id = 1U;  moves[0].pulse_us = s1_us;
+                moves[1].id = 2U;  moves[1].pulse_us = s2_us;
+                BSP_BusServo_MoveMany(moves, 2U, 0U);
+
+                /* ---- 共轴双桨电机 ---- */
+                if (armed) {
+                    float thr_pct = 0.0f;
+                    if (ch[2] > 1000U) {
+                        thr_pct = (float)(ch[2] - 1000U) * 0.1f;
+                        if (thr_pct > 100.0f) thr_pct = 100.0f;
+                    }
+
+                    /* CH4: 1500=中立, ±500 → ±30% 差速 */
+                    float yaw_diff = (float)((int32_t)ch[3] - 1500) * 0.06f;
+                    if (yaw_diff > 30.0f)  yaw_diff = 30.0f;
+                    if (yaw_diff < -30.0f) yaw_diff = -30.0f;
+
+                    float m1 = thr_pct + yaw_diff;
+                    float m2 = thr_pct - yaw_diff;
+                    if (m1 < 0.0f) m1 = 0.0f; else if (m1 > 100.0f) m1 = 100.0f;
+                    if (m2 < 0.0f) m2 = 0.0f; else if (m2 > 100.0f) m2 = 100.0f;
+
+                    uint16_t pwm1 = motor_hammerstein_interp_thrust_to_pwm(
+                        motor_hammerstein_interp_f32(motor_hammerstein_pct,
+                            motor_hammerstein_thrust_g, MOTOR_HAMMERSTEIN_POINTS, m1));
+                    uint16_t pwm2 = motor_hammerstein_interp_thrust_to_pwm(
+                        motor_hammerstein_interp_f32(motor_hammerstein_pct,
+                            motor_hammerstein_thrust_g, MOTOR_HAMMERSTEIN_POINTS, m2));
+
+                    BSP_PWM_SetEscPulse(1, pwm1);  /* PA0: 上桨 */
+                    BSP_PWM_SetEscPulse(2, pwm2);  /* PA1: 下桨 */
+                } else {
+                    BSP_PWM_SetEscPulse(1, BSP_PWM_ESC_MIN_US);
+                    BSP_PWM_SetEscPulse(2, BSP_PWM_ESC_MIN_US);
+                }
+            }
+        }
       }
     }
   }
