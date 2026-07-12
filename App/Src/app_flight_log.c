@@ -18,7 +18,7 @@
 #define APP_FLIGHT_LOG_SECTOR_MAGIC       0x31534C46UL /* FLS1 */
 #define APP_FLIGHT_LOG_RECORD_MAGIC       0x31524C46UL /* FLR1 */
 #define APP_FLIGHT_LOG_EXPORT_BLOCK_MAGIC 0x31424C46UL /* FLB1 */
-#define APP_FLIGHT_LOG_VERSION            2U
+#define APP_FLIGHT_LOG_VERSION            3U
 #define APP_FLIGHT_LOG_EXPORT_VERSION     1U
 #define APP_FLIGHT_LOG_REGION_SIZE \
     (APP_FLIGHT_LOG_REGION_END_EXCL - APP_FLIGHT_LOG_REGION_START)
@@ -47,7 +47,7 @@ typedef struct __attribute__((packed)) {
     uint32_t params_size;
     uint32_t header_crc32;
     DRV_COAX_CTRL_Params params;
-    uint8_t reserved[60];
+    uint8_t reserved[8];
 } APP_FlightLogSectorHeader;
 
 typedef struct __attribute__((packed)) {

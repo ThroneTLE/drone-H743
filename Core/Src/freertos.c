@@ -1259,6 +1259,7 @@ void StabilizerTask(void *argument)
           uint16_t ident_alpha_us;
           uint16_t ident_beta_us;
 
+          DRV_COAX_CTRL_ResetRuntime();
           APP_Ident_GetServoTargets(&ident_alpha_us, &ident_beta_us);
           moves[0].pulse_us = ident_alpha_us;
           moves[1].pulse_us = ident_beta_us;
@@ -1278,6 +1279,7 @@ void StabilizerTask(void *argument)
           stabilizer_velocity_estimator_reset(&vel_estimator);
           stabilizer_velocity_pid_reset(&vel_pid_x);
           stabilizer_velocity_pid_reset(&vel_pid_y);
+          DRV_COAX_CTRL_ResetRuntime();
           vofa_debug.vel_loop_active = 0.0f;
           stabilizer_vofa_debug_publish(&vofa_debug);
           moves[0].pulse_us = DRV_COAX_CTRL_SERVO_ALPHA_CENTER_US;
@@ -1304,6 +1306,7 @@ void StabilizerTask(void *argument)
            *   这样先验证遥控通道和机械方向，不受未接位置/速度估计的控制器影响。
            */
           stabilizer_map_rc_direct_to_servo(ch, moves);
+          DRV_COAX_CTRL_ResetRuntime();
           ctrl_out.omega_upper = 0.0f;
           ctrl_out.omega_lower = 0.0f;
 #else
@@ -1334,6 +1337,7 @@ void StabilizerTask(void *argument)
           attitude.gyro_x_rad_s = msg.imu.gyro_x_dps * STABILIZER_DEG_TO_RAD;
           attitude.gyro_y_rad_s = msg.imu.gyro_y_dps * STABILIZER_DEG_TO_RAD;
           attitude.gyro_z_rad_s = msg.imu.gyro_z_dps * STABILIZER_DEG_TO_RAD;
+          attitude.dt_sec = ctrl_dt_sec;
 
           reference.vx_m_s = stabilizer_rc_normalized(ch[STABILIZER_RC_CH_PITCH]) *
                              STABILIZER_XY_VEL_REF_MAX_M_S;
@@ -1433,6 +1437,8 @@ void StabilizerTask(void *argument)
             vofa_debug.vel_pid_out_m_s2[1] = reference.ay_m_s2;
           }
           reference.az_m_s2 = 0.0f;
+          reference.roll_rad = 0.0f;
+          reference.pitch_rad = 0.0f;
           if (vofa_debug.vel_loop_active >= 0.5f) {
             reference.x_m = attitude.x_m;
             reference.y_m = attitude.y_m;
@@ -1502,6 +1508,10 @@ void StabilizerTask(void *argument)
           /* 上电尚无有效姿态时才使用中位；运行中 IMU 异常保持上一目标。 */
           moves[0].pulse_us = DRV_COAX_CTRL_SERVO_ALPHA_CENTER_US;
           moves[1].pulse_us = DRV_COAX_CTRL_SERVO_BETA_CENTER_US;
+        } else {
+#if (STABILIZER_USE_DIRECT_ANGLE_SERVO == 0U)
+          DRV_COAX_CTRL_ResetRuntime();
+#endif
         }
 
         if (ident_running != 0U) {

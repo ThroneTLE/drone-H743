@@ -133,12 +133,13 @@ def make_record() -> bytes:
     return flog.RECORD_STRUCT.pack(*values)
 
 
-def make_sector_header() -> bytes:
-    params = [float(i) for i in range(len(flog.PARAM_NAMES))]
-    reserved = b"\x00" * 60
+def make_sector_header(*, legacy_v7: bool = False) -> bytes:
+    param_names = flog.LEGACY_PARAM_NAMES_V7 if legacy_v7 else flog.PARAM_NAMES
+    params_struct = flog.LEGACY_PARAMS_STRUCT_V7 if legacy_v7 else flog.PARAMS_STRUCT
+    params = [float(i) for i in range(len(param_names))]
     prefix = flog.SECTOR_HEADER_PREFIX.pack(
         flog.SECTOR_MAGIC,
-        1,
+        2 if legacy_v7 else 3,
         flog.SECTOR_HEADER_SIZE,
         flog.SECTOR_SIZE,
         flog.RECORD_SIZE,
@@ -149,10 +150,13 @@ def make_sector_header() -> bytes:
         0x2000,
         0x3FC000,
         100,
-        flog.PARAMS_STRUCT.size,
+        params_struct.size,
         0,
     )
-    header = bytearray(prefix + flog.PARAMS_STRUCT.pack(*params) + reserved)
+    reserved_size = flog.SECTOR_HEADER_SIZE - len(prefix) - params_struct.size
+    assert reserved_size >= 0
+    reserved = b"\x00" * reserved_size
+    header = bytearray(prefix + params_struct.pack(*params) + reserved)
     assert len(header) == flog.SECTOR_HEADER_SIZE
     crc = flog.crc32(bytes(header))
     struct.pack_into("<I", header, 52, crc)
@@ -210,6 +214,18 @@ def test_sector_header_and_flash_image_parse() -> None:
     assert records == []
     assert sectors[0]["session_id"] == 123
     assert sectors[0]["params"]["vel_loop_x_kp"] == 10.0
+    assert sectors[0]["params"]["indi_enable"] == 35.0
+
+
+def test_legacy_v7_sector_header_still_parses() -> None:
+    header = make_sector_header(legacy_v7=True)
+    parsed = flog.parse_sector_header(header, 0)
+
+    assert parsed is not None
+    assert parsed["version"] == 2
+    assert parsed["params_size"] == flog.LEGACY_PARAMS_STRUCT_V7.size
+    assert parsed["params"]["vel_loop_x_kp"] == 10.0
+    assert "indi_enable" not in parsed["params"]
 
 
 def test_receive_dump_writes_bin_csv_and_meta(tmp_path) -> None:

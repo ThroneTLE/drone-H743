@@ -44,7 +44,7 @@
   <text class="head" x="810" y="216">同轴倾转控制器</text>
   <text class="body" x="810" y="250">速度/位置误差 → 期望加速度</text>
   <text class="body" x="810" y="280">总力与偏航分配</text>
-  <text class="body" x="810" y="310">加速度前馈 + 角速度阻尼</text>
+  <text class="body" x="810" y="310">加速度前馈 + INDI 增量修正</text>
   <text class="body" x="810" y="340">DRV_COAX_CTRL_Run()</text>
   <text class="small" x="810" y="372">回答：“需要多大力，朝哪个方向？”</text>
 

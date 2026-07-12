@@ -54,7 +54,7 @@ MOTOR_REASON_NAMES = {
     7: "imu_invalid_direct",
 }
 
-PARAM_NAMES = [
+LEGACY_PARAM_NAMES_V7 = [
     "pos_x_kp",
     "pos_y_kp",
     "pos_z_kp",
@@ -92,8 +92,25 @@ PARAM_NAMES = [
     "motor_omega_max_rad_s",
 ]
 
+PARAM_NAMES = LEGACY_PARAM_NAMES_V7 + [
+    "indi_enable",
+    "indi_roll_inertia_kg_m2",
+    "indi_pitch_inertia_kg_m2",
+    "indi_roll_attitude_kp_rad_s2_per_rad",
+    "indi_pitch_attitude_kp_rad_s2_per_rad",
+    "indi_roll_rate_kd_rad_s2_per_rad_s",
+    "indi_pitch_rate_kd_rad_s2_per_rad_s",
+    "indi_angular_accel_lpf_alpha",
+    "indi_correction_limit_rad",
+    "indi_increment_limit_rad",
+    "indi_correction_leak_hz",
+    "indi_roll_effectiveness_sign",
+    "indi_pitch_effectiveness_sign",
+]
+
 SECTOR_HEADER_PREFIX = struct.Struct("<IHHIIIIIIIIQII")
 PARAMS_STRUCT = struct.Struct("<" + "f" * len(PARAM_NAMES))
+LEGACY_PARAMS_STRUCT_V7 = struct.Struct("<" + "f" * len(LEGACY_PARAM_NAMES_V7))
 EXPORT_HEADER = struct.Struct("<IHHIIHHI")
 EXPORT_BLOCK_MAGIC_BYTES = struct.pack("<I", EXPORT_BLOCK_MAGIC)
 RECORD_STRUCT = struct.Struct("<IHHIIQII" + "h" * 7 + "f" * 7 + "f" * 3 + "H" * 8 + "H" * 5 + "B" * 12 + "f" * 41 + "I")
@@ -417,7 +434,17 @@ def parse_sector_header(data: bytes, offset: int) -> dict[str, object] | None:
     check[52:56] = b"\x00\x00\x00\x00"
     if crc32(bytes(check)) != saved_crc:
         return None
-    params_values = PARAMS_STRUCT.unpack_from(header, SECTOR_HEADER_PREFIX.size)
+    params_size = prefix[12]
+    if params_size == PARAMS_STRUCT.size:
+        param_names = PARAM_NAMES
+        params_values = PARAMS_STRUCT.unpack_from(header, SECTOR_HEADER_PREFIX.size)
+    elif params_size == LEGACY_PARAMS_STRUCT_V7.size:
+        param_names = LEGACY_PARAM_NAMES_V7
+        params_values = LEGACY_PARAMS_STRUCT_V7.unpack_from(
+            header, SECTOR_HEADER_PREFIX.size
+        )
+    else:
+        return None
     return {
         "magic": magic,
         "version": prefix[1],
@@ -431,9 +458,9 @@ def parse_sector_header(data: bytes, offset: int) -> dict[str, object] | None:
         "region_start": prefix[9],
         "region_end_excl": prefix[10],
         "created_us": prefix[11],
-        "params_size": prefix[12],
+        "params_size": params_size,
         "header_crc32": saved_crc,
-        "params": dict(zip(PARAM_NAMES, params_values)),
+        "params": dict(zip(param_names, params_values)),
     }
 
 

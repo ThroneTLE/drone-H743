@@ -166,7 +166,7 @@ def test_roll_pitch_angle_gains_default_to_zero_as_constraints_not_primary_loop(
     assert "params->accel_xy_limit_m_s2 = 5.66f;" in wrapper
 
 
-def test_roll_pitch_tilt_output_is_acceleration_vector_plus_rate_damping_only() -> None:
+def test_roll_pitch_tilt_output_uses_indi_when_enabled_and_legacy_damping_when_disabled() -> None:
     wrapper = read("Driver/Src/drv_coax_ctrl.c")
     helper = wrapper.split("static void coax_ctrl_compute_pure_damping_tilt", 1)[1]
     helper = helper.split("static float *coax_ctrl_param_ptr", 1)[0]
@@ -179,6 +179,9 @@ def test_roll_pitch_tilt_output_is_acceleration_vector_plus_rate_damping_only() 
     assert "atan2f(acc_x_m_s2, vertical_acc_m_s2)" in helper
     assert "(coax_ctrl_params.pitch_rate_kd * attitude->gyro_y_rad_s)" in helper
     assert "(coax_ctrl_params.roll_rate_kd * attitude->gyro_x_rad_s)" in helper
+    assert "if (coax_ctrl_params.indi_enable >= 0.5f)" in helper
+    assert "pitch_rate_d_rad = 0.0f;" in helper
+    assert "roll_rate_d_rad = 0.0f;" in helper
     assert "pitch_rad" not in helper
     assert "roll_rad" not in helper
     assert "pitch_angle_kp" not in helper

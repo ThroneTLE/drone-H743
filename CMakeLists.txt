@@ -56,6 +56,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Driver/Src/drv_optical_flow.c
     Driver/Src/drv_tfmini.c
     Driver/Src/drv_coax_ctrl.c
+    Driver/Src/drv_indi_ctrl.c
     Driver/Src/drv_imu_nav.c
     Driver/Src/drv_nav_ekf.c
     Driver/Generated/coax_ctrl/coax_tiltrotor_controller_codegen.c

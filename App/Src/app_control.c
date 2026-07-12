@@ -42,7 +42,7 @@
 #include <string.h>
 
 #define APP_CONTROL_CFG_MAGIC       0x44524346UL
-#define APP_CONTROL_CFG_VERSION     7U
+#define APP_CONTROL_CFG_VERSION     8U
 #define APP_CONTROL_CFG_ADDRESS     (APP_FLASH_SERVICE_SIZE_BYTES - 4096UL)
 #define APP_CONTROL_MAX_LINE        128U
 #define APP_CONTROL_HEARTBEAT_ENABLED 0U
@@ -150,16 +150,67 @@ typedef struct {
 typedef APP_ControlFlashRecordV3 APP_ControlFlashRecordV4;
 
 typedef struct {
+    float pos_x_kp;
+    float pos_y_kp;
+    float pos_z_kp;
+    float vel_x_kd;
+    float vel_y_kd;
+    float vel_z_kd;
+    float rotation_error_gain;
+    float accel_xy_limit_m_s2;
+    float accel_z_limit_m_s2;
+    float vel_loop_enable;
+    float vel_loop_x_kp;
+    float vel_loop_x_ki;
+    float vel_loop_x_kd;
+    float vel_loop_y_kp;
+    float vel_loop_y_ki;
+    float vel_loop_y_kd;
+    float vel_loop_output_limit_m_s2;
+    float vel_loop_i_limit_m_s2;
+    float mass_kg;
+    float gravity_m_s2;
+    float min_total_force_n;
+    float max_total_force_n;
+    float tilt_lever_arm_m;
+    float roll_angle_kp;
+    float roll_rate_kd;
+    float pitch_angle_kp;
+    float pitch_rate_kd;
+    float tilt_limit_rad;
+    float yaw_angle_kp;
+    float yaw_rate_kd;
+    float yaw_rate_limit_rad_s;
+    float yaw_inertia;
+    float thrust_coeff_n_per_rad2;
+    float yaw_torque_coeff_n_m_per_rad2;
+    float motor_omega_max_rad_s;
+} APP_ControlCoaxParamsV7;
+
+typedef struct {
+    uint32_t magic;
+    uint16_t version;
+    uint16_t size;
+    APP_ControlConfig config;
+    APP_ControlCoaxParamsV7 coax_params;
+    uint32_t checksum;
+} APP_ControlFlashRecordV5;
+
+typedef APP_ControlFlashRecordV5 APP_ControlFlashRecordV6;
+typedef APP_ControlFlashRecordV5 APP_ControlFlashRecordV7;
+
+typedef struct {
     uint32_t magic;
     uint16_t version;
     uint16_t size;
     APP_ControlConfig config;
     DRV_COAX_CTRL_Params coax_params;
     uint32_t checksum;
-} APP_ControlFlashRecordV5;
+} APP_ControlFlashRecordV8;
 
-typedef APP_ControlFlashRecordV5 APP_ControlFlashRecordV6;
-typedef APP_ControlFlashRecordV5 APP_ControlFlashRecordV7;
+_Static_assert(offsetof(DRV_COAX_CTRL_Params, indi_enable) ==
+               sizeof(APP_ControlCoaxParamsV7),
+               "V7 coax params must remain a prefix of current params");
 
 static APP_ControlConfig control_config;
 #if (APP_CONTROL_HEARTBEAT_ENABLED != 0U)
@@ -969,6 +1020,47 @@ static void app_control_report_params(void)
     }
 }
 
+static void app_control_report_indi(void)
+{
+    DRV_COAX_CTRL_INDIDebug debug;
+    char roll_accel[24];
+    char pitch_accel[24];
+    char roll_virtual[24];
+    char pitch_virtual[24];
+    char roll_effectiveness[24];
+    char pitch_effectiveness[24];
+    char roll_correction[24];
+    char pitch_correction[24];
+
+    DRV_COAX_CTRL_GetLastINDIDebug(&debug);
+    app_control_format_float(debug.angular_accel_rad_s2[0], roll_accel, sizeof(roll_accel));
+    app_control_format_float(debug.angular_accel_rad_s2[1], pitch_accel, sizeof(pitch_accel));
+    app_control_format_float(debug.virtual_accel_rad_s2[0], roll_virtual, sizeof(roll_virtual));
+    app_control_format_float(debug.virtual_accel_rad_s2[1], pitch_virtual, sizeof(pitch_virtual));
+    app_control_format_float(debug.effectiveness_rad_s2_per_rad[0],
+                             roll_effectiveness,
+                             sizeof(roll_effectiveness));
+    app_control_format_float(debug.effectiveness_rad_s2_per_rad[1],
+                             pitch_effectiveness,
+                             sizeof(pitch_effectiveness));
+    app_control_format_float(debug.correction_rad[0], roll_correction, sizeof(roll_correction));
+    app_control_format_float(debug.correction_rad[1], pitch_correction, sizeof(pitch_correction));
+
+    APP_Control_QueueText("INDI active=%u roll_accel=%s pitch_accel=%s "
+                          "roll_virtual=%s pitch_virtual=%s "
+                          "roll_effectiveness=%s pitch_effectiveness=%s "
+                          "roll_correction=%s pitch_correction=%s\r\n",
+                          (unsigned int)debug.active,
+                          roll_accel,
+                          pitch_accel,
+                          roll_virtual,
+                          pitch_virtual,
+                          roll_effectiveness,
+                          pitch_effectiveness,
+                          roll_correction,
+                          pitch_correction);
+}
+
 static void app_control_force_airframe_params(DRV_COAX_CTRL_Params *params)
 {
     if (params == NULL) {
@@ -1049,6 +1141,17 @@ static void app_control_migrate_coax_params_v4(const APP_ControlCoaxParamsV4 *le
     params->motor_omega_max_rad_s = legacy->motor_omega_max_rad_s;
     app_control_force_airframe_params(params);
     app_control_apply_new_coax_param_defaults(params);
+}
+
+static void app_control_migrate_coax_params_v7(const APP_ControlCoaxParamsV7 *legacy,
+                                               DRV_COAX_CTRL_Params *params)
+{
+    if ((legacy == NULL) || (params == NULL)) {
+        return;
+    }
+
+    DRV_COAX_CTRL_GetDefaultParams(params);
+    memcpy(params, legacy, sizeof(*legacy));
 }
 
 static void app_control_report_airframe(void)
@@ -2232,7 +2335,7 @@ static void app_control_report_uart_stats(uint32_t rx_bytes,
 
 static APP_FlashService_Status app_control_load_config(void)
 {
-    APP_ControlFlashRecordV7 record;
+    APP_ControlFlashRecordV8 record;
     APP_FlashService_Status status;
     uint32_t checksum;
 
@@ -2256,18 +2359,26 @@ static APP_FlashService_Status app_control_load_config(void)
         }
         control_config = record.config;
         DRV_COAX_CTRL_SetParams(&record.coax_params);
-    } else if (((record.version == 5U) || (record.version == 6U)) &&
-               (record.size == (sizeof(record.config) + sizeof(record.coax_params)))) {
+    } else if (((record.version == 5U) ||
+                (record.version == 6U) ||
+                (record.version == 7U)) &&
+               (record.size == (sizeof(APP_ControlConfig) +
+                                sizeof(APP_ControlCoaxParamsV7)))) {
+        const APP_ControlFlashRecordV7 *legacy =
+            (const APP_ControlFlashRecordV7 *)&record;
         DRV_COAX_CTRL_Params migrated_params;
 
-        checksum = app_control_checksum((const uint8_t *)&record.config,
-                                        record.size);
-        if (checksum != record.checksum) {
+        checksum = app_control_checksum((const uint8_t *)&legacy->config,
+                                        legacy->size);
+        if (checksum != legacy->checksum) {
             return APP_FLASH_SERVICE_ERROR;
         }
-        control_config = record.config;
-        migrated_params = record.coax_params;
-        app_control_apply_v7_safety_defaults(&migrated_params);
+        control_config = legacy->config;
+        app_control_migrate_coax_params_v7(&legacy->coax_params,
+                                           &migrated_params);
+        if ((legacy->version == 5U) || (legacy->version == 6U)) {
+            app_control_apply_v7_safety_defaults(&migrated_params);
+        }
         DRV_COAX_CTRL_SetParams(&migrated_params);
     } else if (((record.version == 3U) || (record.version == 4U)) &&
                (record.size == (sizeof(APP_ControlConfig) + sizeof(APP_ControlCoaxParamsV4)))) {
@@ -2331,7 +2442,7 @@ static APP_FlashService_Status app_control_load_config(void)
 
 static APP_FlashService_Status app_control_save_config(void)
 {
-    APP_ControlFlashRecordV7 record;
+    APP_ControlFlashRecordV8 record;
     APP_FlashService_Status status;
 
     memset(&record, 0xFF, sizeof(record));
@@ -3701,6 +3812,8 @@ static void app_control_dispatch_tokens(char **tokens, uint32_t count, uint8_t e
         APP_MAG_Report();
     } else if (strcmp(tokens[0], "PARAM?") == 0) {
         app_control_report_params();
+    } else if (strcmp(tokens[0], "INDI?") == 0) {
+        app_control_report_indi();
     } else if (strcmp(tokens[0], "AIRFRAME?") == 0) {
         app_control_report_airframe();
     } else if (strcmp(tokens[0], "PID?") == 0) {

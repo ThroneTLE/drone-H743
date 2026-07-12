@@ -47,6 +47,8 @@ typedef struct {
     float ax_m_s2;
     float ay_m_s2;
     float az_m_s2;
+    float roll_rad;
+    float pitch_rad;
     float yaw_rad;
 } DRV_COAX_CTRL_Reference;
 
@@ -63,6 +65,7 @@ typedef struct {
     float gyro_x_rad_s;
     float gyro_y_rad_s;
     float gyro_z_rad_s;
+    float dt_sec;
 } DRV_COAX_CTRL_AttitudeInput;
 
 typedef struct {
@@ -87,6 +90,14 @@ typedef struct {
     float total_force_n;
     float omega_cmd_rad_s[2];
 } DRV_COAX_CTRL_Debug;
+
+typedef struct {
+    float angular_accel_rad_s2[2];
+    float virtual_accel_rad_s2[2];
+    float effectiveness_rad_s2_per_rad[2];
+    float correction_rad[2];
+    uint8_t active;
+} DRV_COAX_CTRL_INDIDebug;
 
 typedef struct {
     float pos_x_kp;
@@ -124,14 +135,29 @@ typedef struct {
     float thrust_coeff_n_per_rad2;
     float yaw_torque_coeff_n_m_per_rad2;
     float motor_omega_max_rad_s;
+    float indi_enable;
+    float indi_roll_inertia_kg_m2;
+    float indi_pitch_inertia_kg_m2;
+    float indi_roll_attitude_kp_rad_s2_per_rad;
+    float indi_pitch_attitude_kp_rad_s2_per_rad;
+    float indi_roll_rate_kd_rad_s2_per_rad_s;
+    float indi_pitch_rate_kd_rad_s2_per_rad_s;
+    float indi_angular_accel_lpf_alpha;
+    float indi_correction_limit_rad;
+    float indi_increment_limit_rad;
+    float indi_correction_leak_hz;
+    float indi_roll_effectiveness_sign;
+    float indi_pitch_effectiveness_sign;
 } DRV_COAX_CTRL_Params;
 
 void DRV_COAX_CTRL_Init(void);
+void DRV_COAX_CTRL_ResetRuntime(void);
 
 void DRV_COAX_CTRL_Run(const DRV_COAX_CTRL_AttitudeInput *attitude,
                        const DRV_COAX_CTRL_Reference *reference,
                        DRV_COAX_CTRL_Output *output);
 void DRV_COAX_CTRL_GetLastDebug(DRV_COAX_CTRL_Debug *debug);
+void DRV_COAX_CTRL_GetLastINDIDebug(DRV_COAX_CTRL_INDIDebug *debug);
 
 void DRV_COAX_CTRL_GetDefaultParams(DRV_COAX_CTRL_Params *params);
 void DRV_COAX_CTRL_ResetParams(void);

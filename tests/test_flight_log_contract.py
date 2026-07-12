@@ -20,6 +20,19 @@ def test_flight_log_region_leaves_reserved_flash_sectors() -> None:
     assert "last four reserved sectors" in source
 
 
+def test_flight_log_v3_keeps_fixed_header_and_exports_indi_params() -> None:
+    source = read("App/Src/app_flight_log.c")
+    receiver = read("tools/flight_log_receive.py")
+
+    assert "#define APP_FLIGHT_LOG_VERSION            3U" in source
+    assert "uint8_t reserved[8];" in source
+    assert '"indi_enable"' in receiver
+    assert '"indi_roll_inertia_kg_m2"' in receiver
+    assert '"indi_pitch_inertia_kg_m2"' in receiver
+    assert "LEGACY_PARAMS_STRUCT_V7" in receiver
+    assert "params_size == PARAMS_STRUCT.size" in receiver
+
+
 def test_flight_log_uses_app_flash_service_only() -> None:
     header = read("App/Inc/app_flight_log.h")
     source = read("App/Src/app_flight_log.c")

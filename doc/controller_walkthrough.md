@@ -201,7 +201,7 @@ $$
 
 Y、Z 轴同理，并分别受到水平和垂直加速度限幅。
 
-对于倾转机构，当前源码明确实现的是“水平加速度前馈 + 角速度阻尼”：
+对于倾转机构，当前源码先计算水平加速度前馈，再由默认启用的 INDI 使用姿态、角速度、实测角加速度和 X/Y 惯量生成增量修正：
 
 $$
 a_x=a_{x,ref}-K_{dx}(v_{x,ref}-v_x)
@@ -222,19 +222,23 @@ $$
 \beta_{ff}=atan2(a_y,a_z)
 $$
 
-角速度阻尼项按力矩尺度换算：
+基础前馈角为：
 
 $$
-S=m\,a_z\,l
+\alpha_{base}=\alpha_{ff},\qquad \beta_{base}=\beta_{ff}
+$$
+
+INDI 根据 $G_{pitch}=Tl/I_{yy}$、$G_{roll}=Tl/I_{xx}$ 求出增量修正 $\delta\alpha,\delta\beta$：
+
+$$
+\alpha=\operatorname{sat}(\alpha_{base}+\delta\alpha)
 $$
 
 $$
-\alpha= sat\left(\alpha_{ff}+\frac{K_{d,pitch}\,\omega_y}{S}\right)
+\beta=\operatorname{sat}(\beta_{base}+\delta\beta)
 $$
 
-$$
-\beta= sat\left(\beta_{ff}+\frac{K_{d,roll}\,\omega_x}{S}\right)
-$$
+只有将 `coax.indi_enable` 设为 `0` 时，才回退到原先按 $ma_zl$ 归一化的经验角速度 D 阻尼。
 
 默认倾转限幅为 `+-0.523599 rad`，即 `+-30 deg`。默认的倾转力臂参数为 `0.18 m`。
 
@@ -367,7 +371,8 @@ RC 丢失、未解锁、IMU 无效、姿态角超过约 +-25 deg
 |---|---|
 | 控制任务、RC 参考生成、模式切换、输出发送 | `Core/Src/freertos.c` |
 | 同轴控制器接口和参数 | `Driver/Inc/drv_coax_ctrl.h` |
-| 倾转前馈、角速度阻尼、输出转换 | `Driver/Src/drv_coax_ctrl.c` |
+| 倾转前馈、INDI 接入、输出转换 | `Driver/Src/drv_coax_ctrl.c` |
+| INDI 角加速度估计与增量求逆 | `Driver/Src/drv_indi_ctrl.c` |
 | 生成的核心控制算法 | `Driver/Generated/coax_ctrl/` |
 | 光流/IMU 二维速度 EKF | `Driver/Src/drv_nav_ekf.c` |
 | 导航估计结果发布 | `App/Src/app_nav_estimator.c` |
@@ -378,7 +383,7 @@ RC 丢失、未解锁、IMU 无效、姿态角超过约 +-25 deg
 
 1. 当前默认控制器的水平运动主要依赖倾转角，不是直接给 roll/pitch 角做大幅度 PID。
 2. 速度环接口支持完整 PID，但默认 `Ki=0`、`Kd=0`，当前实际更接近比例速度控制。
-3. 生成控制器计算的倾转角 `cmd[2]/cmd[3]` 没有直接送舵机，而是被包装层的加速度前馈和角速度阻尼结果覆盖。
+3. 生成控制器计算的倾转角 `cmd[2]/cmd[3]` 没有直接送舵机，而是被包装层的加速度前馈和默认启用的 INDI 增量修正覆盖。
 4. 最终电机公共推力主要由 RC 油门决定；生成控制器主要提供上下电机差动，并通过测距有效时的 `+-80 us` 修正有限参与公共推力。
 5. 生成代码后半段复用了旋转矩阵存储空间，其总力和航向计算需要结合仿真与实测进一步验证。
 6. 电机 Hammerstein 推力模型已经存在，但当前控制链路仍使用 `omega -> PWM` 的线性映射；要使用辨识出的非线性推力和动态滞后，需要单独完成接入和验证。
@@ -392,11 +397,16 @@ vel_ref_x/y       目标速度
 vel_est_x/y       估计速度
 vel_pid_out_x/y   速度环输出加速度
 tilt_ff           倾转前馈角
-tilt_rate_d       角速度阻尼角
+indi_accel        INDI 实测角加速度
+indi_virtual      INDI 目标角加速度
+indi_effectiveness INDI 控制效能 Tl/J
+indi_correction   INDI 累计倾转修正
 tilt_out          最终倾转角
 omega_upper/lower 两台电机转速命令
 servo_alpha/beta  最终舵机脉宽
 ```
+
+运行时可发送 `INDI?` 查看最近一次 INDI 的实测角加速度、虚拟角加速度、控制效能和累计修正；使用 `PARAM?` 可查看全部 `coax.indi_*` 参数。
 
 判断问题来源时可以按下面的顺序排查：
 
@@ -1084,9 +1094,9 @@ cmd[0] -> omega_upper
 cmd[1] -> omega_lower
 ```
 
-随后调用 `coax_ctrl_compute_pure_damping_tilt()` 重新计算 $\alpha,\beta$。因此当前舵机实际执行的不是 $\alpha_{gen},\beta_{gen}$，而是下面的手写控制律。
+随后先调用包装层计算水平加速度前馈角，再调用 `DRV_INDI_Step()` 计算增量角加速度修正。因此当前舵机实际执行的不是 $\alpha_{gen},\beta_{gen}$，而是下面的“平动前馈 + INDI 姿态修正”控制律。
 
-### 10.3 当前实际倾转控制律
+### 10.3 当前倾转基础前馈
 
 首先形成水平加速度需求：
 
@@ -1122,13 +1132,145 @@ $$
 \alpha_{ff}=\arctan(1/9.81)\approx0.1016\,rad\approx5.82^\circ
 $$
 
-随后计算推力-力臂尺度：
+当 `coax.indi_enable=1` 时，旧的经验角速度 D 修正被置零，因此基础倾转角为：
+
+$$
+\alpha_{base}=\alpha_{ff}
+$$
+
+$$
+\beta_{base}=\beta_{ff}
+$$
+
+### 10.4 INDI 实测角加速度
+
+设控制周期为 $\Delta t$，陀螺角速度为 $p=\omega_x$、$q=\omega_y$。原始角加速度由差分得到：
+
+$$
+\dot p_{raw,k}=\frac{p_k-p_{k-1}}{\Delta t}
+$$
+
+$$
+\dot q_{raw,k}=\frac{q_k-q_{k-1}}{\Delta t}
+$$
+
+直接差分会放大陀螺噪声，因此使用一阶低通：
+
+$$
+\dot p_k=\alpha_a\dot p_{k-1}+(1-\alpha_a)\dot p_{raw,k}
+$$
+
+$$
+\dot q_k=\alpha_a\dot q_{k-1}+(1-\alpha_a)\dot q_{raw,k}
+$$
+
+当前默认 $\alpha_a=0.85$。
+
+### 10.5 虚拟角加速度控制
+
+当前 roll/pitch 参考均为水平姿态：
+
+$$
+\phi_{ref}=0,\qquad\theta_{ref}=0
+$$
+
+INDI 的目标角加速度为：
+
+$$
+\nu_\phi=K_{R\phi}(\phi_{ref}-\phi)-K_{\omega\phi}p
+$$
+
+$$
+\nu_\theta=K_{R\theta}(\theta_{ref}-\theta)-K_{\omega\theta}q
+$$
+
+默认参数：
+
+$$
+K_{R\phi}=K_{R\theta}=16\,s^{-2}
+$$
+
+$$
+K_{\omega\phi}=K_{\omega\theta}=6.4\,s^{-1}
+$$
+
+它们等价于约 $\omega_n=4\,rad/s$、$\zeta=0.8$ 的二阶目标动态，因为：
+
+$$
+K_R=\omega_n^2,\qquad K_\omega=2\zeta\omega_n
+$$
+
+### 10.6 使用 X/Y 惯量构造控制效能
+
+小角度下，倾转角变化引起的角加速度控制效能近似为：
+
+$$
+G_\phi=s_\phi\frac{Tl}{I_{xx}}
+$$
+
+$$
+G_\theta=s_\theta\frac{Tl}{I_{yy}}
+$$
+
+当前：
+
+$$
+I_{xx}=I_{yy}=0.019\,kg\cdot m^2
+$$
+
+$$
+s_\phi=s_\theta=+1
+$$
+
+因此 INDI 已经真正把 X/Y 转动惯量用于控制，而不只是把它们保存在机体模型中。
+
+### 10.7 增量动态逆
+
+根据实测角加速度与目标角加速度之差，求本周期倾转增量：
+
+$$
+\Delta\beta_k=\frac{\nu_\phi-\dot p_k}{G_\phi}
+$$
+
+$$
+\Delta\alpha_k=\frac{\nu_\theta-\dot q_k}{G_\theta}
+$$
+
+注意 roll 对应 beta，pitch 对应 alpha。增量先限制到每周期 `+-1°`：
+
+$$
+\Delta u_k\leftarrow\operatorname{sat}(\Delta u_k;-0.01745,0.01745)
+$$
+
+累计修正带泄漏：
+
+$$
+\delta u_k=\operatorname{sat}
+\left[(1-\lambda\Delta t)\delta u_{k-1}+\Delta u_k;
+-\delta u_{max},\delta u_{max}\right]
+$$
+
+当前 $\lambda=0.5\,Hz$，$\delta u_{max}=10^\circ=0.17453\,rad$。泄漏用于防止角加速度偏置使增量状态长期积累。
+
+最终输出：
+
+$$
+\alpha=\operatorname{sat}
+(\alpha_{base}+\delta\alpha;-\theta_{tilt,max},\theta_{tilt,max})
+$$
+
+$$
+\beta=\operatorname{sat}
+(\beta_{base}+\delta\beta;-\theta_{tilt,max},\theta_{tilt,max})
+$$
+
+### 10.8 禁用 INDI 时的回退控制律
+
+只有当 `coax.indi_enable=0` 时，包装层才恢复原角速度阻尼：
 
 $$
 S=ma_z^*l
 $$
-
-量纲检查：$kg\cdot m/s^2\cdot m=N\cdot m$，它代表单位倾转角附近可用于产生姿态力矩的尺度。
 
 角速度阻尼修正：
 
@@ -1150,16 +1292,16 @@ $$
 \beta=\operatorname{sat}(\beta_{ff}+\beta_d;-\theta_{tilt,max},\theta_{tilt,max})
 $$
 
-默认 $K_{d,pitch}=K_{d,roll}=-0.5$。因此正角速度会产生负方向倾转修正，构成阻尼。默认角度 P 增益为零，所以当前 roll/pitch 姿态角本身没有直接进入实际舵机控制律。
+回退参数仍为 $K_{d,pitch}=K_{d,roll}=-0.5$，但默认运行路径不会使用它们。
 
 速度环开启时，任务层令 $v_{ref}=v$，并把速度 PID 输出写入 $a_{ref}$；又因为默认 `vel_x_kd=vel_y_kd=0`，实际可近似为：
 
 $$
-\alpha\approx\operatorname{atan2}(a_{x,PID},g)+\alpha_d
+\alpha\approx\operatorname{atan2}(a_{x,PID},g)+\delta\alpha_{INDI}
 $$
 
 $$
-\beta\approx\operatorname{atan2}(a_{y,PID},g)+\beta_d
+\beta\approx\operatorname{atan2}(a_{y,PID},g)+\delta\beta_{INDI}
 $$
 
 ## 11. 偏航控制与双电机平方分配
@@ -1476,13 +1618,14 @@ RC 归一化限幅
 二维光流速度 EKF
   + 水平速度 P 控制器（PID 框架，默认 I/D 为零）
   + 水平加速度到倾转角的动态逆/前馈映射
-  + roll/pitch 角速度阻尼
+  + 默认启用的 roll/pitch INDI 角加速度闭环
+  + Ixx/Iyy 与实时 Tl 控制效能求逆
   + 生成代码中的总力与偏航平方转速分配
   + 人工公共油门和控制器差动混控
   + 有限幅度的测距高度公共推力修正
 ```
 
-它不是经典四旋翼常见的“位置环 → 速度环 → 姿态角环 → 角速度环 → 电机混控”完整串级 PID。当前 roll/pitch 实际舵机路径没有独立姿态角闭环，主要依靠：
+它不是经典四旋翼常见的“位置环 → 速度环 → 姿态角环 → 角速度环 → 电机混控”串级 PID。当前 roll/pitch 舵机路径采用外层姿态误差生成虚拟角加速度，再由 INDI 使用实测角加速度闭环求倾转增量：
 
 $$
 \text{速度误差}\rightarrow\text{水平加速度}\rightarrow\text{倾转前馈角}
@@ -1491,19 +1634,22 @@ $$
 以及：
 
 $$
-\text{机体角速度}\rightarrow\text{倾转阻尼修正}
+\text{姿态/角速度误差}\rightarrow\nu
+\rightarrow(\nu-\dot\omega_{meas})/(Tl/J)
+\rightarrow\text{倾转增量}
 $$
 
 ## 18. 尚需实验验证的理论-实现接口
 
 论文级描述必须同时陈述模型边界。当前最需要通过实验或仿真确认的是：
 
-1. X/Y 光流速度、RC 通道和 $\alpha/\beta$ 舵机方向的完整符号闭环。
+1. 已确认的 X/Y、alpha/beta 极性下，实测控制效能 $G_\phi,G_\theta$ 与理论 $Tl/J$ 的幅值误差。
 2. 生成代码复用旋转矩阵数组后，总力和航向计算是否符合原始 Simulink 设计意图。
 3. `yaw_inertia=0.52` 与机体估计 $I_{zz}=0.00035$ 的量纲和来源。
 4. 线性 `omega -> PWM` 与真实 Hammerstein 电机模型之间的误差。
 5. 舵机实际带宽是否足以支持 `500 Hz` 控制计算产生的高频命令。
 6. 光流丢失 `80/150 ms` 门限与 `8 Hz` 速度衰减是否会造成控制模式突变。
 7. CH3 同时作为人工油门和高度参考时，操作者输入与高度闭环修正之间的耦合。
+8. 陀螺差分角加速度的噪声、滤波相位滞后与舵机延迟对 INDI 稳定裕度的影响。
 
 这些项目不代表控制器一定错误，而是区分“代码中存在的公式”和“已经由实物证据验证的模型”所必需的科研严谨性。
