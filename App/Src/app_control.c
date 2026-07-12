@@ -612,16 +612,21 @@ static uint16_t app_control_servo_angle_to_pulse(uint32_t angle)
     if (angle > 180U) { angle = 180U; }
     return (uint16_t)(DRV_COAX_CTRL_SERVO_PHYSICAL_MIN_US +
                       ((angle * (DRV_COAX_CTRL_SERVO_PHYSICAL_MAX_US -
-                                 DRV_COAX_CTRL_SERVO_PHYSICAL_MIN_US)) / 270U));
+                                 DRV_COAX_CTRL_SERVO_PHYSICAL_MIN_US)) / 180U));
 }
 
-static uint16_t app_control_servo_clamp_pulse(uint16_t pulse_us)
+static uint16_t app_control_servo_clamp_pulse(uint32_t index, uint16_t pulse_us)
 {
-    if (pulse_us < DRV_COAX_CTRL_SERVO_MIN_US) {
-        return DRV_COAX_CTRL_SERVO_MIN_US;
+    uint16_t min_us = (index == 0U) ? DRV_COAX_CTRL_SERVO_ALPHA_MIN_US
+                                    : DRV_COAX_CTRL_SERVO_BETA_MIN_US;
+    uint16_t max_us = (index == 0U) ? DRV_COAX_CTRL_SERVO_ALPHA_MAX_US
+                                    : DRV_COAX_CTRL_SERVO_BETA_MAX_US;
+
+    if (pulse_us < min_us) {
+        return min_us;
     }
-    if (pulse_us > DRV_COAX_CTRL_SERVO_MAX_US) {
-        return DRV_COAX_CTRL_SERVO_MAX_US;
+    if (pulse_us > max_us) {
+        return max_us;
     }
     return pulse_us;
 }
@@ -2364,7 +2369,8 @@ static void app_control_servo_move_configured(void)
 
         moves[count].id = control_config.servo[index].id;
         moves[count].pulse_us =
-            app_control_servo_clamp_pulse(control_config.servo[index].pulse_us);
+            app_control_servo_clamp_pulse(index,
+                                          control_config.servo[index].pulse_us);
         if (control_config.servo[index].time_ms > time_ms) {
             time_ms = control_config.servo[index].time_ms;
         }
@@ -2406,7 +2412,8 @@ static void app_control_handle_servo(char **tokens, uint32_t count)
             return;
         }
 
-        control_config.servo[index].pulse_us = app_control_servo_clamp_pulse((uint16_t)pulse);
+        control_config.servo[index].pulse_us =
+            app_control_servo_clamp_pulse(index, (uint16_t)pulse);
         control_config.servo[index].time_ms = (uint16_t)time_ms;
         status = BSP_BusServo_Move(control_config.servo[index].id,
                                    control_config.servo[index].pulse_us,
@@ -2447,7 +2454,8 @@ static void app_control_handle_servo(char **tokens, uint32_t count)
             time_ms = control_config.servo[index].time_ms;
         }
 
-        control_config.servo[index].pulse_us = app_control_servo_clamp_pulse(pulse);
+        control_config.servo[index].pulse_us =
+            app_control_servo_clamp_pulse(index, pulse);
         control_config.servo[index].time_ms = (uint16_t)time_ms;
         status = BSP_BusServo_Move(control_config.servo[index].id,
                                    control_config.servo[index].pulse_us,
@@ -3781,7 +3789,8 @@ static void app_control_dispatch_tokens(char **tokens, uint32_t count, uint8_t e
             index = vofa_index - 1U;
             pulse = app_control_servo_angle_to_pulse(angle);
 
-            control_config.servo[index].pulse_us = app_control_servo_clamp_pulse(pulse);
+            control_config.servo[index].pulse_us =
+                app_control_servo_clamp_pulse(index, pulse);
             status = BSP_BusServo_Move(control_config.servo[index].id,
                                        control_config.servo[index].pulse_us,
                                        control_config.servo[index].time_ms);

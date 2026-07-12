@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1250" height="610" viewBox="0 0 1250 610" role="img" aria-labelledby="title desc">
+  <title id="title">控制循环时序</title>
+  <desc id="desc">每约两毫秒完成遥控参考读取、状态估计、同轴控制器计算和执行器输出。</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#334155"/></marker>
+    <style>
+      .bg{fill:#f8fafc}.title{font:700 27px 'Microsoft YaHei','Segoe UI',sans-serif;fill:#0f172a}.lane{fill:#fff;stroke:#64748b;stroke-width:2;rx:12}.lanehead{font:700 17px 'Microsoft YaHei','Segoe UI',sans-serif;fill:#0f172a;text-anchor:middle}.life{stroke:#94a3b8;stroke-width:2;stroke-dasharray:7 7}.msg{stroke:#334155;stroke-width:2.5;marker-end:url(#arrow)}.feedback{stroke:#059669}.control{stroke:#7c3aed}.output{stroke:#ea580c}.label{font:500 14px 'Microsoft YaHei','Segoe UI',sans-serif;fill:#334155;text-anchor:middle}.loop{fill:none;stroke:#2563eb;stroke-width:2.5;rx:10}.looptext{font:700 15px 'Microsoft YaHei','Segoe UI',sans-serif;fill:#1d4ed8}.note{font:400 14px 'Microsoft YaHei','Segoe UI',sans-serif;fill:#475569;text-anchor:middle}
+    </style>
+  </defs>
+  <rect class="bg" width="1250" height="610"/>
+  <text class="title" x="625" y="40" text-anchor="middle">一个约 2 ms 控制周期内发生什么</text>
+
+  <rect class="lane" x="45" y="72" width="170" height="54"/><text class="lanehead" x="130" y="106">IMU / 光流</text>
+  <rect class="lane" x="285" y="72" width="170" height="54"/><text class="lanehead" x="370" y="106">状态估计</text>
+  <rect class="lane" x="525" y="72" width="170" height="54"/><text class="lanehead" x="610" y="106">ELRS 遥控器</text>
+  <rect class="lane" x="765" y="72" width="170" height="54"/><text class="lanehead" x="850" y="106">同轴控制器</text>
+  <rect class="lane" x="1005" y="72" width="190" height="54"/><text class="lanehead" x="1100" y="106">电机 / 舵机</text>
+
+  <line class="life" x1="130" y1="126" x2="130" y2="545"/><line class="life" x1="370" y1="126" x2="370" y2="545"/>
+  <line class="life" x1="610" y1="126" x2="610" y2="545"/><line class="life" x1="850" y1="126" x2="850" y2="545"/><line class="life" x1="1100" y1="126" x2="1100" y2="545"/>
+
+  <rect class="loop" x="25" y="146" width="1200" height="370"/>
+  <text class="looptext" x="42" y="172">循环：约 500 Hz</text>
+
+  <line class="msg feedback" x1="130" y1="205" x2="360" y2="205"/>
+  <text class="label" x="245" y="194">姿态、角速度、导航加速度</text>
+
+  <path class="msg feedback" d="M370 250 H430 V285 H380" fill="none"/>
+  <text class="label" x="496" y="273">IMU 预测 + 光流融合</text>
+
+  <line class="msg" x1="610" y1="330" x2="840" y2="330"/>
+  <text class="label" x="725" y="319">速度 / 高度 / 航向参考</text>
+
+  <line class="msg control" x1="370" y1="385" x2="840" y2="385"/>
+  <text class="label" x="605" y="374">当前位置、速度、姿态、角速度</text>
+
+  <line class="msg output" x1="850" y1="445" x2="1090" y2="445"/>
+  <text class="label" x="970" y="434">ωupper / ωlower / α / β</text>
+
+  <text class="note" x="625" y="570">控制输出与 IMU 采样解耦；舵机命令只在目标改变或强制刷新时发送，避免总线拥塞。</text>
+</svg>

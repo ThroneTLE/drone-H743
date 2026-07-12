@@ -1,0 +1,80 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="790" viewBox="0 0 1400 790" role="img" aria-labelledby="title desc">
+  <title id="title">当前飞行控制器总流程</title>
+  <desc id="desc">遥控参考、传感器状态估计、同轴倾转控制器、电机和舵机输出，以及闭环反馈关系。</desc>
+  <defs>
+    <marker id="arrow-blue" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#2563eb"/></marker>
+    <marker id="arrow-green" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#059669"/></marker>
+    <marker id="arrow-orange" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#ea580c"/></marker>
+    <style>
+      .bg{fill:#f8fafc}.title{font:700 28px 'Microsoft YaHei','Segoe UI',sans-serif;fill:#0f172a}.subtitle{font:400 15px 'Microsoft YaHei','Segoe UI',sans-serif;fill:#475569}
+      .box{stroke-width:2;rx:14;ry:14}.blue{fill:#eff6ff;stroke:#3b82f6}.green{fill:#ecfdf5;stroke:#10b981}.orange{fill:#fff7ed;stroke:#f97316}.violet{fill:#f5f3ff;stroke:#8b5cf6}.gray{fill:#f1f5f9;stroke:#64748b}
+      .head{font:700 18px 'Microsoft YaHei','Segoe UI',sans-serif;fill:#0f172a;text-anchor:middle}.body{font:400 14px 'Microsoft YaHei','Segoe UI',sans-serif;fill:#334155;text-anchor:middle}.small{font:400 13px 'Microsoft YaHei','Segoe UI',sans-serif;fill:#475569;text-anchor:middle}
+      .label{font:600 13px 'Microsoft YaHei','Segoe UI',sans-serif;fill:#334155}.line-blue{fill:none;stroke:#2563eb;stroke-width:3;marker-end:url(#arrow-blue)}.line-green{fill:none;stroke:#059669;stroke-width:3;marker-end:url(#arrow-green)}.line-orange{fill:none;stroke:#ea580c;stroke-width:3;marker-end:url(#arrow-orange)}
+    </style>
+  </defs>
+  <rect class="bg" width="1400" height="790"/>
+  <text class="title" x="700" y="42" text-anchor="middle">当前固件的完整闭环控制链路</text>
+  <text class="subtitle" x="700" y="68" text-anchor="middle">目标从左侧进入，执行器从右侧输出，飞行结果再由传感器反馈</text>
+
+  <rect class="box blue" x="40" y="115" width="210" height="105"/>
+  <text class="head" x="145" y="148">ELRS 遥控器</text>
+  <text class="body" x="145" y="177">CH1 / CH2：水平速度</text>
+  <text class="body" x="145" y="200">CH3：高度　CH4：航向</text>
+
+  <rect class="box green" x="40" y="295" width="210" height="185"/>
+  <text class="head" x="145" y="330">机载传感器</text>
+  <text class="body" x="145" y="363">IMU：姿态、角速度、加速度</text>
+  <text class="body" x="145" y="393">光流：水平速度观测</text>
+  <text class="body" x="145" y="423">测距计：高度、垂直速度</text>
+  <text class="small" x="145" y="454">测量真实运动结果</text>
+
+  <rect class="box blue" x="335" y="105" width="245" height="125"/>
+  <text class="head" x="457" y="140">参考量生成</text>
+  <text class="body" x="457" y="172">速度 vref</text>
+  <text class="body" x="457" y="196">高度 zref · 航向 ψref</text>
+
+  <rect class="box green" x="335" y="305" width="245" height="165"/>
+  <text class="head" x="457" y="340">状态估计</text>
+  <text class="body" x="457" y="370">姿态 R · 角速度 ω</text>
+  <text class="body" x="457" y="397">IMU 预测 + 光流校正</text>
+  <text class="body" x="457" y="424">位置 p · 速度 v</text>
+  <text class="small" x="457" y="451">得到“飞机现在怎么样”</text>
+
+  <rect class="box violet" x="665" y="177" width="290" height="220"/>
+  <text class="head" x="810" y="216">同轴倾转控制器</text>
+  <text class="body" x="810" y="250">速度/位置误差 → 期望加速度</text>
+  <text class="body" x="810" y="280">总力与偏航分配</text>
+  <text class="body" x="810" y="310">加速度前馈 + 角速度阻尼</text>
+  <text class="body" x="810" y="340">DRV_COAX_CTRL_Run()</text>
+  <text class="small" x="810" y="372">回答：“需要多大力，朝哪个方向？”</text>
+
+  <rect class="box orange" x="1040" y="110" width="270" height="135"/>
+  <text class="head" x="1175" y="146">双电机输出</text>
+  <text class="body" x="1175" y="178">ωupper · ωlower</text>
+  <text class="body" x="1175" y="205">角速度 → 电调 PWM</text>
+
+  <rect class="box orange" x="1040" y="330" width="270" height="135"/>
+  <text class="head" x="1175" y="366">双舵机输出</text>
+  <text class="body" x="1175" y="398">α：前后倾转 · β：左右倾转</text>
+  <text class="body" x="1175" y="425">倾角 → 总线舵机脉宽</text>
+
+  <rect class="box gray" x="860" y="575" width="360" height="125"/>
+  <text class="head" x="1040" y="612">飞行器产生真实运动</text>
+  <text class="body" x="1040" y="644">共同转速决定总推力 · 转速差决定偏航</text>
+  <text class="body" x="1040" y="672">倾转方向决定前后/左右运动</text>
+
+  <path class="line-blue" d="M250 167 H335"/><text class="label" x="272" y="153">摇杆目标</text>
+  <path class="line-green" d="M250 387 H335"/><text class="label" x="270" y="373">测量值</text>
+  <path class="line-blue" d="M580 167 H625 V235 H665"/><text class="label" x="605" y="153">参考</text>
+  <path class="line-green" d="M580 387 H625 V340 H665"/><text class="label" x="596" y="406">当前状态</text>
+  <path class="line-orange" d="M955 235 H995 V177 H1040"/><text class="label" x="978" y="218">转速</text>
+  <path class="line-orange" d="M955 340 H1040"/><text class="label" x="978" y="326">倾角</text>
+  <path class="line-orange" d="M1175 245 V535 H1085 V575"/>
+  <path class="line-orange" d="M1175 465 V535 H1085"/>
+  <path class="line-green" d="M860 637 H285 Q145 637 145 480" stroke-dasharray="9 7"/>
+  <text class="label" x="450" y="624">闭环反馈：运动发生后重新测量</text>
+
+  <circle cx="80" cy="748" r="7" fill="#2563eb"/><text class="label" x="95" y="753">参考/目标</text>
+  <circle cx="235" cy="748" r="7" fill="#059669"/><text class="label" x="250" y="753">测量/反馈</text>
+  <circle cx="400" cy="748" r="7" fill="#ea580c"/><text class="label" x="415" y="753">执行器输出</text>
+</svg>

@@ -36,8 +36,8 @@ def test_airframe_constants_capture_measured_tether_geometry() -> None:
     assert "#define DRV_AIRFRAME_TETHER_ROPE_M                 0.6400f" in header
     assert "#define DRV_AIRFRAME_TETHER_ROD_TO_CG_M            0.8909f" in header
     assert "#define DRV_AIRFRAME_THRUST_TABLE_SCOPE            \"dual_motor_total\"" in header
-    assert "#define DRV_AIRFRAME_SERVO_DEG_PER_US              0.135f" in header
-    assert "#define DRV_AIRFRAME_SERVO_US_PER_DEG              7.407407f" in header
+    assert "#define DRV_AIRFRAME_SERVO_DEG_PER_US              0.090f" in header
+    assert "#define DRV_AIRFRAME_SERVO_US_PER_DEG             11.111111f" in header
     assert "#define DRV_AIRFRAME_MAX_TOTAL_FORCE_N            13.375052f" in header
     assert "#define DRV_AIRFRAME_HOVER_THRUST_PERCENT         56.079367f" in header
 
@@ -90,8 +90,8 @@ def test_gui_airframe_parser_and_ident_meta_payload(tmp_path: Path) -> None:
     line = (
         "AIRFRAME mass_kg=0.754600 cg_z_m=-0.094600 imu_z_m=0.000000 "
         "tether_attach_z_m=0.156300 tether_attach_to_cg_m=0.250900 "
-        "rope_m=0.640000 rod_to_cg_m=0.890900 servo_deg_per_us=0.135000 "
-        "servo_us_per_deg=7.407407 thrust_scope=dual_motor_total "
+        "rope_m=0.640000 rod_to_cg_m=0.890900 servo_deg_per_us=0.090000 "
+        "servo_us_per_deg=11.111111 thrust_scope=dual_motor_total "
         "max_total_force_n=13.375052 hover_thrust_pct=56.079367"
     )
     record = panel.airframe_record_from_line(line)

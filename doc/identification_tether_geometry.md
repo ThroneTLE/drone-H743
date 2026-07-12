@@ -157,17 +157,17 @@ BETA_CENTER_US  = 1877 us     ← 舵机 2（roll）
 换算：
 
 ```text
-2000 us → 270° 行程
-1 us   → 0.135° = 0.002356 rad
-1 rad  → 424.4 us
-1 deg  → 7.407 us
+2000 us → 180° 行程
+1 us   → 0.09° = 0.001571 rad
+1 rad  → 636.6 us
+1 deg  → 11.111 us
 ```
 
 倾角 → 脉宽（中性位置附近）：
 
 ```text
-alpha_us = 1441 + 424.4 * α    (α 单位 rad)
-beta_us  = 1877 + 424.4 * β    (β 单位 rad)
+alpha_us = 1441 + 636.6 * α    (α 单位 rad)
+beta_us  = 1877 + 636.6 * β    (β 单位 rad)
 ```
 
 代码中 sign 处理：`DRV_COAX_CTRL_SERVO_ALPHA_SIGN = +1.0`、`DRV_COAX_CTRL_SERVO_BETA_SIGN = -1.0`。正 α/β 产生正还是负的姿态力矩需实验确认（见下方 sign test）。
@@ -262,34 +262,34 @@ IDENT STEP roll ...   -> 主要激励 2 号舵机 beta
 由此可得近似换算：
 
 ```text
-2000 us -> 270 deg
-1 us    -> 0.135 deg
-1 deg   -> 7.407 us
+2000 us -> 180 deg
+1 us    -> 0.09 deg
+1 deg   -> 11.111 us
 ```
 
 常用辨识激励幅值对应舵机角度近似为：
 
 | pulse 偏置 | 角度偏置 |
 |---:|---:|
-| 20 us | 2.7 deg |
-| 30 us | 4.05 deg |
-| 40 us | 5.4 deg |
-| 80 us | 10.8 deg |
+| 20 us | 1.8 deg |
+| 30 us | 2.7 deg |
+| 40 us | 3.6 deg |
+| 80 us | 7.2 deg |
 
 当前固件中的机械校准中心来自 `Driver/Inc/drv_coax_ctrl.h`：
 
 ```c
-#define DRV_COAX_CTRL_SERVO_ALPHA_CENTER_US 1500U
-#define DRV_COAX_CTRL_SERVO_BETA_CENTER_US  1500U
-#define DRV_COAX_CTRL_SERVO_TRAVEL_DEG       270.0f
+#define DRV_COAX_CTRL_SERVO_ALPHA_CENTER_US 1441U
+#define DRV_COAX_CTRL_SERVO_BETA_CENTER_US  1877U
+#define DRV_COAX_CTRL_SERVO_TRAVEL_DEG       180.0f
 #define DRV_COAX_CTRL_SERVO_LIMIT_DEG         90.0f
 ```
 
-因此辨识模块默认中心不是 `1500 us`，而是：
+因此辨识模块默认中心为：
 
 ```text
-alpha center = 1500 us
-beta  center = 1500 us
+alpha center = 1441 us
+beta  center = 1877 us
 ```
 
 若台架机械零位重新调整，应使用：
@@ -527,7 +527,8 @@ beta_us  = beta_center_us  ± offset_us  (roll 轴)
 | 最大持续时长 | 10000 ms | 超出拒绝执行 |
 | 姿态角限制 | ±25 deg | 超限自动 abort |
 | 采样周期 | 20 ms | 50 Hz 输出 |
-| 舵机脉宽范围 | 833~2167 us | 机械限位 |
+| alpha 脉宽范围 | 500~2441 us | `1441 +- 1000 us` 后受物理下限裁剪 |
+| beta 脉宽范围 | 877~2500 us | `1877 +- 1000 us` 后受物理上限裁剪 |
 
 自动 abort 条件：
 - RC 信号丢失（`rc_link_ok == 0`）
@@ -538,7 +539,7 @@ beta_us  = beta_center_us  ± offset_us  (roll 轴)
 ## 典型实验命令
 
 ```text
-IDENT CENTER alpha_us=1500 beta_us=1500   // 设置中心
+IDENT CENTER alpha_us=1441 beta_us=1877   // 设置当前标定中心
 IDENT ARM                                  // 进入待命
 IDENT STEP roll pulse_us=20 duration_ms=3000
 IDENT STEP roll pulse_us=-20 duration_ms=3000

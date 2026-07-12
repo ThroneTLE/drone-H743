@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1030" viewBox="0 0 1200 1030" role="img" aria-labelledby="title desc">
+  <title id="title">控制器模式与安全分支</title>
+  <desc id="desc">控制周期依次判断遥控链路、辨识模式、低油门、IMU有效性和直控调试宏，最终进入安全、辨识、直通或完整控制路径。</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#475569"/></marker>
+    <style>.bg{fill:#f8fafc}.title{font:700 27px 'Microsoft YaHei','Segoe UI',sans-serif;fill:#0f172a}.start{fill:#ede9fe;stroke:#8b5cf6;stroke-width:2.5}.decision{fill:#eff6ff;stroke:#3b82f6;stroke-width:2.5}.safe{fill:#fef2f2;stroke:#ef4444;stroke-width:2.5}.special{fill:#fff7ed;stroke:#f97316;stroke-width:2.5}.full{fill:#ecfdf5;stroke:#10b981;stroke-width:3}.hold{fill:#f1f5f9;stroke:#64748b;stroke-width:2.5}.head{font:700 17px 'Microsoft YaHei','Segoe UI',sans-serif;fill:#0f172a;text-anchor:middle}.body{font:400 14px 'Microsoft YaHei','Segoe UI',sans-serif;fill:#334155;text-anchor:middle}.line{fill:none;stroke:#475569;stroke-width:2.5;marker-end:url(#arrow)}.answer{font:700 14px 'Microsoft YaHei','Segoe UI',sans-serif;fill:#334155}.note{font:400 14px 'Microsoft YaHei','Segoe UI',sans-serif;fill:#475569;text-anchor:middle}</style>
+  </defs>
+  <rect class="bg" width="1200" height="1030"/><text class="title" x="600" y="42" text-anchor="middle">每个控制周期的模式选择与安全判断</text>
+
+  <rect class="start" x="470" y="75" width="260" height="70" rx="35"/><text class="head" x="600" y="117">控制周期开始</text>
+  <path class="decision" d="M600 180 L740 245 L600 310 L460 245 Z"/><text class="head" x="600" y="240">RC 在线并且已经解锁？</text><text class="body" x="600" y="265">链路、Arm、低油门解锁条件</text>
+  <rect class="safe" x="80" y="205" width="275" height="90" rx="14"/><text class="head" x="218" y="241">安全输出</text><text class="body" x="218" y="268">不进入正常闭环控制</text>
+
+  <path class="decision" d="M600 350 L740 415 L600 480 L460 415 Z"/><text class="head" x="600" y="410">辨识模式正在运行？</text><text class="body" x="600" y="435">STEP / DOUBLET / PRBS</text>
+  <rect class="special" x="835" y="370" width="290" height="100" rx="14"/><text class="head" x="980" y="405">输出辨识舵机目标</text><text class="body" x="980" y="434">持续监视 RC、IMU、姿态超限</text>
+
+  <path class="decision" d="M600 520 L740 585 L600 650 L460 585 Z"/><text class="head" x="600" y="580">油门低于稳定控制阈值？</text><text class="body" x="600" y="605">低功率测试阶段</text>
+  <rect class="special" x="80" y="540" width="290" height="100" rx="14"/><text class="head" x="225" y="575">低油门直通阶段</text><text class="body" x="225" y="604">清控制状态，倾转舵机回中心</text>
+
+  <path class="decision" d="M600 690 L740 755 L600 820 L460 755 Z"/><text class="head" x="600" y="750">IMU 数据有效？</text><text class="body" x="600" y="775">已有零点且数据未过期</text>
+  <rect class="hold" x="80" y="710" width="310" height="100" rx="14"/><text class="head" x="235" y="745">回中或保持上一目标</text><text class="body" x="235" y="774">上电无姿态则回中，短暂异常则保持</text>
+
+  <path class="decision" d="M600 855 L740 920 L600 985 L460 920 Z"/><text class="head" x="600" y="915">RC 直控调试宏开启？</text><text class="body" x="600" y="940">STABILIZER_USE_RC_DIRECT_TILT_SERVO</text>
+  <rect class="special" x="80" y="875" width="300" height="95" rx="14"/><text class="head" x="230" y="910">CH1 / CH2 直控舵机</text><text class="body" x="230" y="939">只用于通道与机械方向调试</text>
+  <rect class="full" x="835" y="875" width="290" height="95" rx="14"/><text class="head" x="980" y="910">完整同轴控制器</text><text class="body" x="980" y="939">状态反馈 → 电机 + 倾转舵机</text>
+
+  <path class="line" d="M600 145 V180"/>
+  <path class="line" d="M460 245 H355"/><text class="answer" x="392" y="232">否</text>
+  <path class="line" d="M600 310 V350"/><text class="answer" x="615" y="337">是</text>
+  <path class="line" d="M740 415 H835"/><text class="answer" x="772" y="402">是</text>
+  <path class="line" d="M600 480 V520"/><text class="answer" x="615" y="507">否</text>
+  <path class="line" d="M460 585 H370"/><text class="answer" x="397" y="572">是</text>
+  <path class="line" d="M600 650 V690"/><text class="answer" x="615" y="677">否</text>
+  <path class="line" d="M460 755 H390"/><text class="answer" x="405" y="742">否</text>
+  <path class="line" d="M600 820 V855"/><text class="answer" x="615" y="844">是</text>
+  <path class="line" d="M460 920 H380"/><text class="answer" x="398" y="907">是</text>
+  <path class="line" d="M740 920 H835"/><text class="answer" x="775" y="907">否</text>
+  <text class="note" x="600" y="1012">辨识、低油门和直控调试都是特殊分支；绿色框才是当前默认的完整闭环路径。</text>
+</svg>

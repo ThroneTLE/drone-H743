@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1250" height="690" viewBox="0 0 1250 690" role="img" aria-labelledby="title desc">
+  <title id="title">控制器参数结构</title>
+  <desc id="desc">同轴倾转控制器的运动目标、力与几何、姿态阻尼和执行器模型四组参数。</desc>
+  <defs>
+    <style>.bg{fill:#f8fafc}.title{font:700 27px 'Microsoft YaHei','Segoe UI',sans-serif;fill:#0f172a}.center{fill:#ede9fe;stroke:#8b5cf6;stroke-width:3}.card{stroke-width:2.5;rx:18}.blue{fill:#eff6ff;stroke:#3b82f6}.green{fill:#ecfdf5;stroke:#10b981}.orange{fill:#fff7ed;stroke:#f97316}.rose{fill:#fff1f2;stroke:#f43f5e}.head{font:700 19px 'Microsoft YaHei','Segoe UI',sans-serif;fill:#0f172a;text-anchor:middle}.body{font:400 15px Consolas,'Microsoft YaHei',sans-serif;fill:#334155;text-anchor:middle}.centerhead{font:700 22px 'Microsoft YaHei','Segoe UI',sans-serif;fill:#4c1d95;text-anchor:middle}.centerbody{font:400 14px 'Microsoft YaHei','Segoe UI',sans-serif;fill:#6d28d9;text-anchor:middle}.link{stroke:#94a3b8;stroke-width:3}</style>
+  </defs>
+  <rect class="bg" width="1250" height="690"/><text class="title" x="625" y="42" text-anchor="middle">一组控制器参数，分别回答四类问题</text>
+
+  <line class="link" x1="470" y1="280" x2="355" y2="222"/><line class="link" x1="780" y1="280" x2="895" y2="222"/>
+  <line class="link" x1="470" y1="410" x2="355" y2="488"/><line class="link" x1="780" y1="410" x2="895" y2="488"/>
+
+  <rect class="card blue" x="55" y="105" width="360" height="195"/>
+  <text class="head" x="235" y="142">① 运动目标：往哪里走？</text>
+  <text class="body" x="235" y="180">pos_x_kp · pos_y_kp · pos_z_kp</text>
+  <text class="body" x="235" y="213">vel_loop_x_kp · vel_loop_y_kp</text>
+  <text class="body" x="235" y="246">速度 PID 与加速度限幅</text>
+
+  <rect class="card green" x="835" y="105" width="360" height="195"/>
+  <text class="head" x="1015" y="142">② 力与几何：要多大力？</text>
+  <text class="body" x="1015" y="180">mass = 0.7546 kg · gravity = 9.81</text>
+  <text class="body" x="1015" y="213">force = 7.40 .. 13.375 N</text>
+  <text class="body" x="1015" y="246">tilt_lever_arm = 0.18 m</text>
+
+  <rect class="center" x="455" y="260" width="340" height="175" rx="88"/>
+  <text class="centerhead" x="625" y="325">同轴倾转控制器</text>
+  <text class="centerbody" x="625" y="357">DRV_COAX_CTRL_Params</text>
+  <text class="centerbody" x="625" y="385">目标 + 状态 → 电机转速 + 倾转角</text>
+
+  <rect class="card rose" x="55" y="430" width="360" height="195"/>
+  <text class="head" x="235" y="467">③ 姿态阻尼：怎样稳住？</text>
+  <text class="body" x="235" y="505">roll_rate_kd</text>
+  <text class="body" x="235" y="538">pitch_rate_kd</text>
+  <text class="body" x="235" y="571">yaw_angle_kp · yaw_rate_kd</text>
+
+  <rect class="card orange" x="835" y="430" width="360" height="195"/>
+  <text class="head" x="1015" y="467">④ 执行器：如何真正输出？</text>
+  <text class="body" x="1015" y="505">thrust_coeff · yaw_torque_coeff</text>
+  <text class="body" x="1015" y="538">motor_omega_max = 900 rad/s</text>
+  <text class="body" x="1015" y="571">servo center · tilt limit</text>
+</svg>

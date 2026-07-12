@@ -20,8 +20,8 @@
 #define DRV_AIRFRAME_TETHER_ROPE_M                 0.6400f
 #define DRV_AIRFRAME_TETHER_ROD_TO_CG_M            0.8909f
 
-#define DRV_AIRFRAME_SERVO_DEG_PER_US              0.135f
-#define DRV_AIRFRAME_SERVO_US_PER_DEG              7.407407f
+#define DRV_AIRFRAME_SERVO_DEG_PER_US              0.090f
+#define DRV_AIRFRAME_SERVO_US_PER_DEG             11.111111f
 
 #define DRV_AIRFRAME_GRAVITY_M_S2                  9.81f
 #define DRV_AIRFRAME_WEIGHT_N                      7.402626f

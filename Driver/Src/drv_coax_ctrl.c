@@ -380,15 +380,13 @@ uint8_t DRV_COAX_CTRL_SetParam(const char *name, float value)
 }
 
 static uint16_t coax_ctrl_tilt_rad_to_servo_pulse(float tilt_rad,
-                                                  uint16_t center_us)
+                                                  uint16_t center_us,
+                                                  uint16_t min_us,
+                                                  uint16_t max_us)
 {
     const float servo_span_us = (float)(DRV_COAX_CTRL_SERVO_PHYSICAL_MAX_US -
                                         DRV_COAX_CTRL_SERVO_PHYSICAL_MIN_US);
     const float servo_us_per_rad = servo_span_us / DRV_COAX_CTRL_SERVO_TRAVEL_RAD;
-    const int32_t limit_delta_us =
-        (int32_t)((servo_us_per_rad * DRV_COAX_CTRL_SERVO_LIMIT_RAD) + 0.5f);
-    int32_t servo_min_us = (int32_t)center_us - limit_delta_us;
-    int32_t servo_max_us = (int32_t)center_us + limit_delta_us;
     DRV_COAX_CTRL_Init();
     const float tilt = coax_ctrl_clamp_f32(tilt_rad,
                                           -coax_ctrl_params.tilt_limit_rad,
@@ -397,27 +395,23 @@ static uint16_t coax_ctrl_tilt_rad_to_servo_pulse(float tilt_rad,
                           tilt * servo_us_per_rad;
     const int32_t pulse_i = (int32_t)(pulse_f + ((pulse_f >= 0.0f) ? 0.5f : -0.5f));
 
-    if (servo_min_us < (int32_t)DRV_COAX_CTRL_SERVO_PHYSICAL_MIN_US) {
-        servo_min_us = (int32_t)DRV_COAX_CTRL_SERVO_PHYSICAL_MIN_US;
-    }
-    if (servo_max_us > (int32_t)DRV_COAX_CTRL_SERVO_PHYSICAL_MAX_US) {
-        servo_max_us = (int32_t)DRV_COAX_CTRL_SERVO_PHYSICAL_MAX_US;
-    }
-    return coax_ctrl_clamp_u16(pulse_i,
-                               (uint16_t)servo_min_us,
-                               (uint16_t)servo_max_us);
+    return coax_ctrl_clamp_u16(pulse_i, min_us, max_us);
 }
 
 uint16_t DRV_COAX_CTRL_AlphaTiltRadToServoPulse(float tilt_rad)
 {
     return coax_ctrl_tilt_rad_to_servo_pulse(tilt_rad,
-                                             DRV_COAX_CTRL_SERVO_ALPHA_CENTER_US);
+                                             DRV_COAX_CTRL_SERVO_ALPHA_CENTER_US,
+                                             DRV_COAX_CTRL_SERVO_ALPHA_MIN_US,
+                                             DRV_COAX_CTRL_SERVO_ALPHA_MAX_US);
 }
 
 uint16_t DRV_COAX_CTRL_BetaTiltRadToServoPulse(float tilt_rad)
 {
     return coax_ctrl_tilt_rad_to_servo_pulse(tilt_rad,
-                                             DRV_COAX_CTRL_SERVO_BETA_CENTER_US);
+                                             DRV_COAX_CTRL_SERVO_BETA_CENTER_US,
+                                             DRV_COAX_CTRL_SERVO_BETA_MIN_US,
+                                             DRV_COAX_CTRL_SERVO_BETA_MAX_US);
 }
 
 uint16_t DRV_COAX_CTRL_OmegaToMotorPulse(float omega_rad_s)

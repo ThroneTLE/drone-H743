@@ -122,10 +122,10 @@ static uint8_t ident_targets_from_offset(int32_t offset,
         beta += offset;
     }
 
-    if ((alpha < (int32_t)DRV_COAX_CTRL_SERVO_MIN_US) ||
-        (alpha > (int32_t)DRV_COAX_CTRL_SERVO_MAX_US) ||
-        (beta < (int32_t)DRV_COAX_CTRL_SERVO_MIN_US) ||
-        (beta > (int32_t)DRV_COAX_CTRL_SERVO_MAX_US)) {
+    if ((alpha < (int32_t)DRV_COAX_CTRL_SERVO_ALPHA_MIN_US) ||
+        (alpha > (int32_t)DRV_COAX_CTRL_SERVO_ALPHA_MAX_US) ||
+        (beta < (int32_t)DRV_COAX_CTRL_SERVO_BETA_MIN_US) ||
+        (beta > (int32_t)DRV_COAX_CTRL_SERVO_BETA_MAX_US)) {
         return 0U;
     }
 
@@ -343,10 +343,10 @@ uint8_t APP_Ident_SetCenter(uint16_t alpha_us, uint16_t beta_us)
         APP_Control_QueueText("ERR ident running\r\n");
         return 0U;
     }
-    if ((alpha_us < DRV_COAX_CTRL_SERVO_MIN_US) ||
-        (alpha_us > DRV_COAX_CTRL_SERVO_MAX_US) ||
-        (beta_us < DRV_COAX_CTRL_SERVO_MIN_US) ||
-        (beta_us > DRV_COAX_CTRL_SERVO_MAX_US)) {
+    if ((alpha_us < DRV_COAX_CTRL_SERVO_ALPHA_MIN_US) ||
+        (alpha_us > DRV_COAX_CTRL_SERVO_ALPHA_MAX_US) ||
+        (beta_us < DRV_COAX_CTRL_SERVO_BETA_MIN_US) ||
+        (beta_us > DRV_COAX_CTRL_SERVO_BETA_MAX_US)) {
         APP_Control_QueueText("ERR ident center range\r\n");
         return 0U;
     }

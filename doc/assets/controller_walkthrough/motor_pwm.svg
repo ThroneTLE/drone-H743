@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="250" viewBox="0 0 1100 250" role="img" aria-labelledby="title desc">
+  <title id="title">电机角速度到PWM的当前映射</title>
+  <desc id="desc">控制器输出角速度，经过零到九百弧度每秒限幅，再使用线性映射形成电调PWM。</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#ea580c"/></marker>
+    <style>.bg{fill:#f8fafc}.title{font:700 25px 'Microsoft YaHei','Segoe UI',sans-serif;fill:#0f172a}.box{fill:#fff7ed;stroke:#f97316;stroke-width:2.5;rx:15}.head{font:700 18px 'Microsoft YaHei','Segoe UI',sans-serif;fill:#7c2d12;text-anchor:middle}.body{font:400 14px 'Microsoft YaHei','Segoe UI',sans-serif;fill:#9a3412;text-anchor:middle}.arrow{stroke:#ea580c;stroke-width:4;marker-end:url(#arrow)}.tag{font:600 13px 'Microsoft YaHei','Segoe UI',sans-serif;fill:#475569;text-anchor:middle}</style>
+  </defs>
+  <rect class="bg" width="1100" height="250"/><text class="title" x="550" y="38" text-anchor="middle">当前电机命令转换路径</text>
+  <rect class="box" x="45" y="78" width="245" height="105"/><text class="head" x="168" y="115">控制器角速度命令</text><text class="body" x="168" y="147">ωupper / ωlower　[rad/s]</text>
+  <rect class="box" x="425" y="78" width="245" height="105"/><text class="head" x="548" y="115">安全限幅</text><text class="body" x="548" y="147">0 ≤ ω ≤ 900 rad/s</text>
+  <rect class="box" x="805" y="78" width="250" height="105"/><text class="head" x="930" y="115">电调 PWM</text><text class="body" x="930" y="147">当前采用线性映射</text>
+  <line class="arrow" x1="290" y1="130" x2="415" y2="130"/><text class="tag" x="352" y="113">clamp</text>
+  <line class="arrow" x1="670" y1="130" x2="795" y2="130"/><text class="tag" x="732" y="113">OmegaToMotorPulse</text>
+  <text class="tag" x="550" y="222">Hammerstein 非线性推力查表已存在于仓库，但尚未接入这条实际输出路径。</text>
+</svg>

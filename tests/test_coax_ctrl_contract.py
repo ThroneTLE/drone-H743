@@ -28,7 +28,7 @@ def test_tilt_limit_is_thirty_degrees_in_wrapper_and_generated_controller() -> N
     assert "params->tilt_limit_rad" in generated
 
 
-def test_bus_servos_are_270_degree_centered_and_limited_to_90_degrees() -> None:
+def test_bus_servos_are_180_degree_centered_and_limited_to_90_degrees() -> None:
     header = read("Driver/Inc/drv_coax_ctrl.h")
     source = read("Driver/Src/drv_coax_ctrl.c")
     freertos = read("Core/Src/freertos.c")
@@ -37,9 +37,16 @@ def test_bus_servos_are_270_degree_centered_and_limited_to_90_degrees() -> None:
     assert "#define DRV_COAX_CTRL_SERVO_BETA_CENTER_US  1877U" in header
     assert "#define DRV_COAX_CTRL_SERVO_PHYSICAL_MIN_US  500U" in header
     assert "#define DRV_COAX_CTRL_SERVO_PHYSICAL_MAX_US 2500U" in header
-    assert "#define DRV_COAX_CTRL_SERVO_MIN_US           833U" in header
-    assert "#define DRV_COAX_CTRL_SERVO_MAX_US          2167U" in header
-    assert "#define DRV_COAX_CTRL_SERVO_TRAVEL_DEG       270.0f" in header
+    assert "#define DRV_COAX_CTRL_SERVO_CENTER_MIN_US(center_us)" in header
+    assert "#define DRV_COAX_CTRL_SERVO_CENTER_MAX_US(center_us)" in header
+    assert "#define DRV_COAX_CTRL_SERVO_ALPHA_MIN_US" in header
+    assert "#define DRV_COAX_CTRL_SERVO_ALPHA_MAX_US" in header
+    assert "#define DRV_COAX_CTRL_SERVO_BETA_MIN_US" in header
+    assert "#define DRV_COAX_CTRL_SERVO_BETA_MAX_US" in header
+    assert "DRV_COAX_CTRL_SERVO_MIN_US" not in header
+    assert "DRV_COAX_CTRL_SERVO_MAX_US" not in header
+    assert "#define DRV_COAX_CTRL_SERVO_LIMIT_DELTA_US  1000U" in header
+    assert "#define DRV_COAX_CTRL_SERVO_TRAVEL_DEG       180.0f" in header
     assert "#define DRV_COAX_CTRL_SERVO_LIMIT_DEG         90.0f" in header
     assert "DRV_COAX_CTRL_AlphaTiltRadToServoPulse" in header
     assert "DRV_COAX_CTRL_BetaTiltRadToServoPulse" in header
@@ -48,10 +55,32 @@ def test_bus_servos_are_270_degree_centered_and_limited_to_90_degrees() -> None:
     assert "DRV_COAX_CTRL_SERVO_LIMIT_RAD" in source
     assert "DRV_COAX_CTRL_SERVO_ALPHA_CENTER_US" in source
     assert "DRV_COAX_CTRL_SERVO_BETA_CENTER_US" in source
+    assert "DRV_COAX_CTRL_SERVO_ALPHA_MIN_US" in source
+    assert "DRV_COAX_CTRL_SERVO_ALPHA_MAX_US" in source
+    assert "DRV_COAX_CTRL_SERVO_BETA_MIN_US" in source
+    assert "DRV_COAX_CTRL_SERVO_BETA_MAX_US" in source
     assert "DRV_COAX_CTRL_AlphaTiltRadToServoPulse(alpha_rad)" in freertos
     assert "DRV_COAX_CTRL_BetaTiltRadToServoPulse(beta_rad)" in freertos
     assert "moves[0].pulse_us = DRV_COAX_CTRL_SERVO_ALPHA_CENTER_US;" in freertos
     assert "moves[1].pulse_us = DRV_COAX_CTRL_SERVO_BETA_CENTER_US;" in freertos
+
+
+def test_manual_and_ident_servo_limits_follow_each_calibrated_center() -> None:
+    control = read("App/Src/app_control.c")
+    ident = read("App/Src/app_ident.c")
+
+    assert "app_control_servo_clamp_pulse(uint32_t index, uint16_t pulse_us)" in control
+    assert "DRV_COAX_CTRL_SERVO_ALPHA_MIN_US" in control
+    assert "DRV_COAX_CTRL_SERVO_ALPHA_MAX_US" in control
+    assert "DRV_COAX_CTRL_SERVO_BETA_MIN_US" in control
+    assert "DRV_COAX_CTRL_SERVO_BETA_MAX_US" in control
+    assert "app_control_servo_clamp_pulse(index," in control
+    assert "DRV_COAX_CTRL_SERVO_ALPHA_MIN_US" in ident
+    assert "DRV_COAX_CTRL_SERVO_ALPHA_MAX_US" in ident
+    assert "DRV_COAX_CTRL_SERVO_BETA_MIN_US" in ident
+    assert "DRV_COAX_CTRL_SERVO_BETA_MAX_US" in ident
+    assert "DRV_COAX_CTRL_SERVO_MIN_US" not in ident
+    assert "DRV_COAX_CTRL_SERVO_MAX_US" not in ident
 
 
 def test_mbd_controller_gains_are_runtime_coax_params() -> None:
