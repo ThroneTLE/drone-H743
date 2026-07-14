@@ -2097,8 +2097,8 @@ void VOFA_task(void *argument)
       (void)DRV_COAX_CTRL_GetParam("coax.pitch_rate_kd", &vofa_data[8]);
       (void)DRV_COAX_CTRL_GetParam("coax.yaw_angle_kp", &vofa_data[9]);
       (void)DRV_COAX_CTRL_GetParam("coax.yaw_rate_kd", &vofa_data[10]);
-      (void)DRV_COAX_CTRL_GetParam("coax.vel_x_kd", &vofa_data[11]);
-      (void)DRV_COAX_CTRL_GetParam("coax.vel_y_kd", &vofa_data[12]);
+      (void)DRV_COAX_CTRL_GetParam("coax.pitch_angle_kp", &vofa_data[11]);
+      (void)DRV_COAX_CTRL_GetParam("coax.roll_angle_kp", &vofa_data[12]);
       (void)DRV_COAX_CTRL_GetParam("coax.accel_xy_limit_m_s2", &vofa_data[13]);
       (void)DRV_COAX_CTRL_GetParam("coax.accel_z_limit_m_s2", &vofa_data[14]);
       (void)DRV_COAX_CTRL_GetParam("coax.vel_loop_x_kp", &vofa_data[15]);

@@ -86,7 +86,7 @@ static uint16_t coax_ctrl_clamp_u16(int32_t value, uint16_t lo, uint16_t hi)
     return (uint16_t)value;
 }
 
-static void coax_ctrl_compute_pure_damping_tilt(
+static void coax_ctrl_compute_angle_pd_tilt(
     const DRV_COAX_CTRL_AttitudeInput *attitude,
     const DRV_COAX_CTRL_Reference *reference,
     float *alpha_rad,
@@ -99,6 +99,8 @@ static void coax_ctrl_compute_pure_damping_tilt(
     float rate_torque_scale;
     float pitch_rate_d_rad;
     float roll_rate_d_rad;
+    float pitch_angle_p_rad;
+    float roll_angle_p_rad;
     float pitch_ff_rad;
     float roll_ff_rad;
 
@@ -130,6 +132,12 @@ static void coax_ctrl_compute_pure_damping_tilt(
 
     pitch_ff_rad = atan2f(acc_x_m_s2, vertical_acc_m_s2);
     roll_ff_rad = atan2f(acc_y_m_s2, vertical_acc_m_s2);
+    pitch_angle_p_rad =
+        (coax_ctrl_params.pitch_angle_kp * attitude->pitch_rad) /
+        rate_torque_scale;
+    roll_angle_p_rad =
+        (coax_ctrl_params.roll_angle_kp * attitude->roll_rad) /
+        rate_torque_scale;
     pitch_rate_d_rad =
         (coax_ctrl_params.pitch_rate_kd * attitude->gyro_y_rad_s) /
         rate_torque_scale;
@@ -137,8 +145,8 @@ static void coax_ctrl_compute_pure_damping_tilt(
         (coax_ctrl_params.roll_rate_kd * attitude->gyro_x_rad_s) /
         rate_torque_scale;
 
-    *alpha_rad = pitch_ff_rad + pitch_rate_d_rad;
-    *beta_rad = roll_ff_rad + roll_rate_d_rad;
+    *alpha_rad = pitch_ff_rad + pitch_angle_p_rad + pitch_rate_d_rad;
+    *beta_rad = roll_ff_rad + roll_angle_p_rad + roll_rate_d_rad;
 
     *alpha_rad = coax_ctrl_clamp_f32(*alpha_rad,
                                      -coax_ctrl_params.tilt_limit_rad,
@@ -525,8 +533,8 @@ void DRV_COAX_CTRL_Run(const DRV_COAX_CTRL_AttitudeInput *attitude,
     }
 
     coax_tiltrotor_controller_codegen(x_rb, ref_cmd, &coax_ctrl_params, cmd);
-    coax_ctrl_compute_pure_damping_tilt(attitude, reference,
-                                        &alpha_rad, &beta_rad, &debug);
+    coax_ctrl_compute_angle_pd_tilt(attitude, reference,
+                                    &alpha_rad, &beta_rad, &debug);
 
     output->omega_upper = cmd[0];
     output->omega_lower = cmd[1];

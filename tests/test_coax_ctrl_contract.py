@@ -152,7 +152,7 @@ def test_controller_wrapper_exposes_velocity_first_vector_control_inputs() -> No
     assert "velocity_ref_x_m_s" not in freertos
 
 
-def test_roll_pitch_angle_gains_default_to_zero_as_constraints_not_primary_loop() -> None:
+def test_roll_pitch_angle_gains_default_to_zero_and_accept_signed_tuning() -> None:
     wrapper = read("Driver/Src/drv_coax_ctrl.c")
 
     assert "params->roll_angle_kp = 0.0f;" in wrapper
@@ -165,25 +165,31 @@ def test_roll_pitch_angle_gains_default_to_zero_as_constraints_not_primary_loop(
     assert "params->vel_y_kd = 0.0f;" in wrapper
     assert "params->vel_z_kd = 0.0f;" in wrapper
     assert "params->accel_xy_limit_m_s2 = 5.66f;" in wrapper
+    nonnegative_block = wrapper.split(
+        "if ((entry->offset == offsetof(DRV_COAX_CTRL_Params, accel_xy_limit_m_s2))",
+        1,
+    )[1].split("return (value >= 0.0f) ? 1U : 0U;", 1)[0]
+    assert "roll_angle_kp" not in nonnegative_block
+    assert "pitch_angle_kp" not in nonnegative_block
 
 
-def test_roll_pitch_tilt_output_is_acceleration_vector_plus_rate_damping_only() -> None:
+def test_roll_pitch_tilt_output_adds_signed_level_angle_p_and_rate_damping() -> None:
     wrapper = read("Driver/Src/drv_coax_ctrl.c")
-    helper = wrapper.split("static void coax_ctrl_compute_pure_damping_tilt", 1)[1]
+    helper = wrapper.split("static void coax_ctrl_compute_angle_pd_tilt", 1)[1]
     helper = helper.split("static float *coax_ctrl_param_ptr", 1)[0]
 
-    assert "coax_ctrl_compute_pure_damping_tilt(attitude, reference," in wrapper
+    assert "coax_ctrl_compute_angle_pd_tilt(attitude, reference," in wrapper
     assert "acc_x_m_s2 = reference->ax_m_s2 -" in helper
     assert "acc_y_m_s2 = reference->ay_m_s2 -" in helper
     assert "reference->vx_m_s - attitude->vx_m_s" in helper
     assert "reference->vy_m_s - attitude->vy_m_s" in helper
     assert "atan2f(acc_x_m_s2, vertical_acc_m_s2)" in helper
+    assert "(coax_ctrl_params.pitch_angle_kp * attitude->pitch_rad)" in helper
+    assert "(coax_ctrl_params.roll_angle_kp * attitude->roll_rad)" in helper
     assert "(coax_ctrl_params.pitch_rate_kd * attitude->gyro_y_rad_s)" in helper
     assert "(coax_ctrl_params.roll_rate_kd * attitude->gyro_x_rad_s)" in helper
-    assert "pitch_rad" not in helper
-    assert "roll_rad" not in helper
-    assert "pitch_angle_kp" not in helper
-    assert "roll_angle_kp" not in helper
+    assert "pitch_ff_rad + pitch_angle_p_rad + pitch_rate_d_rad" in helper
+    assert "roll_ff_rad + roll_angle_p_rad + roll_rate_d_rad" in helper
     assert "output->alpha_rad = alpha_rad;" in wrapper
     assert "output->beta_rad = beta_rad;" in wrapper
 
@@ -193,6 +199,8 @@ def test_vofa_exports_compact_slider_parameter_feedback() -> None:
 
     assert "#define VOFA_DATA_SIZE 24U" in freertos
     assert '(void)DRV_COAX_CTRL_GetParam("coax.roll_rate_kd", &vofa_data[7]);' in freertos
+    assert '(void)DRV_COAX_CTRL_GetParam("coax.pitch_angle_kp", &vofa_data[11]);' in freertos
+    assert '(void)DRV_COAX_CTRL_GetParam("coax.roll_angle_kp", &vofa_data[12]);' in freertos
     assert '(void)DRV_COAX_CTRL_GetParam("coax.accel_z_limit_m_s2", &vofa_data[14]);' in freertos
     assert '(void)DRV_COAX_CTRL_GetParam("coax.vel_loop_x_kp", &vofa_data[15]);' in freertos
     assert '(void)DRV_COAX_CTRL_GetParam("coax.vel_loop_enable", &vofa_data[23]);' in freertos
@@ -216,7 +224,20 @@ def test_control_protocol_accepts_colon_param_updates_and_reports_back() -> None
     assert "app_control_report_coax_param_by_name(map[map_index].param_name);" in app_control
     assert '"roll_rate_kd",   "coax.roll_rate_kd"' in app_control
     assert '"yaw_angle_kp",   "coax.yaw_angle_kp"' in app_control
-    assert '"vel_x_kd",       "coax.vel_x_kd"' in app_control
+    assert '"Pitch_kp",       "coax.pitch_angle_kp"' in app_control
+    assert '"Roll_kp",        "coax.roll_angle_kp"' in app_control
+    assert '"vel_x_kd",       "coax.vel_x_kd"' not in app_control
+    assert '"vel_y_kd",       "coax.vel_y_kd"' not in app_control
     assert '"vel_loop_x_kp",  "coax.vel_loop_x_kp"' in app_control
     assert '"accel_xy",       "coax.accel_xy_limit_m_s2"' in app_control
     assert '"pos_x_kp",      "coax.pos_x_kp"' not in app_control
+
+
+def test_synex_channels_12_and_13_are_pitch_and_roll_angle_kp() -> None:
+    builder = read("tools/synex_config_builder.py")
+    capture = read("tools/vofa_serial_capture.py")
+
+    assert '"Pitch_kp",\n    "Roll_kp",' in builder
+    assert '"FF_Vel_X_KD"' not in builder
+    assert '"FF_Vel_Y_KD"' not in builder
+    assert '"coax_pitch_angle_kp",\n    "coax_roll_angle_kp",' in capture
