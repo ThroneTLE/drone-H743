@@ -47,7 +47,7 @@ def test_controller_mode_keeps_rc_direct_tilt_as_explicit_debug_switch() -> None
     freertos = read("Core/Src/freertos.c")
 
     assert "#define STABILIZER_USE_RC_DIRECT_TILT_SERVO 0U" in freertos
-    assert "#define STABILIZER_RC_DIRECT_TILT_LIMIT_RAD 0.523598776f" in freertos
+    assert "#define STABILIZER_RC_DIRECT_TILT_LIMIT_RAD 0.209439516f" in freertos
     assert "static void stabilizer_map_rc_direct_to_servo" in freertos
     assert "#if (STABILIZER_USE_RC_DIRECT_TILT_SERVO != 0U)\nstatic void stabilizer_map_rc_direct_to_servo" in freertos
     assert "stabilizer_rc_normalized(ch[STABILIZER_RC_CH_PITCH]) *" in freertos

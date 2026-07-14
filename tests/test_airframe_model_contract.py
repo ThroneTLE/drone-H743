@@ -57,17 +57,21 @@ def test_coax_defaults_use_airframe_model_not_old_placeholder_mass() -> None:
 def test_flash_v3_migration_forces_new_physical_model() -> None:
     source = read("App/Src/app_control.c")
 
-    assert "#define APP_CONTROL_CFG_VERSION     7U" in source
+    assert "#define APP_CONTROL_CFG_VERSION     8U" in source
     assert "typedef APP_ControlFlashRecordV3 APP_ControlFlashRecordV4;" in source
     assert "} APP_ControlFlashRecordV5;" in source
     assert "typedef APP_ControlFlashRecordV5 APP_ControlFlashRecordV6;" in source
     assert "typedef APP_ControlFlashRecordV5 APP_ControlFlashRecordV7;" in source
-    assert "(record.version == 5U) || (record.version == 6U)" in source
-    assert "app_control_apply_v7_safety_defaults(&migrated_params);" in source
+    assert "typedef APP_ControlFlashRecordV5 APP_ControlFlashRecordV8;" in source
+    assert "(record.version == 5U) ||" in source
+    assert "(record.version == 6U) ||" in source
+    assert "(record.version == 7U)" in source
+    assert "app_control_apply_current_safety_defaults(&migrated_params);" in source
     assert "params->tilt_limit_rad = defaults.tilt_limit_rad;" in source
     assert "(record.version == 3U) || (record.version == 4U)" in source
     assert "app_control_migrate_coax_params_v4(&legacy->coax_params, &migrated_params);" in source
     assert "app_control_apply_new_coax_param_defaults(params);" in source
+    assert "app_control_apply_current_safety_defaults(params);" in source
     assert "params->mass_kg = DRV_AIRFRAME_MASS_KG;" in source
     assert "params->min_total_force_n = DRV_AIRFRAME_WEIGHT_N;" in source
     assert "params->max_total_force_n = DRV_AIRFRAME_MAX_TOTAL_FORCE_N;" in source

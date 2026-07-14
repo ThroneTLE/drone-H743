@@ -20,11 +20,12 @@ def test_servo_beta_direction_matches_current_hardware_wrapper() -> None:
     assert "DRV_COAX_CTRL_SERVO_BETA_SIGN" not in generated
 
 
-def test_tilt_limit_is_thirty_degrees_in_wrapper_and_generated_controller() -> None:
+def test_tilt_limit_is_twelve_degrees_in_wrapper_and_generated_controller() -> None:
     source = read("Driver/Src/drv_coax_ctrl.c")
     generated = read("Driver/Generated/coax_ctrl/coax_tiltrotor_controller_codegen.c")
 
-    assert "DRV_COAX_CTRL_TILT_LIMIT_RAD 0.523599f" in source
+    assert "DRV_COAX_CTRL_TILT_LIMIT_RAD 0.209440f" in source
+    assert "value <= DRV_COAX_CTRL_TILT_LIMIT_RAD" in source
     assert "params->tilt_limit_rad" in generated
 
 

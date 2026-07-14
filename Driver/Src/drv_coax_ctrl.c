@@ -9,7 +9,7 @@
 #include <stddef.h>
 #include <string.h>
 
-#define DRV_COAX_CTRL_TILT_LIMIT_RAD 0.523599f
+#define DRV_COAX_CTRL_TILT_LIMIT_RAD 0.209440f
 #define DRV_COAX_CTRL_PI 3.141592654f
 #define DRV_COAX_CTRL_SERVO_TRAVEL_RAD \
     (DRV_COAX_CTRL_SERVO_TRAVEL_DEG * DRV_COAX_CTRL_PI / 180.0f)
@@ -189,12 +189,16 @@ static uint8_t coax_ctrl_param_value_valid(const DRV_COAX_CTRL_ParamEntry *entry
         return 0U;
     }
 
+    if (entry->offset == offsetof(DRV_COAX_CTRL_Params, tilt_limit_rad)) {
+        return ((value > 0.0f) &&
+                (value <= DRV_COAX_CTRL_TILT_LIMIT_RAD)) ? 1U : 0U;
+    }
+
     if ((entry->offset == offsetof(DRV_COAX_CTRL_Params, mass_kg)) ||
         (entry->offset == offsetof(DRV_COAX_CTRL_Params, gravity_m_s2)) ||
         (entry->offset == offsetof(DRV_COAX_CTRL_Params, min_total_force_n)) ||
         (entry->offset == offsetof(DRV_COAX_CTRL_Params, max_total_force_n)) ||
         (entry->offset == offsetof(DRV_COAX_CTRL_Params, tilt_lever_arm_m)) ||
-        (entry->offset == offsetof(DRV_COAX_CTRL_Params, tilt_limit_rad)) ||
         (entry->offset == offsetof(DRV_COAX_CTRL_Params, yaw_inertia)) ||
         (entry->offset == offsetof(DRV_COAX_CTRL_Params, thrust_coeff_n_per_rad2)) ||
         (entry->offset == offsetof(DRV_COAX_CTRL_Params, yaw_torque_coeff_n_m_per_rad2)) ||

@@ -42,7 +42,7 @@
 #include <string.h>
 
 #define APP_CONTROL_CFG_MAGIC       0x44524346UL
-#define APP_CONTROL_CFG_VERSION     7U
+#define APP_CONTROL_CFG_VERSION     8U
 #define APP_CONTROL_CFG_ADDRESS     (APP_FLASH_SERVICE_SIZE_BYTES - 4096UL)
 #define APP_CONTROL_MAX_LINE        128U
 #define APP_CONTROL_HEARTBEAT_ENABLED 0U
@@ -160,6 +160,7 @@ typedef struct {
 
 typedef APP_ControlFlashRecordV5 APP_ControlFlashRecordV6;
 typedef APP_ControlFlashRecordV5 APP_ControlFlashRecordV7;
+typedef APP_ControlFlashRecordV5 APP_ControlFlashRecordV8;
 
 static APP_ControlConfig control_config;
 #if (APP_CONTROL_HEARTBEAT_ENABLED != 0U)
@@ -1000,7 +1001,7 @@ static void app_control_apply_new_coax_param_defaults(DRV_COAX_CTRL_Params *para
     params->vel_loop_i_limit_m_s2 = defaults.vel_loop_i_limit_m_s2;
 }
 
-static void app_control_apply_v7_safety_defaults(DRV_COAX_CTRL_Params *params)
+static void app_control_apply_current_safety_defaults(DRV_COAX_CTRL_Params *params)
 {
     DRV_COAX_CTRL_Params defaults;
 
@@ -1049,6 +1050,7 @@ static void app_control_migrate_coax_params_v4(const APP_ControlCoaxParamsV4 *le
     params->motor_omega_max_rad_s = legacy->motor_omega_max_rad_s;
     app_control_force_airframe_params(params);
     app_control_apply_new_coax_param_defaults(params);
+    app_control_apply_current_safety_defaults(params);
 }
 
 static void app_control_report_airframe(void)
@@ -2232,7 +2234,7 @@ static void app_control_report_uart_stats(uint32_t rx_bytes,
 
 static APP_FlashService_Status app_control_load_config(void)
 {
-    APP_ControlFlashRecordV7 record;
+    APP_ControlFlashRecordV8 record;
     APP_FlashService_Status status;
     uint32_t checksum;
 
@@ -2256,7 +2258,9 @@ static APP_FlashService_Status app_control_load_config(void)
         }
         control_config = record.config;
         DRV_COAX_CTRL_SetParams(&record.coax_params);
-    } else if (((record.version == 5U) || (record.version == 6U)) &&
+    } else if (((record.version == 5U) ||
+                (record.version == 6U) ||
+                (record.version == 7U)) &&
                (record.size == (sizeof(record.config) + sizeof(record.coax_params)))) {
         DRV_COAX_CTRL_Params migrated_params;
 
@@ -2267,7 +2271,7 @@ static APP_FlashService_Status app_control_load_config(void)
         }
         control_config = record.config;
         migrated_params = record.coax_params;
-        app_control_apply_v7_safety_defaults(&migrated_params);
+        app_control_apply_current_safety_defaults(&migrated_params);
         DRV_COAX_CTRL_SetParams(&migrated_params);
     } else if (((record.version == 3U) || (record.version == 4U)) &&
                (record.size == (sizeof(APP_ControlConfig) + sizeof(APP_ControlCoaxParamsV4)))) {
@@ -2331,7 +2335,7 @@ static APP_FlashService_Status app_control_load_config(void)
 
 static APP_FlashService_Status app_control_save_config(void)
 {
-    APP_ControlFlashRecordV7 record;
+    APP_ControlFlashRecordV8 record;
     APP_FlashService_Status status;
 
     memset(&record, 0xFF, sizeof(record));

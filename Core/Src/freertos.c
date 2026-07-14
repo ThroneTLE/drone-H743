@@ -165,7 +165,7 @@
 #define STABILIZER_RC_LOSS_TIMEOUT_MS  500U
 #define STABILIZER_FLIGHT_LOG_TAIL_RECORDS 125U /* 250 Hz log tail, about 500 ms */
 #define STABILIZER_USE_RC_DIRECT_TILT_SERVO 0U   /* 0=自稳定控制器, 1=CH1/CH2 直控舵机调试 */
-#define STABILIZER_RC_DIRECT_TILT_LIMIT_RAD 0.523598776f /* 遥控直控调试最大 ±30° */
+#define STABILIZER_RC_DIRECT_TILT_LIMIT_RAD 0.209439516f /* 遥控直控调试最大 ±12° */
 
 /*
  * ============================================================================
