@@ -33,6 +33,8 @@ int main(void)
     DRV_INDI_Output light_output;
     DRV_INDI_Output heavy_output;
     DRV_INDI_Config heavy_config;
+    DRV_INDI_State invalid_state;
+    DRV_INDI_Output invalid_output;
 
     DRV_INDI_DefaultConfig(&config);
     DRV_INDI_Reset(&state);
@@ -95,6 +97,34 @@ int main(void)
     DRV_INDI_Step(&state, &config, &input, &output);
     if (!nearf(output.correction_rad[0], 0.015f, 1.0e-6f)) {
         return 4;
+    }
+
+    DRV_INDI_Reset(&invalid_state);
+    input.roll_rad = -1.0f;
+    input.gyro_x_rad_s = 0.0f;
+    DRV_INDI_Step(&invalid_state, &config, &input, &invalid_output);
+    DRV_INDI_Step(&invalid_state, &config, &input, &invalid_output);
+    if (invalid_output.correction_rad[0] == 0.0f) {
+        return 5;
+    }
+
+    input.base_alpha_rad = 0.12f;
+    input.base_beta_rad = -0.13f;
+    input.gyro_x_rad_s = NAN;
+    DRV_INDI_Step(&invalid_state, &config, &input, &invalid_output);
+    if (invalid_output.active != 0U ||
+        !nearf(invalid_output.alpha_rad, 0.12f, 1.0e-6f) ||
+        !nearf(invalid_output.beta_rad, -0.13f, 1.0e-6f) ||
+        invalid_state.initialized != 0U ||
+        invalid_state.correction_rad[0] != 0.0f ||
+        invalid_state.correction_rad[1] != 0.0f) {
+        return 6;
+    }
+
+    input.gyro_x_rad_s = 0.0f;
+    DRV_INDI_Step(&invalid_state, &config, &input, &invalid_output);
+    if (invalid_output.active == 0U || invalid_state.initialized == 0U) {
+        return 7;
     }
 
     puts("indi runtime ok");

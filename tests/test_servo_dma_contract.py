@@ -27,6 +27,17 @@ def test_stabilizer_uses_nonblocking_servo_dma_path() -> None:
     assert "== DRV_SERVO_OK" in freertos
 
 
+def test_servo_bus_runtime_diagnostics_are_queryable() -> None:
+    control = read("App/Src/app_control.c")
+    aiwb2 = read("App/Src/app_aiwb2.c")
+
+    assert 'strcmp(tokens[1], "STATUS") == 0' in control
+    assert "BSP_BusServo_GetDiag(&diag);" in control
+    assert '"SERVO bus tick_ms=%lu baud=%lu tx_start=%lu "' in control
+    assert 'strcmp(line, "SERVO STATUS") == 0' in aiwb2
+    assert 'strcmp(line, "INDI?") == 0' in aiwb2
+
+
 def test_stabilizer_keeps_direct_servo_debug_switch_with_controller_path() -> None:
     freertos = read("Core/Src/freertos.c")
 

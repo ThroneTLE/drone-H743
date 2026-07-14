@@ -36,6 +36,9 @@ def test_indi_uses_measured_angular_acceleration_and_control_effectiveness() -> 
     assert "pitch_virtual_accel - state->angular_accel_rad_s2[1]" in source
     assert "increment_limit" in source
     assert "correction_limit" in source
+    assert "indi_config_finite" in source
+    assert "indi_input_finite" in source
+    assert "DRV_INDI_Reset(state);" in source
 
 
 def test_coax_wrapper_applies_indi_over_acceleration_feedforward() -> None:

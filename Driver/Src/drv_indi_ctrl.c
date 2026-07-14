@@ -35,6 +35,38 @@ static float indi_dt(float dt_sec)
     return DRV_INDI_DEFAULT_DT_SEC;
 }
 
+static uint8_t indi_config_finite(const DRV_INDI_Config *config)
+{
+    return (isfinite(config->enable) &&
+            isfinite(config->roll_inertia_kg_m2) &&
+            isfinite(config->pitch_inertia_kg_m2) &&
+            isfinite(config->roll_attitude_kp_rad_s2_per_rad) &&
+            isfinite(config->pitch_attitude_kp_rad_s2_per_rad) &&
+            isfinite(config->roll_rate_kd_rad_s2_per_rad_s) &&
+            isfinite(config->pitch_rate_kd_rad_s2_per_rad_s) &&
+            isfinite(config->angular_accel_lpf_alpha) &&
+            isfinite(config->correction_limit_rad) &&
+            isfinite(config->increment_limit_rad) &&
+            isfinite(config->correction_leak_hz) &&
+            isfinite(config->roll_effectiveness_sign) &&
+            isfinite(config->pitch_effectiveness_sign)) ? 1U : 0U;
+}
+
+static uint8_t indi_input_finite(const DRV_INDI_Input *input)
+{
+    /* dt_sec is intentionally omitted: indi_dt() safely falls back to 2 ms. */
+    return (isfinite(input->roll_rad) &&
+            isfinite(input->pitch_rad) &&
+            isfinite(input->roll_ref_rad) &&
+            isfinite(input->pitch_ref_rad) &&
+            isfinite(input->gyro_x_rad_s) &&
+            isfinite(input->gyro_y_rad_s) &&
+            isfinite(input->base_alpha_rad) &&
+            isfinite(input->base_beta_rad) &&
+            isfinite(input->total_force_n) &&
+            isfinite(input->tilt_lever_arm_m)) ? 1U : 0U;
+}
+
 void DRV_INDI_DefaultConfig(DRV_INDI_Config *config)
 {
     if (config == NULL) {
@@ -91,8 +123,21 @@ void DRV_INDI_Step(DRV_INDI_State *state,
     }
 
     memset(output, 0, sizeof(*output));
-    output->alpha_rad = input->base_alpha_rad;
-    output->beta_rad = input->base_beta_rad;
+    output->alpha_rad = isfinite(input->base_alpha_rad) ?
+                        input->base_alpha_rad : 0.0f;
+    output->beta_rad = isfinite(input->base_beta_rad) ?
+                       input->base_beta_rad : 0.0f;
+
+    /*
+     * A single non-finite sensor/model value must not poison the differentiator
+     * or the accumulated correction. Fall back to the finite base command and
+     * require one clean sample to initialize again.
+     */
+    if ((indi_config_finite(config) == 0U) ||
+        (indi_input_finite(input) == 0U)) {
+        DRV_INDI_Reset(state);
+        return;
+    }
 
     if (config->enable < 0.5f) {
         DRV_INDI_Reset(state);

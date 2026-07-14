@@ -2511,6 +2511,31 @@ static void app_control_handle_servo(char **tokens, uint32_t count)
         return;
     }
 
+    if (strcmp(tokens[1], "STATUS") == 0) {
+        DRV_SERVO_Diag diag;
+
+        memset(&diag, 0, sizeof(diag));
+        BSP_BusServo_GetDiag(&diag);
+        APP_Control_QueueText("SERVO bus tick_ms=%lu baud=%lu tx_start=%lu "
+                              "tx_done=%lu busy=%lu err=%lu recover=%lu "
+                              "last_len=%lu last_st=%lu uart_st=%lu uart_err=%lu "
+                              "dma_st=%lu dma_err=%lu\r\n",
+                              (unsigned long)HAL_GetTick(),
+                              (unsigned long)BSP_BusServo_GetBaudRate(),
+                              (unsigned long)diag.tx_start_count,
+                              (unsigned long)diag.tx_complete_count,
+                              (unsigned long)diag.tx_busy_count,
+                              (unsigned long)diag.tx_error_count,
+                              (unsigned long)diag.tx_recover_count,
+                              (unsigned long)diag.last_length,
+                              (unsigned long)diag.last_status,
+                              (unsigned long)diag.last_uart_state,
+                              (unsigned long)diag.last_uart_error,
+                              (unsigned long)diag.last_dma_state,
+                              (unsigned long)diag.last_dma_error);
+        return;
+    }
+
     if (strcmp(tokens[1], "MOVE") == 0) {
         uint32_t pulse;
         uint32_t time_ms;
