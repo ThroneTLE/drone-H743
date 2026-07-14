@@ -19,6 +19,8 @@
 
 极端测试里包含惯量、推力、控制效能、舵机时间常数、命令延迟、陀螺零偏和外扰同时随机。固定 INDI 的工程范围误差略高于 INDI+LESO，但在更宽的物理可行范围内稳定率更高，因此本版不引入 LESO 或在线 RLS。
 
+> 上表仿真使用原 `±30°` 倾转限幅。当前固件已缩小为 `±18°`，控制器排名仍可用于算法选择，但这些稳定率不能直接作为新限幅的定量飞行证明。悬停附近 `g·tan(18°)≈3.19 m/s²`，仍高于当前水平速度环 `2.91 m/s²` 的输出限幅。
+
 ## 2. 硬件频率是否满足 INDI
 
 ### 2.1 IMU 与控制计算
@@ -84,7 +86,7 @@ f_servo = 1 / (2π × 0.176624) ≈ 0.90 Hz
 | 累计 INDI 修正 | `±10°` |
 | 修正泄漏 | `0.5 Hz` |
 | Roll/Pitch 控制效能极性 | `+1 / +1`，保持现有正确极性 |
-| 最终倾转限幅 | `±30°` |
+| 最终倾转限幅 | `±18°`（原 `±30°` 的 60%，同时作为固件硬上限） |
 
 控制律为：
 
@@ -113,14 +115,14 @@ tilt_correction = clamp(leak × tilt_correction_prev + delta_tilt, ±10°)
 
 | 文件 | 大小 | SHA-256 |
 |---|---:|---|
-| `build/Release/drone-H743-indi.hex` | 467666 B | `E968C149FB4FDACF98E21BE235BDC18AF97189451DAC1C209A87129D156FAA58` |
-| `build/Release/drone-H743-indi.bin` | 166248 B | `095D884D85FBDB7B0C860D016FE7BDA53794342749BEFA3E90E60DFF6E6559D4` |
-| `build/Release/drone-H743.elf` | 554112 B | `0C40FBCA870A7390AF964DB7F638538EB0A1D16C11F1AD8109488D40AD5A607E` |
+| `build/Release/drone-H743-indi.hex` | 468055 B | `6B186F91D7107C3F307A2EA01DF4DC30C0CED0FB887937ADB5693E2591688313` |
+| `build/Release/drone-H743-indi.bin` | 166384 B | `9C86A52C41A7DEA4A04A61C3E34FBCA66A35D240D700E3FC6BA42F70806D5792` |
+| `build/Release/drone-H743.elf` | 554112 B | `51073A1217262505ACC0F8BB68FB31C321E99CDEF3F1CD9AF49B3695B986C1E8` |
 
 Release 镜像占用：
 
 ```text
-FLASH text+data: 166236 B 左右，约 7.93% / 2 MB
+FLASH text+data: 166372 B，约 7.93% / 2 MB
 DTCMRAM:         111384 B，约 84.98% / 128 KB
 ```
 
@@ -136,6 +138,7 @@ DTCMRAM:         111384 B，约 84.98% / 128 KB
    coax.indi_pitch_effectiveness_sign = 1
    coax.indi_roll_inertia_kg_m2 = 0.019
    coax.indi_pitch_inertia_kg_m2 = 0.019
+   coax.tilt_limit_rad = 0.314159
    ```
 
    FLASH 中已保存的 V8 参数可能覆盖编译默认值。任何一项不符合预期时，不要直接试飞。

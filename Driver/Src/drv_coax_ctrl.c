@@ -10,7 +10,7 @@
 #include <stddef.h>
 #include <string.h>
 
-#define DRV_COAX_CTRL_TILT_LIMIT_RAD 0.523599f
+#define DRV_COAX_CTRL_TILT_LIMIT_RAD 0.314159265f
 #define DRV_COAX_CTRL_PI 3.141592654f
 #define DRV_COAX_CTRL_SERVO_TRAVEL_RAD \
     (DRV_COAX_CTRL_SERVO_TRAVEL_DEG * DRV_COAX_CTRL_PI / 180.0f)
@@ -100,6 +100,23 @@ static uint16_t coax_ctrl_clamp_u16(int32_t value, uint16_t lo, uint16_t hi)
     if (value < (int32_t)lo) { return lo; }
     if (value > (int32_t)hi) { return hi; }
     return (uint16_t)value;
+}
+
+static void coax_ctrl_sanitize_loaded_params(DRV_COAX_CTRL_Params *params)
+{
+    if (params == NULL) {
+        return;
+    }
+
+    if (params->tilt_limit_rad > DRV_COAX_CTRL_TILT_LIMIT_RAD) {
+        params->tilt_limit_rad = DRV_COAX_CTRL_TILT_LIMIT_RAD;
+    }
+    if (params->indi_correction_limit_rad > params->tilt_limit_rad) {
+        params->indi_correction_limit_rad = params->tilt_limit_rad;
+    }
+    if (params->indi_increment_limit_rad > params->indi_correction_limit_rad) {
+        params->indi_increment_limit_rad = params->indi_correction_limit_rad;
+    }
 }
 
 static void coax_ctrl_compute_pure_damping_tilt(
@@ -271,6 +288,9 @@ static uint8_t coax_ctrl_params_valid(const DRV_COAX_CTRL_Params *params)
     if (params->min_total_force_n > params->max_total_force_n) {
         return 0U;
     }
+    if (params->tilt_limit_rad > DRV_COAX_CTRL_TILT_LIMIT_RAD) {
+        return 0U;
+    }
     if (params->indi_correction_limit_rad > params->tilt_limit_rad) {
         return 0U;
     }
@@ -404,13 +424,17 @@ void DRV_COAX_CTRL_GetParams(DRV_COAX_CTRL_Params *params)
 
 void DRV_COAX_CTRL_SetParams(const DRV_COAX_CTRL_Params *params)
 {
+    DRV_COAX_CTRL_Params candidate;
+
     if (params == NULL) {
         return;
     }
 
     DRV_COAX_CTRL_Init();
-    if (coax_ctrl_params_valid(params) != 0U) {
-        coax_ctrl_params = *params;
+    candidate = *params;
+    coax_ctrl_sanitize_loaded_params(&candidate);
+    if (coax_ctrl_params_valid(&candidate) != 0U) {
+        coax_ctrl_params = candidate;
         DRV_COAX_CTRL_ResetRuntime();
     } else {
         DRV_COAX_CTRL_ResetParams();
@@ -452,6 +476,10 @@ uint8_t DRV_COAX_CTRL_SetParam(const char *name, float value)
     DRV_COAX_CTRL_Init();
     candidate = coax_ctrl_params;
     *coax_ctrl_param_ptr(&candidate, entry) = value;
+    if ((entry->offset == offsetof(DRV_COAX_CTRL_Params, tilt_limit_rad)) &&
+        (candidate.tilt_limit_rad > DRV_COAX_CTRL_TILT_LIMIT_RAD)) {
+        candidate.tilt_limit_rad = DRV_COAX_CTRL_TILT_LIMIT_RAD;
+    }
     if (coax_ctrl_params_valid(&candidate) == 0U) {
         return 0U;
     }
