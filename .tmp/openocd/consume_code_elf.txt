@@ -1,0 +1,20 @@
+
+build\Debug\drone-H743.elf:     file format elf32-littlearm
+
+Contents of section .text:
+ 8022f0c 80b584b0 00af7860 0b46fb70 7b68002b  ......x`.F.p{h.+
+ 8022f1c 01d10023 d6e07b68 1b6f5a1c 7b681a67  ...#..{h.oZ.{h.g
+ 8022f2c 7b68b3f8 6830002b 13d1fb78 242b01d0  {h..h0.+...x$+..
+ 8022f3c 0023c7e0 7b68b3f8 68305a1c 91b27a68  .#..{h..h0Z...zh
+ 8022f4c a2f86810 1a467b68 1344fa78 da770023  ..h..F{h.D.x.w.#
+ 8022f5c b8e07b68 b3f86830 012b02d1 fb78582b  ..{h..h0.+...xX+
+ 8022f6c 07d17b68 b3f86830 022b1cd1 fb783c2b  ..{h..h0.+...x<+
+ 8022f7c 19d07b68 db6f5a1c 7b68da67 7868fff7  ..{h.oZ.{h.gxh..
+ 8022f8c 8dfafb78 242b0cd1 7b68b3f8 68305a1c  ...x$+..{h..h0Z.
+ 8022f9c 91b27a68 a2f86810 1a467b68 1344fa78  ..zh..h..F{h.D.x
+ 8022fac da770023 8ee07b68 b3f86830 482b19d9  .w.#..{h..h0H+..
+ 8022fbc 7b68db6f 5a1c7b68 da677868 fff76efa  {h.oZ.{h.gxh..n.
+ 8022fcc fb78242b 0cd17b68 b3f86830 5a1c91b2  .x$+..{h..h0Z...
+ 8022fdc 7a68a2f8 68101a46 7b681344 fa78da77  zh..h..F{h.D.x.w
+ 8022fec 00236fe0 7b68b3f8 68305a1c 91b27a68  .#o.{h..h0Z...zh
+ 8022ffc a2f86810 1a467b68 1344fa78 da777b68  ..h..F{h.D.x.w{h

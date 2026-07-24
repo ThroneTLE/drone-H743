@@ -1,0 +1,82 @@
+{
+  "port": "COM10",
+  "baud": 57600,
+  "duration_s": 20.03161907196045,
+  "frames": 651,
+  "average_frame_hz": 32.498621187902216,
+  "text_lines": 1,
+  "dropped_or_noise_bytes": 0,
+  "csv": ".tmp\\diag_vofa_nostatus_20260718_183645.csv",
+  "text_log": ".tmp\\diag_vofa_nostatus_20260718_183645_text.txt",
+  "raw_bin": ".tmp\\diag_vofa_nostatus_20260718_183645.bin",
+  "channel_names": [
+    "roll_deg",
+    "pitch_deg",
+    "yaw_deg",
+    "range_height_m",
+    "fc_time_s",
+    "vel_est_x_m_s",
+    "vel_est_y_m_s",
+    "coax_roll_rate_kd",
+    "coax_pitch_rate_kd",
+    "coax_yaw_angle_kp",
+    "coax_yaw_rate_kd",
+    "vel_loop_x_kp",
+    "vel_loop_y_kp",
+    "vel_loop_x_ki",
+    "vel_loop_y_ki",
+    "vel_loop_x_kd",
+    "vel_loop_y_kd",
+    "vel_loop_enable"
+  ],
+  "tuning_stats": {
+    "roll_deg": {
+      "count": 651,
+      "min": -3.055523157119751,
+      "max": -2.9870200157165527,
+      "mean": -3.0131974897809477,
+      "max_abs": 3.055523157119751
+    },
+    "pitch_deg": {
+      "count": 651,
+      "min": -3.280728340148926,
+      "max": -3.204780101776123,
+      "mean": -3.2475644124817737,
+      "max_abs": 3.280728340148926
+    },
+    "yaw_deg": {
+      "count": 651,
+      "min": -3.672536849975586,
+      "max": -3.4109745025634766,
+      "mean": -3.5364868292977,
+      "max_abs": 3.672536849975586
+    },
+    "range_height_m": {
+      "count": 651,
+      "min": 0.4400000274181366,
+      "max": 0.44999995827674866,
+      "mean": 0.4459645040390495,
+      "max_abs": 0.44999995827674866
+    },
+    "vel_est_x_m_s": {
+      "count": 651,
+      "min": 0.0,
+      "max": 0.0,
+      "mean": 0.0,
+      "max_abs": 0.0
+    },
+    "vel_est_y_m_s": {
+      "count": 651,
+      "min": 0.0,
+      "max": 0.0,
+      "mean": 0.0,
+      "max_abs": 0.0
+    }
+  },
+  "notes": [
+    "0/1/2 are roll, pitch, and yaw.",
+    "3 is filtered rangefinder height; 4 is FC time.",
+    "5/6 are fused X/Y velocity estimates.",
+    "7-23 are dashboard slider parameter feedback channels."
+  ]
+}

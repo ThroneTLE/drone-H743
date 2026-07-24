@@ -1,0 +1,84 @@
+{
+  "port": "COM10",
+  "baud": 57600,
+  "duration_s": 3.026401996612549,
+  "frames": 117,
+  "average_frame_hz": 38.65976830935153,
+  "text_lines": 1,
+  "dropped_or_noise_bytes": 0,
+  "csv": ".tmp\\post_ff_off_20260723_214739.csv",
+  "text_log": ".tmp\\post_ff_off_20260723_214739_text.txt",
+  "raw_bin": ".tmp\\post_ff_off_20260723_214739.bin",
+  "channel_names": [
+    "roll_deg",
+    "pitch_deg",
+    "yaw_deg",
+    "range_height_m",
+    "fc_time_s",
+    "vel_est_x_m_s",
+    "vel_est_y_m_s",
+    "coax_roll_rate_kd",
+    "coax_pitch_rate_kd",
+    "coax_yaw_angle_kp",
+    "coax_yaw_rate_kd",
+    "vel_loop_x_kp",
+    "vel_loop_y_kp",
+    "vel_loop_x_ki",
+    "vel_loop_y_ki",
+    "vel_loop_x_kd",
+    "vel_loop_y_kd",
+    "vel_loop_enable",
+    "coax_roll_angle_kp",
+    "coax_pitch_angle_kp"
+  ],
+  "tuning_stats": {
+    "roll_deg": {
+      "count": 117,
+      "min": -0.03611713647842407,
+      "max": -0.011508733034133911,
+      "mean": -0.024407716261015996,
+      "max_abs": 0.03611713647842407
+    },
+    "pitch_deg": {
+      "count": 117,
+      "min": -0.032545000314712524,
+      "max": 4.9173831939697266e-05,
+      "mean": -0.013556219573713776,
+      "max_abs": 0.032545000314712524
+    },
+    "yaw_deg": {
+      "count": 117,
+      "min": -0.10098755359649658,
+      "max": -0.0910080075263977,
+      "mean": -0.09499514816153763,
+      "max_abs": 0.10098755359649658
+    },
+    "range_height_m": {
+      "count": 117,
+      "min": 0.30128782987594604,
+      "max": 0.30889493227005005,
+      "mean": 0.30535831588965195,
+      "max_abs": 0.30889493227005005
+    },
+    "vel_est_x_m_s": {
+      "count": 117,
+      "min": -0.0005873515619896352,
+      "max": 0.0005441689863801003,
+      "mean": -1.5387387840288036e-05,
+      "max_abs": 0.0005873515619896352
+    },
+    "vel_est_y_m_s": {
+      "count": 117,
+      "min": -0.00034815361141227186,
+      "max": 0.000450608495157212,
+      "mean": 5.630009659097416e-06,
+      "max_abs": 0.000450608495157212
+    }
+  },
+  "notes": [
+    "0/1/2 are roll, pitch, and yaw.",
+    "3 is filtered rangefinder height; 4 is FC time.",
+    "5/6 are fused X/Y velocity estimates.",
+    "7-23 are dashboard slider parameter feedback channels."
+  ]
+}

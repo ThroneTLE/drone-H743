@@ -1,0 +1,1528 @@
+---PAGE 1---
+1650 IEEE TRANSACTIONS ON ROBOTICS, VOL. 40, 2024
+Design, Modeling, and Control of a Coaxial Drone
+Liangming Chen , Senior Member , IEEE, Jiaping Xiao , Graduate Student Member , IEEE, Y umin Zheng ,
+N Arun Alagappan , and Mir Feroskhan , Member , IEEE
+Abstract—Various quadrotor drones have been developed in
+recent years, mainly focusing on either improving maximum thrust
+per platform area or ﬂight maneuverability. Evidently, achieving
+both advantages simultaneously is a challenging task, since they
+call for opposing rotor requirements. Speciﬁcally, improving the
+drone’s maximum thrust per platform area mainly requires re-
+ducing the number of rotors to make way for larger and more
+powerful rotors. While this can be an effective method to increase
+overall thrust, improving ﬂight maneuverability requires a greater
+number of rotors to generate larger rotating torques or to increase
+the thrust vectoring capability. To address this challenge, we design
+a novel coaxial drone with two contra-rotating rotors for high thrust
+efﬁciency while enabling independent dual-axis rotor rotation to
+maintain maneuverability along the roll and pitch axes. The thrust
+vectoring capability is provided by two dedicated servomotors
+connected vertically in series with the coaxial propellers to produce
+a compact and elongated fuselage frame. A nonlinear ﬂight model
+in six degrees of freedom is developed for the underactuated system,
+incorporating four control inputs from the two propellers and
+servos, respectively. Consequently, a nonlinear control allocation
+approach is proposed such that the drone can produce a desired
+control force and yaw torque to stabilize the drone’s position
+and yaw angle. For the uncontrolled roll and pitch dynamics, a
+damping component is added such that the roll and pitch angular
+velocities can also be stabilized. Both numerical simulations and
+real experiments are conducted to validate the design of the drone
+and the effectiveness of the proposed control strategy.
+Index Terms—Coaxial drone, control allocation, drone design,
+dynamics modeling, ﬂight control, thrust efﬁciency.
+Manuscript received 4 June 2023; revised 2 November 2023; accepted 18
+December 2023. Date of publication 15 January 2024; date of current version
+12 February 2024. This paper was recommended for publication by Associate
+Editor F. Ruggiero and Editor P . Robuffo Giordano upon evaluation of the
+reviewers’ comments. This work was supported in part by the A*STAR under its
+2021 MTC Individual Research Grants (IRG) and Y oung Individual Research
+Grants (YIRG) Call under Grant MTCYIRG21-0004i, and in part by the Shen-
+zhen Key Laboratory of Control Theory and Intelligent Systems under Grant
+ZDSYS20220330161800001. (Liangming Chen and Jiaping Xiao are co-ﬁrst
+authors.) (Corresponding authors: Mir Feroskhan; Yumin Zheng.)
+Liangming Chen is with the Shenzhen Key Laboratory of Control Theory
+and Intelligent Systems and the Center for Control Science and Technology,
+Southern University of Science and Technology, Shenzhen 518055, China (e-
+mail: chenlm6@sustech.edu.cn).
+Jiaping Xiao, N Arun Alagappan, and Mir Feroskhan are with the
+School of Mechanical and Aerospace Engineering, Nanyang Techno-
+logical University, Singapore 639798 (e-mail: jiaping001@e.ntu.edu.sg;
+arunalag001@e.ntu.edu.sg; mir.feroskhan@ntu.edu.sg).
+Y umin Zheng is with the School of Electrical and Electronic Engi-
+neering, Nanyang Technological University, Singapore 639798 (e-mail: yu-
+min004@e.ntu.edu.sg).
+This article has supplementary downloadable material available at
+https://doi.org/10.1109/TRO.2024.3354161, provided by the authors.
+Digital Object Identiﬁer 10.1109/TRO.2024.3354161
+I. I NTRODUCTION
+W
+ITH the recent technological advancements in aerial
+vehicles’ power supply, communication, and onboard
+computation, the use of quadrotors in various engineering ap-
+plications has become increasingly popular [1]. In particular,
+quadrotors can provide increased safety and reduce the cost of
+operations in high-risk tasks or environments, such as disaster
+management [2], search and rescue [3], bridge and building
+inspection [4].
+The conventional quadrotor design adopts a plus or cross
+conﬁguration with two pairs of counter-rotating propellers con-
+nected to a central body. Owe to its mechanically simplicity,
+quadrotors enjoy a high stability in hover and a high maneu-
+verability in controlled movements involving roll and pitch
+motions. However, the maximum thrust per platform area, i.e.,
+thrust efﬁciency, for quadrotors is generally limited due to the
+presence of four propellers, whose rotor size is proportional to
+the central body. Note that the maximum thrust per platform area
+is an important index for a drone’s ﬂight duration and power
+consumption [5].
+Subsequently, this drives the motivation to design a new drone,
+which can achieve higher thrust per platform area while still
+preserving the same maneuverable degrees of freedom (DoF)
+as quadrotors. First, for the thrust efﬁciency, since the power
+needed to hover is proportional to the inverse of the rotor’s
+radius, a single large rotor will energetically outperform several
+smaller rotors within the same boundary [5]. Motivated by this
+fact, a triangular quadrotor conﬁguration is proposed in [5] by
+using a single large rotor for lift and three small rotors for control.
+Also, a bicopter drone is designed in [6], which has similar
+levels of versatility and improves the drone’s compactness or
+efﬁciency at the same time. Second, to further increase drones’
+maneuverable DoF, tilting rotors are employed for the drone
+design [7], [8], [9], [10]. For example, an overactuated quadrotor
+is developed in [8] based on four tilting rotors. Since coaxial
+contra-rotating rotors can provide a compact and anti-torque
+solution [11], a coaxial drone is one of the promising options
+to simultaneously satisfy these two requirements, i.e., higher
+thrust per platform area and the same maneuverable DoF as
+quadrotors [12]. The effect of coaxial propellers’ conﬁguration
+on propulsion efﬁciency is discussed in [13], which is deﬁned
+as the multiplication of the propeller’s efﬁciency, the motor’s
+efﬁciency, and the electronic speed controller’s efﬁciency.
+Several coaxial drones have been developed in [11], [12],
+[14], [15], [16], one of which is the NASA ’s Ingenuity Mars
+helicopter, which successfully completed its ﬁrst ﬂight test in
+early 2021. The Ingenuity helicopter has contra-rotating coaxial
+1941-0468 © 2024 IEEE. Personal use is permitted, but republication/redistribution requires IEEE permission.
+See https://www.ieee.org/publications/rights/index.html for more information.
+Authorized licensed use limited to: Southern University of Science and Technology. Downloaded on May 01,2024 at 08:10:40 UTC from IEEE Xplore.  Restrictions apply. 
+
+---PAGE 2---
+CHEN et al.: DESIGN, MODELING, AND CONTROL OF A COAXIAL DRONE 1651
+propellers connected to a lightweight body frame. With a high
+thrust efﬁciency, the coaxial design of Ingenuity allows it to
+perform basic takeoff and landing maneuvers under the thin at-
+mosphere and restrictive energy equipment in Mars1. Unlike the
+coaxial quadrotor drone in [16], other coaxial drones designed
+in [11], [12], [14], [15] contain coaxial propellers, whose roll
+and pitch motions are controlled by their designed mechanical
+swashplates. Similar to the coaxial drones in [11], [12], [14],
+[15], the roll and pitch motions of the Ingenuity helicopter are
+independently controlled by two cyclic swashplates 1, each of
+which is driven by three small servomotors. However, the use
+of two swashplates with six servomotors involves more intricate
+moving parts that increase the overall mechanical complexity of
+the platform. As a result, with an increased control complexity
+of the drone, the probability of failure is also escalated.
+Inspired by existing coaxial drones [11], [12], [14], [15], and
+the tilting mechanism [6], [7], [8], [9], [10] employed in drone
+design, this article presents a compact drone with contra-rotating
+coaxial propellers that is capable of achieving independent bi-
+axial rotation about two orthogonal axes. This design preserves
+the four maneuvering DoF with a higher thrust per platform
+area than that of a conventional quadrotor. Unlike the cyclic
+swashplate mechanism used in other coaxial drones, only two
+servomotors are directly employed to provide thrust vectoring
+capability in producing the roll and pitch motions. This enables
+the platform to be controlled in a more intuitive and mechanically
+simpler way. Another potential advantage of using servomotors
+for the control of roll and pitch motions is their larger outputted
+angle range than that of swashplates. Based on the integration
+of the coaxial propellers with the two servomotors connected in
+series, a detailed six-DoF model involving the drone’s position
+and attitude dynamics is developed. Then, to design an efﬁcient
+controller for the underactuated system based on the four control
+inputs given by the two propellers and two servos, respectively, a
+nonlinear control allocation approach is proposed, under which
+the drone can produce desired control force and yaw torque to
+stabilize the drone’s position and yaw angle. Finally, we validate
+our established model and proposed control strategy through
+both numerical simulations and real-ﬂight experiments.
+The rest of this article is organized as follows. Section II
+introduces the overall design of the coaxial drone. Section III
+establishes the attitude and position dynamics for the coaxial
+drone. The control design is provided in Section IV. Sections V
+and VI present the simulation results and experimental results,
+respectively. Finally, Section VII concludes this article.
+II. D ESIGN OF THE COAXIAL DRONE
+In this section, we introduce the design of the coaxial drone.
+First, we present the drone’s overall mechanical structure and
+then introduce different rigid bodies in the coaxial drone and
+their respective coordinate frames. Finally, we discuss the con-
+nection of the coaxial propeller system, servomotors, and the
+drone’s fuselage.
+1[Online]. Available: https://mars.nasa.gov/technology/helicopter/status/
+336/2800-rpm-spin-a-success-but-ﬂight-14-delayed-to-post-conjunction/
+Fig. 1. Overall structure of the coaxial drone.
+Fig. 2. Two servomotors’ rotating angles.
+A. Overall Mechanical Structure
+The coaxial drone consists of one propeller system, two ser-
+vomotors and one lower fuselage section. The coaxial propeller
+system consists of two counter-rotating rotors powered by a pair
+of brushless motors that generate necessary thrust for ﬂight. The
+two servomotors produce localized roll and pitch rotations of
+the propeller system for thrust vectoring. A series of connecting
+mounts also provide structural support for the coaxial drone.
+The drone’s fuselage section houses the ﬂight controller, battery,
+and other electrical components. The components located in the
+drone’s fuselage have a relatively larger mass compared to the
+servomotors and the propeller, resulting in the center of gravity
+(CG) of the entire coaxial drone to be located in the fuselage
+section. We assume that the CG of the entire drone is vertically
+aligned with the CG of the drone’s fuselage. A representation
+of the coaxial drone and its localized rotation angles are shown
+in Figs. 1 and 2. In addition, since the airﬂow produced by the
+propeller system is towards the direction from the propeller to
+the fuselage, the fuselage part is designed to be as vertical as
+possible, ensuring minimum obstruction to the airﬂow.
+B. Rigid Bodies and Coordinate Frames
+As shown in Fig. 1, there are four rigid bodies assembled
+together to form the coaxial drone. We can introduce coordinate
+frames for each of them to describe their relative positions in
+space. The ﬁrst rigid body consists of the propeller system
+and its rotation mount. The corresponding frame is represented
+Authorized licensed use limited to: Southern University of Science and Technology. Downloaded on May 01,2024 at 08:10:40 UTC from IEEE Xplore.  Restrictions apply. 
+
+---PAGE 3---
+1652 IEEE TRANSACTIONS ON ROBOTICS, VOL. 40, 2024
+by ∑
+p : Op −XpYpZp whose Op is ﬁxed to the center of
+the contra-rotating rotors. The second rigid body consists of
+the ﬁrst servomotor S1 and the rotation mounts attached to
+its bottom surface. The corresponding frame is represented
+by ∑
+S1 : OS1 −XS1YS1ZS1 with OS1 ﬁxed to the center of
+rotation axis of S1. In addition, S1 controls the roll angle δrφ of
+the ﬁrst rigid bodyOp, where a counterclockwise rotation along
+XS1 produces a positive roll (i.e., following the right-hand screw
+rule). The third rigid body consists of the second servomotor S2
+and its base mount, which is connected to the drone’s fuselage.
+It has a frame of reference ∑
+S2 : OS2 −XS2YS2ZS2 withOS2
+ﬁxed to the center of rotation axis of S2.A l s o ,S2 controls the
+pitch angle δrθ of the second rigid body OS1 where a coun-
+terclockwise rotation along YS2 produces a positive pitch. The
+fourth rigid body refers to the drone’s fuselage and its respecting
+components. It has a body frame ∑
+f : Of −XfYfZf withOf
+being ﬁxed to the CG of the rigid body.
+In the follow-up sections of this article, two frames are se-
+lected as the main reference frames for the modeling of the drone.
+The ﬁrst is the inertial coordinate frame ∑
+i : Oi −XiYiZi
+ﬁxed to the ground of Earth. The second is the body frame∑
+b : Ob −XbYbZb whose origin Ob is rigidly attached to the
+CG of the coaxial drone (the total mass of the drone is taken to
+act at this point).
+C. Connection of Coaxial Propeller , Servomotors, and
+Fuselage
+The coaxial drone has a simple assembly, with its mechanical
+and electrical components connected in a vertical arrangement.
+The coaxial propeller system serves as the primary source of
+thrust for the drone along a common axis. A carefully designed
+rotation mount provides sufﬁcient clearance for the unobstructed
+rotation of the propeller byδrφ ∈[−90◦,90◦], as shown in Fig.2.
+A stronger rotation mount is used for the secondary servomotor
+S2 to support the combined weight of the propeller system
+and S1. Similarly, Fig. 2 also shows that a rotation clearance
+of δrθ ∈[−90◦,90◦] can be achieved by the subsequent mount
+in the system, which indicates that the outputted angle range
+of servomotors is larger than that of swashplates. This dual
+arrangement of the servomotors allows the drone to perform
+forward–backward and lateral maneuvers in ﬂight by rotating
+the direction of the generated thrust. The usage of the anglesδrφ
+andδrθ to maintain ﬂight stability of the drone is explored in the
+follow-up sections of this article.
+Another consideration for the assembly of the drone is the de-
+sign of the connecting base mount (see the component between
+OS2 and Ob in Fig. 1) attached between the end of S2 and the
+drone’s fuselage. The dimensions of the base mount are designed
+to allow for a secure connection for ease of assembly and
+effective transfer of forces. The drone’s fuselage consists of two
+housing frames that contain the ﬂight controller and the battery
+pack, respectively. All remaining electrical cables and connect-
+ing components are stored within the drone’s fuselage as well.
+D. Comparison With the Existing Design of Coaxial Drones
+The main difference between the coaxial drone introduced
+in this article and other birotor coaxial drones developed in
+Fig. 3. Comparison between a quadrotor and the coaxial drone.
+[11], [15] lies in the mechanism designed to control the thrust
+vectoring of the propeller system. In [11], [15], the proposed
+coaxial drones utilize a swashplate platform to control their
+direction of ﬂight, in which servomotors attached to the platform
+change the pitch of the propeller blades at each rotation cycle
+and then generate thrust components parallel to the desired
+direction. Through this mechanism, thrust vectoring is indirectly
+controlled by the servomotors. In [12, Section 2], two servomo-
+tors in a parallel mechanism are used to control the tilt of the
+swashplate. In [14], a bioinspired reaction wheel mechanism is
+employed for the design of a coaxial helicopter. In this article, the
+proposed coaxial drone design has two servomotors connected
+directly to the propeller system through the use of individual
+rotation mounts, under which the parallel coaxial propellers do
+not need to tilt with respect to the rotors’ brushless motor to
+achieve thrust vectoring. The main advantage of this design is
+that it is more intuitive and mechanically simpler in maneuvering
+the drone toward the desired ﬂight direction. The increase in
+drone height due to the vertical arrangement of the servomotors
+is compensated by the compact design of the drone fuselage. The
+fuselage is assembled as modular sections, which also reduces
+the drone’s weight as opposed to the bulky cylindrical housing,
+as shown in [12] and [15]. The usage of swashplates involves
+multiple moving parts actuated by servomotors and hence has
+a higher probability of failure. For example, the Ingenuity heli-
+copter has two swashplates for independent pitch control of each
+rotor and is required to perform an automated check on all six
+servos before each ﬂight. Another difference of using servomo-
+tors to generate the drone’s roll and pitch motions is their larger
+outputted angle range than that of swashplates, resulting in a
+potential advantage and improved degree of control, as shown
+in Fig. 2.
+E. Comparison of Thrust Per Platform Area With Quadrotors
+In this section, we compare the maximum thrust per platform
+area between a quadrotor and the coaxial drone with similar
+payload capabilities, as shown in Fig. 3.T oh a v eaf a i rc o m -
+parison, we consider that both of the quadrotor and the coaxial
+drone are designed with the same footprint area (characterized
+by a square), the same size of payload, the same overall weight,
+Authorized licensed use limited to: Southern University of Science and Technology. Downloaded on May 01,2024 at 08:10:40 UTC from IEEE Xplore.  Restrictions apply. 
+
+---PAGE 4---
+CHEN et al.: DESIGN, MODELING, AND CONTROL OF A COAXIAL DRONE 1653
+and rotational angular speed. Fig. 3 shows that the radius of the
+quadrotor’s propeller is dr/2, while that of the coaxial drone is
+dr . According to the aerodynamic actuator disk theory [17],t h e
+magnitude of thrust generated by one rotor of the quadrotor can
+be calculated by
+Fpropeller1 = ρCTπ(dr/2)2(ωdr/2)2 = ρCTπω2d4
+r/16 (1)
+where ρis the density of air, CT is the lift coefﬁcient, and ωis
+the angular velocity of the propeller. Then, the total thrust pro-
+duced by a quadrotor isFquadrotor =4 Fpropeller1 = ρCTπω2d4
+r/4.
+By using similar calculations, the ideal thrust produced by
+the coaxial drone isFcoaxial =2 Fpropeller2 =2 ρCTπω2d4
+r , where
+Fpropeller2 represents the thrust produced by each propeller in
+the coaxial drone and the interaction effect between the two
+propellers is neglected. In practice, the thrust loss caused by
+the interaction effect is usually between 25% and 35% 2 (it is
+claimed in [18] that the thrust loss is about 23%). Thus, although
+we take into account the maximum thrust loss caused by the in-
+teraction effect between the propellers [19], the produced thrust
+0.65Fcoaxial =1 .3ρCTπω2d4
+r of the coaxial drone is still larger
+than that of the quadrotor. We will compare the produced thrust
+between the coaxial drone and quadrotors in the experimental
+section of this article.
+Remark 1: In Fig. 3, the footprint of the drone is characterized
+by a square. If the platform footprint is characterized by a circle
+instead of a square, then the footprint of the coaxial drone
+will decrease to πd2
+r , but the footprint of the quadrotor will
+increase to π( 1+
+√
+2
+2 dr)2 according to the geometric relation.
+This will further make the coaxial drone’s maximum thrust per
+platform area even larger, and the quadrotor’s maximum thrust
+per platform area even smaller, as compared to the case of using
+square footprint.
+Remark 2: A drone’s real ﬂight-time is related to many
+factors, including the drone’s equipped battery, mass, size, and
+mechanical structure. To have a fair comparison of ﬂight-time
+for different drones, we need to keep all these factors the same,
+which is difﬁcult since different types of drones have different
+mass/sensors/components/actuators/batteries. As an alternative,
+the index of power consumption is used in [6] to conduct the
+comparison of power consumption among common multiro-
+tor drones, which is based on the momentum theory and the
+condition that all the drones share the same takeoff weight and
+platform footprint. From [ 6, Fig. 4], one can see that the power
+consumption of the coaxial drone is 0.707 times smaller than
+that of the quadrotor.
+III. M ODELING OF THE COAXIAL DRONE
+To establish the coaxial drone’s position and attitude dynam-
+ics, which characterize the relationship between the four control
+inputs (Ω1,Ω2,δrφ andδrθ) and the resulting accelerations with
+six DoF, we refer to the coordinate frames introduced in Sec-
+tion II. As shown in Fig. 1, the body frame ∑
+b : Ob −XbYbZb
+whose origin Ob is rigidly attached to the CG of the coaxial
+2[Online]. Available: https://www.tytorobotics.com/blogs/general-knowl
+edge/coaxial-setup-and-testing
+drone, Xb-axis points toward the drone’s forward direction,
+Yb-axis points toward the drone’s right direction, and Zb-axis
+follows the right-hand rule which points towards the propeller
+if δrφ = δrθ =0 . The attitude and position dynamics in this
+modeling are described with respect to the coordinate frame∑
+i.
+A. Attitude Kinematics and Dynamics
+The attitude of the drone is described by three Euler angles
+a =[ φ,θ,ψ]⊤ ∈R3, which characterize the rotation from∑
+b to∑
+i. According to mechanics of rigid bodies, the angular velocity
+˙a of the drone in ∑
+i can be transformed from ∑
+b to ∑
+i using
+the equation
+˙a =
+⎡
+⎣
+˙φ
+˙θ
+˙ψ
+⎤
+⎦ =
+⎡
+⎣
+1 SφTθ CφTθ
+0 Cφ −Sφ
+0 SφsecθC φsecθ
+⎤
+⎦
+⎡
+⎣
+ωxb
+ωyb
+ωzb
+⎤
+⎦ = ¯Rωb
+(2)
+where ωb =[ ωxb,ωyb,ωzb]⊤ ∈R3 represents the angular ve-
+locity vector consisting of roll, pitch, and yaw change rates of the
+drone in ∑
+b, and ¯R is a three-by-three transformation matrix,
+and for notation conciseness C :c o s,S :s i n,T :t a n. Then,
+from (2), one has
+ωb = R ˙a = ¯R−1 ˙a =
+⎡
+⎢⎣
+10 −Sθ
+0 Cφ SφCθ
+0 −Sφ CφCθ
+⎤
+⎥⎦ ˙a. (3)
+According to the conservation theorem of angular momentum,
+one has
+( dH
+dt
+)
+i
+=
+( dH
+dt
+)
+b
++ωb ×(H)b (4)
+where H ∈R3 is the angular momentum of the drone, (dH
+dt )i
+and (dH
+dt )b are the time-derivatives of the angular momen-
+tum described in ∑
+i and ∑
+b, respectively, × represents the
+operation of cross product, and (H)b represents the angular
+momentum in ∑
+b. According to the deﬁnition of angular mo-
+mentum, the changing rate of the drone’s angular momentum
+in the inertial frame, (dH
+dt )i = I ¨a, is equal to the sum of the
+torque generated from the rotation of the drone’s body frame,
+ωb ×(H)b = ωb ×Iωb, and the changing rate of the drone’s
+angular momentum in its body frame(dH
+dt )b = T b
+t +T b
+r , where
+I ∈R3×3 is the inertia of the drone which is assumed as a
+constant matrix, T b
+t ∈R3 andT b
+r ∈R3 are the applied torques
+to the CG described in ∑
+b, which are produced by the coaxial
+propellers’ thrust and rotation, respectively. Then, according to
+the coaxial drone’s mechanical structure in Fig. 1, one has
+T b
+t = rFt ×F b
+t (5)
+where F b
+t ∈R3 is the thrust produced by the propeller system
+in ∑
+b whose speciﬁc form will be introduced later and rFt is
+the position vector describing the point of thrust with respect to
+the reference frame ∑
+b. It can also be described as the vertical
+distance of Op with respect to ∑
+b which can be derived from
+a series of transformation from ∑
+S1 and ∑
+S2 to ∑
+b as shown
+Authorized licensed use limited to: Southern University of Science and Technology. Downloaded on May 01,2024 at 08:10:40 UTC from IEEE Xplore.  Restrictions apply. 
+
+---PAGE 5---
+1654 IEEE TRANSACTIONS ON ROBOTICS, VOL. 40, 2024
+in the following:
+OS1
+p =
+⎡
+⎢⎣
+10 0
+0c o sδrφ −sinδrφ
+0s i nδrφ cosδrφ
+⎤
+⎥⎦
+⎡
+⎢⎣
+0
+0
+d1
+⎤
+⎥⎦ (6)
+OS2
+p =
+⎡
+⎢⎣
+cosδrθ 0s i nδrθ
+01 0
+−sinδrθ 0c o sδrθ
+⎤
+⎥⎦
+⎡
+⎢⎣
+⎡
+⎢⎣
+0
+0
+d2
+⎤
+⎥⎦ +OS1
+p
+⎤
+⎥⎦ (7)
+rFt =
+⎡
+⎣
+0
+0
+d3
+⎤
+⎦ +OS2
+p =
+⎡
+⎣
+(d1 cosδrφ +d2)sin δrθ
+−d1 sinδrφ
+(d1 cosδrφ +d2)cos δrθ +d3
+⎤
+⎦
+(8)
+whered1 is the absolute distance fromOp toS1,d2 is the absolute
+distance from S1 toS2, and d3 is the absolute distance from S2
+toOb. Note that (7) and (8) represent the coordinate transforma-
+tions required to account for the roll and pitch rotations along
+the XS1 - and YS2 -axis, respectively. A ﬁnal translation of d3
+along the direction Zb in (8) produces the position vector rFt
+with respect to the reference frame ∑
+b. Also, the control torque
+induced by the rotation of the contra-rotating propellers can be
+described as
+T b
+r = σ(γ1Ω2
+1 −γ2Ω2
+2)
+⎡
+⎢⎣
+Sδrθ
+Cδrφ
+−Sδrφ
+Cδrφ
+Cδrθ
+⎤
+⎥⎦ (9)
+where γ1 ∈R+ and γ2 ∈R+ are the lumped moment coef-
+ﬁcients of the upper and lower propellers, respectively, and
+0 <σ< 1 is the aerodynamic efﬁciency factor due to the exis-
+tence of airﬂow interactions, andΩ1 ∈R,Ω2 ∈R are the upper
+and lower propellers’ numbers of revolution per minute. Sum-
+marizing (2)–(9) yields the drone’s overall attitude dynamics
+I ¨a = Tt
+b +Tr
+b +(R ˙a)×IR ˙a (10)
+where for an arbitrary vector x =[ x1,x 2,x 3]⊤ ∈R3,
+x×:=
+⎡
+⎣
+0 −x3 x2
+x3 0 −x1
+−x2 x1 0
+⎤
+⎦. Note that according to the
+symmetric structure of the drone under δrφ = δrθ =0 ,
+the inertia matrix can be approximately calculated as
+I = diag(Ixx,Iyy,Izz) where Ixx ∈R+,Iyy ∈R+,Izz ∈R+
+are the inertia along the X,Y,Z -axes of the drone’s ∑
+b,
+respectively.
+B. Position Kinematics and Dynamics
+Denote the position vector of the drone in ∑
+i as p :=
+[x,y,z ]⊤ ∈R3. According to mechanics of rigid bodies, the
+linear velocity ˙p of the drone in ∑
+i can be calculated by using
+the equation
+˙p =
+⎡
+⎢⎣
+˙x
+˙y
+˙z
+⎤
+⎥⎦ = ¯Mv b = ¯M
+⎡
+⎢⎣
+vbx
+vby
+vbz
+⎤
+⎥⎦ (11)
+wherevb ∈R3 is the linear velocity described in ∑
+b, and ¯M is
+a three-by-three transformation matrix that can be written as
+¯M =
+⎡
+⎢⎣
+CθCψ SφSθCψ−CφSψ CφSθCψ+SφSψ
+CθSψ SφSθSψ+CφCψ CφSθSψ−SφCψ
+−Sθ SφCθ CφCθ
+⎤
+⎥⎦.
+(12)
+Then, it is straightforward that vb can be calculated by
+vb = ¯M−1 ˙p = M ˙p (13)
+whereM = ¯M−1. According to the Newton’s second law, one
+can derive the position dynamics of the drone as
+m
+( dv
+dt
+)
+i
+= m
+( dv
+dt
+)
+b
++m(ωb ×vb) (14)
+where the total force acting on the drone in the inertial frame
+is the sum of the forces acting on the drone in its body frame
+and the centripetal forces from the rotation of the body frame,
+v ∈R3 represents the velocity of the drone, and(dv
+dt )i and(dv
+dt )b
+are the accelerations of the drone described in ∑
+i and ∑
+b,
+respectively. Note that the componentm(dv
+dt )b in (14) represents
+the applied force described in ∑
+b of the drone, which consists
+of two components, i.e.,
+m
+( dv
+dt
+)
+b
+= F b
+t +F b
+g (15)
+where F b
+t ∈R3 is the thrust from the propellers, and F b
+g ∈R3
+is the gravity component, of which both are described in ∑
+b.
+Now, we aim to obtain the speciﬁc forms for these components.
+First, the thrust from the propellers can be described with respect
+to ∑
+p as Ftp =
+⎡
+⎣
+0
+0
+σ(αΩ1
+2 +βΩ2
+2)
+⎤
+⎦, where α∈R+ and β∈
+R+ are the lumped thrust coefﬁcients of the upper and lower
+propellers, respectively. Then, we need to transferFtp from ∑
+p
+to ∑
+b to obtain F b
+t . According to the geometric relationship in
+Fig. 2, one has
+F b
+t = σ(αΩ1
+2 +βΩ2
+2)
+⎡
+⎢⎣
+Sδrθ
+Cδrφ
+−Sδrφ
+Cδrθ
+Cδrφ
+⎤
+⎥⎦. (16)
+According to Fig. 2, the gravity component of the drone de-
+scribed in ∑
+b is
+F b
+g = M
+⎡
+⎢⎣
+0
+0
+−mg
+⎤
+⎥⎦ = −mg
+⎡
+⎢⎣
+−sinθ
+cosθsinφ
+cosθcosφ
+⎤
+⎥⎦. (17)
+Summarizing (11)–(17) yields the drone’s overall position dy-
+namics
+m ¨p = F b
+t +F b
+g +mω×
+b M ˙p
+= F b
+t +F b
+g +m(R ˙a)×M ˙p (18)
+where M deﬁned in (13) is always nonsingular, which makes
+(18) well-deﬁned.
+Authorized licensed use limited to: Southern University of Science and Technology. Downloaded on May 01,2024 at 08:10:40 UTC from IEEE Xplore.  Restrictions apply. 
+
+---PAGE 6---
+CHEN et al.: DESIGN, MODELING, AND CONTROL OF A COAXIAL DRONE 1655
+C. Analysis of the Overall Six DoF Dynamics
+From the last section, the overall attitude and position dynam-
+ics can be written in a compact form as
+{ I ¨a−T b
+t −T b
+r −(R ˙a)×IR ˙a =0
+m ¨p−F b
+t −F b
+g −m(R ˙a)×M ˙p =0 . (19)
+Now, we analyze the properties of the overall dynamics (19),
+which will be the foundation for the control design.
+1) Underactuated Dynamics: In the overall nonlinear dy-
+namics (19), the states [a⊤,p⊤]⊤ ∈R6 are six dimensions.
+However, the control input[Ω2
+1,Ω2
+2,δrθ,δrφ] ∈R4 are only four
+dimensions, which implies an underactuated dynamics. There-
+fore, we are only able to fully control four states. As similar to
+the quadrotor case, the three DoF positions and yaw angle are
+usually more of importance in many applications. Therefore, we
+can select them as the four controllable states, and ﬁrstly leave
+roll and pitch angles as uncontrollable states.
+2) Coupling Effect: The attitude dynamics in (19) are inde-
+pendent to the position dynamics, while the position dynamics
+are coupled with the attitude dynamics due to the existence of
+the component m(R ˙a)×M ˙p. Due to the absence of an attitude
+damping part in(10), the attitude dynamics are naturally unstable
+in the sense that given a nonzero initial states, the attitude
+may diverge or oscillate without external control torques. This
+can be veriﬁed by linearizing the attitude dynamics around the
+equilibrium ˙a =0 . Thus, additional damping components are
+needed to stabilize the attitude dynamics. In addition, due to the
+existence of the gravity componentF b
+g in the position dynamics,
+the control force F b
+t should not be zero even at a stable state.
+3) Model Accuracy: In this model, the drone has been de-
+signed such that its CG lies at the center of its fuselage section.
+This design speciﬁcation can be achieved by moving the heavier
+components in the drone into the fuselage section. In addition,
+according to the later simulation and experiments, the drone
+keeps almost vertical during hovering and slowly maneuvering
+missions, for which the current modeling based on static CG
+can be used in many scenarios. While for fast maneuvering
+mission, the modeling based on multibody dynamics might be
+more appropriate, which will be considered as our future work.
+D. Comparison of Overall Dynamics With Quadrotors
+We provide a complete comparison between the coaxial drone
+and quadrotors from the perspective of motion dynamics. By
+letting the common parameters the same, such as the air den-
+sity ρand the drones’ mass m, Table I summarizes the main
+differences between these two types of drones. According to
+TableI, the produced thrust along roll or pitch axis is obtained by
+projecting the overall thrust to the roll or pitch axis. Therefore,
+under the common parameters and allowed tilting angles, the
+coaxial drone’s thrust along the roll or pitch axis is larger than
+the corresponding one produced by quadrotors. In addition, to
+accelerate along the pitch axis, quadrotors need to adjust their
+attitudes to incline ﬁrst, then use the projected thrust to produce
+the desired motion in the pitch axis. Different from quadrotors,
+the coaxial drone can produce the thrust along the pitch axis
+TABLE I
+COMPARISON OF THE COAXIAL DRONE AND QUADROTORS
+directly by tilting the lower servomotor, which is also shown in
+Table I’s second line from the bottom.
+IV . CONTROL OF THE COAXIAL DRONE
+As stated in Section III-C, we aim to control p and ψusing
+Ω2
+1,Ω2
+2,δrθ,δrφ. Due to the high nonlinear property of the dy-
+namics (19), we ﬁrst design a desired control force and yaw
+torque to stabilize p and ψ, then allocate the desired control
+force and yaw torque to the four real control inputs.
+A. Desired Control Input
+For the attitude dynamics, consider a desired yaw angle
+ψd(t) ∈R, which is continuous and twice differentiable. Then,
+to makeψ(t) trackψd(t), the desired control yaw torque can be
+designed as
+Tψd = −
+⎡
+⎢⎣
+0
+0
+1
+⎤
+⎥⎦
+⊤
+(R ˙a)×IR ˙a
++Izz
+[
+¨ψd −kd( ˙ψ− ˙ψd)−kp(ψ−ψd)
+]
+(20)
+wherekd > 0,kp > 0 are velocity feedback and state feedback
+gains, respectively.
+For the position dynamics, consider a desired ﬂight trajectory
+pd(t) ∈R3, which is continuous and twice differentiable. Then,
+based on the fully actuated system approaches [21], the desired
+control force can be designed as
+Fd = −F b
+g −m(R ˙a)×M ˙p
++m
+[
+¨pd −kd( ˙p− ˙pd)−kp(p−pd)
+]
+. (21)
+Authorized licensed use limited to: Southern University of Science and Technology. Downloaded on May 01,2024 at 08:10:40 UTC from IEEE Xplore.  Restrictions apply. 
+
+---PAGE 7---
+1656 IEEE TRANSACTIONS ON ROBOTICS, VOL. 40, 2024
+Then, we have the following results.
+Theorem 1: For the coaxial drone whose dynamics are mod-
+eled as (19), if the control inputs Ω2
+1,Ω2
+2,δrθ,δrφ are designed
+such that
+[0,0,1](T b
+t +T b
+r ) = Tψd, F b
+t = F d (22)
+then the position error ˜p(t)= p(t)−pd(t) and yaw angle error
+˜ψ(t)= ψ(t)−ψd(t) converge to zero.
+Proof: Substituting the controllers (20)–(22) into the overall
+dynamics (19) yields
+{
+m ¨˜p(t)+ mkd˙˜pp(t)+ mkp ˜p(t)=0
+Izz
+¨˜ψ(t)+ Izzkd
+˙˜ψ(t)+ Izzkp ˜ψ(t)=0 .
+(23)
+Since m> 0 and Izz > 0, the characteristic polynomial of the
+linear dynamics (23) can be written as
+s2 +kds+kp =0 (24)
+wheres ∈C. Sincekd > 0 andkp > 0, ˜p(t) and ˜ψ(t) converge
+to zero. □
+B. Control Allocation
+Note that Theorem 1 relies on the assumption that (22) should
+hold. In this section, we investigate how to design control inputs
+Ω2
+1,Ω2
+2,δrθ,δrφ such that (22) holds, which is inherently a
+control allocation problem.
+First, substituting the deﬁnitions ofT b
+t andT b
+r in (5)–(9) into
+(22) yields
+Tψd = σ
+[
+Cδrθ
+Cδrφ
+(
+γ1Ω2
+1 −γ2Ω2
+2
+)
++d2Sδrθ
+Sδrφ
+(
+αΩ2
+1 +βΩ2
+2
+)]
+. (25)
+Then, substituting the deﬁnition of F b
+t in (16) into (22) yields
+Fd(1) =σSδrθ
+Cδrφ
+(
+αΩ2
+1 +βΩ2
+2
+)
+(26)
+Fd(2) =−σSδrφ
+(αΩ2
+1 +βΩ2
+2) (27)
+Fd(3) =σCδrθ
+Cδrφ
+(
+αΩ2
+1 +βΩ2
+2
+)
+. (28)
+Note that Tψd,Fd(1),Fd(2),Fd(3) are known from the right-
+hand side of (20) and (21). Therefore, we need to ﬁnd a unique
+mapping fromΩ2
+1,Ω2
+2,δrθ,δrφ toTψd,Fd(1),Fd(2),Fd(3) such
+that (25)–(28) holds.
+Different from linearization-based control approach [14],w e
+propose a precisely nonlinear control allocation approach here.
+Dividing (26) by (28) yields
+δrθ = arctanFd(1)
+Fd(3). (29)
+Dividing (27) by (28) yields
+δrφ = −arctan
+Fd(2)Cδrθ
+Fd(3) (30)
+whereCδrθ
+can be known from (29). After the knowledge ofδrθ
+andδrφ, (28) can be rewritten as
+αΩ2
+1 +βΩ2
+2 = Fd(3)
+σCδrθ
+Cδrφ
+. (31)
+Substituting (31) into (25) yields
+γ1Ω2
+1 −γ2Ω2
+2 =
+TψdCδrθ
+Cδrφ
+−Fd(3)d2Sδrθ
+Sδrφ
+σC2
+δrθ
+C2
+δrφ
+. (32)
+Combining (31) and (32) yields
+Ω2
+1
+=
+γ2Fd(3)Cδrθ
+Cδrφ
++βTψdCδrθ
+Cδrφ
+−βFd(3)d2Sδrθ
+Sδrφ
+σC2
+δrθ
+C2
+δrφ
+(αγ2 +βγ1)
+(33)
+Ω2
+2
+=
+γ1Fd(3)Cδrθ
+Cδrφ
+−αTψdCδrθ
+Cδrφ
++αFd(3)d2Sδrθ
+Sδrφ
+σC2
+δrθ
+C2
+δrφ
+(αγ2 +βγ1) .
+(34)
+Now, we summarize the control allocation steps as the following
+results.
+Proposition 1: Given the desired yaw torque Tψd and force
+F d and the relationship (25)–(28), the four control inputs can be
+uniquely allocated using (29), (30), (33), and (34). Moreover, if
+we command the coaxial drone according to(29), (30), (33), and
+(34), then the tracking errors ˜p(t)= p(t)−pd(t) and ˜ψ(t)=
+ψ(t)−ψd(t) converge to zero.
+Since all the calculation steps from (29)–(34) are unique, it is
+straightforward to have the proof of Proposition 1.
+Remark 3: In (29), (30), (33), and (34), due to the existence
+of denominator parts in the calculations of the control inputs
+Ω2
+1,Ω2
+2,δrθ,δrφ, it is very important that the calculation of (29),
+(30), (33), and (34) should not have singularities. Since the
+drone’s gravity force needs to be canceled by Fd(3), the magni-
+tude of Fd(3) will be sufﬁciently away from zero, which makes
+the calculation (29)–(30) singularity-free. Also, the desired tilt
+angles will be zero when the drone is hovering and be bounded
+when the drone is maneuvering, which makes the calculation
+(33) and (34) also singularity-free.
+C. Damping Uncontrolled Roll and Pitch Dynamics
+After the position and yaw angle of the drone are controlled
+to track their desired trajectory and yaw angle, the dynamics of
+the roll and pitch angles will be fully uncontrolled and evolve
+according to (19). According to (20) and (21), the divergence
+of the roll and pitch angular velocities will also make the whole
+system divergent since both Tψd and F d will become inﬁnite,
+thus making Ω2
+1,Ω2
+2,δrθ,δrφ also inﬁnite. Therefore, to avoid
+this scenario, suppressing the roll and pitch angular velocities is
+crucial.
+We note that the vibration of the roll and pitch angles of
+the drone originates from the actions applied to the two tilt
+servomotors. Therefore, a natural solution is to add roll and
+pitch damping components into the corresponding servomotors.
+More speciﬁcally, instead of commanding the two servomotors
+according to (29) and (30), we command them by
+δrθ = arctanFd(1)
+Fd(3)+kθ˙θ (35)
+Authorized licensed use limited to: Southern University of Science and Technology. Downloaded on May 01,2024 at 08:10:40 UTC from IEEE Xplore.  Restrictions apply. 
+
+---PAGE 8---
+CHEN et al.: DESIGN, MODELING, AND CONTROL OF A COAXIAL DRONE 1657
+δrφ = −arctan
+Fd(2)Cδrθ
+Fd(3) +kφ˙φ (36)
+wherekθandkφare gain scalars, which can be tuned according
+to the performance of experimental tests. We will show in the
+next simulation and experimental sections that the damping
+components in (35) and (36) are very efﬁcient to stabilize the
+uncontrolled roll and pitch angular velocities.
+Remark 4: Different from the controller designed in [12]
+where the linearization technique is used to analyze the closed-
+loop dynamics, our proposed controller uses a model-based
+control allocation approach, where linearization is not needed.
+Also, different from the nonlinear control approaches for coaxial
+drones [12], [22], a novel nonlinear control allocation-based
+approach is proposed for the designed coaxial drone.
+Remark 5: There are four control gains kp,kd,kθ,kφ in the
+proposed controllers (20), (21), (35), and (36). Indeed, different
+selection of control gains will give different system performance,
+for which we will tune the gain parameters ﬁrst in our ex-
+periments. Since the position and attitude dynamics (19) are
+second-order, the system performance may not be the best if the
+gains are too large or small. In addition, the two servomotors’
+updating frequency also determines the system performance,
+where the difference is that the performance is usually better
+given larger updating frequency.
+Remark 6: In the proposed controllers (20), (35), and (36),
+the angular velocities in roll, pitch, and yaw axes are needed,
+which are usually noisy if they are obtained from a pure inertial
+measurement unit (IMU). To improve IMUs’ measuring accu-
+racy and reduce noise’s magnitude, many auxiliary measure-
+ments and techniques have been developed, such as the sensor
+fusion based on magnetic measurements and advanced digital
+ﬁltering techniques. Therefore, we can get the angular velocities
+with relatively small magnitude of noise from these IMUs. In
+addition, from the dynamics of the drone, (19) indicates that
+the system performance depends on the control laws’ PD gain
+parameters, the damping gains, and the updating frequency of
+the servomotors, etc. Therefore, by experimental tests, we need
+to choose better control gains to mitigate the negative effect of
+measurement noises.
+V. N UMERICAL SIMULA TIONS
+In this section, we conduct two types of simulations,
+namely mathematical model simulation and physical model
+simulation, to verify the established model and validate
+the effectiveness of the proposed control strategy. The re-
+lated parameters of an actual manufactured coaxial drone
+are listed in the following, which are also used in all the
+simulation examples in this section: mass m = 652.3 g,
+d1 =6 7.1mm, d2 =6 7.2mm, d3 =4 6.6mm, and inertial ma-
+trixI =
+⎡
+⎣
+5.83×106 00
+05 .64×106 0
+00 3 .79×105
+⎤
+⎦g· mm2 (ob-
+tained from the Solidworks software), γ1 =0 .000182,γ2 =
+0.000207,α=0 .01227,β=0 .01261, and σ=0 .673387 (ob-
+tained from experimental tests which will be introduced in next
+section). The damping gains are selected as kθ=0 .03,kφ=
+Fig. 4. Mathematical model simulation for the hovering case with damping
+(35) and (36) (MA TLAB).
+0.03, which are used in all the following simulations and the
+ﬂight experiments. The initial states are p(0) = [0,0.01,0]⊤
+and a(0) = [0,0.01,0]⊤. The video showing the simulation
+results and the designed coaxial drone’s real ﬂight tests has been
+uploaded in the supplementary materials, available online, due
+to space limitations. 3
+A. Mathematical Model Simulation in MATLAB
+This simulation is conducted upon the established mathemat-
+ical model (19). First, we consider a hovering mission for the
+drone by assigning the desired position as pd =[ 0,0,2]⊤m and
+desired yaw angle as ψd =0 .8 rad. Under the gain parameters
+kp =0 .8,kd =0 .23 and the damping terms (35) and (36),t h e
+simulation results are shown in Fig.4. From the position tracking
+error and the evolution of the drone’s attitude, one can see that
+the desired position and desired yaw angle are achieved within
+about 25 s. The four motors’ output shows that each propeller
+will produce about mg/2[N] thrust when the position of the
+drone reaches its destination. The trajectory of the drone is also
+shown in the last subﬁgure of Fig. 4. To show the effect of the
+proposed damping terms in (35) and (36), we also conduct a
+mathematical model simulation for the hovering case with the
+same gain parameters but without the damping terms (35) and
+(36). According to the simulation results in Fig. 5, although
+the position tracking error, pitch angle and roll angle become
+smaller, the yaw angle is unstable and the output of the servo-
+motors is unstable. This validates that the proposed damping
+terms (35) and (36) are very important in the stabilization of the
+drone’s attitude.
+Then, we consider a maneuvering mission for the drone by
+assigning the desired position as pd(t) = [sint,cost,1]⊤m and
+desired yaw angle as ψd =0 .8 rad. By using the gain values
+kp =0 .8,kd =2 , the simulation results are shown in Fig. 6.F o r
+the maneuvering case, one can also see that the desired position
+and yaw angle are achieved within about 20 s, where small track-
+ing errors exist in x and y directions. Note that when the drone
+3[Online]. Available: https://www.bilibili.com/video/BV1x5411y7g9/?spm_
+id_from=333.999.0.0
+Authorized licensed use limited to: Southern University of Science and Technology. Downloaded on May 01,2024 at 08:10:40 UTC from IEEE Xplore.  Restrictions apply. 
+
+---PAGE 9---
+1658 IEEE TRANSACTIONS ON ROBOTICS, VOL. 40, 2024
+Fig. 5. Mathematical model simulation for the hovering case without damping
+(35)–(36) (MA TLAB).
+Fig. 6. Mathematical model simulation for the maneuvering case (MA TLAB).
+achieves the maneuvering mission, the row and pitch angles
+change periodically, and the outputs of the two servomotors also
+change periodically. This is because the desired maneuvering
+trajectory changes periodically. The last subﬁgure of Fig. 6
+shows that the desired trajectory is achieved by the drone. This
+validates the effectiveness of the proposed control strategy for
+the coaxial drone in tracking a time-varying trajectory.
+B. Physical Model Simulation in Unreal Engine
+This simulation is conducted on the physical drone model
+established in Unreal Engine software, which is exported from
+Solidworks. We also consider hovering and maneuvering tasks
+with the same desired trajectories. To compare with the math-
+ematical simulation, we use the same PD gain values in this
+simulation. However, to eliminate constant convergence error,
+we employ PID in this simulation, where the gain for the
+integral term is 0.98. The simulation results for the hovering
+case are provided in Fig. 7, where the output of servomotors, the
+evolution of the ﬂight trajectory and position tracking error are
+similar between Figs. 4 and 7.
+The simulation results for the maneuvering case are provided
+in Fig. 8. Compared to Fig. 6, the ﬂight trajectory and the output
+Fig. 7. Physical model simulation for the hovering case (Unreal Engine).
+Fig. 8. Physical model simulation for the maneuvering case (Unreal Engine).
+of the servomotors are similar in Fig. 8. These simulation results
+validate that the established mathematical model of the drone
+is close to the physical model of the drone in the simulation
+environment, in which their difference is mainly caused by the
+modeling error.
+VI. R EAL-FLIGHT EXPERIMENTS
+In this section, we conduct four classes of experimental tests
+on our physical coaxial drone to validate its design and the
+proposed control strategy. The ﬁrst two classes of experiments
+aim to validate the design by testing the coaxial propellers’ thrust
+efﬁciency and comparing the thrust produced by the coaxial
+drone and quadrotors. The latter two classes of experiments aim
+to validate the proposed control strategy by testing the effect
+of the designed damping terms and testing the hovering ﬂight.
+Note that the values of thrust efﬁciency and lumped thrust and
+Authorized licensed use limited to: Southern University of Science and Technology. Downloaded on May 01,2024 at 08:10:40 UTC from IEEE Xplore.  Restrictions apply. 
+
+---PAGE 10---
+CHEN et al.: DESIGN, MODELING, AND CONTROL OF A COAXIAL DRONE 1659
+Fig. 9. Designed coaxial drone and its main components.
+Fig. 10. Graphical representation of components’ connection.
+moment coefﬁcients are obtained in Section VI-E, which are
+used in the aforementioned simulation examples. The gain val-
+ues employed in the follow-up experiments are the same as those
+in the previous MA TLAB simulation. In the following sections,
+we ﬁrst introduce the system framework and the components’
+connection, then introduce these four experiments, respectively.
+A. System Framework and Components’ Connection
+A ss h o w ni nF i g .9, the physical drone follows the exact design
+introduced in Section II, where four components are stacked in
+the fuselage, including battery, STM32 micro controller unit
+(MCU), IMU sensor, and time of ﬂight (TOF) sensor (which
+can be used to measure the ﬂight height during each updating
+interval).
+As shown in Fig. 10, the electronic components in the
+drone are organized in a manner to optimize overall ﬂow of
+power and signals’ connection. Speciﬁcally, the coaxial drone
+is powered by a 3S Li-Po battery, where voltage regulators
+are employed to obtain suitable operating voltages for other
+components. The ﬂight controller is implemented upon the MCU
+STM32F405RGT6 at a core frequency of 168 MHz. The codes
+inside the MCU are developed and debugged on VSCODE and
+PlatformIO IDE with C++. The MCU communicates with the
+host computer through the DX-BT04 Bluetooth module at a
+baud rate of 115 200 bps via the channel USART1, where the
+Fig. 11. (a) Testing platform. (b) Force sensor.
+transmitted data consists of control commands (such as takeoff
+and landing) and preset parameters. IMU data are transmitted
+by the channel USART2 under an interrupt mode at a baud rate
+of 115200 bps. TOF sensor data are transmitted by the channel
+USART3 under an interrupt mode at a baud rate of 921600 bps.
+The control algorithm proposed in this article is executed under
+the timer interrupt with an updating frequency of 250 Hz. The
+magnitude of the four control outputs are represented by pulse
+width modulation (PWM) signals with a common frequency of
+100 Hz, which are used to control the propellers and servomo-
+tors.
+The MCU sets four interrupt priority levels, where the order
+is USART1, timer interrupt, USART3, and USART2. After the
+drone is powered on, it enters the initialization mode and waits
+for a JSON-formatted string input to adjust target height, PID pa-
+rameters, damping ratio, servo sensitivity, and other parameters.
+After initialization is complete, the drone will ﬂy autonomously
+according to the calculated control commands. During ﬂight, the
+MCU will also upload the control commands and the sensing
+data obtained from, e.g., IMU to the hoster computer via the
+Bluetooth at a frequency of 25 Hz.
+B. Experimental Tests on the Thrust Efﬁciency
+The coaxial drone’s thrust efﬁciency plays an important role in
+Sections II-E and III-A, for which we now design experiments
+to test its value. The testing platform is shown in Fig. 11(a).
+We have used a high-precision sensor, A TI DAQ Net F/T 4,t o
+measure the force and torque produced by the drone. The upper
+side of the sensor is rigidly attached to the bottom of the drone,
+and the bottom side of the sensor is ﬁxed by a ground station, as
+shown in Fig. 11(b). Using the software from the company A TI,
+we could read the force and torque applied to the drone, which
+is produced by the rotation of the propellers. Fig. 12 shows the
+testing data and the ﬁtting relation from the PWM signal (pro-
+duced from electronic speed controller, ESC) to the produced
+thrust. The existence of energy loss is clearly shown in Fig. 12
+since the sum of the individual propeller’s produced thrust is
+higher than the thrust produced by the coaxial propellers. Using
+these testing data, the energy loss coefﬁcients of the thrust is
+approximated as σ≈ 0.0167
+0.0122+0.0126 ≈67.3%, in which we use
+the ESC’s PWM value to replace the propellers’ rotating speed in
+4[Online]. Available: https://www.ati-ia.com/products/ft/sensors.aspx
+Authorized licensed use limited to: Southern University of Science and Technology. Downloaded on May 01,2024 at 08:10:40 UTC from IEEE Xplore.  Restrictions apply. 
+
+---PAGE 11---
+1660 IEEE TRANSACTIONS ON ROBOTICS, VOL. 40, 2024
+Fig. 12. Testing results on the thrust produced by the coaxial drone and the
+quadrotor.
+Fig. 13. Testing results on the thrust and current produced by the coaxial drone
+and quadrotor.
+Fig. 14. Testing results on the thrust and power produced by the coaxial drone
+and quadrotor.
+this calculation since the propellers’ rotating speed is unavailable
+and the rotation of the propellers are controlled by the ESC. To
+further show the thrust efﬁciency, we also show the testing results
+on the drone’s produced current, thrust, and power in Figs. 13
+and 14. The current and power are measured by a specialized
+instrument MDA 8000HD Motor Drive Analyzers.
+C. Thrust Comparison Between the Coaxial Drone and a
+Quadrotor
+To validate the comparison in Section II-E, we conduct real
+experiments on the coaxial drone and a quadrotor whose pro-
+peller size is half of that of the coaxial drone, as shown in
+Fig. 15. The experiments are also conducted on the testing
+platform introduced in Fig. 11(a). To have a fair comparison,
+Fig. 15. (a) Coaxial drone. (b) Quadrotor.
+Fig. 16. Testing the effect of the damping gains and motors’ updating fre-
+quency.
+the other testing conditions, parameters and devices are kept the
+same as much as possible, such as the ESC. The testing results
+are shown in Fig. 12, which indicates that the coaxial drone’s
+produced thrust is always larger than that of the quadrotor. Using
+these data given in Fig. 12, the range of Thrust-Coaxial propellers
+Thrust-Quadrotor can
+be calculated, which is (2.75,9.38). Indeed, the corresponding
+theoretical radio 1.3
+1/4 =5 .2 given in Section II-E is in this
+experimental range. Furthermore, the comparison of current and
+power for the coaxial drone and quadrotor is provided in Figs.13
+and 14, from which one has that with the same produced thrust,
+the quadrotor needs higher current and power than that of the
+coaxial drone.
+D. Experimental Tests on the Damping Gains and Motors’
+Updating Frequency
+As introduced in Remark5, the four control gains and motors’
+updating frequency determine the coaxial drone’s system perfor-
+mance. Thus, our intent in this section is to obtain the best control
+gains and updating frequency for ﬂights by testing the system re-
+sponse under different parameters. As shown in Fig.16, when the
+drone’s initial height is exactly or very close to the desired height
+(realized by suspending the drone with two lines connected with
+two ground poles), the drone’s motion along yaw axis is minor.
+Then, the oscillation of the drone along the roll axis describes the
+system performance of the drone’s dynamics along the roll axis
+(the motion along pitch axis is restricted by the lines). Therefore,
+as shown in Fig. 16, we can use the maximum distancedm of the
+Authorized licensed use limited to: Southern University of Science and Technology. Downloaded on May 01,2024 at 08:10:40 UTC from IEEE Xplore.  Restrictions apply. 
+
+---PAGE 12---
+CHEN et al.: DESIGN, MODELING, AND CONTROL OF A COAXIAL DRONE 1661
+TABLE II
+EFFECT OF DAMPING GAINS AND UPDA TINGFREQUENCY
+Fig. 17. V ertical ascending ﬂight.
+drone’s motion in the horizontal plane to approximately char-
+acterize the system performance of the drone’s roll dynamics.
+Then, one has dm ≈|maxx[¯k]−minx[k]|,∀¯k,k =1 ,2,... ,
+which can be obtained from our on-board sensor measurements,
+speciﬁcally the motion distance and the drone’s attitude. The
+testing results are summarized in Table II. From the table, the
+best parameters arekθ=0 .03,kφ=0 .03,f servo = 250Hz since
+the oscillation is minimum among these cases.
+E. Experimental Tests on V ertical Ascending Flight
+In this experiment, we conduct vertical ascending ﬂight where
+the drone is commanded to reach a target height. Indeed, to
+achieve such mission, accurate height measurements are needed,
+which is based on the fusion of the TOF and IMU measurements
+since TOF sensor measures motion distance and IMU measures
+the drone’s attitude. The drone’s ﬂight results are shown in
+Figs. 17 and 18. To validate our proposed control strategy,
+we developed our own ﬂight control platform for the coaxial
+drone. Due to the absence of global positioning system, the
+maneuvering ﬂight task is challenging, for which we tested the
+maneuvering ﬂight under a manual control mode. The ﬂight
+results under these cases can be found in the video.
+Meanwhile, based on the analysis of the experimental data
+in the above-mentioned ascending ﬂight, it is observed that
+the drone became less stable when it operates in the air with
+longer time. Speciﬁcally, after the drone reaches the desired
+position, it gradually become less stable. This is mainly caused
+by the measurement inaccuracy (or error accumulation) of the
+drone’s state from IMU, which is directly included in the drone’s
+control algorithm. Therefore, to avoid this issue, our platform
+is also tested based on the advanced sensor fusion and ﬁltering
+Fig. 18. Experimental data in the vertical ascending ﬂight.
+Fig. 19. Experimental data in the hover ﬂight.
+techniques embedded in Pixhawk 4 mini, in which the existing
+control allocation framework is employed. The ﬂight results
+are shown in Fig. 19 and the video. According to Fig. 19,t h e
+attitude and position of the drone are almost maintained, and the
+motors’ output is relatively stable during the hover. This further
+demonstrates the effective design of the drone and highlights the
+contributions of the experiments.
+Comparing the experimental data with the simulation data,
+one has that there exist common aspects and also differences.
+The common aspects include the effect of the damping compo-
+nents and the trend of the control outputs, while the differences
+include the employed gain values and the system evolution. The
+reason of their difference is caused by the modeling inaccuracy,
+for which the best gain for the simulation example might not the
+best for the experiment. Although there exist differences, the
+established mathematical model helps us understand the drone
+and propose a controller, and the simulations help us verify them
+rapidly.
+VII. C ONCLUSION AND FUTURE WORK
+In this article, we have designed an innovative coaxial drone
+such that the advantages of maximum thrust per platform area
+and ﬂight maneuverability can be simultaneously actualized
+using thrust-vectoring coaxial propellers. The contra-rotating
+coaxial propellers can be actuated using a left–right tilt
+Authorized licensed use limited to: Southern University of Science and Technology. Downloaded on May 01,2024 at 08:10:40 UTC from IEEE Xplore.  Restrictions apply. 
+
+---PAGE 13---
+1662 IEEE TRANSACTIONS ON ROBOTICS, VOL. 40, 2024
+servomotor and a back–forward tilt servomotor connected
+vertically in series. The drone’s position and attitude dynamics
+with six DoF have been modeled, which is underactuated
+since the number of the control inputs is only four. An efﬁcient
+controller with a nonlinear control allocation has been proposed.
+For the uncontrolled roll and pitch dynamics, a damping part
+has been delicately added such that the roll and pitch angular
+velocities can also be stabilized. Both numerical simulations and
+real experiments have been conducted, which have validated
+the effectiveness of the drone design, the established model and
+the proposed control strategy.
+An interesting direction for future work is the usage of the
+coaxial drone for aerial manipulation. Speciﬁcally, if an one-link
+arm is installed at the bottom side of the drone and the other
+side of the arm is with adhesive/magnetic mechanisms, then the
+coaxial drone can be used to pick up a target and move it to a
+destination. In such case, the CG of the combined arm and drone
+is shifted downward, as compared with the original drone. If the
+connection between the arm and the target is rigid, then the arm
+and the target can be regarded as a part of the drone’s fuselage
+part, in which our proposed control design still applies. For the
+case of a two-link arm, if the two links are not vertical, then
+the assumption regarding the CG of the whole structure may be
+violated. An alternative for such case is to use the Lagrangian
+approach to model the dynamics of the drone. Speciﬁcally, we
+need to calculate the kinetic and potential energy of the drone
+consisting of multibody components. However, the established
+Lagrangian model will be quite nonlinear, whose control design
+usually needs the usage of the tool of feedback linearization.
+Another possible alternative is via coordinating two such coaxial
+drones for aerial manipulation tasks, in which the positions of the
+two coaxial drones are symmetric with respect to the geometric
+center of the whole combined system, in which the control
+design for such system can be handled based on the symmetry
+of this system and the control design for single coaxial drone.
+ACKNOWLEDGMENT
+The authors would like to thank Karanjot Singh and Jun Kiat
+Tan from Nanyang Technological University for the helpful
+discussion on the design of the drone, and assistance on the
+ﬂight tests of the drone. Any opinions, ﬁndings and conclusions
+or recommendations expressed in this material are those of the
+authors and do not reﬂect the views of the A*STAR.
+REFERENCES
+[1] T. Rakha and A. Gorodetsky, “Review of unmanned aerial system
+(UAS) applications in the built environment: Towards automated building
+inspection procedures using drones,” Automat. Construction , vol. 93,
+pp. 252–264, 2018. [Online]. Available: https://www.sciencedirect.com/
+science/article/pii/S0926580518300165
+[2] A. Restas et al., “Drone applications for supporting disaster management,”
+World J. Eng. Technol., vol. 3, no. 3, 2015, Art. no. 60553.
+[3] B. Mishra, D. Garg, P . Narang, and V . Mishra, “Drone-surveillance
+for search and rescue in natural disaster,” Comput. Commun. , vol. 156,
+pp. 1–10, 2020.
+[4] J. Seo, L. Duque, and J. Wacker, “Drone-enabled bridge inspec-
+tion methodology and application,” Automat. Construction , vol. 94,
+pp. 112–126, 2018.
+[5] S. Driessens and P . Pounds, “The triangular quadrotor: A more ef-
+ﬁcient quadrotor conﬁguration,” IEEE Trans. Robot. , vol. 31, no. 6,
+pp. 1517–1526, Dec. 2015.
+[6] Y . Qin, W. Xu, A. Lee, and F. Zhang, “Gemini: A compact yet efﬁcient
+bi-copter UA V for indoor applications,”IEEE Robot. Automat. Lett.,v o l .5 ,
+no. 2, pp. 3213–3220, Apr. 2020.
+[7] Z.-Y . Lv, Y . Wu, Q. Zhao, and X.-M. Sun, “Design and control of a
+novel coaxial tilt-rotor UA V,”IEEE Trans. Ind. Electron. , vol. 69, no. 4,
+pp. 3810–3821, Apr. 2022.
+[8] M. Ryll, H. H. Bülthoff, and P . R. Giordano, “A novel overactuated quadro-
+tor unmanned aerial vehicle: Modeling, control, and experimental valida-
+tion,” IEEE Trans. Control Syst. Technol. , vol. 23, no. 2, pp. 540–556,
+Mar. 2015.
+[9] F. Kendoul, I. Fantoni, and R. Lozano, “Modeling and control of a small
+autonomous aircraft having two tilting rotors,”IEEE Trans. Robot., vol. 22,
+no. 6, pp. 1297–1302, Dec. 2006.
+[10] M. Bangura and R. Mahony, “Thrust control for multirotor aerial vehicles,”
+IEEE Trans. Robot., vol. 33, no. 2, pp. 390–405, Apr. 2017.
+[11] A. Koehl, H. Rafaralahy, M. Boutayeb, and B. Martinez, “Aerodynamic
+modelling and experimental identiﬁcation of a coaxial-rotor UA V,” J.
+Intell. Robotic Syst. , vol. 68, no. 1, pp. 51–68, Mar. 2012. [Online].
+Available: https://hal.archives-ouvertes.fr/hal-00684946
+[12] Y . r. Wei, H. b. Deng, Z. h. Pan, K. W. Li, and H. Chen, “Research on a
+combinatorial control method for coaxial rotor aircraft based on sliding
+mode,” Defence Technol., vol. 18, pp. 280–292, 2022. [Online]. Available:
+https://www.sciencedirect.com/science/article/pii/S2214914720305018
+[13] B. Theys, G. Dimitriadis, P . Hendrick, and J. D. Schutter, “Inﬂuence
+of propeller conﬁguration on propulsion system efﬁciency of multi-rotor
+unmanned aerial vehicles,” inProc. Int. Conf. Unmanned Aircr . Syst., 2016,
+pp. 195–201.
+[14] S. Niu, J. Li, and Y . Shen, “Design, modeling and disturbance rejection
+control of a bio-inspired coaxial helicopter MA V in atmospheric boundary
+layer,” in Proc. IEEE Int. Conf. Robot. Biomimetics, 2015, pp. 1272–1277.
+[15] X. Wang, K. Li, N. Zhao, and H. Deng, “Nonlinear dynamics modeling and
+simulation of cylindrical coaxial UA V,” inProc. IEEE Int. Conf. Real-time
+Comput. Robot., 2017, pp. 505–510.
+[16] S. J. Haddadi, P . Zarafshan, and M. Dehghani, “A coaxial quadrotor ﬂying
+robot: Design, analysis and control implementation,”Aerosp. Sci. Technol.,
+vol. 120, 2022, Art. no. 107260.
+[17] R. D. Kimberlin, Flight Testing of Fixed Wing Aircraft. Reston, V A, USA:
+AIAA, 2003.
+[18] A. Bondyra, S. Gardecki, P . Gasior, and W. Giernacki, “Performance of
+coaxial propulsion in design of multi-rotor UA Vs,” in Proc. Int. Conf.
+Automat., 2016, pp. 523–531.
+[19] Y . Lei and H. Wang, “Aerodynamic optimization of a micro quadrotor
+aircraft with different rotor spacings in hover,” Appl. Sci., vol. 10, no. 4,
+2020, Art. no. 1272.
+[20] B. Xiao and S. Yin, “A new disturbance attenuation control scheme for
+quadrotor unmanned aerial vehicles,” IEEE Trans. Ind. Inform. , vol. 13,
+no. 6, pp. 2922–2932, Dec. 2017.
+[21] G. Duan, “High-order fully actuated system approaches: Part I. Models
+and basic procedure,” Int. J. Syst. Sci. , vol. 52, no. 2, pp. 422–435, 2021.
+[22] J. Chebbi, F. Defaÿ, Y . Brière, and A. Deruaz-Pepin, “Novel model-based
+control mixing strategy for a coaxial push-pull multirotor,” IEEE Robot.
+Automat. Lett., vol. 5, no. 2, pp. 485–491, Apr. 2020.
+Liangming Chen (Senior Member, IEEE) received
+the B.E. degree in automation from Southwest Jiao-
+tong University, Chengdu, China, in 2015, and the
+Ph.D. degree in systems and control jointly from
+the Harbin Institute of Technology, Harbin, China,
+and the University of Groningen, Groningen, The
+Netherlands, from 2015 to 2021, respectively.
+He is currently an Associate Professor with the
+Southern University of Science and Technology,
+Shenzhen, China. From 2021 to 2022, he was a Re-
+search Fellow with Nanyang Technological Univer-
+sity, Singapore. His research interests include multirobot systems and aerial
+robotics.
+Authorized licensed use limited to: Southern University of Science and Technology. Downloaded on May 01,2024 at 08:10:40 UTC from IEEE Xplore.  Restrictions apply. 
+
+---PAGE 14---
+CHEN et al.: DESIGN, MODELING, AND CONTROL OF A COAXIAL DRONE 1663
+Jiaping Xiao (Graduate Student Member, IEEE) re-
+ceived the B.E. degree in aircraft design and engineer-
+ing and the M.S. degree in ﬂight dynamics and control
+from Beihang University, Beijing, China, in 2014 and
+2017, respectively. He is currently working toward the
+Ph.D. degree in intelligent systems and robotics with
+the School of Mechanical and Aerospace Engineer-
+ing, Nanyang Technological University, Singapore.
+From 2017 to 2020, he was a Software Engineer
+with the Institute of Software, Chinese Academy of
+Sciences, Beijing, China. His research interests in-
+clude machine vision and aerial robotics.
+Yumin Zheng received the B.E. degree in measure-
+ment and control technology and instruments from
+the Harbin Institute of Technology, Harbin, China, in
+2021, and the M.Sc. degree in computer control and
+automation from Nanyang Technological University
+(NTU), Singapore, in 2022. He is currently work-
+ing toward the Ph.D. degree in autonomous micro
+systems with the School of Electrical and Electronic
+Engineering, NTU.
+From 2022 to 2023, he was a Research Associate
+with NTU. His research interests include robotics,
+embedded systems, and integrated circuit design.
+N Arun Alagappan received the B.E. degree (Hons.)
+in aerospace engineering from Nanyang Technologi-
+cal University, Singapore, in 2022.
+His research interests include mechanical design,
+prototyping, and simulation of unmanned aerial ve-
+hicles.
+Mir Feroskhan (Member, IEEE) received the B.E.
+degree (Hons.) from Nanyang Technological Univer-
+sity (NTU), Singapore, in 2011, and the Ph.D. degree
+from the Florida Institute of Technology, Melbourne,
+FL, USA, in 2016, both in aerospace engineering.
+He is currently an Assistant Professor with the
+School of Mechanical and Aerospace Engineering,
+NTU. His research interests include nonlinear con-
+trol systems, ﬂight dynamics and control, and aerial
+robotics.
+Authorized licensed use limited to: Southern University of Science and Technology. Downloaded on May 01,2024 at 08:10:40 UTC from IEEE Xplore.  Restrictions apply. 

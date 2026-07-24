@@ -1,0 +1,82 @@
+{
+  "port": "COM10",
+  "baud": 57600,
+  "duration_s": 35.016597747802734,
+  "frames": 1134,
+  "average_frame_hz": 32.38464251059793,
+  "text_lines": 1,
+  "dropped_or_noise_bytes": 0,
+  "csv": ".tmp\\diag_live_20260718_183931.csv",
+  "text_log": ".tmp\\diag_live_20260718_183931_text.txt",
+  "raw_bin": ".tmp\\diag_live_20260718_183931.bin",
+  "channel_names": [
+    "roll_deg",
+    "pitch_deg",
+    "yaw_deg",
+    "range_height_m",
+    "fc_time_s",
+    "vel_est_x_m_s",
+    "vel_est_y_m_s",
+    "coax_roll_rate_kd",
+    "coax_pitch_rate_kd",
+    "coax_yaw_angle_kp",
+    "coax_yaw_rate_kd",
+    "vel_loop_x_kp",
+    "vel_loop_y_kp",
+    "vel_loop_x_ki",
+    "vel_loop_y_ki",
+    "vel_loop_x_kd",
+    "vel_loop_y_kd",
+    "vel_loop_enable"
+  ],
+  "tuning_stats": {
+    "roll_deg": {
+      "count": 1134,
+      "min": -3.0675082206726074,
+      "max": -2.959120750427246,
+      "mean": -3.012664962277421,
+      "max_abs": 3.0675082206726074
+    },
+    "pitch_deg": {
+      "count": 1134,
+      "min": -3.3127660751342773,
+      "max": -3.2035017013549805,
+      "mean": -3.2482171374023276,
+      "max_abs": 3.3127660751342773
+    },
+    "yaw_deg": {
+      "count": 1134,
+      "min": -6.759757995605469,
+      "max": -6.10789680480957,
+      "mean": -6.425877742666416,
+      "max_abs": 6.759757995605469
+    },
+    "range_height_m": {
+      "count": 1134,
+      "min": 0.4400000274181366,
+      "max": 0.44996824860572815,
+      "mean": 0.44350409271225094,
+      "max_abs": 0.44996824860572815
+    },
+    "vel_est_x_m_s": {
+      "count": 1134,
+      "min": 0.0,
+      "max": 0.0,
+      "mean": 0.0,
+      "max_abs": 0.0
+    },
+    "vel_est_y_m_s": {
+      "count": 1134,
+      "min": 0.0,
+      "max": 0.0,
+      "mean": 0.0,
+      "max_abs": 0.0
+    }
+  },
+  "notes": [
+    "0/1/2 are roll, pitch, and yaw.",
+    "3 is filtered rangefinder height; 4 is FC time.",
+    "5/6 are fused X/Y velocity estimates.",
+    "7-23 are dashboard slider parameter feedback channels."
+  ]
+}
