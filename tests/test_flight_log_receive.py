@@ -107,7 +107,8 @@ def test_parse_record_and_csv_fields(tmp_path) -> None:
     assert row["arm_switch_high"] == 1
     assert row["vel_pid_d_m_s2_1"] == 17.0
     assert row["ctrl_pos_p_m_s2_0"] == 19.0
-    assert row["ctrl_omega_cmd_rad_s_1"] == 39.0
+    assert row["ctrl_tilt_angle_p_rad_0"] == 33.0
+    assert row["ctrl_motor_cmd_us_1"] == 46.0
 
     csv_path = tmp_path / "out.csv"
     flog.write_csv(csv_path, [row])
@@ -123,9 +124,9 @@ def make_record() -> bytes:
     values.extend([25.0, 0.1, 0.2, 0.3, 10.0, 11.0, 12.0])
     values.extend([1.0, 2.0, 3.0])
     values.extend([1000 + i for i in range(8)])
-    values.extend([1200, 1441, 1877, 1300, 1310])
+    values.extend([1200, 1500, 1500, 1300, 1310])
     values.extend([1, 1, 1, 1, 5, 1, 1, 1, 1, 0, 0, 0])
-    values.extend([float(i) for i in range(41)])
+    values.extend([float(i) for i in range(48)])
     values.append(0)
     packed_without_crc = flog.RECORD_STRUCT.pack(*values)
     crc = flog.crc32(packed_without_crc[:-4] + b"\x00\x00\x00\x00")
@@ -135,7 +136,6 @@ def make_record() -> bytes:
 
 def make_sector_header() -> bytes:
     params = [float(i) for i in range(len(flog.PARAM_NAMES))]
-    reserved = b"\x00" * 60
     prefix = flog.SECTOR_HEADER_PREFIX.pack(
         flog.SECTOR_MAGIC,
         1,
@@ -152,6 +152,8 @@ def make_sector_header() -> bytes:
         flog.PARAMS_STRUCT.size,
         0,
     )
+    reserved_len = flog.SECTOR_HEADER_SIZE - len(prefix) - flog.PARAMS_STRUCT.size
+    reserved = b"\x00" * reserved_len
     header = bytearray(prefix + flog.PARAMS_STRUCT.pack(*params) + reserved)
     assert len(header) == flog.SECTOR_HEADER_SIZE
     crc = flog.crc32(bytes(header))
@@ -209,7 +211,10 @@ def test_sector_header_and_flash_image_parse() -> None:
     assert errors == []
     assert records == []
     assert sectors[0]["session_id"] == 123
-    assert sectors[0]["params"]["vel_loop_x_kp"] == 10.0
+    assert sectors[0]["params"]["vel_loop_x_kp"] == float(flog.PARAM_NAMES.index("vel_loop_x_kp"))
+    assert sectors[0]["params"]["yaw_torque_lower_m_per_n"] == float(
+        flog.PARAM_NAMES.index("yaw_torque_lower_m_per_n")
+    )
 
 
 def test_receive_dump_writes_bin_csv_and_meta(tmp_path) -> None:

@@ -1,6 +1,6 @@
 """Capture USART1/VOFA JustFloat telemetry from the flight controller.
 
-The firmware currently sends 24 little-endian float32 values followed by the
+The firmware currently sends 22 little-endian float32 values followed by the
 VOFA JustFloat tail 00 00 80 7f. This tool records those frames to CSV and
 keeps text replies in a sidecar log so flight tuning can be reviewed later.
 """
@@ -21,7 +21,7 @@ from typing import Iterable
 
 
 VOFA_TAIL = b"\x00\x00\x80\x7f"
-VOFA_FLOAT_COUNT = 24
+VOFA_FLOAT_COUNT = 22
 VOFA_PAYLOAD_BYTES = VOFA_FLOAT_COUNT * 4
 VOFA_FRAME_BYTES = VOFA_PAYLOAD_BYTES + len(VOFA_TAIL)
 
@@ -37,19 +37,17 @@ CHANNEL_NAMES = [
     "coax_pitch_rate_kd",
     "coax_yaw_angle_kp",
     "coax_yaw_rate_kd",
-    "coax_pitch_angle_kp",
-    "coax_roll_angle_kp",
-    "coax_accel_xy_limit_m_s2",
-    "coax_accel_z_limit_m_s2",
     "vel_loop_x_kp",
     "vel_loop_y_kp",
-    "vel_loop_output_limit_m_s2",
     "vel_loop_x_ki",
     "vel_loop_y_ki",
-    "vel_loop_i_limit_m_s2",
     "vel_loop_x_kd",
     "vel_loop_y_kd",
     "vel_loop_enable",
+    "coax_roll_angle_kp",
+    "coax_pitch_angle_kp",
+    "coax_pos_z_kp",
+    "coax_vel_z_kd",
 ]
 
 TUNING_CHANNELS = [
@@ -208,7 +206,7 @@ def write_metadata(
             "0/1/2 are roll, pitch, and yaw.",
             "3 is filtered rangefinder height; 4 is FC time.",
             "5/6 are fused X/Y velocity estimates.",
-            "7-23 are dashboard slider parameter feedback channels.",
+            "7-21 are dashboard slider parameter feedback channels.",
         ],
     }
     path.write_text(json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8")

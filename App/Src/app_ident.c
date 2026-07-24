@@ -116,7 +116,8 @@ static uint8_t ident_targets_from_offset(int32_t offset,
     int32_t alpha = (int32_t)ident_ctx.alpha_center_us;
     int32_t beta = (int32_t)ident_ctx.beta_center_us;
 
-    if (ident_ctx.axis == APP_IDENT_AXIS_PITCH) {
+    /* Current tilt module mounting: servo 1/alpha is roll, servo 2/beta is pitch. */
+    if (ident_ctx.axis == APP_IDENT_AXIS_ROLL) {
         alpha += offset;
     } else {
         beta += offset;
@@ -410,15 +411,12 @@ uint8_t APP_Ident_StartPrbs(const char *axis,
 
 uint8_t APP_Ident_ApplyPid(const char *axis, const char *kp_text, const char *kd_text)
 {
-    const char *kp_name;
     const char *kd_name;
     char *endptr;
 
     if (strcmp(axis, "roll") == 0) {
-        kp_name = "coax.roll_angle_kp";
         kd_name = "coax.roll_rate_kd";
     } else if (strcmp(axis, "pitch") == 0) {
-        kp_name = "coax.pitch_angle_kp";
         kd_name = "coax.pitch_rate_kd";
     } else {
         APP_Control_QueueText("ERR ident apply axis %s\r\n", (axis == 0) ? "" : axis);
@@ -426,11 +424,8 @@ uint8_t APP_Ident_ApplyPid(const char *axis, const char *kp_text, const char *kd
     }
 
     if (kp_text != 0) {
-        float value = strtof(kp_text, &endptr);
-        if ((endptr == kp_text) || (*endptr != '\0') || (DRV_COAX_CTRL_SetParam(kp_name, value) == 0U)) {
-            APP_Control_QueueText("ERR ident apply kp\r\n");
-            return 0U;
-        }
+        APP_Control_QueueText("ERR ident apply kp unused\r\n");
+        return 0U;
     }
     if (kd_text != 0) {
         float value = strtof(kd_text, &endptr);

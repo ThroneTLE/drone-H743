@@ -47,7 +47,7 @@ typedef struct __attribute__((packed)) {
     uint32_t params_size;
     uint32_t header_crc32;
     DRV_COAX_CTRL_Params params;
-    uint8_t reserved[60];
+    uint8_t reserved[92];
 } APP_FlightLogSectorHeader;
 
 typedef struct __attribute__((packed)) {
@@ -109,7 +109,7 @@ typedef struct __attribute__((packed)) {
 
 _Static_assert(sizeof(APP_FlightLogSectorHeader) == APP_FLIGHT_LOG_SECTOR_HEADER_SIZE,
                "flight log sector header must stay 256 bytes");
-_Static_assert(sizeof(APP_FlightLogRecord) == 292U,
+_Static_assert(sizeof(APP_FlightLogRecord) == 320U,
                "flight log record must match tools/flight_log_receive.py");
 _Static_assert(sizeof(APP_FlightLogExportBlockHeader) == 24U,
                "flight log export header must match tools/flight_log_receive.py");

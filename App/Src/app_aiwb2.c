@@ -128,12 +128,12 @@ static uint8_t aiwb2_is_transparent_prompt(const char *line)
 static uint8_t aiwb2_is_pid_slider_payload(const char *line)
 {
     static const char *const slider_names[] = {
+        "roll_angle_kp",
+        "pitch_angle_kp",
         "roll_rate_kd",
         "pitch_rate_kd",
         "yaw_angle_kp",
         "yaw_rate_kd",
-        "Pitch_kp",
-        "Roll_kp",
         "vel_z_kd",
         "accel_xy",
         "accel_z",

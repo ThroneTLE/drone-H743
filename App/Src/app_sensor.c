@@ -243,11 +243,17 @@ void APP_Sensor_LpfInit(APP_Sensor_Lpf *lpf, float cutoff_hz, float dt_sec)
     float rc = 1.0f / (6.2831853f * cutoff_hz);
     lpf->alpha = dt_sec / (rc + dt_sec);
     lpf->state = 0.0f;
+    lpf->initialized = 0U;
 }
 
 float APP_Sensor_LpfApply(APP_Sensor_Lpf *lpf, float input)
 {
     if (lpf == NULL) return input;
+    if (lpf->initialized == 0U) {
+        lpf->state = input;
+        lpf->initialized = 1U;
+        return lpf->state;
+    }
     lpf->state += lpf->alpha * (input - lpf->state);
     return lpf->state;
 }
@@ -341,13 +347,13 @@ float APP_SensorRateMeter_Update(APP_Sensor_RateMeter *meter,
 /*  坐标系对齐（IMU 芯片坐标系 → 机体坐标系）                               */
 /*                                                                        */
 /*  当前飞控板安装方向：                                                    */
-/*    IMU +Y 朝飞机下方，IMU +Z 朝飞机前方，IMU +X 朝飞机左方。              */
+/*    IMU +Y 朝飞机下方，IMU +Z 朝飞机后方，IMU +X 朝飞机左方。              */
 /*                                                                        */
 /*  机体系采用前右下约定（与当前互补滤波公式一致）：                          */
 /*    body X = 前，body Y = 右，body Z = 下。                                */
 /*                                                                        */
 /*  因此轴映射为：                                                           */
-/*    body X =  imu Z                                                       */
+/*    body X = -imu Z                                                       */
 /*    body Y = -imu X                                                       */
 /*    body Z =  imu Y                                                       */
 /*                                                                        */
@@ -357,7 +363,7 @@ float APP_SensorRateMeter_Update(APP_Sensor_RateMeter *meter,
 void APP_Sensor_AlignToAirframe(const float in[3], float out[3])
 {
     if ((in == NULL) || (out == NULL)) return;
-    out[0] =  in[2];
+    out[0] = -in[2];
     out[1] = -in[0];
     out[2] =  in[1];
 }

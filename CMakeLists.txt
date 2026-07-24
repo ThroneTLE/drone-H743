@@ -58,13 +58,6 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Driver/Src/drv_coax_ctrl.c
     Driver/Src/drv_imu_nav.c
     Driver/Src/drv_nav_ekf.c
-    Driver/Generated/coax_ctrl/coax_tiltrotor_controller_codegen.c
-    Driver/Generated/coax_ctrl/coax_tiltrotor_controller_codegen_data.c
-    Driver/Generated/coax_ctrl/coax_tiltrotor_controller_codegen_initialize.c
-    Driver/Generated/coax_ctrl/coax_tiltrotor_controller_codegen_terminate.c
-    Driver/Generated/coax_ctrl/rtGetInf.c
-    Driver/Generated/coax_ctrl/rtGetNaN.c
-    Driver/Generated/coax_ctrl/rt_nonfinite.c
     # Services layer
     Services/Src/svc_param.c
     Services/Src/svc_timestamp.c
@@ -119,7 +112,6 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
 # Add include paths
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     Driver/Inc
-    Driver/Generated/coax_ctrl
     Services/Inc
     BSP/Inc
     App/Inc

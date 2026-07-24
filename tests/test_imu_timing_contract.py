@@ -57,7 +57,7 @@ def test_vofa_stream_reports_imu_rate_and_interrupt_vs_poll_counts() -> None:
     assert "msg.imu_irq_sample_rate_hz  = APP_SensorRateMeter_Update(&imu_irq_rate_meter," in freertos
     assert "msg.imu_poll_sample_rate_hz = APP_SensorRateMeter_Update(&imu_poll_rate_meter," in freertos
     assert "#define VOFA_SEND_PERIOD_MS            25U" in freertos
-    assert "#define VOFA_DATA_SIZE 24U" in freertos
+    assert "#define VOFA_DATA_SIZE 22U" in freertos
     assert "vofa_data[4] = (float)(SVC_Timestamp_Us() / 1000ULL) * 0.001f;" in freertos
 
 
@@ -147,6 +147,43 @@ def test_gyro_bias_calibration_restarts_when_boot_motion_is_detected() -> None:
     assert "cal->sum[1] = 0.0f;" in source
     assert "cal->sum[2] = 0.0f;" in source
     assert "cal->count = 0U;" in source
+
+
+def test_imu_cold_boot_soft_resets_and_waits_for_sensor_startup() -> None:
+    driver = read("Driver/Src/drv_imu.c")
+    bsp = read("BSP/Src/bsp_imu.c")
+
+    assert "#define ICM42688_SENSOR_STARTUP_MS       500U" in driver
+    assert "config.soft_reset_on_init = true;" in bsp
+    assert "icm42688_delay_ms(dev, ICM42688_SENSOR_STARTUP_MS);" in driver
+
+
+def test_sensor_lpf_first_sample_initializes_to_input() -> None:
+    header = read("App/Inc/app_sensor.h")
+    source = read("App/Src/app_sensor.c")
+
+    assert "uint8_t initialized;" in header
+    assert "lpf->initialized = 0U;" in source
+    assert "if (lpf->initialized == 0U)" in source
+    assert "lpf->state = input;" in source
+    assert "lpf->initialized = 1U;" in source
+    assert "lpf->state += lpf->alpha * (input - lpf->state);" in source
+
+
+def test_attitude_zero_waits_until_gyro_bias_is_ready() -> None:
+    messages = read("App/Inc/app_messages.h")
+    freertos = read("Core/Src/freertos.c")
+
+    assert "uint8_t gyro_bias_ready;" in messages
+    assert "msg.gyro_bias_ready = gyro_bias.ready;" in freertos
+    zero_block = freertos[
+        freertos.index("if ((attitude_zero_ready == 0U) &&"):
+        freertos.index("if (attitude_zero_ready != 0U)")
+    ]
+    assert "(msg.gyro_bias_ready != 0U)" in zero_block
+    assert "attitude_zero_start_ms = HAL_GetTick();" in zero_block
+    assert "roll_zero_sum += roll;" in zero_block
+    assert "pitch_zero_sum += pitch;" in zero_block
 
 
 def test_nav_gravity_compensation_uses_absolute_attitude_not_boot_zero() -> None:

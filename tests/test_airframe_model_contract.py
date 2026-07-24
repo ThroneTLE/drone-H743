@@ -29,7 +29,7 @@ def test_airframe_constants_capture_measured_tether_geometry() -> None:
     assert "#define DRV_AIRFRAME_BATTERY_MASS_G              232.0f" in header
     assert "#define DRV_AIRFRAME_BASE_MASS_G                  99.0f" in header
     assert "#define DRV_AIRFRAME_SERVO_MOTOR_MASS_G          348.6f" in header
-    assert "#define DRV_AIRFRAME_MASS_KG                       0.7546f" in header
+    assert "#define DRV_AIRFRAME_MASS_KG                       1.2000f" in header
     assert "#define DRV_AIRFRAME_CG_Z_M                       -0.0946f" in header
     assert "#define DRV_AIRFRAME_TETHER_ATTACH_Z_M             0.1563f" in header
     assert "#define DRV_AIRFRAME_TETHER_ATTACH_TO_CG_M         0.2509f" in header
@@ -38,43 +38,51 @@ def test_airframe_constants_capture_measured_tether_geometry() -> None:
     assert "#define DRV_AIRFRAME_THRUST_TABLE_SCOPE            \"dual_motor_total\"" in header
     assert "#define DRV_AIRFRAME_SERVO_DEG_PER_US              0.090f" in header
     assert "#define DRV_AIRFRAME_SERVO_US_PER_DEG             11.111111f" in header
-    assert "#define DRV_AIRFRAME_MAX_TOTAL_FORCE_N            13.375052f" in header
-    assert "#define DRV_AIRFRAME_HOVER_THRUST_PERCENT         56.079367f" in header
+    assert "#define DRV_AIRFRAME_MAX_TOTAL_FORCE_N            15.644959f" in header
+    assert "#define DRV_AIRFRAME_HOVER_THRUST_PERCENT         78.013457f" in header
 
 
 def test_coax_defaults_use_airframe_model_not_old_placeholder_mass() -> None:
     source = read("Driver/Src/drv_coax_ctrl.c")
 
     assert '#include "drv_airframe_model.h"' in source
+    assert not (ROOT / "Driver/Inc/drv_motor_model.h").exists()
+    assert "drv_motor_model.h" not in source
+    assert "motor_hammerstein" not in source
     assert "params->mass_kg = DRV_AIRFRAME_MASS_KG;" in source
-    assert "params->min_total_force_n = DRV_AIRFRAME_WEIGHT_N;" in source
-    assert "params->max_total_force_n = DRV_AIRFRAME_MAX_TOTAL_FORCE_N;" in source
-    assert "params->tilt_lever_arm_m = 0.18f;" in source
+    assert "params->tilt_lever_arm_m = DRV_AIRFRAME_THRUST_LEVER_ARM_M;" in source
+    assert "params->yaw_inertia = DRV_AIRFRAME_IZZ_KGM2;" in source
     assert "params->mass_kg = 2.2f;" not in source
-    assert "params->max_total_force_n = 38.8476f;" not in source
+    assert "max_total_force_n" not in source
 
 
-def test_flash_v3_migration_forces_new_physical_model() -> None:
+def test_flash_config_uses_current_record_without_legacy_coax_migration() -> None:
     source = read("App/Src/app_control.c")
 
-    assert "#define APP_CONTROL_CFG_VERSION     8U" in source
-    assert "typedef APP_ControlFlashRecordV3 APP_ControlFlashRecordV4;" in source
-    assert "} APP_ControlFlashRecordV5;" in source
-    assert "typedef APP_ControlFlashRecordV5 APP_ControlFlashRecordV6;" in source
-    assert "typedef APP_ControlFlashRecordV5 APP_ControlFlashRecordV7;" in source
-    assert "typedef APP_ControlFlashRecordV5 APP_ControlFlashRecordV8;" in source
-    assert "(record.version == 5U) ||" in source
-    assert "(record.version == 6U) ||" in source
-    assert "(record.version == 7U)" in source
-    assert "app_control_apply_current_safety_defaults(&migrated_params);" in source
-    assert "params->tilt_limit_rad = defaults.tilt_limit_rad;" in source
-    assert "(record.version == 3U) || (record.version == 4U)" in source
-    assert "app_control_migrate_coax_params_v4(&legacy->coax_params, &migrated_params);" in source
-    assert "app_control_apply_new_coax_param_defaults(params);" in source
-    assert "app_control_apply_current_safety_defaults(params);" in source
-    assert "params->mass_kg = DRV_AIRFRAME_MASS_KG;" in source
-    assert "params->min_total_force_n = DRV_AIRFRAME_WEIGHT_N;" in source
-    assert "params->max_total_force_n = DRV_AIRFRAME_MAX_TOTAL_FORCE_N;" in source
+    assert "#define APP_CONTROL_CFG_VERSION     13U" in source
+    assert "APP_ControlFlashRecordV" not in source
+    assert "app_control_migrate_coax_params" not in source
+    assert "record.version == APP_CONTROL_CFG_VERSION" in source
+    assert "APP_ControlCoaxTunableParams coax_tunables;" in source
+    assert "app_control_capture_coax_tunables(&record.coax_tunables);" in source
+    assert "app_control_apply_coax_tunables(&record.coax_tunables);" in source
+    assert "DRV_COAX_CTRL_GetDefaultParams(&params);" in source
+    assert "DRV_COAX_CTRL_SetParams(&params);" in source
+    assert "DRV_COAX_CTRL_Params coax_params;" not in source
+    assert "record.coax_params" not in source
+    tunable_struct = source[source.index("typedef struct {\n    float pos_x_kp;"):source.index("} APP_ControlCoaxTunableParams;")]
+    apply_tunables = source[source.index("static void app_control_apply_coax_tunables"):source.index("static void app_control_report_airframe")]
+    for fixed_model_field in (
+        "mass_kg",
+        "gravity_m_s2",
+        "tilt_lever_arm_m",
+        "yaw_inertia",
+        "motor_single_max_thrust_n",
+        "yaw_torque_upper_m_per_n",
+        "yaw_torque_lower_m_per_n",
+    ):
+        assert fixed_model_field not in tunable_struct
+        assert fixed_model_field not in apply_tunables
 
 
 def test_airframe_query_is_text_control_payload() -> None:
@@ -92,18 +100,18 @@ def test_airframe_query_is_text_control_payload() -> None:
 def test_gui_airframe_parser_and_ident_meta_payload(tmp_path: Path) -> None:
     panel = load_panel_module()
     line = (
-        "AIRFRAME mass_kg=0.754600 cg_z_m=-0.094600 imu_z_m=0.000000 "
+        "AIRFRAME mass_kg=1.200000 cg_z_m=-0.094600 imu_z_m=0.000000 "
         "tether_attach_z_m=0.156300 tether_attach_to_cg_m=0.250900 "
         "rope_m=0.640000 rod_to_cg_m=0.890900 servo_deg_per_us=0.090000 "
         "servo_us_per_deg=11.111111 thrust_scope=dual_motor_total "
-        "max_total_force_n=13.375052 hover_thrust_pct=56.079367"
+        "max_total_force_n=15.644959 hover_thrust_pct=78.013457"
     )
     record = panel.airframe_record_from_line(line)
 
     assert record is not None
-    assert record["mass_kg"] == 0.7546
+    assert record["mass_kg"] == 1.2
     assert record["thrust_scope"] == "dual_motor_total"
-    assert record["hover_thrust_pct"] == 56.079367
+    assert record["hover_thrust_pct"] == 78.013457
 
     class Dummy:
         ident_current_command = "IDENT STEP roll pulse_us=20 duration_ms=3000"
@@ -125,8 +133,8 @@ def test_gui_airframe_parser_and_ident_meta_payload(tmp_path: Path) -> None:
         ident_repeat_var = Var(2)
         ident_bit_var = Var(250)
         ident_seed_var = Var(1)
-        ident_alpha_center_var = Var(1441)
-        ident_beta_center_var = Var(1877)
+        ident_alpha_center_var = Var(1500)
+        ident_beta_center_var = Var(1500)
 
     dummy = Dummy()
     dummy._ident_meta_payload = panel.DronePanel._ident_meta_payload.__get__(dummy, Dummy)
@@ -134,5 +142,5 @@ def test_gui_airframe_parser_and_ident_meta_payload(tmp_path: Path) -> None:
     meta = json.loads((tmp_path / "ident_20260526_120000_meta.json").read_text(encoding="utf-8"))
 
     assert meta["command"] == "IDENT STEP roll pulse_us=20 duration_ms=3000"
-    assert meta["center"] == {"alpha_us": 1441, "beta_us": 1877}
-    assert meta["airframe"]["max_total_force_n"] == 13.375052
+    assert meta["center"] == {"alpha_us": 1500, "beta_us": 1500}
+    assert meta["airframe"]["max_total_force_n"] == 15.644959

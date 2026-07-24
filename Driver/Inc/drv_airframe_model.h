@@ -11,7 +11,7 @@
 #define DRV_AIRFRAME_BASE_CG_Z_M                  -0.117f
 #define DRV_AIRFRAME_SERVO_MOTOR_CG_Z_M           -0.244f
 
-#define DRV_AIRFRAME_MASS_KG                       0.7546f
+#define DRV_AIRFRAME_MASS_KG                       1.2000f
 #define DRV_AIRFRAME_CG_Z_M                       -0.0946f
 #define DRV_AIRFRAME_IMU_Z_M                       0.0f
 
@@ -24,11 +24,11 @@
 #define DRV_AIRFRAME_SERVO_US_PER_DEG             11.111111f
 
 #define DRV_AIRFRAME_GRAVITY_M_S2                  9.81f
-#define DRV_AIRFRAME_WEIGHT_N                      7.402626f
+#define DRV_AIRFRAME_WEIGHT_N                     11.772000f
 #define DRV_AIRFRAME_THRUST_TABLE_SCOPE            "dual_motor_total"
-#define DRV_AIRFRAME_MAX_TOTAL_THRUST_G         1363.410f
-#define DRV_AIRFRAME_MAX_TOTAL_FORCE_N            13.375052f
-#define DRV_AIRFRAME_HOVER_THRUST_PERCENT         56.079367f
+#define DRV_AIRFRAME_MAX_TOTAL_THRUST_G         1595.342f
+#define DRV_AIRFRAME_MAX_TOTAL_FORCE_N            15.644959f
+#define DRV_AIRFRAME_HOVER_THRUST_PERCENT         78.013457f
 
 /* Servo axis z-positions (origin = board center, z+ up) */
 #define DRV_AIRFRAME_SERVO1_AXIS_Z_M              -0.161f

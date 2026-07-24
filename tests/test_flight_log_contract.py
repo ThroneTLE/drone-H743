@@ -52,7 +52,8 @@ def test_stabilizer_records_snapshots_without_direct_flash_access() -> None:
     assert "APP_FlashService_" not in freertos
     assert "typedef struct {\n    float pos_p_m_s2[3];" in drv_header
     assert "void DRV_COAX_CTRL_GetLastDebug(DRV_COAX_CTRL_Debug *debug);" in drv_header
-    assert "debug.yaw_angle_p_rad_s" in drv_source
+    assert "debug->yaw_angle_p_rad_s" in drv_source
+    assert "debug.yaw_torque_cmd =" in drv_source
     assert "coax_ctrl_last_debug = debug;" in drv_source
 
 

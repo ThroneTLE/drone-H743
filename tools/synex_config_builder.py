@@ -22,19 +22,17 @@ CHANNEL_NAMES = [
     "Pitch_Rate_KD",
     "Yaw_Angle_KP",
     "Yaw_Rate_KD",
-    "Pitch_kp",
-    "Roll_kp",
-    "Accel_XY_Limit",
-    "Accel_Z_Limit",
     "Vel_X_KP",
     "Vel_Y_KP",
-    "Vel_Out_Limit",
     "Vel_X_KI",
     "Vel_Y_KI",
-    "Vel_I_Limit",
     "Vel_X_KD",
     "Vel_Y_KD",
     "Vel_Loop_Enable",
+    "Roll_Angle_KP",
+    "Pitch_Angle_KP",
+    "Pos_Z_KP",
+    "Vel_Z_KD",
 ]
 
 WORKSPACE_ORDER = ["飞行监控", "姿态参数", "速度参数", "ws1"]
@@ -131,7 +129,7 @@ def finalize_config(source: Path, output: Path) -> int:
 
     settings.sync()
     reread = QSettings(str(output), QSettings.IniFormat)
-    assert int(reread.value("MainWindowSettings/SerialChannelNum")) == 24
+    assert int(reread.value("MainWindowSettings/SerialChannelNum")) == len(CHANNEL_NAMES)
     assert float(reread.value("MainWindowSettings/PlotSampleTimeMs")) == 25.0
     assert int(reread.value("PlotSettings/workspaceCount")) == 4
     assert [
@@ -141,7 +139,11 @@ def finalize_config(source: Path, output: Path) -> int:
         int(reread.value(f"PlotSettings/Page{index}/tileCount"))
         for index in range(1, 5)
     ] == [11, 18, 19, 19]
-    assert reread.value("ChannelNames/name23") == "Vel_Loop_Enable"
+    assert reread.value("ChannelNames/name17") == "Vel_Loop_Enable"
+    assert reread.value("ChannelNames/name18") == "Roll_Angle_KP"
+    assert reread.value("ChannelNames/name19") == "Pitch_Angle_KP"
+    assert reread.value("ChannelNames/name20") == "Pos_Z_KP"
+    assert reread.value("ChannelNames/name21") == "Vel_Z_KD"
     print(f"wrote={output} status={reread.status().name} keys={len(reread.allKeys())}")
     return 0 if reread.status() == QSettings.NoError else 1
 

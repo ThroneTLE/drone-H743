@@ -1,7 +1,6 @@
 #include "app_rangefinder.h"
 
 #include "app_control.h"
-#include "app_optical_flow.h"
 #include "bsp_rangefinder.h"
 
 #include "main.h"
@@ -124,10 +123,6 @@ void APP_Rangefinder_Step(void)
         range_ctx.status.vertical_velocity_m_s = 0.0f;
     }
 
-    APP_OpticalFlow_UpdateHeightFromRange(range_ctx.status.height_m,
-                                          range_ctx.status.raw_distance_m,
-                                          range_ctx.status.valid,
-                                          range_ctx.status.sample_ms);
 }
 
 uint8_t APP_Rangefinder_GetHeightSample(float *height_m,

@@ -61,9 +61,6 @@ PARAM_NAMES = [
     "vel_x_kd",
     "vel_y_kd",
     "vel_z_kd",
-    "rotation_error_gain",
-    "accel_xy_limit_m_s2",
-    "accel_z_limit_m_s2",
     "vel_loop_enable",
     "vel_loop_x_kp",
     "vel_loop_x_ki",
@@ -71,32 +68,27 @@ PARAM_NAMES = [
     "vel_loop_y_kp",
     "vel_loop_y_ki",
     "vel_loop_y_kd",
-    "vel_loop_output_limit_m_s2",
-    "vel_loop_i_limit_m_s2",
     "mass_kg",
     "gravity_m_s2",
-    "min_total_force_n",
-    "max_total_force_n",
     "tilt_lever_arm_m",
     "roll_angle_kp",
-    "roll_rate_kd",
     "pitch_angle_kp",
+    "roll_rate_kd",
     "pitch_rate_kd",
     "tilt_limit_rad",
     "yaw_angle_kp",
     "yaw_rate_kd",
-    "yaw_rate_limit_rad_s",
     "yaw_inertia",
-    "thrust_coeff_n_per_rad2",
-    "yaw_torque_coeff_n_m_per_rad2",
-    "motor_omega_max_rad_s",
+    "motor_single_max_thrust_n",
+    "yaw_torque_upper_m_per_n",
+    "yaw_torque_lower_m_per_n",
 ]
 
 SECTOR_HEADER_PREFIX = struct.Struct("<IHHIIIIIIIIQII")
 PARAMS_STRUCT = struct.Struct("<" + "f" * len(PARAM_NAMES))
 EXPORT_HEADER = struct.Struct("<IHHIIHHI")
 EXPORT_BLOCK_MAGIC_BYTES = struct.pack("<I", EXPORT_BLOCK_MAGIC)
-RECORD_STRUCT = struct.Struct("<IHHIIQII" + "h" * 7 + "f" * 7 + "f" * 3 + "H" * 8 + "H" * 5 + "B" * 12 + "f" * 41 + "I")
+RECORD_STRUCT = struct.Struct("<IHHIIQII" + "h" * 7 + "f" * 7 + "f" * 3 + "H" * 8 + "H" * 5 + "B" * 12 + "f" * 48 + "I")
 RECORD_SIZE = RECORD_STRUCT.size
 
 
@@ -507,7 +499,9 @@ def parse_record(record_bytes: bytes) -> dict[str, object] | None:
         ("ctrl_pos_p_m_s2", 3),
         ("ctrl_vel_d_m_s2", 3),
         ("ctrl_accel_out_m_s2", 3),
+        ("ctrl_force_cmd_n", 3),
         ("ctrl_tilt_ff_rad", 2),
+        ("ctrl_tilt_angle_p_rad", 2),
         ("ctrl_tilt_rate_d_rad", 2),
         ("ctrl_tilt_out_rad", 2),
     ):
@@ -522,9 +516,13 @@ def parse_record(record_bytes: bytes) -> dict[str, object] | None:
     ):
         row[name] = values[i]
         i += 1
-    for axis in range(2):
-        row[f"ctrl_omega_cmd_rad_s_{axis}"] = values[i]
-        i += 1
+    for prefix, count in (
+        ("ctrl_motor_thrust_cmd_n", 2),
+        ("ctrl_motor_cmd_us", 2),
+    ):
+        for axis in range(count):
+            row[f"{prefix}_{axis}"] = values[i]
+            i += 1
     row["z_ref_m"] = values[i]
     row["record_crc32"] = saved_crc
     return row

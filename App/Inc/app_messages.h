@@ -60,6 +60,7 @@ typedef struct {
     float imu_poll_sample_rate_hz;
     float imu_age_ms;
     APP_IMU_AttitudeDebug attitude_debug;
+    uint8_t gyro_bias_ready;
 
     /* IMU data-ready counter (debug) */
     uint32_t imu_data_ready_count;

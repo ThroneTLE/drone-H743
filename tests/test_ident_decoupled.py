@@ -33,6 +33,8 @@ def test_ident_control_payload_and_decoupled_servo_takeover() -> None:
     assert "DRV_COAX_CTRL_Run(&attitude, &reference, &ctrl_out);" in freertos
     assert "BSP_PWM_SetEscPulse" not in ident
     assert "DRV_Motor" not in ident
+    assert "if (ident_ctx.axis == APP_IDENT_AXIS_ROLL) {\n        alpha += offset;" in ident
+    assert "} else {\n        beta += offset;" in ident
 
 
 def test_ident_commands_exist_and_are_text_based() -> None:
@@ -53,7 +55,7 @@ def test_ident_sample_parser_and_step_fit() -> None:
     panel = load_panel_module()
     line = (
         "IDENT sample id=3 seq=12 t_ms=3456 axis=roll mode=step "
-        "alpha_us=1441 beta_us=1917 roll=1.230 pitch=-0.120 "
+        "alpha_us=1540 beta_us=1500 roll=1.230 pitch=-0.120 "
         "gx=4.50 gy=-0.80 rc_arm=1 throttle_us=1180"
     )
     record = panel.ident_record_from_line(line)
@@ -65,12 +67,12 @@ def test_ident_sample_parser_and_step_fit() -> None:
     samples = []
     for index in range(30):
         t_ms = index * 40
-        beta = 1877 if index < 3 else 1917
+        alpha = 1500 if index < 3 else 1540
         response = 0.0 if index < 3 else 4.0 * (1.0 - pow(2.718281828, -((index - 3) * 0.04) / 0.25))
         samples.append(
             panel.ident_record_from_line(
                 f"IDENT sample id=1 seq={index} t_ms={t_ms} axis=roll mode=step "
-                f"alpha_us=1441 beta_us={beta} roll={response:.3f} "
+                f"alpha_us={alpha} beta_us=1500 roll={response:.3f} "
                 "pitch=0.000 gx=0.00 gy=0.00 rc_arm=1 throttle_us=1180"
             )
         )

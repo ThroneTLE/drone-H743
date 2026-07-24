@@ -21,19 +21,13 @@ $channelMap = [ordered]@{
     23 = 8   # pitch_rate_kd
     24 = 9   # yaw_angle_kp
     25 = 10  # yaw_rate_kd
-    26 = 11  # pitch_angle_kp
-    27 = 12  # roll_angle_kp
-    29 = 13  # accel_xy_limit_m_s2
-    30 = 14  # accel_z_limit_m_s2
-    52 = 15  # vel_loop_x_kp
-    53 = 16  # vel_loop_y_kp
-    54 = 17  # vel_loop_out
-    55 = 18  # vel_loop_x_ki
-    56 = 19  # vel_loop_y_ki
-    57 = 20  # vel_loop_i
-    58 = 21  # vel_loop_x_kd
-    59 = 22  # vel_loop_y_kd
-    60 = 23  # vel_loop_enable
+    52 = 11  # vel_loop_x_kp
+    53 = 12  # vel_loop_y_kp
+    55 = 13  # vel_loop_x_ki
+    56 = 14  # vel_loop_y_ki
+    58 = 15  # vel_loop_x_kd
+    59 = 16  # vel_loop_y_kd
+    60 = 17  # vel_loop_enable
 }
 
 function Replace-UniqueToken([string]$Source, [string]$Old, [string]$New) {
@@ -69,10 +63,10 @@ $customNameSliders = @($sliders | Where-Object {
     -not [string]::IsNullOrWhiteSpace($_.ctx.name_menu.ctx.attr.name_)
 })
 
-if (($sliders.Count -ne 17) -or ($customNameSliders.Count -ne 17)) {
+if (($sliders.Count -ne 10) -or ($customNameSliders.Count -ne 10)) {
     throw "Slider custom-name validation failed"
 }
 
 Write-Output "Updated $Path with byte-preserving replacements"
 Write-Output "Backup $backup"
-Write-Output "Sliders 17; wave channels 5,6; wave time channel 4"
+Write-Output "Sliders 10; wave channels 5,6; wave time channel 4"

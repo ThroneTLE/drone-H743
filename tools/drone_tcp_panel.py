@@ -263,7 +263,7 @@ def fit_ident_step(samples: list[dict[str, str | float | int]], axis: str) -> di
     if len(samples) < 8:
         return None
     value_key = "roll" if axis == "roll" else "pitch"
-    input_key = "beta_us" if axis == "roll" else "alpha_us"
+    input_key = "alpha_us" if axis == "roll" else "beta_us"
     rows = [
         row for row in samples
         if isinstance(row.get("t_ms"), int)
@@ -831,8 +831,8 @@ class DronePanel(tk.Tk):
         self.ident_repeat_var = tk.IntVar(value=2)
         self.ident_bit_var = tk.IntVar(value=250)
         self.ident_seed_var = tk.IntVar(value=1)
-        self.ident_alpha_center_var = tk.IntVar(value=1441)
-        self.ident_beta_center_var = tk.IntVar(value=1877)
+        self.ident_alpha_center_var = tk.IntVar(value=1500)
+        self.ident_beta_center_var = tk.IntVar(value=1500)
         self.ident_status_var = tk.StringVar(value="idle")
         self.ident_sample_count_var = tk.StringVar(value="samples=0")
         self.ident_reason_var = tk.StringVar(value="-")
@@ -1394,8 +1394,8 @@ class DronePanel(tk.Tk):
             ("repeat", "双脉冲次数", self.ident_repeat_var, "次，默认 2"),
             ("bit", "PRBS 位宽", self.ident_bit_var, "ms，随机输入切换间隔"),
             ("seed", "PRBS seed", self.ident_seed_var, "相同 seed 可复现实验"),
-            ("alpha_center", "alpha 中位", self.ident_alpha_center_var, "us，pitch/1号舵机中心"),
-            ("beta_center", "beta 中位", self.ident_beta_center_var, "us，roll/2号舵机中心"),
+            ("alpha_center", "alpha 中位", self.ident_alpha_center_var, "us，roll/1号左右舵机中心"),
+            ("beta_center", "beta 中位", self.ident_beta_center_var, "us，pitch/2号前后舵机中心"),
         ]
         self.ident_field_rows.clear()
         for index, (key, label, var, hint) in enumerate(field_specs, start=3):
@@ -3268,7 +3268,7 @@ class DronePanel(tk.Tk):
             return
         axis_name = self.ident_axis_var.get()
         value_key = "roll" if axis_name == "roll" else "pitch"
-        input_key = "beta_us" if axis_name == "roll" else "alpha_us"
+        input_key = "alpha_us" if axis_name == "roll" else "beta_us"
         rows = [row for row in self.ident_samples if isinstance(row.get("t_ms"), int)]
         if not rows:
             return
@@ -3446,6 +3446,8 @@ class DronePanel(tk.Tk):
         lowered = name.strip().lower()
         parts = lowered.split(".")
         pid_aliases = {
+            "pid.roll.kp": "coax.roll_angle_kp",
+            "pid.pitch.kp": "coax.pitch_angle_kp",
             "pid.roll.kd": "coax.roll_rate_kd",
             "pid.pitch.kd": "coax.pitch_rate_kd",
             "pid.yaw.kp": "coax.yaw_angle_kp",
@@ -3453,8 +3455,6 @@ class DronePanel(tk.Tk):
             "pid.vel.x.kd": "coax.vel_x_kd",
             "pid.vel.y.kd": "coax.vel_y_kd",
             "pid.vel.z.kd": "coax.vel_z_kd",
-            "pid.accel.xy.limit": "coax.accel_xy_limit_m_s2",
-            "pid.accel.z.limit": "coax.accel_z_limit_m_s2",
             "pid.vel_loop.enable": "coax.vel_loop_enable",
             "pid.vel_loop.x.kp": "coax.vel_loop_x_kp",
             "pid.vel_loop.x.ki": "coax.vel_loop_x_ki",
@@ -3462,8 +3462,6 @@ class DronePanel(tk.Tk):
             "pid.vel_loop.y.kp": "coax.vel_loop_y_kp",
             "pid.vel_loop.y.ki": "coax.vel_loop_y_ki",
             "pid.vel_loop.y.kd": "coax.vel_loop_y_kd",
-            "pid.vel_loop.output.limit": "coax.vel_loop_output_limit_m_s2",
-            "pid.vel_loop.i.limit": "coax.vel_loop_i_limit_m_s2",
         }
         if lowered in pid_aliases:
             payload = f"PARAM SET {pid_aliases[lowered]} {value}"

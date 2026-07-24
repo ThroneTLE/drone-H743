@@ -44,7 +44,7 @@ DRV_IMU_Status BSP_IMU_Init(void)
     config.gyro_range  = DRV_IMU_GYRO_RANGE_1000DPS;
     config.accel_odr   = DRV_IMU_ODR_1KHZ;
     config.gyro_odr    = DRV_IMU_ODR_1KHZ;
-    config.soft_reset_on_init = false;
+    config.soft_reset_on_init = true;
 
     status = DRV_IMU_Init(&imu_dev, BSP_Board_GetImuBus(), &config);
     if (status == DRV_IMU_OK) { imu_initialized = 1U; }

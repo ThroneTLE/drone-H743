@@ -7,12 +7,8 @@
 extern "C" {
 #endif
 
-#define DRV_COAX_CTRL_STATE_LEN 18U
-#define DRV_COAX_CTRL_REF_LEN   4U
-#define DRV_COAX_CTRL_CMD_LEN   4U
-
-#define DRV_COAX_CTRL_SERVO_ALPHA_CENTER_US 1441U
-#define DRV_COAX_CTRL_SERVO_BETA_CENTER_US  1877U
+#define DRV_COAX_CTRL_SERVO_ALPHA_CENTER_US 1500U
+#define DRV_COAX_CTRL_SERVO_BETA_CENTER_US  1500U
 #define DRV_COAX_CTRL_SERVO_PHYSICAL_MIN_US  500U
 #define DRV_COAX_CTRL_SERVO_PHYSICAL_MAX_US 2500U
 #define DRV_COAX_CTRL_SERVO_LIMIT_DELTA_US  1000U
@@ -38,6 +34,11 @@ extern "C" {
 #define DRV_COAX_CTRL_SERVO_LIMIT_DEG         90.0f
 
 typedef struct {
+    /*
+     * Paper p_d, p_d_dot and p_d_ddot references in the local controller frame.
+     * X is forward, Y is right. Z follows the existing altitude convention:
+     * range height above ground is exposed to the controller as z = -height.
+     */
     float x_m;
     float y_m;
     float z_m;
@@ -47,10 +48,17 @@ typedef struct {
     float ax_m_s2;
     float ay_m_s2;
     float az_m_s2;
+    /* Paper psi_d, psi_d_dot and psi_d_ddot references. */
     float yaw_rad;
+    float yaw_rate_rad_s;
+    float yaw_accel_rad_s2;
 } DRV_COAX_CTRL_Reference;
 
 typedef struct {
+    /*
+     * Paper p, p_dot and attitude feedback after App-layer sensor mounting
+     * correction. IMU axes are already rotated to body FRD before this layer.
+     */
     float x_m;
     float y_m;
     float z_m;
@@ -66,10 +74,12 @@ typedef struct {
 } DRV_COAX_CTRL_AttitudeInput;
 
 typedef struct {
-    float omega_upper;
-    float omega_lower;
+    float thrust_upper_n;
+    float thrust_lower_n;
     float alpha_rad;
     float beta_rad;
+    uint16_t motor_upper_us;
+    uint16_t motor_lower_us;
     uint16_t servo_alpha_us;
     uint16_t servo_beta_us;
 } DRV_COAX_CTRL_Output;
@@ -78,14 +88,17 @@ typedef struct {
     float pos_p_m_s2[3];
     float vel_d_m_s2[3];
     float accel_out_m_s2[3];
+    float force_cmd_n[3];
     float tilt_ff_rad[2];
+    float tilt_angle_p_rad[2];
     float tilt_rate_d_rad[2];
     float tilt_out_rad[2];
     float yaw_angle_p_rad_s;
     float yaw_rate_d_rad_s;
     float yaw_torque_cmd;
     float total_force_n;
-    float omega_cmd_rad_s[2];
+    float motor_thrust_cmd_n[2];
+    float motor_cmd_us[2];
 } DRV_COAX_CTRL_Debug;
 
 typedef struct {
@@ -95,9 +108,6 @@ typedef struct {
     float vel_x_kd;
     float vel_y_kd;
     float vel_z_kd;
-    float rotation_error_gain;
-    float accel_xy_limit_m_s2;
-    float accel_z_limit_m_s2;
     float vel_loop_enable;
     float vel_loop_x_kp;
     float vel_loop_x_ki;
@@ -105,25 +115,20 @@ typedef struct {
     float vel_loop_y_kp;
     float vel_loop_y_ki;
     float vel_loop_y_kd;
-    float vel_loop_output_limit_m_s2;
-    float vel_loop_i_limit_m_s2;
     float mass_kg;
     float gravity_m_s2;
-    float min_total_force_n;
-    float max_total_force_n;
     float tilt_lever_arm_m;
     float roll_angle_kp;
-    float roll_rate_kd;
     float pitch_angle_kp;
+    float roll_rate_kd;
     float pitch_rate_kd;
     float tilt_limit_rad;
     float yaw_angle_kp;
     float yaw_rate_kd;
-    float yaw_rate_limit_rad_s;
     float yaw_inertia;
-    float thrust_coeff_n_per_rad2;
-    float yaw_torque_coeff_n_m_per_rad2;
-    float motor_omega_max_rad_s;
+    float motor_single_max_thrust_n;
+    float yaw_torque_upper_m_per_n;
+    float yaw_torque_lower_m_per_n;
 } DRV_COAX_CTRL_Params;
 
 void DRV_COAX_CTRL_Init(void);
@@ -144,7 +149,11 @@ uint8_t DRV_COAX_CTRL_SetParam(const char *name, float value);
 
 uint16_t DRV_COAX_CTRL_AlphaTiltRadToServoPulse(float tilt_rad);
 uint16_t DRV_COAX_CTRL_BetaTiltRadToServoPulse(float tilt_rad);
-uint16_t DRV_COAX_CTRL_OmegaToMotorPulse(float omega_rad_s);
+void DRV_COAX_CTRL_BodyTiltRadToServoPulses(float body_x_tilt_rad,
+                                            float body_y_tilt_rad,
+                                            uint16_t *servo_alpha_us,
+                                            uint16_t *servo_beta_us);
+uint16_t DRV_COAX_CTRL_ThrustToMotorPulse(float thrust_n);
 
 #ifdef __cplusplus
 }

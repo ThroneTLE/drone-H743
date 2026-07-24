@@ -141,6 +141,7 @@ void APP_IMU_ConvertBaro(const int32_t pressure_raw,
 typedef struct {
     float alpha;        /* 滤波系数，0~1，越小越平滑 */
     float state;        /* 上次输出 (用于连续滤波)     */
+    uint8_t initialized;/* 1 = state 已由真实输入初始化 */
 } APP_Sensor_Lpf;
 
 /* 初始化滤波器：cutoff_hz = 截止频率, dt_sec = 采样周期 */
@@ -186,7 +187,7 @@ float APP_SensorRateMeter_Update(APP_Sensor_RateMeter *meter,
 /* ════════════════════════════════════════════════════════════════════════ */
 /*  坐标系对齐（IMU 芯片坐标系 → 机体坐标系）                               */
 /*                                                                        */
-/*  当前安装：IMU +Y 朝下，+Z 朝前，+X 朝左。输出机体系为前右下。             */
+/*  当前安装：IMU +Y 朝下，+Z 朝后，+X 朝左。输出机体系为前右下。             */
 /* ════════════════════════════════════════════════════════════════════════ */
 
 void APP_Sensor_AlignToAirframe(const float in[3], float out[3]);

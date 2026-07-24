@@ -9,9 +9,18 @@
 extern "C" {
 #endif
 
-#define DRV_OPTICAL_FLOW_BAUD_RATE 19200U
-#define DRV_OPTICAL_FLOW_FRAME_LEN 14U
-#define DRV_OPTICAL_FLOW_VALID     0xF5U
+#define DRV_OPTICAL_FLOW_BAUD_RATE 115200U
+#define DRV_OPTICAL_FLOW_MSP_HEAD_0 '$'
+#define DRV_OPTICAL_FLOW_MSP_HEAD_1 'X'
+#define DRV_OPTICAL_FLOW_MSP_HEAD_2 '<'
+#define DRV_OPTICAL_FLOW_MAX_PAYLOAD_LEN 64U
+#define DRV_OPTICAL_FLOW_FRAME_LEN (DRV_OPTICAL_FLOW_MAX_PAYLOAD_LEN + 9U)
+#define DRV_OPTICAL_FLOW_RANGE_MSG_ID 0x1F01U
+#define DRV_OPTICAL_FLOW_FLOW_MSG_ID  0x1F02U
+#define DRV_OPTICAL_FLOW_RANGE_PAYLOAD_LEN 5U
+#define DRV_OPTICAL_FLOW_FLOW_PAYLOAD_LEN 9U
+#define DRV_OPTICAL_FLOW_VALID     1U
+#define DRV_OPTICAL_FLOW_MIN_DISTANCE_MM 10UL
 #define DRV_OPTICAL_FLOW_RAW_WINDOW 32U
 
 typedef enum {
@@ -19,13 +28,6 @@ typedef enum {
     DRV_OPTICAL_FLOW_ERROR,
     DRV_OPTICAL_FLOW_INVALID_ARG
 } DRV_OPTICAL_FLOW_Status;
-
-typedef enum {
-    DRV_OPTICAL_FLOW_CONFIG_NOT_RUN = 0,
-    DRV_OPTICAL_FLOW_CONFIG_OK,
-    DRV_OPTICAL_FLOW_CONFIG_ERROR,
-    DRV_OPTICAL_FLOW_CONFIG_MISSING_TABLE
-} DRV_OPTICAL_FLOW_ConfigStatus;
 
 typedef struct {
     UART_HandleTypeDef *huart;
@@ -38,25 +40,38 @@ typedef struct {
 } DRV_OPTICAL_FLOW_Bus;
 
 typedef struct {
-    int16_t flow_x_integral;
-    int16_t flow_y_integral;
-    uint16_t integration_timespan_us;
-    uint16_t ground_distance;
+    uint32_t time_ms;
+    uint32_t distance_mm;
+    uint8_t strength;
+    uint8_t precision;
+    uint8_t tof_status;
+    int16_t flow_vel_x;
+    int16_t flow_vel_y;
+    uint8_t flow_quality;
+    uint8_t flow_status;
+    uint16_t sample_interval_us;
+    uint8_t distance_valid;
+    uint8_t flow_valid;
     uint8_t valid;
-    uint8_t version;
+    uint16_t msp_cmd;
+    uint8_t msp_flags;
     uint32_t received_ms;
+    uint32_t distance_received_ms;
+    uint32_t flow_received_ms;
 } DRV_OPTICAL_FLOW_Frame;
 
 typedef struct {
     uint16_t count;
-    int16_t flow_x_mean;
-    int16_t flow_y_mean;
-    uint16_t integration_timespan_mean_us;
-    uint16_t ground_distance_mean;
-    int16_t flow_x_peak_to_peak;
-    int16_t flow_y_peak_to_peak;
-    uint16_t integration_timespan_peak_to_peak_us;
-    uint16_t ground_distance_peak_to_peak;
+    int16_t flow_vel_x_mean;
+    int16_t flow_vel_y_mean;
+    uint16_t sample_interval_mean_us;
+    uint32_t distance_mean_mm;
+    uint8_t strength_mean;
+    uint8_t flow_quality_mean;
+    int16_t flow_vel_x_peak_to_peak;
+    int16_t flow_vel_y_peak_to_peak;
+    uint16_t sample_interval_peak_to_peak_us;
+    uint32_t distance_peak_to_peak_mm;
 } DRV_OPTICAL_FLOW_RawStats;
 
 typedef struct {
@@ -65,30 +80,20 @@ typedef struct {
     uint8_t rx_active;
     uint8_t rx_byte;
     uint8_t frame[DRV_OPTICAL_FLOW_FRAME_LEN];
-    uint8_t offset;
+    uint16_t offset;
+    uint16_t expected_len;
     uint16_t rx_dma_pos;
     uint32_t bytes;
     uint32_t frames;
     uint32_t checksum_errors;
     uint32_t frame_errors;
+    uint32_t ignored_messages;
+    uint32_t short_payload_errors;
     uint32_t rx_restarts;
     uint32_t dma_events;
     uint32_t dma_last_size;
     uint32_t uart_errors;
     uint32_t last_uart_error;
-    DRV_OPTICAL_FLOW_ConfigStatus config_status;
-    uint8_t config_attempted;
-    uint8_t config_ab_ok;
-    uint8_t config_missing_table;
-    uint8_t config_ab_response[3];
-    uint8_t config_bb_response[3];
-    uint32_t config_errors;
-    uint32_t config_last_error;
-    uint32_t config_last_hal_status;
-    uint32_t config_bb_expected;
-    uint32_t config_bb_sent;
-    uint32_t config_bb_ok;
-    uint32_t config_bb_errors;
     uint32_t last_rx_ms;
     DRV_OPTICAL_FLOW_Frame latest;
     DRV_OPTICAL_FLOW_Frame raw_window[DRV_OPTICAL_FLOW_RAW_WINDOW];
