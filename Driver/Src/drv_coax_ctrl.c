@@ -217,20 +217,6 @@ static void coax_ctrl_apply_fixed_model_params(DRV_COAX_CTRL_Params *params)
     params->yaw_torque_lower_m_per_n = DRV_COAX_CTRL_PROP9047_YAW_M_PER_N;
 }
 
-static void coax_ctrl_apply_attitude_force_feedback(
-    const DRV_COAX_CTRL_AttitudeInput *attitude,
-    DRV_COAX_CTRL_Debug *debug)
-{
-    /*
-     * Keep attitude P in the force vector so tilt allocation has one source of
-     * truth: corrected desired force. Rate damping remains in tilt space.
-     */
-    debug->force_cmd_n[0] +=
-        -coax_ctrl_params.pitch_angle_kp * attitude->pitch_rad;
-    debug->force_cmd_n[1] +=
-        -coax_ctrl_params.roll_angle_kp * attitude->roll_rad;
-}
-
 static void coax_ctrl_compute_force_cmd(
     const DRV_COAX_CTRL_AttitudeInput *attitude,
     const DRV_COAX_CTRL_Reference *reference,
@@ -289,7 +275,6 @@ static void coax_ctrl_compute_force_cmd(
     if (debug->force_cmd_n[2] < DRV_COAX_CTRL_FORCE_EPS_N) {
         debug->force_cmd_n[2] = DRV_COAX_CTRL_FORCE_EPS_N;
     }
-    coax_ctrl_apply_attitude_force_feedback(attitude, debug);
 }
 
 static void coax_ctrl_compute_tilt_from_force(
@@ -314,11 +299,14 @@ static void coax_ctrl_compute_tilt_from_force(
     }
 
     debug->tilt_ff_rad[0] = alpha_ff_rad;
+    debug->tilt_angle_p_rad[0] =
+        -coax_ctrl_params.pitch_angle_kp * attitude->pitch_rad;
     debug->tilt_rate_d_rad[0] =
         (coax_ctrl_params.pitch_rate_kd * attitude->gyro_y_rad_s) /
         pitch_rate_scale;
 
     *alpha_rad = coax_ctrl_clamp_f32(alpha_ff_rad +
+                                     debug->tilt_angle_p_rad[0] +
                                      debug->tilt_rate_d_rad[0],
                                      -coax_ctrl_params.tilt_limit_rad,
                                       coax_ctrl_params.tilt_limit_rad);
@@ -326,11 +314,14 @@ static void coax_ctrl_compute_tilt_from_force(
     beta_ff_rad =
         -atan2f(debug->force_cmd_n[1] * cosf(*alpha_rad), force_z);
     debug->tilt_ff_rad[1] = beta_ff_rad;
+    debug->tilt_angle_p_rad[1] =
+        -coax_ctrl_params.roll_angle_kp * attitude->roll_rad;
     debug->tilt_rate_d_rad[1] =
         (coax_ctrl_params.roll_rate_kd * attitude->gyro_x_rad_s) /
         roll_rate_scale;
 
     *beta_rad = coax_ctrl_clamp_f32(beta_ff_rad +
+                                    debug->tilt_angle_p_rad[1] +
                                     debug->tilt_rate_d_rad[1],
                                     -coax_ctrl_params.tilt_limit_rad,
                                      coax_ctrl_params.tilt_limit_rad);

@@ -1143,17 +1143,30 @@ $$
 \beta_d=\frac{K_{d,roll}\omega_x}{S_{roll}}
 $$
 
+姿态角比例修正直接作用在倾转角上：
+
+$$
+\alpha_p=-K_{p,pitch}\theta
+$$
+
+$$
+\beta_p=-K_{p,roll}\phi
+$$
+
+这里的 `pitch_angle_kp`、`roll_angle_kp` 是 `rad/rad` 的无量纲增益，
+不再进入 `force_cmd_n`。因此旧的力层增益数值不能直接复用。
+
 最终输出：
 
 $$
-\alpha=\operatorname{sat}(\alpha_{ff}+\alpha_d;-\theta_{tilt,max},\theta_{tilt,max})
+\alpha=\operatorname{sat}(\alpha_{ff}+\alpha_p+\alpha_d;-\theta_{tilt,max},\theta_{tilt,max})
 $$
 
 $$
-\beta=\operatorname{sat}(\beta_{ff}+\beta_d;-\theta_{tilt,max},\theta_{tilt,max})
+\beta=\operatorname{sat}(\beta_{ff}+\beta_p+\beta_d;-\theta_{tilt,max},\theta_{tilt,max})
 $$
 
-默认 $K_{d,pitch}=K_{d,roll}=-0.5$。因此正角速度会产生负方向倾转修正，构成阻尼。默认角度 P 增益为零，所以当前 roll/pitch 姿态角本身没有直接进入实际舵机控制律。
+默认 $K_{d,pitch}=K_{d,roll}=-0.5$。因此正角速度会产生负方向倾转修正，构成阻尼。默认角度 P 增益仍为零，必须从小值重新整定。
 
 速度环开启时，任务层令 $v_{ref}=v$，并把速度 PID 输出写入 $a_{ref}$；又因为默认 `vel_x_kd=vel_y_kd=0`，实际可近似为：
 

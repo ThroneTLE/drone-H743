@@ -229,19 +229,13 @@ def test_roll_pitch_angle_gains_are_runtime_params_and_rate_damping_remains_sign
     assert "entry->offset == offsetof(DRV_COAX_CTRL_Params, vel_loop_enable)" in wrapper
 
 
-def test_paper_tilt_output_uses_force_feedback_and_rate_damping() -> None:
+def test_tilt_output_keeps_force_feedforward_and_applies_direct_attitude_p() -> None:
     wrapper = read("Driver/Src/drv_coax_ctrl.c")
 
     force_frame_helper = wrapper.split(
         "static void coax_ctrl_local_down_to_body", 1
     )[1]
     force_frame_helper = force_frame_helper.split(
-        "static void coax_ctrl_apply_attitude_force_feedback", 1
-    )[0]
-    force_feedback = wrapper.split(
-        "static void coax_ctrl_apply_attitude_force_feedback", 1
-    )[1]
-    force_feedback = force_feedback.split(
         "static void coax_ctrl_compute_force_cmd", 1
     )[0]
     force_helper = wrapper.split("static void coax_ctrl_compute_force_cmd", 1)[1]
@@ -261,18 +255,21 @@ def test_paper_tilt_output_uses_force_feedback_and_rate_damping() -> None:
         "DRV_COAX_CTRL_FORCE_FRAME_PITCH_SIGN * attitude->pitch_rad"
         in force_frame_helper
     )
-    assert "coax_ctrl_apply_attitude_force_feedback(attitude, debug);" in force_helper
-    assert "debug->force_cmd_n[0] +=" in force_feedback
-    assert "coax_ctrl_params.pitch_angle_kp * attitude->pitch_rad" in force_feedback
-    assert "debug->force_cmd_n[1] +=" in force_feedback
-    assert "coax_ctrl_params.roll_angle_kp * attitude->roll_rad" in force_feedback
+    assert "coax_ctrl_apply_attitude_force_feedback" not in wrapper
+    assert "roll_angle_kp" not in force_helper
+    assert "pitch_angle_kp" not in force_helper
     assert "atan2f(debug->force_cmd_n[0], force_z)" in helper
     assert "-atan2f(debug->force_cmd_n[1] * cosf(*alpha_rad), force_z)" in helper
     assert "cosf(alpha_ff_rad)" not in helper
     assert helper.index("*alpha_rad = coax_ctrl_clamp_f32") < helper.index(
         "-atan2f(debug->force_cmd_n[1] * cosf(*alpha_rad), force_z)"
     )
-    assert "tilt_angle_p_rad" not in helper
+    assert "debug->tilt_angle_p_rad[0] =" in helper
+    assert "-coax_ctrl_params.pitch_angle_kp * attitude->pitch_rad" in helper
+    assert "debug->tilt_angle_p_rad[1] =" in helper
+    assert "-coax_ctrl_params.roll_angle_kp * attitude->roll_rad" in helper
+    assert "tilt_angle_p_rad[0] /" not in helper
+    assert "tilt_angle_p_rad[1] /" not in helper
     assert "coax_ctrl_params.pitch_rate_kd * attitude->gyro_y_rad_s" in helper
     assert "coax_ctrl_params.roll_rate_kd * attitude->gyro_x_rad_s" in helper
     assert "coax_ctrl_params.pitch_tilt_lever_arm_m" in helper
@@ -284,9 +281,15 @@ def test_paper_tilt_output_uses_force_feedback_and_rate_damping() -> None:
     beta_clamp = helper.split("*beta_rad = coax_ctrl_clamp_f32", 1)[1]
     beta_clamp = beta_clamp.split("debug->tilt_out_rad[0]", 1)[0]
     assert alpha_clamp.index("alpha_ff_rad +") < alpha_clamp.index(
+        "debug->tilt_angle_p_rad[0]"
+    )
+    assert alpha_clamp.index("debug->tilt_angle_p_rad[0]") < alpha_clamp.index(
         "debug->tilt_rate_d_rad[0]"
     )
     assert beta_clamp.index("beta_ff_rad +") < beta_clamp.index(
+        "debug->tilt_angle_p_rad[1]"
+    )
+    assert beta_clamp.index("debug->tilt_angle_p_rad[1]") < beta_clamp.index(
         "debug->tilt_rate_d_rad[1]"
     )
     assert "output->alpha_rad = alpha_rad;" in wrapper
