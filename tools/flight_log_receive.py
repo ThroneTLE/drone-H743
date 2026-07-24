@@ -97,7 +97,19 @@ PARAMS_STRUCT = struct.Struct("<" + "f" * len(PARAM_NAMES))
 LEGACY_PARAMS_STRUCT = struct.Struct("<" + "f" * len(LEGACY_PARAM_NAMES))
 EXPORT_HEADER = struct.Struct("<IHHIIHHI")
 EXPORT_BLOCK_MAGIC_BYTES = struct.pack("<I", EXPORT_BLOCK_MAGIC)
-RECORD_STRUCT = struct.Struct("<IHHIIQII" + "h" * 7 + "f" * 7 + "f" * 3 + "H" * 8 + "H" * 5 + "B" * 12 + "f" * 48 + "I")
+RECORD_STRUCT = struct.Struct(
+    "<IHHIIQII"
+    + "h" * 7
+    + "f" * 7
+    + "f" * 3
+    + "H" * 8
+    + "H" * 5
+    + "B" * 12
+    + "f" * 64
+    + "I"
+    + "f"
+    + "I"
+)
 RECORD_SIZE = RECORD_STRUCT.size
 
 
@@ -537,10 +549,24 @@ def parse_record(record_bytes: bytes) -> dict[str, object] | None:
     for prefix, count in (
         ("ctrl_motor_thrust_cmd_n", 2),
         ("ctrl_motor_cmd_us", 2),
+        ("ctrl_velocity_integral_m", 2),
+        ("ctrl_desired_attitude_rpy_rad", 3),
+        ("ctrl_attitude_error", 3),
+        ("ctrl_rate_error_rad_s", 3),
+        ("ctrl_moment_cmd_n_m", 3),
     ):
         for axis in range(count):
             row[f"{prefix}_{axis}"] = values[i]
             i += 1
+    for name in (
+        "ctrl_horizontal_command_scale",
+        "ctrl_moment_utilization",
+        "ctrl_thrust_utilization",
+    ):
+        row[name] = values[i]
+        i += 1
+    row["ctrl_protection_flags"] = values[i]
+    i += 1
     row["z_ref_m"] = values[i]
     row["record_crc32"] = saved_crc
     return row

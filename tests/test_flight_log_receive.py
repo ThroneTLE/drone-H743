@@ -109,6 +109,11 @@ def test_parse_record_and_csv_fields(tmp_path) -> None:
     assert row["ctrl_pos_p_m_s2_0"] == 19.0
     assert row["ctrl_tilt_angle_p_rad_0"] == 33.0
     assert row["ctrl_motor_cmd_us_1"] == 46.0
+    assert row["ctrl_velocity_integral_m_0"] == 47.0
+    assert row["ctrl_moment_cmd_n_m_0"] == 58.0
+    assert row["ctrl_horizontal_command_scale"] == 61.0
+    assert row["ctrl_protection_flags"] == 0x0A
+    assert row["z_ref_m"] == 64.0
 
     csv_path = tmp_path / "out.csv"
     flog.write_csv(csv_path, [row])
@@ -126,7 +131,9 @@ def make_record() -> bytes:
     values.extend([1000 + i for i in range(8)])
     values.extend([1200, 1500, 1500, 1300, 1310])
     values.extend([1, 1, 1, 1, 5, 1, 1, 1, 1, 0, 0, 0])
-    values.extend([float(i) for i in range(48)])
+    values.extend([float(i) for i in range(64)])
+    values.append(0x0A)
+    values.append(64.0)
     values.append(0)
     packed_without_crc = flog.RECORD_STRUCT.pack(*values)
     crc = flog.crc32(packed_without_crc[:-4] + b"\x00\x00\x00\x00")

@@ -1077,93 +1077,38 @@ $$
 
 其中 $Tl$ 是推力与倾转力臂的乘积，量纲为 N·m。姿态误差力矩除以 $Tl$ 后得到近似所需倾转角。
 
-### 10.2 当前包装层覆盖了生成倾转角
+### 10.2 当前分支使用非线性平衡式控制器
 
-`DRV_COAX_CTRL_Run()` 调用生成控制器后，只保留：
+`feat/nonlinear-balance-controller` 不再把速度环输出直接当成最终舵机前馈角，
+也不把姿态 P 叠加到横向力。实际路径为：
 
 ```text
-cmd[0] -> omega_upper
-cmd[1] -> omega_lower
+速度误差 -> 期望加速度 -> 期望推力方向 RTd
+RTd 与倾转矩阵 Rg -> 期望机体姿态 Rd
+SO(3) 姿态误差 -> 物理力矩 Md
+Md / (eta * lever * thrust) -> asin 精确反解 alpha/beta
 ```
 
-随后调用 `coax_ctrl_compute_pure_damping_tilt()` 重新计算 $\alpha,\beta$。因此当前舵机实际执行的不是 $\alpha_{gen},\beta_{gen}$，而是下面的手写控制律。
-
-### 10.3 当前实际倾转控制律
-
-首先形成水平加速度需求：
+其中：
 
 $$
-a_x^*=a_{x,ref}-K_{dx}(v_{x,ref}-v_x)
+R_g=R_y(\alpha)R_x(\beta),\qquad R_d=R_{Td}R_g^T
 $$
 
 $$
-a_y^*=a_{y,ref}-K_{dy}(v_{y,ref}-v_y)
-$$
-
-并限幅到 `+-accel_xy_limit_m_s2`。
-
-垂直方向使用：
-
-$$
-a_z^*=g-a_{z,ref}
-$$
-
-前馈倾转角：
-
-$$
-\alpha_{ff}=\operatorname{atan2}(a_x^*,a_z^*)
+e_R=\frac{1}{2}\operatorname{vee}(R_d^TR-R^TR_d)
 $$
 
 $$
-\beta_{ff}=\operatorname{atan2}(a_y^*,a_z^*)
+M_d=-K_Re_R-K_\omega e_\omega+\omega\times J\omega
 $$
 
-`atan2(水平加速度, 垂直加速度)` 给出所需推力方向与竖直方向之间的夹角。例如 $a_x^*=1\,m/s^2$、$a_z^*=9.81\,m/s^2$ 时：
+Roll/Pitch 使用不同的实测力臂，并在 `asin` 前限制到
+$\pm\sin18^\circ$。该路径每个控制周期迭代两次，使舵机负责产生暂态姿态
+力矩，而稳态水平速度由机体倾角承担，舵机可以回中。
 
-$$
-\alpha_{ff}=\arctan(1/9.81)\approx0.1016\,rad\approx5.82^\circ
-$$
-
-随后计算推力-力臂尺度：
-
-$$
-S_{pitch}=ma_z^*l_{pitch},\qquad
-S_{roll}=ma_z^*l_{roll}
-$$
-
-量纲检查：$kg\cdot m/s^2\cdot m=N\cdot m$，它代表单位倾转角附近可用于产生姿态力矩的尺度。
-
-角速度阻尼修正：
-
-$$
-\alpha_d=\frac{K_{d,pitch}\omega_y}{S_{pitch}}
-$$
-
-$$
-\beta_d=\frac{K_{d,roll}\omega_x}{S_{roll}}
-$$
-
-最终输出：
-
-$$
-\alpha=\operatorname{sat}(\alpha_{ff}+\alpha_d;-\theta_{tilt,max},\theta_{tilt,max})
-$$
-
-$$
-\beta=\operatorname{sat}(\beta_{ff}+\beta_d;-\theta_{tilt,max},\theta_{tilt,max})
-$$
-
-默认 $K_{d,pitch}=K_{d,roll}=-0.5$。因此正角速度会产生负方向倾转修正，构成阻尼。默认角度 P 增益为零，所以当前 roll/pitch 姿态角本身没有直接进入实际舵机控制律。
-
-速度环开启时，任务层令 $v_{ref}=v$，并把速度 PID 输出写入 $a_{ref}$；又因为默认 `vel_x_kd=vel_y_kd=0`，实际可近似为：
-
-$$
-\alpha\approx\operatorname{atan2}(a_{x,PID},g)+\alpha_d
-$$
-
-$$
-\beta\approx\operatorname{atan2}(a_{y,PID},g)+\beta_d
-$$
+完整公式、参数单位、保护阈值和日志字段见
+[非线性平衡式同轴倾转控制器](nonlinear_balance_controller.md)。
 
 ## 11. 偏航控制与双电机平方分配
 
@@ -1220,7 +1165,9 @@ $$
 - $\Sigma$ 控制两台电机平方转速之和，主要决定总推力；
 - $\Delta$ 控制平方转速之差，主要决定偏航力矩。
 
-当前默认参数中 `yaw_inertia=0.52`，而机体模型估计的 $I_{zz}=0.00035\,kg\cdot m^2$，两者相差很大。因此 `yaw_inertia` 更像当前控制分配中的调节尺度或遗留参数，不能直接当作已经验证的真实转动惯量。
+当前 `yaw_inertia` 固定使用机体模型中的
+$I_{zz}=0.00035\,kg\cdot m^2$。该值只是几何量级估计，尚未经过实测辨识，
+因此偏航力矩分配和 $\omega\times J\omega$ 耦合前馈都必须通过低速台架数据校核。
 
 ## 12. 电机角速度到 PWM
 
@@ -1503,7 +1450,7 @@ $$
 
 1. X/Y 光流速度、RC 通道和 $\alpha/\beta$ 舵机方向的完整符号闭环。
 2. 生成代码复用旋转矩阵数组后，总力和航向计算是否符合原始 Simulink 设计意图。
-3. `yaw_inertia=0.52` 与机体估计 $I_{zz}=0.00035$ 的量纲和来源。
+3. 粗估 $I_{zz}=0.00035$ 对偏航分配和三轴陀螺耦合前馈的实测误差。
 4. 线性 `omega -> PWM` 与真实 Hammerstein 电机模型之间的误差。
 5. 舵机实际带宽是否足以支持 `500 Hz` 控制计算产生的高频命令。
 6. 光流丢失 `80/150 ms` 门限与 `8 Hz` 速度衰减是否会造成控制模式突变。

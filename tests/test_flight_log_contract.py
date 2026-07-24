@@ -57,6 +57,22 @@ def test_stabilizer_records_snapshots_without_direct_flash_access() -> None:
     assert "coax_ctrl_last_debug = debug;" in drv_source
 
 
+def test_flight_log_v3_records_balance_controller_authority() -> None:
+    header = read("Driver/Inc/drv_coax_ctrl.h")
+    source = read("App/Src/app_flight_log.c")
+    receiver = read("tools/flight_log_receive.py")
+
+    assert "#define APP_FLIGHT_LOG_VERSION            3U" in source
+    assert "sizeof(APP_FlightLogRecord) == 392U" in source
+    assert "float desired_attitude_rpy_rad[3];" in header
+    assert "float moment_cmd_n_m[3];" in header
+    assert "float horizontal_command_scale;" in header
+    assert "uint32_t protection_flags;" in header
+    assert '"ctrl_desired_attitude_rpy_rad"' in receiver
+    assert '"ctrl_moment_cmd_n_m"' in receiver
+    assert 'row["ctrl_protection_flags"]' in receiver
+
+
 def test_background_task_drives_flight_log_slow_work() -> None:
     background = read("App/Src/app_background.c")
 

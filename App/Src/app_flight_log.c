@@ -19,7 +19,7 @@
 #define APP_FLIGHT_LOG_SECTOR_MAGIC       0x31534C46UL /* FLS1 */
 #define APP_FLIGHT_LOG_RECORD_MAGIC       0x31524C46UL /* FLR1 */
 #define APP_FLIGHT_LOG_EXPORT_BLOCK_MAGIC 0x31424C46UL /* FLB1 */
-#define APP_FLIGHT_LOG_VERSION            2U
+#define APP_FLIGHT_LOG_VERSION            3U
 #define APP_FLIGHT_LOG_EXPORT_VERSION     1U
 #define APP_FLIGHT_LOG_REGION_SIZE \
     (APP_FLIGHT_LOG_REGION_END_EXCL - APP_FLIGHT_LOG_REGION_START)
@@ -117,7 +117,7 @@ typedef struct __attribute__((packed)) {
 
 _Static_assert(sizeof(APP_FlightLogSectorHeader) == APP_FLIGHT_LOG_SECTOR_HEADER_SIZE,
                "flight log sector header must stay 256 bytes");
-_Static_assert(sizeof(APP_FlightLogRecord) == 320U,
+_Static_assert(sizeof(APP_FlightLogRecord) == 392U,
                "flight log record must match tools/flight_log_receive.py");
 _Static_assert(sizeof(APP_FlightLogExportBlockHeader) == 24U,
                "flight log export header must match tools/flight_log_receive.py");

@@ -33,6 +33,11 @@ extern "C" {
 #define DRV_COAX_CTRL_SERVO_TRAVEL_DEG       180.0f
 #define DRV_COAX_CTRL_SERVO_LIMIT_DEG         90.0f
 
+#define DRV_COAX_CTRL_PROTECT_VELOCITY_INVALID (1UL << 0)
+#define DRV_COAX_CTRL_PROTECT_ATTITUDE         (1UL << 1)
+#define DRV_COAX_CTRL_PROTECT_MOMENT           (1UL << 2)
+#define DRV_COAX_CTRL_PROTECT_THRUST           (1UL << 3)
+
 typedef struct {
     /*
      * Paper p_d, p_d_dot and p_d_ddot references in the local controller frame.
@@ -48,6 +53,8 @@ typedef struct {
     float ax_m_s2;
     float ay_m_s2;
     float az_m_s2;
+    float dt_sec;
+    uint8_t horizontal_velocity_valid;
     /* Paper psi_d, psi_d_dot and psi_d_ddot references. */
     float yaw_rad;
     float yaw_rate_rad_s;
@@ -99,6 +106,15 @@ typedef struct {
     float total_force_n;
     float motor_thrust_cmd_n[2];
     float motor_cmd_us[2];
+    float velocity_integral_m[2];
+    float desired_attitude_rpy_rad[3];
+    float attitude_error[3];
+    float rate_error_rad_s[3];
+    float moment_cmd_n_m[3];
+    float horizontal_command_scale;
+    float moment_utilization;
+    float thrust_utilization;
+    uint32_t protection_flags;
 } DRV_COAX_CTRL_Debug;
 
 typedef struct {
@@ -119,6 +135,7 @@ typedef struct {
     float gravity_m_s2;
     float pitch_tilt_lever_arm_m;
     float roll_tilt_lever_arm_m;
+    /* Stored sign preserves UI-positive K_R [N*m/rad], K_w [N*m*s/rad]. */
     float roll_angle_kp;
     float pitch_angle_kp;
     float roll_rate_kd;
@@ -133,6 +150,7 @@ typedef struct {
 } DRV_COAX_CTRL_Params;
 
 void DRV_COAX_CTRL_Init(void);
+void DRV_COAX_CTRL_ResetState(void);
 
 void DRV_COAX_CTRL_Run(const DRV_COAX_CTRL_AttitudeInput *attitude,
                        const DRV_COAX_CTRL_Reference *reference,

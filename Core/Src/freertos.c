@@ -127,7 +127,6 @@
 #define STABILIZER_DIRECT_BODY_Y_SIGN   (1.0f)   /* 左右/Y 轴直驱方向符号              */
 #define STABILIZER_YAW_RATE_REF_MAX_RAD_S 1.04719758f /* CH4 偏航参考累加最大速率 [rad/s] */
 #define STABILIZER_XY_VEL_REF_MAX_M_S  0.80f     /* CH1/CH2 水平速度目标最大值 [m/s]    */
-#define STABILIZER_XY_POS_ERR_MAX_M    0.35f     /* 速度意图积分后的虚拟位置误差限幅 [m] */
 #define STABILIZER_Z_REF_RATE_MAX_M_S  0.30f     /* CH3 满杆高度目标积分速度 [m/s]       */
 #define STABILIZER_Z_REF_MAX_M         0.30f     /* 上电光流测高基准以上高度上限 [m]     */
 #define STABILIZER_Z_POS_ERR_MAX_M     0.35f     /* Z 位置 PID 单次位置误差限幅 [m]      */
@@ -452,12 +451,6 @@ typedef struct {
 } StabilizerVofaDebug;
 
 typedef struct {
-  float integrator_m_s2;
-  float prev_meas_m_s;
-  uint8_t prev_valid;
-} StabilizerVelocityPidState;
-
-typedef struct {
   float vel_m_s[2];
   DRV_NAV_EKF_State ekf;
   DRV_NAV_EKF_Diagnostics diagnostics;
@@ -561,57 +554,6 @@ static uint8_t stabilizer_velocity_estimator_control_ok(
   }
 
   return 1U;
-}
-
-static void stabilizer_velocity_pid_reset(StabilizerVelocityPidState *state)
-{
-  if (state == NULL) {
-    return;
-  }
-
-  state->integrator_m_s2 = 0.0f;
-  state->prev_meas_m_s = 0.0f;
-  state->prev_valid = 0U;
-}
-
-static float stabilizer_velocity_pid_step(StabilizerVelocityPidState *state,
-                                          float err_m_s,
-                                          float meas_m_s,
-                                          float kp,
-                                          float ki,
-                                          float kd,
-                                          float dt_sec,
-                                          float *p_term,
-                                          float *i_term,
-                                          float *d_term)
-{
-  float p = kp * err_m_s;
-  float d = 0.0f;
-  float out;
-
-  if (state == NULL) {
-    return 0.0f;
-  }
-
-  if (dt_sec <= 0.0f) {
-    dt_sec = (float)STABILIZER_CONTROL_PERIOD_MS * 0.001f;
-  }
-
-  if (state->prev_valid != 0U) {
-    d = -kd * (meas_m_s - state->prev_meas_m_s) / dt_sec;
-  }
-
-  state->integrator_m_s2 += ki * err_m_s * dt_sec;
-  state->prev_meas_m_s = meas_m_s;
-  state->prev_valid = 1U;
-
-  out = p + state->integrator_m_s2 + d;
-
-  if (p_term != NULL) { *p_term = p; }
-  if (i_term != NULL) { *i_term = state->integrator_m_s2; }
-  if (d_term != NULL) { *d_term = d; }
-
-  return out;
 }
 
 static void stabilizer_vofa_debug_publish(const StabilizerVofaDebug *debug)
@@ -952,8 +894,6 @@ void StabilizerTask(void *argument)
   float velocity_state_y_m_s = 0.0f;
   float velocity_imu_x_m_s = 0.0f;
   float velocity_imu_y_m_s = 0.0f;
-  float position_ref_x_m = 0.0f;
-  float position_ref_y_m = 0.0f;
   float position_ref_z_m = 0.0f;
   float height_ref_m = 0.0f;
   float height_origin_m = 0.0f;
@@ -962,8 +902,6 @@ void StabilizerTask(void *argument)
   float yaw_ref_rad = 0.0f;
   uint8_t yaw_ref_ready = 0U;
   DRV_IMU_NAV_State nav_state;
-  StabilizerVelocityPidState vel_pid_x;
-  StabilizerVelocityPidState vel_pid_y;
   StabilizerVelocityEstimatorState vel_estimator;
   StabilizerVofaDebug vofa_debug = {0};
   uint32_t last_ctrl_model_ms = 0U;
@@ -973,9 +911,8 @@ void StabilizerTask(void *argument)
 
 #if (STABILIZER_USE_DIRECT_ANGLE_SERVO == 0U)
   DRV_IMU_NAV_Reset(&nav_state);
-  stabilizer_velocity_pid_reset(&vel_pid_x);
-  stabilizer_velocity_pid_reset(&vel_pid_y);
   stabilizer_velocity_estimator_reset(&vel_estimator);
+  DRV_COAX_CTRL_ResetState();
 #endif
 
   for(;;)
@@ -1264,16 +1201,13 @@ void StabilizerTask(void *argument)
            */
           velocity_state_x_m_s = 0.0f;
           velocity_state_y_m_s = 0.0f;
-          position_ref_x_m = 0.0f;
-          position_ref_y_m = 0.0f;
           height_ref_m = 0.0f;
           /* 上电高度原点只在首次有效测高时锁存，低油门直通不重新归零。 */
           position_ref_z_ready = 0U;
           yaw_ref_ready = 0U;
           DRV_IMU_NAV_Reset(&nav_state);
           stabilizer_velocity_estimator_reset(&vel_estimator);
-          stabilizer_velocity_pid_reset(&vel_pid_x);
-          stabilizer_velocity_pid_reset(&vel_pid_y);
+          DRV_COAX_CTRL_ResetState();
           position_ref_z_ready = 0U;
           yaw_ref_ready = 0U;
           vofa_debug.vel_loop_active = 0.0f;
@@ -1351,104 +1285,31 @@ void StabilizerTask(void *argument)
                              STABILIZER_XY_VEL_REF_MAX_M_S;
           reference.vz_m_s = 0.0f;
           {
-            float vel_ref_x_m_s = reference.vx_m_s;
-            float vel_ref_y_m_s = reference.vy_m_s;
             float vel_loop_enable = 0.0f;
-            float vel_loop_x_kp = 0.0f;
-            float vel_loop_x_ki = 0.0f;
-            float vel_loop_x_kd = 0.0f;
-            float vel_loop_y_kp = 0.0f;
-            float vel_loop_y_ki = 0.0f;
-            float vel_loop_y_kd = 0.0f;
-            float vel_err_x_m_s;
-            float vel_err_y_m_s;
 
             (void)DRV_COAX_CTRL_GetParam("coax.vel_loop_enable", &vel_loop_enable);
-            (void)DRV_COAX_CTRL_GetParam("coax.vel_loop_x_kp", &vel_loop_x_kp);
-            (void)DRV_COAX_CTRL_GetParam("coax.vel_loop_x_ki", &vel_loop_x_ki);
-            (void)DRV_COAX_CTRL_GetParam("coax.vel_loop_x_kd", &vel_loop_x_kd);
-            (void)DRV_COAX_CTRL_GetParam("coax.vel_loop_y_kp", &vel_loop_y_kp);
-            (void)DRV_COAX_CTRL_GetParam("coax.vel_loop_y_ki", &vel_loop_y_ki);
-            (void)DRV_COAX_CTRL_GetParam("coax.vel_loop_y_kd", &vel_loop_y_kd);
+            (void)DRV_COAX_CTRL_GetParam("coax.vel_loop_x_kp", &vofa_debug.vel_loop_x_kp);
+            (void)DRV_COAX_CTRL_GetParam("coax.vel_loop_x_ki", &vofa_debug.vel_loop_x_ki);
+            (void)DRV_COAX_CTRL_GetParam("coax.vel_loop_x_kd", &vofa_debug.vel_loop_x_kd);
+            (void)DRV_COAX_CTRL_GetParam("coax.vel_loop_y_kp", &vofa_debug.vel_loop_y_kp);
+            (void)DRV_COAX_CTRL_GetParam("coax.vel_loop_y_ki", &vofa_debug.vel_loop_y_ki);
+            (void)DRV_COAX_CTRL_GetParam("coax.vel_loop_y_kd", &vofa_debug.vel_loop_y_kd);
 
-            vel_err_x_m_s = vel_ref_x_m_s - velocity_state_x_m_s;
-            vel_err_y_m_s = vel_ref_y_m_s - velocity_state_y_m_s;
-            vofa_debug.vel_ref_m_s[0] = vel_ref_x_m_s;
-            vofa_debug.vel_ref_m_s[1] = vel_ref_y_m_s;
-            vofa_debug.vel_err_m_s[0] = vel_err_x_m_s;
-            vofa_debug.vel_err_m_s[1] = vel_err_y_m_s;
-            vofa_debug.vel_loop_x_kp = vel_loop_x_kp;
-            vofa_debug.vel_loop_x_ki = vel_loop_x_ki;
-            vofa_debug.vel_loop_x_kd = vel_loop_x_kd;
-            vofa_debug.vel_loop_y_kp = vel_loop_y_kp;
-            vofa_debug.vel_loop_y_ki = vel_loop_y_ki;
-            vofa_debug.vel_loop_y_kd = vel_loop_y_kd;
-
-            if ((vel_loop_enable >= 0.5f) &&
-                (velocity_control_ok != 0U)) {
-              position_ref_x_m = 0.0f;
-              position_ref_y_m = 0.0f;
-              reference.ax_m_s2 =
-                stabilizer_velocity_pid_step(&vel_pid_x,
-                                             vel_err_x_m_s,
-                                             velocity_state_x_m_s,
-                                             vel_loop_x_kp,
-                                             vel_loop_x_ki,
-                                             vel_loop_x_kd,
-                                             ctrl_dt_sec,
-                                             &vofa_debug.vel_pid_p_m_s2[0],
-                                             &vofa_debug.vel_pid_i_m_s2[0],
-                                             &vofa_debug.vel_pid_d_m_s2[0]);
-              reference.ay_m_s2 =
-                stabilizer_velocity_pid_step(&vel_pid_y,
-                                             -vel_err_y_m_s,
-                                             velocity_state_y_m_s,
-                                             vel_loop_y_kp,
-                                             vel_loop_y_ki,
-                                             vel_loop_y_kd,
-                                             ctrl_dt_sec,
-                                             &vofa_debug.vel_pid_p_m_s2[1],
-                                             &vofa_debug.vel_pid_i_m_s2[1],
-                                             &vofa_debug.vel_pid_d_m_s2[1]);
-              reference.vx_m_s = attitude.vx_m_s;
-              reference.vy_m_s = attitude.vy_m_s;
-              vofa_debug.vel_loop_active = 1.0f;
-            } else {
-              stabilizer_velocity_pid_reset(&vel_pid_x);
-              stabilizer_velocity_pid_reset(&vel_pid_y);
-              reference.ax_m_s2 = 0.0f;
-              reference.ay_m_s2 = 0.0f;
-              vofa_debug.vel_pid_p_m_s2[0] = 0.0f;
-              vofa_debug.vel_pid_i_m_s2[0] = 0.0f;
-              vofa_debug.vel_pid_d_m_s2[0] = 0.0f;
-              vofa_debug.vel_pid_p_m_s2[1] = 0.0f;
-              vofa_debug.vel_pid_i_m_s2[1] = 0.0f;
-              vofa_debug.vel_pid_d_m_s2[1] = 0.0f;
-              vofa_debug.vel_loop_active = 0.0f;
-            }
-
-            vofa_debug.vel_pid_out_m_s2[0] = reference.ax_m_s2;
-            vofa_debug.vel_pid_out_m_s2[1] = reference.ay_m_s2;
-          }
-          reference.az_m_s2 = 0.0f;
-          if (vofa_debug.vel_loop_active >= 0.5f) {
+            reference.ax_m_s2 = 0.0f;
+            reference.ay_m_s2 = 0.0f;
+            reference.dt_sec = ctrl_dt_sec;
+            reference.horizontal_velocity_valid = velocity_control_ok;
             reference.x_m = attitude.x_m;
             reference.y_m = attitude.y_m;
-          } else {
-            position_ref_x_m =
-              stabilizer_clamp_f32(position_ref_x_m +
-                                   reference.vx_m_s * ctrl_dt_sec,
-                                   -STABILIZER_XY_POS_ERR_MAX_M,
-                                    STABILIZER_XY_POS_ERR_MAX_M);
-            position_ref_y_m =
-              stabilizer_clamp_f32(position_ref_y_m +
-                                   reference.vy_m_s * ctrl_dt_sec,
-                                   -STABILIZER_XY_POS_ERR_MAX_M,
-                                    STABILIZER_XY_POS_ERR_MAX_M);
-
-            reference.x_m = position_ref_x_m;
-            reference.y_m = position_ref_y_m;
+            vofa_debug.vel_ref_m_s[0] = reference.vx_m_s;
+            vofa_debug.vel_ref_m_s[1] = reference.vy_m_s;
+            vofa_debug.vel_err_m_s[0] = reference.vx_m_s - attitude.vx_m_s;
+            vofa_debug.vel_err_m_s[1] = reference.vy_m_s - attitude.vy_m_s;
+            vofa_debug.vel_loop_active =
+              ((vel_loop_enable >= 0.5f) && (velocity_control_ok != 0U)) ?
+              1.0f : 0.0f;
           }
+          reference.az_m_s2 = 0.0f;
           {
             if ((range_height_valid == 0U) ||
                 (height_origin_ready == 0U)) {
@@ -1508,6 +1369,19 @@ void StabilizerTask(void *argument)
           }
 
           DRV_COAX_CTRL_Run(&attitude, &reference, &ctrl_out);
+          {
+            DRV_COAX_CTRL_Debug balance_debug;
+
+            DRV_COAX_CTRL_GetLastDebug(&balance_debug);
+            vofa_debug.vel_pid_out_m_s2[0] = balance_debug.accel_out_m_s2[0];
+            vofa_debug.vel_pid_out_m_s2[1] = balance_debug.accel_out_m_s2[1];
+            vofa_debug.vel_pid_p_m_s2[0] = balance_debug.pos_p_m_s2[0];
+            vofa_debug.vel_pid_p_m_s2[1] = balance_debug.pos_p_m_s2[1];
+            vofa_debug.vel_pid_i_m_s2[0] = balance_debug.vel_d_m_s2[0];
+            vofa_debug.vel_pid_i_m_s2[1] = balance_debug.vel_d_m_s2[1];
+            vofa_debug.vel_pid_d_m_s2[0] = 0.0f;
+            vofa_debug.vel_pid_d_m_s2[1] = 0.0f;
+          }
 
           vofa_debug.range_vertical_velocity_m_s = range_velocity_m_s;
           vofa_debug.altitude_ref_m = -reference.z_m;
@@ -1527,8 +1401,7 @@ void StabilizerTask(void *argument)
 #if (STABILIZER_USE_DIRECT_ANGLE_SERVO == 0U)
           DRV_IMU_NAV_Reset(&nav_state);
           stabilizer_velocity_estimator_reset(&vel_estimator);
-          stabilizer_velocity_pid_reset(&vel_pid_x);
-          stabilizer_velocity_pid_reset(&vel_pid_y);
+          DRV_COAX_CTRL_ResetState();
           vofa_debug.vel_loop_active = 0.0f;
           stabilizer_vofa_debug_publish(&vofa_debug);
 #endif

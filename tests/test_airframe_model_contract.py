@@ -74,7 +74,7 @@ def test_coax_defaults_use_airframe_model_not_old_placeholder_mass() -> None:
 def test_flash_config_uses_current_record_without_legacy_coax_migration() -> None:
     source = read("App/Src/app_control.c")
 
-    assert "#define APP_CONTROL_CFG_VERSION     13U" in source
+    assert "#define APP_CONTROL_CFG_VERSION     14U" in source
     assert "APP_ControlFlashRecordV" not in source
     assert "app_control_migrate_coax_params" not in source
     assert "record.version == APP_CONTROL_CFG_VERSION" in source
