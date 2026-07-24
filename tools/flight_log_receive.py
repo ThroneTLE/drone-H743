@@ -40,7 +40,8 @@ SECTOR_MAGIC = 0x31534C46
 RECORD_MAGIC = 0x31524C46
 EXPORT_BLOCK_MAGIC = 0x31424C46
 EXPORT_BLOCK_LAST = 0x0001
-EXPORT_PAYLOAD_MAX = 48
+EXPORT_PAYLOAD_MAX = 1024
+EXPORT_TEXT_LINE_MAX = 160 + (EXPORT_PAYLOAD_MAX * 2)
 TEXT_LOG_PREFIXES = ("FLOG ", "OK ", "ERR ", "BOOT ")
 
 MOTOR_REASON_NAMES = {
@@ -54,7 +55,7 @@ MOTOR_REASON_NAMES = {
     7: "imu_invalid_direct",
 }
 
-PARAM_NAMES = [
+LEGACY_PARAM_NAMES = [
     "pos_x_kp",
     "pos_y_kp",
     "pos_z_kp",
@@ -84,8 +85,16 @@ PARAM_NAMES = [
     "yaw_torque_lower_m_per_n",
 ]
 
+PARAM_NAMES = [
+    *LEGACY_PARAM_NAMES[:15],
+    "pitch_tilt_lever_arm_m",
+    "roll_tilt_lever_arm_m",
+    *LEGACY_PARAM_NAMES[16:],
+]
+
 SECTOR_HEADER_PREFIX = struct.Struct("<IHHIIIIIIIIQII")
 PARAMS_STRUCT = struct.Struct("<" + "f" * len(PARAM_NAMES))
+LEGACY_PARAMS_STRUCT = struct.Struct("<" + "f" * len(LEGACY_PARAM_NAMES))
 EXPORT_HEADER = struct.Struct("<IHHIIHHI")
 EXPORT_BLOCK_MAGIC_BYTES = struct.pack("<I", EXPORT_BLOCK_MAGIC)
 RECORD_STRUCT = struct.Struct("<IHHIIQII" + "h" * 7 + "f" * 7 + "f" * 3 + "H" * 8 + "H" * 5 + "B" * 12 + "f" * 48 + "I")
@@ -389,7 +398,7 @@ def read_export_item_resync(
             log_text_line(log, text)
             continue
 
-        if len(line) > 512:
+        if len(line) > EXPORT_TEXT_LINE_MAX:
             errors.append(f"discarded {len(line)} bytes while resyncing export stream")
             line.clear()
 
@@ -409,7 +418,16 @@ def parse_sector_header(data: bytes, offset: int) -> dict[str, object] | None:
     check[52:56] = b"\x00\x00\x00\x00"
     if crc32(bytes(check)) != saved_crc:
         return None
-    params_values = PARAMS_STRUCT.unpack_from(header, SECTOR_HEADER_PREFIX.size)
+    params_size = int(prefix[12])
+    if params_size == PARAMS_STRUCT.size:
+        param_names = PARAM_NAMES
+        params_struct = PARAMS_STRUCT
+    elif params_size == LEGACY_PARAMS_STRUCT.size:
+        param_names = LEGACY_PARAM_NAMES
+        params_struct = LEGACY_PARAMS_STRUCT
+    else:
+        return None
+    params_values = params_struct.unpack_from(header, SECTOR_HEADER_PREFIX.size)
     return {
         "magic": magic,
         "version": prefix[1],
@@ -425,7 +443,7 @@ def parse_sector_header(data: bytes, offset: int) -> dict[str, object] | None:
         "created_us": prefix[11],
         "params_size": prefix[12],
         "header_crc32": saved_crc,
-        "params": dict(zip(PARAM_NAMES, params_values)),
+        "params": dict(zip(param_names, params_values)),
     }
 
 

@@ -15,6 +15,8 @@
     (DRV_COAX_CTRL_SERVO_LIMIT_DEG * DRV_COAX_CTRL_PI / 180.0f)
 #define DRV_COAX_CTRL_SERVO_ALPHA_SIGN    (1.0f)
 #define DRV_COAX_CTRL_SERVO_BETA_SIGN     (1.0f)
+#define DRV_COAX_CTRL_FORCE_FRAME_ROLL_SIGN  (-1.0f)
+#define DRV_COAX_CTRL_FORCE_FRAME_PITCH_SIGN (1.0f)
 #define DRV_COAX_CTRL_FORCE_EPS_N          1.0e-4f
 #define DRV_COAX_CTRL_RATE_SCALE_EPS       1.0e-6f
 #define DRV_COAX_CTRL_PROP9047_YAW_M_PER_N 0.0001f
@@ -100,15 +102,18 @@ static float coax_ctrl_wrap_pi(float angle_rad)
 
 /*
  * Controller inputs use the existing local frame: X forward, Y right, Z down
- * with altitude represented as z = -height. App/Src/app_sensor.c has already
- * rotated the vertically mounted IMU into body FRD before this driver runs.
+ * with altitude represented as z = -height. Keep the application, RC, and gain
+ * polarities intact; only this force-frame projection adapts the measured roll
+ * convention so vertical thrust maps to the physical roll servo direction.
  */
 static void coax_ctrl_local_down_to_body(const DRV_COAX_CTRL_AttitudeInput *attitude,
                                          const float local_down[3],
                                          float body[3])
 {
-    const float phi = attitude->roll_rad;
-    const float theta = attitude->pitch_rad;
+    const float phi =
+        DRV_COAX_CTRL_FORCE_FRAME_ROLL_SIGN * attitude->roll_rad;
+    const float theta =
+        DRV_COAX_CTRL_FORCE_FRAME_PITCH_SIGN * attitude->pitch_rad;
     const float psi = attitude->yaw_rad;
     const float cphi = cosf(phi);
     const float sphi = sinf(phi);
@@ -204,11 +209,26 @@ static void coax_ctrl_apply_fixed_model_params(DRV_COAX_CTRL_Params *params)
 
     params->mass_kg = DRV_AIRFRAME_MASS_KG;
     params->gravity_m_s2 = DRV_AIRFRAME_GRAVITY_M_S2;
-    params->tilt_lever_arm_m = DRV_AIRFRAME_THRUST_LEVER_ARM_M;
+    params->pitch_tilt_lever_arm_m = DRV_AIRFRAME_PITCH_THRUST_LEVER_ARM_M;
+    params->roll_tilt_lever_arm_m = DRV_AIRFRAME_ROLL_THRUST_LEVER_ARM_M;
     params->yaw_inertia = DRV_AIRFRAME_IZZ_KGM2;
     params->motor_single_max_thrust_n = DRV_COAX_CTRL_SINGLE_MAX_THRUST_N;
     params->yaw_torque_upper_m_per_n = DRV_COAX_CTRL_PROP9047_YAW_M_PER_N;
     params->yaw_torque_lower_m_per_n = DRV_COAX_CTRL_PROP9047_YAW_M_PER_N;
+}
+
+static void coax_ctrl_apply_attitude_force_feedback(
+    const DRV_COAX_CTRL_AttitudeInput *attitude,
+    DRV_COAX_CTRL_Debug *debug)
+{
+    /*
+     * Keep attitude P in the force vector so tilt allocation has one source of
+     * truth: corrected desired force. Rate damping remains in tilt space.
+     */
+    debug->force_cmd_n[0] +=
+        -coax_ctrl_params.pitch_angle_kp * attitude->pitch_rad;
+    debug->force_cmd_n[1] +=
+        -coax_ctrl_params.roll_angle_kp * attitude->roll_rad;
 }
 
 static void coax_ctrl_compute_force_cmd(
@@ -269,6 +289,7 @@ static void coax_ctrl_compute_force_cmd(
     if (debug->force_cmd_n[2] < DRV_COAX_CTRL_FORCE_EPS_N) {
         debug->force_cmd_n[2] = DRV_COAX_CTRL_FORCE_EPS_N;
     }
+    coax_ctrl_apply_attitude_force_feedback(attitude, debug);
 }
 
 static void coax_ctrl_compute_tilt_from_force(
@@ -279,21 +300,25 @@ static void coax_ctrl_compute_tilt_from_force(
 {
     const float force_z = debug->force_cmd_n[2];
     const float alpha_ff_rad = atan2f(debug->force_cmd_n[0], force_z);
-    float rate_scale = debug->total_force_n * coax_ctrl_params.tilt_lever_arm_m;
+    float pitch_rate_scale =
+        debug->total_force_n * coax_ctrl_params.pitch_tilt_lever_arm_m;
+    float roll_rate_scale =
+        debug->total_force_n * coax_ctrl_params.roll_tilt_lever_arm_m;
     float beta_ff_rad;
 
-    if (rate_scale < DRV_COAX_CTRL_RATE_SCALE_EPS) {
-        rate_scale = DRV_COAX_CTRL_RATE_SCALE_EPS;
+    if (pitch_rate_scale < DRV_COAX_CTRL_RATE_SCALE_EPS) {
+        pitch_rate_scale = DRV_COAX_CTRL_RATE_SCALE_EPS;
+    }
+    if (roll_rate_scale < DRV_COAX_CTRL_RATE_SCALE_EPS) {
+        roll_rate_scale = DRV_COAX_CTRL_RATE_SCALE_EPS;
     }
 
     debug->tilt_ff_rad[0] = alpha_ff_rad;
-    debug->tilt_angle_p_rad[0] =
-        (-coax_ctrl_params.pitch_angle_kp * attitude->pitch_rad) / rate_scale;
     debug->tilt_rate_d_rad[0] =
-        (coax_ctrl_params.pitch_rate_kd * attitude->gyro_y_rad_s) / rate_scale;
+        (coax_ctrl_params.pitch_rate_kd * attitude->gyro_y_rad_s) /
+        pitch_rate_scale;
 
     *alpha_rad = coax_ctrl_clamp_f32(alpha_ff_rad +
-                                     debug->tilt_angle_p_rad[0] +
                                      debug->tilt_rate_d_rad[0],
                                      -coax_ctrl_params.tilt_limit_rad,
                                       coax_ctrl_params.tilt_limit_rad);
@@ -301,13 +326,11 @@ static void coax_ctrl_compute_tilt_from_force(
     beta_ff_rad =
         -atan2f(debug->force_cmd_n[1] * cosf(*alpha_rad), force_z);
     debug->tilt_ff_rad[1] = beta_ff_rad;
-    debug->tilt_angle_p_rad[1] =
-        (-coax_ctrl_params.roll_angle_kp * attitude->roll_rad) / rate_scale;
     debug->tilt_rate_d_rad[1] =
-        (coax_ctrl_params.roll_rate_kd * attitude->gyro_x_rad_s) / rate_scale;
+        (coax_ctrl_params.roll_rate_kd * attitude->gyro_x_rad_s) /
+        roll_rate_scale;
 
     *beta_rad = coax_ctrl_clamp_f32(beta_ff_rad +
-                                    debug->tilt_angle_p_rad[1] +
                                     debug->tilt_rate_d_rad[1],
                                     -coax_ctrl_params.tilt_limit_rad,
                                      coax_ctrl_params.tilt_limit_rad);
@@ -399,7 +422,8 @@ void DRV_COAX_CTRL_GetDefaultParams(DRV_COAX_CTRL_Params *params)
     params->vel_loop_y_kd = 0.0f;
     params->mass_kg = DRV_AIRFRAME_MASS_KG;
     params->gravity_m_s2 = DRV_AIRFRAME_GRAVITY_M_S2;
-    params->tilt_lever_arm_m = DRV_AIRFRAME_THRUST_LEVER_ARM_M;
+    params->pitch_tilt_lever_arm_m = DRV_AIRFRAME_PITCH_THRUST_LEVER_ARM_M;
+    params->roll_tilt_lever_arm_m = DRV_AIRFRAME_ROLL_THRUST_LEVER_ARM_M;
     params->roll_angle_kp = 0.0f;
     params->pitch_angle_kp = 0.0f;
     params->roll_rate_kd = -0.5f;

@@ -4,6 +4,7 @@
 #include "app_messages.h"
 #include "app_tasks.h"
 #include "app_uart.h"
+#include "app_usb_cdc.h"
 #include "svc_timestamp.h"
 
 #include "FreeRTOS.h"
@@ -26,10 +27,17 @@
     (APP_FLIGHT_LOG_REGION_SIZE / APP_FLASH_SERVICE_SECTOR_SIZE)
 #define APP_FLIGHT_LOG_QUEUE_CAPACITY     32U
 #define APP_FLIGHT_LOG_WRITE_BATCH_RECORDS 4U
-#define APP_FLIGHT_LOG_EXPORT_PAYLOAD_MAX 48U
+#define APP_FLIGHT_LOG_UART_EXPORT_PAYLOAD_MAX 48U
+#define APP_FLIGHT_LOG_USB_EXPORT_PAYLOAD_MAX 1024U
 #define APP_FLIGHT_LOG_EXPORT_FLAG_LAST   0x0001U
 #define APP_FLIGHT_LOG_TESTFILL_MAX_SECTORS 64U
 #define APP_FLIGHT_LOG_EXPORT_BLOCK_GAP_MS 40U
+#define APP_FLIGHT_LOG_USB_TX_TIMEOUT_MS 200U
+
+typedef enum {
+    APP_FLIGHT_LOG_EXPORT_UART_TEXT = 0,
+    APP_FLIGHT_LOG_EXPORT_USB_CDC_BINARY = 1,
+} APP_FlightLogExportTransport;
 
 typedef struct __attribute__((packed)) {
     uint32_t magic;
@@ -47,7 +55,7 @@ typedef struct __attribute__((packed)) {
     uint32_t params_size;
     uint32_t header_crc32;
     DRV_COAX_CTRL_Params params;
-    uint8_t reserved[92];
+    uint8_t reserved[88];
 } APP_FlightLogSectorHeader;
 
 typedef struct __attribute__((packed)) {
@@ -120,9 +128,9 @@ _Static_assert((APP_FLIGHT_LOG_REGION_END_EXCL % APP_FLASH_SERVICE_SECTOR_SIZE) 
 _Static_assert(APP_FLIGHT_LOG_REGION_END_EXCL <=
                (APP_FLASH_SERVICE_SIZE_BYTES - (4UL * APP_FLASH_SERVICE_SECTOR_SIZE)),
                "flight log must not overlap the last four reserved sectors");
-_Static_assert((sizeof(APP_FlightLogExportBlockHeader) +
-                APP_FLIGHT_LOG_EXPORT_PAYLOAD_MAX) <= APP_UART_TX_TEXT_SIZE,
-               "flight log export block must fit the USART1 TX queue frame");
+_Static_assert((64U + (APP_FLIGHT_LOG_UART_EXPORT_PAYLOAD_MAX * 2U)) <=
+               APP_UART_TX_TEXT_SIZE,
+               "UART text flight log block must fit the USART1 TX queue frame");
 
 static APP_FlightLogStatus flight_log_status;
 static APP_FlightLogRecord flight_log_queue[APP_FLIGHT_LOG_QUEUE_CAPACITY];
@@ -145,10 +153,17 @@ static uint32_t flight_log_export_sector_pos;
 static uint32_t flight_log_export_sector_offset;
 static uint32_t flight_log_export_seq;
 static uint32_t flight_log_export_next_ms;
+static APP_FlightLogExportTransport flight_log_export_transport;
 static uint8_t flight_log_flush_requested;
 static uint8_t flight_log_export_pending;
 static uint8_t flight_log_export_restore_vofa;
 static uint8_t flight_log_export_cancel_requested;
+__attribute__((section(".dma_buffer"), aligned(32)))
+static uint8_t flight_log_export_payload[APP_FLIGHT_LOG_USB_EXPORT_PAYLOAD_MAX];
+__attribute__((section(".dma_buffer"), aligned(32)))
+static uint8_t flight_log_export_usb_frame[sizeof(APP_FlightLogExportBlockHeader) +
+                                           APP_FLIGHT_LOG_USB_EXPORT_PAYLOAD_MAX];
+static char flight_log_export_text_frame[APP_UART_TX_TEXT_SIZE];
 
 static uint32_t flight_log_crc32(const uint8_t *data, uint32_t length)
 {
@@ -192,6 +207,23 @@ static uint8_t flight_log_queue_message(const uint8_t *data, uint16_t length)
     return 1U;
 }
 
+static uint16_t flight_log_export_payload_max(void)
+{
+    return (flight_log_export_transport == APP_FLIGHT_LOG_EXPORT_USB_CDC_BINARY) ?
+        APP_FLIGHT_LOG_USB_EXPORT_PAYLOAD_MAX :
+        APP_FLIGHT_LOG_UART_EXPORT_PAYLOAD_MAX;
+}
+
+static uint8_t flight_log_send_message(const uint8_t *data, uint16_t length)
+{
+    if ((flight_log_export_transport == APP_FLIGHT_LOG_EXPORT_USB_CDC_BINARY) &&
+        (APP_USB_CDC_IsReady() != 0U)) {
+        return APP_USB_CDC_Write(data, length, APP_FLIGHT_LOG_USB_TX_TIMEOUT_MS);
+    }
+
+    return flight_log_queue_message(data, length);
+}
+
 static uint8_t flight_log_queue_printf(const char *format, ...)
 {
     char line[APP_UART_TX_TEXT_SIZE];
@@ -213,7 +245,7 @@ static uint8_t flight_log_queue_printf(const char *format, ...)
         written = (int)(sizeof(line) - 1U);
     }
 
-    return flight_log_queue_message((const uint8_t *)line, (uint16_t)written);
+    return flight_log_send_message((const uint8_t *)line, (uint16_t)written);
 }
 
 static char flight_log_hex_digit(uint8_t value)
@@ -616,11 +648,16 @@ static APP_FlightLogCommandStatus flight_log_start_export_from_background(void)
     flight_log_export_cancel_requested = 0U;
     vofaStreamActive = 0U;
 
-    if (flight_log_queue_printf("FLOG BEGIN version=%u block_magic=0x%08lX encoding=xorhex total=%lu "
+    if (flight_log_queue_printf("FLOG BEGIN version=%u block_magic=0x%08lX "
+                                "transport=%s encoding=%s total=%lu "
                                 "sectors=%lu sector_size=%u header_size=%u "
                                 "record_size=%u log_rate=%u baud=%u session=%lu payload=%u\r\n",
                                 (unsigned int)APP_FLIGHT_LOG_EXPORT_VERSION,
                                 (unsigned long)APP_FLIGHT_LOG_EXPORT_BLOCK_MAGIC,
+                                (flight_log_export_transport ==
+                                 APP_FLIGHT_LOG_EXPORT_USB_CDC_BINARY) ? "usbcdc" : "uart",
+                                (flight_log_export_transport ==
+                                 APP_FLIGHT_LOG_EXPORT_USB_CDC_BINARY) ? "binary" : "xorhex",
                                 (unsigned long)flight_log_status.export_total_bytes,
                                 (unsigned long)flight_log_status.used_sectors,
                                 (unsigned int)APP_FLASH_SERVICE_SECTOR_SIZE,
@@ -629,7 +666,7 @@ static APP_FlightLogCommandStatus flight_log_start_export_from_background(void)
                                 (unsigned int)APP_FLIGHT_LOG_RATE_HZ,
                                 (unsigned int)APP_FLIGHT_LOG_EXPORT_BAUD,
                                 (unsigned long)flight_log_status.session_id,
-                                (unsigned int)APP_FLIGHT_LOG_EXPORT_PAYLOAD_MAX) == 0U) {
+                                (unsigned int)flight_log_export_payload_max()) == 0U) {
         return APP_FLIGHT_LOG_CMD_BUSY;
     }
 
@@ -641,13 +678,14 @@ static APP_FlightLogCommandStatus flight_log_start_export_from_background(void)
 
 static void flight_log_export_step(void)
 {
-    uint8_t payload[APP_FLIGHT_LOG_EXPORT_PAYLOAD_MAX];
-    char frame[APP_UART_TX_TEXT_SIZE];
+    uint8_t *payload = flight_log_export_payload;
+    char *frame = flight_log_export_text_frame;
     uint32_t remaining;
     uint32_t physical_sector;
     uint32_t address;
     uint32_t payload_crc;
     uint16_t flags;
+    uint16_t payload_max;
     uint16_t chunk;
     uint16_t used;
     int written;
@@ -668,7 +706,9 @@ static void flight_log_export_step(void)
         return;
     }
 
-    if ((uartTxQueueHandle != NULL) && (osMessageQueueGetSpace(uartTxQueueHandle) == 0U)) {
+    if ((flight_log_export_transport == APP_FLIGHT_LOG_EXPORT_UART_TEXT) &&
+        (uartTxQueueHandle != NULL) &&
+        (osMessageQueueGetSpace(uartTxQueueHandle) == 0U)) {
         return;
     }
     if ((flight_log_export_next_ms != 0U) &&
@@ -689,7 +729,8 @@ static void flight_log_export_step(void)
     physical_sector = flight_log_sector_order[flight_log_export_sector_pos];
     remaining = flight_log_status.export_total_bytes -
                 flight_log_status.export_bytes_sent;
-    chunk = APP_FLIGHT_LOG_EXPORT_PAYLOAD_MAX;
+    payload_max = flight_log_export_payload_max();
+    chunk = payload_max;
     if (chunk > remaining) {
         chunk = (uint16_t)remaining;
     }
@@ -701,8 +742,8 @@ static void flight_log_export_step(void)
     address = flight_log_sector_address(physical_sector) +
               flight_log_export_sector_offset;
     /*
-     * USART1 export is link-speed limited, so a blocking SPI read is fast enough
-     * and avoids aborting the dump when a background DMA completion event is lost.
+     * Export is host-link limited; blocking SPI keeps the dump state machine
+     * simple and avoids aborting on a lost background DMA completion event.
      */
     st = APP_FlashService_ReadData(address, payload, chunk);
     flight_log_status.last_flash_status = (uint32_t)st;
@@ -719,40 +760,76 @@ static void flight_log_export_step(void)
         ((flight_log_status.export_bytes_sent + chunk) >=
          flight_log_status.export_total_bytes) ? APP_FLIGHT_LOG_EXPORT_FLAG_LAST : 0U;
 
-    written = snprintf(frame,
-                       sizeof(frame),
-                       "FLOG BLK seq=%lu offset=%lu len=%u flags=%u crc=%08lX data=",
-                       (unsigned long)flight_log_export_seq,
-                       (unsigned long)flight_log_status.export_bytes_sent,
-                       (unsigned int)chunk,
-                       (unsigned int)flags,
-                       (unsigned long)payload_crc);
-    if ((written <= 0) || ((uint32_t)written >= sizeof(frame))) {
-        (void)flight_log_export_finish("format");
-        return;
-    }
-    used = (uint16_t)written;
-    written = (int)flight_log_hex_encode(&frame[used],
-                                         (uint16_t)(sizeof(frame) - used - 2U),
-                                         payload,
-                                         chunk,
-                                         flight_log_status.export_bytes_sent);
-    if (written <= 0) {
-        (void)flight_log_export_finish("format");
-        return;
-    }
-    used = (uint16_t)(used + (uint16_t)written);
-    frame[used++] = '\r';
-    frame[used++] = '\n';
+    if (flight_log_export_transport == APP_FLIGHT_LOG_EXPORT_USB_CDC_BINARY) {
+        APP_FlightLogExportBlockHeader *header =
+            (APP_FlightLogExportBlockHeader *)flight_log_export_usb_frame;
 
-    if (flight_log_queue_message((const uint8_t *)frame, used) == 0U) {
-        return;
+        if (APP_USB_CDC_IsReady() == 0U) {
+            (void)flight_log_export_finish("usb_lost");
+            return;
+        }
+
+        header->magic = APP_FLIGHT_LOG_EXPORT_BLOCK_MAGIC;
+        header->version = APP_FLIGHT_LOG_EXPORT_VERSION;
+        header->header_size = (uint16_t)sizeof(APP_FlightLogExportBlockHeader);
+        header->seq = flight_log_export_seq;
+        header->offset = flight_log_status.export_bytes_sent;
+        header->length = chunk;
+        header->flags = flags;
+        header->payload_crc32 = payload_crc;
+        memcpy(&flight_log_export_usb_frame[sizeof(APP_FlightLogExportBlockHeader)],
+               payload,
+               chunk);
+
+        if (APP_USB_CDC_Write(flight_log_export_usb_frame,
+                              (uint16_t)(sizeof(APP_FlightLogExportBlockHeader) +
+                                         chunk),
+                              APP_FLIGHT_LOG_USB_TX_TIMEOUT_MS) == 0U) {
+            return;
+        }
+    } else {
+        /*
+         * USART1 export is link-speed limited; keep the legacy small xorhex
+         * text block so old telemetry receivers can still dump logs.
+         */
+        written = snprintf(frame,
+                           APP_UART_TX_TEXT_SIZE,
+                           "FLOG BLK seq=%lu offset=%lu len=%u flags=%u crc=%08lX data=",
+                           (unsigned long)flight_log_export_seq,
+                           (unsigned long)flight_log_status.export_bytes_sent,
+                           (unsigned int)chunk,
+                           (unsigned int)flags,
+                           (unsigned long)payload_crc);
+        if ((written <= 0) || ((uint32_t)written >= APP_UART_TX_TEXT_SIZE)) {
+            (void)flight_log_export_finish("format");
+            return;
+        }
+        used = (uint16_t)written;
+        written = (int)flight_log_hex_encode(&frame[used],
+                                             (uint16_t)(APP_UART_TX_TEXT_SIZE -
+                                                        used - 2U),
+                                             payload,
+                                             chunk,
+                                             flight_log_status.export_bytes_sent);
+        if (written <= 0) {
+            (void)flight_log_export_finish("format");
+            return;
+        }
+        used = (uint16_t)(used + (uint16_t)written);
+        frame[used++] = '\r';
+        frame[used++] = '\n';
+
+        if (flight_log_queue_message((const uint8_t *)frame, used) == 0U) {
+            return;
+        }
     }
 
     flight_log_export_seq++;
     flight_log_status.export_bytes_sent += chunk;
     flight_log_export_sector_offset += chunk;
-    flight_log_export_next_ms = HAL_GetTick() + APP_FLIGHT_LOG_EXPORT_BLOCK_GAP_MS;
+    flight_log_export_next_ms =
+        (flight_log_export_transport == APP_FLIGHT_LOG_EXPORT_USB_CDC_BINARY) ?
+        0U : (HAL_GetTick() + APP_FLIGHT_LOG_EXPORT_BLOCK_GAP_MS);
 }
 
 void APP_FlightLog_Init(void)
@@ -870,6 +947,9 @@ APP_FlightLogCommandStatus APP_FlightLog_StartDump(void)
     }
 
     flight_log_flush_requested = 1U;
+    flight_log_export_transport = (APP_USB_CDC_IsReady() != 0U) ?
+        APP_FLIGHT_LOG_EXPORT_USB_CDC_BINARY :
+        APP_FLIGHT_LOG_EXPORT_UART_TEXT;
     flight_log_export_restore_vofa = vofaStreamActive;
     vofaStreamActive = 0U;
     flight_log_export_pending = 1U;

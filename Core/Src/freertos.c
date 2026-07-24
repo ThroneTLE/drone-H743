@@ -56,6 +56,7 @@
 #include "app_tasks.h"
 #include "app_ident.h"
 #include "app_servo_cal.h"
+#include "app_servo_feedback_bench.h"
 #include <math.h>
 #include <string.h>
 
@@ -127,10 +128,9 @@
 #define STABILIZER_YAW_RATE_REF_MAX_RAD_S 1.04719758f /* CH4 偏航参考累加最大速率 [rad/s] */
 #define STABILIZER_XY_VEL_REF_MAX_M_S  0.80f     /* CH1/CH2 水平速度目标最大值 [m/s]    */
 #define STABILIZER_XY_POS_ERR_MAX_M    0.35f     /* 速度意图积分后的虚拟位置误差限幅 [m] */
-#define STABILIZER_Z_REF_STICK_SPAN_M  0.30f     /* CH3 相对 50% 油门的高度目标跨度 [m]  */
+#define STABILIZER_Z_REF_RATE_MAX_M_S  0.30f     /* CH3 满杆高度目标积分速度 [m/s]       */
 #define STABILIZER_Z_REF_MAX_M         0.30f     /* 上电光流测高基准以上高度上限 [m]     */
 #define STABILIZER_Z_POS_ERR_MAX_M     0.35f     /* Z 位置 PID 单次位置误差限幅 [m]      */
-#define STABILIZER_Z_THRUST_BIAS_MAX_M_S2 8.63f  /* CH3 100% 额外向上推力偏置 [m/s^2]   */
 #define STABILIZER_RC_DEADBAND_US      20        /* RC 摇杆死区 [μs]，中位 1500±20      */
 
 /*
@@ -276,14 +276,9 @@ static float stabilizer_rc_throttle_01(uint16_t ch_us)
   return (float)value / (float)span;
 }
 
-static float stabilizer_rc_throttle_height_offset_m(uint16_t ch_us)
+static float stabilizer_rc_throttle_height_rate_m_s(uint16_t ch_us)
 {
-  return stabilizer_rc_normalized(ch_us) * STABILIZER_Z_REF_STICK_SPAN_M;
-}
-
-static float stabilizer_rc_throttle_thrust_bias_m_s2(uint16_t ch_us)
-{
-  return stabilizer_rc_normalized(ch_us) * STABILIZER_Z_THRUST_BIAS_MAX_M_S2;
+  return stabilizer_rc_normalized(ch_us) * STABILIZER_Z_REF_RATE_MAX_M_S;
 }
 
 static float stabilizer_wrap_pi(float angle_rad)
@@ -960,7 +955,7 @@ void StabilizerTask(void *argument)
   float position_ref_x_m = 0.0f;
   float position_ref_y_m = 0.0f;
   float position_ref_z_m = 0.0f;
-  float height_ref_base_m = 0.0f;
+  float height_ref_m = 0.0f;
   float height_origin_m = 0.0f;
   uint8_t height_origin_ready = 0U;
   uint8_t position_ref_z_ready = 0U;
@@ -1206,6 +1201,12 @@ void StabilizerTask(void *argument)
         servo_cal_active = APP_ServoCal_IsActive();
         if (servo_cal_active != 0U) {
           rc_armed = 0U;
+          if (APP_ServoFeedbackBench_IsActive() != 0U) {
+            APP_ServoFeedbackBench_Stop("servo_cal", now);
+          }
+        }
+        if (APP_ServoFeedbackBench_IsActive() != 0U) {
+          rc_armed = 0U;
         }
 #endif
         BSP_AiWB2_UpdateButton();       /* 更新 WiFi 模块按键状态                */
@@ -1265,7 +1266,7 @@ void StabilizerTask(void *argument)
           velocity_state_y_m_s = 0.0f;
           position_ref_x_m = 0.0f;
           position_ref_y_m = 0.0f;
-          height_ref_base_m = 0.0f;
+          height_ref_m = 0.0f;
           /* 上电高度原点只在首次有效测高时锁存，低油门直通不重新归零。 */
           position_ref_z_ready = 0U;
           yaw_ref_ready = 0U;
@@ -1429,15 +1430,7 @@ void StabilizerTask(void *argument)
             vofa_debug.vel_pid_out_m_s2[0] = reference.ax_m_s2;
             vofa_debug.vel_pid_out_m_s2[1] = reference.ay_m_s2;
           }
-          reference.az_m_s2 =
-            -stabilizer_rc_throttle_thrust_bias_m_s2(
-              ch[STABILIZER_RC_CH_THROTTLE_Z]);
-          if ((range_height_valid != 0U) &&
-              (height_origin_ready != 0U) &&
-              (relative_height_m >= STABILIZER_Z_REF_MAX_M) &&
-              (reference.az_m_s2 < 0.0f)) {
-            reference.az_m_s2 = 0.0f;
-          }
+          reference.az_m_s2 = 0.0f;
           if (vofa_debug.vel_loop_active >= 0.5f) {
             reference.x_m = attitude.x_m;
             reference.y_m = attitude.y_m;
@@ -1459,31 +1452,29 @@ void StabilizerTask(void *argument)
           {
             if ((range_height_valid == 0U) ||
                 (height_origin_ready == 0U)) {
-              height_ref_base_m = 0.0f;
+              height_ref_m = 0.0f;
               position_ref_z_ready = 0U;
               position_ref_z_m = attitude.z_m;
             } else if (rc_use_stabilized_motor_mix == 0U) {
-              height_ref_base_m = relative_height_m;
-              height_ref_base_m =
-                stabilizer_clamp_f32(height_ref_base_m,
+              height_ref_m = relative_height_m;
+              height_ref_m =
+                stabilizer_clamp_f32(height_ref_m,
                                      0.0f,
                                      STABILIZER_Z_REF_MAX_M);
-              position_ref_z_m = -height_ref_base_m;
+              position_ref_z_m = -height_ref_m;
               position_ref_z_ready = 1U;
             } else {
-              float height_ref_m;
-
               if (position_ref_z_ready == 0U) {
-                height_ref_base_m = relative_height_m;
-                height_ref_base_m =
-                  stabilizer_clamp_f32(height_ref_base_m,
+                height_ref_m = relative_height_m;
+                height_ref_m =
+                  stabilizer_clamp_f32(height_ref_m,
                                        0.0f,
                                        STABILIZER_Z_REF_MAX_M);
                 position_ref_z_ready = 1U;
               }
-              height_ref_m = height_ref_base_m +
-                             stabilizer_rc_throttle_height_offset_m(
-                               ch[STABILIZER_RC_CH_THROTTLE_Z]);
+              height_ref_m +=
+                stabilizer_rc_throttle_height_rate_m_s(
+                  ch[STABILIZER_RC_CH_THROTTLE_Z]) * ctrl_dt_sec;
               height_ref_m =
                 stabilizer_clamp_f32(height_ref_m,
                                      0.0f,
@@ -1561,16 +1552,23 @@ void StabilizerTask(void *argument)
           APP_Ident_Observe(&ident_obs);
         }
 
+        BSP_BusServo_Service(now);
         if (servo_cal_active == 0U) {
           stabilizer_servo_record_target(moves);
 
-          /* Send only on change, with a 500 ms forced refresh, to avoid bus flooding. */
-          if (stabilizer_servo_should_send(moves, now) != 0U) {
-            if (BSP_BusServo_MoveManyAsync(moves, 2U,
-                                         STABILIZER_SERVO_MOVE_TIME_MS) == DRV_SERVO_OK) {
+          /* Feedback bench adds a deterministic 100 Hz real-command bus load. */
+          if ((stabilizer_servo_should_send(moves, now) != 0U) ||
+              (APP_ServoFeedbackBench_MoveRefreshDue(
+                 now, stabilizer_last_servo_send_ms) != 0U)) {
+            DRV_SERVO_Status servo_move_status =
+              BSP_BusServo_MoveManyAsync(moves, 2U,
+                                         STABILIZER_SERVO_MOVE_TIME_MS);
+            APP_ServoFeedbackBench_RecordMoveResult(servo_move_status);
+            if (servo_move_status == DRV_SERVO_OK) {
               stabilizer_servo_commit_sent(moves, now);
             }
           }
+          APP_ServoFeedbackBench_Step(now, moves);
         }
 
 #if (STABILIZER_USE_DIRECT_ANGLE_SERVO == 0U)

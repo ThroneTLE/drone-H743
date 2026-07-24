@@ -9,6 +9,7 @@
 #include "app_ident.h"
 #include "app_optical_flow.h"
 #include "app_rangefinder.h"
+#include "app_servo_feedback_bench.h"
 #include "app_sensor.h"
 #include "app_mag.h"
 #include "app_maint_uart.h"
@@ -17,6 +18,7 @@
 #include "app_proto.h"
 #include "app_tasks.h"
 #include "app_uart.h"
+#include "app_usb_cdc.h"
 #include "bsp_bus_servo.h"
 #include "bsp_aiwb2_power.h"
 #include "bsp_baro.h"
@@ -303,6 +305,10 @@ void APP_Control_QueueText(const char *format, ...)
     } else {
         tx_message.length = (uint16_t)written;
     }
+
+    (void)APP_USB_CDC_Write((const uint8_t *)tx_message.text,
+                            tx_message.length,
+                            2U);
 
     if (control_maint_output_active == 0U) {
         if (osMessageQueuePut(uartTxQueueHandle, &tx_message, 0U, 0U) != osOK) {
@@ -2244,6 +2250,65 @@ static void app_control_handle_servo(char **tokens, uint32_t count)
         return;
     }
 
+    if (strcmp(tokens[1], "FB") == 0) {
+        uint32_t duration_ms;
+        uint32_t timeout_ms = 10U;
+
+        if (count < 3U) {
+            APP_Control_QueueText("ERR usage SERVO FB START|SWEEP|STATUS|STOP\r\n");
+            return;
+        }
+        if (strcmp(tokens[2], "STATUS") == 0) {
+            APP_ServoFeedbackBench_ReportStatus(HAL_GetTick());
+            return;
+        }
+        if (strcmp(tokens[2], "STOP") == 0) {
+            APP_ServoFeedbackBench_Stop("command", HAL_GetTick());
+            return;
+        }
+        if (strcmp(tokens[2], "START") == 0) {
+            uint32_t rate_hz;
+
+            if ((count < 5U) ||
+                (app_control_parse_u32(tokens[3], &rate_hz) == 0U) ||
+                (app_control_parse_u32(tokens[4], &duration_ms) == 0U) ||
+                ((count >= 6U) &&
+                 (app_control_parse_u32(tokens[5], &timeout_ms) == 0U))) {
+                APP_Control_QueueText(
+                    "ERR usage SERVO FB START rate_hz duration_ms [timeout_ms]\r\n");
+                return;
+            }
+            if (APP_ServoFeedbackBench_Start(rate_hz,
+                                             duration_ms,
+                                             timeout_ms,
+                                             HAL_GetTick()) == 0U) {
+                APP_Control_QueueText(
+                    "ERR servo_fb start range rate=1..200 duration=1000..60000 timeout=2..100 or active\r\n");
+            }
+            return;
+        }
+        if (strcmp(tokens[2], "SWEEP") == 0) {
+            if ((count < 4U) ||
+                (app_control_parse_u32(tokens[3], &duration_ms) == 0U) ||
+                ((count >= 5U) &&
+                 (app_control_parse_u32(tokens[4], &timeout_ms) == 0U))) {
+                APP_Control_QueueText(
+                    "ERR usage SERVO FB SWEEP duration_ms [timeout_ms]\r\n");
+                return;
+            }
+            if (APP_ServoFeedbackBench_StartSweep(duration_ms,
+                                                  timeout_ms,
+                                                  HAL_GetTick()) == 0U) {
+                APP_Control_QueueText(
+                    "ERR servo_fb sweep duration=1000..60000 timeout=2..100 or active\r\n");
+            }
+            return;
+        }
+
+        APP_Control_QueueText("ERR unknown servo fb subcmd %s\r\n", tokens[2]);
+        return;
+    }
+
     if (strcmp(tokens[1], "MOVE") == 0) {
         uint32_t pulse;
         uint32_t time_ms;
@@ -3414,6 +3479,7 @@ void APP_Control_Init(void)
     control_wifi_reset_pending = 0U;
     control_wifi_reset_deadline_ms = 0U;
     APP_Ident_Init();
+    APP_ServoFeedbackBench_Init();
     load_status = app_control_load_config();
     control_config.last_flash_status = (uint8_t)load_status;
     if (load_status != APP_FLASH_SERVICE_OK) {

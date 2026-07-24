@@ -118,7 +118,8 @@ def test_rangefinder_no_longer_feeds_flow_or_altitude_control() -> None:
     assert "attitude.vz_m_s = -range_velocity_m_s;" in freertos
     assert "stabilizer_clamp_f32(position_ref_z_m," in freertos
     assert "STABILIZER_Z_POS_ERR_MAX_M" in freertos
-    assert "height_ref_base_m = relative_height_m;" in freertos
+    assert "height_ref_m = relative_height_m;" in freertos
+    assert "height_ref_m +=\n                stabilizer_rc_throttle_height_rate_m_s(" in freertos
     assert "position_ref_z_m = -height_ref_m;" in freertos
     assert "STABILIZER_ALT_HOLD_CORRECTION_LIMIT_US" not in freertos
     assert "vofa_debug.altitude_correction_us = 0.0f;" in freertos

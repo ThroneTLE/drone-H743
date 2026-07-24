@@ -36,10 +36,10 @@ def test_controller_uses_named_rc_channels_for_references() -> None:
     assert "#define STABILIZER_RC_THROTTLE_ARM_LOW_US    1100U" in freertos
     assert "#define STABILIZER_RC_LOSS_TIMEOUT_MS  500U" in freertos
     assert "#define STABILIZER_XY_VEL_REF_MAX_M_S  0.80f" in freertos
-    assert "#define STABILIZER_Z_REF_STICK_SPAN_M  0.30f" in freertos
+    assert "#define STABILIZER_Z_REF_RATE_MAX_M_S  0.30f" in freertos
     assert "#define STABILIZER_Z_REF_MAX_M         0.30f" in freertos
     assert "#define STABILIZER_Z_POS_ERR_MAX_M     0.35f" in freertos
-    assert "#define STABILIZER_Z_THRUST_BIAS_MAX_M_S2 8.63f" in freertos
+    assert "STABILIZER_Z_THRUST_BIAS_MAX_M_S2" not in freertos
     assert "#define STABILIZER_YAW_RATE_REF_MAX_RAD_S 1.04719758f" in freertos
     assert "reference.vx_m_s = stabilizer_rc_normalized(ch[STABILIZER_RC_CH_PITCH])" in freertos
     assert "reference.vy_m_s = stabilizer_rc_normalized(ch[STABILIZER_RC_CH_ROLL])" in freertos
@@ -52,12 +52,9 @@ def test_controller_uses_named_rc_channels_for_references() -> None:
     assert "uint8_t height_origin_ready = 0U;" in freertos
     assert "relative_height_m = range_height_m - height_origin_m;" in freertos
     assert "attitude.z_m = -relative_height_m;" in freertos
-    assert "height_ref_base_m = relative_height_m;" in freertos
-    assert "height_ref_m = height_ref_base_m +\n                             stabilizer_rc_throttle_height_offset_m(" in freertos
+    assert "height_ref_m = relative_height_m;" in freertos
+    assert "height_ref_m +=\n                stabilizer_rc_throttle_height_rate_m_s(" in freertos
     assert "position_ref_z_m = -height_ref_m;" in freertos
-    assert "reference.az_m_s2 =\n            -stabilizer_rc_throttle_thrust_bias_m_s2(" in freertos
-    assert "(relative_height_m >= STABILIZER_Z_REF_MAX_M) &&" in freertos
-    assert "(reference.az_m_s2 < 0.0f)" in freertos
     assert "reference.az_m_s2 = 0.0f;" in freertos
     assert "reference.yaw_rad = yaw_ref_rad;" in freertos
     assert "reference.yaw_rate_rad_s = yaw_rate_ref_rad_s;" in freertos
@@ -154,19 +151,17 @@ def test_ch3_is_rc_intent_with_direct_throttle_below_20_percent() -> None:
     assert "#define STABILIZER_RC_STABILIZE_MIN_PERCENT 20U" in freertos
     assert "#define STABILIZER_RC_STABILIZE_MIN_US \\" in freertos
     assert "static float stabilizer_rc_throttle_01(uint16_t ch_us)" in freertos
-    assert "static float stabilizer_rc_throttle_height_offset_m(uint16_t ch_us)" in freertos
-    assert "static float stabilizer_rc_throttle_thrust_bias_m_s2(uint16_t ch_us)" in freertos
+    assert "static float stabilizer_rc_throttle_height_rate_m_s(uint16_t ch_us)" in freertos
+    assert "stabilizer_rc_throttle_thrust_bias_m_s2" not in freertos
     assert "(int32_t)STABILIZER_RC_THROTTLE_INPUT_HIGH_US -" in freertos
     assert "(int32_t)STABILIZER_RC_THROTTLE_INPUT_LOW_US" in freertos
     assert "int32_t value = (int32_t)ch_us - (int32_t)STABILIZER_RC_THROTTLE_INPUT_LOW_US;" in freertos
     assert "return (float)value / (float)span;" in freertos
     assert "stabilizer_clamp_f32(position_ref_z_m," in freertos
-    assert "stabilizer_rc_throttle_height_offset_m(" in freertos
-    assert "STABILIZER_Z_REF_STICK_SPAN_M" in freertos
-    assert "stabilizer_rc_throttle_thrust_bias_m_s2(" in freertos
-    assert "STABILIZER_Z_THRUST_BIAS_MAX_M_S2" in freertos
-    assert "height_rate_ref_m_s" not in freertos
-    assert "STABILIZER_Z_VEL_REF_MAX_M_S" not in freertos
+    assert "stabilizer_rc_throttle_height_rate_m_s(" in freertos
+    assert "STABILIZER_Z_REF_RATE_MAX_M_S" in freertos
+    assert "STABILIZER_Z_REF_STICK_SPAN_M" not in freertos
+    assert "STABILIZER_Z_THRUST_BIAS_MAX_M_S2" not in freertos
     assert "static uint16_t stabilizer_rc_throttle_to_motor_pulse(uint16_t ch_us)" in freertos
     assert "static uint8_t stabilizer_rc_use_stabilized_motor_mix(uint16_t ch_us)" in freertos
     assert "return (ch_us >= STABILIZER_RC_STABILIZE_MIN_US) ? 1U : 0U;" in freertos

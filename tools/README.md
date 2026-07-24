@@ -125,6 +125,33 @@ Optional read throughput test:
 python3 tools/flash_diag_test.py --serial COM18 --baud 115200 --bench --final-rtos
 ```
 
+## 飞行日志系统辨识
+
+使用 `flight_log_sysid.py` 可以把 `flightlog_*.csv` 和匹配的
+`flightlog_*_meta.json` 转成可复用的系统辨识摘要：
+
+```bash
+python3 tools/flight_log_sysid.py flightlog_20260724_200832.csv --out-dir .tmp/sysid_flightlog_20260724_200832
+```
+
+也可以被其他脚本直接导入：
+
+```python
+from tools.flight_log_sysid import analyze_flight_log
+
+analysis = analyze_flight_log("flightlog_20260724_200832.csv")
+print(analysis.gain_groups)
+```
+
+工具会自动切分不连续日志，按保存下来的控制参数快照分组，报告倾角/电机饱和、
+记录丢包等风险，并拟合主要的“控制命令 -> 执行器输出”映射。
+
+如果需要中文表格和图表界面：
+
+```bash
+python3 tools/flight_log_sysid_ui.py flightlog_20260724_200832.csv
+```
+
 Optional serial auto-configuration through CH340 requires `pyserial`:
 
 ```bash

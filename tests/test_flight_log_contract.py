@@ -71,6 +71,10 @@ def test_flog_commands_and_vofa_export_gate_are_reachable() -> None:
     aiwb2 = read("App/Src/app_aiwb2.c")
     freertos = read("Core/Src/freertos.c")
     script = read("tools/flight_log_receive.py")
+    ioc = read("drone-H743.ioc")
+    cdc_if = read("USB_DEVICE/App/usbd_cdc_if.c")
+    usbd_conf = read("USB_DEVICE/Target/usbd_conf.c")
+    cmake = read("CMakeLists.txt")
 
     assert "FLOG?" in control
     assert "FLOG DUMP" in control
@@ -86,7 +90,24 @@ def test_flog_commands_and_vofa_export_gate_are_reachable() -> None:
     assert "Sensor_Data:0\\r\\n" in script
     assert "FLOG DUMP\\r\\n" in script
     assert "DEFAULT_BAUD = 57600" in script
+    assert "EXPORT_PAYLOAD_MAX = 1024" in script
     assert "MOTOR_REASON_NAMES" in script
+    assert "PA11.Signal=USB_OTG_FS_DM" in ioc
+    assert "PA12.Signal=USB_OTG_FS_DP" in ioc
+    assert "USB_DEVICE.CLASS_NAME_FS=CDC" in ioc
+    assert "RCC.USBCLockSelection=RCC_USBCLKSOURCE_PLL3" in ioc
+    assert "RCC.DIVN3=16" in ioc
+    assert "RCC.DIVQ3=4" in ioc
+    assert "RCC.USBFreq_Value=48000000" in ioc
+    assert "MX_USB_DEVICE_Init();" in freertos
+    assert '#include "app_usb_cdc.h"' in cdc_if
+    assert "APP_USB_CDC_OnReceive" in cdc_if
+    assert "APP_USB_CDC_OnTransmitComplete" in cdc_if
+    assert "PeriphClkInitStruct.PLL3.PLL3N = 16;" in usbd_conf
+    assert "PeriphClkInitStruct.PLL3.PLL3Q = 4;" in usbd_conf
+    assert "App/Src/app_usb_cdc.c" in cmake
+    assert "APP_USB_CDC_Write" in read("App/Src/app_flight_log.c")
+    assert "APP_FLIGHT_LOG_EXPORT_USB_CDC_BINARY" in read("App/Src/app_flight_log.c")
 
 
 def test_export_begin_and_end_lines_are_not_dropped_on_full_uart_queue() -> None:

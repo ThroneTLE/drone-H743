@@ -29,7 +29,7 @@ def test_airframe_constants_capture_measured_tether_geometry() -> None:
     assert "#define DRV_AIRFRAME_BATTERY_MASS_G              232.0f" in header
     assert "#define DRV_AIRFRAME_BASE_MASS_G                  99.0f" in header
     assert "#define DRV_AIRFRAME_SERVO_MOTOR_MASS_G          348.6f" in header
-    assert "#define DRV_AIRFRAME_MASS_KG                       1.2000f" in header
+    assert "#define DRV_AIRFRAME_MASS_KG                       1.3670f" in header
     assert "#define DRV_AIRFRAME_CG_Z_M                       -0.0946f" in header
     assert "#define DRV_AIRFRAME_TETHER_ATTACH_Z_M             0.1563f" in header
     assert "#define DRV_AIRFRAME_TETHER_ATTACH_TO_CG_M         0.2509f" in header
@@ -39,7 +39,15 @@ def test_airframe_constants_capture_measured_tether_geometry() -> None:
     assert "#define DRV_AIRFRAME_SERVO_DEG_PER_US              0.090f" in header
     assert "#define DRV_AIRFRAME_SERVO_US_PER_DEG             11.111111f" in header
     assert "#define DRV_AIRFRAME_MAX_TOTAL_FORCE_N            15.644959f" in header
-    assert "#define DRV_AIRFRAME_HOVER_THRUST_PERCENT         78.013457f" in header
+    assert "#define DRV_AIRFRAME_HOVER_THRUST_PERCENT         85.716236f" in header
+    assert "#define DRV_AIRFRAME_PROP_PLANE_D_M                0.2500f" in header
+    assert "#define DRV_AIRFRAME_ROLL_AXIS_TO_PROP_PLANE_M     0.1450f" in header
+    assert "#define DRV_AIRFRAME_PITCH_AXIS_TO_PROP_PLANE_M    0.1050f" in header
+    assert "#define DRV_AIRFRAME_PITCH_THRUST_LEVER_ARM_M" in header
+    assert "#define DRV_AIRFRAME_ROLL_THRUST_LEVER_ARM_M" in header
+    assert "DRV_AIRFRAME_THRUST_LEVER_ARM_M" not in header
+    assert "#define DRV_AIRFRAME_IXX_KGM2                      0.051f" in header
+    assert "#define DRV_AIRFRAME_IYY_KGM2                      0.051f" in header
 
 
 def test_coax_defaults_use_airframe_model_not_old_placeholder_mass() -> None:
@@ -50,7 +58,14 @@ def test_coax_defaults_use_airframe_model_not_old_placeholder_mass() -> None:
     assert "drv_motor_model.h" not in source
     assert "motor_hammerstein" not in source
     assert "params->mass_kg = DRV_AIRFRAME_MASS_KG;" in source
-    assert "params->tilt_lever_arm_m = DRV_AIRFRAME_THRUST_LEVER_ARM_M;" in source
+    assert (
+        "params->pitch_tilt_lever_arm_m = DRV_AIRFRAME_PITCH_THRUST_LEVER_ARM_M;"
+        in source
+    )
+    assert (
+        "params->roll_tilt_lever_arm_m = DRV_AIRFRAME_ROLL_THRUST_LEVER_ARM_M;"
+        in source
+    )
     assert "params->yaw_inertia = DRV_AIRFRAME_IZZ_KGM2;" in source
     assert "params->mass_kg = 2.2f;" not in source
     assert "max_total_force_n" not in source
@@ -75,7 +90,8 @@ def test_flash_config_uses_current_record_without_legacy_coax_migration() -> Non
     for fixed_model_field in (
         "mass_kg",
         "gravity_m_s2",
-        "tilt_lever_arm_m",
+        "pitch_tilt_lever_arm_m",
+        "roll_tilt_lever_arm_m",
         "yaw_inertia",
         "motor_single_max_thrust_n",
         "yaw_torque_upper_m_per_n",
@@ -100,18 +116,18 @@ def test_airframe_query_is_text_control_payload() -> None:
 def test_gui_airframe_parser_and_ident_meta_payload(tmp_path: Path) -> None:
     panel = load_panel_module()
     line = (
-        "AIRFRAME mass_kg=1.200000 cg_z_m=-0.094600 imu_z_m=0.000000 "
+        "AIRFRAME mass_kg=1.367000 cg_z_m=-0.094600 imu_z_m=0.000000 "
         "tether_attach_z_m=0.156300 tether_attach_to_cg_m=0.250900 "
         "rope_m=0.640000 rod_to_cg_m=0.890900 servo_deg_per_us=0.090000 "
         "servo_us_per_deg=11.111111 thrust_scope=dual_motor_total "
-        "max_total_force_n=15.644959 hover_thrust_pct=78.013457"
+        "max_total_force_n=15.644959 hover_thrust_pct=85.716236"
     )
     record = panel.airframe_record_from_line(line)
 
     assert record is not None
-    assert record["mass_kg"] == 1.2
+    assert record["mass_kg"] == 1.367
     assert record["thrust_scope"] == "dual_motor_total"
-    assert record["hover_thrust_pct"] == 78.013457
+    assert record["hover_thrust_pct"] == 85.716236
 
     class Dummy:
         ident_current_command = "IDENT STEP roll pulse_us=20 duration_ms=3000"

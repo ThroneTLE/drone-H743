@@ -62,7 +62,9 @@ def test_servo_async_path_uses_uart_dma_and_cache_clean() -> None:
     assert "HAL_UART_Transmit_DMA(dev->bus.huart, servo_dma_tx_buffer, length)" in driver_source
     assert "dev->bus.huart->hdmatx == NULL" in driver_source
     assert "return DRV_SERVO_MoveMany(dev, moves, count, time_ms);" not in driver_source
-    assert "if (dev->bus.huart->gState != HAL_UART_STATE_READY)" in driver_source
+    assert "servo_async_state != SERVO_ASYNC_IDLE" in driver_source
+    assert "dev->bus.huart->gState != HAL_UART_STATE_READY" in driver_source
+    assert "dev->bus.huart->RxState != HAL_UART_STATE_READY" in driver_source
     assert "return DRV_SERVO_BUSY;" in driver_source
     assert "servo_try_recover_stuck_dma(dev->bus.huart);" in driver_source
     assert "HAL_UART_AbortTransmit(huart)" in driver_source

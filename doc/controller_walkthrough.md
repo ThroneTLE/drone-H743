@@ -225,18 +225,20 @@ $$
 角速度阻尼项按力矩尺度换算：
 
 $$
-S=m\,a_z\,l
+S_{pitch}=m\,a_z\,l_{pitch},\qquad
+S_{roll}=m\,a_z\,l_{roll}
 $$
 
 $$
-\alpha= sat\left(\alpha_{ff}+\frac{K_{d,pitch}\,\omega_y}{S}\right)
+\alpha= sat\left(\alpha_{ff}+\frac{K_{d,pitch}\,\omega_y}{S_{pitch}}\right)
 $$
 
 $$
-\beta= sat\left(\beta_{ff}+\frac{K_{d,roll}\,\omega_x}{S}\right)
+\beta= sat\left(\beta_{ff}+\frac{K_{d,roll}\,\omega_x}{S_{roll}}\right)
 $$
 
-默认倾转限幅为 `+-0.523599 rad`，即 `+-30 deg`。默认的倾转力臂参数为 `0.18 m`。
+当前倾转限幅为 `+-0.314159 rad`，即 `+-18 deg`。Pitch（下方 servo2）
+有效力臂为 `0.145 m`，Roll（上方 servo1）有效力臂为 `0.105 m`。
 
 注意：`alpha` 对应 pitch/前后，`beta` 对应 roll/左右。输出时再乘以舵机方向符号，然后转换成脉宽。
 
@@ -1125,7 +1127,8 @@ $$
 随后计算推力-力臂尺度：
 
 $$
-S=ma_z^*l
+S_{pitch}=ma_z^*l_{pitch},\qquad
+S_{roll}=ma_z^*l_{roll}
 $$
 
 量纲检查：$kg\cdot m/s^2\cdot m=N\cdot m$，它代表单位倾转角附近可用于产生姿态力矩的尺度。
@@ -1133,11 +1136,11 @@ $$
 角速度阻尼修正：
 
 $$
-\alpha_d=\frac{K_{d,pitch}\omega_y}{S}
+\alpha_d=\frac{K_{d,pitch}\omega_y}{S_{pitch}}
 $$
 
 $$
-\beta_d=\frac{K_{d,roll}\omega_x}{S}
+\beta_d=\frac{K_{d,roll}\omega_x}{S_{roll}}
 $$
 
 最终输出：

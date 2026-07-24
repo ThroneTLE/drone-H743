@@ -11,7 +11,7 @@
 #define DRV_AIRFRAME_BASE_CG_Z_M                  -0.117f
 #define DRV_AIRFRAME_SERVO_MOTOR_CG_Z_M           -0.244f
 
-#define DRV_AIRFRAME_MASS_KG                       1.2000f
+#define DRV_AIRFRAME_MASS_KG                       1.3670f
 #define DRV_AIRFRAME_CG_Z_M                       -0.0946f
 #define DRV_AIRFRAME_IMU_Z_M                       0.0f
 
@@ -24,11 +24,23 @@
 #define DRV_AIRFRAME_SERVO_US_PER_DEG             11.111111f
 
 #define DRV_AIRFRAME_GRAVITY_M_S2                  9.81f
-#define DRV_AIRFRAME_WEIGHT_N                     11.772000f
+#define DRV_AIRFRAME_WEIGHT_N                     13.410270f
 #define DRV_AIRFRAME_THRUST_TABLE_SCOPE            "dual_motor_total"
 #define DRV_AIRFRAME_MAX_TOTAL_THRUST_G         1595.342f
 #define DRV_AIRFRAME_MAX_TOTAL_FORCE_N            15.644959f
-#define DRV_AIRFRAME_HOVER_THRUST_PERCENT         78.013457f
+#define DRV_AIRFRAME_HOVER_THRUST_PERCENT         85.716236f
+
+/* Measured neutral-axis distances for the serial tilt mechanism. */
+#define DRV_AIRFRAME_PROP_PLANE_D_M                0.2500f
+#define DRV_AIRFRAME_ROLL_AXIS_TO_PROP_PLANE_M     0.1450f
+#define DRV_AIRFRAME_PITCH_AXIS_TO_PROP_PLANE_M    0.1050f
+
+/* A tilted thrust line passes through its servo axis, so the rigid-body
+ * moment arm is CG-to-axis rather than CG-to-propeller-plane. */
+#define DRV_AIRFRAME_PITCH_THRUST_LEVER_ARM_M      \
+    (DRV_AIRFRAME_PROP_PLANE_D_M - DRV_AIRFRAME_PITCH_AXIS_TO_PROP_PLANE_M)
+#define DRV_AIRFRAME_ROLL_THRUST_LEVER_ARM_M       \
+    (DRV_AIRFRAME_PROP_PLANE_D_M - DRV_AIRFRAME_ROLL_AXIS_TO_PROP_PLANE_M)
 
 /* Servo axis z-positions (origin = board center, z+ up) */
 #define DRV_AIRFRAME_SERVO1_AXIS_Z_M              -0.161f
@@ -36,11 +48,10 @@
 
 /* Effective thrust application point (coax twin-prop midpoint) */
 #define DRV_AIRFRAME_THRUST_POINT_Z_M             -0.2955f
-#define DRV_AIRFRAME_THRUST_LEVER_ARM_M            0.201f
 
 /* Estimated moments of inertia about CG (kg*m^2) */
-#define DRV_AIRFRAME_IXX_KGM2                      0.019f
-#define DRV_AIRFRAME_IYY_KGM2                      0.019f
+#define DRV_AIRFRAME_IXX_KGM2                      0.051f
+#define DRV_AIRFRAME_IYY_KGM2                      0.051f
 #define DRV_AIRFRAME_IZZ_KGM2                      0.00035f
 
 #endif /* DRV_AIRFRAME_MODEL_H */

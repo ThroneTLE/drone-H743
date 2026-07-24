@@ -42,11 +42,24 @@ DRV_SERVO_Status BSP_BusServo_MoveMany(const DRV_SERVO_MoveCmd *moves,
 { servo_bind_bus(); return DRV_SERVO_MoveMany(&servo_dev, moves, count, time_ms); }
 
 DRV_SERVO_Status BSP_BusServo_MoveManyAsync(const DRV_SERVO_MoveCmd *moves,
-                                            uint8_t count, uint16_t time_ms)
+                                             uint8_t count, uint16_t time_ms)
 { servo_bind_bus(); return DRV_SERVO_MoveManyAsync(&servo_dev, moves, count, time_ms); }
+
+DRV_SERVO_Status BSP_BusServo_RequestPositionAsync(uint8_t id,
+                                                   uint32_t timeout_ms)
+{ servo_bind_bus(); return DRV_SERVO_RequestPositionAsync(&servo_dev, id, timeout_ms); }
+
+void BSP_BusServo_Service(uint32_t now_ms)
+{ servo_bind_bus(); DRV_SERVO_Service(&servo_dev, now_ms); }
+
+uint8_t BSP_BusServo_IsIdle(void)
+{ servo_bind_bus(); return DRV_SERVO_IsBusIdle(&servo_dev); }
 
 void BSP_BusServo_GetDiag(DRV_SERVO_Diag *diag)
 { DRV_SERVO_GetDiag(diag); }
+
+void BSP_BusServo_GetFeedbackDiag(DRV_SERVO_FeedbackDiag *diag)
+{ DRV_SERVO_GetFeedbackDiag(diag); }
 
 DRV_SERVO_Status BSP_BusServo_ReadVersion(uint8_t id)
 { servo_bind_bus(); return DRV_SERVO_ReadVersion(&servo_dev, id); }

@@ -161,6 +161,37 @@ def make_sector_header() -> bytes:
     return bytes(header)
 
 
+def make_legacy_sector_header() -> bytes:
+    params = [float(i) for i in range(len(flog.LEGACY_PARAM_NAMES))]
+    prefix = flog.SECTOR_HEADER_PREFIX.pack(
+        flog.SECTOR_MAGIC,
+        1,
+        flog.SECTOR_HEADER_SIZE,
+        flog.SECTOR_SIZE,
+        flog.RECORD_SIZE,
+        122,
+        4,
+        0,
+        250,
+        0x2000,
+        0x3FC000,
+        100,
+        flog.LEGACY_PARAMS_STRUCT.size,
+        0,
+    )
+    reserved_len = (
+        flog.SECTOR_HEADER_SIZE - len(prefix) - flog.LEGACY_PARAMS_STRUCT.size
+    )
+    header = bytearray(
+        prefix
+        + flog.LEGACY_PARAMS_STRUCT.pack(*params)
+        + (b"\x00" * reserved_len)
+    )
+    crc = flog.crc32(bytes(header))
+    struct.pack_into("<I", header, 52, crc)
+    return bytes(header)
+
+
 def make_export_block(seq: int, offset: int, payload: bytes, flags: int = 0) -> bytes:
     header = flog.EXPORT_HEADER.pack(
         flog.EXPORT_BLOCK_MAGIC,
@@ -215,6 +246,22 @@ def test_sector_header_and_flash_image_parse() -> None:
     assert sectors[0]["params"]["yaw_torque_lower_m_per_n"] == float(
         flog.PARAM_NAMES.index("yaw_torque_lower_m_per_n")
     )
+
+
+def test_legacy_single_tilt_lever_header_still_parses_without_field_shift() -> None:
+    image = make_legacy_sector_header() + (
+        b"\xFF" * (flog.SECTOR_SIZE - flog.SECTOR_HEADER_SIZE)
+    )
+
+    sectors, records, errors = flog.parse_flash_image(image)
+
+    assert errors == []
+    assert records == []
+    assert sectors[0]["session_id"] == 122
+    assert sectors[0]["params"]["tilt_lever_arm_m"] == float(
+        flog.LEGACY_PARAM_NAMES.index("tilt_lever_arm_m")
+    )
+    assert "pitch_tilt_lever_arm_m" not in sectors[0]["params"]
 
 
 def test_receive_dump_writes_bin_csv_and_meta(tmp_path) -> None:

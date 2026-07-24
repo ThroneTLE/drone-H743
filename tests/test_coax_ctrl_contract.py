@@ -183,15 +183,13 @@ def test_controller_wrapper_exposes_velocity_first_vector_control_inputs() -> No
     assert "debug->force_cmd_n[1]" in wrapper
     assert "STABILIZER_XY_VEL_REF_MAX_M_S" in freertos
     assert "reference.vx_m_s = stabilizer_rc_normalized(ch[STABILIZER_RC_CH_PITCH])" in freertos
-    assert "static float stabilizer_rc_throttle_height_offset_m(uint16_t ch_us)" in freertos
-    assert "return stabilizer_rc_normalized(ch_us) * STABILIZER_Z_REF_STICK_SPAN_M;" in freertos
-    assert "static float stabilizer_rc_throttle_thrust_bias_m_s2(uint16_t ch_us)" in freertos
-    assert "return stabilizer_rc_normalized(ch_us) * STABILIZER_Z_THRUST_BIAS_MAX_M_S2;" in freertos
+    assert "static float stabilizer_rc_throttle_height_rate_m_s(uint16_t ch_us)" in freertos
+    assert "return stabilizer_rc_normalized(ch_us) * STABILIZER_Z_REF_RATE_MAX_M_S;" in freertos
+    assert "stabilizer_rc_throttle_thrust_bias_m_s2" not in freertos
+    assert "STABILIZER_Z_THRUST_BIAS_MAX_M_S2" not in freertos
     assert "reference.ax_m_s2 =" in freertos
-    assert "reference.az_m_s2 =\n            -stabilizer_rc_throttle_thrust_bias_m_s2(" in freertos
-    assert "(relative_height_m >= STABILIZER_Z_REF_MAX_M) &&" in freertos
-    assert "(reference.az_m_s2 < 0.0f)" in freertos
     assert "reference.az_m_s2 = 0.0f;" in freertos
+    assert "height_ref_m +=\n                stabilizer_rc_throttle_height_rate_m_s(" in freertos
     assert "float prev_meas_m_s;" in freertos
     assert "d = -kd * (meas_m_s - state->prev_meas_m_s) / dt_sec;" in freertos
     assert "stabilizer_velocity_pid_step(&vel_pid_y,\n                                             -vel_err_y_m_s," in freertos
@@ -231,32 +229,66 @@ def test_roll_pitch_angle_gains_are_runtime_params_and_rate_damping_remains_sign
     assert "entry->offset == offsetof(DRV_COAX_CTRL_Params, vel_loop_enable)" in wrapper
 
 
-def test_paper_tilt_output_uses_force_direction_and_rate_damping() -> None:
+def test_paper_tilt_output_uses_force_feedback_and_rate_damping() -> None:
     wrapper = read("Driver/Src/drv_coax_ctrl.c")
 
+    force_frame_helper = wrapper.split(
+        "static void coax_ctrl_local_down_to_body", 1
+    )[1]
+    force_frame_helper = force_frame_helper.split(
+        "static void coax_ctrl_apply_attitude_force_feedback", 1
+    )[0]
+    force_feedback = wrapper.split(
+        "static void coax_ctrl_apply_attitude_force_feedback", 1
+    )[1]
+    force_feedback = force_feedback.split(
+        "static void coax_ctrl_compute_force_cmd", 1
+    )[0]
+    force_helper = wrapper.split("static void coax_ctrl_compute_force_cmd", 1)[1]
+    force_helper = force_helper.split(
+        "static void coax_ctrl_compute_tilt_from_force", 1
+    )[0]
     helper = wrapper.split("static void coax_ctrl_compute_tilt_from_force", 1)[1]
     helper = helper.split("static float coax_ctrl_compute_total_force", 1)[0]
 
+    assert "#define DRV_COAX_CTRL_FORCE_FRAME_ROLL_SIGN  (-1.0f)" in wrapper
+    assert "#define DRV_COAX_CTRL_FORCE_FRAME_PITCH_SIGN (1.0f)" in wrapper
+    assert (
+        "DRV_COAX_CTRL_FORCE_FRAME_ROLL_SIGN * attitude->roll_rad"
+        in force_frame_helper
+    )
+    assert (
+        "DRV_COAX_CTRL_FORCE_FRAME_PITCH_SIGN * attitude->pitch_rad"
+        in force_frame_helper
+    )
+    assert "coax_ctrl_apply_attitude_force_feedback(attitude, debug);" in force_helper
+    assert "debug->force_cmd_n[0] +=" in force_feedback
+    assert "coax_ctrl_params.pitch_angle_kp * attitude->pitch_rad" in force_feedback
+    assert "debug->force_cmd_n[1] +=" in force_feedback
+    assert "coax_ctrl_params.roll_angle_kp * attitude->roll_rad" in force_feedback
     assert "atan2f(debug->force_cmd_n[0], force_z)" in helper
     assert "-atan2f(debug->force_cmd_n[1] * cosf(*alpha_rad), force_z)" in helper
     assert "cosf(alpha_ff_rad)" not in helper
     assert helper.index("*alpha_rad = coax_ctrl_clamp_f32") < helper.index(
         "-atan2f(debug->force_cmd_n[1] * cosf(*alpha_rad), force_z)"
     )
-    assert "debug->tilt_angle_p_rad[0] =" in helper
-    assert "(-coax_ctrl_params.pitch_angle_kp * attitude->pitch_rad) / rate_scale" in helper
-    assert "debug->tilt_angle_p_rad[1] =" in helper
-    assert "(-coax_ctrl_params.roll_angle_kp * attitude->roll_rad) / rate_scale" in helper
+    assert "tilt_angle_p_rad" not in helper
     assert "coax_ctrl_params.pitch_rate_kd * attitude->gyro_y_rad_s" in helper
     assert "coax_ctrl_params.roll_rate_kd * attitude->gyro_x_rad_s" in helper
+    assert "coax_ctrl_params.pitch_tilt_lever_arm_m" in helper
+    assert "coax_ctrl_params.roll_tilt_lever_arm_m" in helper
+    assert "/\n        pitch_rate_scale;" in helper
+    assert "/\n        roll_rate_scale;" in helper
     alpha_clamp = helper.split("*alpha_rad = coax_ctrl_clamp_f32", 1)[1]
     alpha_clamp = alpha_clamp.split("beta_ff_rad =", 1)[0]
     beta_clamp = helper.split("*beta_rad = coax_ctrl_clamp_f32", 1)[1]
     beta_clamp = beta_clamp.split("debug->tilt_out_rad[0]", 1)[0]
-    assert alpha_clamp.index("alpha_ff_rad +") < alpha_clamp.index("debug->tilt_angle_p_rad[0]")
-    assert alpha_clamp.index("debug->tilt_angle_p_rad[0]") < alpha_clamp.index("debug->tilt_rate_d_rad[0]")
-    assert beta_clamp.index("beta_ff_rad +") < beta_clamp.index("debug->tilt_angle_p_rad[1]")
-    assert beta_clamp.index("debug->tilt_angle_p_rad[1]") < beta_clamp.index("debug->tilt_rate_d_rad[1]")
+    assert alpha_clamp.index("alpha_ff_rad +") < alpha_clamp.index(
+        "debug->tilt_rate_d_rad[0]"
+    )
+    assert beta_clamp.index("beta_ff_rad +") < beta_clamp.index(
+        "debug->tilt_rate_d_rad[1]"
+    )
     assert "output->alpha_rad = alpha_rad;" in wrapper
     assert "output->beta_rad = beta_rad;" in wrapper
     assert "DRV_COAX_CTRL_BodyTiltRadToServoPulses(output->alpha_rad," in wrapper

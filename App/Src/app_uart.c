@@ -7,6 +7,7 @@
 #include "app_maint_uart.h"
 #include "app_optical_flow.h"
 #include "app_rangefinder.h"
+#include "app_usb_cdc.h"
 #include "bsp_optical_flow.h"
 #include "bsp_rangefinder.h"
 #include "app_tasks.h"
@@ -332,6 +333,8 @@ static void app_uart_clear_errors(void)
 
 void APP_UART_Task_Init(void)
 {
+    APP_USB_CDC_Init();
+
 #if (APP_UART_DISABLE_USART1 != 0U)
     /* 彻底释放 USART1 引脚：DeInit 关闭时钟、NVIC、GPIO 复位为高阻态 */
     HAL_UART_DeInit(&huart1);
@@ -891,6 +894,7 @@ void APP_UART_Task_Step(void)
 
     APP_OpticalFlow_ServiceRecovery();
     APP_LED_Task_Step();
+    APP_USB_CDC_Task_Step();
 
     app_uart_ensure_control_ready();
     if ((app_uart_control_initialized != 0U)
@@ -1039,6 +1043,10 @@ void APP_UART_OnError(UART_HandleTypeDef *huart)
 
 void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
 {
+    if (huart->Instance == UART7) {
+        DRV_SERVO_OnUartRxEvent(huart, Size);
+        return;
+    }
     if (huart->Instance == UART4) {
         APP_ELRS_OnRxEvent(Size);
         return;

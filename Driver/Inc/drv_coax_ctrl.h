@@ -117,7 +117,8 @@ typedef struct {
     float vel_loop_y_kd;
     float mass_kg;
     float gravity_m_s2;
-    float tilt_lever_arm_m;
+    float pitch_tilt_lever_arm_m;
+    float roll_tilt_lever_arm_m;
     float roll_angle_kp;
     float pitch_angle_kp;
     float roll_rate_kd;

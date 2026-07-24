@@ -45,6 +45,38 @@ typedef struct {
     uint32_t last_dma_error;
 } DRV_SERVO_Diag;
 
+typedef enum {
+    DRV_SERVO_FEEDBACK_EVENT_NONE = 0,
+    DRV_SERVO_FEEDBACK_EVENT_VALID,
+    DRV_SERVO_FEEDBACK_EVENT_TIMEOUT,
+    DRV_SERVO_FEEDBACK_EVENT_PARSE_ERROR,
+    DRV_SERVO_FEEDBACK_EVENT_UART_ERROR
+} DRV_SERVO_FeedbackEventType;
+
+typedef struct {
+    uint32_t sequence;
+    uint32_t timestamp_ms;
+    uint32_t rtt_ms;
+    uint16_t position_us;
+    uint16_t rx_length;
+    uint8_t id;
+    uint8_t type;
+} DRV_SERVO_FeedbackEvent;
+
+typedef struct {
+    uint32_t request_count;
+    uint32_t response_count;
+    uint32_t timeout_count;
+    uint32_t parse_error_count;
+    uint32_t uart_error_count;
+    uint32_t busy_count;
+    uint32_t rtt_sum_ms;
+    uint32_t max_rtt_ms;
+    uint8_t pending;
+    uint8_t pending_id;
+    DRV_SERVO_FeedbackEvent last_event;
+} DRV_SERVO_FeedbackDiag;
+
 #define DRV_SERVO_MIN_PULSE_US    500U
 #define DRV_SERVO_MAX_PULSE_US    2500U
 #define DRV_SERVO_MAX_TIME_MS     9999U
@@ -67,8 +99,15 @@ DRV_SERVO_Status DRV_SERVO_MoveMany(DRV_SERVO_Device *dev,
 DRV_SERVO_Status DRV_SERVO_MoveManyAsync(DRV_SERVO_Device *dev,
                                          const DRV_SERVO_MoveCmd *moves,
                                          uint8_t count, uint16_t time_ms);
+DRV_SERVO_Status DRV_SERVO_RequestPositionAsync(DRV_SERVO_Device *dev,
+                                                uint8_t id,
+                                                uint32_t timeout_ms);
+void DRV_SERVO_Service(DRV_SERVO_Device *dev, uint32_t now_ms);
+uint8_t DRV_SERVO_IsBusIdle(const DRV_SERVO_Device *dev);
 void DRV_SERVO_GetDiag(DRV_SERVO_Diag *diag);
+void DRV_SERVO_GetFeedbackDiag(DRV_SERVO_FeedbackDiag *diag);
 void DRV_SERVO_OnUartTxComplete(UART_HandleTypeDef *huart);
+void DRV_SERVO_OnUartRxEvent(UART_HandleTypeDef *huart, uint16_t size);
 void DRV_SERVO_OnUartError(UART_HandleTypeDef *huart);
 DRV_SERVO_Status DRV_SERVO_ReadVersion(DRV_SERVO_Device *dev, uint8_t id);
 DRV_SERVO_Status DRV_SERVO_ReadId(DRV_SERVO_Device *dev, uint8_t id);
