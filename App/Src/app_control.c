@@ -2822,7 +2822,7 @@ static void app_control_handle_motor(char **tokens, uint32_t count)
 static void app_control_handle_ident(char **tokens, uint32_t count)
 {
     if (count < 2U) {
-        APP_Control_QueueText("ERR usage IDENT ARM|DISARM|STOP|STEP|DOUBLET|PRBS|CENTER|APPLY|?\r\n");
+        APP_Control_QueueText("ERR usage IDENT ARM|DISARM|STOP|ATT|STEP|DOUBLET|PRBS|CENTER|APPLY|?\r\n");
         return;
     }
 
@@ -2843,6 +2843,62 @@ static void app_control_handle_ident(char **tokens, uint32_t count)
 
     if (strcmp(tokens[1], "STOP") == 0) {
         APP_Ident_Stop("command");
+        return;
+    }
+
+    if (strcmp(tokens[1], "ATT") == 0) {
+        if (count < 3U) {
+            APP_Control_QueueText("ERR usage IDENT ATT PRBS roll|pitch amp_mdeg=<v> bit_ms=<v> duration_ms=<v> [seed=<v>]\r\n");
+            return;
+        }
+        if ((strcmp(tokens[2], "?") == 0) ||
+            (strcmp(tokens[2], "STATUS") == 0)) {
+            APP_Ident_ReportStatus();
+            return;
+        }
+        if (strcmp(tokens[2], "STOP") == 0) {
+            APP_IdentAtt_Stop("command");
+            return;
+        }
+        if (strcmp(tokens[2], "PRBS") == 0) {
+            uint32_t bit_ms;
+            uint32_t duration_ms;
+            uint32_t seed = 1U;
+            int32_t amp_mdeg;
+            const char *amp_text;
+            const char *bit_text;
+            const char *duration_text;
+            const char *seed_text;
+
+            if (count < 4U) {
+                APP_Control_QueueText("ERR usage IDENT ATT PRBS roll|pitch amp_mdeg=<v> bit_ms=<v> duration_ms=<v> [seed=<v>]\r\n");
+                return;
+            }
+            amp_text = app_control_token_value(tokens, count, "amp_mdeg");
+            bit_text = app_control_token_value(tokens, count, "bit_ms");
+            duration_text = app_control_token_value(tokens, count, "duration_ms");
+            seed_text = app_control_token_value(tokens, count, "seed");
+            if ((seed_text != NULL) &&
+                (app_control_parse_u32(seed_text, &seed) == 0U)) {
+                APP_Control_QueueText("ERR ident att seed\r\n");
+                return;
+            }
+            if ((amp_text == NULL) || (bit_text == NULL) ||
+                (duration_text == NULL) ||
+                (app_control_parse_i32(amp_text, &amp_mdeg) == 0U) ||
+                (app_control_parse_u32(bit_text, &bit_ms) == 0U) ||
+                (app_control_parse_u32(duration_text, &duration_ms) == 0U)) {
+                APP_Control_QueueText("ERR usage IDENT ATT PRBS roll|pitch amp_mdeg=<v> bit_ms=<v> duration_ms=<v> [seed=<v>]\r\n");
+                return;
+            }
+            (void)APP_IdentAtt_StartPrbs(tokens[3],
+                                         amp_mdeg,
+                                         bit_ms,
+                                         duration_ms,
+                                         seed);
+            return;
+        }
+        APP_Control_QueueText("ERR unknown ident att subcmd %s\r\n", tokens[2]);
         return;
     }
 

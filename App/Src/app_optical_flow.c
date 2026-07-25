@@ -416,8 +416,10 @@ void APP_OpticalFlow_GetStatus(APP_OPTICAL_FLOW_Status *status)
                      (now - flow_ctx.bsp_status.last_rx_ms) :
                      0xFFFFFFFFUL;
     status->baud_rate = flow_ctx.bsp_status.baud_rate;
-    status->msp_cmd = frame->msp_cmd;
-    status->msp_flags = frame->msp_flags;
+    status->device_id = frame->device_id;
+    status->system_id = frame->system_id;
+    status->msg_id = frame->msg_id;
+    status->sequence = frame->sequence;
     status->sensor_time_ms = frame->time_ms;
     status->distance_mm = frame->distance_mm;
     status->distance_age_ms = (frame->distance_received_ms != 0UL) ?
@@ -491,9 +493,11 @@ void APP_OpticalFlow_Report(void)
                           APP_OpticalFlow_VelSourceName(status.velocity_source),
                           (unsigned int)status.velocity_valid,
                           (unsigned int)status.height_valid);
-    APP_Control_QueueText("FLOW msp cmd=0x%04X flags=0x%02X t_ms=%lu dist_mm=%lu dist_valid=%u range_q=%u dist_age=%lu flow_vx=%d flow_vy=%d quality=%u flow_st=%u flow_age=%lu sample_us=%u\r\n",
-                          (unsigned int)status.msp_cmd,
-                          (unsigned int)status.msp_flags,
+    APP_Control_QueueText("FLOW mico dev=0x%02X sys=0x%02X msg=0x%02X seq=%u t_ms=%lu dist_mm=%lu dist_valid=%u range_q=%u dist_age=%lu flow_vx=%d flow_vy=%d quality=%u flow_st=%u flow_age=%lu sample_us=%u\r\n",
+                          (unsigned int)status.device_id,
+                          (unsigned int)status.system_id,
+                          (unsigned int)status.msg_id,
+                          (unsigned int)status.sequence,
                           (unsigned long)status.sensor_time_ms,
                           (unsigned long)status.distance_mm,
                           (unsigned int)status.distance_valid,

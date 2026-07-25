@@ -57,13 +57,13 @@ def test_stabilizer_records_snapshots_without_direct_flash_access() -> None:
     assert "coax_ctrl_last_debug = debug;" in drv_source
 
 
-def test_flight_log_v4_records_controller_and_servo_feedback() -> None:
+def test_flight_log_v5_records_controller_servo_feedback_and_attitude_ident() -> None:
     header = read("Driver/Inc/drv_coax_ctrl.h")
     source = read("App/Src/app_flight_log.c")
     receiver = read("tools/flight_log_receive.py")
 
-    assert "#define APP_FLIGHT_LOG_VERSION            4U" in source
-    assert "sizeof(APP_FlightLogRecord) == 408U" in source
+    assert "#define APP_FLIGHT_LOG_VERSION            5U" in source
+    assert "sizeof(APP_FlightLogRecord) == 428U" in source
     assert "float desired_attitude_rpy_rad[3];" in header
     assert "float moment_cmd_n_m[3];" in header
     assert "float horizontal_command_scale;" in header
@@ -74,7 +74,11 @@ def test_flight_log_v4_records_controller_and_servo_feedback() -> None:
     assert "servo_alpha_feedback_us" in source
     assert "servo_beta_feedback_age_ms" in source
     assert "servo_feedback_valid_mask" in source
+    assert "APP_IdentAttLog ident_att;" in source
+    assert '"ident_att_signal_rad"' in receiver
+    assert '"ident_att_signal_m_s2"' in receiver
     assert 'row[f"servo_{axis}_feedback_deg"]' in receiver
+    assert "V4_RECORD_STRUCT" in receiver
     assert "LEGACY_RECORD_STRUCT" in receiver
 
 

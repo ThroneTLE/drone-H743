@@ -44,11 +44,61 @@ def test_ident_commands_exist_and_are_text_based() -> None:
     assert "APP_Ident_StartStep" in ident_h
     assert "APP_Ident_StartDoublet" in ident_h
     assert "APP_Ident_StartPrbs" in ident_h
+    assert "APP_IdentAtt_StartPrbs" in ident_h
     assert "IDENT STEP" in app_control
     assert "IDENT DOUBLET" in app_control
     assert "IDENT PRBS" in app_control
+    assert "IDENT ATT PRBS" in app_control
     assert "IDENT APPLY" in app_control
     assert "IDENT CENTER" in app_control
+
+
+def test_closed_loop_attitude_ident_injects_reference_accel_and_logs_it() -> None:
+    freertos = read("Core/Src/freertos.c")
+    ident = read("App/Src/app_ident.c")
+    flog_h = read("App/Inc/app_flight_log.h")
+    receiver = read("tools/flight_log_receive.py")
+
+    assert "APP_IdentAtt_Update(now);" in freertos
+    assert "APP_IdentAtt_Apply(&reference.ax_m_s2" in freertos
+    assert "APP_IdentAtt_Observe(&ident_att_obs);" in freertos
+    assert "flog_snapshot.ident_att = ident_att_log;" in freertos
+    assert "APP_IDENT_ATT_PENDING_STABLE_MS" in ident
+    assert "IDENT att armed" in ident
+    assert "wait_rc_arm" in ident
+    assert "ident_att_try_begin" in ident
+    assert "IDENT att wait" in ident
+    assert "ident_att_ctx.log.signal_m_s2 =" in ident
+    assert "APP_IDENT_ATT_AXIS_ROLL" in ident
+    assert "APP_IDENT_ATT_AXIS_PITCH" in ident
+    assert "APP_IdentAttLog ident_att;" in flog_h
+    assert '"ident_att_signal_m_s2"' in receiver
+
+
+def test_attitude_ident_safe_start_accepts_unsettled_controller_quality() -> None:
+    ident = read("App/Src/app_ident.c")
+    freertos = read("Core/Src/freertos.c")
+
+    assert "#define APP_IDENT_ATT_ATTITUDE_LIMIT_DEG  20.0f" in ident
+    assert "#define APP_IDENT_ATT_GYRO_LIMIT_DPS      150.0f" in ident
+    assert "#define APP_IDENT_ATT_PENDING_STABLE_MS   250U" in ident
+    assert "#define APP_IDENT_ATT_PENDING_REPORT_MS   1000U" in ident
+
+    ready_block = ident.split(
+        "static const char *ident_att_ready_reason", 1
+    )[1].split("static void ident_att_report_wait", 1)[0]
+    assert "wait_tilt" not in ready_block
+    assert "wait_protection" not in ready_block
+    assert "tilt_out_rad" not in ready_block
+    assert "protection_flags" not in ready_block
+
+    assert "ident_att_obs.control_valid =\n            ((rc_use_stabilized_motor_mix != 0U) &&\n             (imu_control_valid != 0U) &&\n             (ident_running == 0U)) ? 1U : 0U;" in freertos
+    observe_block = ident.split("void APP_IdentAtt_Observe", 1)[1].split(
+        "void APP_Ident_Update", 1
+    )[0]
+    assert 'APP_IdentAtt_Stop("tilt_limit")' not in observe_block
+    assert 'APP_IdentAtt_Stop("protection")' not in observe_block
+    assert 'APP_IdentAtt_Stop("control_invalid")' in observe_block
 
 
 def test_ident_sample_parser_and_step_fit() -> None:

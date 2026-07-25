@@ -2,12 +2,12 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-MSP2_HEAD = [0x24, 0x58, 0x3C]
-MSP2_RANGE_MSG_ID = 0x1F01
-MSP2_FLOW_MSG_ID = 0x1F02
-MSP2_RANGE_PAYLOAD_LEN = 5
-MSP2_FLOW_PAYLOAD_LEN = 9
-MSP2_MAX_PAYLOAD_LEN = 64
+MICOLINK_HEAD = 0xEF
+MICOLINK_DEVICE_ID = 0x0F
+MICOLINK_SYSTEM_ID = 0x00
+MICOLINK_MSG_ID = 0x51
+MICOLINK_PAYLOAD_LEN = 20
+MICOLINK_MAX_PAYLOAD_LEN = 64
 
 
 def read(path: str) -> str:
@@ -29,51 +29,66 @@ def le_u16(value: int) -> list[int]:
     return [value & 0xFF, (value >> 8) & 0xFF]
 
 
-def s32_from_bytes(data: list[int]) -> int:
-    value = int.from_bytes(bytes(data), "little", signed=False)
-    return value - 0x100000000 if value & 0x80000000 else value
+def le_i16(value: int) -> list[int]:
+    return list(int(value).to_bytes(2, "little", signed=True))
 
 
-def crc8_dvb_s2(data: list[int]) -> int:
-    crc = 0
-    for byte in data:
-        crc ^= byte
-        for _ in range(8):
-            if crc & 0x80:
-                crc = ((crc << 1) ^ 0xD5) & 0xFF
-            else:
-                crc = (crc << 1) & 0xFF
-    return crc
+def checksum8(data: list[int]) -> int:
+    return sum(data) & 0xFF
 
 
-def make_msp2_frame(cmd: int, payload: list[int], flags: int = 0) -> list[int]:
-    header = [flags & 0xFF, *le_u16(cmd), *le_u16(len(payload))]
-    return [*MSP2_HEAD, *header, *payload, crc8_dvb_s2(header + payload)]
-
-
-def make_msp2_range_frame(
+def make_micolink_frame(
+    payload: list[int],
     *,
-    distance_mm: int = 2396,
-    quality: int = 8,
-    msg_id: int = MSP2_RANGE_MSG_ID,
+    msg_id: int = MICOLINK_MSG_ID,
+    sequence: int = 0x42,
+    device_id: int = MICOLINK_DEVICE_ID,
+    system_id: int = MICOLINK_SYSTEM_ID,
 ) -> list[int]:
-    payload = [quality & 0xFF, *le_u32(distance_mm)]
-    return make_msp2_frame(msg_id, payload)
+    header = [
+        MICOLINK_HEAD,
+        device_id & 0xFF,
+        system_id & 0xFF,
+        msg_id & 0xFF,
+        sequence & 0xFF,
+        len(payload) & 0xFF,
+    ]
+    return [*header, *payload, checksum8(header + payload)]
 
 
-def make_msp2_flow_frame(
+def make_micolink_range_flow_frame(
     *,
+    time_ms: int = 123456,
+    distance_mm: int = 2396,
+    strength: int = 255,
+    precision: int = 0,
+    tof_status: int = 1,
     flow_vel_x: int = -1,
     flow_vel_y: int = -4,
-    quality: int = 82,
-    msg_id: int = MSP2_FLOW_MSG_ID,
+    flow_quality: int = 82,
+    flow_status: int = 1,
+    msg_id: int = MICOLINK_MSG_ID,
+    sequence: int = 0x42,
 ) -> list[int]:
-    payload = [quality & 0xFF, *le_u32(flow_vel_x), *le_u32(flow_vel_y)]
-    return make_msp2_frame(msg_id, payload)
+    payload = [
+        *le_u32(time_ms),
+        *le_u32(distance_mm),
+        strength & 0xFF,
+        precision & 0xFF,
+        tof_status & 0xFF,
+        0xFF,
+        *le_i16(flow_vel_x),
+        *le_i16(flow_vel_y),
+        flow_quality & 0xFF,
+        flow_status & 0xFF,
+        0xFF,
+        0xFF,
+    ]
+    return make_micolink_frame(payload, msg_id=msg_id, sequence=sequence)
 
 
-def consume_msp2_python(data: list[int]):
-    buf = [0] * (MSP2_MAX_PAYLOAD_LEN + 9)
+def consume_micolink_python(data: list[int]):
+    buf = [0] * (MICOLINK_MAX_PAYLOAD_LEN + 7)
     offset = 0
     expected_len = 0
     frames = 0
@@ -85,28 +100,17 @@ def consume_msp2_python(data: list[int]):
 
     for byte in data:
         if offset == 0:
-            if byte != MSP2_HEAD[0]:
+            if byte != MICOLINK_HEAD:
                 continue
             buf[offset] = byte
             offset += 1
-            continue
-
-        if (offset == 1 and byte != MSP2_HEAD[1]) or (
-            offset == 2 and byte != MSP2_HEAD[2]
-        ):
-            frame_errors += 1
-            offset = 0
-            expected_len = 0
-            if byte == MSP2_HEAD[0]:
-                buf[offset] = byte
-                offset += 1
             continue
 
         if offset >= len(buf):
             frame_errors += 1
             offset = 0
             expected_len = 0
-            if byte == MSP2_HEAD[0]:
+            if byte == MICOLINK_HEAD:
                 buf[offset] = byte
                 offset += 1
             continue
@@ -114,14 +118,14 @@ def consume_msp2_python(data: list[int]):
         buf[offset] = byte
         offset += 1
 
-        if offset == 8:
-            payload_len = buf[6] | (buf[7] << 8)
-            if payload_len > MSP2_MAX_PAYLOAD_LEN:
+        if offset == 6:
+            payload_len = buf[5]
+            if payload_len > MICOLINK_MAX_PAYLOAD_LEN:
                 frame_errors += 1
                 offset = 0
                 expected_len = 0
                 continue
-            expected_len = 8 + payload_len + 1
+            expected_len = 6 + payload_len + 1
 
         if not expected_len or offset < expected_len:
             continue
@@ -130,48 +134,46 @@ def consume_msp2_python(data: list[int]):
         offset = 0
         expected_len = 0
 
-        if crc8_dvb_s2(frame[3:-1]) != frame[-1]:
+        if checksum8(frame[:-1]) != frame[-1]:
             checksum_errors += 1
-            if byte == MSP2_HEAD[0]:
+            if byte == MICOLINK_HEAD:
                 buf[offset] = byte
                 offset += 1
             continue
 
-        cmd = frame[4] | (frame[5] << 8)
-        payload_len = frame[6] | (frame[7] << 8)
-        payload = frame[8:-1]
-        if cmd not in (MSP2_RANGE_MSG_ID, MSP2_FLOW_MSG_ID):
+        device_id = frame[1]
+        system_id = frame[2]
+        msg_id = frame[3]
+        sequence = frame[4]
+        payload_len = frame[5]
+        payload = frame[6:-1]
+        if device_id != MICOLINK_DEVICE_ID or msg_id != MICOLINK_MSG_ID:
             ignored_messages += 1
             continue
-        if (cmd == MSP2_RANGE_MSG_ID and payload_len < MSP2_RANGE_PAYLOAD_LEN) or (
-            cmd == MSP2_FLOW_MSG_ID and payload_len < MSP2_FLOW_PAYLOAD_LEN
-        ):
+        if payload_len < MICOLINK_PAYLOAD_LEN:
             short_payload_errors += 1
             continue
 
         frames += 1
-        if latest is None:
-            latest = {
-                "distance_mm": 0,
-                "distance_valid": 0,
-                "strength": 0,
-                "flow_vel_x": 0,
-                "flow_vel_y": 0,
-                "flow_quality": 0,
-                "flow_valid": 0,
-            }
-        latest["msp_cmd"] = cmd
-        latest["msp_flags"] = frame[3]
-        if cmd == MSP2_RANGE_MSG_ID:
-            distance_mm = int.from_bytes(bytes(payload[1:5]), "little")
-            latest["distance_mm"] = distance_mm
-            latest["strength"] = payload[0]
-            latest["distance_valid"] = 1 if payload[0] and distance_mm >= 10 else 0
-        else:
-            latest["flow_vel_x"] = s32_from_bytes(payload[1:5])
-            latest["flow_vel_y"] = s32_from_bytes(payload[5:9])
-            latest["flow_quality"] = payload[0]
-            latest["flow_valid"] = 1 if payload[0] else 0
+        distance_mm = int.from_bytes(bytes(payload[4:8]), "little")
+        flow_quality = payload[16]
+        latest = {
+            "device_id": device_id,
+            "system_id": system_id,
+            "msg_id": msg_id,
+            "sequence": sequence,
+            "time_ms": int.from_bytes(bytes(payload[0:4]), "little"),
+            "distance_mm": distance_mm,
+            "distance_valid": 1 if payload[10] == 1 and distance_mm >= 2 else 0,
+            "strength": payload[8],
+            "precision": payload[9],
+            "tof_status": payload[10],
+            "flow_vel_x": int.from_bytes(bytes(payload[12:14]), "little", signed=True),
+            "flow_vel_y": int.from_bytes(bytes(payload[14:16]), "little", signed=True),
+            "flow_quality": flow_quality,
+            "flow_status": payload[17],
+            "flow_valid": 1 if payload[17] == 1 and flow_quality else 0,
+        }
         latest["valid"] = (
             1 if latest["distance_valid"] and latest["flow_valid"] else 0
         )
@@ -186,32 +188,38 @@ def consume_msp2_python(data: list[int]):
     }
 
 
-def test_msp2_parser_accepts_live_range_and_flow_payload_shapes() -> None:
-    result = consume_msp2_python(make_msp2_range_frame() + make_msp2_flow_frame())
+def test_micolink_parser_accepts_live_range_and_flow_payload_shape() -> None:
+    result = consume_micolink_python(make_micolink_range_flow_frame())
 
-    assert result["frames"] == 2
+    assert result["frames"] == 1
     assert result["checksum_errors"] == 0
     assert result["frame_errors"] == 0
     assert result["latest"] == {
-        "msp_cmd": MSP2_FLOW_MSG_ID,
-        "msp_flags": 0,
+        "device_id": MICOLINK_DEVICE_ID,
+        "system_id": MICOLINK_SYSTEM_ID,
+        "msg_id": MICOLINK_MSG_ID,
+        "sequence": 0x42,
+        "time_ms": 123456,
         "distance_mm": 2396,
         "distance_valid": 1,
-        "strength": 8,
+        "strength": 255,
+        "precision": 0,
+        "tof_status": 1,
         "flow_vel_x": -1,
         "flow_vel_y": -4,
         "flow_quality": 82,
+        "flow_status": 1,
         "flow_valid": 1,
         "valid": 1,
     }
 
 
-def test_msp2_parser_rejects_bad_crc_and_oversize_payload() -> None:
-    bad_checksum = make_msp2_range_frame()
+def test_micolink_parser_rejects_bad_checksum_and_oversize_payload() -> None:
+    bad_checksum = make_micolink_range_flow_frame()
     bad_checksum[-1] ^= 0x01
-    oversize = [*MSP2_HEAD, 0, *le_u16(MSP2_RANGE_MSG_ID), 65, 0]
+    oversize = [MICOLINK_HEAD, MICOLINK_DEVICE_ID, 0, MICOLINK_MSG_ID, 0, 65]
 
-    result = consume_msp2_python(bad_checksum + oversize)
+    result = consume_micolink_python(bad_checksum + oversize)
 
     assert result["frames"] == 0
     assert result["checksum_errors"] == 1
@@ -219,14 +227,18 @@ def test_msp2_parser_rejects_bad_crc_and_oversize_payload() -> None:
     assert result["latest"] is None
 
 
-def test_msp2_parser_resynchronizes_after_noise_and_ignores_other_messages() -> None:
-    other = make_msp2_frame(0x1F03, [1, 2, 3, 4])
-    range_frame = make_msp2_range_frame(distance_mm=2401, quality=7)
-    flow_frame = make_msp2_flow_frame(flow_vel_x=-10, flow_vel_y=20)
+def test_micolink_parser_resynchronizes_after_noise_and_ignores_other_messages() -> None:
+    other = make_micolink_range_flow_frame(msg_id=0x52)
+    flow_frame = make_micolink_range_flow_frame(
+        distance_mm=2401,
+        flow_vel_x=-10,
+        flow_vel_y=20,
+        sequence=0x43,
+    )
 
-    result = consume_msp2_python([0x00, MSP2_HEAD[0], 0x12] + other + range_frame + flow_frame)
+    result = consume_micolink_python([0x00, 0x12] + other + flow_frame)
 
-    assert result["frames"] == 2
+    assert result["frames"] == 1
     assert result["checksum_errors"] == 0
     assert result["ignored_messages"] == 1
     assert result["latest"]["distance_mm"] == 2401
@@ -309,7 +321,7 @@ def test_optical_flow_fault_recovery_runs_outside_sensor_step() -> None:
     assert "status->recovery_count = flow_ctx.recovery_count;" in app_flow
 
 
-def test_msp2_height_and_unrotated_velocity_are_applied_in_app_layer() -> None:
+def test_micolink_height_and_unrotated_velocity_are_applied_in_app_layer() -> None:
     app_flow = read("App/Src/app_optical_flow.c")
     header = read("App/Inc/app_optical_flow.h")
     freertos = read("Core/Src/freertos.c")
@@ -350,7 +362,7 @@ def test_optical_flow_rejects_implausible_velocity_before_ekf() -> None:
     assert "vel_rej=%lu" in app_flow
 
 
-def test_flow_report_includes_recent_msp2_frame_statistics() -> None:
+def test_flow_report_includes_recent_micolink_frame_statistics() -> None:
     driver_header = read("Driver/Inc/drv_optical_flow.h")
     driver = read("Driver/Src/drv_optical_flow.c")
     bsp_header = read("BSP/Inc/bsp_optical_flow.h")
@@ -370,35 +382,38 @@ def test_flow_report_includes_recent_msp2_frame_statistics() -> None:
     assert "raw_count" in app_header
     assert "flow_vel_x_mean" in app_header
     assert "distance_peak_to_peak_mm" in app_header
-    assert "FLOW msp cmd=0x%04X flags=0x%02X" in app
+    assert "FLOW mico dev=0x%02X sys=0x%02X msg=0x%02X seq=%u" in app
     assert "dist_age=%lu" in app
     assert "flow_age=%lu" in app
     assert "FLOW raw n=%u vx_avg=%d vy_avg=%d dt_avg=%u dist_avg=%lu" in app
 
 
-def test_msp2_initialization_has_no_lc307_configuration_phase() -> None:
+def test_micolink_initialization_has_no_lc307_configuration_phase() -> None:
+    driver_header = read("Driver/Inc/drv_optical_flow.h")
     driver = read("Driver/Src/drv_optical_flow.c")
     app = read("App/Src/app_optical_flow.c")
-    source = app + driver
+    source = app + driver + driver_header
 
     assert "Config_Init_Uart" not in source
     assert "Sensor_cfg" not in source
     assert "LC307_" not in source
     assert "lc307_config_table" not in source
     assert "DRV_OPTICAL_FLOW_CONFIG_" not in source
-    assert "MICOLINK" not in source
+    assert "MSP2" not in source
+    assert "DRV_OPTICAL_FLOW_MSP" not in source
     assert "cfg_missing" not in app
     assert "FLOW cfg=" not in app
-    assert "DRV_OPTICAL_FLOW_MSP_HEAD_0" in driver
-    assert "DRV_OPTICAL_FLOW_RANGE_MSG_ID" in driver
-    assert "DRV_OPTICAL_FLOW_FLOW_MSG_ID" in driver
+    assert "#define DRV_OPTICAL_FLOW_MICOLINK_HEAD 0xEFU" in driver_header
+    assert "#define DRV_OPTICAL_FLOW_MICOLINK_DEVICE_ID 0x0FU" in driver_header
+    assert "#define DRV_OPTICAL_FLOW_MICOLINK_MSG_ID 0x51U" in driver_header
     assert "DRV_OPTICAL_FLOW_RANGE_PAYLOAD_LEN" in driver
-    assert "DRV_OPTICAL_FLOW_FLOW_PAYLOAD_LEN" in driver
     assert "flow_checksum_ok" in driver
-    assert "flow_crc8_dvb_s2" in driver
-    assert "parsed.distance_mm = flow_get_u32_le(&payload[1]);" in driver
-    assert "parsed.flow_vel_x = flow_i32_to_i16_sat(flow_get_i32_le(&payload[1]));" in driver
-    assert "parsed.flow_vel_y = flow_i32_to_i16_sat(flow_get_i32_le(&payload[5]));" in driver
+    assert "checksum = (uint8_t)(checksum + frame[i]);" in driver
+    assert "payload_len = dev->frame[5];" in driver
+    assert "parsed.time_ms = flow_get_u32_le(&payload[0]);" in driver
+    assert "parsed.distance_mm = flow_get_u32_le(&payload[4]);" in driver
+    assert "parsed.flow_vel_x = flow_get_i16_le(&payload[12]);" in driver
+    assert "parsed.flow_vel_y = flow_get_i16_le(&payload[14]);" in driver
     assert "return (dev->rx_active != 0U) ? DRV_OPTICAL_FLOW_OK : DRV_OPTICAL_FLOW_ERROR;" in driver
 
 

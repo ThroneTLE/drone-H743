@@ -10,17 +10,17 @@ extern "C" {
 #endif
 
 #define DRV_OPTICAL_FLOW_BAUD_RATE 115200U
-#define DRV_OPTICAL_FLOW_MSP_HEAD_0 '$'
-#define DRV_OPTICAL_FLOW_MSP_HEAD_1 'X'
-#define DRV_OPTICAL_FLOW_MSP_HEAD_2 '<'
+#define DRV_OPTICAL_FLOW_MICOLINK_HEAD 0xEFU
+#define DRV_OPTICAL_FLOW_MICOLINK_DEVICE_ID 0x0FU
+#define DRV_OPTICAL_FLOW_MICOLINK_SYSTEM_ID 0x00U
+#define DRV_OPTICAL_FLOW_MICOLINK_MSG_ID 0x51U
 #define DRV_OPTICAL_FLOW_MAX_PAYLOAD_LEN 64U
-#define DRV_OPTICAL_FLOW_FRAME_LEN (DRV_OPTICAL_FLOW_MAX_PAYLOAD_LEN + 9U)
-#define DRV_OPTICAL_FLOW_RANGE_MSG_ID 0x1F01U
-#define DRV_OPTICAL_FLOW_FLOW_MSG_ID  0x1F02U
-#define DRV_OPTICAL_FLOW_RANGE_PAYLOAD_LEN 5U
-#define DRV_OPTICAL_FLOW_FLOW_PAYLOAD_LEN 9U
+#define DRV_OPTICAL_FLOW_MICOLINK_HEADER_LEN 6U
+#define DRV_OPTICAL_FLOW_FRAME_LEN \
+    (DRV_OPTICAL_FLOW_MICOLINK_HEADER_LEN + DRV_OPTICAL_FLOW_MAX_PAYLOAD_LEN + 1U)
+#define DRV_OPTICAL_FLOW_RANGE_PAYLOAD_LEN 20U
 #define DRV_OPTICAL_FLOW_VALID     1U
-#define DRV_OPTICAL_FLOW_MIN_DISTANCE_MM 10UL
+#define DRV_OPTICAL_FLOW_MIN_DISTANCE_MM 2UL
 #define DRV_OPTICAL_FLOW_RAW_WINDOW 32U
 
 typedef enum {
@@ -53,8 +53,10 @@ typedef struct {
     uint8_t distance_valid;
     uint8_t flow_valid;
     uint8_t valid;
-    uint16_t msp_cmd;
-    uint8_t msp_flags;
+    uint8_t device_id;
+    uint8_t system_id;
+    uint8_t msg_id;
+    uint8_t sequence;
     uint32_t received_ms;
     uint32_t distance_received_ms;
     uint32_t flow_received_ms;

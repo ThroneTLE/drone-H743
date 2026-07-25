@@ -3,6 +3,7 @@
 
 #include "drv_coax_ctrl.h"
 #include "drv_imu.h"
+#include "app_ident.h"
 
 #include <stdint.h>
 
@@ -81,6 +82,7 @@ typedef struct {
     float vel_loop_active;
     DRV_COAX_CTRL_Debug ctrl_debug;
     float z_ref_m;
+    APP_IdentAttLog ident_att;
 } APP_FlightLogSnapshot;
 
 typedef struct {

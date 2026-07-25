@@ -111,6 +111,22 @@ LEGACY_RECORD_STRUCT = struct.Struct(
     + "I"
 )
 LEGACY_RECORD_SIZE = LEGACY_RECORD_STRUCT.size
+V4_RECORD_STRUCT = struct.Struct(
+    "<IHHIIQII"
+    + "h" * 7
+    + "f" * 7
+    + "f" * 3
+    + "H" * 8
+    + "H" * 5
+    + "H" * 6
+    + "B" * 4
+    + "B" * 12
+    + "f" * 64
+    + "I"
+    + "f"
+    + "I"
+)
+V4_RECORD_SIZE = V4_RECORD_STRUCT.size
 RECORD_STRUCT = struct.Struct(
     "<IHHIIQII"
     + "h" * 7
@@ -124,6 +140,10 @@ RECORD_STRUCT = struct.Struct(
     + "f" * 64
     + "I"
     + "f"
+    + "B" * 4
+    + "I"
+    + "f" * 2
+    + "I"
     + "I"
 )
 RECORD_SIZE = RECORD_STRUCT.size
@@ -479,9 +499,15 @@ def parse_record(record_bytes: bytes) -> dict[str, object] | None:
     if len(record_bytes) == RECORD_SIZE:
         record_struct = RECORD_STRUCT
         has_servo_feedback = True
+        has_ident_att = True
+    elif len(record_bytes) == V4_RECORD_SIZE:
+        record_struct = V4_RECORD_STRUCT
+        has_servo_feedback = True
+        has_ident_att = False
     elif len(record_bytes) == LEGACY_RECORD_SIZE:
         record_struct = LEGACY_RECORD_STRUCT
         has_servo_feedback = False
+        has_ident_att = False
     else:
         return None
     values = record_struct.unpack(record_bytes)
@@ -617,6 +643,29 @@ def parse_record(record_bytes: bytes) -> dict[str, object] | None:
     row["ctrl_protection_flags"] = values[i]
     i += 1
     row["z_ref_m"] = values[i]
+    i += 1
+    if has_ident_att:
+        for name in (
+            "ident_att_active",
+            "ident_att_axis",
+            "ident_att_mode",
+            "ident_att_reserved",
+            "ident_att_seq",
+            "ident_att_signal_rad",
+            "ident_att_signal_m_s2",
+            "ident_att_elapsed_ms",
+        ):
+            row[name] = values[i]
+            i += 1
+    else:
+        row["ident_att_active"] = 0
+        row["ident_att_axis"] = 0
+        row["ident_att_mode"] = 0
+        row["ident_att_reserved"] = 0
+        row["ident_att_seq"] = 0
+        row["ident_att_signal_rad"] = 0.0
+        row["ident_att_signal_m_s2"] = 0.0
+        row["ident_att_elapsed_ms"] = 0
     row["record_crc32"] = saved_crc
     return row
 
@@ -639,7 +688,7 @@ def parse_flash_image(data: bytes) -> tuple[list[dict[str, object]], list[dict[s
             if chunk == b"\xFF" * len(chunk) or chunk == b"\x00" * len(chunk):
                 pos += record_size
                 continue
-            if record_size not in (RECORD_SIZE, LEGACY_RECORD_SIZE):
+            if record_size not in (RECORD_SIZE, V4_RECORD_SIZE, LEGACY_RECORD_SIZE):
                 errors.append(f"unsupported record size {record_size} at sector offset {offset}")
                 break
             record = parse_record(chunk)

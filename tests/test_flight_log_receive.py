@@ -121,12 +121,20 @@ def test_parse_record_and_csv_fields(tmp_path) -> None:
     assert row["ctrl_horizontal_command_scale"] == 61.0
     assert row["ctrl_protection_flags"] == 0x0A
     assert row["z_ref_m"] == 64.0
+    assert row["ident_att_active"] == 1
+    assert row["ident_att_axis"] == 2
+    assert row["ident_att_mode"] == 1
+    assert row["ident_att_seq"] == 42
+    assert row["ident_att_signal_rad"] == pytest.approx(0.017)
+    assert row["ident_att_signal_m_s2"] == pytest.approx(0.171)
+    assert row["ident_att_elapsed_ms"] == 1234
 
     csv_path = tmp_path / "out.csv"
     flog.write_csv(csv_path, [row])
     text = csv_path.read_text(encoding="utf-8")
     assert "timestamp_us" in text
     assert "vel_pid_out_m_s2_0" in text
+    assert "ident_att_signal_m_s2" in text
 
 
 def make_record() -> bytes:
@@ -143,11 +151,33 @@ def make_record() -> bytes:
     values.extend([float(i) for i in range(64)])
     values.append(0x0A)
     values.append(64.0)
+    values.extend([1, 2, 1, 0, 42, 0.017, 0.171, 1234])
     values.append(0)
     packed_without_crc = flog.RECORD_STRUCT.pack(*values)
     crc = flog.crc32(packed_without_crc[:-4] + b"\x00\x00\x00\x00")
     values[-1] = crc
     return flog.RECORD_STRUCT.pack(*values)
+
+
+def make_v4_record() -> bytes:
+    values = []
+    values.extend([flog.RECORD_MAGIC, 4, flog.V4_RECORD_SIZE, 5, 0, 1500, 14, 99])
+    values.extend([1, 2, 3, 4, 5, 6, 7])
+    values.extend([25.0, 0.1, 0.2, 0.3, 10.0, 11.0, 12.0])
+    values.extend([1.0, 2.0, 3.0])
+    values.extend([1000 + i for i in range(8)])
+    values.extend([1200, 1500, 1500, 1300, 1310])
+    values.extend([1510, 1490, 3, 4, 10, 11])
+    values.extend([0x03, 0, 0, 0])
+    values.extend([1, 1, 1, 1, 5, 1, 1, 1, 1, 0, 0, 0])
+    values.extend([float(i) for i in range(64)])
+    values.append(0x0A)
+    values.append(64.0)
+    values.append(0)
+    packed_without_crc = flog.V4_RECORD_STRUCT.pack(*values)
+    crc = flog.crc32(packed_without_crc[:-4] + b"\x00\x00\x00\x00")
+    values[-1] = crc
+    return flog.V4_RECORD_STRUCT.pack(*values)
 
 
 def make_legacy_record() -> bytes:
@@ -179,6 +209,17 @@ def test_parse_legacy_record_without_servo_feedback() -> None:
     assert row["servo_alpha_feedback_us"] == 0
     assert row["servo_feedback_valid_mask"] == 0
     assert row["servo_alpha_feedback_deg"] is None
+
+
+def test_parse_v4_record_without_attitude_ident() -> None:
+    row = flog.parse_record(make_v4_record())
+
+    assert row is not None
+    assert row["version"] == 4
+    assert row["servo_feedback_valid_mask"] == 0x03
+    assert row["ident_att_active"] == 0
+    assert row["ident_att_signal_rad"] == 0.0
+    assert row["ident_att_elapsed_ms"] == 0
 
 
 def make_sector_header() -> bytes:

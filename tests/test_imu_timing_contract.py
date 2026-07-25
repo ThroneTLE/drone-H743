@@ -15,6 +15,7 @@ def test_attitude_filter_uses_fixed_1ms_dt_with_timestamp_option() -> None:
 
     assert "float dt_sec" in header
     assert "APP_IMU_ACCEL_CORRECTION_TAU_SEC" in source
+    assert "#define APP_IMU_ACCEL_CORRECTION_TAU_SEC  0.05f" in source
     assert "osKernelGetTickCount()" not in source
     assert "#define STABILIZER_USE_FIXED_IMU_DT    0U" in freertos
     assert "float dt_sec = SENSOR_IMU_DEFAULT_DT_SEC;" in freertos

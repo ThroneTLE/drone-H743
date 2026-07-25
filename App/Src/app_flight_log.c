@@ -19,7 +19,7 @@
 #define APP_FLIGHT_LOG_SECTOR_MAGIC       0x31534C46UL /* FLS1 */
 #define APP_FLIGHT_LOG_RECORD_MAGIC       0x31524C46UL /* FLR1 */
 #define APP_FLIGHT_LOG_EXPORT_BLOCK_MAGIC 0x31424C46UL /* FLB1 */
-#define APP_FLIGHT_LOG_VERSION            4U
+#define APP_FLIGHT_LOG_VERSION            5U
 #define APP_FLIGHT_LOG_EXPORT_VERSION     1U
 #define APP_FLIGHT_LOG_REGION_SIZE \
     (APP_FLIGHT_LOG_REGION_END_EXCL - APP_FLIGHT_LOG_REGION_START)
@@ -111,6 +111,7 @@ typedef struct __attribute__((packed)) {
     float vel_loop_active;
     DRV_COAX_CTRL_Debug ctrl_debug;
     float z_ref_m;
+    APP_IdentAttLog ident_att;
     uint32_t record_crc32;
 } APP_FlightLogRecord;
 
@@ -127,7 +128,7 @@ typedef struct __attribute__((packed)) {
 
 _Static_assert(sizeof(APP_FlightLogSectorHeader) == APP_FLIGHT_LOG_SECTOR_HEADER_SIZE,
                "flight log sector header must stay 256 bytes");
-_Static_assert(sizeof(APP_FlightLogRecord) == 408U,
+_Static_assert(sizeof(APP_FlightLogRecord) == 428U,
                "flight log record must match tools/flight_log_receive.py");
 _Static_assert(sizeof(APP_FlightLogExportBlockHeader) == 24U,
                "flight log export header must match tools/flight_log_receive.py");
@@ -525,6 +526,7 @@ static void flight_log_record_from_snapshot(APP_FlightLogRecord *record,
     record->vel_loop_active = snapshot->vel_loop_active;
     record->ctrl_debug = snapshot->ctrl_debug;
     record->z_ref_m = snapshot->z_ref_m;
+    record->ident_att = snapshot->ident_att;
     record->record_crc32 = 0U;
     record->record_crc32 = flight_log_crc32((const uint8_t *)record, sizeof(*record));
 }

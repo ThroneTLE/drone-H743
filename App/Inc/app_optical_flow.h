@@ -43,8 +43,10 @@ typedef struct {
     uint32_t last_rx_ms;
     uint32_t age_ms;
     uint32_t baud_rate;
-    uint16_t msp_cmd;
-    uint8_t msp_flags;
+    uint8_t device_id;
+    uint8_t system_id;
+    uint8_t msg_id;
+    uint8_t sequence;
     uint32_t sensor_time_ms;
     uint32_t distance_mm;
     uint32_t distance_age_ms;

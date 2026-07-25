@@ -384,7 +384,7 @@ int main(void)
   /* USER CODE END 1 */
 
   /* MPU Configuration--------------------------------------------------------*/
-  MPU_Config();
+    MPU_Config();
 
   /* Enable the CPU Cache */
 

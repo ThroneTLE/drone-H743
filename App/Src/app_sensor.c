@@ -60,7 +60,7 @@ void APP_IMU_RawToScaled(const DRV_IMU_RawData *raw,
 /*  (1-alpha)      → 更信任加速度计重力向量。                                */
 /* ════════════════════════════════════════════════════════════════════════ */
 
-#define APP_IMU_ACCEL_CORRECTION_TAU_SEC  0.25f
+#define APP_IMU_ACCEL_CORRECTION_TAU_SEC  0.05f
 #define APP_IMU_DEFAULT_DT_SEC            0.001f
 #define APP_IMU_MAX_DT_SEC                0.05f
 #define APP_IMU_RAD_TO_DEG        57.2957795f

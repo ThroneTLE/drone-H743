@@ -2,13 +2,6 @@
 
 #include <string.h>
 
-#define MSP2_PREAMBLE_LEN 3U
-#define MSP2_HEADER_LEN 5U
-#define MSP2_CHECKSUM_LEN 1U
-#define MSP2_FRAME_HEADER_LEN (MSP2_PREAMBLE_LEN + MSP2_HEADER_LEN)
-#define MSP2_MIN_FRAME_LEN (MSP2_FRAME_HEADER_LEN + MSP2_CHECKSUM_LEN)
-#define MSP2_CRC8_DVB_S2_POLY 0xD5U
-
 static uint16_t flow_get_u16_le(const uint8_t *data)
 {
     return (uint16_t)((uint16_t)data[0] | ((uint16_t)data[1] << 8U));
@@ -22,22 +15,9 @@ static uint32_t flow_get_u32_le(const uint8_t *data)
            ((uint32_t)data[3] << 24U);
 }
 
-static int32_t flow_get_i32_le(const uint8_t *data)
+static int16_t flow_get_i16_le(const uint8_t *data)
 {
-    return (int32_t)flow_get_u32_le(data);
-}
-
-static uint8_t flow_crc8_dvb_s2(uint8_t crc, uint8_t byte)
-{
-    crc ^= byte;
-    for (uint8_t bit = 0U; bit < 8U; ++bit) {
-        if ((crc & 0x80U) != 0U) {
-            crc = (uint8_t)((uint8_t)(crc << 1U) ^ MSP2_CRC8_DVB_S2_POLY);
-        } else {
-            crc = (uint8_t)(crc << 1U);
-        }
-    }
-    return crc;
+    return (int16_t)flow_get_u16_le(data);
 }
 
 static int16_t flow_i32_to_i16_sat(int32_t value)
@@ -97,12 +77,13 @@ static uint8_t flow_checksum_ok(const uint8_t *frame, uint16_t length)
 {
     uint8_t checksum = 0U;
 
-    if ((frame == NULL) || (length < MSP2_MIN_FRAME_LEN)) {
+    if ((frame == NULL) ||
+        (length < (uint16_t)(DRV_OPTICAL_FLOW_MICOLINK_HEADER_LEN + 1U))) {
         return 0U;
     }
 
-    for (uint16_t i = MSP2_PREAMBLE_LEN; i < (uint16_t)(length - 1U); ++i) {
-        checksum = flow_crc8_dvb_s2(checksum, frame[i]);
+    for (uint16_t i = 0U; i < (uint16_t)(length - 1U); ++i) {
+        checksum = (uint8_t)(checksum + frame[i]);
     }
 
     return (checksum == frame[length - 1U]) ? 1U : 0U;
@@ -293,63 +274,63 @@ static void flow_publish_latest(DRV_OPTICAL_FLOW_Device *dev,
     dev->frames++;
 }
 
-static uint8_t flow_accept_msp2_frame(DRV_OPTICAL_FLOW_Device *dev,
-                                      uint16_t length)
+static uint8_t flow_accept_micolink_frame(DRV_OPTICAL_FLOW_Device *dev,
+                                          uint16_t length)
 {
     const uint8_t *payload;
     DRV_OPTICAL_FLOW_Frame parsed;
     uint32_t received_ms;
-    uint16_t cmd;
     uint16_t payload_len;
-    uint8_t flags;
+    uint8_t device_id;
+    uint8_t system_id;
+    uint8_t msg_id;
+    uint8_t sequence;
 
-    if ((dev == NULL) || (length < MSP2_MIN_FRAME_LEN)) {
+    if ((dev == NULL) ||
+        (length < (uint16_t)(DRV_OPTICAL_FLOW_MICOLINK_HEADER_LEN + 1U))) {
         return 0U;
     }
 
-    flags = dev->frame[3];
-    cmd = flow_get_u16_le(&dev->frame[4]);
-    payload_len = flow_get_u16_le(&dev->frame[6]);
-    payload = &dev->frame[MSP2_FRAME_HEADER_LEN];
+    device_id = dev->frame[1];
+    system_id = dev->frame[2];
+    msg_id = dev->frame[3];
+    sequence = dev->frame[4];
+    payload_len = dev->frame[5];
+    payload = &dev->frame[DRV_OPTICAL_FLOW_MICOLINK_HEADER_LEN];
     received_ms = HAL_GetTick();
 
-    if ((cmd != DRV_OPTICAL_FLOW_RANGE_MSG_ID) &&
-        (cmd != DRV_OPTICAL_FLOW_FLOW_MSG_ID)) {
+    if ((device_id != (uint8_t)DRV_OPTICAL_FLOW_MICOLINK_DEVICE_ID) ||
+        (msg_id != (uint8_t)DRV_OPTICAL_FLOW_MICOLINK_MSG_ID)) {
         dev->ignored_messages++;
         return 0U;
     }
 
-    if (((cmd == DRV_OPTICAL_FLOW_RANGE_MSG_ID) &&
-         (payload_len < DRV_OPTICAL_FLOW_RANGE_PAYLOAD_LEN)) ||
-        ((cmd == DRV_OPTICAL_FLOW_FLOW_MSG_ID) &&
-         (payload_len < DRV_OPTICAL_FLOW_FLOW_PAYLOAD_LEN))) {
+    if (payload_len < DRV_OPTICAL_FLOW_RANGE_PAYLOAD_LEN) {
         dev->short_payload_errors++;
         return 0U;
     }
 
-    parsed = dev->latest;
-    parsed.msp_cmd = cmd;
-    parsed.msp_flags = flags;
-    parsed.time_ms = received_ms;
-
-    if (cmd == DRV_OPTICAL_FLOW_RANGE_MSG_ID) {
-        uint8_t quality = payload[0];
-        parsed.distance_mm = flow_get_u32_le(&payload[1]);
-        parsed.strength = quality;
-        parsed.precision = 0U;
-        parsed.tof_status = quality;
-        parsed.distance_valid =
-            ((quality != 0U) &&
-             (parsed.distance_mm >= DRV_OPTICAL_FLOW_MIN_DISTANCE_MM)) ? 1U : 0U;
-        parsed.distance_received_ms = received_ms;
-    } else {
-        parsed.flow_quality = payload[0];
-        parsed.flow_status = payload[0];
-        parsed.flow_vel_x = flow_i32_to_i16_sat(flow_get_i32_le(&payload[1]));
-        parsed.flow_vel_y = flow_i32_to_i16_sat(flow_get_i32_le(&payload[5]));
-        parsed.flow_valid = (parsed.flow_quality != 0U) ? 1U : 0U;
-        parsed.flow_received_ms = received_ms;
-    }
+    memset(&parsed, 0, sizeof(parsed));
+    parsed.device_id = device_id;
+    parsed.system_id = system_id;
+    parsed.msg_id = msg_id;
+    parsed.sequence = sequence;
+    parsed.time_ms = flow_get_u32_le(&payload[0]);
+    parsed.distance_mm = flow_get_u32_le(&payload[4]);
+    parsed.strength = payload[8];
+    parsed.precision = payload[9];
+    parsed.tof_status = payload[10];
+    parsed.distance_valid =
+        ((parsed.tof_status == 1U) &&
+         (parsed.distance_mm >= DRV_OPTICAL_FLOW_MIN_DISTANCE_MM)) ? 1U : 0U;
+    parsed.flow_vel_x = flow_get_i16_le(&payload[12]);
+    parsed.flow_vel_y = flow_get_i16_le(&payload[14]);
+    parsed.flow_quality = payload[16];
+    parsed.flow_status = payload[17];
+    parsed.flow_valid =
+        ((parsed.flow_status == 1U) && (parsed.flow_quality != 0U)) ? 1U : 0U;
+    parsed.distance_received_ms = received_ms;
+    parsed.flow_received_ms = received_ms;
 
     flow_publish_latest(dev, &parsed, received_ms);
     return 1U;
@@ -364,29 +345,17 @@ uint8_t DRV_OPTICAL_FLOW_ConsumeByte(DRV_OPTICAL_FLOW_Device *dev, uint8_t byte)
     dev->bytes++;
 
     if (dev->offset == 0U) {
-        if (byte != (uint8_t)DRV_OPTICAL_FLOW_MSP_HEAD_0) {
+        if (byte != (uint8_t)DRV_OPTICAL_FLOW_MICOLINK_HEAD) {
             return 0U;
         }
         dev->frame[dev->offset++] = byte;
         return 0U;
     }
 
-    if (((dev->offset == 1U) &&
-         (byte != (uint8_t)DRV_OPTICAL_FLOW_MSP_HEAD_1)) ||
-        ((dev->offset == 2U) &&
-         (byte != (uint8_t)DRV_OPTICAL_FLOW_MSP_HEAD_2))) {
-        dev->frame_errors++;
-        flow_reset_parser(dev);
-        if (byte == (uint8_t)DRV_OPTICAL_FLOW_MSP_HEAD_0) {
-            dev->frame[dev->offset++] = byte;
-        }
-        return 0U;
-    }
-
     if (dev->offset >= DRV_OPTICAL_FLOW_FRAME_LEN) {
         dev->frame_errors++;
         flow_reset_parser(dev);
-        if (byte == (uint8_t)DRV_OPTICAL_FLOW_MSP_HEAD_0) {
+        if (byte == (uint8_t)DRV_OPTICAL_FLOW_MICOLINK_HEAD) {
             dev->frame[dev->offset++] = byte;
         }
         return 0U;
@@ -394,16 +363,15 @@ uint8_t DRV_OPTICAL_FLOW_ConsumeByte(DRV_OPTICAL_FLOW_Device *dev, uint8_t byte)
 
     dev->frame[dev->offset++] = byte;
 
-    if (dev->offset == MSP2_FRAME_HEADER_LEN) {
-        uint16_t payload_len = flow_get_u16_le(&dev->frame[6]);
+    if (dev->offset == DRV_OPTICAL_FLOW_MICOLINK_HEADER_LEN) {
+        uint16_t payload_len = dev->frame[5];
         if (payload_len > DRV_OPTICAL_FLOW_MAX_PAYLOAD_LEN) {
             dev->frame_errors++;
             flow_reset_parser(dev);
             return 0U;
         }
         dev->expected_len =
-            (uint16_t)MSP2_FRAME_HEADER_LEN + payload_len +
-            (uint16_t)MSP2_CHECKSUM_LEN;
+            (uint16_t)DRV_OPTICAL_FLOW_MICOLINK_HEADER_LEN + payload_len + 1U;
     }
 
     if ((dev->expected_len == 0U) || (dev->offset < dev->expected_len)) {
@@ -413,7 +381,7 @@ uint8_t DRV_OPTICAL_FLOW_ConsumeByte(DRV_OPTICAL_FLOW_Device *dev, uint8_t byte)
     {
         uint16_t completed_len = dev->expected_len;
         uint8_t restart_head =
-            (byte == (uint8_t)DRV_OPTICAL_FLOW_MSP_HEAD_0) ? 1U : 0U;
+            (byte == (uint8_t)DRV_OPTICAL_FLOW_MICOLINK_HEAD) ? 1U : 0U;
 
         flow_reset_parser(dev);
         if (flow_checksum_ok(dev->frame, completed_len) == 0U) {
@@ -424,7 +392,7 @@ uint8_t DRV_OPTICAL_FLOW_ConsumeByte(DRV_OPTICAL_FLOW_Device *dev, uint8_t byte)
             return 0U;
         }
 
-        return flow_accept_msp2_frame(dev, completed_len);
+        return flow_accept_micolink_frame(dev, completed_len);
     }
 }
 

@@ -1,0 +1,2 @@
+key,count,duration_s,roll_rms_deg,pitch_rms_deg,gyro_xy_rms_dps,yaw_rate_rms_dps,tilt_saturation_pct,motor_high_saturation_pct,motor_low_saturation_pct,direct_throttle_pct,throttle_mean_us,total_force_mean_n
+"roll_angle_kp=-0.8, roll_rate_kd=0.299, pitch_angle_kp=-0.8, pitch_rate_kd=0.3, pos_z_kp=3.8, yaw_rate_kd=0.5",8139,73.18851399999971,4.0911175868893705,2.0774211398164533,15.761521830995216,12.411576622528735,0.37473891141417864,1.3269443420567637,1.4498095589138715,1.5112421673424254,1839.8915100135152,13.47602375111133

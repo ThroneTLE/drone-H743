@@ -77,6 +77,7 @@
 #define STABILIZER_SERVO_MOVE_TIME_MS 0U
 #define STABILIZER_NAV_ACCEL_LPF_ALPHA 0.94f
 #define STABILIZER_NAV_VEL_LEAK_HZ 0.25f
+#define STABILIZER_NAV_USE_FLOW_EKF 1U
 #define STABILIZER_NAV_EKF_FLOW_NOISE_M_S 0.25f
 #define STABILIZER_NAV_EKF_IMU_BRIDGE_TIMEOUT_MS 80U
 #define STABILIZER_NAV_EKF_FLOW_LOST_DECAY_HZ 8.0f
@@ -461,19 +462,28 @@ static StabilizerVofaDebug stabilizer_vofa_debug;
 
 static void stabilizer_velocity_estimator_reset(StabilizerVelocityEstimatorState *state)
 {
+#if (STABILIZER_NAV_USE_FLOW_EKF != 0U)
   DRV_NAV_EKF_Config config;
+#endif
 
   if (state == NULL) {
     return;
   }
 
+#if (STABILIZER_NAV_USE_FLOW_EKF != 0U)
   DRV_NAV_EKF_DefaultConfig(&config);
   config.flow_noise_m_s = STABILIZER_NAV_EKF_FLOW_NOISE_M_S;
   DRV_NAV_EKF_Reset(&state->ekf, &config);
   DRV_NAV_EKF_GetDiagnostics(&state->ekf, &state->diagnostics);
+#else
+  memset(&state->ekf, 0, sizeof(state->ekf));
+  memset(&state->diagnostics, 0, sizeof(state->diagnostics));
+  state->diagnostics.initialized = 1U;
+  state->diagnostics.last_flow_noise_m_s = 0.0f;
+  state->vel_m_s[0] = 0.0f;
+  state->vel_m_s[1] = 0.0f;
+#endif
   APP_NavEstimator_PublishVelocityEKF(&state->diagnostics);
-  state->vel_m_s[0] = state->diagnostics.vel_m_s[0];
-  state->vel_m_s[1] = state->diagnostics.vel_m_s[1];
 }
 
 static uint8_t stabilizer_velocity_estimator_step(StabilizerVelocityEstimatorState *state,
@@ -487,14 +497,20 @@ static uint8_t stabilizer_velocity_estimator_step(StabilizerVelocityEstimatorSta
                                                   uint32_t flow_sample_ms,
                                                   float dt_sec)
 {
+#if (STABILIZER_NAV_USE_FLOW_EKF != 0U)
   uint8_t flow_accepted;
   uint8_t imu_bridge_ok = 0U;
   uint32_t now_ms = HAL_GetTick();
+#else
+  uint32_t now_ms = HAL_GetTick();
+  uint8_t new_sample = 0U;
+#endif
 
   if (state == NULL) {
     return 0U;
   }
 
+#if (STABILIZER_NAV_USE_FLOW_EKF != 0U)
   if (dt_sec <= 0.0f) {
     dt_sec = SENSOR_IMU_DEFAULT_DT_SEC;
   }
@@ -529,32 +545,45 @@ static uint8_t stabilizer_velocity_estimator_step(StabilizerVelocityEstimatorSta
   state->vel_m_s[0] = state->diagnostics.vel_m_s[0];
   state->vel_m_s[1] = state->diagnostics.vel_m_s[1];
   return flow_accepted;
-}
+#else
+  (void)acc_x_m_s2;
+  (void)acc_y_m_s2;
+  (void)imu_vx_m_s;
+  (void)imu_vy_m_s;
+  (void)dt_sec;
 
-static uint8_t stabilizer_velocity_estimator_control_ok(
-  const StabilizerVelocityEstimatorState *state,
-  uint32_t now_ms)
-{
-  float vx;
-  float vy;
-
-  if ((state == NULL) ||
-      (state->diagnostics.initialized == 0U) ||
-      (state->diagnostics.flow_update_count == 0U) ||
-      (state->diagnostics.last_flow_update_ms == 0U) ||
-      ((now_ms - state->diagnostics.last_flow_update_ms) >
-       STABILIZER_NAV_EKF_CONTROL_TIMEOUT_MS)) {
-    return 0U;
+  if ((flow_valid != 0U) && (flow_sample_ms != 0U)) {
+    new_sample =
+      (flow_sample_ms != state->diagnostics.last_flow_update_ms) ? 1U : 0U;
+    state->vel_m_s[0] = flow_vx_m_s;
+    state->vel_m_s[1] = flow_vy_m_s;
+    state->diagnostics.vel_m_s[0] = flow_vx_m_s;
+    state->diagnostics.vel_m_s[1] = flow_vy_m_s;
+    if (new_sample != 0U) {
+      state->diagnostics.flow_update_count++;
+    }
+    state->diagnostics.last_flow_update_ms = flow_sample_ms;
+    state->diagnostics.last_dt_sec = 0.0f;
+    state->diagnostics.last_flow_noise_m_s = 0.0f;
+    state->diagnostics.last_innovation_m_s[0] = 0.0f;
+    state->diagnostics.last_innovation_m_s[1] = 0.0f;
+    state->diagnostics.last_nis = 0.0f;
+    state->diagnostics.last_gate_nis = 0.0f;
+  } else {
+    state->diagnostics.flow_skip_count++;
+    if ((state->diagnostics.last_flow_update_ms == 0U) ||
+        ((now_ms - state->diagnostics.last_flow_update_ms) >
+         STABILIZER_NAV_EKF_CONTROL_TIMEOUT_MS)) {
+      state->vel_m_s[0] = 0.0f;
+      state->vel_m_s[1] = 0.0f;
+      state->diagnostics.vel_m_s[0] = 0.0f;
+      state->diagnostics.vel_m_s[1] = 0.0f;
+    }
   }
 
-  vx = state->diagnostics.vel_m_s[0];
-  vy = state->diagnostics.vel_m_s[1];
-  if ((fabsf(vx) > STABILIZER_NAV_EKF_CONTROL_MAX_SPEED_M_S) ||
-      (fabsf(vy) > STABILIZER_NAV_EKF_CONTROL_MAX_SPEED_M_S)) {
-    return 0U;
-  }
-
-  return 1U;
+  APP_NavEstimator_PublishVelocityEKF(&state->diagnostics);
+  return (flow_valid != 0U) ? 1U : 0U;
+#endif
 }
 
 static void stabilizer_vofa_debug_publish(const StabilizerVofaDebug *debug)
@@ -1106,6 +1135,7 @@ void StabilizerTask(void *argument)
         DRV_SERVO_MoveCmd moves[2];     /* [0]=servo 1 alpha/left-right, [1]=servo 2 beta/front-back */
         uint8_t imu_control_valid = 0U;
         uint8_t ident_running = 0U;
+        APP_IdentAttLog ident_att_log = {0};
         uint8_t servo_cal_active = 0U;
 
         last_out_ms = now;
@@ -1162,7 +1192,26 @@ void StabilizerTask(void *argument)
         }
 
         APP_Ident_Update(now);
+        APP_IdentAtt_Update(now);
         ident_running = APP_Ident_IsRunning();
+        {
+          APP_IdentAttObserve ident_att_obs = {0};
+
+          ident_att_obs.now_ms = now;
+          ident_att_obs.roll_deg = roll_control;
+          ident_att_obs.pitch_deg = pitch_control;
+          ident_att_obs.gyro_x_dps = msg.imu.gyro_x_dps;
+          ident_att_obs.gyro_y_dps = msg.imu.gyro_y_dps;
+          ident_att_obs.rc_link_ok = rc_link_ok;
+          ident_att_obs.rc_armed = rc_armed;
+          ident_att_obs.imu_valid = imu_control_valid;
+          ident_att_obs.throttle_over_20 = rc_use_stabilized_motor_mix;
+          ident_att_obs.control_valid =
+            ((rc_use_stabilized_motor_mix != 0U) &&
+             (imu_control_valid != 0U) &&
+             (ident_running == 0U)) ? 1U : 0U;
+          APP_IdentAtt_Observe(&ident_att_obs);
+        }
 
 #if (STABILIZER_USE_DIRECT_ANGLE_SERVO == 0U)
         if (rc_link_seen == 0U) {
@@ -1258,8 +1307,7 @@ void StabilizerTask(void *argument)
             }
           }
           {
-            uint8_t velocity_control_ok =
-              stabilizer_velocity_estimator_control_ok(&vel_estimator, now);
+            uint8_t velocity_loop_enabled = 0U;
 
           attitude.roll_rad = roll_control * STABILIZER_DEG_TO_RAD;
           attitude.pitch_rad = pitch_control * STABILIZER_DEG_TO_RAD;
@@ -1267,10 +1315,8 @@ void StabilizerTask(void *argument)
           attitude.x_m = 0.0f;
           attitude.y_m = 0.0f;
           attitude.z_m = -relative_height_m;
-          attitude.vx_m_s = (velocity_control_ok != 0U) ?
-                            velocity_state_x_m_s : 0.0f;
-          attitude.vy_m_s = (velocity_control_ok != 0U) ?
-                            velocity_state_y_m_s : 0.0f;
+          attitude.vx_m_s = velocity_state_x_m_s;
+          attitude.vy_m_s = velocity_state_y_m_s;
           attitude.vz_m_s = -range_velocity_m_s;
           if (range_height_valid == 0U) {
             attitude.z_m = 0.0f;
@@ -1296,10 +1342,11 @@ void StabilizerTask(void *argument)
             (void)DRV_COAX_CTRL_GetParam("coax.vel_loop_y_ki", &vofa_debug.vel_loop_y_ki);
             (void)DRV_COAX_CTRL_GetParam("coax.vel_loop_y_kd", &vofa_debug.vel_loop_y_kd);
 
+            velocity_loop_enabled = (vel_loop_enable >= 0.5f) ? 1U : 0U;
             reference.ax_m_s2 = 0.0f;
             reference.ay_m_s2 = 0.0f;
             reference.dt_sec = ctrl_dt_sec;
-            reference.horizontal_velocity_valid = velocity_control_ok;
+            reference.horizontal_velocity_valid = velocity_loop_enabled;
             reference.x_m = attitude.x_m;
             reference.y_m = attitude.y_m;
             vofa_debug.vel_ref_m_s[0] = reference.vx_m_s;
@@ -1307,8 +1354,7 @@ void StabilizerTask(void *argument)
             vofa_debug.vel_err_m_s[0] = reference.vx_m_s - attitude.vx_m_s;
             vofa_debug.vel_err_m_s[1] = reference.vy_m_s - attitude.vy_m_s;
             vofa_debug.vel_loop_active =
-              ((vel_loop_enable >= 0.5f) && (velocity_control_ok != 0U)) ?
-              1.0f : 0.0f;
+              (velocity_loop_enabled != 0U) ? 1.0f : 0.0f;
           }
           reference.az_m_s2 = 0.0f;
           {
@@ -1369,9 +1415,14 @@ void StabilizerTask(void *argument)
             reference.yaw_accel_rad_s2 = 0.0f;
           }
 
+          APP_IdentAtt_Apply(&reference.ax_m_s2,
+                             &reference.ay_m_s2,
+                             &ident_att_log);
+
           DRV_COAX_CTRL_Run(&attitude, &reference, &ctrl_out);
           {
             DRV_COAX_CTRL_Debug balance_debug;
+            APP_IdentAttObserve ident_att_obs = {0};
 
             DRV_COAX_CTRL_GetLastDebug(&balance_debug);
             vofa_debug.vel_pid_out_m_s2[0] = balance_debug.accel_out_m_s2[0];
@@ -1382,6 +1433,20 @@ void StabilizerTask(void *argument)
             vofa_debug.vel_pid_i_m_s2[1] = balance_debug.vel_d_m_s2[1];
             vofa_debug.vel_pid_d_m_s2[0] = 0.0f;
             vofa_debug.vel_pid_d_m_s2[1] = 0.0f;
+            ident_att_obs.now_ms = now;
+            ident_att_obs.roll_deg = roll_control;
+            ident_att_obs.pitch_deg = pitch_control;
+            ident_att_obs.gyro_x_dps = msg.imu.gyro_x_dps;
+            ident_att_obs.gyro_y_dps = msg.imu.gyro_y_dps;
+            ident_att_obs.tilt_out_rad[0] = balance_debug.tilt_out_rad[0];
+            ident_att_obs.tilt_out_rad[1] = balance_debug.tilt_out_rad[1];
+            ident_att_obs.protection_flags = balance_debug.protection_flags;
+            ident_att_obs.rc_link_ok = rc_link_ok;
+            ident_att_obs.rc_armed = rc_armed;
+            ident_att_obs.imu_valid = imu_control_valid;
+            ident_att_obs.throttle_over_20 = rc_use_stabilized_motor_mix;
+            ident_att_obs.control_valid = 1U;
+            APP_IdentAtt_Observe(&ident_att_obs);
           }
 
           vofa_debug.range_vertical_velocity_m_s = range_velocity_m_s;
@@ -1569,6 +1634,7 @@ void StabilizerTask(void *argument)
           flog_snapshot.vel_loop_active = vofa_debug.vel_loop_active;
           DRV_COAX_CTRL_GetLastDebug(&flog_snapshot.ctrl_debug);
           flog_snapshot.z_ref_m = vofa_debug.altitude_ref_m;
+          flog_snapshot.ident_att = ident_att_log;
 
           if (flight_log_active != 0U) {
             flight_log_tail_records = STABILIZER_FLIGHT_LOG_TAIL_RECORDS;

@@ -195,10 +195,11 @@ def test_controller_wrapper_exposes_velocity_first_vector_control_inputs() -> No
     assert "StabilizerVelocityPidState" not in freertos
     assert "stabilizer_velocity_pid_step" not in freertos
     assert "reference.dt_sec = ctrl_dt_sec;" in freertos
-    assert "reference.horizontal_velocity_valid = velocity_control_ok;" in freertos
+    assert "velocity_loop_enabled = (vel_loop_enable >= 0.5f) ? 1U : 0U;" in freertos
+    assert "reference.horizontal_velocity_valid = velocity_loop_enabled;" in freertos
     assert "reference.x_m = attitude.x_m;" in freertos
-    assert "stabilizer_velocity_estimator_control_ok(&vel_estimator, now)" in freertos
-    assert "attitude.vx_m_s = (velocity_control_ok != 0U) ?" in freertos
+    assert "stabilizer_velocity_estimator_control_ok(&vel_estimator, now)" not in freertos
+    assert "attitude.vx_m_s = velocity_state_x_m_s;" in freertos
     assert "relative_height_m = range_height_m - height_origin_m;" in freertos
     assert "attitude.z_m = -relative_height_m;" in freertos
     assert "attitude.vz_m_s = -range_velocity_m_s;" in freertos
@@ -207,7 +208,7 @@ def test_controller_wrapper_exposes_velocity_first_vector_control_inputs() -> No
     assert "reference.vz_m_s = 0.0f;" in freertos
     assert "reference.yaw_rate_rad_s = yaw_rate_ref_rad_s;" in freertos
     assert "reference.yaw_accel_rad_s2 = 0.0f;" in freertos
-    assert "velocity_state_x_m_s : 0.0f;" in freertos
+    assert "velocity_state_x_m_s : 0.0f;" not in freertos
     assert "velocity_ref_x_m_s" not in freertos
     assert "memset(&reference, 0, sizeof(reference));" in freertos
 

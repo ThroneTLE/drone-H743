@@ -3,6 +3,7 @@
 #include "app_control.h"
 #include "drv_coax_ctrl.h"
 
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -13,6 +14,17 @@
 #define APP_IDENT_DEFAULT_ALPHA_US    DRV_COAX_CTRL_SERVO_ALPHA_CENTER_US
 #define APP_IDENT_DEFAULT_BETA_US     DRV_COAX_CTRL_SERVO_BETA_CENTER_US
 #define APP_IDENT_ATTITUDE_LIMIT_DEG  25.0f
+
+#define APP_IDENT_ATT_MAX_AMP_MDEG        2000
+#define APP_IDENT_ATT_MIN_BIT_MS          80U
+#define APP_IDENT_ATT_MAX_BIT_MS          2000U
+#define APP_IDENT_ATT_MAX_DURATION_MS     120000U
+#define APP_IDENT_ATT_ATTITUDE_LIMIT_DEG  20.0f
+#define APP_IDENT_ATT_GYRO_LIMIT_DPS      150.0f
+#define APP_IDENT_ATT_PENDING_STABLE_MS   250U
+#define APP_IDENT_ATT_PENDING_REPORT_MS   1000U
+#define APP_IDENT_ATT_DEG_TO_RAD          0.01745329251994329577f
+#define APP_IDENT_ATT_GRAVITY_M_S2        9.81f
 
 typedef enum {
     APP_IDENT_AXIS_ROLL = 0,
@@ -48,7 +60,25 @@ typedef struct {
     char last_reason[24];
 } APP_IdentContext;
 
+typedef struct {
+    APP_IdentState state;
+    APP_IdentAttAxis axis;
+    APP_IdentAttMode mode;
+    uint32_t id;
+    uint32_t seq;
+    uint32_t start_ms;
+    uint32_t duration_ms;
+    uint32_t bit_ms;
+    uint32_t seed;
+    uint32_t ready_start_ms;
+    uint32_t last_wait_report_ms;
+    int32_t amp_mdeg;
+    APP_IdentAttLog log;
+    char last_reason[24];
+} APP_IdentAttContext;
+
 static APP_IdentContext ident_ctx;
+static APP_IdentAttContext ident_att_ctx;
 
 static const char *ident_state_name(APP_IdentState state)
 {
@@ -77,6 +107,23 @@ static const char *ident_mode_name(APP_IdentMode mode)
     }
 }
 
+static const char *ident_att_axis_name(APP_IdentAttAxis axis)
+{
+    switch (axis) {
+    case APP_IDENT_ATT_AXIS_ROLL: return "roll";
+    case APP_IDENT_ATT_AXIS_PITCH: return "pitch";
+    default: return "none";
+    }
+}
+
+static const char *ident_att_mode_name(APP_IdentAttMode mode)
+{
+    switch (mode) {
+    case APP_IDENT_ATT_MODE_PRBS: return "prbs";
+    default: return "none";
+    }
+}
+
 static uint8_t ident_parse_axis(const char *text, APP_IdentAxis *axis)
 {
     if ((text == 0) || (axis == 0)) {
@@ -89,6 +136,23 @@ static uint8_t ident_parse_axis(const char *text, APP_IdentAxis *axis)
     }
     if (strcmp(text, "pitch") == 0) {
         *axis = APP_IDENT_AXIS_PITCH;
+        return 1U;
+    }
+    return 0U;
+}
+
+static uint8_t ident_att_parse_axis(const char *text, APP_IdentAttAxis *axis)
+{
+    if ((text == 0) || (axis == 0)) {
+        return 0U;
+    }
+
+    if (strcmp(text, "roll") == 0) {
+        *axis = APP_IDENT_ATT_AXIS_ROLL;
+        return 1U;
+    }
+    if (strcmp(text, "pitch") == 0) {
+        *axis = APP_IDENT_ATT_AXIS_PITCH;
         return 1U;
     }
     return 0U;
@@ -147,11 +211,161 @@ static void ident_set_reason(const char *reason)
     (void)snprintf(ident_ctx.last_reason, sizeof(ident_ctx.last_reason), "%s", reason);
 }
 
+static void ident_att_set_reason(const char *reason)
+{
+    if (reason == 0) {
+        reason = "none";
+    }
+    (void)snprintf(ident_att_ctx.last_reason,
+                   sizeof(ident_att_ctx.last_reason),
+                   "%s",
+                   reason);
+}
+
 static void ident_set_center_targets(void)
 {
     ident_ctx.active_offset_us = 0;
     ident_ctx.alpha_target_us = ident_ctx.alpha_center_us;
     ident_ctx.beta_target_us = ident_ctx.beta_center_us;
+}
+
+static void ident_att_clear_log(void)
+{
+    memset(&ident_att_ctx.log, 0, sizeof(ident_att_ctx.log));
+    ident_att_ctx.log.axis = (uint8_t)ident_att_ctx.axis;
+    ident_att_ctx.log.mode = (uint8_t)ident_att_ctx.mode;
+}
+
+static uint8_t ident_att_pending_or_running(void)
+{
+    return ((ident_att_ctx.state == APP_IDENT_STATE_ARMED) ||
+            (ident_att_ctx.state == APP_IDENT_STATE_RUNNING)) ? 1U : 0U;
+}
+
+static void ident_att_finish(const char *reason, uint8_t emit)
+{
+    ident_att_set_reason(reason);
+    ident_att_clear_log();
+    ident_att_ctx.ready_start_ms = 0U;
+    ident_att_ctx.last_wait_report_ms = 0U;
+    if ((ident_att_ctx.state == APP_IDENT_STATE_RUNNING) ||
+        (ident_att_ctx.state == APP_IDENT_STATE_ARMED)) {
+        ident_att_ctx.state =
+            (strcmp(ident_att_ctx.last_reason, "complete") == 0) ?
+            APP_IDENT_STATE_DONE : APP_IDENT_STATE_ABORTED;
+        if (emit != 0U) {
+            APP_Control_QueueText("IDENT att stop id=%lu reason=%s seq=%lu\r\n",
+                                  (unsigned long)ident_att_ctx.id,
+                                  ident_att_ctx.last_reason,
+                                  (unsigned long)ident_att_ctx.seq);
+        }
+    } else if (emit != 0U) {
+        APP_Control_QueueText("IDENT att stop reason=%s id=%lu\r\n",
+                              ident_att_ctx.last_reason,
+                              (unsigned long)ident_att_ctx.id);
+    }
+}
+
+static const char *ident_att_ready_reason(const APP_IdentAttObserve *obs)
+{
+    if (obs->rc_link_ok == 0U) {
+        return "wait_rc_link";
+    }
+    if (obs->rc_armed == 0U) {
+        return "wait_rc_arm";
+    }
+    if (obs->imu_valid == 0U) {
+        return "wait_imu";
+    }
+    if (obs->throttle_over_20 == 0U) {
+        return "wait_throttle";
+    }
+    if ((obs->roll_deg > APP_IDENT_ATT_ATTITUDE_LIMIT_DEG) ||
+        (obs->roll_deg < -APP_IDENT_ATT_ATTITUDE_LIMIT_DEG) ||
+        (obs->pitch_deg > APP_IDENT_ATT_ATTITUDE_LIMIT_DEG) ||
+        (obs->pitch_deg < -APP_IDENT_ATT_ATTITUDE_LIMIT_DEG)) {
+        return "wait_attitude";
+    }
+    if ((obs->gyro_x_dps > APP_IDENT_ATT_GYRO_LIMIT_DPS) ||
+        (obs->gyro_x_dps < -APP_IDENT_ATT_GYRO_LIMIT_DPS) ||
+        (obs->gyro_y_dps > APP_IDENT_ATT_GYRO_LIMIT_DPS) ||
+        (obs->gyro_y_dps < -APP_IDENT_ATT_GYRO_LIMIT_DPS)) {
+        return "wait_gyro";
+    }
+    if (obs->control_valid == 0U) {
+        return "wait_control";
+    }
+    return "ready";
+}
+
+static void ident_att_report_wait(const APP_IdentAttObserve *obs,
+                                  const char *reason)
+{
+    uint32_t stable_ms = 0U;
+
+    if ((obs == 0) || (ident_att_ctx.state != APP_IDENT_STATE_ARMED)) {
+        return;
+    }
+
+    if (ident_att_ctx.ready_start_ms != 0U) {
+        stable_ms = obs->now_ms - ident_att_ctx.ready_start_ms;
+    }
+    if ((ident_att_ctx.last_wait_report_ms != 0U) &&
+        ((obs->now_ms - ident_att_ctx.last_wait_report_ms) <
+         APP_IDENT_ATT_PENDING_REPORT_MS)) {
+        return;
+    }
+
+    ident_att_ctx.last_wait_report_ms = obs->now_ms;
+    APP_Control_QueueText("IDENT att wait id=%lu reason=%s stable_ms=%lu\r\n",
+                          (unsigned long)ident_att_ctx.id,
+                          reason,
+                          (unsigned long)stable_ms);
+}
+
+static void ident_att_try_begin(const APP_IdentAttObserve *obs)
+{
+    const char *reason;
+
+    if ((obs == 0) || (ident_att_ctx.state != APP_IDENT_STATE_ARMED)) {
+        return;
+    }
+
+    reason = ident_att_ready_reason(obs);
+    if (strcmp(reason, "ready") != 0) {
+        ident_att_ctx.ready_start_ms = 0U;
+        ident_att_set_reason(reason);
+        ident_att_report_wait(obs, reason);
+        return;
+    }
+
+    if (ident_att_ctx.ready_start_ms == 0U) {
+        ident_att_ctx.ready_start_ms = obs->now_ms;
+        ident_att_set_reason("wait_stable");
+        ident_att_report_wait(obs, "wait_stable");
+        return;
+    }
+    if ((obs->now_ms - ident_att_ctx.ready_start_ms) <
+        APP_IDENT_ATT_PENDING_STABLE_MS) {
+        ident_att_set_reason("wait_stable");
+        ident_att_report_wait(obs, "wait_stable");
+        return;
+    }
+
+    ident_att_ctx.start_ms = obs->now_ms;
+    ident_att_ctx.seq = 0U;
+    ident_att_ctx.ready_start_ms = 0U;
+    ident_att_ctx.last_wait_report_ms = 0U;
+    ident_att_ctx.state = APP_IDENT_STATE_RUNNING;
+    ident_att_set_reason("running");
+    ident_att_clear_log();
+    APP_Control_QueueText("IDENT att start id=%lu axis=%s mode=prbs amp_mdeg=%ld bit_ms=%lu duration_ms=%lu seed=%lu\r\n",
+                          (unsigned long)ident_att_ctx.id,
+                          ident_att_axis_name(ident_att_ctx.axis),
+                          (long)ident_att_ctx.amp_mdeg,
+                          (unsigned long)ident_att_ctx.bit_ms,
+                          (unsigned long)ident_att_ctx.duration_ms,
+                          (unsigned long)ident_att_ctx.seed);
 }
 
 static uint32_t ident_prbs_next(uint32_t value)
@@ -221,6 +435,10 @@ static uint8_t ident_start(APP_IdentAxis axis,
         APP_Control_QueueText("ERR ident not armed\r\n");
         return 0U;
     }
+    if (ident_att_pending_or_running() != 0U) {
+        APP_Control_QueueText("ERR ident att running\r\n");
+        return 0U;
+    }
     if ((ident_valid_offset(pulse_us) == 0U) ||
         (ident_valid_duration(duration_ms) == 0U) ||
         (ident_targets_from_offset(pulse_us, &alpha, &beta) == 0U)) {
@@ -272,6 +490,13 @@ void APP_Ident_Init(void)
     ident_ctx.beta_center_us = APP_IDENT_DEFAULT_BETA_US;
     ident_set_center_targets();
     ident_set_reason("init");
+
+    memset(&ident_att_ctx, 0, sizeof(ident_att_ctx));
+    ident_att_ctx.state = APP_IDENT_STATE_IDLE;
+    ident_att_ctx.axis = APP_IDENT_ATT_AXIS_NONE;
+    ident_att_ctx.mode = APP_IDENT_ATT_MODE_NONE;
+    ident_att_set_reason("init");
+    ident_att_clear_log();
 }
 
 APP_IdentState APP_Ident_GetState(void)
@@ -297,12 +522,27 @@ void APP_Ident_ReportStatus(void)
                           (unsigned int)ident_ctx.alpha_center_us,
                           (unsigned int)ident_ctx.beta_center_us,
                           ident_ctx.last_reason);
+    APP_Control_QueueText("IDENT att state=%s id=%lu seq=%lu axis=%s mode=%s amp_mdeg=%ld bit_ms=%lu duration_ms=%lu elapsed_ms=%lu reason=%s\r\n",
+                          ident_state_name(ident_att_ctx.state),
+                          (unsigned long)ident_att_ctx.id,
+                          (unsigned long)ident_att_ctx.seq,
+                          ident_att_axis_name(ident_att_ctx.axis),
+                          ident_att_mode_name(ident_att_ctx.mode),
+                          (long)ident_att_ctx.amp_mdeg,
+                          (unsigned long)ident_att_ctx.bit_ms,
+                          (unsigned long)ident_att_ctx.duration_ms,
+                          (unsigned long)ident_att_ctx.log.elapsed_ms,
+                          ident_att_ctx.last_reason);
 }
 
 uint8_t APP_Ident_Arm(void)
 {
     if (ident_ctx.state == APP_IDENT_STATE_RUNNING) {
         APP_Control_QueueText("ERR ident running\r\n");
+        return 0U;
+    }
+    if (ident_att_pending_or_running() != 0U) {
+        APP_Control_QueueText("ERR ident att running\r\n");
         return 0U;
     }
     ident_set_center_targets();
@@ -314,6 +554,7 @@ uint8_t APP_Ident_Arm(void)
 
 void APP_Ident_Disarm(void)
 {
+    ident_att_finish("disarm", 0U);
     ident_set_center_targets();
     ident_ctx.state = APP_IDENT_STATE_IDLE;
     ident_set_reason("disarm");
@@ -322,6 +563,7 @@ void APP_Ident_Disarm(void)
 
 void APP_Ident_Stop(const char *reason)
 {
+    ident_att_finish((reason == 0) ? "command" : reason, 1U);
     ident_set_center_targets();
     ident_set_reason((reason == 0) ? "command" : reason);
     if (ident_ctx.state == APP_IDENT_STATE_RUNNING) {
@@ -409,6 +651,74 @@ uint8_t APP_Ident_StartPrbs(const char *axis,
                        0U, 0U, bit_ms, seed);
 }
 
+uint8_t APP_IdentAtt_StartPrbs(const char *axis,
+                               int32_t amp_mdeg,
+                               uint32_t bit_ms,
+                               uint32_t duration_ms,
+                               uint32_t seed)
+{
+    APP_IdentAttAxis parsed_axis;
+
+    if (ident_ctx.state == APP_IDENT_STATE_RUNNING) {
+        APP_Control_QueueText("ERR ident direct running\r\n");
+        return 0U;
+    }
+    if (ident_ctx.state != APP_IDENT_STATE_ARMED) {
+        APP_Control_QueueText("ERR ident not armed\r\n");
+        return 0U;
+    }
+    if (ident_att_pending_or_running() != 0U) {
+        APP_Control_QueueText("ERR ident att running\r\n");
+        return 0U;
+    }
+    if (ident_att_parse_axis(axis, &parsed_axis) == 0U) {
+        APP_Control_QueueText("ERR ident att axis %s\r\n",
+                              (axis == 0) ? "" : axis);
+        return 0U;
+    }
+    if ((ident_abs_i32(amp_mdeg) == 0) ||
+        (ident_abs_i32(amp_mdeg) > APP_IDENT_ATT_MAX_AMP_MDEG) ||
+        (bit_ms < APP_IDENT_ATT_MIN_BIT_MS) ||
+        (bit_ms > APP_IDENT_ATT_MAX_BIT_MS) ||
+        (duration_ms == 0U) ||
+        (duration_ms > APP_IDENT_ATT_MAX_DURATION_MS)) {
+        APP_Control_QueueText("ERR ident att range amp_mdeg=%ld bit_ms=%lu duration_ms=%lu\r\n",
+                              (long)amp_mdeg,
+                              (unsigned long)bit_ms,
+                              (unsigned long)duration_ms);
+        return 0U;
+    }
+
+    ident_att_ctx.axis = parsed_axis;
+    ident_att_ctx.mode = APP_IDENT_ATT_MODE_PRBS;
+    ident_att_ctx.amp_mdeg = amp_mdeg;
+    ident_att_ctx.bit_ms = bit_ms;
+    ident_att_ctx.duration_ms = duration_ms;
+    ident_att_ctx.seed = (seed == 0U) ? 1U : seed;
+    ident_att_ctx.seq = 0U;
+    ident_att_ctx.start_ms = 0U;
+    ident_att_ctx.ready_start_ms = 0U;
+    ident_att_ctx.last_wait_report_ms = 0U;
+    ++ident_att_ctx.id;
+    ident_att_ctx.state = APP_IDENT_STATE_ARMED;
+    ident_att_set_reason("wait_rc_arm");
+    ident_att_clear_log();
+
+    APP_Control_QueueText("IDENT att armed id=%lu axis=%s mode=prbs amp_mdeg=%ld bit_ms=%lu duration_ms=%lu seed=%lu wait=safe_start\r\n",
+                          (unsigned long)ident_att_ctx.id,
+                          ident_att_axis_name(ident_att_ctx.axis),
+                          (long)ident_att_ctx.amp_mdeg,
+                          (unsigned long)ident_att_ctx.bit_ms,
+                          (unsigned long)ident_att_ctx.duration_ms,
+                          (unsigned long)ident_att_ctx.seed);
+    return 1U;
+}
+
+void APP_IdentAtt_Stop(const char *reason)
+{
+    ident_att_finish((reason == 0) ? "command" : reason, 1U);
+}
+
 uint8_t APP_Ident_ApplyPid(const char *axis, const char *kp_text, const char *kd_text)
 {
     const char *kd_name;
@@ -436,6 +746,133 @@ uint8_t APP_Ident_ApplyPid(const char *axis, const char *kp_text, const char *kd
     }
     APP_Control_QueueText("OK ident apply axis=%s\r\n", axis);
     return 1U;
+}
+
+void APP_IdentAtt_Update(uint32_t now_ms)
+{
+    uint32_t elapsed;
+    uint32_t bit_index;
+    uint32_t lfsr;
+    float signal_rad;
+    float accel_m_s2;
+    float sign = 1.0f;
+
+    if (ident_att_ctx.state != APP_IDENT_STATE_RUNNING) {
+        ident_att_clear_log();
+        return;
+    }
+    if (ident_att_ctx.start_ms == 0U) {
+        ident_att_ctx.start_ms = now_ms;
+    }
+
+    elapsed = now_ms - ident_att_ctx.start_ms;
+    if (elapsed >= ident_att_ctx.duration_ms) {
+        ident_att_finish("complete", 1U);
+        return;
+    }
+
+    bit_index = (ident_att_ctx.bit_ms == 0U) ? 0U :
+                (elapsed / ident_att_ctx.bit_ms);
+    lfsr = (ident_att_ctx.seed == 0U) ? 1U : ident_att_ctx.seed;
+    for (uint32_t index = 0U; index <= bit_index; ++index) {
+        lfsr = ident_prbs_next(lfsr);
+    }
+    if ((lfsr & 1U) == 0U) {
+        sign = -1.0f;
+    }
+
+    signal_rad = sign * ((float)ident_att_ctx.amp_mdeg * 0.001f) *
+                 APP_IDENT_ATT_DEG_TO_RAD;
+    accel_m_s2 = APP_IDENT_ATT_GRAVITY_M_S2 * tanf(signal_rad);
+    ident_att_ctx.seq = bit_index;
+    ident_att_ctx.log.active = 1U;
+    ident_att_ctx.log.axis = (uint8_t)ident_att_ctx.axis;
+    ident_att_ctx.log.mode = (uint8_t)ident_att_ctx.mode;
+    ident_att_ctx.log.seq = bit_index;
+    ident_att_ctx.log.signal_rad = signal_rad;
+    ident_att_ctx.log.signal_m_s2 =
+        (ident_att_ctx.axis == APP_IDENT_ATT_AXIS_ROLL) ?
+        -accel_m_s2 : accel_m_s2;
+    ident_att_ctx.log.elapsed_ms = elapsed;
+}
+
+void APP_IdentAtt_Apply(float *ax_m_s2,
+                        float *ay_m_s2,
+                        APP_IdentAttLog *log)
+{
+    if (log != 0) {
+        APP_IdentAtt_GetLog(log);
+    }
+    if ((ident_att_ctx.state != APP_IDENT_STATE_RUNNING) ||
+        (ident_att_ctx.log.active == 0U)) {
+        return;
+    }
+    if ((ident_att_ctx.axis == APP_IDENT_ATT_AXIS_PITCH) &&
+        (ax_m_s2 != 0)) {
+        *ax_m_s2 += ident_att_ctx.log.signal_m_s2;
+    } else if ((ident_att_ctx.axis == APP_IDENT_ATT_AXIS_ROLL) &&
+               (ay_m_s2 != 0)) {
+        *ay_m_s2 += ident_att_ctx.log.signal_m_s2;
+    }
+    if (log != 0) {
+        APP_IdentAtt_GetLog(log);
+    }
+}
+
+void APP_IdentAtt_GetLog(APP_IdentAttLog *log)
+{
+    if (log == 0) {
+        return;
+    }
+    *log = ident_att_ctx.log;
+}
+
+void APP_IdentAtt_Observe(const APP_IdentAttObserve *obs)
+{
+    if (obs == 0) {
+        return;
+    }
+    if (ident_att_ctx.state == APP_IDENT_STATE_ARMED) {
+        ident_att_try_begin(obs);
+        return;
+    }
+    if (ident_att_ctx.state != APP_IDENT_STATE_RUNNING) {
+        return;
+    }
+    if (obs->rc_link_ok == 0U) {
+        APP_IdentAtt_Stop("rc_lost");
+        return;
+    }
+    if (obs->rc_armed == 0U) {
+        APP_IdentAtt_Stop("rc_disarm");
+        return;
+    }
+    if (obs->imu_valid == 0U) {
+        APP_IdentAtt_Stop("imu_stale");
+        return;
+    }
+    if (obs->throttle_over_20 == 0U) {
+        APP_IdentAtt_Stop("throttle_low");
+        return;
+    }
+    if ((obs->roll_deg > APP_IDENT_ATT_ATTITUDE_LIMIT_DEG) ||
+        (obs->roll_deg < -APP_IDENT_ATT_ATTITUDE_LIMIT_DEG) ||
+        (obs->pitch_deg > APP_IDENT_ATT_ATTITUDE_LIMIT_DEG) ||
+        (obs->pitch_deg < -APP_IDENT_ATT_ATTITUDE_LIMIT_DEG)) {
+        APP_IdentAtt_Stop("attitude_limit");
+        return;
+    }
+    if ((obs->gyro_x_dps > APP_IDENT_ATT_GYRO_LIMIT_DPS) ||
+        (obs->gyro_x_dps < -APP_IDENT_ATT_GYRO_LIMIT_DPS) ||
+        (obs->gyro_y_dps > APP_IDENT_ATT_GYRO_LIMIT_DPS) ||
+        (obs->gyro_y_dps < -APP_IDENT_ATT_GYRO_LIMIT_DPS)) {
+        APP_IdentAtt_Stop("gyro_limit");
+        return;
+    }
+    if (obs->control_valid == 0U) {
+        APP_IdentAtt_Stop("control_invalid");
+        return;
+    }
 }
 
 void APP_Ident_Update(uint32_t now_ms)

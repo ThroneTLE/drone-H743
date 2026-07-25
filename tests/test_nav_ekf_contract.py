@@ -18,6 +18,7 @@ def test_nav_ekf_is_built_and_wired_into_stabilizer() -> None:
     assert '#include "drv_nav_ekf.h"' in freertos
     assert '#include "app_nav_estimator.h"' in freertos
     assert '#include "app_nav_estimator.h"' in control
+    assert "#define STABILIZER_NAV_USE_FLOW_EKF 1U" in freertos
     assert "DRV_NAV_EKF_State ekf;" in freertos
     assert "DRV_NAV_EKF_Diagnostics diagnostics;" in freertos
     assert "DRV_NAV_EKF_DefaultConfig(&config);" in freertos
@@ -52,7 +53,7 @@ def test_nav_ekf_exposes_industry_consistency_metrics() -> None:
     assert "DRV_NAV_EKF_GetDiagnostics" in source
 
 
-def test_velocity_control_requires_recent_healthy_ekf_update() -> None:
+def test_velocity_control_enable_bypasses_estimator_health_gate_for_commissioning() -> None:
     freertos = read("Core/Src/freertos.c")
 
     assert "#define STABILIZER_NAV_EKF_CONTROL_TIMEOUT_MS 150U" in freertos
@@ -63,10 +64,11 @@ def test_velocity_control_requires_recent_healthy_ekf_update() -> None:
     assert "DRV_NAV_EKF_Predict(&state->ekf, acc_x_m_s2, acc_y_m_s2, dt_sec);" in freertos
     assert "state->ekf.vel_m_s[0] *= decay;" in freertos
     assert "state->ekf.vel_m_s[1] *= decay;" in freertos
-    assert "stabilizer_velocity_estimator_control_ok" in freertos
-    assert "(state->diagnostics.flow_update_count == 0U)" in freertos
-    assert "(state->diagnostics.last_flow_update_ms == 0U)" in freertos
-    assert "fabsf(vx) > STABILIZER_NAV_EKF_CONTROL_MAX_SPEED_M_S" in freertos
+    assert "stabilizer_velocity_estimator_control_ok(&vel_estimator, now)" not in freertos
+    assert "velocity_loop_enabled = (vel_loop_enable >= 0.5f) ? 1U : 0U;" in freertos
+    assert "reference.horizontal_velocity_valid = velocity_loop_enabled;" in freertos
+    assert "attitude.vx_m_s = velocity_state_x_m_s;" in freertos
+    assert "attitude.vy_m_s = velocity_state_y_m_s;" in freertos
     assert "reference.ax_m_s2 = 0.0f;" in freertos
     assert "reference.ay_m_s2 = 0.0f;" in freertos
     assert "predict_leak_hz" in read("Driver/Inc/drv_nav_ekf.h")
