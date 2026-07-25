@@ -60,12 +60,9 @@
 #define DRV_AIRFRAME_ROLL_AXIS_TO_PROP_PLANE_M     0.1450f
 #define DRV_AIRFRAME_PITCH_AXIS_TO_PROP_PLANE_M    0.1050f
 
-/* A tilted thrust line passes through its servo axis, so the rigid-body
- * moment arm is CG-to-axis rather than CG-to-propeller-plane. */
-#define DRV_AIRFRAME_PITCH_THRUST_LEVER_ARM_M      \
-    (DRV_AIRFRAME_PROP_PLANE_D_M - DRV_AIRFRAME_PITCH_AXIS_TO_PROP_PLANE_M)
-#define DRV_AIRFRAME_ROLL_THRUST_LEVER_ARM_M       \
-    (DRV_AIRFRAME_PROP_PLANE_D_M - DRV_AIRFRAME_ROLL_AXIS_TO_PROP_PLANE_M)
+/* Controller effective thrust moment arms. */
+#define DRV_AIRFRAME_PITCH_THRUST_LEVER_ARM_M      0.1450f
+#define DRV_AIRFRAME_ROLL_THRUST_LEVER_ARM_M       0.1450f
 
 /* Servo axis z-positions (origin = board center, z+ up) */
 #define DRV_AIRFRAME_SERVO1_AXIS_Z_M              -0.161f

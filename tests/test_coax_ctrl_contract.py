@@ -235,7 +235,7 @@ def test_roll_pitch_physical_moment_gains_are_runtime_params() -> None:
     assert "entry->offset == offsetof(DRV_COAX_CTRL_Params, vel_loop_enable)" in wrapper
 
 
-def test_nonlinear_balance_controller_uses_so3_error_and_exact_gimbal_inverse() -> None:
+def test_nonlinear_balance_controller_uses_so3_error_and_realtime_moment_arm_inverse() -> None:
     wrapper = read("Driver/Src/drv_coax_ctrl.c")
 
     attitude_helper = wrapper.split("static void coax_ctrl_attitude_matrix", 1)[1]
@@ -273,11 +273,13 @@ def test_nonlinear_balance_controller_uses_so3_error_and_exact_gimbal_inverse() 
     assert "DRV_AIRFRAME_IZZ_KGM2 - DRV_AIRFRAME_IYY_KGM2" in solve
     assert "DRV_AIRFRAME_IXX_KGM2 - DRV_AIRFRAME_IZZ_KGM2" in solve
     assert "DRV_AIRFRAME_IYY_KGM2 - DRV_AIRFRAME_IXX_KGM2" in solve
-    assert "DRV_COAX_CTRL_ROLL_EFFECTIVENESS" in solve
-    assert "DRV_COAX_CTRL_PITCH_EFFECTIVENESS" in solve
-    assert "solution->beta_rad = asinf" in solve
-    assert "solution->alpha_rad = asinf" in solve
-    assert "cosf(solution->beta_rad)" in solve
+    assert "coax_ctrl_roll_moment_from_tilt" in wrapper
+    assert "coax_ctrl_pitch_moment_from_tilt" in wrapper
+    assert "sinf(beta_rad)" in wrapper
+    assert "sinf(alpha_rad)" in wrapper
+    assert "cosf(beta_rad)" in wrapper
+    assert "coax_ctrl_solve_roll_tilt_from_moment" in solve
+    assert "coax_ctrl_solve_pitch_tilt_from_moment" in solve
     assert "coax_ctrl_apply_attitude_force_feedback" not in wrapper
     assert "debug->force_cmd_n[0] +=" not in wrapper
     assert "output->alpha_rad = solution.alpha_rad;" in wrapper
@@ -298,6 +300,12 @@ def test_balance_controller_freezes_velocity_integral_when_authority_is_low() ->
     assert "DRV_COAX_CTRL_ATTITUDE_PROTECT_START_RAD" in wrapper
     assert "DRV_COAX_CTRL_MOMENT_PROTECT_START" in wrapper
     assert "DRV_COAX_CTRL_THRUST_PROTECT_START" in wrapper
+    assert "float attitude_tilt_error_rad;" in wrapper
+    assert "(desired[0][2] * actual[0][2])" in wrapper
+    protection = wrapper.split("static float coax_ctrl_balance_protection_scale", 1)[1]
+    protection = protection.split("static void coax_ctrl_compute_balance_command", 1)[0]
+    assert "solution->attitude_tilt_error_rad" in protection
+    assert "solution->attitude_error_angle_rad" not in protection
     protected = wrapper.split("if (horizontal_scale >= 0.999f)", 1)[1]
     protected = protected.split("debug->horizontal_command_scale", 1)[0]
     assert protected.index("coax_ctrl_state.velocity_integral_m[0] =") < protected.index("} else {")

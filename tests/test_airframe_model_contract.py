@@ -59,8 +59,8 @@ def test_airframe_constants_capture_measured_tether_geometry() -> None:
     assert "#define DRV_AIRFRAME_PROP_PLANE_D_M                0.2500f" in header
     assert "#define DRV_AIRFRAME_ROLL_AXIS_TO_PROP_PLANE_M     0.1450f" in header
     assert "#define DRV_AIRFRAME_PITCH_AXIS_TO_PROP_PLANE_M    0.1050f" in header
-    assert "#define DRV_AIRFRAME_PITCH_THRUST_LEVER_ARM_M" in header
-    assert "#define DRV_AIRFRAME_ROLL_THRUST_LEVER_ARM_M" in header
+    assert "#define DRV_AIRFRAME_PITCH_THRUST_LEVER_ARM_M      0.1450f" in header
+    assert "#define DRV_AIRFRAME_ROLL_THRUST_LEVER_ARM_M       0.1450f" in header
     assert "DRV_AIRFRAME_THRUST_LEVER_ARM_M" not in header
     assert "#define DRV_AIRFRAME_IXX_KGM2                      0.051f" in header
     assert "#define DRV_AIRFRAME_IYY_KGM2                      0.051f" in header

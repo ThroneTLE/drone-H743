@@ -55,6 +55,7 @@ typedef struct {
     float desired_body_r[3][3];
     float attitude_error[3];
     float attitude_error_angle_rad;
+    float attitude_tilt_error_rad;
     float rate_error_rad_s[3];
     float moment_cmd_n_m[3];
     float alpha_rad;
@@ -184,6 +185,105 @@ static float coax_ctrl_norm3(const float value[3])
                  (value[2] * value[2]));
 }
 
+static float coax_ctrl_roll_moment_from_tilt(float total_force_n,
+                                             float beta_rad)
+{
+    return DRV_COAX_CTRL_ROLL_MOMENT_SIGN *
+           DRV_COAX_CTRL_ROLL_EFFECTIVENESS *
+           coax_ctrl_params.roll_tilt_lever_arm_m *
+           total_force_n *
+           sinf(beta_rad);
+}
+
+static float coax_ctrl_pitch_moment_from_tilt(float total_force_n,
+                                              float alpha_rad,
+                                              float beta_rad)
+{
+    return DRV_COAX_CTRL_PITCH_MOMENT_SIGN *
+           DRV_COAX_CTRL_PITCH_EFFECTIVENESS *
+           coax_ctrl_params.pitch_tilt_lever_arm_m *
+           total_force_n *
+           sinf(alpha_rad) *
+           cosf(beta_rad);
+}
+
+static float coax_ctrl_solve_roll_tilt_from_moment(float moment_n_m,
+                                                   float total_force_n,
+                                                   float tilt_limit_rad)
+{
+    float lo = -tilt_limit_rad;
+    float hi = tilt_limit_rad;
+    float moment_lo = coax_ctrl_roll_moment_from_tilt(total_force_n, lo);
+    float moment_hi = coax_ctrl_roll_moment_from_tilt(total_force_n, hi);
+    const float min_moment = fminf(moment_lo, moment_hi);
+    const float max_moment = fmaxf(moment_lo, moment_hi);
+    float target = moment_n_m;
+
+    if (target < min_moment) {
+        target = min_moment;
+    } else if (target > max_moment) {
+        target = max_moment;
+    }
+
+    for (uint32_t i = 0U; i < 18U; ++i) {
+        const float mid = 0.5f * (lo + hi);
+        const float moment_mid =
+            coax_ctrl_roll_moment_from_tilt(total_force_n, mid);
+        const uint8_t increasing = (moment_hi > moment_lo) ? 1U : 0U;
+
+        if (((increasing != 0U) && (moment_mid < target)) ||
+            ((increasing == 0U) && (moment_mid > target))) {
+            lo = mid;
+            moment_lo = moment_mid;
+        } else {
+            hi = mid;
+            moment_hi = moment_mid;
+        }
+    }
+
+    return 0.5f * (lo + hi);
+}
+
+static float coax_ctrl_solve_pitch_tilt_from_moment(float moment_n_m,
+                                                    float total_force_n,
+                                                    float beta_rad,
+                                                    float tilt_limit_rad)
+{
+    float lo = -tilt_limit_rad;
+    float hi = tilt_limit_rad;
+    float moment_lo =
+        coax_ctrl_pitch_moment_from_tilt(total_force_n, lo, beta_rad);
+    float moment_hi =
+        coax_ctrl_pitch_moment_from_tilt(total_force_n, hi, beta_rad);
+    const float min_moment = fminf(moment_lo, moment_hi);
+    const float max_moment = fmaxf(moment_lo, moment_hi);
+    float target = moment_n_m;
+
+    if (target < min_moment) {
+        target = min_moment;
+    } else if (target > max_moment) {
+        target = max_moment;
+    }
+
+    for (uint32_t i = 0U; i < 18U; ++i) {
+        const float mid = 0.5f * (lo + hi);
+        const float moment_mid =
+            coax_ctrl_pitch_moment_from_tilt(total_force_n, mid, beta_rad);
+        const uint8_t increasing = (moment_hi > moment_lo) ? 1U : 0U;
+
+        if (((increasing != 0U) && (moment_mid < target)) ||
+            ((increasing == 0U) && (moment_mid > target))) {
+            lo = mid;
+            moment_lo = moment_mid;
+        } else {
+            hi = mid;
+            moment_hi = moment_mid;
+        }
+    }
+
+    return 0.5f * (lo + hi);
+}
+
 static void coax_ctrl_normalize3(float value[3])
 {
     const float norm = coax_ctrl_norm3(value);
@@ -305,7 +405,8 @@ static void coax_ctrl_build_thrust_frame(const float force_local_n[3],
 static void coax_ctrl_attitude_error(const float desired[3][3],
                                      const float actual[3][3],
                                      float error[3],
-                                     float *error_angle_rad)
+                                     float *error_angle_rad,
+                                     float *tilt_error_rad)
 {
     float desired_t[3][3];
     float actual_t[3][3];
@@ -325,6 +426,13 @@ static void coax_ctrl_attitude_error(const float desired[3][3],
             (desired_t_actual[0][0] + desired_t_actual[1][1] +
              desired_t_actual[2][2] - 1.0f);
         *error_angle_rad = acosf(coax_ctrl_clamp_f32(cos_angle, -1.0f, 1.0f));
+    }
+    if (tilt_error_rad != NULL) {
+        const float z_axis_dot =
+            (desired[0][2] * actual[0][2]) +
+            (desired[1][2] * actual[1][2]) +
+            (desired[2][2] * actual[2][2]);
+        *tilt_error_rad = acosf(coax_ctrl_clamp_f32(z_axis_dot, -1.0f, 1.0f));
     }
 }
 
@@ -512,7 +620,6 @@ static void coax_ctrl_compute_balance_solution(
     const float kr_pitch = -coax_ctrl_params.pitch_angle_kp;
     const float kw_roll = -coax_ctrl_params.roll_rate_kd;
     const float kw_pitch = -coax_ctrl_params.pitch_rate_kd;
-    const float sin_tilt_limit = sinf(coax_ctrl_params.tilt_limit_rad);
     float force_scale = 1.0f;
 
     memset(solution, 0, sizeof(*solution));
@@ -550,10 +657,10 @@ static void coax_ctrl_compute_balance_solution(
          iteration < DRV_COAX_CTRL_BALANCE_ITERATIONS;
          ++iteration) {
         float gyro_momentum_cross[3];
-        float roll_capacity;
-        float pitch_capacity;
-        float beta_argument;
-        float alpha_argument;
+        float roll_limit_moment_n_m;
+        float pitch_limit_moment_n_m;
+        float roll_utilization;
+        float pitch_utilization;
 
         coax_ctrl_gimbal_matrix(solution->alpha_rad,
                                 solution->beta_rad,
@@ -565,7 +672,8 @@ static void coax_ctrl_compute_balance_solution(
         coax_ctrl_attitude_error(solution->desired_body_r,
                                  actual_r,
                                  solution->attitude_error,
-                                 &solution->attitude_error_angle_rad);
+                                 &solution->attitude_error_angle_rad,
+                                 &solution->attitude_tilt_error_rad);
         coax_ctrl_matrix_multiply(actual_t,
                                   solution->desired_body_r,
                                   actual_t_desired);
@@ -599,33 +707,36 @@ static void coax_ctrl_compute_balance_solution(
             gyro_momentum_cross[1];
         solution->moment_cmd_n_m[2] = gyro_momentum_cross[2];
 
-        roll_capacity = DRV_COAX_CTRL_ROLL_EFFECTIVENESS *
-                        coax_ctrl_params.roll_tilt_lever_arm_m *
-                        solution->total_force_n;
-        if (roll_capacity < DRV_COAX_CTRL_RATE_SCALE_EPS) {
-            roll_capacity = DRV_COAX_CTRL_RATE_SCALE_EPS;
-        }
-        beta_argument = solution->moment_cmd_n_m[0] /
-                        (DRV_COAX_CTRL_ROLL_MOMENT_SIGN * roll_capacity);
-        solution->beta_rad = asinf(coax_ctrl_clamp_f32(beta_argument,
-                                                       -sin_tilt_limit,
-                                                        sin_tilt_limit));
+        solution->beta_rad = coax_ctrl_solve_roll_tilt_from_moment(
+            solution->moment_cmd_n_m[0],
+            solution->total_force_n,
+            coax_ctrl_params.tilt_limit_rad);
 
-        pitch_capacity = DRV_COAX_CTRL_PITCH_EFFECTIVENESS *
-                         coax_ctrl_params.pitch_tilt_lever_arm_m *
-                         solution->total_force_n * cosf(solution->beta_rad);
-        if (pitch_capacity < DRV_COAX_CTRL_RATE_SCALE_EPS) {
-            pitch_capacity = DRV_COAX_CTRL_RATE_SCALE_EPS;
-        }
-        alpha_argument = solution->moment_cmd_n_m[1] /
-                         (DRV_COAX_CTRL_PITCH_MOMENT_SIGN * pitch_capacity);
-        solution->alpha_rad = asinf(coax_ctrl_clamp_f32(alpha_argument,
-                                                        -sin_tilt_limit,
-                                                         sin_tilt_limit));
+        solution->alpha_rad = coax_ctrl_solve_pitch_tilt_from_moment(
+            solution->moment_cmd_n_m[1],
+            solution->total_force_n,
+            solution->beta_rad,
+            coax_ctrl_params.tilt_limit_rad);
 
-        solution->moment_utilization = fmaxf(
-            fabsf(beta_argument) / sin_tilt_limit,
-            fabsf(alpha_argument) / sin_tilt_limit);
+        roll_limit_moment_n_m = fabsf(coax_ctrl_roll_moment_from_tilt(
+            solution->total_force_n,
+            coax_ctrl_params.tilt_limit_rad));
+        pitch_limit_moment_n_m = fabsf(coax_ctrl_pitch_moment_from_tilt(
+            solution->total_force_n,
+            coax_ctrl_params.tilt_limit_rad,
+            solution->beta_rad));
+        if (roll_limit_moment_n_m < DRV_COAX_CTRL_RATE_SCALE_EPS) {
+            roll_limit_moment_n_m = DRV_COAX_CTRL_RATE_SCALE_EPS;
+        }
+        if (pitch_limit_moment_n_m < DRV_COAX_CTRL_RATE_SCALE_EPS) {
+            pitch_limit_moment_n_m = DRV_COAX_CTRL_RATE_SCALE_EPS;
+        }
+        roll_utilization =
+            fabsf(solution->moment_cmd_n_m[0]) / roll_limit_moment_n_m;
+        pitch_utilization =
+            fabsf(solution->moment_cmd_n_m[1]) / pitch_limit_moment_n_m;
+        solution->moment_utilization = fmaxf(roll_utilization,
+                                             pitch_utilization);
     }
 
     coax_ctrl_local_down_to_body(attitude,
@@ -643,42 +754,24 @@ static void coax_ctrl_compute_balance_solution(
                 cosf(debug->tilt_ff_rad[0]),
                 solution->desired_force_body_n[2]);
 
-    {
-        float roll_capacity = DRV_COAX_CTRL_ROLL_EFFECTIVENESS *
-                              coax_ctrl_params.roll_tilt_lever_arm_m *
-                              solution->total_force_n;
-        float pitch_capacity = DRV_COAX_CTRL_PITCH_EFFECTIVENESS *
-                               coax_ctrl_params.pitch_tilt_lever_arm_m *
-                               solution->total_force_n *
-                               cosf(solution->beta_rad);
-
-        if (roll_capacity < DRV_COAX_CTRL_RATE_SCALE_EPS) {
-            roll_capacity = DRV_COAX_CTRL_RATE_SCALE_EPS;
-        }
-        if (pitch_capacity < DRV_COAX_CTRL_RATE_SCALE_EPS) {
-            pitch_capacity = DRV_COAX_CTRL_RATE_SCALE_EPS;
-        }
-        debug->tilt_angle_p_rad[0] = asinf(coax_ctrl_clamp_f32(
-            (-kr_pitch * solution->attitude_error[1]) /
-                (DRV_COAX_CTRL_PITCH_MOMENT_SIGN * pitch_capacity),
-            -sin_tilt_limit,
-             sin_tilt_limit));
-        debug->tilt_angle_p_rad[1] = asinf(coax_ctrl_clamp_f32(
-            (-kr_roll * solution->attitude_error[0]) /
-                (DRV_COAX_CTRL_ROLL_MOMENT_SIGN * roll_capacity),
-            -sin_tilt_limit,
-             sin_tilt_limit));
-        debug->tilt_rate_d_rad[0] = asinf(coax_ctrl_clamp_f32(
-            (-kw_pitch * solution->rate_error_rad_s[1]) /
-                (DRV_COAX_CTRL_PITCH_MOMENT_SIGN * pitch_capacity),
-            -sin_tilt_limit,
-             sin_tilt_limit));
-        debug->tilt_rate_d_rad[1] = asinf(coax_ctrl_clamp_f32(
-            (-kw_roll * solution->rate_error_rad_s[0]) /
-                (DRV_COAX_CTRL_ROLL_MOMENT_SIGN * roll_capacity),
-            -sin_tilt_limit,
-             sin_tilt_limit));
-    }
+    debug->tilt_angle_p_rad[0] = coax_ctrl_solve_pitch_tilt_from_moment(
+        -kr_pitch * solution->attitude_error[1],
+        solution->total_force_n,
+        solution->beta_rad,
+        coax_ctrl_params.tilt_limit_rad);
+    debug->tilt_angle_p_rad[1] = coax_ctrl_solve_roll_tilt_from_moment(
+        -kr_roll * solution->attitude_error[0],
+        solution->total_force_n,
+        coax_ctrl_params.tilt_limit_rad);
+    debug->tilt_rate_d_rad[0] = coax_ctrl_solve_pitch_tilt_from_moment(
+        -kw_pitch * solution->rate_error_rad_s[1],
+        solution->total_force_n,
+        solution->beta_rad,
+        coax_ctrl_params.tilt_limit_rad);
+    debug->tilt_rate_d_rad[1] = coax_ctrl_solve_roll_tilt_from_moment(
+        -kw_roll * solution->rate_error_rad_s[0],
+        solution->total_force_n,
+        coax_ctrl_params.tilt_limit_rad);
 
     debug->tilt_out_rad[0] = solution->alpha_rad;
     debug->tilt_out_rad[1] = solution->beta_rad;
@@ -714,7 +807,7 @@ static float coax_ctrl_balance_protection_scale(
     }
 
     candidate = coax_ctrl_protection_scale(
-        solution->attitude_error_angle_rad,
+        solution->attitude_tilt_error_rad,
         DRV_COAX_CTRL_ATTITUDE_PROTECT_START_RAD,
         DRV_COAX_CTRL_ATTITUDE_PROTECT_END_RAD);
     if (candidate < 1.0f) {

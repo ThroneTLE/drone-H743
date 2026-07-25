@@ -1,0 +1,3 @@
+axis,valid_pct_all,valid_pct_active,age_median_ms_active,age_p95_ms_active,age_max_ms_active,sequence_update_hz,sequence_update_median_ms
+alpha,71.0853898231055,73.2792258467301,90,225,250,1.98454302991261,91.7510000000163
+beta,71.7514741209871,75.2146090213829,89,228,250,1.99740940323797,91.7524999999983

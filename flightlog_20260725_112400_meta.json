@@ -1,0 +1,34 @@
+{
+  "begin": {
+    "version": "1",
+    "block_magic": "0x31424C46",
+    "transport": "usbcdc",
+    "encoding": "binary",
+    "total": "0",
+    "sectors": "0",
+    "sector_size": "4096",
+    "header_size": "256",
+    "record_size": "408",
+    "log_rate": "250",
+    "baud": "57600",
+    "session": "4046174440",
+    "payload": "1024"
+  },
+  "end": {
+    "reason": "done",
+    "sent": "0",
+    "total": "0"
+  },
+  "complete": true,
+  "total_bytes": 0,
+  "good_bytes": 0,
+  "missing_bytes": 0,
+  "missing_ranges": [],
+  "blocks": 0,
+  "sectors": [],
+  "record_count": 0,
+  "record_size": 408,
+  "sector_size": 4096,
+  "baud": 57600,
+  "errors": []
+}

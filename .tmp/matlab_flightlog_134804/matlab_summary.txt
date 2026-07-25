@@ -1,0 +1,71 @@
+CSV: D:\stm32hal\drone-H743\flightlog_20260725_134804.csv
+Rows: 9158, columns: 131, duration: 231.300 s, segments: 10
+Observed average rate: 39.594 Hz, median dt: 4.033 ms, p95 dt: 48.383 ms
+Active rows: 6407 (69.96%)
+Tilt saturation: 3.71% all, 1.50% active
+Motor high saturation: 0.38% all
+Active horizontal scale mean: 0.949
+Active roll RMS: 4.449 deg, pitch RMS: 1.866 deg
+Active gyro RMS: gx 15.300 dps, gy 7.700 dps
+
+Protection flags:
+  velocity_invalid: 0.00% all, 0.00% active
+  attitude_tilt: 12.82% all, 12.60% active
+  moment: 5.91% all, 2.98% active
+  thrust: 2.58% all, 2.81% active
+
+Servo delay estimates:
+  alpha seg 5: delay 0.250 s, corr 0.478, rmse 78.30 us, n 1277
+  alpha seg 6: delay 0.250 s, corr 0.652, rmse 80.43 us, n 812
+  alpha seg 7: delay 0.240 s, corr 0.757, rmse 101.90 us, n 381
+  alpha seg 8: delay 0.200 s, corr 0.834, rmse 63.44 us, n 860
+  alpha seg 9: delay 0.260 s, corr 0.903, rmse 49.89 us, n 846
+  alpha seg 10: delay -0.470 s, corr 0.230, rmse 72.93 us, n 519
+  beta seg 5: delay -0.380 s, corr 0.233, rmse 45.99 us, n 1314
+  beta seg 6: delay 0.240 s, corr 0.455, rmse 34.42 us, n 821
+  beta seg 7: delay 0.120 s, corr 0.879, rmse 72.04 us, n 410
+  beta seg 8: delay 0.190 s, corr 0.784, rmse 52.07 us, n 880
+  beta seg 9: delay 0.260 s, corr 0.843, rmse 34.69 us, n 862
+  beta seg 10: delay 0.180 s, corr 0.471, rmse 34.64 us, n 532
+
+Servo feedback freshness:
+  alpha: valid 71.09% all, 73.28% active, active age median 90.0 ms, p95 225.0 ms, sequence update 1.98 Hz, median update 91.8 ms
+  beta: valid 71.75% all, 75.21% active, active age median 89.0 ms, p95 228.0 ms, sequence update 2.00 Hz, median update 91.8 ms
+
+Dominant frequencies:
+  roll_deg seg 5: 0.439 Hz, amp 1.354
+  pitch_deg seg 5: 0.830 Hz, amp 0.324
+  gyro_x_dps seg 5: 0.439 Hz, amp 2.897
+  gyro_y_dps seg 5: 1.416 Hz, amp 1.429
+  ctrl_tilt_out_rad_0 seg 5: 1.416 Hz, amp 0.011
+  ctrl_tilt_out_rad_1 seg 5: 1.367 Hz, amp 0.022
+  roll_deg seg 6: 0.488 Hz, amp 1.286
+  pitch_deg seg 6: 0.488 Hz, amp 0.500
+  gyro_x_dps seg 6: 1.465 Hz, amp 2.898
+  gyro_y_dps seg 6: 1.172 Hz, amp 1.374
+  ctrl_tilt_out_rad_0 seg 6: 1.172 Hz, amp 0.010
+  ctrl_tilt_out_rad_1 seg 6: 1.270 Hz, amp 0.020
+  roll_deg seg 7: 0.391 Hz, amp 3.851
+  pitch_deg seg 7: 0.586 Hz, amp 0.751
+  gyro_x_dps seg 7: 0.391 Hz, amp 11.216
+  gyro_y_dps seg 7: 1.367 Hz, amp 4.451
+  ctrl_tilt_out_rad_0 seg 7: 1.758 Hz, amp 0.031
+  ctrl_tilt_out_rad_1 seg 7: 1.367 Hz, amp 0.047
+  roll_deg seg 8: 0.391 Hz, amp 2.439
+  pitch_deg seg 8: 0.391 Hz, amp 0.770
+  gyro_x_dps seg 8: 1.367 Hz, amp 4.859
+  gyro_y_dps seg 8: 1.074 Hz, amp 2.229
+  ctrl_tilt_out_rad_0 seg 8: 1.074 Hz, amp 0.015
+  ctrl_tilt_out_rad_1 seg 8: 1.367 Hz, amp 0.034
+  roll_deg seg 9: 0.391 Hz, amp 2.768
+  pitch_deg seg 9: 0.586 Hz, amp 1.189
+  gyro_x_dps seg 9: 0.391 Hz, amp 5.696
+  gyro_y_dps seg 9: 0.586 Hz, amp 2.781
+  ctrl_tilt_out_rad_0 seg 9: 0.684 Hz, amp 0.017
+  ctrl_tilt_out_rad_1 seg 9: 0.391 Hz, amp 0.040
+  roll_deg seg 10: 0.488 Hz, amp 1.267
+  pitch_deg seg 10: 1.367 Hz, amp 0.314
+  gyro_x_dps seg 10: 1.465 Hz, amp 5.603
+  gyro_y_dps seg 10: 1.367 Hz, amp 2.761
+  ctrl_tilt_out_rad_0 seg 10: 1.367 Hz, amp 0.019
+  ctrl_tilt_out_rad_1 seg 10: 1.465 Hz, amp 0.033

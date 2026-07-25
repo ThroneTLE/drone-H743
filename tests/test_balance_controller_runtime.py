@@ -123,14 +123,14 @@ int main(void)
     reference.vx_m_s = 0.8f;
     DRV_COAX_CTRL_Run(&attitude, &reference, &output);
     DRV_COAX_CTRL_GetLastDebug(&debug);
-    CHECK(output.alpha_rad > 0.0f, 10);
+    CHECK(output.alpha_rad < 0.0f, 10);
     CHECK(fabsf(output.beta_rad) < 1.0e-4f, 11);
     CHECK(debug.desired_attitude_rpy_rad[1] > 0.0f, 12);
     CHECK(debug.moment_cmd_n_m[1] > 0.0f, 13);
-    CHECK(output.servo_beta_us < DRV_COAX_CTRL_SERVO_BETA_CENTER_US, 14);
+    CHECK(output.servo_beta_us > DRV_COAX_CTRL_SERVO_BETA_CENTER_US, 14);
     CHECK(nearly_equal(
         debug.moment_cmd_n_m[1],
-        0.569f * DRV_AIRFRAME_PITCH_THRUST_LEVER_ARM_M *
+        -0.569f * DRV_AIRFRAME_PITCH_THRUST_LEVER_ARM_M *
             debug.total_force_n * sinf(output.alpha_rad) * cosf(output.beta_rad),
         1.0e-5f), 15);
     rpy_matrix(debug.desired_attitude_rpy_rad, desired_body_r);
@@ -152,27 +152,27 @@ int main(void)
     reference.vy_m_s = 0.8f;
     DRV_COAX_CTRL_Run(&attitude, &reference, &output);
     DRV_COAX_CTRL_GetLastDebug(&debug);
-    CHECK(output.beta_rad < 0.0f, 20);
+    CHECK(output.beta_rad > 0.0f, 20);
     CHECK(fabsf(output.alpha_rad) < 1.0e-4f, 21);
     CHECK(debug.desired_attitude_rpy_rad[0] < 0.0f, 22);
     CHECK(debug.moment_cmd_n_m[0] < 0.0f, 23);
-    CHECK(output.servo_alpha_us > DRV_COAX_CTRL_SERVO_ALPHA_CENTER_US, 24);
+    CHECK(output.servo_alpha_us < DRV_COAX_CTRL_SERVO_ALPHA_CENTER_US, 24);
     CHECK(nearly_equal(
         debug.moment_cmd_n_m[0],
-        0.581f * DRV_AIRFRAME_ROLL_THRUST_LEVER_ARM_M *
+        -0.581f * DRV_AIRFRAME_ROLL_THRUST_LEVER_ARM_M *
             debug.total_force_n * sinf(output.beta_rad),
         1.0e-5f), 25);
 
     reset_case(&attitude, &reference);
     attitude.pitch_rad = 0.10f;
     DRV_COAX_CTRL_Run(&attitude, &reference, &output);
-    CHECK(output.alpha_rad < 0.0f, 30);
-    CHECK(output.servo_beta_us > DRV_COAX_CTRL_SERVO_BETA_CENTER_US, 31);
+    CHECK(output.alpha_rad > 0.0f, 30);
+    CHECK(output.servo_beta_us < DRV_COAX_CTRL_SERVO_BETA_CENTER_US, 31);
 
     reset_case(&attitude, &reference);
     attitude.roll_rad = 0.10f;
     DRV_COAX_CTRL_Run(&attitude, &reference, &output);
-    CHECK(output.beta_rad > 0.0f, 32);
+    CHECK(output.beta_rad < 0.0f, 32);
 
     reset_case(&attitude, &reference);
     DRV_COAX_CTRL_GetParams(&params);
@@ -186,7 +186,7 @@ int main(void)
     DRV_COAX_CTRL_GetLastDebug(&debug);
     CHECK(debug.rate_error_rad_s[0] < 0.0f, 33);
     CHECK(debug.moment_cmd_n_m[0] > 0.0f, 34);
-    CHECK(output.beta_rad > 0.0f, 35);
+    CHECK(output.beta_rad < 0.0f, 35);
 
     reset_case(&attitude, &reference);
     reference.vx_m_s = 0.8f;
@@ -224,6 +224,17 @@ int main(void)
     DRV_COAX_CTRL_GetLastDebug(&debug);
     CHECK((debug.protection_flags & DRV_COAX_CTRL_PROTECT_ATTITUDE) != 0U, 62);
     CHECK(nearly_equal(debug.horizontal_command_scale, 0.0f, 1.0e-6f), 63);
+
+    reset_case(&attitude, &reference);
+    attitude.yaw_rad = 1.0f;
+    reference.yaw_rad = 0.0f;
+    reference.vx_m_s = 0.2f;
+    DRV_COAX_CTRL_Run(&attitude, &reference, &output);
+    DRV_COAX_CTRL_GetLastDebug(&debug);
+    CHECK((debug.protection_flags & DRV_COAX_CTRL_PROTECT_ATTITUDE) == 0U, 64);
+    CHECK(debug.horizontal_command_scale > 0.99f, 65);
+    CHECK(fabsf(debug.pos_p_m_s2[0]) > 0.05f, 66);
+    CHECK(fabsf(output.alpha_rad) > 1.0e-4f, 67);
 
     reset_case(&attitude, &reference);
     DRV_COAX_CTRL_GetParams(&params);

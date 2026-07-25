@@ -35,7 +35,7 @@ pitch_force_frame_sign = +1
 | Ixx, Iyy | 0.051 kg*m^2 |
 | Izz | 0.00035 kg*m^2（几何粗估，未实测） |
 | Pitch 力臂 | 0.145 m |
-| Roll 力臂 | 0.105 m |
+| Roll 力臂 | 0.145 m |
 | Pitch 有效系数 | 0.569 |
 | Roll 有效系数 | 0.581 |
 | 舵机倾转限制 | 18 deg |
@@ -191,27 +191,25 @@ $$
 并给出接近临界阻尼的名义阻尼比。它们是有物理依据的初始值，不代表实机
 飞行验证结论。
 
-## 7. 物理力矩到舵机角的精确反解
+## 7. 物理力矩到舵机角的实时几何反解
 
 令总推力为 $T=\lVert F_d\rVert$。当前实机校正后的力矩分配极性为
 `s_roll=-1`、`s_pitch=-1`；极性只决定恢复方向，不参与下述增益幅值设计：
 
 $$
-\beta=\arcsin\left(
-\frac{M_x}{s_{roll}\eta_{roll}l_{roll}T}
-\right)
+M_x(\beta)=s_{roll}\eta_{roll}T\,l_{roll}\sin\beta
 $$
 
 $$
-\alpha=\arcsin\left(
-\frac{M_y}
-{s_{pitch}\eta_{pitch}l_{pitch}T\cos\beta}
-\right)
+M_y(\alpha,\beta)=
+s_{pitch}\eta_{pitch}T\,l_{pitch}\sin\alpha\cos\beta
 $$
 
-反解的正弦输入先限制到 $\pm\sin18^\circ$，因此输出严格限制到
-`+-18 deg`。由于分母包含实时推力 $T$，同一姿态误差在不同油门下会自动
-得到不同舵机角。这就是此结构需要的动态增益，不需要另外写分段动态 Kp。
+这里 `l_roll`、`l_pitch` 只是 CG 到对应舵机轴的基准几何距离；实时力矩臂
+分别是 `l_roll sin(beta)` 和 `l_pitch sin(alpha) cos(beta)`。固件不再把固定
+直线距离直接当作力矩臂，而是用上面的实时力矩函数在 `+-18 deg` 范围内
+反解 `alpha/beta`。由于公式包含实时推力 $T$ 和实时耦合角，同一姿态误差在
+不同油门、不同倾角下会自动得到不同舵机角。
 
 控制器每周期执行两次：
 

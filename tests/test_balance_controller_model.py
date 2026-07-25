@@ -15,7 +15,7 @@ SERVO_DELAY_S = 0.080
 @pytest.mark.parametrize(
     ("effectiveness", "lever_arm_m", "kr", "kw"),
     [
-        (0.581, 0.105, 0.0671, 0.1104),
+        (0.581, 0.145, 0.0671, 0.1104),
         (0.569, 0.145, 0.0660, 0.1138),
     ],
 )
