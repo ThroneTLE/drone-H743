@@ -105,6 +105,13 @@ def test_parse_record_and_csv_fields(tmp_path) -> None:
     assert row["motor_output_reason"] == 5
     assert row["motor_output_reason_name"] == "rc_loss_disable"
     assert row["arm_switch_high"] == 1
+    assert row["servo_alpha_feedback_us"] == 1510
+    assert row["servo_beta_feedback_us"] == 1490
+    assert row["servo_alpha_feedback_age_ms"] == 3
+    assert row["servo_beta_feedback_age_ms"] == 4
+    assert row["servo_feedback_valid_mask"] == 0x03
+    assert row["servo_alpha_feedback_deg"] == pytest.approx(90.9)
+    assert row["servo_beta_feedback_tilt_deg"] == pytest.approx(-0.9)
     assert row["vel_pid_d_m_s2_1"] == 17.0
     assert row["ctrl_pos_p_m_s2_0"] == 19.0
     assert row["ctrl_tilt_angle_p_rad_0"] == 33.0
@@ -125,6 +132,8 @@ def make_record() -> bytes:
     values.extend([1.0, 2.0, 3.0])
     values.extend([1000 + i for i in range(8)])
     values.extend([1200, 1500, 1500, 1300, 1310])
+    values.extend([1510, 1490, 3, 4, 10, 11])
+    values.extend([0x03, 0, 0, 0])
     values.extend([1, 1, 1, 1, 5, 1, 1, 1, 1, 0, 0, 0])
     values.extend([float(i) for i in range(48)])
     values.append(0)
@@ -132,6 +141,90 @@ def make_record() -> bytes:
     crc = flog.crc32(packed_without_crc[:-4] + b"\x00\x00\x00\x00")
     values[-1] = crc
     return flog.RECORD_STRUCT.pack(*values)
+
+
+def make_old_controller_legacy_record() -> bytes:
+    values = []
+    values.extend(
+        [flog.RECORD_MAGIC, 2, flog.LEGACY_RECORD_SIZE, 4, 0, 2000, 16, 100]
+    )
+    values.extend([1, 2, 3, 4, 5, 6, 7])
+    values.extend([25.0, 0.1, 0.2, 0.3, 10.0, 11.0, 12.0])
+    values.extend([1.0, 2.0, 3.0])
+    values.extend([1000 + i for i in range(8)])
+    values.extend([1200, 1500, 1500, 1300, 1310])
+    values.extend([1, 1, 1, 1, 5, 1, 1, 1, 1, 0, 0, 0])
+    values.extend([float(i) for i in range(48)])
+    values.append(0)
+    packed_without_crc = flog.LEGACY_RECORD_STRUCT.pack(*values)
+    crc = flog.crc32(packed_without_crc[:-4] + b"\x00\x00\x00\x00")
+    values[-1] = crc
+    return flog.LEGACY_RECORD_STRUCT.pack(*values)
+
+
+def make_nonlinear_record(with_servo_feedback: bool) -> bytes:
+    record_struct = (
+        flog.NONLINEAR_RECORD_STRUCT
+        if with_servo_feedback
+        else flog.NONLINEAR_LEGACY_RECORD_STRUCT
+    )
+    values = []
+    values.extend(
+        [
+            flog.RECORD_MAGIC,
+            4 if with_servo_feedback else 3,
+            record_struct.size,
+            5,
+            0,
+            3000,
+            20,
+            101,
+        ]
+    )
+    values.extend([1, 2, 3, 4, 5, 6, 7])
+    values.extend([25.0, 0.1, 0.2, 0.3, 10.0, 11.0, 12.0])
+    values.extend([1.0, 2.0, 3.0])
+    values.extend([1000 + i for i in range(8)])
+    values.extend([1200, 1500, 1500, 1300, 1310])
+    if with_servo_feedback:
+        values.extend([1510, 1490, 3, 4, 10, 11])
+        values.extend([0x03, 0, 0, 0])
+    values.extend([1, 1, 1, 1, 5, 1, 1, 1, 1, 0, 0, 0])
+    values.extend([float(i) for i in range(64)])
+    values.append(0x0A)
+    values.append(64.0)
+    values.append(0)
+    packed_without_crc = record_struct.pack(*values)
+    crc = flog.crc32(packed_without_crc[:-4] + b"\x00\x00\x00\x00")
+    values[-1] = crc
+    return record_struct.pack(*values)
+
+
+def test_all_controller_and_feedback_record_layouts_are_supported() -> None:
+    assert flog.OLD_CONTROLLER_LEGACY_RECORD_STRUCT.size == 320
+    assert flog.OLD_CONTROLLER_RECORD_STRUCT.size == 336
+    assert flog.NONLINEAR_LEGACY_RECORD_STRUCT.size == 392
+    assert flog.NONLINEAR_RECORD_STRUCT.size == 408
+
+    legacy_row = flog.parse_record(make_old_controller_legacy_record())
+    nonlinear_legacy_row = flog.parse_record(make_nonlinear_record(False))
+    nonlinear_feedback_row = flog.parse_record(make_nonlinear_record(True))
+
+    assert legacy_row is not None
+    assert legacy_row["servo_alpha_feedback_us"] == 0
+    assert legacy_row["servo_feedback_valid_mask"] == 0
+    assert legacy_row["servo_alpha_feedback_deg"] is None
+    assert "ctrl_velocity_integral_m_0" not in legacy_row
+
+    assert nonlinear_legacy_row is not None
+    assert nonlinear_legacy_row["servo_feedback_valid_mask"] == 0
+    assert nonlinear_legacy_row["ctrl_velocity_integral_m_0"] == 47.0
+    assert nonlinear_legacy_row["ctrl_protection_flags"] == 0x0A
+
+    assert nonlinear_feedback_row is not None
+    assert nonlinear_feedback_row["servo_alpha_feedback_us"] == 1510
+    assert nonlinear_feedback_row["ctrl_moment_cmd_n_m_0"] == 58.0
+    assert nonlinear_feedback_row["z_ref_m"] == 64.0
 
 
 def make_sector_header() -> bytes:

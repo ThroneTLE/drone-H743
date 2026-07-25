@@ -96,6 +96,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     App/Src/app_rangefinder.c
     App/Src/app_ident.c
     App/Src/app_servo_cal.c
+    App/Src/app_servo_feedback.c
     App/Src/app_servo_feedback_bench.c
     App/Src/app_sensor.c
     App/Src/app_led.c

@@ -19,7 +19,7 @@
 #define APP_FLIGHT_LOG_SECTOR_MAGIC       0x31534C46UL /* FLS1 */
 #define APP_FLIGHT_LOG_RECORD_MAGIC       0x31524C46UL /* FLR1 */
 #define APP_FLIGHT_LOG_EXPORT_BLOCK_MAGIC 0x31424C46UL /* FLB1 */
-#define APP_FLIGHT_LOG_VERSION            2U
+#define APP_FLIGHT_LOG_VERSION            3U
 #define APP_FLIGHT_LOG_EXPORT_VERSION     1U
 #define APP_FLIGHT_LOG_REGION_SIZE \
     (APP_FLIGHT_LOG_REGION_END_EXCL - APP_FLIGHT_LOG_REGION_START)
@@ -33,6 +33,8 @@
 #define APP_FLIGHT_LOG_TESTFILL_MAX_SECTORS 64U
 #define APP_FLIGHT_LOG_EXPORT_BLOCK_GAP_MS 40U
 #define APP_FLIGHT_LOG_USB_TX_TIMEOUT_MS 200U
+#define APP_FLIGHT_LOG_RAM_D1_NOINIT \
+    __attribute__((section(".ram_d1_noinit"), aligned(32)))
 
 typedef enum {
     APP_FLIGHT_LOG_EXPORT_UART_TEXT = 0,
@@ -78,6 +80,14 @@ typedef struct __attribute__((packed)) {
     uint16_t servo_beta_us;
     uint16_t motor_upper_us;
     uint16_t motor_lower_us;
+    uint16_t servo_alpha_feedback_us;
+    uint16_t servo_beta_feedback_us;
+    uint16_t servo_alpha_feedback_age_ms;
+    uint16_t servo_beta_feedback_age_ms;
+    uint16_t servo_alpha_feedback_sequence;
+    uint16_t servo_beta_feedback_sequence;
+    uint8_t servo_feedback_valid_mask;
+    uint8_t servo_feedback_reserved[3];
     uint8_t rc_armed;
     uint8_t rc_link_ok;
     uint8_t throttle_over_20;
@@ -117,7 +127,7 @@ typedef struct __attribute__((packed)) {
 
 _Static_assert(sizeof(APP_FlightLogSectorHeader) == APP_FLIGHT_LOG_SECTOR_HEADER_SIZE,
                "flight log sector header must stay 256 bytes");
-_Static_assert(sizeof(APP_FlightLogRecord) == 320U,
+_Static_assert(sizeof(APP_FlightLogRecord) == 336U,
                "flight log record must match tools/flight_log_receive.py");
 _Static_assert(sizeof(APP_FlightLogExportBlockHeader) == 24U,
                "flight log export header must match tools/flight_log_receive.py");
@@ -133,17 +143,26 @@ _Static_assert((64U + (APP_FLIGHT_LOG_UART_EXPORT_PAYLOAD_MAX * 2U)) <=
                "UART text flight log block must fit the USART1 TX queue frame");
 
 static APP_FlightLogStatus flight_log_status;
+APP_FLIGHT_LOG_RAM_D1_NOINIT
 static APP_FlightLogRecord flight_log_queue[APP_FLIGHT_LOG_QUEUE_CAPACITY];
 static uint32_t flight_log_queue_head;
 static uint32_t flight_log_queue_tail;
 static uint32_t flight_log_queue_count;
+APP_FLIGHT_LOG_RAM_D1_NOINIT
 static APP_FlightLogRecord flight_log_batch[APP_FLIGHT_LOG_WRITE_BATCH_RECORDS];
+APP_FLIGHT_LOG_RAM_D1_NOINIT
 static APP_FlightLogSectorHeader flight_log_test_header;
+APP_FLIGHT_LOG_RAM_D1_NOINIT
 static APP_FlightLogSectorHeader flight_log_test_verify_header;
+APP_FLIGHT_LOG_RAM_D1_NOINIT
 static APP_FlightLogSnapshot flight_log_test_snapshot;
+APP_FLIGHT_LOG_RAM_D1_NOINIT
 static APP_FlightLogRecord flight_log_test_record;
+APP_FLIGHT_LOG_RAM_D1_NOINIT
 static APP_FlightLogRecord flight_log_test_verify_record;
+APP_FLIGHT_LOG_RAM_D1_NOINIT
 static uint16_t flight_log_sector_order[APP_FLIGHT_LOG_SECTOR_COUNT];
+APP_FLIGHT_LOG_RAM_D1_NOINIT
 static uint32_t flight_log_sector_order_seq[APP_FLIGHT_LOG_SECTOR_COUNT];
 static uint32_t flight_log_next_sector_index;
 static uint32_t flight_log_current_sector_index;
@@ -163,6 +182,7 @@ static uint8_t flight_log_export_payload[APP_FLIGHT_LOG_USB_EXPORT_PAYLOAD_MAX];
 __attribute__((section(".dma_buffer"), aligned(32)))
 static uint8_t flight_log_export_usb_frame[sizeof(APP_FlightLogExportBlockHeader) +
                                            APP_FLIGHT_LOG_USB_EXPORT_PAYLOAD_MAX];
+APP_FLIGHT_LOG_RAM_D1_NOINIT
 static char flight_log_export_text_frame[APP_UART_TX_TEXT_SIZE];
 
 static uint32_t flight_log_crc32(const uint8_t *data, uint32_t length)
@@ -467,6 +487,17 @@ static void flight_log_record_from_snapshot(APP_FlightLogRecord *record,
     record->servo_beta_us = snapshot->servo_beta_us;
     record->motor_upper_us = snapshot->motor_upper_us;
     record->motor_lower_us = snapshot->motor_lower_us;
+    record->servo_alpha_feedback_us = snapshot->servo_alpha_feedback_us;
+    record->servo_beta_feedback_us = snapshot->servo_beta_feedback_us;
+    record->servo_alpha_feedback_age_ms =
+        snapshot->servo_alpha_feedback_age_ms;
+    record->servo_beta_feedback_age_ms =
+        snapshot->servo_beta_feedback_age_ms;
+    record->servo_alpha_feedback_sequence =
+        snapshot->servo_alpha_feedback_sequence;
+    record->servo_beta_feedback_sequence =
+        snapshot->servo_beta_feedback_sequence;
+    record->servo_feedback_valid_mask = snapshot->servo_feedback_valid_mask;
     record->rc_armed = snapshot->rc_armed;
     record->rc_link_ok = snapshot->rc_link_ok;
     record->throttle_over_20 = snapshot->throttle_over_20;
@@ -839,6 +870,7 @@ void APP_FlightLog_Init(void)
     }
 
     memset(&flight_log_status, 0, sizeof(flight_log_status));
+    flight_log_clear_record_queue();
     flight_log_status.session_id =
         (uint32_t)(HAL_GetTick() ^ (uint32_t)SVC_Timestamp_Us() ^ 0xF10A2501UL);
     flight_log_status.last_flash_status = (uint32_t)APP_FlashService_Init();

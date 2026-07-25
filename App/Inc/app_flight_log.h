@@ -49,6 +49,13 @@ typedef struct {
     uint16_t throttle_us;
     uint16_t servo_alpha_us;
     uint16_t servo_beta_us;
+    uint16_t servo_alpha_feedback_us;
+    uint16_t servo_beta_feedback_us;
+    uint16_t servo_alpha_feedback_age_ms;
+    uint16_t servo_beta_feedback_age_ms;
+    uint16_t servo_alpha_feedback_sequence;
+    uint16_t servo_beta_feedback_sequence;
+    uint8_t servo_feedback_valid_mask;
     uint16_t motor_upper_us;
     uint16_t motor_lower_us;
     uint8_t rc_armed;

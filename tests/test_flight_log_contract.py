@@ -57,6 +57,36 @@ def test_stabilizer_records_snapshots_without_direct_flash_access() -> None:
     assert "coax_ctrl_last_debug = debug;" in drv_source
 
 
+def test_flight_log_v3_records_old_controller_and_servo_feedback() -> None:
+    controller_header = read("Driver/Inc/drv_coax_ctrl.h")
+    source = read("App/Src/app_flight_log.c")
+    receiver = read("tools/flight_log_receive.py")
+
+    assert "#define APP_FLIGHT_LOG_VERSION            3U" in source
+    assert "sizeof(APP_FlightLogRecord) == 336U" in source
+    assert "servo_alpha_feedback_us" in source
+    assert "servo_beta_feedback_age_ms" in source
+    assert "servo_feedback_valid_mask" in source
+    assert "float desired_attitude_rpy_rad[3];" not in controller_header
+    assert "float moment_cmd_n_m[3];" not in controller_header
+    assert "OLD_CONTROLLER_LEGACY_RECORD_STRUCT" in receiver
+    assert "OLD_CONTROLLER_RECORD_STRUCT" in receiver
+    assert "NONLINEAR_LEGACY_RECORD_STRUCT" in receiver
+    assert "NONLINEAR_RECORD_STRUCT" in receiver
+
+
+def test_large_cpu_only_log_buffers_are_placed_in_axi_sram() -> None:
+    source = read("App/Src/app_flight_log.c")
+    bench = read("App/Src/app_servo_feedback_bench.c")
+    linker = read("STM32H743XX_FLASH.ld")
+
+    assert '.ram_d1_noinit (NOLOAD)' in linker
+    assert '} >RAM' in linker
+    assert 'section(".ram_d1_noinit"), aligned(32)' in source
+    assert "flight_log_clear_record_queue();" in source
+    assert 'section(".ram_d1_noinit"), aligned(32)' in bench
+
+
 def test_background_task_drives_flight_log_slow_work() -> None:
     background = read("App/Src/app_background.c")
 

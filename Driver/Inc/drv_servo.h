@@ -107,7 +107,7 @@ uint8_t DRV_SERVO_IsBusIdle(const DRV_SERVO_Device *dev);
 void DRV_SERVO_GetDiag(DRV_SERVO_Diag *diag);
 void DRV_SERVO_GetFeedbackDiag(DRV_SERVO_FeedbackDiag *diag);
 void DRV_SERVO_OnUartTxComplete(UART_HandleTypeDef *huart);
-void DRV_SERVO_OnUartRxEvent(UART_HandleTypeDef *huart, uint16_t size);
+void DRV_SERVO_OnUartRxComplete(UART_HandleTypeDef *huart);
 void DRV_SERVO_OnUartError(UART_HandleTypeDef *huart);
 DRV_SERVO_Status DRV_SERVO_ReadVersion(DRV_SERVO_Device *dev, uint8_t id);
 DRV_SERVO_Status DRV_SERVO_ReadId(DRV_SERVO_Device *dev, uint8_t id);

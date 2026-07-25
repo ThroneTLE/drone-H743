@@ -38,6 +38,22 @@ def test_airframe_constants_capture_measured_tether_geometry() -> None:
     assert "#define DRV_AIRFRAME_THRUST_TABLE_SCOPE            \"dual_motor_total\"" in header
     assert "#define DRV_AIRFRAME_SERVO_DEG_PER_US              0.090f" in header
     assert "#define DRV_AIRFRAME_SERVO_US_PER_DEG             11.111111f" in header
+    assert "#define DRV_AIRFRAME_SERVO_ALPHA_ACTUATOR_GAIN                 0.781794f" in header
+    assert "#define DRV_AIRFRAME_SERVO_ALPHA_ACTUATOR_DELAY_S              0.016231f" in header
+    assert "#define DRV_AIRFRAME_SERVO_ALPHA_ACTUATOR_TAU_INCREASE_S       0.071236f" in header
+    assert "#define DRV_AIRFRAME_SERVO_ALPHA_ACTUATOR_TAU_DECREASE_S       0.306416f" in header
+    assert "#define DRV_AIRFRAME_SERVO_ALPHA_NEUTRAL_FEEDBACK_US        1457.177648f" in header
+    assert "#define DRV_AIRFRAME_SERVO_ALPHA_ACTUATOR_FIT_R2               0.963346f" in header
+    assert "#define DRV_AIRFRAME_SERVO_ALPHA_ACTUATOR_FIT_RMSE_US          17.696884f" in header
+    assert "#define DRV_AIRFRAME_SERVO_ALPHA_ACTUATOR_FIT_SAMPLE_COUNT    835U" in header
+    assert "#define DRV_AIRFRAME_SERVO_BETA_ACTUATOR_GAIN                  0.769332f" in header
+    assert "#define DRV_AIRFRAME_SERVO_BETA_ACTUATOR_DELAY_S               0.041320f" in header
+    assert "#define DRV_AIRFRAME_SERVO_BETA_ACTUATOR_TAU_INCREASE_S        0.076881f" in header
+    assert "#define DRV_AIRFRAME_SERVO_BETA_ACTUATOR_TAU_DECREASE_S        0.057051f" in header
+    assert "#define DRV_AIRFRAME_SERVO_BETA_NEUTRAL_FEEDBACK_US         1509.527201f" in header
+    assert "#define DRV_AIRFRAME_SERVO_BETA_ACTUATOR_FIT_R2                0.994138f" in header
+    assert "#define DRV_AIRFRAME_SERVO_BETA_ACTUATOR_FIT_RMSE_US            8.459764f" in header
+    assert "#define DRV_AIRFRAME_SERVO_BETA_ACTUATOR_FIT_SAMPLE_COUNT    1253U" in header
     assert "#define DRV_AIRFRAME_MAX_TOTAL_FORCE_N            15.644959f" in header
     assert "#define DRV_AIRFRAME_HOVER_THRUST_PERCENT         85.716236f" in header
     assert "#define DRV_AIRFRAME_PROP_PLANE_D_M                0.2500f" in header

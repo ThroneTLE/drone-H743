@@ -56,6 +56,7 @@
 #include "app_tasks.h"
 #include "app_ident.h"
 #include "app_servo_cal.h"
+#include "app_servo_feedback.h"
 #include "app_servo_feedback_bench.h"
 #include <math.h>
 #include <string.h>
@@ -1554,6 +1555,7 @@ void StabilizerTask(void *argument)
 
         BSP_BusServo_Service(now);
         if (servo_cal_active == 0U) {
+          APP_ServoFeedbackBench_ApplyTargets(now, moves);
           stabilizer_servo_record_target(moves);
 
           /* Feedback bench adds a deterministic 100 Hz real-command bus load. */
@@ -1569,6 +1571,9 @@ void StabilizerTask(void *argument)
             }
           }
           APP_ServoFeedbackBench_Step(now, moves);
+          APP_ServoFeedback_Service(
+            now, moves,
+            (APP_ServoFeedbackBench_IsActive() == 0U) ? 1U : 0U);
         }
 
 #if (STABILIZER_USE_DIRECT_ANGLE_SERVO == 0U)
@@ -1613,6 +1618,7 @@ void StabilizerTask(void *argument)
 #if (STABILIZER_USE_DIRECT_ANGLE_SERVO == 0U)
         if (flight_log_divider == 0U) {
           APP_FlightLogSnapshot flog_snapshot;
+          APP_ServoFeedbackLogSample servo_feedback_sample;
           uint8_t flight_log_active =
             ((rc_link_ok != 0U) &&
              (rc_armed != 0U) &&
@@ -1634,6 +1640,21 @@ void StabilizerTask(void *argument)
           flog_snapshot.throttle_us = rc_throttle_motor_us;
           flog_snapshot.servo_alpha_us = moves[0].pulse_us;
           flog_snapshot.servo_beta_us = moves[1].pulse_us;
+          APP_ServoFeedback_GetLogSample(now, &servo_feedback_sample);
+          flog_snapshot.servo_alpha_feedback_us =
+            servo_feedback_sample.position_us[0];
+          flog_snapshot.servo_beta_feedback_us =
+            servo_feedback_sample.position_us[1];
+          flog_snapshot.servo_alpha_feedback_age_ms =
+            servo_feedback_sample.age_ms[0];
+          flog_snapshot.servo_beta_feedback_age_ms =
+            servo_feedback_sample.age_ms[1];
+          flog_snapshot.servo_alpha_feedback_sequence =
+            servo_feedback_sample.sample_sequence[0];
+          flog_snapshot.servo_beta_feedback_sequence =
+            servo_feedback_sample.sample_sequence[1];
+          flog_snapshot.servo_feedback_valid_mask =
+            servo_feedback_sample.valid_mask;
           flog_snapshot.motor_upper_us = BSP_PWM_GetEscPulse(1);
           flog_snapshot.motor_lower_us = BSP_PWM_GetEscPulse(2);
           flog_snapshot.rc_armed = rc_armed;

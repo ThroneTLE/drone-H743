@@ -9,6 +9,7 @@
 #include "app_ident.h"
 #include "app_optical_flow.h"
 #include "app_rangefinder.h"
+#include "app_servo_feedback.h"
 #include "app_servo_feedback_bench.h"
 #include "app_sensor.h"
 #include "app_mag.h"
@@ -2255,7 +2256,7 @@ static void app_control_handle_servo(char **tokens, uint32_t count)
         uint32_t timeout_ms = 10U;
 
         if (count < 3U) {
-            APP_Control_QueueText("ERR usage SERVO FB START|SWEEP|STATUS|STOP\r\n");
+            APP_Control_QueueText("ERR usage SERVO FB START|SWEEP|STEP|STATUS|STOP\r\n");
             return;
         }
         if (strcmp(tokens[2], "STATUS") == 0) {
@@ -2301,6 +2302,36 @@ static void app_control_handle_servo(char **tokens, uint32_t count)
                                                   HAL_GetTick()) == 0U) {
                 APP_Control_QueueText(
                     "ERR servo_fb sweep duration=1000..60000 timeout=2..100 or active\r\n");
+            }
+            return;
+        }
+        if (strcmp(tokens[2], "STEP") == 0) {
+            uint32_t servo_index;
+            uint32_t delta_us;
+            uint32_t rate_hz = 100U;
+            uint32_t hold_ms = 600U;
+
+            if ((count < 5U) ||
+                (app_control_parse_u32(tokens[3], &servo_index) == 0U) ||
+                (app_control_parse_u32(tokens[4], &delta_us) == 0U) ||
+                ((count >= 6U) &&
+                 (app_control_parse_u32(tokens[5], &rate_hz) == 0U)) ||
+                ((count >= 7U) &&
+                 (app_control_parse_u32(tokens[6], &hold_ms) == 0U)) ||
+                ((count >= 8U) &&
+                 (app_control_parse_u32(tokens[7], &timeout_ms) == 0U))) {
+                APP_Control_QueueText(
+                    "ERR usage SERVO FB STEP index delta_us [rate_hz] [hold_ms] [timeout_ms]\r\n");
+                return;
+            }
+            if (APP_ServoFeedbackBench_StartStep(servo_index,
+                                                 delta_us,
+                                                 rate_hz,
+                                                 hold_ms,
+                                                 timeout_ms,
+                                                 HAL_GetTick()) == 0U) {
+                APP_Control_QueueText(
+                    "ERR servo_fb step index=0..1 delta=20..200 rate=1..100 hold=300..5000 samples<=256 timeout=2..100 or active\r\n");
             }
             return;
         }
@@ -3479,6 +3510,7 @@ void APP_Control_Init(void)
     control_wifi_reset_pending = 0U;
     control_wifi_reset_deadline_ms = 0U;
     APP_Ident_Init();
+    APP_ServoFeedback_Init();
     APP_ServoFeedbackBench_Init();
     load_status = app_control_load_config();
     control_config.last_flash_status = (uint8_t)load_status;

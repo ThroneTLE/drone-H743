@@ -97,8 +97,64 @@ PARAMS_STRUCT = struct.Struct("<" + "f" * len(PARAM_NAMES))
 LEGACY_PARAMS_STRUCT = struct.Struct("<" + "f" * len(LEGACY_PARAM_NAMES))
 EXPORT_HEADER = struct.Struct("<IHHIIHHI")
 EXPORT_BLOCK_MAGIC_BYTES = struct.pack("<I", EXPORT_BLOCK_MAGIC)
-RECORD_STRUCT = struct.Struct("<IHHIIQII" + "h" * 7 + "f" * 7 + "f" * 3 + "H" * 8 + "H" * 5 + "B" * 12 + "f" * 48 + "I")
+_RECORD_PREFIX_FORMAT = (
+    "<IHHIIQII"
+    + "h" * 7
+    + "f" * 7
+    + "f" * 3
+    + "H" * 8
+    + "H" * 5
+)
+_SERVO_FEEDBACK_FORMAT = "H" * 6 + "B" * 4
+_RECORD_STATUS_FORMAT = "B" * 12
+
+OLD_CONTROLLER_LEGACY_RECORD_STRUCT = struct.Struct(
+    _RECORD_PREFIX_FORMAT + _RECORD_STATUS_FORMAT + "f" * 48 + "I"
+)
+OLD_CONTROLLER_RECORD_STRUCT = struct.Struct(
+    _RECORD_PREFIX_FORMAT
+    + _SERVO_FEEDBACK_FORMAT
+    + _RECORD_STATUS_FORMAT
+    + "f" * 48
+    + "I"
+)
+NONLINEAR_LEGACY_RECORD_STRUCT = struct.Struct(
+    _RECORD_PREFIX_FORMAT
+    + _RECORD_STATUS_FORMAT
+    + "f" * 64
+    + "I"
+    + "f"
+    + "I"
+)
+NONLINEAR_RECORD_STRUCT = struct.Struct(
+    _RECORD_PREFIX_FORMAT
+    + _SERVO_FEEDBACK_FORMAT
+    + _RECORD_STATUS_FORMAT
+    + "f" * 64
+    + "I"
+    + "f"
+    + "I"
+)
+
+# The active fix/controller firmware writes the 336-byte feedback layout.
+RECORD_STRUCT = OLD_CONTROLLER_RECORD_STRUCT
 RECORD_SIZE = RECORD_STRUCT.size
+LEGACY_RECORD_STRUCT = OLD_CONTROLLER_LEGACY_RECORD_STRUCT
+LEGACY_RECORD_SIZE = LEGACY_RECORD_STRUCT.size
+SUPPORTED_RECORD_LAYOUTS = {
+    OLD_CONTROLLER_LEGACY_RECORD_STRUCT.size: (
+        OLD_CONTROLLER_LEGACY_RECORD_STRUCT,
+        False,
+        False,
+    ),
+    OLD_CONTROLLER_RECORD_STRUCT.size: (OLD_CONTROLLER_RECORD_STRUCT, True, False),
+    NONLINEAR_LEGACY_RECORD_STRUCT.size: (
+        NONLINEAR_LEGACY_RECORD_STRUCT,
+        False,
+        True,
+    ),
+    NONLINEAR_RECORD_STRUCT.size: (NONLINEAR_RECORD_STRUCT, True, True),
+}
 
 
 class FlightLogError(RuntimeError):
@@ -448,10 +504,12 @@ def parse_sector_header(data: bytes, offset: int) -> dict[str, object] | None:
 
 
 def parse_record(record_bytes: bytes) -> dict[str, object] | None:
-    if len(record_bytes) != RECORD_SIZE:
+    layout = SUPPORTED_RECORD_LAYOUTS.get(len(record_bytes))
+    if layout is None:
         return None
-    values = RECORD_STRUCT.unpack(record_bytes)
-    if values[0] != RECORD_MAGIC or values[2] != RECORD_SIZE:
+    record_struct, has_servo_feedback, has_nonlinear_controller = layout
+    values = record_struct.unpack(record_bytes)
+    if values[0] != RECORD_MAGIC or values[2] != len(record_bytes):
         return None
     saved_crc = values[-1]
     check = bytearray(record_bytes)
@@ -479,6 +537,33 @@ def parse_record(record_bytes: bytes) -> dict[str, object] | None:
     for name in ("throttle_us", "servo_alpha_us", "servo_beta_us", "motor_upper_us", "motor_lower_us"):
         row[name] = values[i]
         i += 1
+    feedback_names = (
+        "servo_alpha_feedback_us",
+        "servo_beta_feedback_us",
+        "servo_alpha_feedback_age_ms",
+        "servo_beta_feedback_age_ms",
+        "servo_alpha_feedback_sequence",
+        "servo_beta_feedback_sequence",
+    )
+    if has_servo_feedback:
+        for name in feedback_names:
+            row[name] = values[i]
+            i += 1
+        row["servo_feedback_valid_mask"] = values[i]
+        i += 4  # valid mask plus three reserved bytes
+    else:
+        for name in feedback_names:
+            row[name] = 0
+        row["servo_feedback_valid_mask"] = 0
+    for axis, valid_bit in (("alpha", 0x01), ("beta", 0x02)):
+        position_us = int(row[f"servo_{axis}_feedback_us"])
+        if ((int(row["servo_feedback_valid_mask"]) & valid_bit) != 0 and
+                500 <= position_us <= 2500):
+            row[f"servo_{axis}_feedback_deg"] = (position_us - 500) * 0.09
+            row[f"servo_{axis}_feedback_tilt_deg"] = (position_us - 1500) * 0.09
+        else:
+            row[f"servo_{axis}_feedback_deg"] = None
+            row[f"servo_{axis}_feedback_tilt_deg"] = None
     for name in (
         "rc_armed",
         "rc_link_ok",
@@ -541,6 +626,26 @@ def parse_record(record_bytes: bytes) -> dict[str, object] | None:
         for axis in range(count):
             row[f"{prefix}_{axis}"] = values[i]
             i += 1
+    if has_nonlinear_controller:
+        for prefix, count in (
+            ("ctrl_velocity_integral_m", 2),
+            ("ctrl_desired_attitude_rpy_rad", 3),
+            ("ctrl_attitude_error", 3),
+            ("ctrl_rate_error_rad_s", 3),
+            ("ctrl_moment_cmd_n_m", 3),
+        ):
+            for axis in range(count):
+                row[f"{prefix}_{axis}"] = values[i]
+                i += 1
+        for name in (
+            "ctrl_horizontal_command_scale",
+            "ctrl_moment_utilization",
+            "ctrl_thrust_utilization",
+        ):
+            row[name] = values[i]
+            i += 1
+        row["ctrl_protection_flags"] = values[i]
+        i += 1
     row["z_ref_m"] = values[i]
     row["record_crc32"] = saved_crc
     return row
@@ -564,7 +669,7 @@ def parse_flash_image(data: bytes) -> tuple[list[dict[str, object]], list[dict[s
             if chunk == b"\xFF" * len(chunk) or chunk == b"\x00" * len(chunk):
                 pos += record_size
                 continue
-            if record_size != RECORD_SIZE:
+            if record_size not in SUPPORTED_RECORD_LAYOUTS:
                 errors.append(f"unsupported record size {record_size} at sector offset {offset}")
                 break
             record = parse_record(chunk)

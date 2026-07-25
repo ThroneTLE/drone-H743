@@ -13,8 +13,16 @@ uint8_t APP_ServoFeedbackBench_Start(uint32_t rate_hz,
 uint8_t APP_ServoFeedbackBench_StartSweep(uint32_t duration_ms,
                                           uint32_t timeout_ms,
                                           uint32_t now_ms);
+uint8_t APP_ServoFeedbackBench_StartStep(uint32_t servo_index,
+                                         uint32_t delta_us,
+                                         uint32_t rate_hz,
+                                         uint32_t hold_ms,
+                                         uint32_t timeout_ms,
+                                         uint32_t now_ms);
 void APP_ServoFeedbackBench_Stop(const char *reason, uint32_t now_ms);
 void APP_ServoFeedbackBench_ReportStatus(uint32_t now_ms);
+void APP_ServoFeedbackBench_ApplyTargets(uint32_t now_ms,
+                                         DRV_SERVO_MoveCmd moves[2]);
 void APP_ServoFeedbackBench_Step(uint32_t now_ms,
                                 const DRV_SERVO_MoveCmd moves[2]);
 void APP_ServoFeedbackBench_RecordMoveResult(DRV_SERVO_Status status);

@@ -227,6 +227,18 @@ SECTIONS
   } >DTCMRAM
   PROVIDE( __non_tls_bss_start = ADDR(.bss) );
 
+  /* Large CPU-only buffers that do not require DTCM latency. Objects placed
+     here must be initialized explicitly because this section is NOLOAD. */
+  .ram_d1_noinit (NOLOAD) :
+  {
+    . = ALIGN(32);
+    __ram_d1_noinit_start__ = .;
+    *(.ram_d1_noinit)
+    *(.ram_d1_noinit*)
+    . = ALIGN(32);
+    __ram_d1_noinit_end__ = .;
+  } >RAM
+
   PROVIDE( __bss_start = __tbss_start );
   PROVIDE( __bss_size = __bss_end - __bss_start );
 

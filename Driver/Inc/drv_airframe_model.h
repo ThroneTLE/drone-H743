@@ -23,6 +23,31 @@
 #define DRV_AIRFRAME_SERVO_DEG_PER_US              0.090f
 #define DRV_AIRFRAME_SERVO_US_PER_DEG             11.111111f
 
+/* Installed bus-servo dynamics at full supply, motors stopped, 100 Hz PRAD.
+ * Alpha is software servo index 0 / ID1 and drives gimbal beta (roll moment).
+ * Beta is software servo index 1 / ID2 and drives gimbal alpha (pitch moment).
+ * These +/-200 us FOPDT fits are large-signal engineering models; neutral
+ * feedback is encoder-referenced and is not a mechanical trim correction. */
+#define DRV_AIRFRAME_SERVO_ALPHA_ACTUATOR_IDENT_STEP_US      200.0f
+#define DRV_AIRFRAME_SERVO_ALPHA_ACTUATOR_GAIN                 0.781794f
+#define DRV_AIRFRAME_SERVO_ALPHA_ACTUATOR_DELAY_S              0.016231f
+#define DRV_AIRFRAME_SERVO_ALPHA_ACTUATOR_TAU_INCREASE_S       0.071236f
+#define DRV_AIRFRAME_SERVO_ALPHA_ACTUATOR_TAU_DECREASE_S       0.306416f
+#define DRV_AIRFRAME_SERVO_ALPHA_NEUTRAL_FEEDBACK_US        1457.177648f
+#define DRV_AIRFRAME_SERVO_ALPHA_ACTUATOR_FIT_R2               0.963346f
+#define DRV_AIRFRAME_SERVO_ALPHA_ACTUATOR_FIT_RMSE_US          17.696884f
+#define DRV_AIRFRAME_SERVO_ALPHA_ACTUATOR_FIT_SAMPLE_COUNT    835U
+
+#define DRV_AIRFRAME_SERVO_BETA_ACTUATOR_IDENT_STEP_US       200.0f
+#define DRV_AIRFRAME_SERVO_BETA_ACTUATOR_GAIN                  0.769332f
+#define DRV_AIRFRAME_SERVO_BETA_ACTUATOR_DELAY_S               0.041320f
+#define DRV_AIRFRAME_SERVO_BETA_ACTUATOR_TAU_INCREASE_S        0.076881f
+#define DRV_AIRFRAME_SERVO_BETA_ACTUATOR_TAU_DECREASE_S        0.057051f
+#define DRV_AIRFRAME_SERVO_BETA_NEUTRAL_FEEDBACK_US         1509.527201f
+#define DRV_AIRFRAME_SERVO_BETA_ACTUATOR_FIT_R2                0.994138f
+#define DRV_AIRFRAME_SERVO_BETA_ACTUATOR_FIT_RMSE_US            8.459764f
+#define DRV_AIRFRAME_SERVO_BETA_ACTUATOR_FIT_SAMPLE_COUNT    1253U
+
 #define DRV_AIRFRAME_GRAVITY_M_S2                  9.81f
 #define DRV_AIRFRAME_WEIGHT_N                     13.410270f
 #define DRV_AIRFRAME_THRUST_TABLE_SCOPE            "dual_motor_total"
