@@ -1043,10 +1043,6 @@ void APP_UART_OnError(UART_HandleTypeDef *huart)
 
 void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
 {
-    if (huart->Instance == UART7) {
-        DRV_SERVO_OnUartRxEvent(huart, Size);
-        return;
-    }
     if (huart->Instance == UART4) {
         APP_ELRS_OnRxEvent(Size);
         return;
@@ -1077,6 +1073,10 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
+    if (huart->Instance == UART7) {
+        DRV_SERVO_OnUartRxComplete(huart);
+        return;
+    }
     BSP_OPTICAL_FLOW_OnUartRxCplt(huart);
     APP_MaintUART_OnRxCplt(huart);
 }

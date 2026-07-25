@@ -175,6 +175,20 @@ int main(void)
     CHECK(output.beta_rad > 0.0f, 32);
 
     reset_case(&attitude, &reference);
+    DRV_COAX_CTRL_GetParams(&params);
+    params.roll_angle_kp = 0.0f;
+    params.pitch_angle_kp = 0.0f;
+    params.pitch_rate_kd = 0.0f;
+    DRV_COAX_CTRL_SetParams(&params);
+    /* APP attitude convention: increasing roll has gyro_x < 0. */
+    attitude.gyro_x_rad_s = -0.70f;
+    DRV_COAX_CTRL_Run(&attitude, &reference, &output);
+    DRV_COAX_CTRL_GetLastDebug(&debug);
+    CHECK(debug.rate_error_rad_s[0] < 0.0f, 33);
+    CHECK(debug.moment_cmd_n_m[0] > 0.0f, 34);
+    CHECK(output.beta_rad > 0.0f, 35);
+
+    reset_case(&attitude, &reference);
     reference.vx_m_s = 0.8f;
     reference.horizontal_velocity_valid = 0U;
     DRV_COAX_CTRL_Run(&attitude, &reference, &output);
@@ -246,7 +260,7 @@ int main(void)
         debug.moment_cmd_n_m[1],
         (DRV_AIRFRAME_IXX_KGM2 - DRV_AIRFRAME_IZZ_KGM2) *
             attitude.gyro_z_rad_s *
-            (-attitude.gyro_x_rad_s),
+            attitude.gyro_x_rad_s,
         1.0e-6f), 81);
 
     return 0;

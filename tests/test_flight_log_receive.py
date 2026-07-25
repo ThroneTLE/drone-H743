@@ -105,6 +105,13 @@ def test_parse_record_and_csv_fields(tmp_path) -> None:
     assert row["motor_output_reason"] == 5
     assert row["motor_output_reason_name"] == "rc_loss_disable"
     assert row["arm_switch_high"] == 1
+    assert row["servo_alpha_feedback_us"] == 1510
+    assert row["servo_beta_feedback_us"] == 1490
+    assert row["servo_alpha_feedback_age_ms"] == 3
+    assert row["servo_beta_feedback_age_ms"] == 4
+    assert row["servo_feedback_valid_mask"] == 0x03
+    assert row["servo_alpha_feedback_deg"] == pytest.approx(90.9)
+    assert row["servo_beta_feedback_tilt_deg"] == pytest.approx(-0.9)
     assert row["vel_pid_d_m_s2_1"] == 17.0
     assert row["ctrl_pos_p_m_s2_0"] == 19.0
     assert row["ctrl_tilt_angle_p_rad_0"] == 33.0
@@ -130,6 +137,8 @@ def make_record() -> bytes:
     values.extend([1.0, 2.0, 3.0])
     values.extend([1000 + i for i in range(8)])
     values.extend([1200, 1500, 1500, 1300, 1310])
+    values.extend([1510, 1490, 3, 4, 10, 11])
+    values.extend([0x03, 0, 0, 0])
     values.extend([1, 1, 1, 1, 5, 1, 1, 1, 1, 0, 0, 0])
     values.extend([float(i) for i in range(64)])
     values.append(0x0A)
@@ -139,6 +148,37 @@ def make_record() -> bytes:
     crc = flog.crc32(packed_without_crc[:-4] + b"\x00\x00\x00\x00")
     values[-1] = crc
     return flog.RECORD_STRUCT.pack(*values)
+
+
+def make_legacy_record() -> bytes:
+    values = []
+    values.extend(
+        [flog.RECORD_MAGIC, 3, flog.LEGACY_RECORD_SIZE, 4, 0, 2000, 16, 100]
+    )
+    values.extend([1, 2, 3, 4, 5, 6, 7])
+    values.extend([25.0, 0.1, 0.2, 0.3, 10.0, 11.0, 12.0])
+    values.extend([1.0, 2.0, 3.0])
+    values.extend([1000 + i for i in range(8)])
+    values.extend([1200, 1500, 1500, 1300, 1310])
+    values.extend([1, 1, 1, 1, 5, 1, 1, 1, 1, 0, 0, 0])
+    values.extend([float(i) for i in range(64)])
+    values.append(0x0A)
+    values.append(64.0)
+    values.append(0)
+    packed_without_crc = flog.LEGACY_RECORD_STRUCT.pack(*values)
+    crc = flog.crc32(packed_without_crc[:-4] + b"\x00\x00\x00\x00")
+    values[-1] = crc
+    return flog.LEGACY_RECORD_STRUCT.pack(*values)
+
+
+def test_parse_legacy_record_without_servo_feedback() -> None:
+    row = flog.parse_record(make_legacy_record())
+
+    assert row is not None
+    assert row["version"] == 3
+    assert row["servo_alpha_feedback_us"] == 0
+    assert row["servo_feedback_valid_mask"] == 0
+    assert row["servo_alpha_feedback_deg"] is None
 
 
 def make_sector_header() -> bytes:

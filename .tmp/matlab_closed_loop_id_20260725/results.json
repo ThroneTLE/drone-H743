@@ -1,0 +1,776 @@
+{
+  "generated_at": "2026-07-25 00:47:40 *",
+  "source_csv": "D:\\stm32hal\\drone-H743\\flightlog_20260724_200832.csv",
+  "method": "Closed-loop linear grey-box prediction-error identification with an estimated innovation disturbance model, fixed actuator delay family, whole-experiment two-fold validation, and controller-in-the-loop tuning.",
+  "data_quality": {
+    "rows": 12207,
+    "sequence_span": 17884,
+    "sequence_coverage_fraction": 0.68256542160590472,
+    "missing_records": 5677,
+    "large_time_gaps": 9,
+    "continuous_segments": 10,
+    "tilt_saturation_fraction": 0.13762595232243793,
+    "median_short_sample_period_s": 0.004033
+  },
+  "controller_reconstruction": {
+    "tested_rows": 11367,
+    "candidates": [
+      {
+        "pitch_frame_sign": -1,
+        "attitude_force_sign": -1,
+        "force_x_rmse_n": 0.20099428964754479,
+        "force_y_rmse_n": 0.16784185549715652,
+        "force_z_rmse_n": 0.036245240801785185,
+        "score_n": 0.26435451652738767
+      },
+      {
+        "pitch_frame_sign": -1,
+        "attitude_force_sign": 1,
+        "force_x_rmse_n": 1.0581339533159342,
+        "force_y_rmse_n": 0.75664132018414743,
+        "force_z_rmse_n": 0.036245240801785185,
+        "score_n": 1.3013328813377445
+      },
+      {
+        "pitch_frame_sign": 1,
+        "attitude_force_sign": -1,
+        "force_x_rmse_n": 1.8231365863949787,
+        "force_y_rmse_n": 0.16940354692129331,
+        "force_z_rmse_n": 0.0376708148347946,
+        "score_n": 1.8313775319828971
+      },
+      {
+        "pitch_frame_sign": 1,
+        "attitude_force_sign": 1,
+        "force_x_rmse_n": 2.8516059988972811,
+        "force_y_rmse_n": 0.76004759024874358,
+        "force_z_rmse_n": 0.0376708148347946,
+        "score_n": 2.9513976693560289
+      }
+    ],
+    "best": {
+      "pitch_frame_sign": -1,
+      "attitude_force_sign": -1,
+      "force_x_rmse_n": 0.20099428964754479,
+      "force_y_rmse_n": 0.16784185549715652,
+      "force_z_rmse_n": 0.036245240801785185,
+      "score_n": 0.26435451652738767
+    },
+    "tilt": {
+      "pitch_ff_rmse_rad": 3.728869623806055E-9,
+      "roll_ff_rmse_rad": 5.9707852209505783E-6,
+      "pitch_rate_d_rmse_rad": 0.0025176272782858789,
+      "roll_rate_d_rmse_rad": 0.001914231311293489,
+      "pitch_rmse_rad": 0.0025176272838671695,
+      "roll_rmse_rad": 0.0019111530635294214
+    },
+    "capture_model": {
+      "pitch_frame_sign": -1,
+      "attitude_feedback_location": "force_vector",
+      "attitude_force_sign": -1,
+      "shared_rate_lever_m": 0.20100000500679016
+    }
+  },
+  "fixed_physics": {
+    "mass_kg": 1.367,
+    "gravity_m_s2": 9.81,
+    "inertia_kg_m2": 0.051,
+    "pitch_lever_m": 0.145,
+    "roll_lever_m": 0.105,
+    "tilt_limit_rad": 0.31415926535897931,
+    "motor_tau_s": 0.176624,
+    "gyro_filter_hz": 80
+  },
+  "pitch": {
+    "feedback_check": {
+      "tested_count": 7,
+      "detected_count": 7,
+      "detected_by_experiment": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "zero_lag_flag_by_experiment": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "interpretation": "A detected loop means the actuator command is correlated with output noise; an innovation disturbance model is required."
+    },
+    "closed_loop_identification": {
+      "method": "greyest prediction-error method with DisturbanceModel=estimate; two-fold validation holds out complete experiment segments",
+      "delay_family_s": [
+        0.04,
+        0.06,
+        0.08,
+        0.1
+      ],
+      "delay_results": [
+        {
+          "delay_s": 0.04,
+          "validation_angle_fit_percent": -46.075668986469196,
+          "validation_rate_fit_percent": -69.412321476654014,
+          "validation_angle_fits_percent": [
+            -35.802149636495528,
+            -46.075668986469196,
+            -54.460919646423612,
+            -21.374577165993248,
+            -3.2270917220181161,
+            -227.27291332506678,
+            -46.25936320718607
+          ],
+          "validation_rate_fits_percent": [
+            -31.231381897837117,
+            -30.201432352391567,
+            -69.412321476654014,
+            -92.231157822228084,
+            4.5159326644387932,
+            -507.53572164772675,
+            -133.8357976212771
+          ],
+          "fold_parameters": [
+            [
+              0.085413494585487859,
+              0.68000644889064921,
+              3.9762256426794651,
+              21.133340032510564
+            ],
+            [
+              0.2,
+              1.385391755056109,
+              0,
+              197.63750212209305
+            ]
+          ],
+          "validation_score_percent": -46.167516096827633
+        },
+        {
+          "delay_s": 0.06,
+          "validation_angle_fit_percent": -92.808330070056243,
+          "validation_rate_fit_percent": -42.087159167486263,
+          "validation_angle_fits_percent": [
+            -39.011684101385093,
+            -53.616992009336563,
+            -62.655550063719723,
+            -552.3591666901217,
+            -92.808330070056243,
+            -842.91729604775549,
+            -232.09478621801338
+          ],
+          "validation_rate_fits_percent": [
+            -41.517700817737754,
+            -40.727186635852149,
+            -87.25859488008021,
+            -89.434771312085942,
+            -42.087159167486263,
+            -38.710129470417407,
+            -74.572515785942372
+          ],
+          "fold_parameters": [
+            [
+              0.073489987067313772,
+              0.64065944512016126,
+              3.0382557769978407,
+              17.260943438032218
+            ],
+            [
+              0.053205323062969476,
+              0.77360185489254008,
+              0,
+              0
+            ]
+          ],
+          "validation_score_percent": -68.614032924831051
+        },
+        {
+          "delay_s": 0.08,
+          "validation_angle_fit_percent": -16.09835113290945,
+          "validation_rate_fit_percent": -6.2063521506478647,
+          "validation_angle_fits_percent": [
+            -11.310474517955193,
+            -11.95914829111182,
+            -17.468683672884787,
+            -18.990150633835402,
+            -31.605779806637035,
+            11.317265299247392,
+            -16.09835113290945
+          ],
+          "validation_rate_fits_percent": [
+            -6.2063521506478647,
+            -0.77172095010893393,
+            -18.434865796567035,
+            -18.665298082777838,
+            0.55319268449884884,
+            31.793928196936427,
+            -20.030899520686283
+          ],
+          "fold_parameters": [
+            [
+              0.045873826062155891,
+              0.47685253193546817,
+              9.0448679563025447,
+              44.279781436222052
+            ],
+            [
+              0.11157503848373608,
+              0.75403869856553429,
+              10.764370680570577,
+              14.325052777792806
+            ]
+          ],
+          "validation_score_percent": -14.028749712010635
+        },
+        {
+          "delay_s": 0.1,
+          "validation_angle_fit_percent": -12.125138647883515,
+          "validation_rate_fit_percent": -2.280443014575706,
+          "validation_angle_fits_percent": [
+            -27.349568725014262,
+            -29.060636686055187,
+            -38.827403862728779,
+            -1.994925309267237,
+            -12.125138647883515,
+            0.7574722902416231,
+            -0.1323286222044473
+          ],
+          "validation_rate_fits_percent": [
+            -23.314856678874342,
+            -18.572183713642907,
+            -53.118723397958647,
+            -2.280443014575706,
+            0.99100013700005318,
+            5.7991641434762542,
+            -1.2616708369899143
+          ],
+          "fold_parameters": [
+            [
+              0.2,
+              1.5,
+              6.0423368570761529,
+              55.083124283038288
+            ],
+            [
+              0.0095113598589216114,
+              0.05000000000007343,
+              4.0254524063215067,
+              0
+            ]
+          ],
+          "validation_score_percent": -7.2027908312296107
+        }
+      ],
+      "best_delay_s": 0.1,
+      "validation_angle_fit_percent": -12.125138647883515,
+      "validation_rate_fit_percent": -2.280443014575706,
+      "final_parameters": {
+        "servo_tau_s": 0.005,
+        "effectiveness": 0.67231298763876657,
+        "passive_damping_s1": 0,
+        "tether_stiffness_s2": 0
+      },
+      "parameter_standard_deviation": [
+        0.0002472425740630523,
+        0.046619823348377429,
+        0.61645467631511042,
+        3.164512731858562
+      ],
+      "free_flight_conversion": "Tether stiffness is set to zero and passive damping is not credited during robust tuning."
+    },
+    "controller_in_loop_tuning": {
+      "current_firmware_linearization": "Current source: Ctheta=(T-Kp)/T because DRV_COAX_CTRL_FORCE_FRAME_PITCH_SIGN=-1; Cq=Kd/(T*lever).",
+      "effectiveness_used": 0.67231298763876657,
+      "effectiveness_source": "closed-loop grey-box identification",
+      "nominal_servo_tau_s": 0.01,
+      "nominal_delay_s": 0.1,
+      "search": {
+        "kp_code_range_n_per_rad": [
+          -30,
+          40
+        ],
+        "kd_code_range_n_m_s_per_rad": [
+          -3,
+          0.5
+        ],
+        "target_crossover_rad_s": 1.5,
+        "minimum_phase_margin_deg": 50,
+        "minimum_gain_margin_db": 6
+      },
+      "candidate_found": false,
+      "failure_reason": "Nominal candidates failed at least one uncertainty corner (delay, servo tau, inertia, force, or effectiveness).",
+      "best_failed_candidates": [
+        {
+          "all_models_stable": false,
+          "models_checked": 64,
+          "min_phase_margin_deg": null,
+          "min_gain_margin_db": null,
+          "uncertainty": {
+            "effectiveness_scale": [
+              0.8,
+              1.2
+            ],
+            "force_scale": [
+              0.9,
+              1.1
+            ],
+            "inertia_scale": [
+              0.9,
+              1.1
+            ],
+            "servo_tau_scale": [
+              0.5,
+              1.5
+            ],
+            "delay_s": [
+              0.04,
+              0.06,
+              0.08,
+              0.1
+            ]
+          },
+          "kp_code_n_per_rad": 14,
+          "kd_code_n_m_s_per_rad": -0.10000000000000009,
+          "nominal_crossover_rad_s": 1.5154300742231459,
+          "nominal_phase_margin_deg": 50.883298775365645,
+          "nominal_gain_margin_db": 20.235263913588216,
+          "score": null
+        },
+        {
+          "all_models_stable": false,
+          "models_checked": 64,
+          "min_phase_margin_deg": null,
+          "min_gain_margin_db": null,
+          "uncertainty": {
+            "effectiveness_scale": [
+              0.8,
+              1.2
+            ],
+            "force_scale": [
+              0.9,
+              1.1
+            ],
+            "inertia_scale": [
+              0.9,
+              1.1
+            ],
+            "servo_tau_scale": [
+              0.5,
+              1.5
+            ],
+            "delay_s": [
+              0.04,
+              0.06,
+              0.08,
+              0.1
+            ]
+          },
+          "kp_code_n_per_rad": 14,
+          "kd_code_n_m_s_per_rad": -0.20000000000000007,
+          "nominal_crossover_rad_s": 2.6713024089915645,
+          "nominal_phase_margin_deg": 63.774167667158459,
+          "nominal_gain_margin_db": 14.422783702192792,
+          "score": null
+        },
+        {
+          "all_models_stable": true,
+          "models_checked": 64,
+          "min_phase_margin_deg": 33.067918280608374,
+          "min_gain_margin_db": 10.592181807575807,
+          "uncertainty": {
+            "effectiveness_scale": [
+              0.8,
+              1.2
+            ],
+            "force_scale": [
+              0.9,
+              1.1
+            ],
+            "inertia_scale": [
+              0.9,
+              1.1
+            ],
+            "servo_tau_scale": [
+              0.5,
+              1.5
+            ],
+            "delay_s": [
+              0.04,
+              0.06,
+              0.08,
+              0.1
+            ]
+          },
+          "kp_code_n_per_rad": 15,
+          "kd_code_n_m_s_per_rad": -0.20000000000000007,
+          "nominal_crossover_rad_s": 2.8485662366152171,
+          "nominal_phase_margin_deg": 49.739467763813074,
+          "nominal_gain_margin_db": 14.055264950991113,
+          "score": 2.6951703225847985
+        }
+      ],
+      "diagnostic_points": [
+        {
+          "kp_code_n_per_rad": 0,
+          "kd_code_n_m_s_per_rad": -0.5,
+          "stable": false,
+          "phase_margin_deg": null,
+          "gain_margin_db": null,
+          "crossover_rad_s": 0
+        },
+        {
+          "kp_code_n_per_rad": -5,
+          "kd_code_n_m_s_per_rad": -1,
+          "stable": false,
+          "phase_margin_deg": null,
+          "gain_margin_db": null,
+          "crossover_rad_s": 0
+        },
+        {
+          "kp_code_n_per_rad": -50,
+          "kd_code_n_m_s_per_rad": -1,
+          "stable": false,
+          "phase_margin_deg": null,
+          "gain_margin_db": null,
+          "crossover_rad_s": 0
+        },
+        {
+          "kp_code_n_per_rad": 5,
+          "kd_code_n_m_s_per_rad": -1,
+          "stable": false,
+          "phase_margin_deg": null,
+          "gain_margin_db": null,
+          "crossover_rad_s": 0
+        },
+        {
+          "kp_code_n_per_rad": 15,
+          "kd_code_n_m_s_per_rad": -0.5,
+          "stable": true,
+          "phase_margin_deg": 43.6732137545814,
+          "gain_margin_db": 6.4484416227001775,
+          "crossover_rad_s": 6.5984836241215676
+        }
+      ]
+    },
+    "previous_simple_pidtuner": {
+      "angle_kp_force_n_per_rad": 0.4179648853,
+      "rate_kd_n_m_s_per_rad": -0.1756773795,
+      "warning": "The previous result omitted the force-frame geometric feedback and is comparison-only."
+    }
+  },
+  "roll": {
+    "feedback_check": {
+      "tested_count": 7,
+      "detected_count": 7,
+      "detected_by_experiment": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "zero_lag_flag_by_experiment": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "interpretation": "A detected loop means the actuator command is correlated with output noise; an innovation disturbance model is required."
+    },
+    "closed_loop_identification": {
+      "method": "greyest prediction-error method with DisturbanceModel=estimate; two-fold validation holds out complete experiment segments",
+      "delay_family_s": [
+        0.04,
+        0.06,
+        0.08,
+        0.1
+      ],
+      "delay_results": [
+        {
+          "delay_s": 0.04,
+          "validation_angle_fit_percent": -22.100873065769932,
+          "validation_rate_fit_percent": -4.3935592942355717,
+          "validation_angle_fits_percent": [
+            -22.100873065769932,
+            2.9129764486841903,
+            1.3631459673773216,
+            -159.29218579836976,
+            -180.4256484219124,
+            -91.540396961087,
+            11.419037655424413
+          ],
+          "validation_rate_fits_percent": [
+            1.0257216848535977,
+            -1.9733308365422308,
+            -4.3935592942355717,
+            -58.713330708244982,
+            -29.935696260018887,
+            0.83687697369829728,
+            -6.7846848157365525
+          ],
+          "fold_parameters": [
+            [
+              0.005,
+              -0.09525460842029454,
+              0,
+              2.39229296912743
+            ],
+            [
+              0.11898285520346624,
+              -0.62762264814825874,
+              0,
+              4.000979640463032
+            ]
+          ],
+          "validation_score_percent": -5.5891220549860616
+        },
+        {
+          "delay_s": 0.06,
+          "validation_angle_fit_percent": -53.426764239074572,
+          "validation_rate_fit_percent": -15.686305308390436,
+          "validation_angle_fits_percent": [
+            -68.482788610378,
+            -34.855321197532007,
+            -7.3835308711823755,
+            -115.19153700258693,
+            -160.03799629838477,
+            -53.426764239074572,
+            25.014657613293643
+          ],
+          "validation_rate_fits_percent": [
+            -15.686305308390436,
+            1.41546917985107,
+            -31.462968821101178,
+            -52.2539134644566,
+            -22.993506039711555,
+            6.2494476964423225,
+            -4.4336385342437667
+          ],
+          "fold_parameters": [
+            [
+              0.13768203556220898,
+              -1.0311624441274192,
+              7.2660664152028334,
+              0
+            ],
+            [
+              0.091907213033361329,
+              -0.53483680172913173,
+              0,
+              4.7144096581821628
+            ]
+          ],
+          "validation_score_percent": -27.228237430406367
+        },
+        {
+          "delay_s": 0.08,
+          "validation_angle_fit_percent": -142.29351021251961,
+          "validation_rate_fit_percent": -40.890413470619791,
+          "validation_angle_fits_percent": [
+            -380.89211826427993,
+            -120.56667361481077,
+            -124.92601348031118,
+            -911.34710051381853,
+            -142.29351021251961,
+            -785.77915722767159,
+            -85.288366391138567
+          ],
+          "validation_rate_fits_percent": [
+            -55.6866794715543,
+            -1.772719536544165,
+            -28.306114081562448,
+            -111.22316519337865,
+            -40.890413470619791,
+            -68.339454093434782,
+            -4.0166881599761783
+          ],
+          "fold_parameters": [
+            [
+              0.073903302590820785,
+              -0.70473286869621143,
+              0.21206084144917239,
+              0
+            ],
+            [
+              0.064313929151259788,
+              -0.59882619100804735,
+              0,
+              0
+            ]
+          ],
+          "validation_score_percent": -98.255765792258615
+        },
+        {
+          "delay_s": 0.1,
+          "validation_angle_fit_percent": -65.922106020051572,
+          "validation_rate_fit_percent": -15.520967519860495,
+          "validation_angle_fits_percent": [
+            -5.7524351240883842,
+            -37.493364118938707,
+            -9.2815812023504982,
+            -773.56986406614533,
+            -119.14125956281163,
+            -665.40849504415246,
+            -65.922106020051572
+          ],
+          "validation_rate_fits_percent": [
+            -6.2360115363214286,
+            11.497462294497673,
+            -15.520967519860495,
+            -87.586756760492833,
+            -34.158894134785925,
+            -47.950887520882524,
+            2.1088844673436413
+          ],
+          "fold_parameters": [
+            [
+              0.16925163313458771,
+              -0.66538798560593249,
+              11.013400547131145,
+              45.036911454834069
+            ],
+            [
+              0.06544072212952215,
+              -0.5172532652124493,
+              0,
+              0
+            ]
+          ],
+          "validation_score_percent": -35.826129126862313
+        }
+      ],
+      "best_delay_s": 0.04,
+      "validation_angle_fit_percent": -22.100873065769932,
+      "validation_rate_fit_percent": -4.3935592942355717,
+      "final_parameters": {
+        "servo_tau_s": 0.2,
+        "effectiveness": -1.5,
+        "passive_damping_s1": 26.645093713070171,
+        "tether_stiffness_s2": 0
+      },
+      "parameter_standard_deviation": [
+        0.034488080662398432,
+        0.3837214575104691,
+        1.6627012272598243,
+        7.1996598935945118
+      ],
+      "free_flight_conversion": "Tether stiffness is set to zero and passive damping is not credited during robust tuning."
+    },
+    "controller_in_loop_tuning": {
+      "current_firmware_linearization": "Current source: Ctheta=-(T-Kp)/T; canonical roll rate is -gyro_x, therefore Cq=-Kd/(T*lever).",
+      "effectiveness_used": -1.5,
+      "effectiveness_source": "closed-loop grey-box identification",
+      "nominal_servo_tau_s": 0.15,
+      "nominal_delay_s": 0.04,
+      "search": {
+        "kp_code_range_n_per_rad": [
+          -30,
+          40
+        ],
+        "kd_code_range_n_m_s_per_rad": [
+          -3,
+          0.5
+        ],
+        "target_crossover_rad_s": 1.5,
+        "minimum_phase_margin_deg": 50,
+        "minimum_gain_margin_db": 6
+      },
+      "candidate_found": false,
+      "failure_reason": "Nominal candidates failed at least one uncertainty corner (delay, servo tau, inertia, force, or effectiveness).",
+      "best_failed_candidates": {
+        "all_models_stable": false,
+        "models_checked": 64,
+        "min_phase_margin_deg": null,
+        "min_gain_margin_db": null,
+        "uncertainty": {
+          "effectiveness_scale": [
+            0.8,
+            1.2
+          ],
+          "force_scale": [
+            0.9,
+            1.1
+          ],
+          "inertia_scale": [
+            0.9,
+            1.1
+          ],
+          "servo_tau_scale": [
+            0.5,
+            1.5
+          ],
+          "delay_s": [
+            0.04,
+            0.06,
+            0.08,
+            0.1
+          ]
+        },
+        "kp_code_n_per_rad": 14,
+        "kd_code_n_m_s_per_rad": -0.10000000000000009,
+        "nominal_crossover_rad_s": 2.7836374803327661,
+        "nominal_phase_margin_deg": 48.114088374379371,
+        "nominal_gain_margin_db": 17.615984240752077,
+        "score": null
+      },
+      "diagnostic_points": [
+        {
+          "kp_code_n_per_rad": 0,
+          "kd_code_n_m_s_per_rad": -0.5,
+          "stable": false,
+          "phase_margin_deg": null,
+          "gain_margin_db": null,
+          "crossover_rad_s": 0
+        },
+        {
+          "kp_code_n_per_rad": -5,
+          "kd_code_n_m_s_per_rad": -1,
+          "stable": false,
+          "phase_margin_deg": null,
+          "gain_margin_db": null,
+          "crossover_rad_s": 0
+        },
+        {
+          "kp_code_n_per_rad": -50,
+          "kd_code_n_m_s_per_rad": -1,
+          "stable": false,
+          "phase_margin_deg": null,
+          "gain_margin_db": null,
+          "crossover_rad_s": 0
+        },
+        {
+          "kp_code_n_per_rad": 5,
+          "kd_code_n_m_s_per_rad": -1,
+          "stable": false,
+          "phase_margin_deg": null,
+          "gain_margin_db": null,
+          "crossover_rad_s": 0
+        },
+        {
+          "kp_code_n_per_rad": 15,
+          "kd_code_n_m_s_per_rad": -0.5,
+          "stable": true,
+          "phase_margin_deg": 13.511171101637066,
+          "gain_margin_db": 4.0801046868685509,
+          "crossover_rad_s": 8.8555244263042816
+        }
+      ]
+    },
+    "previous_simple_pidtuner": {
+      "angle_kp_force_n_per_rad": 0.3999962182,
+      "rate_kd_n_m_s_per_rad": -0.150657831,
+      "warning": "The previous result omitted the force-frame geometric feedback and is comparison-only."
+    }
+  }
+}

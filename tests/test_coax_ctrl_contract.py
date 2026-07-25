@@ -247,6 +247,8 @@ def test_nonlinear_balance_controller_uses_so3_error_and_exact_gimbal_inverse() 
 
     assert "#define DRV_COAX_CTRL_FORCE_FRAME_ROLL_SIGN  (-1.0f)" in wrapper
     assert "#define DRV_COAX_CTRL_FORCE_FRAME_PITCH_SIGN (1.0f)" in wrapper
+    assert "#define DRV_COAX_CTRL_RATE_FRAME_ROLL_SIGN   (1.0f)" in wrapper
+    assert "#define DRV_COAX_CTRL_RATE_FRAME_PITCH_SIGN  (1.0f)" in wrapper
     assert (
         "DRV_COAX_CTRL_FORCE_FRAME_ROLL_SIGN * attitude->roll_rad"
         in attitude_helper
@@ -255,6 +257,8 @@ def test_nonlinear_balance_controller_uses_so3_error_and_exact_gimbal_inverse() 
         "DRV_COAX_CTRL_FORCE_FRAME_PITCH_SIGN * attitude->pitch_rad"
         in attitude_helper
     )
+    assert "DRV_COAX_CTRL_RATE_FRAME_ROLL_SIGN * attitude->gyro_x_rad_s" in solve
+    assert "DRV_COAX_CTRL_RATE_FRAME_PITCH_SIGN * attitude->gyro_y_rad_s" in solve
     assert "Rg = Ry(alpha) * Rx(beta)" in gimbal_helper
     assert "rotation[0][2] = sa * cb;" in gimbal_helper
     assert "rotation[1][2] = -sb;" in gimbal_helper

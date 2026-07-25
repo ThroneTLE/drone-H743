@@ -1,0 +1,54 @@
+{
+  "pitch": {
+    "angle10": {
+      "worst_peak_deg": 10.0,
+      "worst_settle_s": 5.618,
+      "max_saturation_fraction": 0.0,
+      "worst_final_angle_deg": 2.241727426756299e-09,
+      "worst_final_rate_dps": 1.6832324862867057e-09,
+      "corners": 64
+    },
+    "angle18": {
+      "worst_peak_deg": 18.0,
+      "worst_settle_s": 6.402,
+      "max_saturation_fraction": 0.0,
+      "worst_final_angle_deg": 4.0352490623007574e-09,
+      "worst_final_rate_dps": 3.0299233666203436e-09,
+      "corners": 64
+    },
+    "rate30": {
+      "worst_peak_deg": 14.177316115875188,
+      "worst_settle_s": 5.886,
+      "max_saturation_fraction": 0.0,
+      "worst_final_angle_deg": 2.638734525485857e-09,
+      "worst_final_rate_dps": 1.981330835752397e-09,
+      "corners": 64
+    }
+  },
+  "roll": {
+    "angle10": {
+      "worst_peak_deg": 10.0,
+      "worst_settle_s": 5.252,
+      "max_saturation_fraction": 0.0,
+      "worst_final_angle_deg": 3.6926016730339917e-10,
+      "worst_final_rate_dps": 3.000659903034676e-10,
+      "corners": 64
+    },
+    "angle18": {
+      "worst_peak_deg": 18.0,
+      "worst_settle_s": 5.976,
+      "max_saturation_fraction": 0.0,
+      "worst_final_angle_deg": 6.647158608959818e-10,
+      "worst_final_rate_dps": 5.401574302659385e-10,
+      "corners": 64
+    },
+    "rate30": {
+      "worst_peak_deg": 14.432032742085212,
+      "worst_settle_s": 5.566,
+      "max_saturation_fraction": 0.0,
+      "worst_final_angle_deg": 6.61670335631424e-10,
+      "worst_final_rate_dps": 7.987455384586696e-10,
+      "corners": 64
+    }
+  }
+}

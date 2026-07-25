@@ -97,6 +97,20 @@ PARAMS_STRUCT = struct.Struct("<" + "f" * len(PARAM_NAMES))
 LEGACY_PARAMS_STRUCT = struct.Struct("<" + "f" * len(LEGACY_PARAM_NAMES))
 EXPORT_HEADER = struct.Struct("<IHHIIHHI")
 EXPORT_BLOCK_MAGIC_BYTES = struct.pack("<I", EXPORT_BLOCK_MAGIC)
+LEGACY_RECORD_STRUCT = struct.Struct(
+    "<IHHIIQII"
+    + "h" * 7
+    + "f" * 7
+    + "f" * 3
+    + "H" * 8
+    + "H" * 5
+    + "B" * 12
+    + "f" * 64
+    + "I"
+    + "f"
+    + "I"
+)
+LEGACY_RECORD_SIZE = LEGACY_RECORD_STRUCT.size
 RECORD_STRUCT = struct.Struct(
     "<IHHIIQII"
     + "h" * 7
@@ -104,6 +118,8 @@ RECORD_STRUCT = struct.Struct(
     + "f" * 3
     + "H" * 8
     + "H" * 5
+    + "H" * 6
+    + "B" * 4
     + "B" * 12
     + "f" * 64
     + "I"
@@ -460,10 +476,16 @@ def parse_sector_header(data: bytes, offset: int) -> dict[str, object] | None:
 
 
 def parse_record(record_bytes: bytes) -> dict[str, object] | None:
-    if len(record_bytes) != RECORD_SIZE:
+    if len(record_bytes) == RECORD_SIZE:
+        record_struct = RECORD_STRUCT
+        has_servo_feedback = True
+    elif len(record_bytes) == LEGACY_RECORD_SIZE:
+        record_struct = LEGACY_RECORD_STRUCT
+        has_servo_feedback = False
+    else:
         return None
-    values = RECORD_STRUCT.unpack(record_bytes)
-    if values[0] != RECORD_MAGIC or values[2] != RECORD_SIZE:
+    values = record_struct.unpack(record_bytes)
+    if values[0] != RECORD_MAGIC or values[2] != len(record_bytes):
         return None
     saved_crc = values[-1]
     check = bytearray(record_bytes)
@@ -491,6 +513,33 @@ def parse_record(record_bytes: bytes) -> dict[str, object] | None:
     for name in ("throttle_us", "servo_alpha_us", "servo_beta_us", "motor_upper_us", "motor_lower_us"):
         row[name] = values[i]
         i += 1
+    feedback_names = (
+        "servo_alpha_feedback_us",
+        "servo_beta_feedback_us",
+        "servo_alpha_feedback_age_ms",
+        "servo_beta_feedback_age_ms",
+        "servo_alpha_feedback_sequence",
+        "servo_beta_feedback_sequence",
+    )
+    if has_servo_feedback:
+        for name in feedback_names:
+            row[name] = values[i]
+            i += 1
+        row["servo_feedback_valid_mask"] = values[i]
+        i += 4  # valid mask plus three reserved bytes
+    else:
+        for name in feedback_names:
+            row[name] = 0
+        row["servo_feedback_valid_mask"] = 0
+    for axis, valid_bit in (("alpha", 0x01), ("beta", 0x02)):
+        position_us = int(row[f"servo_{axis}_feedback_us"])
+        if ((int(row["servo_feedback_valid_mask"]) & valid_bit) != 0 and
+                500 <= position_us <= 2500):
+            row[f"servo_{axis}_feedback_deg"] = (position_us - 500) * 0.09
+            row[f"servo_{axis}_feedback_tilt_deg"] = (position_us - 1500) * 0.09
+        else:
+            row[f"servo_{axis}_feedback_deg"] = None
+            row[f"servo_{axis}_feedback_tilt_deg"] = None
     for name in (
         "rc_armed",
         "rc_link_ok",
@@ -590,7 +639,7 @@ def parse_flash_image(data: bytes) -> tuple[list[dict[str, object]], list[dict[s
             if chunk == b"\xFF" * len(chunk) or chunk == b"\x00" * len(chunk):
                 pos += record_size
                 continue
-            if record_size != RECORD_SIZE:
+            if record_size not in (RECORD_SIZE, LEGACY_RECORD_SIZE):
                 errors.append(f"unsupported record size {record_size} at sector offset {offset}")
                 break
             record = parse_record(chunk)

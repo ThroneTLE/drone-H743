@@ -1,0 +1,131 @@
+{
+  "method": "Exact-delay frequency-domain robust grid search",
+  "force_range_n": [
+    5.5,
+    9.25,
+    13.40927,
+    16.85,
+    17.5
+  ],
+  "inertia_kg_m2": 0.051,
+  "delay_s": [
+    0.04,
+    0.06,
+    0.08,
+    0.1
+  ],
+  "servo_tau_s": [
+    0.01,
+    0.03
+  ],
+  "pitch": {
+    "physics": {
+      "lever_m": 0.145,
+      "effectiveness": 0.569193325,
+      "delay_s": 0.04
+    },
+    "fixed": {
+      "status": "margin_failed",
+      "internal_kp_n_rad": -5.25,
+      "internal_kd_nm_s_rad": -0.47500000000000014,
+      "synex_kp": 5.25,
+      "synex_kd": 0.47500000000000014,
+      "metrics": {
+        "stable": true,
+        "min_phase_margin_deg": 6.2540705120731,
+        "min_gain_margin_db": 1.6327918000638404,
+        "nominal_crossover_rad_s": 5.761168819051308,
+        "nominal_phase_margin_deg": 46.28922659494101,
+        "nominal_gain_margin_db": 14.039277110924699,
+        "corners": 160
+      },
+      "stiffness_range_n_rad": [
+        0.25,
+        12.25
+      ]
+    },
+    "scheduled": {
+      "status": "passed",
+      "effective_stiffness_n_rad": 0.7999999999999998,
+      "internal_kd_nm_s_rad": -0.2,
+      "synex_kd": 0.2,
+      "internal_kp_schedule": "effective_stiffness_n_rad - ctrl_total_force_n",
+      "internal_kp_range_n_rad": [
+        -16.7,
+        -4.7
+      ],
+      "synex_kp_range": [
+        4.7,
+        16.7
+      ],
+      "hover_internal_kp_n_rad": -12.609269999999999,
+      "hover_synex_kp": 12.609269999999999,
+      "rigid_body_wn_rad_s": 1.1378206352669191,
+      "rigid_body_zeta": 0.9808798579887237,
+      "metrics": {
+        "stable": true,
+        "min_phase_margin_deg": 56.310238191819366,
+        "min_gain_margin_db": 12.313378693517345,
+        "nominal_crossover_rad_s": 2.301930158589634,
+        "nominal_phase_margin_deg": 67.69956959059512,
+        "nominal_gain_margin_db": 22.201007496394293,
+        "corners": 32
+      }
+    }
+  },
+  "roll": {
+    "physics": {
+      "lever_m": 0.105,
+      "effectiveness": 0.5809669373,
+      "delay_s": 0.06
+    },
+    "fixed": {
+      "status": "margin_failed",
+      "internal_kp_n_rad": -5.25,
+      "internal_kd_nm_s_rad": -0.4250000000000001,
+      "synex_kp": 5.25,
+      "synex_kd": 0.4250000000000001,
+      "metrics": {
+        "stable": true,
+        "min_phase_margin_deg": 14.290499667045891,
+        "min_gain_margin_db": 3.4155847615548036,
+        "nominal_crossover_rad_s": 5.184500937304234,
+        "nominal_phase_margin_deg": 44.49660343451197,
+        "nominal_gain_margin_db": 11.840184884285723,
+        "corners": 160
+      },
+      "stiffness_range_n_rad": [
+        0.25,
+        12.25
+      ]
+    },
+    "scheduled": {
+      "status": "passed",
+      "effective_stiffness_n_rad": 1.0999999999999999,
+      "internal_kd_nm_s_rad": -0.19,
+      "synex_kd": 0.19,
+      "internal_kp_schedule": "effective_stiffness_n_rad - ctrl_total_force_n",
+      "internal_kp_range_n_rad": [
+        -16.4,
+        -4.4
+      ],
+      "synex_kp_range": [
+        4.4,
+        16.4
+      ],
+      "hover_internal_kp_n_rad": -12.30927,
+      "hover_synex_kp": 12.30927,
+      "rigid_body_wn_rad_s": 1.1470480549462094,
+      "rigid_body_zeta": 0.943459439133246,
+      "metrics": {
+        "stable": true,
+        "min_phase_margin_deg": 56.11454213820583,
+        "min_gain_margin_db": 12.563561634753555,
+        "nominal_crossover_rad_s": 2.2427372763133575,
+        "nominal_phase_margin_deg": 64.31765526517744,
+        "nominal_gain_margin_db": 19.431560865008745,
+        "corners": 32
+      }
+    }
+  }
+}

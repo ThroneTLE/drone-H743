@@ -17,6 +17,8 @@
 #define DRV_COAX_CTRL_SERVO_BETA_SIGN     (1.0f)
 #define DRV_COAX_CTRL_FORCE_FRAME_ROLL_SIGN  (-1.0f)
 #define DRV_COAX_CTRL_FORCE_FRAME_PITCH_SIGN (1.0f)
+#define DRV_COAX_CTRL_RATE_FRAME_ROLL_SIGN   (1.0f)
+#define DRV_COAX_CTRL_RATE_FRAME_PITCH_SIGN  (1.0f)
 #define DRV_COAX_CTRL_FORCE_EPS_N          1.0e-4f
 #define DRV_COAX_CTRL_RATE_SCALE_EPS       1.0e-6f
 #define DRV_COAX_CTRL_PROP9047_YAW_M_PER_N 0.0001f
@@ -26,8 +28,8 @@
 #define DRV_COAX_CTRL_BALANCE_ITERATIONS   2U
 #define DRV_COAX_CTRL_ROLL_EFFECTIVENESS   0.581f
 #define DRV_COAX_CTRL_PITCH_EFFECTIVENESS  0.569f
-#define DRV_COAX_CTRL_ROLL_MOMENT_SIGN     (1.0f)
-#define DRV_COAX_CTRL_PITCH_MOMENT_SIGN    (1.0f)
+#define DRV_COAX_CTRL_ROLL_MOMENT_SIGN     (-1.0f)
+#define DRV_COAX_CTRL_PITCH_MOMENT_SIGN    (-1.0f)
 #define DRV_COAX_CTRL_VEL_INTEGRAL_LIMIT_M 4.0f
 #define DRV_COAX_CTRL_HORIZONTAL_ACCEL_LIMIT_M_S2 2.0f
 #define DRV_COAX_CTRL_ATTITUDE_PROTECT_START_RAD 0.209440f
@@ -502,8 +504,8 @@ static void coax_ctrl_compute_balance_solution(
     float desired_omega[3] = { 0.0f, 0.0f, reference->yaw_rate_rad_s };
     float desired_omega_actual[3];
     const float actual_omega[3] = {
-        DRV_COAX_CTRL_FORCE_FRAME_ROLL_SIGN * attitude->gyro_x_rad_s,
-        DRV_COAX_CTRL_FORCE_FRAME_PITCH_SIGN * attitude->gyro_y_rad_s,
+        DRV_COAX_CTRL_RATE_FRAME_ROLL_SIGN * attitude->gyro_x_rad_s,
+        DRV_COAX_CTRL_RATE_FRAME_PITCH_SIGN * attitude->gyro_y_rad_s,
         attitude->gyro_z_rad_s,
     };
     const float kr_roll = -coax_ctrl_params.roll_angle_kp;

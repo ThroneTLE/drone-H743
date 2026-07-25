@@ -1,0 +1,138 @@
+{
+  "method": "exact-delay frequency margins around the nonlinear allocation linearization",
+  "linearization": "L(s)=Ka*A(s)*rho*[C/(C-Kp)]*(Kp+Kd*s*Hgyro)/(I*s^2), C=eta*lever*thrust",
+  "assumptions": {
+    "inertia_kg_m2": 0.051,
+    "inertia_corners_kg_m2": [
+      0.0459,
+      0.0561
+    ],
+    "force_nominal_n": 13.41027,
+    "force_corners_n": [
+      5.5,
+      15.644959
+    ],
+    "effectiveness_ratio_corners": [
+      0.75,
+      1.25
+    ],
+    "gyro_filter_hz": 80.0,
+    "tilt_limit_deg": 18.0,
+    "phase_margin_gate_deg": 50.0,
+    "gain_margin_gate_db": 10.0
+  },
+  "roll": {
+    "physics": {
+      "lever_m": 0.105,
+      "effectiveness": 0.581,
+      "servo_name": "servo_alpha_index0_id1_drives_beta",
+      "servo_gain_corners": [
+        0.773,
+        0.793
+      ],
+      "servo_tau_corners_s": [
+        0.07,
+        0.31
+      ],
+      "servo_delay_corners_s": [
+        0.016,
+        0.036
+      ],
+      "servo_gain_nominal": 0.781794,
+      "servo_tau_nominal_s": 0.188826,
+      "servo_delay_nominal_s": 0.026
+    },
+    "recommended": {
+      "kp_n_m_per_rad": 0.019999999999999997,
+      "kd_n_m_s_per_rad": 0.06499999999999997,
+      "nominal": {
+        "crossover_rad_s": 1.0451543946350903,
+        "phase_margin_deg": 60.7650137764845,
+        "gain_margin_db": 30.541827567639814
+      },
+      "worst_phase_margin_deg": 51.083632915008195,
+      "worst_gain_margin_db": 24.195114932362653,
+      "nominal_wn_rad_s": 0.5605968592954798,
+      "nominal_zeta": 0.9109698963551542,
+      "corners": 64
+    },
+    "current_source_default": {
+      "kp_n_m_per_rad": 0.0671,
+      "kd_n_m_s_per_rad": 0.1104,
+      "nominal": {
+        "crossover_rad_s": 1.8366673944138416,
+        "phase_margin_deg": 49.63749085333335,
+        "gain_margin_db": 24.840682561756946
+      },
+      "worst_phase_margin_deg": 33.54563481701492,
+      "worst_gain_margin_db": 17.188271324611105,
+      "nominal_wn_rad_s": 1.0585362130344533,
+      "nominal_zeta": 0.8708077341207423,
+      "corners": 64
+    },
+    "recommended_authority_at_hover": {
+      "allocation_capacity_n_m_per_sin_rad": 0.81809352135,
+      "ideal_18deg_moment_n_m": 0.2528048010851939,
+      "servo_gain_limited_moment_n_m": 0.19891613237391087,
+      "servo_gain_limited_accel_rad_s2": 3.900316321057076,
+      "rate_capacity_at_18deg_error_rad_s": 2.9651660382524923
+    }
+  },
+  "pitch": {
+    "physics": {
+      "lever_m": 0.145,
+      "effectiveness": 0.569,
+      "servo_name": "servo_beta_index1_id2_drives_alpha",
+      "servo_gain_corners": [
+        0.756,
+        0.779
+      ],
+      "servo_tau_corners_s": [
+        0.054,
+        0.087
+      ],
+      "servo_delay_corners_s": [
+        0.036,
+        0.063
+      ],
+      "servo_gain_nominal": 0.769332,
+      "servo_tau_nominal_s": 0.070966,
+      "servo_delay_nominal_s": 0.0495
+    },
+    "recommended": {
+      "kp_n_m_per_rad": 0.039999999999999994,
+      "kd_n_m_s_per_rad": 0.08999999999999997,
+      "nominal": {
+        "crossover_rad_s": 1.4652296774550957,
+        "phase_margin_deg": 62.88088963257265,
+        "gain_margin_db": 23.313789833891246
+      },
+      "worst_phase_margin_deg": 57.612097107375604,
+      "worst_gain_margin_db": 17.78660488535161,
+      "nominal_wn_rad_s": 0.7912208370836834,
+      "nominal_zeta": 0.8901234417191437,
+      "corners": 64
+    },
+    "current_source_default": {
+      "kp_n_m_per_rad": 0.066,
+      "kd_n_m_s_per_rad": 0.1138,
+      "nominal": {
+        "crossover_rad_s": 1.8941852557098455,
+        "phase_margin_deg": 59.75056577196405,
+        "gain_margin_db": 20.953657240054316
+      },
+      "worst_phase_margin_deg": 54.16946223023015,
+      "worst_gain_margin_db": 15.04968362069144,
+      "nominal_wn_rad_s": 1.0289624153480654,
+      "nominal_zeta": 0.887090324747044,
+      "corners": 64
+    },
+    "recommended_authority_at_hover": {
+      "allocation_capacity_n_m_per_sin_rad": 1.1064143263499997,
+      "ideal_18deg_moment_n_m": 0.3419008296620591,
+      "servo_gain_limited_moment_n_m": 0.2648164437230043,
+      "servo_gain_limited_accel_rad_s2": 5.192479288686359,
+      "rate_capacity_at_18deg_error_rad_s": 2.805064043866739
+    }
+  }
+}

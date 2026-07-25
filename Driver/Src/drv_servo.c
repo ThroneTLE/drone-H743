@@ -640,9 +640,11 @@ void DRV_SERVO_OnUartTxComplete(UART_HandleTypeDef *huart)
     HAL_HalfDuplex_EnableReceiver(huart);
     BSP_Cache_InvalidateDCache(servo_dma_rx_buffer,
                               (uint32_t)sizeof(servo_dma_rx_buffer));
-    rx_status = HAL_UARTEx_ReceiveToIdle_DMA(huart,
-                                             servo_dma_rx_buffer,
-                                             DRV_SERVO_POSITION_RESPONSE_LEN);
+    /* PRAD replies are fixed-length frames. A servo may pause between bytes,
+     * so an IDLE event is not a frame boundary here. */
+    rx_status = HAL_UART_Receive_DMA(huart,
+                                    servo_dma_rx_buffer,
+                                    DRV_SERVO_POSITION_RESPONSE_LEN);
     if (rx_status != HAL_OK) {
         servo_feedback_record_event(DRV_SERVO_FEEDBACK_EVENT_UART_ERROR,
                                     servo_feedback_pending_id,
@@ -658,7 +660,7 @@ void DRV_SERVO_OnUartTxComplete(UART_HandleTypeDef *huart)
     servo_async_state = SERVO_ASYNC_FEEDBACK_RX;
 }
 
-void DRV_SERVO_OnUartRxEvent(UART_HandleTypeDef *huart, uint16_t size)
+void DRV_SERVO_OnUartRxComplete(UART_HandleTypeDef *huart)
 {
     uint16_t position_us = 0U;
     uint32_t now_ms;
@@ -675,7 +677,7 @@ void DRV_SERVO_OnUartRxEvent(UART_HandleTypeDef *huart, uint16_t size)
     BSP_Cache_InvalidateDCache(servo_dma_rx_buffer,
                               (uint32_t)sizeof(servo_dma_rx_buffer));
     event_type = (servo_parse_position_response(servo_dma_rx_buffer,
-                                                size,
+                                                DRV_SERVO_POSITION_RESPONSE_LEN,
                                                 servo_feedback_pending_id,
                                                 &position_us) != 0U) ?
                  DRV_SERVO_FEEDBACK_EVENT_VALID :
@@ -683,7 +685,7 @@ void DRV_SERVO_OnUartRxEvent(UART_HandleTypeDef *huart, uint16_t size)
     servo_feedback_record_event(event_type,
                                 servo_feedback_pending_id,
                                 position_us,
-                                size,
+                                DRV_SERVO_POSITION_RESPONSE_LEN,
                                 now_ms,
                                 rtt_ms);
     servo_feedback_return_to_tx(huart);
