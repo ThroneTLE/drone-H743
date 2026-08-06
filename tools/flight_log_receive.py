@@ -53,6 +53,7 @@ MOTOR_REASON_NAMES = {
     5: "rc_loss_disable",
     6: "ident_direct",
     7: "imu_invalid_direct",
+    8: "attitude_debug",
 }
 
 LEGACY_PARAM_NAMES = [
@@ -86,6 +87,15 @@ LEGACY_PARAM_NAMES = [
 ]
 
 PARAM_NAMES = [
+    *LEGACY_PARAM_NAMES[:3],
+    "pos_z_ki",
+    *LEGACY_PARAM_NAMES[3:15],
+    "pitch_tilt_lever_arm_m",
+    "roll_tilt_lever_arm_m",
+    *LEGACY_PARAM_NAMES[16:],
+]
+
+V6_PARAM_NAMES = [
     *LEGACY_PARAM_NAMES[:15],
     "pitch_tilt_lever_arm_m",
     "roll_tilt_lever_arm_m",
@@ -94,6 +104,7 @@ PARAM_NAMES = [
 
 SECTOR_HEADER_PREFIX = struct.Struct("<IHHIIIIIIIIQII")
 PARAMS_STRUCT = struct.Struct("<" + "f" * len(PARAM_NAMES))
+V6_PARAMS_STRUCT = struct.Struct("<" + "f" * len(V6_PARAM_NAMES))
 LEGACY_PARAMS_STRUCT = struct.Struct("<" + "f" * len(LEGACY_PARAM_NAMES))
 EXPORT_HEADER = struct.Struct("<IHHIIHHI")
 EXPORT_BLOCK_MAGIC_BYTES = struct.pack("<I", EXPORT_BLOCK_MAGIC)
@@ -127,7 +138,7 @@ V4_RECORD_STRUCT = struct.Struct(
     + "I"
 )
 V4_RECORD_SIZE = V4_RECORD_STRUCT.size
-RECORD_STRUCT = struct.Struct(
+V5_RECORD_STRUCT = struct.Struct(
     "<IHHIIQII"
     + "h" * 7
     + "f" * 7
@@ -144,6 +155,58 @@ RECORD_STRUCT = struct.Struct(
     + "I"
     + "f" * 2
     + "I"
+    + "I"
+)
+V5_RECORD_SIZE = V5_RECORD_STRUCT.size
+V6_RECORD_STRUCT = struct.Struct(
+    "<IHHIIQII"
+    + "h" * 7
+    + "f" * 7
+    + "f" * 3
+    + "H" * 8
+    + "H" * 5
+    + "H" * 6
+    + "B" * 4
+    + "B" * 12
+    + "f" * 64
+    + "I"
+    + "f"
+    + "B" * 4
+    + "I"
+    + "f" * 2
+    + "I"
+    + "H" * 2
+    + "h" * 2
+    + "H" * 2
+    + "B" * 4
+    + "f" * 10
+    + "I" * 10
+    + "I"
+)
+V6_RECORD_SIZE = V6_RECORD_STRUCT.size
+RECORD_STRUCT = struct.Struct(
+    "<IHHIIQII"
+    + "h" * 7
+    + "f" * 7
+    + "f" * 3
+    + "H" * 8
+    + "H" * 5
+    + "H" * 6
+    + "B" * 4
+    + "B" * 12
+    + "f" * 65
+    + "I"
+    + "f"
+    + "B" * 4
+    + "I"
+    + "f" * 2
+    + "I"
+    + "H" * 2
+    + "h" * 2
+    + "H" * 2
+    + "B" * 4
+    + "f" * 10
+    + "I" * 10
     + "I"
 )
 RECORD_SIZE = RECORD_STRUCT.size
@@ -470,6 +533,9 @@ def parse_sector_header(data: bytes, offset: int) -> dict[str, object] | None:
     if params_size == PARAMS_STRUCT.size:
         param_names = PARAM_NAMES
         params_struct = PARAMS_STRUCT
+    elif params_size == V6_PARAMS_STRUCT.size:
+        param_names = V6_PARAM_NAMES
+        params_struct = V6_PARAMS_STRUCT
     elif params_size == LEGACY_PARAMS_STRUCT.size:
         param_names = LEGACY_PARAM_NAMES
         params_struct = LEGACY_PARAMS_STRUCT
@@ -496,8 +562,21 @@ def parse_sector_header(data: bytes, offset: int) -> dict[str, object] | None:
 
 
 def parse_record(record_bytes: bytes) -> dict[str, object] | None:
+    has_v6_diagnostics = False
+    has_v7_z_integral = False
     if len(record_bytes) == RECORD_SIZE:
         record_struct = RECORD_STRUCT
+        has_servo_feedback = True
+        has_ident_att = True
+        has_v6_diagnostics = True
+        has_v7_z_integral = True
+    elif len(record_bytes) == V6_RECORD_SIZE:
+        record_struct = V6_RECORD_STRUCT
+        has_servo_feedback = True
+        has_ident_att = True
+        has_v6_diagnostics = True
+    elif len(record_bytes) == V5_RECORD_SIZE:
+        record_struct = V5_RECORD_STRUCT
         has_servo_feedback = True
         has_ident_att = True
     elif len(record_bytes) == V4_RECORD_SIZE:
@@ -602,10 +681,20 @@ def parse_record(record_bytes: bytes) -> dict[str, object] | None:
     i += 1
     for prefix, count in (
         ("ctrl_pos_p_m_s2", 3),
+    ):
+        for axis in range(count):
+            row[f"{prefix}_{axis}"] = values[i]
+            i += 1
+    if has_v7_z_integral:
+        row["ctrl_pos_z_i_m_s2"] = values[i]
+        i += 1
+    else:
+        row["ctrl_pos_z_i_m_s2"] = 0.0
+    for prefix, count in (
         ("ctrl_vel_d_m_s2", 3),
         ("ctrl_accel_out_m_s2", 3),
         ("ctrl_force_cmd_n", 3),
-        ("ctrl_tilt_ff_rad", 2),
+        ("ctrl_target_attitude_rp_rad", 2),
         ("ctrl_tilt_angle_p_rad", 2),
         ("ctrl_tilt_rate_d_rad", 2),
         ("ctrl_tilt_out_rad", 2),
@@ -666,6 +755,84 @@ def parse_record(record_bytes: bytes) -> dict[str, object] | None:
         row["ident_att_signal_rad"] = 0.0
         row["ident_att_signal_m_s2"] = 0.0
         row["ident_att_elapsed_ms"] = 0
+    if has_v6_diagnostics:
+        for name in ("servo_alpha_sent_us", "servo_beta_sent_us"):
+            row[name] = values[i]
+            i += 1
+        for name in ("flow_raw_x", "flow_raw_y"):
+            row[name] = values[i]
+            i += 1
+        for name in ("flow_sample_age_ms", "flow_height_age_ms"):
+            row[name] = values[i]
+            i += 1
+        for name in (
+            "flow_quality",
+            "flow_valid",
+            "flow_velocity_valid",
+            "flow_height_valid",
+        ):
+            row[name] = values[i]
+            i += 1
+        for name in ("flow_height_raw_m", "flow_height_m"):
+            row[name] = values[i]
+            i += 1
+        for prefix in (
+            "flow_sensor_velocity_m_s",
+            "flow_optical_rot_comp_m_s",
+            "flow_offset_rot_comp_m_s",
+            "flow_corrected_velocity_m_s",
+        ):
+            for axis in range(2):
+                row[f"{prefix}_{axis}"] = values[i]
+                i += 1
+        for name in (
+            "servo_move_attempt_count",
+            "servo_move_sent_count",
+            "servo_move_busy_count",
+            "servo_move_error_count",
+            "servo_feedback_request_count",
+            "servo_feedback_response_count",
+            "servo_feedback_timeout_count",
+            "servo_feedback_parse_error_count",
+            "servo_feedback_uart_error_count",
+            "servo_feedback_busy_count",
+        ):
+            row[name] = values[i]
+            i += 1
+    else:
+        row["servo_alpha_sent_us"] = 0
+        row["servo_beta_sent_us"] = 0
+        row["flow_raw_x"] = 0
+        row["flow_raw_y"] = 0
+        row["flow_sample_age_ms"] = 0
+        row["flow_height_age_ms"] = 0
+        row["flow_quality"] = 0
+        row["flow_valid"] = 0
+        row["flow_velocity_valid"] = 0
+        row["flow_height_valid"] = 0
+        row["flow_height_raw_m"] = None
+        row["flow_height_m"] = None
+        for prefix in (
+            "flow_sensor_velocity_m_s",
+            "flow_optical_rot_comp_m_s",
+            "flow_offset_rot_comp_m_s",
+            "flow_corrected_velocity_m_s",
+        ):
+            for axis in range(2):
+                row[f"{prefix}_{axis}"] = None
+        for name in (
+            "servo_move_attempt_count",
+            "servo_move_sent_count",
+            "servo_move_busy_count",
+            "servo_move_error_count",
+            "servo_feedback_request_count",
+            "servo_feedback_response_count",
+            "servo_feedback_timeout_count",
+            "servo_feedback_parse_error_count",
+            "servo_feedback_uart_error_count",
+            "servo_feedback_busy_count",
+        ):
+            row[name] = 0
     row["record_crc32"] = saved_crc
     return row
 
@@ -688,7 +855,13 @@ def parse_flash_image(data: bytes) -> tuple[list[dict[str, object]], list[dict[s
             if chunk == b"\xFF" * len(chunk) or chunk == b"\x00" * len(chunk):
                 pos += record_size
                 continue
-            if record_size not in (RECORD_SIZE, V4_RECORD_SIZE, LEGACY_RECORD_SIZE):
+            if record_size not in (
+                RECORD_SIZE,
+                V6_RECORD_SIZE,
+                V5_RECORD_SIZE,
+                V4_RECORD_SIZE,
+                LEGACY_RECORD_SIZE,
+            ):
                 errors.append(f"unsupported record size {record_size} at sector offset {offset}")
                 break
             record = parse_record(chunk)

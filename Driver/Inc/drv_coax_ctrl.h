@@ -55,6 +55,11 @@ typedef struct {
     float az_m_s2;
     float dt_sec;
     uint8_t horizontal_velocity_valid;
+    uint8_t direct_attitude_target_valid;
+    uint8_t manual_total_force_valid;
+    float target_roll_rad;
+    float target_pitch_rad;
+    float manual_total_force_n;
     /* Paper psi_d, psi_d_dot and psi_d_ddot references. */
     float yaw_rad;
     float yaw_rate_rad_s;
@@ -93,10 +98,11 @@ typedef struct {
 
 typedef struct {
     float pos_p_m_s2[3];
+    float pos_z_i_m_s2;
     float vel_d_m_s2[3];
     float accel_out_m_s2[3];
     float force_cmd_n[3];
-    float tilt_ff_rad[2];
+    float target_attitude_rp_rad[2];
     float tilt_angle_p_rad[2];
     float tilt_rate_d_rad[2];
     float tilt_out_rad[2];
@@ -121,6 +127,7 @@ typedef struct {
     float pos_x_kp;
     float pos_y_kp;
     float pos_z_kp;
+    float pos_z_ki;
     float vel_x_kd;
     float vel_y_kd;
     float vel_z_kd;
@@ -173,6 +180,7 @@ void DRV_COAX_CTRL_BodyTiltRadToServoPulses(float body_x_tilt_rad,
                                             uint16_t *servo_alpha_us,
                                             uint16_t *servo_beta_us);
 uint16_t DRV_COAX_CTRL_ThrustToMotorPulse(float thrust_n);
+float DRV_COAX_CTRL_MotorPulseToTotalThrust(uint16_t pulse_us);
 
 #ifdef __cplusplus
 }

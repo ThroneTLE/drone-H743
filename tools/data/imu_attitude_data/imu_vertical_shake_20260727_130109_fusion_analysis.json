@@ -1,0 +1,42 @@
+{
+  "format": "drone-h743-fusion-analysis-v1",
+  "created_at": "2026-07-27T13:49:52.803667+08:00",
+  "input_csv": "D:\\stm32hal\\drone-H743\\tools\\imu_attitude_data\\imu_vertical_shake_20260727_130109.csv",
+  "input_sha256": "8256811935d945793f68985c9972866e6a51279b80a53d23f2d29f7a69f259a8",
+  "quality": {
+    "row_count": 3000,
+    "valid": true,
+    "stage_counts": {
+      "baseline": 500,
+      "shake": 800,
+      "settle": 1700
+    },
+    "host_duration_s": 29.9962673,
+    "observed_rate_hz": 99.97910640034868,
+    "timestamp_nonforward": 0,
+    "sequence_nonforward": 0,
+    "sequence_gap_max": 419
+  },
+  "fusion_diagnostics_present": false,
+  "firmware_settings": {
+    "gain": 0.5,
+    "acceleration_rejection_deg": 10.0,
+    "rejection_timeout_s": 5.0,
+    "accel_norm_gate_g": [
+      0.85,
+      1.15
+    ]
+  },
+  "final": {
+    "window_s": 2.0,
+    "row_count": 200,
+    "roll_median_deg": -4.660901,
+    "pitch_median_deg": 0.83680225,
+    "tilt_median_deg": 4.7354235436131855,
+    "roll_std_deg": 0.0008295309577707141,
+    "pitch_std_deg": 0.0007710654932363046
+  },
+  "fusion": {},
+  "decision": "new_fusion_capture_required",
+  "parameter_changes_applied": false
+}

@@ -5,15 +5,18 @@
 #include <stddef.h>
 #include <string.h>
 
-/* Alternate two servos every 10 ms: 50 Hz per servo, 100 Hz aggregate. */
-#define APP_SERVO_FEEDBACK_QUERY_INTERVAL_MS 10U
-#define APP_SERVO_FEEDBACK_TIMEOUT_MS         8U
+/* One query in each 10 ms bus frame, alternating servos at 50 Hz each. */
+#define APP_SERVO_FEEDBACK_FRAME_PERIOD_MS 10U
+#define APP_SERVO_FEEDBACK_QUERY_PHASE_MS   4U
+#define APP_SERVO_FEEDBACK_TIMEOUT_MS       5U
 #define APP_SERVO_FEEDBACK_STALE_MS         250U
 #define APP_SERVO_FEEDBACK_AGE_MAX_MS     65535U
+#define APP_SERVO_FEEDBACK_NO_FRAME       0xFFFFFFFFUL
 
 typedef struct {
-    uint32_t next_query_ms;
+    uint32_t last_query_frame_ms;
     uint32_t last_driver_event_sequence;
+    uint32_t busy_count;
     uint32_t timestamp_ms[APP_SERVO_FEEDBACK_SLOT_COUNT];
     uint16_t position_us[APP_SERVO_FEEDBACK_SLOT_COUNT];
     uint16_t sample_sequence[APP_SERVO_FEEDBACK_SLOT_COUNT];
@@ -94,6 +97,7 @@ void APP_ServoFeedback_Init(void)
     memset(&servo_feedback_ctx, 0, sizeof(servo_feedback_ctx));
     BSP_BusServo_GetFeedbackDiag(&diag);
     servo_feedback_ctx.last_driver_event_sequence = diag.last_event.sequence;
+    servo_feedback_ctx.last_query_frame_ms = APP_SERVO_FEEDBACK_NO_FRAME;
     servo_feedback_ctx.initialized = 1U;
 }
 
@@ -102,6 +106,8 @@ void APP_ServoFeedback_Service(uint32_t now_ms,
                                uint8_t polling_enabled)
 {
     DRV_SERVO_Status status;
+    uint32_t frame_start_ms;
+    uint32_t frame_phase_ms;
     uint32_t slot;
 
     if (moves == NULL) {
@@ -114,45 +120,54 @@ void APP_ServoFeedback_Service(uint32_t now_ms,
     servo_feedback_update_ids(moves);
     servo_feedback_process_event();
 
+    frame_start_ms = now_ms -
+        (now_ms % APP_SERVO_FEEDBACK_FRAME_PERIOD_MS);
+    frame_phase_ms = now_ms - frame_start_ms;
+
     if (polling_enabled == 0U) {
-        servo_feedback_ctx.next_query_ms =
-            now_ms + APP_SERVO_FEEDBACK_QUERY_INTERVAL_MS;
+        servo_feedback_ctx.last_query_frame_ms = frame_start_ms;
         return;
     }
-    if (servo_feedback_ctx.next_query_ms == 0U) {
-        servo_feedback_ctx.next_query_ms =
-            now_ms + APP_SERVO_FEEDBACK_QUERY_INTERVAL_MS;
+    if (frame_phase_ms < APP_SERVO_FEEDBACK_QUERY_PHASE_MS) {
         return;
     }
-    if ((int32_t)(now_ms - servo_feedback_ctx.next_query_ms) < 0) {
-        return;
-    }
-    if (BSP_BusServo_IsIdle() == 0U) {
+    if (servo_feedback_ctx.last_query_frame_ms == frame_start_ms) {
         return;
     }
 
+    /* Consume exactly one feedback slot per frame, even when the bus is busy. */
+    servo_feedback_ctx.last_query_frame_ms = frame_start_ms;
     slot = servo_feedback_ctx.next_slot;
+    servo_feedback_ctx.next_slot ^= 1U;
+    if (BSP_BusServo_IsIdle() == 0U) {
+        servo_feedback_ctx.busy_count++;
+        return;
+    }
+
     status = BSP_BusServo_RequestPositionAsync(
         moves[slot].id, APP_SERVO_FEEDBACK_TIMEOUT_MS);
-    if (status == DRV_SERVO_OK) {
-        servo_feedback_ctx.next_slot ^= 1U;
-    } else if (status == DRV_SERVO_BUSY) {
-        return;
-    } else {
-        servo_feedback_ctx.next_slot ^= 1U;
+    if (status == DRV_SERVO_BUSY) {
+        servo_feedback_ctx.busy_count++;
     }
-    servo_feedback_ctx.next_query_ms =
-        now_ms + APP_SERVO_FEEDBACK_QUERY_INTERVAL_MS;
 }
 
 void APP_ServoFeedback_GetLogSample(uint32_t now_ms,
                                     APP_ServoFeedbackLogSample *sample)
 {
+    DRV_SERVO_FeedbackDiag diag;
+
     if (sample == NULL) {
         return;
     }
 
     memset(sample, 0, sizeof(*sample));
+    BSP_BusServo_GetFeedbackDiag(&diag);
+    sample->request_count = diag.request_count;
+    sample->response_count = diag.response_count;
+    sample->timeout_count = diag.timeout_count;
+    sample->parse_error_count = diag.parse_error_count;
+    sample->uart_error_count = diag.uart_error_count;
+    sample->busy_count = diag.busy_count + servo_feedback_ctx.busy_count;
     for (uint32_t slot = 0U; slot < APP_SERVO_FEEDBACK_SLOT_COUNT; ++slot) {
         uint8_t mask = servo_feedback_slot_mask(slot);
         uint32_t age_ms;

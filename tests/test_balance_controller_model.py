@@ -8,7 +8,7 @@ import pytest
 MASS_KG = 1.367
 GRAVITY_M_S2 = 9.81
 INERTIA_KG_M2 = 0.051
-TILT_LIMIT_RAD = math.radians(18.0)
+TILT_LIMIT_RAD = math.radians(28.0)
 SERVO_DELAY_S = 0.080
 
 

@@ -66,6 +66,16 @@ def translate_flag(flag: str) -> str:
     return translations.get(flag, flag)
 
 
+def translate_severity(severity: str) -> str:
+    # 中文注释：底层 severity 保持英文，界面展示成现场更直观的中文。
+    translations = {
+        "bad": "严重",
+        "warn": "警告",
+        "info": "提示",
+    }
+    return translations.get(severity, severity)
+
+
 class FlightLogSysidUI(tk.Tk):
     # 中文注释：这个类只做离线日志分析 UI，不连接串口、不改参数、不触碰飞控板。
     def __init__(self, initial_csv: Path | None = None) -> None:
@@ -145,6 +155,18 @@ class FlightLogSysidUI(tk.Tk):
                 "motor_hi": ("电机打满%", 85, tk.E),
                 "direct": ("油门直通%", 85, tk.E),
                 "throttle": ("油门us", 75, tk.E),
+            },
+        )
+        self.advice_table = self._add_tree_tab(
+            "调参建议",
+            ("loop", "axis", "severity", "recommendation", "evidence", "channels"),
+            {
+                "loop": ("环路", 80, tk.W),
+                "axis": ("轴", 70, tk.W),
+                "severity": ("级别", 70, tk.W),
+                "recommendation": ("建议", 430, tk.W),
+                "evidence": ("证据", 420, tk.W),
+                "channels": ("相关通道", 360, tk.W),
             },
         )
         self.segment_table = self._add_tree_tab(
@@ -296,13 +318,14 @@ class FlightLogSysidUI(tk.Tk):
             return
         self._refresh_summary(analysis)
         self._refresh_gain_groups(analysis)
+        self._refresh_advice(analysis)
         self._refresh_segments(analysis)
         self._refresh_fits(analysis)
         self._refresh_channels(analysis)
         self._refresh_plot(analysis)
         self.status_var.set(
             f"已分析 {analysis.row_count} 条记录，{len(analysis.segments)} 个时间片段，"
-            f"{len(analysis.gain_groups)} 个参数组"
+            f"{len(analysis.gain_groups)} 个参数组，{len(analysis.tuning_advice)} 条调参建议"
         )
 
     def _refresh_summary(self, analysis: sysid.FlightLogAnalysis) -> None:
@@ -353,6 +376,24 @@ class FlightLogSysidUI(tk.Tk):
                     format_cell(group.motor_high_saturation_pct, 1),
                     format_cell(group.direct_throttle_pct, 1),
                     format_cell(group.throttle_mean_us, 1),
+                ),
+                tags=(tag,) if tag else (),
+            )
+
+    def _refresh_advice(self, analysis: sysid.FlightLogAnalysis) -> None:
+        self._clear_tree(self.advice_table)
+        for item in analysis.tuning_advice:
+            tag = item.severity if item.severity in {"warn", "bad"} else ""
+            self.advice_table.insert(
+                "",
+                tk.END,
+                values=(
+                    item.loop,
+                    item.axis,
+                    translate_severity(item.severity),
+                    item.recommendation,
+                    item.evidence,
+                    item.channels,
                 ),
                 tags=(tag,) if tag else (),
             )

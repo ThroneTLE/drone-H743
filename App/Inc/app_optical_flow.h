@@ -3,13 +3,16 @@
 
 #include <stdint.h>
 
+#define APP_OPTICAL_FLOW_MIN_QUALITY 80U
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 typedef enum {
-    APP_OPTICAL_FLOW_VEL_SOURCE_IMU = 0,
-    APP_OPTICAL_FLOW_VEL_SOURCE_FLOW = 1
+    APP_OPTICAL_FLOW_VEL_SOURCE_NONE = 0,
+    APP_OPTICAL_FLOW_VEL_SOURCE_IMU = 1,
+    APP_OPTICAL_FLOW_VEL_SOURCE_FLOW = 2
 } APP_OPTICAL_FLOW_VelSource;
 
 typedef enum {
@@ -57,8 +60,11 @@ typedef struct {
     uint8_t tof_status;
     int16_t flow_vel_x;
     int16_t flow_vel_y;
+    int16_t flow_vel_x_filtered;
+    int16_t flow_vel_y_filtered;
     uint8_t flow_quality;
     uint8_t flow_status;
+    uint8_t flow_filter_ready;
     uint16_t sample_interval_us;
     uint16_t raw_count;
     int16_t flow_vel_x_mean;

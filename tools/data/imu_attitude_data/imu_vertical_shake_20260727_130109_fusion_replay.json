@@ -1,0 +1,45 @@
+{
+  "format": "drone-h743-fusion-offline-replay-v1",
+  "source_csv": "imu_vertical_shake_20260727_130109.csv",
+  "source_sha256": "8256811935d945793f68985c9972866e6a51279b80a53d23f2d29f7a69f259a8",
+  "fusion_upstream_commit": "015d68494274b479b5996bff2530ecbcfdc266f2",
+  "method": "Firmware DRV_AttitudeFusion C path with a 4.5 s static preflight built from the measured baseline; recorded maneuver points linearly interpolated to approximately 1 kHz",
+  "limitations": [
+    "The OpenOCD recording contains 3000 sampled points rather than every 1 kHz IMU frame.",
+    "High-frequency motion between recorded points cannot be reconstructed.",
+    "This replay is offline evidence and is not flight or hardware proof."
+  ],
+  "settings": {
+    "convention": "NED",
+    "gain": 0.5,
+    "gyroscope_range_dps": 1000.0,
+    "acceleration_rejection_deg": 10.0,
+    "rejection_timeout_s": 5.0,
+    "accel_norm_gate_g": [0.85, 1.15]
+  },
+  "measured_static_input": {
+    "gyroscope_dps": [0.005000887, -0.005633678, -0.01223923],
+    "accelerometer_g": [0.01422085, 0.0009935675, -0.9942709]
+  },
+  "zero_deg": [-0.0524554167, 0.8142344035, -0.0092027671],
+  "source_motion_rows": 2851,
+  "reconstructed_motion_updates": 28258,
+  "norm_rejected_updates": 10241,
+  "direction_ignored_updates": 11569,
+  "acceleration_recovery_updates": 0,
+  "final_200_median_deg": {
+    "roll": -0.1545464854,
+    "pitch": 0.0606082701,
+    "tilt": 0.1678349169
+  },
+  "settled_peak_abs_deg": {
+    "roll": 2.3905947294,
+    "pitch": 0.5204481757
+  },
+  "final_flags": {
+    "startup": 0,
+    "accelerometer_ignored": 0,
+    "acceleration_recovery": 0,
+    "accel_norm_rejected": 0
+  }
+}

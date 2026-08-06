@@ -15,6 +15,22 @@
 #define ICM42688_REG_WHO_AM_I            0x75U
 #define ICM42688_REG_BANK_SEL            0x76U
 
+/*
+ * Anti-alias filter registers. The AAF is an analogue-domain filter ahead of the
+ * sampler, so it is the only thing that can stop out-of-band rotor harmonics
+ * from folding into the attitude band; a software IIR after the fact cannot
+ * separate an already-aliased tone from real motion. These live in user banks
+ * 1 (gyro) and 2 (accel).
+ */
+#define ICM42688_BANK1                     0x01U
+#define ICM42688_BANK2                     0x02U
+#define ICM42688_REG_GYRO_CONFIG_STATIC3   0x0CU /* bank 1: AAF_DELT       */
+#define ICM42688_REG_GYRO_CONFIG_STATIC4   0x0DU /* bank 1: AAF_DELTSQR LSB */
+#define ICM42688_REG_GYRO_CONFIG_STATIC5   0x0EU /* bank 1: MSB + BITSHIFT  */
+#define ICM42688_REG_ACCEL_CONFIG_STATIC2  0x03U /* bank 2: AAF_DELT << 1   */
+#define ICM42688_REG_ACCEL_CONFIG_STATIC3  0x04U /* bank 2: AAF_DELTSQR LSB */
+#define ICM42688_REG_ACCEL_CONFIG_STATIC4  0x05U /* bank 2: MSB + BITSHIFT  */
+
 #define ICM42688_SPI_READ_BIT            0x80U
 #define ICM42688_DEFAULT_TIMEOUT_MS      100U
 #define ICM42688_POWER_UP_DELAY_MS       100U
@@ -30,6 +46,53 @@
 #define ICM42688_INT_CONFIG1_INT_PINS_OK    0x00U
 #define ICM42688_UI_DRDY_INT1_EN            0x08U
 
+/*
+ * AAF coefficient table, ICM-42688-P datasheet section 5.3. Each entry is the
+ * 3-dB cutoff in Hz and the matching (DELT, DELTSQR, BITSHIFT) triple; the
+ * hardware only accepts these exact combinations, not an arbitrary cutoff.
+ */
+typedef struct {
+    uint16_t cutoff_hz;
+    uint8_t  delt;
+    uint16_t delt_sqr;
+    uint8_t  bitshift;
+} ICM42688_AafSetting;
+
+static const ICM42688_AafSetting icm42688_aaf_table[] = {
+    {   42U,  1U,    1U, 15U },
+    {   84U,  2U,    4U, 13U },
+    {  126U,  3U,    9U, 12U },
+    {  170U,  4U,   16U, 11U },
+    {  213U,  5U,   25U, 10U },
+    {  258U,  6U,   36U, 10U },
+    {  303U,  7U,   49U,  9U },
+    {  536U, 12U,  144U,  8U },
+    {  997U, 21U,  440U,  6U },
+    { 1962U, 37U, 1376U,  4U },
+};
+
+#define ICM42688_AAF_TABLE_COUNT \
+    (sizeof(icm42688_aaf_table) / sizeof(icm42688_aaf_table[0]))
+
+const void *DRV_IMU_AafSettingForCutoff(uint16_t desired_hz,
+                                        uint16_t *actual_hz)
+{
+    /* Pick the highest cutoff not exceeding the request, so the AAF never
+     * passes more than asked; fall back to the narrowest entry. */
+    const ICM42688_AafSetting *chosen = &icm42688_aaf_table[0];
+    uint32_t i;
+
+    for (i = 0U; i < ICM42688_AAF_TABLE_COUNT; i++) {
+        if (icm42688_aaf_table[i].cutoff_hz <= desired_hz) {
+            chosen = &icm42688_aaf_table[i];
+        }
+    }
+    if (actual_hz != NULL) {
+        *actual_hz = chosen->cutoff_hz;
+    }
+    return (const void *)chosen;
+}
+
 static void icm42688_delay_ms(DRV_IMU_Device *dev, uint32_t delay_ms)
 {
     if (dev->bus.delay_ms != NULL) {
@@ -37,6 +100,54 @@ static void icm42688_delay_ms(DRV_IMU_Device *dev, uint32_t delay_ms)
     } else {
         HAL_Delay(delay_ms);
     }
+}
+
+static DRV_IMU_Status icm42688_apply_aaf(DRV_IMU_Device *dev)
+{
+    const ICM42688_AafSetting *gyro_aaf;
+    const ICM42688_AafSetting *accel_aaf;
+    DRV_IMU_Status status;
+
+    gyro_aaf = (const ICM42688_AafSetting *)DRV_IMU_AafSettingForCutoff(
+        dev->config.gyro_aaf_hz, &dev->gyro_aaf_actual_hz);
+    accel_aaf = (const ICM42688_AafSetting *)DRV_IMU_AafSettingForCutoff(
+        dev->config.accel_aaf_hz, &dev->accel_aaf_actual_hz);
+
+    /* Gyro AAF lives in user bank 1. */
+    status = DRV_IMU_WriteRegister(dev, ICM42688_REG_BANK_SEL, ICM42688_BANK1);
+    if (status != DRV_IMU_OK) { return status; }
+    status = DRV_IMU_WriteRegister(dev, ICM42688_REG_GYRO_CONFIG_STATIC3,
+                                   gyro_aaf->delt);
+    if (status != DRV_IMU_OK) { goto restore_bank0; }
+    status = DRV_IMU_WriteRegister(dev, ICM42688_REG_GYRO_CONFIG_STATIC4,
+                                   (uint8_t)(gyro_aaf->delt_sqr & 0xFFU));
+    if (status != DRV_IMU_OK) { goto restore_bank0; }
+    status = DRV_IMU_WriteRegister(
+        dev, ICM42688_REG_GYRO_CONFIG_STATIC5,
+        (uint8_t)((gyro_aaf->delt_sqr >> 8) | (gyro_aaf->bitshift << 4)));
+    if (status != DRV_IMU_OK) { goto restore_bank0; }
+
+    /* Accel AAF lives in user bank 2, and DELT sits one bit higher. */
+    status = DRV_IMU_WriteRegister(dev, ICM42688_REG_BANK_SEL, ICM42688_BANK2);
+    if (status != DRV_IMU_OK) { goto restore_bank0; }
+    status = DRV_IMU_WriteRegister(dev, ICM42688_REG_ACCEL_CONFIG_STATIC2,
+                                   (uint8_t)(accel_aaf->delt << 1));
+    if (status != DRV_IMU_OK) { goto restore_bank0; }
+    status = DRV_IMU_WriteRegister(dev, ICM42688_REG_ACCEL_CONFIG_STATIC3,
+                                   (uint8_t)(accel_aaf->delt_sqr & 0xFFU));
+    if (status != DRV_IMU_OK) { goto restore_bank0; }
+    status = DRV_IMU_WriteRegister(
+        dev, ICM42688_REG_ACCEL_CONFIG_STATIC4,
+        (uint8_t)((accel_aaf->delt_sqr >> 8) | (accel_aaf->bitshift << 4)));
+
+restore_bank0:
+    /* Bank 0 must be restored or every later data read targets the wrong bank. */
+    {
+        DRV_IMU_Status restore = DRV_IMU_WriteRegister(
+            dev, ICM42688_REG_BANK_SEL, ICM42688_BANK0);
+        if (status == DRV_IMU_OK) { status = restore; }
+    }
+    return status;
 }
 
 static uint32_t icm42688_timeout_ms(const DRV_IMU_Device *dev)
@@ -111,6 +222,12 @@ void DRV_IMU_DefaultConfig(DRV_IMU_Config *config)
     config->gyro_odr           = DRV_IMU_ODR_100HZ;
     config->accel_filter_bw    = 1U;
     config->gyro_filter_bw     = 1U;
+    /*
+     * Conservative AAF default for a 1 kHz ODR (500 Hz Nyquist). The board
+     * override in BSP_IMU_Init() carries the airframe-specific reasoning.
+     */
+    config->accel_aaf_hz       = 213U;
+    config->gyro_aaf_hz        = 213U;
     config->enable_temp        = true;
     config->soft_reset_on_init = false;
 }
@@ -171,6 +288,9 @@ DRV_IMU_Status DRV_IMU_Init(DRV_IMU_Device *dev, const DRV_IMU_Bus *bus,
     dev->init_stage = DRV_IMU_INIT_STAGE_GYRO_CONFIG;
     status = DRV_IMU_WriteRegister(dev, ICM42688_REG_GYRO_CONFIG0,
                                    icm42688_build_gyro_config0(&dev->config));
+    if (status != DRV_IMU_OK) { return icm42688_fail(dev, status); }
+
+    status = icm42688_apply_aaf(dev);
     if (status != DRV_IMU_OK) { return icm42688_fail(dev, status); }
 
     dev->init_stage = DRV_IMU_INIT_STAGE_PWR_MGMT;

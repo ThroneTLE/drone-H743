@@ -20,6 +20,8 @@ def test_freertos_documents_fixed_elrs_channel_map() -> None:
     assert "中位保持，高于中位累加 yaw_ref，低于中位减少 yaw_ref" in freertos
     assert "CH5 → 二值开关 / arm switch" in freertos
     assert "+100=开锁，-100=关锁" in freertos
+    assert "CH6 → 姿态调试模式开关" in freertos
+    assert "手动总推力 + 目标姿态" in freertos
 
 
 def test_controller_uses_named_rc_channels_for_references() -> None:
@@ -30,21 +32,34 @@ def test_controller_uses_named_rc_channels_for_references() -> None:
     assert "#define STABILIZER_RC_CH_THROTTLE_Z    2U" in freertos
     assert "#define STABILIZER_RC_CH_YAW           3U" in freertos
     assert "#define STABILIZER_RC_CH_ARM           4U" in freertos
+    assert "#define STABILIZER_RC_CH_ATTITUDE_DEBUG 5U" in freertos
+    assert "#define STABILIZER_RC_ATTITUDE_DEBUG_THRESHOLD_US 1500U" in freertos
     assert "#define STABILIZER_RC_ARM_THRESHOLD_US 1500U" in freertos
     assert "#define STABILIZER_RC_THROTTLE_INPUT_LOW_US  1000U" in freertos
     assert "#define STABILIZER_RC_THROTTLE_INPUT_HIGH_US 2000U" in freertos
     assert "#define STABILIZER_RC_THROTTLE_ARM_LOW_US    1100U" in freertos
     assert "#define STABILIZER_RC_LOSS_TIMEOUT_MS  500U" in freertos
-    assert "#define STABILIZER_XY_VEL_REF_MAX_M_S  0.80f" in freertos
+    assert "#define STABILIZER_XY_VEL_REF_MAX_M_S  0.40f" in freertos
     assert "#define STABILIZER_Z_REF_RATE_MAX_M_S  0.30f" in freertos
-    assert "#define STABILIZER_Z_REF_MAX_M         0.30f" in freertos
+    assert "#define STABILIZER_Z_REF_MAX_M         0.40f" in freertos
+    assert "#define STABILIZER_XY_POS_ERR_MAX_M    0.50f" in freertos
     assert "#define STABILIZER_Z_POS_ERR_MAX_M     0.35f" in freertos
     assert "STABILIZER_Z_THRUST_BIAS_MAX_M_S2" not in freertos
     assert "#define STABILIZER_YAW_RATE_REF_MAX_RAD_S 1.04719758f" in freertos
-    assert "reference.vx_m_s = stabilizer_rc_normalized(ch[STABILIZER_RC_CH_PITCH])" in freertos
-    assert "reference.vy_m_s = stabilizer_rc_normalized(ch[STABILIZER_RC_CH_ROLL])" in freertos
-    assert "reference.x_m = attitude.x_m;" in freertos
-    assert "reference.y_m = attitude.y_m;" in freertos
+    assert (
+        "reference.vx_m_s =\n"
+        "              stabilizer_rc_normalized(ch[STABILIZER_RC_CH_PITCH])"
+        in freertos
+    )
+    assert (
+        "reference.vy_m_s =\n"
+        "              stabilizer_rc_normalized(ch[STABILIZER_RC_CH_ROLL])"
+        in freertos
+    )
+    assert "position_ref_x_m += reference.vx_m_s * ctrl_dt_sec;" in freertos
+    assert "position_ref_y_m += reference.vy_m_s * ctrl_dt_sec;" in freertos
+    assert "reference.x_m = position_ref_x_m;" in freertos
+    assert "reference.y_m = position_ref_y_m;" in freertos
     assert "reference.dt_sec = ctrl_dt_sec;" in freertos
     assert "reference.horizontal_velocity_valid = velocity_loop_enabled;" in freertos
     assert "stabilizer_clamp_f32(position_ref_z_m," in freertos
@@ -64,11 +79,32 @@ def test_controller_uses_named_rc_channels_for_references() -> None:
     assert "STABILIZER_YAW_REF_LIMIT_RAD" not in freertos
 
 
-def test_controller_mode_keeps_rc_direct_tilt_as_explicit_debug_switch() -> None:
+def test_ch6_selects_true_attitude_debug_mode_with_twenty_degree_limit() -> None:
     freertos = read("Core/Src/freertos.c")
 
     assert "#define STABILIZER_USE_RC_DIRECT_TILT_SERVO 0U" in freertos
-    assert "#define STABILIZER_RC_DIRECT_TILT_LIMIT_RAD 0.314159265f" in freertos
+    assert "#define STABILIZER_RC_DIRECT_TILT_LIMIT_RAD 0.488692191f" in freertos
+    assert "STABILIZER_USE_RC_ATTITUDE_TARGET_TEST" not in freertos
+    assert "#define STABILIZER_RC_ATTITUDE_TARGET_LIMIT_RAD 0.349065850f" in freertos
+    assert "rc_attitude_debug_mode =" in freertos
+    assert "(rc_use_stabilized_motor_mix != 0U) &&" in freertos
+    assert "ch[STABILIZER_RC_CH_ATTITUDE_DEBUG] >" in freertos
+    assert "STABILIZER_RC_ATTITUDE_DEBUG_THRESHOLD_US" in freertos
+    assert "if (rc_attitude_debug_mode != 0U)" in freertos
+    assert "reference.direct_attitude_target_valid = 1U;" in freertos
+    assert "reference.manual_total_force_valid = 1U;" in freertos
+    assert "reference.manual_total_force_n =" in freertos
+    assert "DRV_COAX_CTRL_MotorPulseToTotalThrust(rc_throttle_motor_us);" in freertos
+    assert "reference.target_pitch_rad =" in freertos
+    assert "reference.target_roll_rad =" in freertos
+    assert "reference.horizontal_velocity_valid = 0U;" in freertos
+    assert "reference.z_m = attitude.z_m;" in freertos
+    assert "reference.vz_m_s = attitude.vz_m_s;" in freertos
+    assert "position_ref_z_ready = 0U;" in freertos
+    assert "rc_control_motor_mix_allowed =" in freertos
+    assert "(rc_use_stabilized_motor_mix != 0U) ? 1U : 0U;" in freertos
+    assert "rc_attitude_debug_mode != 0U)) ? 1U : 0U;" not in freertos
+    assert "} else if (rc_control_motor_mix_allowed == 0U) {" in freertos
     assert "static void stabilizer_map_rc_direct_to_servo" in freertos
     assert "#if (STABILIZER_USE_RC_DIRECT_TILT_SERVO != 0U)\nstatic void stabilizer_map_rc_direct_to_servo" in freertos
     assert "#define STABILIZER_DIRECT_BODY_X_SIGN   (1.0f)" in freertos
@@ -102,10 +138,11 @@ def test_arm_switch_gates_motor_output_but_not_controller_reference() -> None:
     assert "ch[STABILIZER_RC_CH_THROTTLE_Z] <= STABILIZER_RC_THROTTLE_ARM_LOW_US" in freertos
     assert "stabilizer_rc_switch_prev_high == 0U" in freertos
     assert "if ((rc_link_ok != 0U) && (rc_armed != 0U))" in freertos
-    assert "if ((rc_use_stabilized_motor_mix != 0U) &&" in freertos
+    assert "if ((rc_control_motor_mix_allowed != 0U) &&" in freertos
     assert "(imu_control_valid != 0U))" in freertos
     assert "BSP_PWM_SetEscPulse(1, ctrl_out.motor_upper_us);" in freertos
     assert "BSP_PWM_SetEscPulse(2, ctrl_out.motor_lower_us);" in freertos
+    assert "APP_FLIGHT_LOG_MOTOR_REASON_ATTITUDE_DEBUG" in freertos
     assert "uint16_t motor_upper_us;" in header
     assert "uint16_t motor_lower_us;" in header
     assert "uint16_t DRV_COAX_CTRL_ThrustToMotorPulse(float thrust_n);" in header
@@ -150,7 +187,7 @@ def test_disarmed_pwm_disables_output_without_changing_throttle_limits() -> None
 def test_ch3_is_rc_intent_with_direct_throttle_below_20_percent() -> None:
     freertos = read("Core/Src/freertos.c")
 
-    assert "#define STABILIZER_RC_STABILIZE_MIN_PERCENT 20U" in freertos
+    assert "#define STABILIZER_RC_STABILIZE_MIN_PERCENT 70U" in freertos
     assert "#define STABILIZER_RC_STABILIZE_MIN_US \\" in freertos
     assert "static float stabilizer_rc_throttle_01(uint16_t ch_us)" in freertos
     assert "static float stabilizer_rc_throttle_height_rate_m_s(uint16_t ch_us)" in freertos
@@ -167,6 +204,7 @@ def test_ch3_is_rc_intent_with_direct_throttle_below_20_percent() -> None:
     assert "static uint16_t stabilizer_rc_throttle_to_motor_pulse(uint16_t ch_us)" in freertos
     assert "static uint8_t stabilizer_rc_use_stabilized_motor_mix(uint16_t ch_us)" in freertos
     assert "return (ch_us >= STABILIZER_RC_STABILIZE_MIN_US) ? 1U : 0U;" in freertos
+    assert "} else if (rc_control_motor_mix_allowed == 0U) {" in freertos
     assert "stabilizer_mix_rc_base_with_ctrl" not in freertos
     assert "ctrl_us - (int32_t)ctrl_avg_us" not in freertos
 

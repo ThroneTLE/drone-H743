@@ -7,31 +7,62 @@
 #include <stddef.h>
 #include <string.h>
 
-#define DRV_COAX_CTRL_TILT_LIMIT_RAD 0.314159f
+#define DRV_COAX_CTRL_TILT_LIMIT_RAD 0.4886922f
 #define DRV_COAX_CTRL_PI 3.141592654f
 #define DRV_COAX_CTRL_SERVO_TRAVEL_RAD \
     (DRV_COAX_CTRL_SERVO_TRAVEL_DEG * DRV_COAX_CTRL_PI / 180.0f)
 #define DRV_COAX_CTRL_SERVO_LIMIT_RAD \
     (DRV_COAX_CTRL_SERVO_LIMIT_DEG * DRV_COAX_CTRL_PI / 180.0f)
-#define DRV_COAX_CTRL_SERVO_ALPHA_SIGN    (1.0f)
-#define DRV_COAX_CTRL_SERVO_BETA_SIGN     (1.0f)
+/* ════════════════════════════════════════════════════════════════════════ */
+/*  极性约定（唯一声明处）                                                   */
+/*                                                                        */
+/*  从传感器到舵机这条链路上曾经散落着 8 个互相独立的符号开关，2^8 = 256    */
+/*  种组合里只有少数是自洽的，而且它们的效果会互相掩盖：负增益在数学上等价  */
+/*  于翻转符号，所以极性错误可以被"把增益调成负的"吸收掉——飞机看起来能自稳， */
+/*  但摇杆方向是反的。这正是极性问题反复出现的原因：自稳只验证了"负反馈"    */
+/*  一个条件，不验证绝对方向。                                              */
+/*                                                                        */
+/*  因此本文件把所有符号集中在这里，每一项都写明物理含义，并由              */
+/*  tests/test_coax_sign_convention.py 逐条锁定。增益一律为正值，负反馈由   */
+/*  控制律的 -K_R*e_R - K_w*e_w 结构保证——极性错了飞机会立刻发散，而不是    */
+/*  悄悄反向工作。                                                          */
+/*                                                                        */
+/*  姿态约定（已由实机确认，见 App/Src/app_sensor.c 的采集轴说明）：        */
+/*    roll_rad  > 0  →  机身右侧下沉                                       */
+/*    pitch_rad > 0  →  机头上仰                                           */
+/*    gyro_x    > 0  →  正 roll 方向的角速率                               */
+/*    gyro_y    > 0  →  正 pitch 方向的角速率                              */
+/* ════════════════════════════════════════════════════════════════════════ */
+
+/*
+ * 姿态角 → 力坐标系。控制律内部使用的力坐标系与实机姿态契约在 roll 上相差
+ * 一个反号；此符号同时作用于实测姿态和目标姿态，因此在姿态误差中相消，
+ * 不影响摇杆方向，只决定力矢量的分解方向。
+ */
 #define DRV_COAX_CTRL_FORCE_FRAME_ROLL_SIGN  (-1.0f)
 #define DRV_COAX_CTRL_FORCE_FRAME_PITCH_SIGN (1.0f)
+
+/* 角速率进入控制律的符号，与上面的姿态符号配套。 */
 #define DRV_COAX_CTRL_RATE_FRAME_ROLL_SIGN   (1.0f)
 #define DRV_COAX_CTRL_RATE_FRAME_PITCH_SIGN  (1.0f)
+
+/* 舵机机械安装方向：+1 表示正倾角指令对应舵机脉宽增大。 */
+#define DRV_COAX_CTRL_SERVO_ALPHA_SIGN    (1.0f)
+#define DRV_COAX_CTRL_SERVO_BETA_SIGN     (1.0f)
 #define DRV_COAX_CTRL_FORCE_EPS_N          1.0e-4f
 #define DRV_COAX_CTRL_RATE_SCALE_EPS       1.0e-6f
 #define DRV_COAX_CTRL_PROP9047_YAW_M_PER_N 0.0001f
 #define DRV_COAX_CTRL_SINGLE_MAX_THRUST_N 10.2f
 #define DRV_COAX_CTRL_THRUST_TABLE_POINTS  21U
 #define DRV_COAX_CTRL_GRAMS_PER_NEWTON     101.971621f
-#define DRV_COAX_CTRL_BALANCE_ITERATIONS   2U
 #define DRV_COAX_CTRL_ROLL_EFFECTIVENESS   0.581f
 #define DRV_COAX_CTRL_PITCH_EFFECTIVENESS  0.569f
 #define DRV_COAX_CTRL_ROLL_MOMENT_SIGN     (-1.0f)
 #define DRV_COAX_CTRL_PITCH_MOMENT_SIGN    (-1.0f)
-#define DRV_COAX_CTRL_VEL_INTEGRAL_LIMIT_M 4.0f
-#define DRV_COAX_CTRL_HORIZONTAL_ACCEL_LIMIT_M_S2 3.0f
+#define DRV_COAX_CTRL_HORIZONTAL_ACCEL_LIMIT_M_S2 3.70f
+#define DRV_COAX_CTRL_VEL_D_ACCEL_LIMIT_M_S2 3.70f
+#define DRV_COAX_CTRL_POS_Z_I_ACCEL_LIMIT_M_S2 1.50f
+#define DRV_COAX_CTRL_DT_MAX_S 0.05f
 #define DRV_COAX_CTRL_ATTITUDE_PROTECT_START_RAD 0.436332f
 #define DRV_COAX_CTRL_ATTITUDE_PROTECT_END_RAD   0.785398f
 #define DRV_COAX_CTRL_MOMENT_PROTECT_START       0.95f
@@ -46,12 +77,12 @@ typedef struct {
 
 typedef struct {
     float velocity_integral_m[2];
+    float pos_z_i_m_s2;
 } DRV_COAX_CTRL_State;
 
 typedef struct {
     float desired_force_local_n[3];
     float desired_force_body_n[3];
-    float thrust_frame_r[3][3];
     float desired_body_r[3][3];
     float attitude_error[3];
     float attitude_error_angle_rad;
@@ -78,6 +109,7 @@ static const DRV_COAX_CTRL_ParamEntry coax_ctrl_param_table[] = {
     DRV_COAX_CTRL_PARAM_ENTRY(pos_x_kp),
     DRV_COAX_CTRL_PARAM_ENTRY(pos_y_kp),
     DRV_COAX_CTRL_PARAM_ENTRY(pos_z_kp),
+    DRV_COAX_CTRL_PARAM_ENTRY(pos_z_ki),
     DRV_COAX_CTRL_PARAM_ENTRY(vel_x_kd),
     DRV_COAX_CTRL_PARAM_ENTRY(vel_y_kd),
     DRV_COAX_CTRL_PARAM_ENTRY(vel_z_kd),
@@ -169,13 +201,6 @@ static void coax_ctrl_local_down_to_body(const DRV_COAX_CTRL_AttitudeInput *atti
     body[2] = ((cphi * stheta * cpsi + sphi * spsi) * local_down[0]) +
               ((cphi * stheta * spsi - sphi * cpsi) * local_down[1]) +
               (cphi * ctheta * local_down[2]);
-}
-
-static void coax_ctrl_cross3(const float a[3], const float b[3], float out[3])
-{
-    out[0] = (a[1] * b[2]) - (a[2] * b[1]);
-    out[1] = (a[2] * b[0]) - (a[0] * b[2]);
-    out[2] = (a[0] * b[1]) - (a[1] * b[0]);
 }
 
 static float coax_ctrl_norm3(const float value[3])
@@ -284,17 +309,6 @@ static float coax_ctrl_solve_pitch_tilt_from_moment(float moment_n_m,
     return 0.5f * (lo + hi);
 }
 
-static void coax_ctrl_normalize3(float value[3])
-{
-    const float norm = coax_ctrl_norm3(value);
-
-    if (norm > DRV_COAX_CTRL_RATE_SCALE_EPS) {
-        value[0] /= norm;
-        value[1] /= norm;
-        value[2] /= norm;
-    }
-}
-
 static void coax_ctrl_matrix_transpose(const float input[3][3],
                                        float output[3][3])
 {
@@ -322,84 +336,39 @@ static void coax_ctrl_matrix_multiply(const float left[3][3],
     memcpy(output, product, sizeof(product));
 }
 
+static void coax_ctrl_rpy_matrix(float roll_rad,
+                                 float pitch_rad,
+                                 float yaw_rad,
+                                 float rotation[3][3])
+{
+    const float cr = cosf(roll_rad);
+    const float sr = sinf(roll_rad);
+    const float cp = cosf(pitch_rad);
+    const float sp = sinf(pitch_rad);
+    const float cy = cosf(yaw_rad);
+    const float sy = sinf(yaw_rad);
+
+    rotation[0][0] = cp * cy;
+    rotation[0][1] = (sr * sp * cy) - (cr * sy);
+    rotation[0][2] = (cr * sp * cy) + (sr * sy);
+    rotation[1][0] = cp * sy;
+    rotation[1][1] = (sr * sp * sy) + (cr * cy);
+    rotation[1][2] = (cr * sp * sy) - (sr * cy);
+    rotation[2][0] = -sp;
+    rotation[2][1] = sr * cp;
+    rotation[2][2] = cr * cp;
+}
+
 static void coax_ctrl_attitude_matrix(
     const DRV_COAX_CTRL_AttitudeInput *attitude,
     float rotation[3][3])
 {
-    const float phi =
+    const float roll_rad =
         DRV_COAX_CTRL_FORCE_FRAME_ROLL_SIGN * attitude->roll_rad;
-    const float theta =
+    const float pitch_rad =
         DRV_COAX_CTRL_FORCE_FRAME_PITCH_SIGN * attitude->pitch_rad;
-    const float psi = attitude->yaw_rad;
-    const float cphi = cosf(phi);
-    const float sphi = sinf(phi);
-    const float ctheta = cosf(theta);
-    const float stheta = sinf(theta);
-    const float cpsi = cosf(psi);
-    const float spsi = sinf(psi);
 
-    rotation[0][0] = ctheta * cpsi;
-    rotation[0][1] = (sphi * stheta * cpsi) - (cphi * spsi);
-    rotation[0][2] = (cphi * stheta * cpsi) + (sphi * spsi);
-    rotation[1][0] = ctheta * spsi;
-    rotation[1][1] = (sphi * stheta * spsi) + (cphi * cpsi);
-    rotation[1][2] = (cphi * stheta * spsi) - (sphi * cpsi);
-    rotation[2][0] = -stheta;
-    rotation[2][1] = sphi * ctheta;
-    rotation[2][2] = cphi * ctheta;
-}
-
-static void coax_ctrl_gimbal_matrix(float alpha_rad,
-                                    float beta_rad,
-                                    float rotation[3][3])
-{
-    const float ca = cosf(alpha_rad);
-    const float sa = sinf(alpha_rad);
-    const float cb = cosf(beta_rad);
-    const float sb = sinf(beta_rad);
-
-    /* Rg = Ry(alpha) * Rx(beta). Its third column is thrust direction. */
-    rotation[0][0] = ca;
-    rotation[0][1] = sa * sb;
-    rotation[0][2] = sa * cb;
-    rotation[1][0] = 0.0f;
-    rotation[1][1] = cb;
-    rotation[1][2] = -sb;
-    rotation[2][0] = -sa;
-    rotation[2][1] = ca * sb;
-    rotation[2][2] = ca * cb;
-}
-
-static void coax_ctrl_build_thrust_frame(const float force_local_n[3],
-                                         float yaw_rad,
-                                         float rotation[3][3])
-{
-    float b3[3] = {
-        force_local_n[0],
-        force_local_n[1],
-        force_local_n[2],
-    };
-    const float heading[3] = { cosf(yaw_rad), sinf(yaw_rad), 0.0f };
-    float b1[3];
-    float b2[3];
-
-    coax_ctrl_normalize3(b3);
-    coax_ctrl_cross3(b3, heading, b2);
-    if (coax_ctrl_norm3(b2) <= DRV_COAX_CTRL_RATE_SCALE_EPS) {
-        const float fallback[3] = { -sinf(yaw_rad), cosf(yaw_rad), 0.0f };
-        b2[0] = fallback[0];
-        b2[1] = fallback[1];
-        b2[2] = fallback[2];
-    }
-    coax_ctrl_normalize3(b2);
-    coax_ctrl_cross3(b2, b3, b1);
-    coax_ctrl_normalize3(b1);
-
-    for (uint32_t row = 0U; row < 3U; ++row) {
-        rotation[row][0] = b1[row];
-        rotation[row][1] = b2[row];
-        rotation[row][2] = b3[row];
-    }
+    coax_ctrl_rpy_matrix(roll_rad, pitch_rad, attitude->yaw_rad, rotation);
 }
 
 static void coax_ctrl_attitude_error(const float desired[3][3],
@@ -498,6 +467,20 @@ static uint8_t coax_ctrl_param_value_valid(const DRV_COAX_CTRL_ParamEntry *entry
         return (value >= 0.0f) ? 1U : 0U;
     }
 
+    /*
+     * 姿态/角速率增益必须为非负。控制律用 fabsf 取幅值，所以负值本身不会让
+     * 飞机发散，但会让"存的值"和"实际生效的值"不一致——这正是极性错误藏身之
+     * 处。在入口处拒绝，比默默取绝对值更容易发现问题。
+     */
+    if ((entry->offset == offsetof(DRV_COAX_CTRL_Params, roll_angle_kp)) ||
+        (entry->offset == offsetof(DRV_COAX_CTRL_Params, pitch_angle_kp)) ||
+        (entry->offset == offsetof(DRV_COAX_CTRL_Params, roll_rate_kd)) ||
+        (entry->offset == offsetof(DRV_COAX_CTRL_Params, pitch_rate_kd)) ||
+        (entry->offset == offsetof(DRV_COAX_CTRL_Params, yaw_angle_kp)) ||
+        (entry->offset == offsetof(DRV_COAX_CTRL_Params, yaw_rate_kd))) {
+        return (value >= 0.0f) ? 1U : 0U;
+    }
+
     return 1U;
 }
 
@@ -534,30 +517,101 @@ static void coax_ctrl_apply_fixed_model_params(DRV_COAX_CTRL_Params *params)
     params->yaw_torque_lower_m_per_n = DRV_COAX_CTRL_PROP9047_YAW_M_PER_N;
 }
 
+static float coax_ctrl_integrator_dt(float dt_sec)
+{
+    if ((!isfinite(dt_sec)) || (dt_sec <= 0.0f)) {
+        return 0.0f;
+    }
+
+    return coax_ctrl_clamp_f32(dt_sec, 0.0f, DRV_COAX_CTRL_DT_MAX_S);
+}
+
+static void coax_ctrl_update_z_integral(
+    const DRV_COAX_CTRL_AttitudeInput *attitude,
+    const DRV_COAX_CTRL_Reference *reference,
+    DRV_COAX_CTRL_Debug *debug)
+{
+    float dt_sec;
+    float z_error_m;
+
+    if (reference->manual_total_force_valid != 0U) {
+        coax_ctrl_state.pos_z_i_m_s2 = 0.0f;
+        debug->pos_z_i_m_s2 = 0.0f;
+        return;
+    }
+
+    dt_sec = coax_ctrl_integrator_dt(reference->dt_sec);
+    if ((dt_sec > 0.0f) && (coax_ctrl_params.pos_z_ki != 0.0f)) {
+        z_error_m = reference->z_m - attitude->z_m;
+        coax_ctrl_state.pos_z_i_m_s2 =
+            coax_ctrl_clamp_f32(coax_ctrl_state.pos_z_i_m_s2 +
+                                (coax_ctrl_params.pos_z_ki *
+                                 z_error_m *
+                                 dt_sec),
+                                -DRV_COAX_CTRL_POS_Z_I_ACCEL_LIMIT_M_S2,
+                                 DRV_COAX_CTRL_POS_Z_I_ACCEL_LIMIT_M_S2);
+    }
+
+    debug->pos_z_i_m_s2 = coax_ctrl_state.pos_z_i_m_s2;
+}
+
 static void coax_ctrl_compute_accel_cmd(
     const DRV_COAX_CTRL_AttitudeInput *attitude,
     const DRV_COAX_CTRL_Reference *reference,
-    const float velocity_integral_m[2],
     float horizontal_scale,
+    uint8_t update_z_integral,
     DRV_COAX_CTRL_Debug *debug)
 {
     float horizontal_norm;
 
-    debug->pos_p_m_s2[0] = -coax_ctrl_params.vel_loop_x_kp *
-                              (attitude->vx_m_s - reference->vx_m_s);
-    debug->pos_p_m_s2[1] = -coax_ctrl_params.vel_loop_y_kp *
-                              (attitude->vy_m_s - reference->vy_m_s);
+    debug->pos_p_m_s2[0] =
+        coax_ctrl_params.pos_x_kp * (reference->x_m - attitude->x_m);
+    debug->pos_p_m_s2[1] =
+        coax_ctrl_params.pos_y_kp * (reference->y_m - attitude->y_m);
     debug->pos_p_m_s2[2] =
         coax_ctrl_params.pos_z_kp * (reference->z_m - attitude->z_m);
 
     debug->vel_d_m_s2[0] =
-        -coax_ctrl_params.vel_loop_x_ki * velocity_integral_m[0];
+        coax_ctrl_params.vel_x_kd * (reference->vx_m_s - attitude->vx_m_s);
     debug->vel_d_m_s2[1] =
-        -coax_ctrl_params.vel_loop_y_ki * velocity_integral_m[1];
+        coax_ctrl_params.vel_y_kd * (reference->vy_m_s - attitude->vy_m_s);
     debug->vel_d_m_s2[2] =
         coax_ctrl_params.vel_z_kd * (reference->vz_m_s - attitude->vz_m_s);
 
-    if (coax_ctrl_params.vel_loop_enable >= 0.5f) {
+    debug->vel_d_m_s2[0] =
+        coax_ctrl_clamp_f32(debug->vel_d_m_s2[0],
+                            -DRV_COAX_CTRL_VEL_D_ACCEL_LIMIT_M_S2,
+                            DRV_COAX_CTRL_VEL_D_ACCEL_LIMIT_M_S2);
+    debug->vel_d_m_s2[1] =
+        coax_ctrl_clamp_f32(debug->vel_d_m_s2[1],
+                            -DRV_COAX_CTRL_VEL_D_ACCEL_LIMIT_M_S2,
+                            DRV_COAX_CTRL_VEL_D_ACCEL_LIMIT_M_S2);
+
+    if (update_z_integral != 0U) {
+        coax_ctrl_update_z_integral(attitude, reference, debug);
+    } else {
+        debug->pos_z_i_m_s2 = coax_ctrl_state.pos_z_i_m_s2;
+    }
+
+    if (reference->manual_total_force_valid != 0U) {
+        debug->pos_p_m_s2[0] = 0.0f;
+        debug->pos_p_m_s2[1] = 0.0f;
+        debug->pos_p_m_s2[2] = 0.0f;
+        debug->pos_z_i_m_s2 = 0.0f;
+        debug->vel_d_m_s2[0] = 0.0f;
+        debug->vel_d_m_s2[1] = 0.0f;
+        debug->vel_d_m_s2[2] = 0.0f;
+        debug->accel_out_m_s2[0] = 0.0f;
+        debug->accel_out_m_s2[1] = 0.0f;
+        debug->accel_out_m_s2[2] = 0.0f;
+    } else if (reference->direct_attitude_target_valid != 0U) {
+        debug->pos_p_m_s2[0] = 0.0f;
+        debug->pos_p_m_s2[1] = 0.0f;
+        debug->vel_d_m_s2[0] = 0.0f;
+        debug->vel_d_m_s2[1] = 0.0f;
+        debug->accel_out_m_s2[0] = 0.0f;
+        debug->accel_out_m_s2[1] = 0.0f;
+    } else if (coax_ctrl_params.vel_loop_enable >= 0.5f) {
         debug->accel_out_m_s2[0] = reference->ax_m_s2 +
                                      debug->pos_p_m_s2[0] +
                                      debug->vel_d_m_s2[0];
@@ -594,8 +648,13 @@ static void coax_ctrl_compute_accel_cmd(
     debug->pos_p_m_s2[1] *= horizontal_scale;
     debug->vel_d_m_s2[0] *= horizontal_scale;
     debug->vel_d_m_s2[1] *= horizontal_scale;
-    debug->accel_out_m_s2[2] =
-        debug->pos_p_m_s2[2] + debug->vel_d_m_s2[2] + reference->az_m_s2;
+    if (reference->manual_total_force_valid == 0U) {
+        debug->accel_out_m_s2[2] =
+            debug->pos_p_m_s2[2] +
+            debug->pos_z_i_m_s2 +
+            debug->vel_d_m_s2[2] +
+            reference->az_m_s2;
+    }
 }
 
 static void coax_ctrl_compute_balance_solution(
@@ -606,8 +665,6 @@ static void coax_ctrl_compute_balance_solution(
 {
     float actual_r[3][3];
     float actual_t[3][3];
-    float gimbal_r[3][3];
-    float gimbal_t[3][3];
     float actual_t_desired[3][3];
     float desired_omega[3] = { 0.0f, 0.0f, reference->yaw_rate_rad_s };
     float desired_omega_actual[3];
@@ -616,22 +673,43 @@ static void coax_ctrl_compute_balance_solution(
         DRV_COAX_CTRL_RATE_FRAME_PITCH_SIGN * attitude->gyro_y_rad_s,
         attitude->gyro_z_rad_s,
     };
-    const float kr_roll = -coax_ctrl_params.roll_angle_kp;
-    const float kr_pitch = -coax_ctrl_params.pitch_angle_kp;
-    const float kw_roll = -coax_ctrl_params.roll_rate_kd;
-    const float kw_pitch = -coax_ctrl_params.pitch_rate_kd;
+    /*
+     * 增益一律取正。以前 kr 取反、kd 直接使用，两种增益的符号约定相反，
+     * 于是"存负值"成了掩盖极性错误的手段。现在用 fabsf 强制为正，负反馈
+     * 完全由下面 -K_R*e_R - K_w*e_w 的结构保证。
+     */
+    const float kr_roll = fabsf(coax_ctrl_params.roll_angle_kp);
+    const float kr_pitch = fabsf(coax_ctrl_params.pitch_angle_kp);
+    const float kd_roll = fabsf(coax_ctrl_params.roll_rate_kd);
+    const float kd_pitch = fabsf(coax_ctrl_params.pitch_rate_kd);
     float force_scale = 1.0f;
+    float target_pitch_rad;
+    float target_roll_rad;
+    float target_pitch_force_rad;
+    float target_roll_force_rad;
+    float gyro_momentum_cross[3];
+    float roll_limit_moment_n_m;
+    float pitch_limit_moment_n_m;
+    float roll_utilization;
+    float pitch_utilization;
 
     memset(solution, 0, sizeof(*solution));
     solution->desired_force_local_n[0] =
         coax_ctrl_params.mass_kg * debug->accel_out_m_s2[0];
     solution->desired_force_local_n[1] =
         coax_ctrl_params.mass_kg * debug->accel_out_m_s2[1];
-    solution->desired_force_local_n[2] =
-        coax_ctrl_params.mass_kg *
-        (coax_ctrl_params.gravity_m_s2 - debug->accel_out_m_s2[2]);
-    if (solution->desired_force_local_n[2] < DRV_COAX_CTRL_FORCE_EPS_N) {
-        solution->desired_force_local_n[2] = DRV_COAX_CTRL_FORCE_EPS_N;
+    if (reference->manual_total_force_valid != 0U) {
+        solution->desired_force_local_n[2] =
+            coax_ctrl_clamp_f32(reference->manual_total_force_n,
+                                DRV_COAX_CTRL_FORCE_EPS_N,
+                                DRV_AIRFRAME_MAX_TOTAL_FORCE_N);
+    } else {
+        solution->desired_force_local_n[2] =
+            coax_ctrl_params.mass_kg *
+            (coax_ctrl_params.gravity_m_s2 - debug->accel_out_m_s2[2]);
+        if (solution->desired_force_local_n[2] < DRV_COAX_CTRL_FORCE_EPS_N) {
+            solution->desired_force_local_n[2] = DRV_COAX_CTRL_FORCE_EPS_N;
+        }
     }
 
     solution->raw_total_force_n =
@@ -647,97 +725,108 @@ static void coax_ctrl_compute_balance_solution(
     }
     solution->total_force_n = coax_ctrl_norm3(solution->desired_force_local_n);
 
+    /*
+     * Horizontal outer loop owns acceleration only. The requested force vector
+     * is converted once into a target body attitude; servos are not commanded
+     * directly from velocity or position terms.
+     */
+    if (reference->direct_attitude_target_valid != 0U) {
+        target_roll_rad =
+            coax_ctrl_clamp_f32(reference->target_roll_rad,
+                                -coax_ctrl_params.tilt_limit_rad,
+                                 coax_ctrl_params.tilt_limit_rad);
+        target_pitch_rad =
+            coax_ctrl_clamp_f32(reference->target_pitch_rad,
+                                -coax_ctrl_params.tilt_limit_rad,
+                                 coax_ctrl_params.tilt_limit_rad);
+    } else {
+        target_pitch_rad =
+            atan2f(solution->desired_force_local_n[0],
+                   solution->desired_force_local_n[2]);
+        target_roll_rad =
+            -atan2f(solution->desired_force_local_n[1] * cosf(target_pitch_rad),
+                    solution->desired_force_local_n[2]);
+    }
+    target_roll_force_rad =
+        DRV_COAX_CTRL_FORCE_FRAME_ROLL_SIGN * target_roll_rad;
+    target_pitch_force_rad =
+        DRV_COAX_CTRL_FORCE_FRAME_PITCH_SIGN * target_pitch_rad;
+
     coax_ctrl_attitude_matrix(attitude, actual_r);
     coax_ctrl_matrix_transpose(actual_r, actual_t);
-    coax_ctrl_build_thrust_frame(solution->desired_force_local_n,
-                                 reference->yaw_rad,
-                                 solution->thrust_frame_r);
-
-    for (uint32_t iteration = 0U;
-         iteration < DRV_COAX_CTRL_BALANCE_ITERATIONS;
-         ++iteration) {
-        float gyro_momentum_cross[3];
-        float roll_limit_moment_n_m;
-        float pitch_limit_moment_n_m;
-        float roll_utilization;
-        float pitch_utilization;
-
-        coax_ctrl_gimbal_matrix(solution->alpha_rad,
-                                solution->beta_rad,
-                                gimbal_r);
-        coax_ctrl_matrix_transpose(gimbal_r, gimbal_t);
-        coax_ctrl_matrix_multiply(solution->thrust_frame_r,
-                                  gimbal_t,
-                                  solution->desired_body_r);
-        coax_ctrl_attitude_error(solution->desired_body_r,
-                                 actual_r,
-                                 solution->attitude_error,
-                                 &solution->attitude_error_angle_rad,
-                                 &solution->attitude_tilt_error_rad);
-        coax_ctrl_matrix_multiply(actual_t,
-                                  solution->desired_body_r,
-                                  actual_t_desired);
-        for (uint32_t row = 0U; row < 3U; ++row) {
-            desired_omega_actual[row] =
-                (actual_t_desired[row][0] * desired_omega[0]) +
-                (actual_t_desired[row][1] * desired_omega[1]) +
-                (actual_t_desired[row][2] * desired_omega[2]);
-            solution->rate_error_rad_s[row] =
-                actual_omega[row] - desired_omega_actual[row];
-        }
-
-        /* omega x (J * omega) for the diagonal airframe inertia model. */
-        gyro_momentum_cross[0] =
-            (DRV_AIRFRAME_IZZ_KGM2 - DRV_AIRFRAME_IYY_KGM2) *
-            actual_omega[1] * actual_omega[2];
-        gyro_momentum_cross[1] =
-            (DRV_AIRFRAME_IXX_KGM2 - DRV_AIRFRAME_IZZ_KGM2) *
-            actual_omega[2] * actual_omega[0];
-        gyro_momentum_cross[2] =
-            (DRV_AIRFRAME_IYY_KGM2 - DRV_AIRFRAME_IXX_KGM2) *
-            actual_omega[0] * actual_omega[1];
-
-        solution->moment_cmd_n_m[0] =
-            (-kr_roll * solution->attitude_error[0]) -
-            (kw_roll * solution->rate_error_rad_s[0]) +
-            gyro_momentum_cross[0];
-        solution->moment_cmd_n_m[1] =
-            (-kr_pitch * solution->attitude_error[1]) -
-            (kw_pitch * solution->rate_error_rad_s[1]) +
-            gyro_momentum_cross[1];
-        solution->moment_cmd_n_m[2] = gyro_momentum_cross[2];
-
-        solution->beta_rad = coax_ctrl_solve_roll_tilt_from_moment(
-            solution->moment_cmd_n_m[0],
-            solution->total_force_n,
-            coax_ctrl_params.tilt_limit_rad);
-
-        solution->alpha_rad = coax_ctrl_solve_pitch_tilt_from_moment(
-            solution->moment_cmd_n_m[1],
-            solution->total_force_n,
-            solution->beta_rad,
-            coax_ctrl_params.tilt_limit_rad);
-
-        roll_limit_moment_n_m = fabsf(coax_ctrl_roll_moment_from_tilt(
-            solution->total_force_n,
-            coax_ctrl_params.tilt_limit_rad));
-        pitch_limit_moment_n_m = fabsf(coax_ctrl_pitch_moment_from_tilt(
-            solution->total_force_n,
-            coax_ctrl_params.tilt_limit_rad,
-            solution->beta_rad));
-        if (roll_limit_moment_n_m < DRV_COAX_CTRL_RATE_SCALE_EPS) {
-            roll_limit_moment_n_m = DRV_COAX_CTRL_RATE_SCALE_EPS;
-        }
-        if (pitch_limit_moment_n_m < DRV_COAX_CTRL_RATE_SCALE_EPS) {
-            pitch_limit_moment_n_m = DRV_COAX_CTRL_RATE_SCALE_EPS;
-        }
-        roll_utilization =
-            fabsf(solution->moment_cmd_n_m[0]) / roll_limit_moment_n_m;
-        pitch_utilization =
-            fabsf(solution->moment_cmd_n_m[1]) / pitch_limit_moment_n_m;
-        solution->moment_utilization = fmaxf(roll_utilization,
-                                             pitch_utilization);
+    coax_ctrl_rpy_matrix(target_roll_force_rad,
+                         target_pitch_force_rad,
+                         reference->yaw_rad,
+                         solution->desired_body_r);
+    coax_ctrl_attitude_error(solution->desired_body_r,
+                             actual_r,
+                             solution->attitude_error,
+                             &solution->attitude_error_angle_rad,
+                             &solution->attitude_tilt_error_rad);
+    coax_ctrl_matrix_multiply(actual_t,
+                              solution->desired_body_r,
+                              actual_t_desired);
+    for (uint32_t row = 0U; row < 3U; ++row) {
+        desired_omega_actual[row] =
+            (actual_t_desired[row][0] * desired_omega[0]) +
+            (actual_t_desired[row][1] * desired_omega[1]) +
+            (actual_t_desired[row][2] * desired_omega[2]);
+        solution->rate_error_rad_s[row] =
+            actual_omega[row] - desired_omega_actual[row];
     }
+
+    /* omega x (J * omega) for the diagonal airframe inertia model. */
+    gyro_momentum_cross[0] =
+        (DRV_AIRFRAME_IZZ_KGM2 - DRV_AIRFRAME_IYY_KGM2) *
+        actual_omega[1] * actual_omega[2];
+    gyro_momentum_cross[1] =
+        (DRV_AIRFRAME_IXX_KGM2 - DRV_AIRFRAME_IZZ_KGM2) *
+        actual_omega[2] * actual_omega[0];
+    gyro_momentum_cross[2] =
+        (DRV_AIRFRAME_IYY_KGM2 - DRV_AIRFRAME_IXX_KGM2) *
+        actual_omega[0] * actual_omega[1];
+
+    /* M_d = -K_R*e_R - K_w*e_w + w x Jw  —— 两项都是负反馈。 */
+    solution->moment_cmd_n_m[0] =
+        (-kr_roll * solution->attitude_error[0]) -
+        (kd_roll * solution->rate_error_rad_s[0]) +
+        gyro_momentum_cross[0];
+    solution->moment_cmd_n_m[1] =
+        (-kr_pitch * solution->attitude_error[1]) -
+        (kd_pitch * solution->rate_error_rad_s[1]) +
+        gyro_momentum_cross[1];
+    solution->moment_cmd_n_m[2] = gyro_momentum_cross[2];
+
+    solution->beta_rad = coax_ctrl_solve_roll_tilt_from_moment(
+        solution->moment_cmd_n_m[0],
+        solution->total_force_n,
+        coax_ctrl_params.tilt_limit_rad);
+
+    solution->alpha_rad = coax_ctrl_solve_pitch_tilt_from_moment(
+        solution->moment_cmd_n_m[1],
+        solution->total_force_n,
+        solution->beta_rad,
+        coax_ctrl_params.tilt_limit_rad);
+
+    roll_limit_moment_n_m = fabsf(coax_ctrl_roll_moment_from_tilt(
+        solution->total_force_n,
+        coax_ctrl_params.tilt_limit_rad));
+    pitch_limit_moment_n_m = fabsf(coax_ctrl_pitch_moment_from_tilt(
+        solution->total_force_n,
+        coax_ctrl_params.tilt_limit_rad,
+        solution->beta_rad));
+    if (roll_limit_moment_n_m < DRV_COAX_CTRL_RATE_SCALE_EPS) {
+        roll_limit_moment_n_m = DRV_COAX_CTRL_RATE_SCALE_EPS;
+    }
+    if (pitch_limit_moment_n_m < DRV_COAX_CTRL_RATE_SCALE_EPS) {
+        pitch_limit_moment_n_m = DRV_COAX_CTRL_RATE_SCALE_EPS;
+    }
+    roll_utilization =
+        fabsf(solution->moment_cmd_n_m[0]) / roll_limit_moment_n_m;
+    pitch_utilization =
+        fabsf(solution->moment_cmd_n_m[1]) / pitch_limit_moment_n_m;
+    solution->moment_utilization = fmaxf(roll_utilization,
+                                         pitch_utilization);
 
     coax_ctrl_local_down_to_body(attitude,
                                  solution->desired_force_local_n,
@@ -746,13 +835,8 @@ static void coax_ctrl_compute_balance_solution(
     debug->force_cmd_n[1] = solution->desired_force_body_n[1];
     debug->force_cmd_n[2] = solution->desired_force_body_n[2];
 
-    debug->tilt_ff_rad[0] =
-        atan2f(solution->desired_force_body_n[0],
-               solution->desired_force_body_n[2]);
-    debug->tilt_ff_rad[1] =
-        -atan2f(solution->desired_force_body_n[1] *
-                cosf(debug->tilt_ff_rad[0]),
-                solution->desired_force_body_n[2]);
+    debug->target_attitude_rp_rad[0] = target_roll_rad;
+    debug->target_attitude_rp_rad[1] = target_pitch_rad;
 
     debug->tilt_angle_p_rad[0] = coax_ctrl_solve_pitch_tilt_from_moment(
         -kr_pitch * solution->attitude_error[1],
@@ -763,13 +847,14 @@ static void coax_ctrl_compute_balance_solution(
         -kr_roll * solution->attitude_error[0],
         solution->total_force_n,
         coax_ctrl_params.tilt_limit_rad);
+    /* 符号必须与 moment_cmd 中的 -K_w*e_w 一致，否则遥测里的 D 项是假的。 */
     debug->tilt_rate_d_rad[0] = coax_ctrl_solve_pitch_tilt_from_moment(
-        -kw_pitch * solution->rate_error_rad_s[1],
+        -kd_pitch * solution->rate_error_rad_s[1],
         solution->total_force_n,
         solution->beta_rad,
         coax_ctrl_params.tilt_limit_rad);
     debug->tilt_rate_d_rad[1] = coax_ctrl_solve_roll_tilt_from_moment(
-        -kw_roll * solution->rate_error_rad_s[0],
+        -kd_roll * solution->rate_error_rad_s[0],
         solution->total_force_n,
         coax_ctrl_params.tilt_limit_rad);
 
@@ -777,6 +862,8 @@ static void coax_ctrl_compute_balance_solution(
     debug->tilt_out_rad[1] = solution->beta_rad;
     coax_ctrl_rotation_to_rpy(solution->desired_body_r,
                               debug->desired_attitude_rpy_rad);
+    debug->desired_attitude_rpy_rad[0] *= DRV_COAX_CTRL_FORCE_FRAME_ROLL_SIGN;
+    debug->desired_attitude_rpy_rad[1] *= DRV_COAX_CTRL_FORCE_FRAME_PITCH_SIGN;
     memcpy(debug->attitude_error,
            solution->attitude_error,
            sizeof(debug->attitude_error));
@@ -800,7 +887,8 @@ static float coax_ctrl_balance_protection_scale(
     float candidate;
 
     *flags = 0U;
-    if ((coax_ctrl_params.vel_loop_enable >= 0.5f) &&
+    if ((reference->direct_attitude_target_valid == 0U) &&
+        (coax_ctrl_params.vel_loop_enable >= 0.5f) &&
         (reference->horizontal_velocity_valid == 0U)) {
         *flags |= DRV_COAX_CTRL_PROTECT_VELOCITY_INVALID;
         scale = 0.0f;
@@ -842,39 +930,17 @@ static void coax_ctrl_compute_balance_command(
     DRV_COAX_CTRL_Debug *debug,
     DRV_COAX_CTRL_BalanceSolution *solution)
 {
-    float candidate_integral_m[2] = {
-        coax_ctrl_state.velocity_integral_m[0],
-        coax_ctrl_state.velocity_integral_m[1],
-    };
-    float dt_sec = reference->dt_sec;
     float horizontal_scale;
 
-    if ((dt_sec <= 0.0f) || (dt_sec > 0.2f)) {
-        dt_sec = 0.02f;
-    }
-
     if (coax_ctrl_params.vel_loop_enable < 0.5f) {
-        candidate_integral_m[0] = 0.0f;
-        candidate_integral_m[1] = 0.0f;
         coax_ctrl_state.velocity_integral_m[0] = 0.0f;
         coax_ctrl_state.velocity_integral_m[1] = 0.0f;
-    } else if (reference->horizontal_velocity_valid != 0U) {
-        candidate_integral_m[0] = coax_ctrl_clamp_f32(
-            candidate_integral_m[0] +
-            (attitude->vx_m_s - reference->vx_m_s) * dt_sec,
-            -DRV_COAX_CTRL_VEL_INTEGRAL_LIMIT_M,
-             DRV_COAX_CTRL_VEL_INTEGRAL_LIMIT_M);
-        candidate_integral_m[1] = coax_ctrl_clamp_f32(
-            candidate_integral_m[1] +
-            (attitude->vy_m_s - reference->vy_m_s) * dt_sec,
-            -DRV_COAX_CTRL_VEL_INTEGRAL_LIMIT_M,
-             DRV_COAX_CTRL_VEL_INTEGRAL_LIMIT_M);
     }
 
     coax_ctrl_compute_accel_cmd(attitude,
                                 reference,
-                                candidate_integral_m,
                                 1.0f,
+                                1U,
                                 debug);
     coax_ctrl_compute_balance_solution(attitude, reference, debug, solution);
     horizontal_scale = coax_ctrl_balance_protection_scale(reference,
@@ -882,13 +948,13 @@ static void coax_ctrl_compute_balance_command(
                                                            &debug->protection_flags);
 
     if (horizontal_scale >= 0.999f) {
-        coax_ctrl_state.velocity_integral_m[0] = candidate_integral_m[0];
-        coax_ctrl_state.velocity_integral_m[1] = candidate_integral_m[1];
+        coax_ctrl_state.velocity_integral_m[0] = 0.0f;
+        coax_ctrl_state.velocity_integral_m[1] = 0.0f;
     } else {
         coax_ctrl_compute_accel_cmd(attitude,
                                     reference,
-                                    coax_ctrl_state.velocity_integral_m,
                                     horizontal_scale,
+                                    0U,
                                     debug);
         coax_ctrl_compute_balance_solution(attitude, reference, debug, solution);
     }
@@ -905,9 +971,13 @@ static float coax_ctrl_compute_yaw_torque_cmd(
 {
     const float yaw_err = coax_ctrl_wrap_pi(reference->yaw_rad - attitude->yaw_rad);
 
-    debug->yaw_angle_p_rad_s = coax_ctrl_params.yaw_angle_kp * yaw_err;
+    /*
+     * yaw 用的误差方向是 (参考 - 实测)，与 roll/pitch 的 (实测 - 期望) 相反，
+     * 所以这里是 +K*err 而非 -K*err，同样只接受正增益。
+     */
+    debug->yaw_angle_p_rad_s = fabsf(coax_ctrl_params.yaw_angle_kp) * yaw_err;
     debug->yaw_rate_d_rad_s =
-        coax_ctrl_params.yaw_rate_kd *
+        fabsf(coax_ctrl_params.yaw_rate_kd) *
         (reference->yaw_rate_rad_s - attitude->gyro_z_rad_s);
 
     return coax_ctrl_params.yaw_inertia *
@@ -958,31 +1028,36 @@ void DRV_COAX_CTRL_GetDefaultParams(DRV_COAX_CTRL_Params *params)
         return;
     }
 
-    params->pos_x_kp = 2.2f;
-    params->pos_y_kp = 2.2f;
+    params->pos_x_kp = 0.30f;
+    params->pos_y_kp = 0.30f;
     params->pos_z_kp = 3.8f;
-    params->vel_x_kd = 0.0f;
-    params->vel_y_kd = 0.0f;
+    params->pos_z_ki = 0.25f;
+    params->vel_x_kd = 0.80f;
+    params->vel_y_kd = 0.80f;
     params->vel_z_kd = 0.0f;
     params->vel_loop_enable = 1.0f;
-    params->vel_loop_x_kp = 0.50f;
-    params->vel_loop_x_ki = 0.0625f;
+    params->vel_loop_x_kp = 0.0f;
+    params->vel_loop_x_ki = 0.0f;
     params->vel_loop_x_kd = 0.0f;
-    params->vel_loop_y_kp = 0.50f;
-    params->vel_loop_y_ki = 0.0625f;
+    params->vel_loop_y_kp = 0.0f;
+    params->vel_loop_y_ki = 0.0f;
     params->vel_loop_y_kd = 0.0f;
     params->mass_kg = DRV_AIRFRAME_MASS_KG;
     params->gravity_m_s2 = DRV_AIRFRAME_GRAVITY_M_S2;
     params->pitch_tilt_lever_arm_m = DRV_AIRFRAME_PITCH_THRUST_LEVER_ARM_M;
     params->roll_tilt_lever_arm_m = DRV_AIRFRAME_ROLL_THRUST_LEVER_ARM_M;
-    /* Stored signs preserve the existing positive UI convention. */
-    params->roll_angle_kp = -0.0671f;
-    params->pitch_angle_kp = -0.0660f;
-    params->roll_rate_kd = -0.1104f;
-    params->pitch_rate_kd = -0.1138f;
+    /*
+     * 增益全部为正。负反馈由控制律结构保证，不再由增益符号承担——旧代码存
+     * 负值是为了配合 kr/kd 相反的符号约定，那也正是极性错误得以隐藏的原因。
+     * 幅值与原先一致（取绝对值），因此调好的动态特性不变。
+     */
+    params->roll_angle_kp = 0.0671f;
+    params->pitch_angle_kp = 0.0660f;
+    params->roll_rate_kd = 0.1104f;
+    params->pitch_rate_kd = 0.1138f;
     params->tilt_limit_rad = DRV_COAX_CTRL_TILT_LIMIT_RAD;
-    params->yaw_angle_kp = -1.0f;
-    params->yaw_rate_kd = -0.15f;
+    params->yaw_angle_kp = 1.0f;
+    params->yaw_rate_kd = 0.15f;
     coax_ctrl_apply_fixed_model_params(params);
 }
 
@@ -1060,6 +1135,13 @@ uint8_t DRV_COAX_CTRL_SetParam(const char *name, float value)
 
     coax_ctrl_params = candidate;
     if ((entry->offset == offsetof(DRV_COAX_CTRL_Params, vel_loop_enable)) ||
+        (entry->offset == offsetof(DRV_COAX_CTRL_Params, pos_x_kp)) ||
+        (entry->offset == offsetof(DRV_COAX_CTRL_Params, pos_y_kp)) ||
+        (entry->offset == offsetof(DRV_COAX_CTRL_Params, pos_z_kp)) ||
+        (entry->offset == offsetof(DRV_COAX_CTRL_Params, pos_z_ki)) ||
+        (entry->offset == offsetof(DRV_COAX_CTRL_Params, vel_x_kd)) ||
+        (entry->offset == offsetof(DRV_COAX_CTRL_Params, vel_y_kd)) ||
+        (entry->offset == offsetof(DRV_COAX_CTRL_Params, vel_z_kd)) ||
         (entry->offset == offsetof(DRV_COAX_CTRL_Params, vel_loop_x_kp)) ||
         (entry->offset == offsetof(DRV_COAX_CTRL_Params, vel_loop_x_ki)) ||
         (entry->offset == offsetof(DRV_COAX_CTRL_Params, vel_loop_x_kd)) ||
@@ -1178,6 +1260,37 @@ uint16_t DRV_COAX_CTRL_ThrustToMotorPulse(float thrust_n)
     }
 
     return BSP_PWM_ESC_MAX_US;
+}
+
+float DRV_COAX_CTRL_MotorPulseToTotalThrust(uint16_t pulse_us)
+{
+    float thrust_g;
+
+    DRV_COAX_CTRL_Init();
+
+    if (pulse_us <= coax_ctrl_dual_pwm_us[0]) {
+        return 0.0f;
+    }
+
+    for (uint32_t i = 1U; i < DRV_COAX_CTRL_THRUST_TABLE_POINTS; ++i) {
+        if (pulse_us <= coax_ctrl_dual_pwm_us[i]) {
+            const float left_pwm = (float)coax_ctrl_dual_pwm_us[i - 1U];
+            const float right_pwm = (float)coax_ctrl_dual_pwm_us[i];
+            const float ratio = ((float)pulse_us - left_pwm) /
+                                (right_pwm - left_pwm);
+
+            thrust_g = coax_ctrl_dual_thrust_g[i - 1U] +
+                       ratio * (coax_ctrl_dual_thrust_g[i] -
+                                coax_ctrl_dual_thrust_g[i - 1U]);
+            return coax_ctrl_clamp_f32(
+                thrust_g / DRV_COAX_CTRL_GRAMS_PER_NEWTON,
+                0.0f,
+                2.0f * coax_ctrl_params.motor_single_max_thrust_n);
+        }
+    }
+
+    return coax_ctrl_dual_thrust_g[DRV_COAX_CTRL_THRUST_TABLE_POINTS - 1U] /
+           DRV_COAX_CTRL_GRAMS_PER_NEWTON;
 }
 
 void DRV_COAX_CTRL_Run(const DRV_COAX_CTRL_AttitudeInput *attitude,

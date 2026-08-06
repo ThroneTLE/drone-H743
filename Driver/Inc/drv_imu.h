@@ -85,6 +85,13 @@ typedef struct {
     DRV_IMU_Odr        gyro_odr;
     uint8_t            accel_filter_bw;
     uint8_t            gyro_filter_bw;
+    /*
+     * Requested anti-alias filter cutoffs in Hz. The hardware only supports a
+     * fixed set of cutoffs, so the driver selects the highest supported value
+     * not exceeding the request and reports it back in the device struct.
+     */
+    uint16_t           accel_aaf_hz;
+    uint16_t           gyro_aaf_hz;
     bool               enable_temp;
     bool               soft_reset_on_init;
 } DRV_IMU_Config;
@@ -115,9 +122,21 @@ typedef struct {
     uint8_t           who_am_i;
     DRV_IMU_InitStage init_stage;
     DRV_IMU_Status    last_error;
+    /* AAF cutoffs actually programmed, after snapping to supported values. */
+    uint16_t          accel_aaf_actual_hz;
+    uint16_t          gyro_aaf_actual_hz;
 } DRV_IMU_Device;
 
 void DRV_IMU_DefaultConfig(DRV_IMU_Config *config);
+
+/*
+ * Resolve a requested AAF cutoff to the nearest supported hardware setting.
+ * Returns an opaque handle to the driver's internal coefficient entry and, when
+ * actual_hz is non-NULL, the cutoff that will really be programmed. Exposed so
+ * tests can assert the snapping behaviour.
+ */
+const void *DRV_IMU_AafSettingForCutoff(uint16_t desired_hz,
+                                        uint16_t *actual_hz);
 
 DRV_IMU_Status DRV_IMU_Init(DRV_IMU_Device *dev,
                             const DRV_IMU_Bus *bus,

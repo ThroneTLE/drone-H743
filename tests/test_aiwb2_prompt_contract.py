@@ -80,9 +80,17 @@ def test_vofa_pid_slider_colon_lines_are_control_payloads() -> None:
     assert '"pitch_rate_kd"' in app_aiwb2
     assert '"Pitch_kp"' not in app_aiwb2
     assert '"Roll_kp"' not in app_aiwb2
-    assert '"vel_x_kd"' not in app_aiwb2
-    assert '"vel_y_kd"' not in app_aiwb2
-    assert '"vel_loop_x_kp"' in app_aiwb2
+    assert '"pos_x_kp"' in app_aiwb2
+    assert '"pos_y_kp"' in app_aiwb2
+    assert '"vel_x_kd"' in app_aiwb2
+    assert '"vel_y_kd"' in app_aiwb2
+    assert '"accel_xy"' not in app_aiwb2
+    assert '"accel_z"' not in app_aiwb2
+    assert '"vel_loop_x_kp"' not in app_aiwb2
+    assert '"vel_loop_x_ki"' not in app_aiwb2
+    assert '"vel_loop_out"' not in app_aiwb2
+    assert '"vel_loop_i"' not in app_aiwb2
+    assert '"vel_loop_enable"' in app_aiwb2
     assert "(aiwb2_is_pid_slider_payload(line) != 0U)" in app_aiwb2
     assert '"roll_angle_kp",  "coax.roll_angle_kp"' in app_control
     assert '"pitch_angle_kp", "coax.pitch_angle_kp"' in app_control

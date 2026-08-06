@@ -49,6 +49,7 @@
  */
 #include "app_diag.h"
 #include "app_flight_log.h"
+#include "app_imu_capture.h"
 #include "app_led.h"
 #include "app_nav_estimator.h"
 #include "app_sensor.h"
@@ -70,6 +71,7 @@
 #include "bsp_pwm.h"
 #include "bsp_aiwb2_power.h"
 #include "drv_airframe_model.h"
+#include "drv_attitude_fusion.h"
 #include "drv_coax_ctrl.h"
 #include "drv_imu_nav.h"
 #include "drv_nav_ekf.h"
@@ -79,10 +81,31 @@
 #define STABILIZER_NAV_VEL_LEAK_HZ 0.25f
 #define STABILIZER_NAV_USE_FLOW_EKF 1U
 #define STABILIZER_NAV_EKF_FLOW_NOISE_M_S 0.25f
+#define STABILIZER_NAV_EKF_FLOW_NOISE_MIN_M_S 0.04f
+#define STABILIZER_NAV_EKF_FLOW_NOISE_MAX_M_S 0.45f
+#define STABILIZER_NAV_EKF_FLOW_QUALITY_HIGH 180U
 #define STABILIZER_NAV_EKF_IMU_BRIDGE_TIMEOUT_MS 80U
-#define STABILIZER_NAV_EKF_FLOW_LOST_DECAY_HZ 8.0f
+#define STABILIZER_NAV_EKF_FLOW_SOFT_HOLD_MS 150U
+#define STABILIZER_NAV_EKF_FLOW_STALE_RESET_MS 250U
+#define STABILIZER_NAV_EKF_FLOW_LOST_DECAY_HZ 1.0f
+#define STABILIZER_NAV_EKF_FLOW_STALE_DECAY_HZ 12.0f
 #define STABILIZER_NAV_EKF_CONTROL_TIMEOUT_MS 150U
 #define STABILIZER_NAV_EKF_CONTROL_MAX_SPEED_M_S 1.50f
+#define STABILIZER_NAV_EKF_ZERO_FLOW_SPEED_M_S 0.035f
+#define STABILIZER_NAV_EKF_ZERO_ACCEL_M_S2 0.30f
+#define STABILIZER_NAV_EKF_ZERO_FLOW_COUNT 8U
+#define STABILIZER_FLOW_ROT_COMP_ENABLE 1U
+#define STABILIZER_FLOW_ROT_COMP_GAIN 1.0f
+#define STABILIZER_FLOW_SENSOR_OFFSET_X_M 0.20f
+#define STABILIZER_FLOW_SENSOR_OFFSET_Y_M 0.0f
+#define STABILIZER_FLOW_SENSOR_OFFSET_Z_M 0.22f
+#define STABILIZER_FLOW_ONLY_MAX_ACCEL_M_S2 30.0f
+#define STABILIZER_FLOW_ONLY_MIN_STEP_M_S 0.30f
+#define STABILIZER_IMU_LEVER_ARM_X_M 0.0f
+#define STABILIZER_IMU_LEVER_ARM_Y_M 0.0f
+#define STABILIZER_IMU_LEVER_ARM_Z_M (-0.10f)
+#define STABILIZER_IMU_RATE_WEIGHT_SOFT_RAD_S 2.0f
+#define STABILIZER_IMU_ALPHA_WEIGHT_SOFT_RAD_S2 20.0f
 
 /* USER CODE END Includes */
 
@@ -101,6 +124,8 @@
  */
 #define SENSOR_IMU_DATA_READY_FLAG     0x0001U  /* 位 0：IMU 数据就绪事件标志          */
 #define SENSOR_IMU_DEFAULT_DT_SEC      0.001f   /* 默认 IMU 采样间隔 1ms → dt = 0.001s */
+#define SENSOR_IMU_MIN_DT_US           100ULL   /* Fusion 有效采样周期下限 0.1ms        */
+#define SENSOR_IMU_MAX_DT_US           30000ULL /* Fusion 有效采样周期上限 30ms         */
 #define SENSOR_IMU_DRDY_TIMEOUT_MS     20U      /* 单次等待 DRDY 的超时时间            */
 #define SENSOR_IMU_DRDY_MISS_FAULT_LIMIT 50U    /* 连续 1s 无 DRDY/ready 才锁存故障    */
 #define SENSOR_IMU_READ_FAIL_LIMIT     25U      /* 连续读失败次数，超过后锁存故障      */
@@ -111,7 +136,7 @@
  * ============================================================================
  * 姿态稳定器常量
  * ============================================================================
- * 控制周期 20ms（50Hz）—— 舵机是慢速设备，不需要和 IMU 1kHz 同步。
+ * 控制器每 2 ms 更新一次目标，舵机半双工总线每 10 ms 最多发送一次移动命令。
  *
  * 舵机模式选择：
  *   STABILIZER_USE_DIRECT_ANGLE_SERVO = 1 → 角度直驱（舵机调试）
@@ -128,9 +153,12 @@
 #define STABILIZER_DIRECT_BODY_X_SIGN   (1.0f)   /* 前后/X 轴直驱方向符号              */
 #define STABILIZER_DIRECT_BODY_Y_SIGN   (1.0f)   /* 左右/Y 轴直驱方向符号              */
 #define STABILIZER_YAW_RATE_REF_MAX_RAD_S 1.04719758f /* CH4 偏航参考累加最大速率 [rad/s] */
-#define STABILIZER_XY_VEL_REF_MAX_M_S  0.80f     /* CH1/CH2 水平速度目标最大值 [m/s]    */
+#define STABILIZER_XY_VEL_REF_MAX_M_S  0.40f     /* CH1/CH2 水平速度目标最大值 [m/s]    */
+#define STABILIZER_VELOCITY_MEAS_Y_SIGN (1.0f)   /* 光流/融合速度 Y 轴映射到机体系右正 */
+#define STABILIZER_XY_POS_LIMIT_M      2.00f     /* 水平相对位置积分安全限幅 [m]        */
+#define STABILIZER_XY_POS_ERR_MAX_M    0.50f     /* 水平位置外环单次误差限幅 [m]        */
 #define STABILIZER_Z_REF_RATE_MAX_M_S  0.30f     /* CH3 满杆高度目标积分速度 [m/s]       */
-#define STABILIZER_Z_REF_MAX_M         0.30f     /* 上电光流测高基准以上高度上限 [m]     */
+#define STABILIZER_Z_REF_MAX_M         0.40f     /* 上电光流测高基准以上高度上限 [m]     */
 #define STABILIZER_Z_POS_ERR_MAX_M     0.35f     /* Z 位置 PID 单次位置误差限幅 [m]      */
 #define STABILIZER_RC_DEADBAND_US      20        /* RC 摇杆死区 [μs]，中位 1500±20      */
 
@@ -145,6 +173,7 @@
  *   CH3 → 左摇杆上下 / throttle  → 低段直通油门；稳定段设定激光定高目标，50% 保持当前高度，高于 50% 提高目标高度
  *   CH4 → 偏航 / yaw stick       → 中位保持，高于中位累加 yaw_ref，低于中位减少 yaw_ref
  *   CH5 → 二值开关 / arm switch  → +100=开锁，-100=关锁
+ *   CH6 → 姿态调试模式开关       → 高位启用手动总推力 + 目标姿态
  *
  * CRSF 驱动输出的是 16 路 us 值，数组下标从 0 开始，所以 CH1 对应 ch[0]。
  * CH5 用阈值判断：>1500us 视为开锁，<=1500us 视为上锁。
@@ -155,11 +184,13 @@
 #define STABILIZER_RC_CH_THROTTLE_Z    2U
 #define STABILIZER_RC_CH_YAW           3U
 #define STABILIZER_RC_CH_ARM           4U
+#define STABILIZER_RC_CH_ATTITUDE_DEBUG 5U
 #define STABILIZER_RC_ARM_THRESHOLD_US 1500U
+#define STABILIZER_RC_ATTITUDE_DEBUG_THRESHOLD_US 1500U
 #define STABILIZER_RC_THROTTLE_INPUT_LOW_US  1000U
 #define STABILIZER_RC_THROTTLE_INPUT_HIGH_US 2000U
 #define STABILIZER_RC_THROTTLE_ARM_LOW_US    1100U
-#define STABILIZER_RC_STABILIZE_MIN_PERCENT 20U
+#define STABILIZER_RC_STABILIZE_MIN_PERCENT 70U
 #define STABILIZER_RC_STABILIZE_MIN_US \
   (STABILIZER_RC_THROTTLE_INPUT_LOW_US + \
    (((STABILIZER_RC_THROTTLE_INPUT_HIGH_US - STABILIZER_RC_THROTTLE_INPUT_LOW_US) * \
@@ -167,7 +198,16 @@
 #define STABILIZER_RC_LOSS_TIMEOUT_MS  500U
 #define STABILIZER_FLIGHT_LOG_TAIL_RECORDS 125U /* 250 Hz log tail, about 500 ms */
 #define STABILIZER_USE_RC_DIRECT_TILT_SERVO 0U   /* 0=自稳定控制器, 1=CH1/CH2 直控舵机调试 */
-#define STABILIZER_RC_DIRECT_TILT_LIMIT_RAD 0.314159265f /* 遥控直控调试最大 ±18° */
+#define STABILIZER_RC_DIRECT_TILT_LIMIT_RAD 0.488692191f /* 遥控直控调试最大 ±28° */
+#define STABILIZER_RC_ATTITUDE_TARGET_LIMIT_RAD 0.349065850f /* CH6 姿态调试最大 ±20° */
+/*
+ * 摇杆 → 目标姿态的极性。这是整条链路上唯一决定"摇杆方向"的符号，其余符号
+ * 同时作用于实测和目标姿态、在姿态误差中相消，因此改这里不影响自稳。
+ * 约定：pitch 摇杆前推 → 目标 pitch < 0（机头下压）→ 飞机前倾。
+ * 实机确认：原来 PITCH_SIGN = +1 时前推变成后倾，故取 -1。
+ */
+#define STABILIZER_RC_ATTITUDE_TARGET_PITCH_SIGN (-1.0f)
+#define STABILIZER_RC_ATTITUDE_TARGET_ROLL_SIGN  (-1.0f)
 
 /*
  * ============================================================================
@@ -178,8 +218,15 @@
  */
 #define STABILIZER_SERVO_REFRESH_MS    500U      /* 强制刷新间隔 [ms]（即使脉宽未变）    */
 #define STABILIZER_SERVO_DELTA_US      3U        /* 脉宽变化死区 [μs]（小于此值不发送）  */
+#define STABILIZER_SERVO_BUS_FRAME_MS 10U        /* 总线移动命令上限 100 Hz              */
 #define STABILIZER_ATTITUDE_ZERO_MS 1500U        /* 上电后姿态零偏采集时长 [ms]          */
-#define VOFA_SEND_PERIOD_MS            25U       /* 57600 数传下 22-float VOFA 约 40Hz */
+#define STABILIZER_ATTITUDE_ZERO_GYRO_MAX_DPS 2.0f
+#define STABILIZER_ATTITUDE_ZERO_ACCEL_MIN_G 0.95f
+#define STABILIZER_ATTITUDE_ZERO_ACCEL_MAX_G 1.05f
+#define STABILIZER_ATTITUDE_ZERO_ERROR_MAX_DEG 3.0f
+#define VOFA_SEND_PERIOD_MS            25U       /* 57600 数传下 23-float VOFA 约 40Hz */
+/* 原始 IMU 采集导出每个周期搬运的块数，见 vofa 任务中的说明。 */
+#define IMU_CAPTURE_EXPORT_BLOCKS_PER_TICK 16U
 
 /* USER CODE END PD */
 
@@ -331,6 +378,132 @@ static float stabilizer_clamp_f32(float value, float lo, float hi)
   return value;
 }
 
+static float stabilizer_square_f32(float value)
+{
+  return value * value;
+}
+
+static float stabilizer_flow_noise_from_quality(uint8_t quality)
+{
+  float quality_norm;
+  float weak;
+  const float q_min = (float)APP_OPTICAL_FLOW_MIN_QUALITY;
+  const float q_high = (float)STABILIZER_NAV_EKF_FLOW_QUALITY_HIGH;
+
+  if (quality <= APP_OPTICAL_FLOW_MIN_QUALITY) {
+    return STABILIZER_NAV_EKF_FLOW_NOISE_MAX_M_S;
+  }
+  if (quality >= STABILIZER_NAV_EKF_FLOW_QUALITY_HIGH) {
+    return STABILIZER_NAV_EKF_FLOW_NOISE_MIN_M_S;
+  }
+
+  quality_norm = ((float)quality - q_min) / (q_high - q_min);
+  weak = 1.0f - stabilizer_clamp_f32(quality_norm, 0.0f, 1.0f);
+  return STABILIZER_NAV_EKF_FLOW_NOISE_MIN_M_S +
+         (STABILIZER_NAV_EKF_FLOW_NOISE_MAX_M_S -
+          STABILIZER_NAV_EKF_FLOW_NOISE_MIN_M_S) * weak * weak;
+}
+
+static void stabilizer_cross3(const float a[3],
+                              const float b[3],
+                              float out[3])
+{
+  out[0] = (a[1] * b[2]) - (a[2] * b[1]);
+  out[1] = (a[2] * b[0]) - (a[0] * b[2]);
+  out[2] = (a[0] * b[1]) - (a[1] * b[0]);
+}
+
+static void stabilizer_compensated_imu_accel_nav_xy(float accel_x_g,
+                                                     float accel_y_g,
+                                                     float accel_z_g,
+                                                     float roll_rad,
+                                                     float pitch_rad,
+                                                     float yaw_rad,
+                                                     const float gyro_rad_s[3],
+                                                     const float alpha_rad_s2[3],
+                                                     uint8_t alpha_valid,
+                                                     float *acc_x_m_s2,
+                                                     float *acc_y_m_s2,
+                                                     float *weight_out)
+{
+  const float gravity = DRV_AIRFRAME_GRAVITY_M_S2;
+  const float r_imu_m[3] = {
+    STABILIZER_IMU_LEVER_ARM_X_M,
+    STABILIZER_IMU_LEVER_ARM_Y_M,
+    STABILIZER_IMU_LEVER_ARM_Z_M,
+  };
+  const float gyro_zero[3] = {0.0f, 0.0f, 0.0f};
+  const float alpha_zero[3] = {0.0f, 0.0f, 0.0f};
+  const float *omega = (gyro_rad_s != NULL) ? gyro_rad_s : gyro_zero;
+  const float *alpha = ((alpha_valid != 0U) && (alpha_rad_s2 != NULL)) ?
+                       alpha_rad_s2 : alpha_zero;
+  float alpha_cross_r[3];
+  float omega_cross_r[3];
+  float omega_cross_omega_cross_r[3];
+  float f_body_m_s2[3];
+  float f_cg_body_m_s2[3];
+  float cr;
+  float sr;
+  float cp;
+  float sp;
+  float cy;
+  float sy;
+  float rate_norm;
+  float alpha_norm;
+  float weight;
+
+  if ((acc_x_m_s2 == NULL) || (acc_y_m_s2 == NULL)) {
+    return;
+  }
+
+  f_body_m_s2[0] = accel_x_g * gravity;
+  f_body_m_s2[1] = accel_y_g * gravity;
+  f_body_m_s2[2] = accel_z_g * gravity;
+
+  stabilizer_cross3(alpha, r_imu_m, alpha_cross_r);
+  stabilizer_cross3(omega, r_imu_m, omega_cross_r);
+  stabilizer_cross3(omega, omega_cross_r, omega_cross_omega_cross_r);
+
+  for (uint32_t axis = 0U; axis < 3U; ++axis) {
+    f_cg_body_m_s2[axis] = f_body_m_s2[axis] -
+                           alpha_cross_r[axis] -
+                           omega_cross_omega_cross_r[axis];
+  }
+
+  cr = cosf(roll_rad);
+  sr = sinf(roll_rad);
+  cp = cosf(pitch_rad);
+  sp = sinf(pitch_rad);
+  cy = cosf(yaw_rad);
+  sy = sinf(yaw_rad);
+
+  *acc_x_m_s2 =
+    (cy * cp * f_cg_body_m_s2[0]) +
+    ((cy * sp * sr - sy * cr) * f_cg_body_m_s2[1]) +
+    ((cy * sp * cr + sy * sr) * f_cg_body_m_s2[2]);
+  *acc_y_m_s2 =
+    (sy * cp * f_cg_body_m_s2[0]) +
+    ((sy * sp * sr + cy * cr) * f_cg_body_m_s2[1]) +
+    ((sy * sp * cr - cy * sr) * f_cg_body_m_s2[2]);
+
+  rate_norm = sqrtf(stabilizer_square_f32(omega[0]) +
+                    stabilizer_square_f32(omega[1]) +
+                    stabilizer_square_f32(omega[2]));
+  alpha_norm = sqrtf(stabilizer_square_f32(alpha[0]) +
+                     stabilizer_square_f32(alpha[1]) +
+                     stabilizer_square_f32(alpha[2]));
+  weight = 1.0f /
+    (1.0f +
+     stabilizer_square_f32(rate_norm / STABILIZER_IMU_RATE_WEIGHT_SOFT_RAD_S) +
+     stabilizer_square_f32(alpha_norm / STABILIZER_IMU_ALPHA_WEIGHT_SOFT_RAD_S2));
+
+  *acc_x_m_s2 *= weight;
+  *acc_y_m_s2 *= weight;
+  if (weight_out != NULL) {
+    *weight_out = weight;
+  }
+}
+
 static uint8_t stabilizer_rc_update_armed(const uint16_t ch[CRSF_CHANNEL_COUNT],
                                           uint8_t rc_link_ok)
 {
@@ -423,11 +596,36 @@ static volatile uint16_t stabilizer_last_sent_servo_pulse_us[2] = {
   DRV_COAX_CTRL_SERVO_ALPHA_CENTER_US,
   DRV_COAX_CTRL_SERVO_BETA_CENTER_US,
 };
+static volatile uint16_t stabilizer_last_successful_servo_pulse_us[2];
+/*
+ * 解锁状态的文件级镜像。rc_armed 定义在控制分支内部的作用域里，而原始 IMU
+ * 采集需要在融合之后就标注解锁状态（此时该分支尚未执行）。
+ */
+static volatile uint8_t stabilizer_capture_armed;
 static uint32_t stabilizer_last_servo_send_ms;
+static uint32_t stabilizer_last_servo_command_frame_ms = 0xFFFFFFFFUL;
+
+typedef struct {
+  uint32_t move_attempt_count;
+  uint32_t move_sent_count;
+  uint32_t move_busy_count;
+  uint32_t move_error_count;
+} StabilizerServoBusDiag;
+
+typedef struct {
+  float sensor_velocity_m_s[2];
+  float optical_rot_comp_m_s[2];
+  float offset_rot_comp_m_s[2];
+  float corrected_velocity_m_s[2];
+} StabilizerFlowDebug;
+
+static StabilizerServoBusDiag stabilizer_servo_bus_diag;
+static StabilizerFlowDebug stabilizer_flow_debug;
 
 typedef struct {
   float acc_nav_m_s2[3];
   float vel_est_m_s[3];
+  float pos_est_m[2];
   float vel_ref_m_s[2];
   float vel_err_m_s[2];
   float vel_pid_out_m_s2[2];
@@ -438,12 +636,6 @@ typedef struct {
   float servo_beta_us;
   float motor_upper_us;
   float motor_lower_us;
-  float vel_loop_x_kp;
-  float vel_loop_x_ki;
-  float vel_loop_x_kd;
-  float vel_loop_y_kp;
-  float vel_loop_y_ki;
-  float vel_loop_y_kd;
   float nav_accel_lpf_alpha;
   float nav_velocity_leak_hz;
   float vel_loop_active;
@@ -456,6 +648,7 @@ typedef struct {
   float vel_m_s[2];
   DRV_NAV_EKF_State ekf;
   DRV_NAV_EKF_Diagnostics diagnostics;
+  uint8_t zero_flow_count;
 } StabilizerVelocityEstimatorState;
 
 static StabilizerVofaDebug stabilizer_vofa_debug;
@@ -469,10 +662,12 @@ static void stabilizer_velocity_estimator_reset(StabilizerVelocityEstimatorState
   if (state == NULL) {
     return;
   }
+  state->zero_flow_count = 0U;
 
 #if (STABILIZER_NAV_USE_FLOW_EKF != 0U)
   DRV_NAV_EKF_DefaultConfig(&config);
   config.flow_noise_m_s = STABILIZER_NAV_EKF_FLOW_NOISE_M_S;
+  config.flow_gate_nis = 0.0f;
   DRV_NAV_EKF_Reset(&state->ekf, &config);
   DRV_NAV_EKF_GetDiagnostics(&state->ekf, &state->diagnostics);
 #else
@@ -486,6 +681,118 @@ static void stabilizer_velocity_estimator_reset(StabilizerVelocityEstimatorState
   APP_NavEstimator_PublishVelocityEKF(&state->diagnostics);
 }
 
+static void stabilizer_velocity_estimator_zero_horizontal(
+  StabilizerVelocityEstimatorState *state)
+{
+  if (state == NULL) {
+    return;
+  }
+
+  state->vel_m_s[0] = 0.0f;
+  state->vel_m_s[1] = 0.0f;
+  state->zero_flow_count = 0U;
+#if (STABILIZER_NAV_USE_FLOW_EKF != 0U)
+  state->ekf.vel_m_s[0] = 0.0f;
+  state->ekf.vel_m_s[1] = 0.0f;
+  state->ekf.accel_bias_m_s2[0] = 0.0f;
+  state->ekf.accel_bias_m_s2[1] = 0.0f;
+#else
+  state->diagnostics.vel_m_s[0] = 0.0f;
+  state->diagnostics.vel_m_s[1] = 0.0f;
+#endif
+}
+
+static void stabilizer_compensate_flow_rotation(float *flow_vx_m_s,
+                                                 float *flow_vy_m_s,
+                                                 float height_m,
+                                                 float gyro_x_rad_s,
+                                                 float gyro_y_rad_s,
+                                                 float gyro_z_rad_s,
+                                                 StabilizerFlowDebug *debug)
+{
+  float body_vx_m_s;
+  float body_vy_m_s;
+
+  if ((flow_vx_m_s == NULL) || (flow_vy_m_s == NULL) || (debug == NULL)) {
+    return;
+  }
+
+  memset(debug, 0, sizeof(*debug));
+  body_vx_m_s = *flow_vx_m_s;
+  body_vy_m_s = STABILIZER_VELOCITY_MEAS_Y_SIGN * (*flow_vy_m_s);
+  debug->sensor_velocity_m_s[0] = body_vx_m_s;
+  debug->sensor_velocity_m_s[1] = body_vy_m_s;
+
+#if (STABILIZER_FLOW_ROT_COMP_ENABLE != 0U)
+  if (height_m > 0.0f) {
+    debug->optical_rot_comp_m_s[0] =
+      -STABILIZER_FLOW_ROT_COMP_GAIN * height_m * gyro_y_rad_s;
+    debug->optical_rot_comp_m_s[1] =
+       STABILIZER_FLOW_ROT_COMP_GAIN * height_m * gyro_x_rad_s;
+
+    debug->offset_rot_comp_m_s[0] =
+      -((gyro_y_rad_s * STABILIZER_FLOW_SENSOR_OFFSET_Z_M) -
+        (gyro_z_rad_s * STABILIZER_FLOW_SENSOR_OFFSET_Y_M));
+    debug->offset_rot_comp_m_s[1] =
+      -((gyro_z_rad_s * STABILIZER_FLOW_SENSOR_OFFSET_X_M) -
+        (gyro_x_rad_s * STABILIZER_FLOW_SENSOR_OFFSET_Z_M));
+  }
+#else
+  (void)height_m;
+  (void)gyro_x_rad_s;
+  (void)gyro_y_rad_s;
+  (void)gyro_z_rad_s;
+#endif
+
+  body_vx_m_s += debug->optical_rot_comp_m_s[0] +
+                 debug->offset_rot_comp_m_s[0];
+  body_vy_m_s += debug->optical_rot_comp_m_s[1] +
+                 debug->offset_rot_comp_m_s[1];
+  debug->corrected_velocity_m_s[0] = body_vx_m_s;
+  debug->corrected_velocity_m_s[1] = body_vy_m_s;
+  *flow_vx_m_s = body_vx_m_s;
+  *flow_vy_m_s = STABILIZER_VELOCITY_MEAS_Y_SIGN * body_vy_m_s;
+}
+
+static uint8_t stabilizer_flow_velocity_plausible(
+  const StabilizerVelocityEstimatorState *state,
+  float flow_vx_m_s,
+  float flow_vy_m_s,
+  uint32_t flow_sample_ms)
+{
+  float speed_sq;
+
+  if ((state == NULL) || (flow_sample_ms == 0U)) {
+    return 0U;
+  }
+
+  speed_sq = (flow_vx_m_s * flow_vx_m_s) + (flow_vy_m_s * flow_vy_m_s);
+  if (speed_sq >
+      (STABILIZER_NAV_EKF_CONTROL_MAX_SPEED_M_S *
+       STABILIZER_NAV_EKF_CONTROL_MAX_SPEED_M_S)) {
+    return 0U;
+  }
+
+  if ((state->diagnostics.last_flow_update_ms != 0U) &&
+      (flow_sample_ms > state->diagnostics.last_flow_update_ms)) {
+    const float dt_sec =
+      (float)(flow_sample_ms - state->diagnostics.last_flow_update_ms) * 0.001f;
+    float max_step_m_s = STABILIZER_FLOW_ONLY_MAX_ACCEL_M_S2 * dt_sec;
+    const float dvx = flow_vx_m_s - state->vel_m_s[0];
+    const float dvy = flow_vy_m_s - state->vel_m_s[1];
+    const float step_sq = (dvx * dvx) + (dvy * dvy);
+
+    if (max_step_m_s < STABILIZER_FLOW_ONLY_MIN_STEP_M_S) {
+      max_step_m_s = STABILIZER_FLOW_ONLY_MIN_STEP_M_S;
+    }
+    if (step_sq > (max_step_m_s * max_step_m_s)) {
+      return 0U;
+    }
+  }
+
+  return 1U;
+}
+
 static uint8_t stabilizer_velocity_estimator_step(StabilizerVelocityEstimatorState *state,
                                                   float acc_x_m_s2,
                                                   float acc_y_m_s2,
@@ -494,6 +801,7 @@ static uint8_t stabilizer_velocity_estimator_step(StabilizerVelocityEstimatorSta
                                                   float flow_vx_m_s,
                                                   float flow_vy_m_s,
                                                   uint8_t flow_valid,
+                                                  uint8_t flow_quality,
                                                   uint32_t flow_sample_ms,
                                                   float dt_sec)
 {
@@ -501,6 +809,9 @@ static uint8_t stabilizer_velocity_estimator_step(StabilizerVelocityEstimatorSta
   uint8_t flow_accepted;
   uint8_t imu_bridge_ok = 0U;
   uint32_t now_ms = HAL_GetTick();
+  uint32_t flow_age_ms = 0xFFFFFFFFUL;
+  uint8_t new_flow_sample = 0U;
+  float flow_noise_m_s;
 #else
   uint32_t now_ms = HAL_GetTick();
   uint8_t new_sample = 0U;
@@ -517,30 +828,84 @@ static uint8_t stabilizer_velocity_estimator_step(StabilizerVelocityEstimatorSta
 
   (void)imu_vx_m_s;
   (void)imu_vy_m_s;
+  if (state->diagnostics.last_flow_update_ms != 0U) {
+    flow_age_ms = now_ms - state->diagnostics.last_flow_update_ms;
+  }
+  new_flow_sample =
+    ((flow_valid != 0U) &&
+     (flow_sample_ms != 0U) &&
+     (flow_sample_ms != state->ekf.last_flow_sample_ms)) ? 1U : 0U;
+
+  if ((new_flow_sample == 0U) &&
+      (state->diagnostics.last_flow_update_ms != 0U) &&
+      (flow_age_ms > STABILIZER_NAV_EKF_FLOW_STALE_RESET_MS)) {
+    stabilizer_velocity_estimator_zero_horizontal(state);
+    DRV_NAV_EKF_GetDiagnostics(&state->ekf, &state->diagnostics);
+    APP_NavEstimator_PublishVelocityEKF(&state->diagnostics);
+    return 0U;
+  }
+
   if ((state->diagnostics.flow_update_count != 0U) &&
       (state->diagnostics.last_flow_update_ms != 0U) &&
-      ((now_ms - state->diagnostics.last_flow_update_ms) <=
-       STABILIZER_NAV_EKF_IMU_BRIDGE_TIMEOUT_MS)) {
+      (flow_age_ms <= STABILIZER_NAV_EKF_IMU_BRIDGE_TIMEOUT_MS)) {
     imu_bridge_ok = 1U;
   }
 
   if (imu_bridge_ok != 0U) {
     DRV_NAV_EKF_Predict(&state->ekf, acc_x_m_s2, acc_y_m_s2, dt_sec);
   } else {
-    float decay = 1.0f - (STABILIZER_NAV_EKF_FLOW_LOST_DECAY_HZ * dt_sec);
+    float decay_hz = STABILIZER_NAV_EKF_FLOW_LOST_DECAY_HZ;
+    float decay;
+    if ((state->diagnostics.last_flow_update_ms != 0U) &&
+        (flow_age_ms > STABILIZER_NAV_EKF_FLOW_SOFT_HOLD_MS)) {
+      decay_hz = STABILIZER_NAV_EKF_FLOW_STALE_DECAY_HZ;
+    }
+    decay = 1.0f - (decay_hz * dt_sec);
     decay = stabilizer_clamp_f32(decay, 0.0f, 1.0f);
     state->ekf.vel_m_s[0] *= decay;
     state->ekf.vel_m_s[1] *= decay;
     state->ekf.accel_bias_m_s2[0] = 0.0f;
     state->ekf.accel_bias_m_s2[1] = 0.0f;
   }
+  flow_noise_m_s = stabilizer_flow_noise_from_quality(flow_quality);
+  if ((new_flow_sample != 0U) &&
+      (stabilizer_flow_velocity_plausible(state,
+                                          flow_vx_m_s,
+                                          flow_vy_m_s,
+                                          flow_sample_ms) == 0U)) {
+    state->zero_flow_count = 0U;
+    state->ekf.flow_skip_count++;
+    state->ekf.last_flow_sample_ms = flow_sample_ms;
+    DRV_NAV_EKF_GetDiagnostics(&state->ekf, &state->diagnostics);
+    APP_NavEstimator_PublishVelocityEKF(&state->diagnostics);
+    state->vel_m_s[0] = state->diagnostics.vel_m_s[0];
+    state->vel_m_s[1] = state->diagnostics.vel_m_s[1];
+    return 0U;
+  }
   flow_accepted = DRV_NAV_EKF_FuseFlow(&state->ekf,
                                        flow_vx_m_s,
                                        flow_vy_m_s,
                                        flow_valid,
                                        flow_sample_ms,
-                                       STABILIZER_NAV_EKF_FLOW_NOISE_M_S);
+                                       flow_noise_m_s);
   DRV_NAV_EKF_GetDiagnostics(&state->ekf, &state->diagnostics);
+  if ((flow_accepted != 0U) &&
+      (((flow_vx_m_s * flow_vx_m_s) + (flow_vy_m_s * flow_vy_m_s)) <=
+       (STABILIZER_NAV_EKF_ZERO_FLOW_SPEED_M_S *
+        STABILIZER_NAV_EKF_ZERO_FLOW_SPEED_M_S)) &&
+      (((acc_x_m_s2 * acc_x_m_s2) + (acc_y_m_s2 * acc_y_m_s2)) <=
+       (STABILIZER_NAV_EKF_ZERO_ACCEL_M_S2 *
+        STABILIZER_NAV_EKF_ZERO_ACCEL_M_S2))) {
+    if (state->zero_flow_count < STABILIZER_NAV_EKF_ZERO_FLOW_COUNT) {
+      state->zero_flow_count++;
+    }
+    if (state->zero_flow_count >= STABILIZER_NAV_EKF_ZERO_FLOW_COUNT) {
+      stabilizer_velocity_estimator_zero_horizontal(state);
+      DRV_NAV_EKF_GetDiagnostics(&state->ekf, &state->diagnostics);
+    }
+  } else if (new_flow_sample != 0U) {
+    state->zero_flow_count = 0U;
+  }
   APP_NavEstimator_PublishVelocityEKF(&state->diagnostics);
   state->vel_m_s[0] = state->diagnostics.vel_m_s[0];
   state->vel_m_s[1] = state->diagnostics.vel_m_s[1];
@@ -550,11 +915,29 @@ static uint8_t stabilizer_velocity_estimator_step(StabilizerVelocityEstimatorSta
   (void)acc_y_m_s2;
   (void)imu_vx_m_s;
   (void)imu_vy_m_s;
+  (void)flow_quality;
   (void)dt_sec;
 
   if ((flow_valid != 0U) && (flow_sample_ms != 0U)) {
     new_sample =
       (flow_sample_ms != state->diagnostics.last_flow_update_ms) ? 1U : 0U;
+    if ((new_sample != 0U) &&
+        (stabilizer_flow_velocity_plausible(state,
+                                            flow_vx_m_s,
+                                            flow_vy_m_s,
+                                            flow_sample_ms) == 0U)) {
+      state->diagnostics.flow_skip_count++;
+      if ((state->diagnostics.last_flow_update_ms == 0U) ||
+          ((now_ms - state->diagnostics.last_flow_update_ms) >
+           STABILIZER_NAV_EKF_CONTROL_TIMEOUT_MS)) {
+        state->vel_m_s[0] = 0.0f;
+        state->vel_m_s[1] = 0.0f;
+        state->diagnostics.vel_m_s[0] = 0.0f;
+        state->diagnostics.vel_m_s[1] = 0.0f;
+      }
+      APP_NavEstimator_PublishVelocityEKF(&state->diagnostics);
+      return 0U;
+    }
     state->vel_m_s[0] = flow_vx_m_s;
     state->vel_m_s[1] = flow_vy_m_s;
     state->diagnostics.vel_m_s[0] = flow_vx_m_s;
@@ -605,7 +988,7 @@ static void stabilizer_vofa_debug_read(StabilizerVofaDebug *debug)
 }
 
 static uint8_t stabilizer_servo_should_send(const DRV_SERVO_MoveCmd moves[2],
-                                            uint32_t now_ms)
+                                             uint32_t now_ms)
 {
   uint8_t should_send = 0U;
 
@@ -627,11 +1010,25 @@ static uint8_t stabilizer_servo_should_send(const DRV_SERVO_MoveCmd moves[2],
   return should_send;
 }
 
+static uint8_t stabilizer_servo_command_slot_due(uint32_t now_ms)
+{
+  uint32_t frame_start_ms = now_ms -
+    (now_ms % STABILIZER_SERVO_BUS_FRAME_MS);
+
+  if (stabilizer_last_servo_command_frame_ms == frame_start_ms) {
+    return 0U;
+  }
+  stabilizer_last_servo_command_frame_ms = frame_start_ms;
+  return 1U;
+}
+
 static void stabilizer_servo_commit_sent(const DRV_SERVO_MoveCmd moves[2],
                                          uint32_t now_ms)
 {
   stabilizer_last_sent_servo_pulse_us[0] = moves[0].pulse_us;
   stabilizer_last_sent_servo_pulse_us[1] = moves[1].pulse_us;
+  stabilizer_last_successful_servo_pulse_us[0] = moves[0].pulse_us;
+  stabilizer_last_successful_servo_pulse_us[1] = moves[1].pulse_us;
   stabilizer_last_servo_send_ms = now_ms;
 }
 
@@ -874,13 +1271,13 @@ void MX_FREERTOS_Init(void) {
   * 这是整个飞控的核心任务，负责：
   *   1. 等待 IMU 数据就绪（通过 imuDataReadySemaphore 信号量）
   *   2. 从 SensorSampleQueue 消费传感器数据
-  *   3. 互补滤波姿态解算 → roll / pitch / yaw（调用 APP_IMU_UpdateAttitude）
+  *   3. x-io Fusion AHRS → roll / pitch / yaw
   *   4. 将融合后的姿态写入 vofaLogQueue（VOFA_task 在上位机显示）
   *   5. 按 25Hz 控制周期输出舵机指令
   *
   * 数据流：
   *   Sensor_Task → SensorSampleQueue → 这里
-  *     ① 互补滤波算出 roll/pitch/yaw
+  *     ① Fusion 四元数传播、动态加速度拒绝和自动恢复
   *     ② 写入 vofaLogQueue（VOFA_task 50Hz 发送到上位机）
   *     ③ 控制器更新（500Hz，舵机总线仅在目标变化时发送）
   *
@@ -916,14 +1313,19 @@ void StabilizerTask(void *argument)
 #if (STABILIZER_USE_FIXED_IMU_DT == 0U)
   uint64_t last_imu_timestamp_us = 0ULL; /* 上一帧 IMU 时间戳（用于计算 dt）   */
 #endif
-  uint32_t stabilizer_seq = 0U;       /* 姿态解算帧序号                         */
   uint32_t last_out_ms = 0U;          /* 上次控制输出时刻 [ms]                  */
   uint8_t has_imu_sample = 0U;        /* 是否已收到至少一帧 IMU 数据            */
+  DRV_AttitudeFusionOutput attitude_fusion = {0};
 #if (STABILIZER_USE_DIRECT_ANGLE_SERVO == 0U)
   float velocity_state_x_m_s = 0.0f;
   float velocity_state_y_m_s = 0.0f;
   float velocity_imu_x_m_s = 0.0f;
   float velocity_imu_y_m_s = 0.0f;
+  float position_state_x_m = 0.0f;
+  float position_state_y_m = 0.0f;
+  float position_ref_x_m = 0.0f;
+  float position_ref_y_m = 0.0f;
+  uint8_t position_ref_xy_ready = 0U;
   float position_ref_z_m = 0.0f;
   float height_ref_m = 0.0f;
   float height_origin_m = 0.0f;
@@ -937,8 +1339,11 @@ void StabilizerTask(void *argument)
   uint32_t last_ctrl_model_ms = 0U;
   uint8_t flight_log_divider = 0U;
   uint16_t flight_log_tail_records = 0U;
+  float last_gyro_rad_s[3] = {0.0f, 0.0f, 0.0f};
+  uint8_t last_gyro_ready = 0U;
 #endif
 
+  DRV_AttitudeFusion_Init();
 #if (STABILIZER_USE_DIRECT_ANGLE_SERVO == 0U)
   DRV_IMU_NAV_Reset(&nav_state);
   stabilizer_velocity_estimator_reset(&vel_estimator);
@@ -964,29 +1369,164 @@ void StabilizerTask(void *argument)
      */
     while (osMessageQueueGet(SensorSampleQueueHandle, &msg, 0U, 0U) == osOK) {
       float dt_sec = SENSOR_IMU_DEFAULT_DT_SEC;
+#if (STABILIZER_USE_DIRECT_ANGLE_SERVO == 0U)
+      float gyro_rad_s[3];
+      float alpha_rad_s2[3] = {0.0f, 0.0f, 0.0f};
+      uint8_t alpha_valid = 0U;
+#endif
 
-      stabilizer_seq++;
 #if (STABILIZER_USE_FIXED_IMU_DT == 0U)
-      if (last_imu_timestamp_us != 0ULL) {
+      if ((last_imu_timestamp_us != 0ULL) &&
+          (msg.base.timestamp_us > last_imu_timestamp_us)) {
         uint64_t dt_us = msg.base.timestamp_us - last_imu_timestamp_us;
-        dt_sec = (float)dt_us * 0.000001f;   /* 微秒 → 秒                  */
+        if ((dt_us >= SENSOR_IMU_MIN_DT_US) &&
+            (dt_us <= SENSOR_IMU_MAX_DT_US)) {
+          dt_sec = (float)dt_us * 0.000001f; /* 微秒 → 秒                  */
+        }
       }
       last_imu_timestamp_us = msg.base.timestamp_us;
 #endif
+#if (STABILIZER_USE_DIRECT_ANGLE_SERVO == 0U)
+      gyro_rad_s[0] = msg.imu.gyro_x_dps * STABILIZER_DEG_TO_RAD;
+      gyro_rad_s[1] = msg.imu.gyro_y_dps * STABILIZER_DEG_TO_RAD;
+      gyro_rad_s[2] = msg.imu.gyro_z_dps * STABILIZER_DEG_TO_RAD;
+      if ((last_gyro_ready != 0U) &&
+          (dt_sec > 0.0f) &&
+          (dt_sec <= 0.02f)) {
+        alpha_rad_s2[0] = (gyro_rad_s[0] - last_gyro_rad_s[0]) / dt_sec;
+        alpha_rad_s2[1] = (gyro_rad_s[1] - last_gyro_rad_s[1]) / dt_sec;
+        alpha_rad_s2[2] = (gyro_rad_s[2] - last_gyro_rad_s[2]) / dt_sec;
+        alpha_valid = 1U;
+      }
+      last_gyro_rad_s[0] = gyro_rad_s[0];
+      last_gyro_rad_s[1] = gyro_rad_s[1];
+      last_gyro_rad_s[2] = gyro_rad_s[2];
+      last_gyro_ready = 1U;
+#endif
 
       /*
-       * ① 互补滤波姿态解算
-       * 调用 APP_IMU_UpdateAttitude()，融合加速度计（低频）和陀螺仪（高频）数据。
-       * 输入：msg.imu（加速度 + 陀螺仪原始值）、dt_sec、帧序号
-       * 输出：roll / pitch / yaw（全局变量，被舵机输出阶段使用）
+       * ① x-io Fusion AHRS。
+       *
+       * 下列正负号是本机实飞/台架已经确认的最终姿态契约，不再宣称采集
+       * 中间轴天然等于标准 FRD。Fusion 使用 NED 四元数并在每帧按实际 dt 更新：
+       *   roll rate = -gyro X, pitch rate = +gyro Y, yaw rate = +gyro Z
+       *   specific force = [-accel X, +accel Y, -accel Z]
+       * 加速度 X/Y 的符号使重力姿态与上述实机角速度方向一致；静止时
+       * -accel Z 保持 Fusion NED 所需的向上比力。
+       * 线加速度按模长和方向创新拒绝；持续拒绝后算法自动恢复，不依赖
+       * 高度、油门、解锁状态或 in_air 锁存。
        */
-      APP_IMU_UpdateAttitude(&msg.imu, &roll, &pitch, &yaw,
-                             dt_sec, stabilizer_seq);
-      APP_IMU_GetAttitudeDebug(&msg.attitude_debug);
-      has_imu_sample = 1U;
+      if (msg.gyro_bias_ready != 0U) {
+        DRV_AttitudeFusionInput fusion_input = {0};
+        fusion_input.time_us = msg.base.timestamp_us;
+        fusion_input.dt_s = dt_sec;
+        fusion_input.gyroscope_dps[0] = -msg.imu.gyro_x_dps;
+        fusion_input.gyroscope_dps[1] =  msg.imu.gyro_y_dps;
+        fusion_input.gyroscope_dps[2] =  msg.imu.gyro_z_dps;
+        fusion_input.accelerometer_g[0] = -msg.imu.accel_x_g;
+        fusion_input.accelerometer_g[1] =  msg.imu.accel_y_g;
+        fusion_input.accelerometer_g[2] = -msg.imu.accel_z_g;
+
+        if (DRV_AttitudeFusion_Update(&fusion_input, &attitude_fusion) != 0U) {
+          roll = attitude_fusion.roll_deg;
+          pitch = attitude_fusion.pitch_deg;
+          yaw = attitude_fusion.yaw_deg;
+          has_imu_sample = 1U;
+        }
+      }
+
+      msg.fusion_acceleration_error_deg =
+        attitude_fusion.acceleration_error_deg;
+      msg.fusion_acceleration_recovery_trigger =
+        attitude_fusion.acceleration_recovery_trigger;
+      msg.fusion_accel_correction_count =
+        attitude_fusion.accel_correction_count;
+      msg.fusion_accelerometer_ignored =
+        attitude_fusion.accelerometer_ignored;
+      msg.fusion_acceleration_recovery =
+        attitude_fusion.acceleration_recovery;
+      msg.fusion_angular_rate_recovery =
+        attitude_fusion.angular_rate_recovery;
+      msg.fusion_accel_norm_rejected =
+        attitude_fusion.accel_norm_rejected;
+
+      /*
+       * 把姿态估计和融合健康状态标注到刚采集的原始帧上。放在这里而不是控制
+       * 输出之后，是因为这些量此刻最新，而且不依赖解锁状态——地面定速测振时
+       * 同样需要它们。舵机指令在本帧尚未算出，改由下一帧带上。
+       */
+      {
+        uint8_t capture_fusion_flags = 0U;
+        if (attitude_fusion.accelerometer_ignored != 0U) {
+          capture_fusion_flags |= APP_IMU_CAPTURE_FUSION_ACCEL_IGNORED;
+        }
+        if (attitude_fusion.accel_norm_rejected != 0U) {
+          capture_fusion_flags |= APP_IMU_CAPTURE_FUSION_NORM_REJECTED;
+        }
+        if (attitude_fusion.acceleration_recovery != 0U) {
+          capture_fusion_flags |= APP_IMU_CAPTURE_FUSION_ACCEL_RECOVERY;
+        }
+        if (attitude_fusion.angular_rate_recovery != 0U) {
+          capture_fusion_flags |= APP_IMU_CAPTURE_FUSION_RATE_RECOVERY;
+        }
+        if (attitude_fusion.startup != 0U) {
+          capture_fusion_flags |= APP_IMU_CAPTURE_FUSION_STARTUP;
+        }
+        APP_IMU_Capture_AnnotateControl(
+          roll, pitch, yaw,
+          stabilizer_last_successful_servo_pulse_us[0],
+          stabilizer_last_successful_servo_pulse_us[1],
+          attitude_fusion.acceleration_error_deg,
+          capture_fusion_flags,
+          stabilizer_capture_armed);
+      }
+
+      /* Apparent acceleration tilt is retained for diagnosis only. */
+      msg.attitude_debug.roll_acc_deg =
+        atan2f(-msg.imu.accel_y_g, msg.imu.accel_z_g) /
+        STABILIZER_DEG_TO_RAD;
+      msg.attitude_debug.pitch_acc_deg =
+        atan2f(-msg.imu.accel_x_g,
+               sqrtf(msg.imu.accel_y_g * msg.imu.accel_y_g +
+                     msg.imu.accel_z_g * msg.imu.accel_z_g)) /
+        STABILIZER_DEG_TO_RAD;
+      msg.attitude_debug.roll_gyro_deg = roll;
+      msg.attitude_debug.pitch_gyro_deg = pitch;
+      msg.attitude_debug.roll_residual_deg =
+        msg.attitude_debug.roll_acc_deg - roll;
+      msg.attitude_debug.pitch_residual_deg =
+        msg.attitude_debug.pitch_acc_deg - pitch;
+      msg.attitude_debug.accel_norm_g =
+        sqrtf(msg.imu.accel_x_g * msg.imu.accel_x_g +
+              msg.imu.accel_y_g * msg.imu.accel_y_g +
+              msg.imu.accel_z_g * msg.imu.accel_z_g);
+      msg.attitude_debug.accel_trust = 0.0f;
+      msg.attitude_debug.accel_residual_deg =
+        sqrtf(msg.attitude_debug.roll_residual_deg *
+              msg.attitude_debug.roll_residual_deg +
+              msg.attitude_debug.pitch_residual_deg *
+              msg.attitude_debug.pitch_residual_deg);
+      msg.attitude_debug.alpha = 1.0f;
+      msg.attitude_debug.dt_ms = dt_sec * 1000.0f;
 
       if ((attitude_zero_ready == 0U) &&
-          (msg.gyro_bias_ready != 0U)) {
+          (msg.gyro_bias_ready != 0U) &&
+          (attitude_fusion.initialized != 0U) &&
+          (attitude_fusion.startup == 0U) &&
+          (attitude_fusion.accelerometer_ignored == 0U) &&
+          (attitude_fusion.accel_norm_rejected == 0U) &&
+          (attitude_fusion.acceleration_error_deg <=
+           STABILIZER_ATTITUDE_ZERO_ERROR_MAX_DEG) &&
+          (msg.attitude_debug.accel_norm_g >=
+           STABILIZER_ATTITUDE_ZERO_ACCEL_MIN_G) &&
+          (msg.attitude_debug.accel_norm_g <=
+           STABILIZER_ATTITUDE_ZERO_ACCEL_MAX_G) &&
+          (fabsf(msg.imu.gyro_x_dps) <=
+           STABILIZER_ATTITUDE_ZERO_GYRO_MAX_DPS) &&
+          (fabsf(msg.imu.gyro_y_dps) <=
+           STABILIZER_ATTITUDE_ZERO_GYRO_MAX_DPS) &&
+          (fabsf(msg.imu.gyro_z_dps) <=
+           STABILIZER_ATTITUDE_ZERO_GYRO_MAX_DPS)) {
         if (attitude_zero_start_ms == 0U) {
           attitude_zero_start_ms = HAL_GetTick();
         }
@@ -1002,6 +1542,13 @@ void StabilizerTask(void *argument)
           yaw_zero = yaw_zero_sum / (float)attitude_zero_count;
           attitude_zero_ready = 1U;
         }
+      } else if (attitude_zero_ready == 0U) {
+        /* Require one uninterrupted static window; motion restarts calibration. */
+        attitude_zero_start_ms = 0U;
+        attitude_zero_count = 0U;
+        roll_zero_sum = 0.0f;
+        pitch_zero_sum = 0.0f;
+        yaw_zero_sum = 0.0f;
       }
 
       if (attitude_zero_ready != 0U) {
@@ -1044,23 +1591,67 @@ void StabilizerTask(void *argument)
         velocity_imu_x_m_s = nav_state.vel_m_s[0];
         velocity_imu_y_m_s = nav_state.vel_m_s[1];
         {
+          float imu_accel_x_m_s2 = 0.0f;
+          float imu_accel_y_m_s2 = 0.0f;
+          float imu_accel_weight = 0.0f;
           float flow_vx_m_s = 0.0f;
           float flow_vy_m_s = 0.0f;
+          float flow_height_m = 0.0f;
           uint32_t flow_sample_ms = 0U;
+          APP_OPTICAL_FLOW_Status flow_status;
+          uint32_t flow_height_sample_ms = 0U;
           uint8_t flow_valid =
             APP_OpticalFlow_GetVelocitySample(&flow_vx_m_s,
                                               &flow_vy_m_s,
                                               &flow_sample_ms);
           uint8_t flow_accepted = 0U;
 
+          memset(&flow_status, 0, sizeof(flow_status));
+          APP_OpticalFlow_GetStatus(&flow_status);
+          if (attitude_zero_ready != 0U) {
+            stabilizer_compensated_imu_accel_nav_xy(
+              msg.imu.accel_x_g,
+              msg.imu.accel_y_g,
+              msg.imu.accel_z_g,
+              roll_control * STABILIZER_DEG_TO_RAD,
+              pitch_control * STABILIZER_DEG_TO_RAD,
+              yaw_control * STABILIZER_DEG_TO_RAD,
+              gyro_rad_s,
+              alpha_rad_s2,
+              alpha_valid,
+              &imu_accel_x_m_s2,
+              &imu_accel_y_m_s2,
+              &imu_accel_weight);
+          }
+
+          if (flow_valid != 0U) {
+            if ((APP_OpticalFlow_GetHeightSample(&flow_height_m,
+                                                 NULL,
+                                                 &flow_height_sample_ms) == 0U) ||
+                (flow_height_sample_ms == 0U)) {
+              flow_height_m = 0.0f;
+            }
+            stabilizer_compensate_flow_rotation(
+              &flow_vx_m_s,
+              &flow_vy_m_s,
+              flow_height_m,
+              gyro_rad_s[0],
+              gyro_rad_s[1],
+              gyro_rad_s[2],
+              &stabilizer_flow_debug);
+          } else {
+            memset(&stabilizer_flow_debug, 0, sizeof(stabilizer_flow_debug));
+          }
+
           flow_accepted = stabilizer_velocity_estimator_step(&vel_estimator,
-                                                             nav_state.acc_nav_m_s2[0],
-                                                             nav_state.acc_nav_m_s2[1],
+                                                             imu_accel_x_m_s2,
+                                                             imu_accel_y_m_s2,
                                                              velocity_imu_x_m_s,
                                                              velocity_imu_y_m_s,
                                                              flow_vx_m_s,
                                                              flow_vy_m_s,
                                                              flow_valid,
+                                                             flow_status.flow_quality,
                                                              flow_sample_ms,
                                                              dt_sec);
           velocity_state_x_m_s = vel_estimator.vel_m_s[0];
@@ -1068,14 +1659,16 @@ void StabilizerTask(void *argument)
           if (flow_accepted != 0U) {
             APP_OpticalFlow_SetVelocitySource(APP_OPTICAL_FLOW_VEL_SOURCE_FLOW);
           } else {
-            APP_OpticalFlow_SetVelocitySource(APP_OPTICAL_FLOW_VEL_SOURCE_IMU);
+            APP_OpticalFlow_SetVelocitySource(APP_OPTICAL_FLOW_VEL_SOURCE_NONE);
           }
+          vofa_debug.acc_nav_m_s2[0] = imu_accel_x_m_s2;
+          vofa_debug.acc_nav_m_s2[1] = imu_accel_y_m_s2;
+          (void)imu_accel_weight;
         }
-        vofa_debug.acc_nav_m_s2[0] = nav_state.acc_nav_m_s2[0];
-        vofa_debug.acc_nav_m_s2[1] = nav_state.acc_nav_m_s2[1];
         vofa_debug.acc_nav_m_s2[2] = nav_state.acc_nav_m_s2[2];
         vofa_debug.vel_est_m_s[0] = velocity_state_x_m_s;
-        vofa_debug.vel_est_m_s[1] = velocity_state_y_m_s;
+        vofa_debug.vel_est_m_s[1] =
+          STABILIZER_VELOCITY_MEAS_Y_SIGN * velocity_state_y_m_s;
         vofa_debug.vel_est_m_s[2] = nav_state.vel_m_s[2];
         vofa_debug.nav_accel_lpf_alpha = nav_state.accel_lpf_alpha;
         vofa_debug.nav_velocity_leak_hz = nav_state.velocity_leak_rate_hz;
@@ -1119,6 +1712,8 @@ void StabilizerTask(void *argument)
         uint8_t rc_link_seen = 0U;
         uint16_t rc_throttle_motor_us = BSP_PWM_ESC_MIN_US;
         uint8_t rc_use_stabilized_motor_mix = 0U;
+        uint8_t rc_attitude_debug_mode = 0U;
+        uint8_t rc_control_motor_mix_allowed = 0U;
         uint8_t rc_arm_switch_high = 0U;
         uint8_t rc_arm_throttle_low = 0U;
         uint8_t range_height_valid = 0U;
@@ -1161,10 +1756,18 @@ void StabilizerTask(void *argument)
         rc_arm_throttle_low =
           (ch[STABILIZER_RC_CH_THROTTLE_Z] <= STABILIZER_RC_THROTTLE_ARM_LOW_US) ? 1U : 0U;
         rc_armed = stabilizer_rc_update_armed(ch, rc_link_ok);
+        stabilizer_capture_armed = rc_armed;
         rc_throttle_motor_us =
           stabilizer_rc_throttle_to_motor_pulse(ch[STABILIZER_RC_CH_THROTTLE_Z]);
         rc_use_stabilized_motor_mix =
           stabilizer_rc_use_stabilized_motor_mix(ch[STABILIZER_RC_CH_THROTTLE_Z]);
+        rc_attitude_debug_mode =
+          ((rc_link_ok != 0U) &&
+           (rc_use_stabilized_motor_mix != 0U) &&
+           (ch[STABILIZER_RC_CH_ATTITUDE_DEBUG] >
+            STABILIZER_RC_ATTITUDE_DEBUG_THRESHOLD_US)) ? 1U : 0U;
+        rc_control_motor_mix_allowed =
+          (rc_use_stabilized_motor_mix != 0U) ? 1U : 0U;
         (void)APP_ServoCal_Step(ch, rc_link_ok, rc_arm_switch_high, now);
         servo_cal_active = APP_ServoCal_IsActive();
         if (servo_cal_active != 0U) {
@@ -1224,7 +1827,7 @@ void StabilizerTask(void *argument)
           } else {
             led_arm_block_reason = APP_LED_ARM_BLOCK_ARM_SWITCH;
           }
-        } else if ((rc_use_stabilized_motor_mix != 0U) &&
+        } else if ((rc_control_motor_mix_allowed != 0U) &&
                    (imu_control_valid == 0U) &&
                    (ident_running == 0U)) {
           led_arm_block_reason = APP_LED_ARM_BLOCK_IMU;
@@ -1242,15 +1845,20 @@ void StabilizerTask(void *argument)
           moves[0].pulse_us = ident_alpha_us;
           moves[1].pulse_us = ident_beta_us;
 #if (STABILIZER_USE_DIRECT_ANGLE_SERVO == 0U)
-        } else if (rc_use_stabilized_motor_mix == 0U) {
+        } else if (rc_control_motor_mix_allowed == 0U) {
           /*
-           * Throttle below the 20% stabilization threshold is the low-power
+           * Throttle below the stabilization threshold is the low-power
            * direct-throttle stage. Keep tilt servos centered there so stick
            * motion cannot move the airframe before the test is intentionally
            * brought into the active range.
            */
           velocity_state_x_m_s = 0.0f;
           velocity_state_y_m_s = 0.0f;
+          position_state_x_m = 0.0f;
+          position_state_y_m = 0.0f;
+          position_ref_x_m = 0.0f;
+          position_ref_y_m = 0.0f;
+          position_ref_xy_ready = 0U;
           height_ref_m = 0.0f;
           /* 上电高度原点只在首次有效测高时锁存，低油门直通不重新归零。 */
           position_ref_z_ready = 0U;
@@ -1258,6 +1866,7 @@ void StabilizerTask(void *argument)
           DRV_IMU_NAV_Reset(&nav_state);
           stabilizer_velocity_estimator_reset(&vel_estimator);
           DRV_COAX_CTRL_ResetState();
+          last_gyro_ready = 0U;
           position_ref_z_ready = 0U;
           yaw_ref_ready = 0U;
           vofa_debug.vel_loop_active = 0.0f;
@@ -1308,47 +1917,105 @@ void StabilizerTask(void *argument)
           }
           {
             uint8_t velocity_loop_enabled = 0U;
-
-          attitude.roll_rad = roll_control * STABILIZER_DEG_TO_RAD;
-          attitude.pitch_rad = pitch_control * STABILIZER_DEG_TO_RAD;
-          attitude.yaw_rad = yaw_control * STABILIZER_DEG_TO_RAD;
-          attitude.x_m = 0.0f;
-          attitude.y_m = 0.0f;
-          attitude.z_m = -relative_height_m;
-          attitude.vx_m_s = velocity_state_x_m_s;
-          attitude.vy_m_s = velocity_state_y_m_s;
-          attitude.vz_m_s = -range_velocity_m_s;
-          if (range_height_valid == 0U) {
-            attitude.z_m = 0.0f;
-            attitude.vz_m_s = 0.0f;
-          }
-          attitude.gyro_x_rad_s = msg.imu.gyro_x_dps * STABILIZER_DEG_TO_RAD;
-          attitude.gyro_y_rad_s = msg.imu.gyro_y_dps * STABILIZER_DEG_TO_RAD;
-          attitude.gyro_z_rad_s = msg.imu.gyro_z_dps * STABILIZER_DEG_TO_RAD;
-
-          reference.vx_m_s = stabilizer_rc_normalized(ch[STABILIZER_RC_CH_PITCH]) *
-                             STABILIZER_XY_VEL_REF_MAX_M_S;
-          reference.vy_m_s = stabilizer_rc_normalized(ch[STABILIZER_RC_CH_ROLL]) *
-                             STABILIZER_XY_VEL_REF_MAX_M_S;
-          reference.vz_m_s = 0.0f;
-          {
+            float velocity_control_x_m_s = velocity_state_x_m_s;
+            float velocity_control_y_m_s =
+              STABILIZER_VELOCITY_MEAS_Y_SIGN * velocity_state_y_m_s;
             float vel_loop_enable = 0.0f;
 
-            (void)DRV_COAX_CTRL_GetParam("coax.vel_loop_enable", &vel_loop_enable);
-            (void)DRV_COAX_CTRL_GetParam("coax.vel_loop_x_kp", &vofa_debug.vel_loop_x_kp);
-            (void)DRV_COAX_CTRL_GetParam("coax.vel_loop_x_ki", &vofa_debug.vel_loop_x_ki);
-            (void)DRV_COAX_CTRL_GetParam("coax.vel_loop_x_kd", &vofa_debug.vel_loop_x_kd);
-            (void)DRV_COAX_CTRL_GetParam("coax.vel_loop_y_kp", &vofa_debug.vel_loop_y_kp);
-            (void)DRV_COAX_CTRL_GetParam("coax.vel_loop_y_ki", &vofa_debug.vel_loop_y_ki);
-            (void)DRV_COAX_CTRL_GetParam("coax.vel_loop_y_kd", &vofa_debug.vel_loop_y_kd);
+            attitude.roll_rad = roll_control * STABILIZER_DEG_TO_RAD;
+            attitude.pitch_rad = pitch_control * STABILIZER_DEG_TO_RAD;
+            attitude.yaw_rad = yaw_control * STABILIZER_DEG_TO_RAD;
+            attitude.z_m = -relative_height_m;
+            attitude.vx_m_s = velocity_control_x_m_s;
+            attitude.vy_m_s = velocity_control_y_m_s;
+            attitude.vz_m_s = -range_velocity_m_s;
+            if (range_height_valid == 0U) {
+              attitude.z_m = 0.0f;
+              attitude.vz_m_s = 0.0f;
+            }
+            attitude.gyro_x_rad_s = msg.imu.gyro_x_dps * STABILIZER_DEG_TO_RAD;
+            attitude.gyro_y_rad_s = msg.imu.gyro_y_dps * STABILIZER_DEG_TO_RAD;
+            attitude.gyro_z_rad_s = msg.imu.gyro_z_dps * STABILIZER_DEG_TO_RAD;
 
+            (void)DRV_COAX_CTRL_GetParam("coax.vel_loop_enable", &vel_loop_enable);
             velocity_loop_enabled = (vel_loop_enable >= 0.5f) ? 1U : 0U;
+            if (rc_attitude_debug_mode != 0U) {
+              reference.vx_m_s = 0.0f;
+              reference.vy_m_s = 0.0f;
+              reference.direct_attitude_target_valid = 1U;
+              reference.manual_total_force_valid = 1U;
+              reference.manual_total_force_n =
+                DRV_COAX_CTRL_MotorPulseToTotalThrust(rc_throttle_motor_us);
+              reference.target_pitch_rad =
+                stabilizer_rc_normalized(ch[STABILIZER_RC_CH_PITCH]) *
+                STABILIZER_RC_ATTITUDE_TARGET_LIMIT_RAD *
+                STABILIZER_RC_ATTITUDE_TARGET_PITCH_SIGN;
+              reference.target_roll_rad =
+                stabilizer_rc_normalized(ch[STABILIZER_RC_CH_ROLL]) *
+                STABILIZER_RC_ATTITUDE_TARGET_LIMIT_RAD *
+                STABILIZER_RC_ATTITUDE_TARGET_ROLL_SIGN;
+              reference.horizontal_velocity_valid = 0U;
+              velocity_loop_enabled = 0U;
+            } else {
+              reference.vx_m_s =
+              stabilizer_rc_normalized(ch[STABILIZER_RC_CH_PITCH]) *
+                STABILIZER_XY_VEL_REF_MAX_M_S;
+              reference.vy_m_s =
+              stabilizer_rc_normalized(ch[STABILIZER_RC_CH_ROLL]) *
+                STABILIZER_XY_VEL_REF_MAX_M_S;
+              reference.horizontal_velocity_valid = velocity_loop_enabled;
+            }
+            reference.vz_m_s = 0.0f;
             reference.ax_m_s2 = 0.0f;
             reference.ay_m_s2 = 0.0f;
             reference.dt_sec = ctrl_dt_sec;
-            reference.horizontal_velocity_valid = velocity_loop_enabled;
-            reference.x_m = attitude.x_m;
-            reference.y_m = attitude.y_m;
+
+            if (velocity_loop_enabled != 0U) {
+              position_state_x_m =
+                stabilizer_clamp_f32(position_state_x_m +
+                                     velocity_control_x_m_s * ctrl_dt_sec,
+                                     -STABILIZER_XY_POS_LIMIT_M,
+                                      STABILIZER_XY_POS_LIMIT_M);
+              position_state_y_m =
+                stabilizer_clamp_f32(position_state_y_m +
+                                     velocity_control_y_m_s * ctrl_dt_sec,
+                                     -STABILIZER_XY_POS_LIMIT_M,
+                                      STABILIZER_XY_POS_LIMIT_M);
+              if (position_ref_xy_ready == 0U) {
+                position_ref_x_m = position_state_x_m;
+                position_ref_y_m = position_state_y_m;
+                position_ref_xy_ready = 1U;
+              }
+              position_ref_x_m += reference.vx_m_s * ctrl_dt_sec;
+              position_ref_y_m += reference.vy_m_s * ctrl_dt_sec;
+              position_ref_x_m =
+                stabilizer_clamp_f32(position_ref_x_m,
+                                     position_state_x_m - STABILIZER_XY_POS_ERR_MAX_M,
+                                     position_state_x_m + STABILIZER_XY_POS_ERR_MAX_M);
+              position_ref_y_m =
+                stabilizer_clamp_f32(position_ref_y_m,
+                                     position_state_y_m - STABILIZER_XY_POS_ERR_MAX_M,
+                                     position_state_y_m + STABILIZER_XY_POS_ERR_MAX_M);
+              position_ref_x_m =
+                stabilizer_clamp_f32(position_ref_x_m,
+                                     -STABILIZER_XY_POS_LIMIT_M,
+                                      STABILIZER_XY_POS_LIMIT_M);
+              position_ref_y_m =
+                stabilizer_clamp_f32(position_ref_y_m,
+                                     -STABILIZER_XY_POS_LIMIT_M,
+                                      STABILIZER_XY_POS_LIMIT_M);
+            } else {
+              position_ref_x_m = position_state_x_m;
+              position_ref_y_m = position_state_y_m;
+              position_ref_xy_ready = 0U;
+            }
+
+            attitude.x_m = position_state_x_m;
+            attitude.y_m = position_state_y_m;
+            reference.x_m = position_ref_x_m;
+            reference.y_m = position_ref_y_m;
+            vofa_debug.pos_est_m[0] = position_state_x_m;
+            vofa_debug.pos_est_m[1] = position_state_y_m;
             vofa_debug.vel_ref_m_s[0] = reference.vx_m_s;
             vofa_debug.vel_ref_m_s[1] = reference.vy_m_s;
             vofa_debug.vel_err_m_s[0] = reference.vx_m_s - attitude.vx_m_s;
@@ -1357,7 +2024,13 @@ void StabilizerTask(void *argument)
               (velocity_loop_enabled != 0U) ? 1.0f : 0.0f;
           }
           reference.az_m_s2 = 0.0f;
-          {
+          if (rc_attitude_debug_mode != 0U) {
+            reference.z_m = attitude.z_m;
+            reference.vz_m_s = attitude.vz_m_s;
+            height_ref_m = relative_height_m;
+            position_ref_z_m = attitude.z_m;
+            position_ref_z_ready = 0U;
+          } else {
             if ((range_height_valid == 0U) ||
                 (height_origin_ready == 0U)) {
               height_ref_m = 0.0f;
@@ -1389,15 +2062,15 @@ void StabilizerTask(void *argument)
                                      STABILIZER_Z_REF_MAX_M);
               position_ref_z_m = -height_ref_m;
             }
-          }
-          if ((range_height_valid == 0U) ||
-              (height_origin_ready == 0U)) {
-            reference.z_m = attitude.z_m;
-          } else {
-            reference.z_m =
-              stabilizer_clamp_f32(position_ref_z_m,
-                                   attitude.z_m - STABILIZER_Z_POS_ERR_MAX_M,
-                                   attitude.z_m + STABILIZER_Z_POS_ERR_MAX_M);
+            if ((range_height_valid == 0U) ||
+                (height_origin_ready == 0U)) {
+              reference.z_m = attitude.z_m;
+            } else {
+              reference.z_m =
+                stabilizer_clamp_f32(position_ref_z_m,
+                                     attitude.z_m - STABILIZER_Z_POS_ERR_MAX_M,
+                                     attitude.z_m + STABILIZER_Z_POS_ERR_MAX_M);
+            }
           }
           {
             float yaw_rate_ref_rad_s =
@@ -1429,10 +2102,10 @@ void StabilizerTask(void *argument)
             vofa_debug.vel_pid_out_m_s2[1] = balance_debug.accel_out_m_s2[1];
             vofa_debug.vel_pid_p_m_s2[0] = balance_debug.pos_p_m_s2[0];
             vofa_debug.vel_pid_p_m_s2[1] = balance_debug.pos_p_m_s2[1];
-            vofa_debug.vel_pid_i_m_s2[0] = balance_debug.vel_d_m_s2[0];
-            vofa_debug.vel_pid_i_m_s2[1] = balance_debug.vel_d_m_s2[1];
-            vofa_debug.vel_pid_d_m_s2[0] = 0.0f;
-            vofa_debug.vel_pid_d_m_s2[1] = 0.0f;
+            vofa_debug.vel_pid_i_m_s2[0] = 0.0f;
+            vofa_debug.vel_pid_i_m_s2[1] = 0.0f;
+            vofa_debug.vel_pid_d_m_s2[0] = balance_debug.vel_d_m_s2[0];
+            vofa_debug.vel_pid_d_m_s2[1] = balance_debug.vel_d_m_s2[1];
             ident_att_obs.now_ms = now;
             ident_att_obs.roll_deg = roll_control;
             ident_att_obs.pitch_deg = pitch_control;
@@ -1452,7 +2125,6 @@ void StabilizerTask(void *argument)
           vofa_debug.range_vertical_velocity_m_s = range_velocity_m_s;
           vofa_debug.altitude_ref_m = -reference.z_m;
           vofa_debug.altitude_correction_us = 0.0f;
-          }
 
           moves[0].pulse_us = ctrl_out.servo_alpha_us;
           moves[1].pulse_us = ctrl_out.servo_beta_us;
@@ -1468,6 +2140,11 @@ void StabilizerTask(void *argument)
           DRV_IMU_NAV_Reset(&nav_state);
           stabilizer_velocity_estimator_reset(&vel_estimator);
           DRV_COAX_CTRL_ResetState();
+          position_state_x_m = 0.0f;
+          position_state_y_m = 0.0f;
+          position_ref_x_m = 0.0f;
+          position_ref_y_m = 0.0f;
+          position_ref_xy_ready = 0U;
           vofa_debug.vel_loop_active = 0.0f;
           stabilizer_vofa_debug_publish(&vofa_debug);
 #endif
@@ -1493,19 +2170,29 @@ void StabilizerTask(void *argument)
 
         BSP_BusServo_Service(now);
         if (servo_cal_active == 0U) {
+          uint8_t servo_command_slot_due;
+
           APP_ServoFeedbackBench_ApplyTargets(now, moves);
           stabilizer_servo_record_target(moves);
+          servo_command_slot_due = stabilizer_servo_command_slot_due(now);
 
-          /* Feedback bench adds a deterministic 100 Hz real-command bus load. */
-          if ((stabilizer_servo_should_send(moves, now) != 0U) ||
-              (APP_ServoFeedbackBench_MoveRefreshDue(
-                 now, stabilizer_last_servo_send_ms) != 0U)) {
+          if ((servo_command_slot_due != 0U) &&
+              ((stabilizer_servo_should_send(moves, now) != 0U) ||
+               (APP_ServoFeedbackBench_MoveRefreshDue(
+                  now, stabilizer_last_servo_send_ms) != 0U))) {
             DRV_SERVO_Status servo_move_status =
               BSP_BusServo_MoveManyAsync(moves, 2U,
                                          STABILIZER_SERVO_MOVE_TIME_MS);
+
+            stabilizer_servo_bus_diag.move_attempt_count++;
             APP_ServoFeedbackBench_RecordMoveResult(servo_move_status);
             if (servo_move_status == DRV_SERVO_OK) {
+              stabilizer_servo_bus_diag.move_sent_count++;
               stabilizer_servo_commit_sent(moves, now);
+            } else if (servo_move_status == DRV_SERVO_BUSY) {
+              stabilizer_servo_bus_diag.move_busy_count++;
+            } else {
+              stabilizer_servo_bus_diag.move_error_count++;
             }
           }
           APP_ServoFeedbackBench_Step(now, moves);
@@ -1520,18 +2207,20 @@ void StabilizerTask(void *argument)
           BSP_PWM_SetEscPulse(2, BSP_PWM_ESC_MIN_US);
           motor_output_reason = APP_FLIGHT_LOG_MOTOR_REASON_DISARMED_MIN;
         } else if ((rc_link_ok != 0U) && (rc_armed != 0U)) {
-          if ((rc_use_stabilized_motor_mix != 0U) &&
+          if ((rc_control_motor_mix_allowed != 0U) &&
               (ident_running == 0U) &&
               (imu_control_valid != 0U)) {
             BSP_PWM_SetEscPulse(1, ctrl_out.motor_upper_us);
             BSP_PWM_SetEscPulse(2, ctrl_out.motor_lower_us);
-            motor_output_reason = APP_FLIGHT_LOG_MOTOR_REASON_STABILIZED_MIX;
+            motor_output_reason = (rc_attitude_debug_mode != 0U) ?
+              APP_FLIGHT_LOG_MOTOR_REASON_ATTITUDE_DEBUG :
+              APP_FLIGHT_LOG_MOTOR_REASON_STABILIZED_MIX;
           } else {
             BSP_PWM_SetEscPulse(1, rc_throttle_motor_us);
             BSP_PWM_SetEscPulse(2, rc_throttle_motor_us);
             if (ident_running != 0U) {
               motor_output_reason = APP_FLIGHT_LOG_MOTOR_REASON_IDENT_DIRECT;
-            } else if ((rc_use_stabilized_motor_mix != 0U) &&
+            } else if ((rc_control_motor_mix_allowed != 0U) &&
                        (imu_control_valid == 0U)) {
               motor_output_reason = APP_FLIGHT_LOG_MOTOR_REASON_IMU_INVALID_DIRECT;
             } else {
@@ -1557,13 +2246,15 @@ void StabilizerTask(void *argument)
         if (flight_log_divider == 0U) {
           APP_FlightLogSnapshot flog_snapshot;
           APP_ServoFeedbackLogSample servo_feedback_sample;
+          APP_OPTICAL_FLOW_Status flow_status;
           uint8_t flight_log_active =
             ((rc_link_ok != 0U) &&
              (rc_armed != 0U) &&
-             (rc_use_stabilized_motor_mix != 0U)) ? 1U : 0U;
+             (rc_control_motor_mix_allowed != 0U)) ? 1U : 0U;
           uint8_t flight_log_should_record = flight_log_active;
 
           memset(&flog_snapshot, 0, sizeof(flog_snapshot));
+          APP_OpticalFlow_GetStatus(&flow_status);
           flog_snapshot.timestamp_us = msg.base.timestamp_us;
           flog_snapshot.tick_ms = now;
           flog_snapshot.imu_sequence = msg.base.sequence;
@@ -1578,6 +2269,10 @@ void StabilizerTask(void *argument)
           flog_snapshot.throttle_us = rc_throttle_motor_us;
           flog_snapshot.servo_alpha_us = moves[0].pulse_us;
           flog_snapshot.servo_beta_us = moves[1].pulse_us;
+          flog_snapshot.servo_alpha_sent_us =
+            stabilizer_last_successful_servo_pulse_us[0];
+          flog_snapshot.servo_beta_sent_us =
+            stabilizer_last_successful_servo_pulse_us[1];
           APP_ServoFeedback_GetLogSample(now, &servo_feedback_sample);
           flog_snapshot.servo_alpha_feedback_us =
             servo_feedback_sample.position_us[0];
@@ -1593,6 +2288,56 @@ void StabilizerTask(void *argument)
             servo_feedback_sample.sample_sequence[1];
           flog_snapshot.servo_feedback_valid_mask =
             servo_feedback_sample.valid_mask;
+          flog_snapshot.servo_move_attempt_count =
+            stabilizer_servo_bus_diag.move_attempt_count;
+          flog_snapshot.servo_move_sent_count =
+            stabilizer_servo_bus_diag.move_sent_count;
+          flog_snapshot.servo_move_busy_count =
+            stabilizer_servo_bus_diag.move_busy_count;
+          flog_snapshot.servo_move_error_count =
+            stabilizer_servo_bus_diag.move_error_count;
+          flog_snapshot.servo_feedback_request_count =
+            servo_feedback_sample.request_count;
+          flog_snapshot.servo_feedback_response_count =
+            servo_feedback_sample.response_count;
+          flog_snapshot.servo_feedback_timeout_count =
+            servo_feedback_sample.timeout_count;
+          flog_snapshot.servo_feedback_parse_error_count =
+            servo_feedback_sample.parse_error_count;
+          flog_snapshot.servo_feedback_uart_error_count =
+            servo_feedback_sample.uart_error_count;
+          flog_snapshot.servo_feedback_busy_count =
+            servo_feedback_sample.busy_count;
+          flog_snapshot.flow_raw_x = flow_status.flow_vel_x;
+          flog_snapshot.flow_raw_y = flow_status.flow_vel_y;
+          flog_snapshot.flow_sample_age_ms =
+            (uint16_t)((flow_status.flow_age_ms > 65535U) ?
+                       65535U : flow_status.flow_age_ms);
+          flog_snapshot.flow_height_age_ms =
+            (uint16_t)((flow_status.distance_age_ms > 65535U) ?
+                       65535U : flow_status.distance_age_ms);
+          flog_snapshot.flow_quality = flow_status.flow_quality;
+          flog_snapshot.flow_valid =
+            ((flow_status.valid != 0U) &&
+             (flow_status.flow_status == 1U) &&
+             (flow_status.flow_quality >= APP_OPTICAL_FLOW_MIN_QUALITY)) ?
+            1U : 0U;
+          flog_snapshot.flow_velocity_valid = flow_status.velocity_valid;
+          flog_snapshot.flow_height_valid = flow_status.height_valid;
+          flog_snapshot.flow_height_raw_m = flow_status.height_raw_m;
+          flog_snapshot.flow_height_m = flow_status.height_m;
+          memcpy(flog_snapshot.flow_sensor_velocity_m_s,
+                 stabilizer_flow_debug.sensor_velocity_m_s,
+                 sizeof(flog_snapshot.flow_sensor_velocity_m_s));
+          memcpy(flog_snapshot.flow_optical_rot_comp_m_s,
+                 stabilizer_flow_debug.optical_rot_comp_m_s,
+                 sizeof(flog_snapshot.flow_optical_rot_comp_m_s));
+          memcpy(flog_snapshot.flow_offset_rot_comp_m_s,
+                 stabilizer_flow_debug.offset_rot_comp_m_s,
+                 sizeof(flog_snapshot.flow_offset_rot_comp_m_s));
+          memcpy(flog_snapshot.flow_corrected_velocity_m_s,
+                 stabilizer_flow_debug.corrected_velocity_m_s,
+                 sizeof(flog_snapshot.flow_corrected_velocity_m_s));
           flog_snapshot.motor_upper_us = BSP_PWM_GetEscPulse(1);
           flog_snapshot.motor_lower_us = BSP_PWM_GetEscPulse(2);
           flog_snapshot.rc_armed = rc_armed;
@@ -1712,11 +2457,15 @@ void Sensor_Task(void *argument)
   APP_Sensor_RateMeter imu_poll_rate_meter = {0};
 
   /*
-   * 低通滤波器：陀螺 80Hz，加速度 30Hz
-   * dt = 0.001s（@ 1kHz 采样率）
-   * 陀螺 80Hz 截止频率的选择依据：共轴飞行器机械振动主要在 50~100Hz，
-   * 需要在保留有效角速度信号的同时衰减高频振动噪声。
-   * 加速度 30Hz 更加激进——加速度计噪声大且姿态解算只关心重力方向。
+   * 低通滤波器：二阶 Butterworth，陀螺 80Hz，加速度 40Hz，dt = 0.001s。
+   *
+   * 截止频率由实测定速扫描确定（tools/data/imu_vibration/）：桨叶通过频率
+   * 随油门从 56Hz 线性升到悬停的 180Hz（r=0.996，确认是真实振动非混叠）。
+   * 80Hz 二阶在 180Hz 给 -15.9dB，原一阶只有 -8.9dB；代价是 10Hz 处群延迟
+   * 从 1.93ms 增到 2.80ms，对姿态环可接受。
+   *
+   * 加速度抬到 40Hz（原 30Hz）：二阶滚降已足够陡，不必再靠压低截止频率换
+   * 衰减，抬高可减少重力方向的相位滞后。
    */
   APP_Sensor_Lpf gyro_lpf[3], acc_lpf[3];
   uint32_t imu_irq_ready_count = 0U;
@@ -1725,29 +2474,37 @@ void Sensor_Task(void *argument)
   uint32_t imu_drdy_miss_count = 0U;
   for (uint32_t i = 0U; i < 3U; i++) {
     APP_Sensor_LpfInit(&gyro_lpf[i], 80.0f, 0.001f);
-    APP_Sensor_LpfInit(&acc_lpf[i], 30.0f, 0.001f);
+    APP_Sensor_LpfInit(&acc_lpf[i], 40.0f, 0.001f);
   }
 
   osDelay(10);
 
   for(;;)
   {
+    uint64_t imu_sample_timestamp_us = APP_SENSOR_TIMESTAMP_INVALID;
+    uint32_t imu_ready_flags;
+
     /*
      * 步骤 1：等待 IMU 数据就绪
      * PC0 EXTI → HAL_GPIO_EXTI_Callback → osThreadFlagsSet → 本任务被唤醒。
      * 未等到中断时只读一次 ready 状态；若仍未 ready，则跳过本轮继续等下一帧。
      */
-   if ((osThreadFlagsWait(SENSOR_IMU_DATA_READY_FLAG, osFlagsWaitAny,
-                           SENSOR_IMU_DRDY_TIMEOUT_MS) &
-         SENSOR_IMU_DATA_READY_FLAG) != 0U) {
+    imu_ready_flags =
+      osThreadFlagsWait(SENSOR_IMU_DATA_READY_FLAG, osFlagsWaitAny,
+                        SENSOR_IMU_DRDY_TIMEOUT_MS);
+    if ((imu_ready_flags & SENSOR_IMU_DATA_READY_FLAG) != 0U) {
       imu_irq_ready_count++;
       imu_drdy_miss_count = 0U;
+      if (APP_IMU_ReadDataReadyTimestamp(&imu_sample_timestamp_us) == 0U) {
+        imu_sample_timestamp_us = SVC_Timestamp_Us();
+      }
     } else {
       bool imu_ready = false;
 
       if ((BSP_IMU_IsDataReady(&imu_ready) == DRV_IMU_OK) && imu_ready) {
         imu_poll_ready_count++;
         imu_drdy_miss_count = 0U;
+        imu_sample_timestamp_us = SVC_Timestamp_Us();
       } else {
         imu_drdy_miss_count++;
         if (imu_drdy_miss_count >= SENSOR_IMU_DRDY_MISS_FAULT_LIMIT) {
@@ -1772,6 +2529,18 @@ void Sensor_Task(void *argument)
     stabilizer_imu_last_sample_ms = HAL_GetTick();
 
     sample_count++;
+
+    /*
+     * 振动谱采集钩子：必须放在缩放/对齐/低通之前。
+     * 飞行日志和 VOFA 都是抽取后且已滤波的数据，看不到 150~300 Hz 的桨叶带，
+     * 无法用来确定 AAF 和 IIR 的截止频率；这里取的是未经处理的原始 LSB。
+     * 未启动采集时该调用直接返回，不会阻塞 1kHz 采样节奏。
+     */
+    APP_IMU_Capture_Push((uint32_t)imu_sample_timestamp_us,
+                         &raw,
+                         BSP_PWM_GetEscPulse(1),
+                         BSP_PWM_GetEscPulse(2));
+
     APP_IMU_RawToScaled(&raw, &scaled);  /* ADC → 物理单位（dps / g）         */
 
     /*
@@ -1812,6 +2581,9 @@ void Sensor_Task(void *argument)
       APP_Sensor_AlignToAirframe(g, g_align);
       APP_Sensor_LpfApply3f(gyro_lpf, g_align, g_align); /* IIR 低通：陀螺    */
       APP_Sensor_LpfApply3f(acc_lpf,  a_align, a_align); /* IIR 低通：加速度  */
+
+      /* 记录滤波后的值，使 IIR 的实际衰减可以和同一帧的输入直接对比。 */
+      APP_IMU_Capture_AnnotateFiltered(a_align, g_align, gyro_bias.ready);
 
       scaled.accel_x_g  = a_align[0];  scaled.accel_y_g = a_align[1];  scaled.accel_z_g = a_align[2];
       scaled.gyro_x_dps = g_align[0];  scaled.gyro_y_dps = g_align[1]; scaled.gyro_z_dps = g_align[2];
@@ -1858,7 +2630,7 @@ void Sensor_Task(void *argument)
      */
     APP_Sensor_SampleMessage msg;
 
-    msg.base.timestamp_us    = SVC_Timestamp_Us();
+    msg.base.timestamp_us    = imu_sample_timestamp_us;
     msg.base.type            = APP_SENSOR_TYPE_IMU;
     msg.base.sequence        = sample_count;
     msg.raw_imu              = raw;
@@ -1883,6 +2655,13 @@ void Sensor_Task(void *argument)
     msg.gyro_bias_ready = gyro_bias.ready;
     msg.imu_data_ready_count = imu_irq_ready_count;
     msg.imu_poll_ready_count = imu_poll_ready_count;
+    msg.fusion_acceleration_error_deg = 0.0f;
+    msg.fusion_acceleration_recovery_trigger = 0.0f;
+    msg.fusion_accel_correction_count = 0U;
+    msg.fusion_accelerometer_ignored = 0U;
+    msg.fusion_acceleration_recovery = 0U;
+    msg.fusion_angular_rate_recovery = 0U;
+    msg.fusion_accel_norm_rejected = 0U;
 
     if (osMessageQueuePut(SensorSampleQueueHandle, &msg, 0U, 0U) != osOK) {
       APP_Sensor_SampleMessage drop;
@@ -2017,7 +2796,7 @@ void BackgroundTask(void *argument)
   *   从 vofaLogQueue 取出姿态/传感器数据，按固定格式打包后
   *   通过 WiFi 透传发送到 VOFA 上位机进行实时可视化。
   *
-  * 发送数据帧（22 个 float，88 字节 + 4 字节帧尾）：
+  * 发送数据帧（28 个 float，112 字节 + 4 字节帧尾）：
   *   [0]  roll      横滚角 [°]
   *   [1]  pitch     俯仰角 [°]
   *   [2]  yaw       偏航角 [°]
@@ -2029,11 +2808,12 @@ void BackgroundTask(void *argument)
   *   [11..17] 速度环参数滑块反馈
   *   [18..19] 姿态角 P 参数滑块反馈
   *   [20..21] Z 高度位置/速度参数滑块反馈
+  *   [23..27] Fusion 加速度拒绝与自动恢复诊断
   *
   * vofaStreamActive 标志可由上位机远程控制，方便暂停 / 恢复数据流。
   *
   * 优先级 Low：可视化数据允许延迟或丢帧，不影响飞行安全。
-  * 周期 40Hz（osDelay(25)）：92 字节帧约占 3680 B/s，保留命令响应余量。
+  * 周期 40Hz（osDelay(25)）：116 字节帧约占 4640 B/s，保留命令响应余量。
   */
 /* USER CODE END Header_VOFA_task */
 void VOFA_task(void *argument)
@@ -2041,7 +2821,7 @@ void VOFA_task(void *argument)
   /* USER CODE BEGIN VOFA_task */
 
   APP_Sensor_SampleMessage msg;
-  #define VOFA_DATA_SIZE 22U
+  #define VOFA_DATA_SIZE 28U
   float vofa_data[VOFA_DATA_SIZE];
   StabilizerVofaDebug vofa_debug;
   APP_OPTICAL_FLOW_Status flow_status;
@@ -2052,6 +2832,26 @@ void VOFA_task(void *argument)
      * VOFA 诊断降频发送，避免 WiFi/USART1 调试流量影响实时任务调度。
      */
     osDelay(VOFA_SEND_PERIOD_MS);
+
+    /*
+     * 原始 IMU 采集导出：放在这个低优先级任务里搬运，采样钩子只写 RAM，
+     * 因此 USB 阻塞不会影响 1kHz 采样或稳定环。导出期间跳过 VOFA 发送，
+     * 避免两个数据流争用同一条 CDC 链路。
+     */
+    if (APP_IMU_Capture_IsExportActive() != 0U) {
+      /*
+       * 一次搬多块：单块 25ms 会让整段导出拖到 ~50s。APP_USB_CDC_Write 自身
+       * 会等待 USB 完成，所以这里的循环由链路速度自然限流，不会空转。
+       */
+      uint32_t burst;
+      for (burst = 0U; burst < IMU_CAPTURE_EXPORT_BLOCKS_PER_TICK; burst++) {
+        if (APP_IMU_Capture_IsExportActive() == 0U) {
+          break;
+        }
+        APP_IMU_Capture_ExportStep();
+      }
+      continue;
+    }
 
     if (!vofaStreamActive) {
       continue;
@@ -2082,25 +2882,29 @@ void VOFA_task(void *argument)
       (void)DRV_COAX_CTRL_GetParam("coax.pitch_rate_kd", &vofa_data[8]);
       (void)DRV_COAX_CTRL_GetParam("coax.yaw_angle_kp", &vofa_data[9]);
       (void)DRV_COAX_CTRL_GetParam("coax.yaw_rate_kd", &vofa_data[10]);
-      (void)DRV_COAX_CTRL_GetParam("coax.vel_loop_x_kp", &vofa_data[11]);
-      (void)DRV_COAX_CTRL_GetParam("coax.vel_loop_y_kp", &vofa_data[12]);
-      (void)DRV_COAX_CTRL_GetParam("coax.vel_loop_x_ki", &vofa_data[13]);
-      (void)DRV_COAX_CTRL_GetParam("coax.vel_loop_y_ki", &vofa_data[14]);
-      (void)DRV_COAX_CTRL_GetParam("coax.vel_loop_x_kd", &vofa_data[15]);
-      (void)DRV_COAX_CTRL_GetParam("coax.vel_loop_y_kd", &vofa_data[16]);
+      (void)DRV_COAX_CTRL_GetParam("coax.pos_x_kp", &vofa_data[11]);
+      (void)DRV_COAX_CTRL_GetParam("coax.pos_y_kp", &vofa_data[12]);
+      (void)DRV_COAX_CTRL_GetParam("coax.vel_x_kd", &vofa_data[13]);
+      (void)DRV_COAX_CTRL_GetParam("coax.vel_y_kd", &vofa_data[14]);
+      vofa_data[15] = vofa_debug.pos_est_m[0];
+      vofa_data[16] = vofa_debug.pos_est_m[1];
       (void)DRV_COAX_CTRL_GetParam("coax.vel_loop_enable", &vofa_data[17]);
       (void)DRV_COAX_CTRL_GetParam("coax.roll_angle_kp", &vofa_data[18]);
       (void)DRV_COAX_CTRL_GetParam("coax.pitch_angle_kp", &vofa_data[19]);
       (void)DRV_COAX_CTRL_GetParam("coax.pos_z_kp", &vofa_data[20]);
-      (void)DRV_COAX_CTRL_GetParam("coax.vel_z_kd", &vofa_data[21]);
+      (void)DRV_COAX_CTRL_GetParam("coax.pos_z_ki", &vofa_data[21]);
+      (void)DRV_COAX_CTRL_GetParam("coax.vel_z_kd", &vofa_data[22]);
+      vofa_data[23] = msg.fusion_acceleration_error_deg;
+      vofa_data[24] = (float)msg.fusion_accelerometer_ignored;
+      vofa_data[25] = msg.fusion_acceleration_recovery_trigger;
+      vofa_data[26] = (float)msg.fusion_accel_correction_count;
+      vofa_data[27] = (float)msg.fusion_accel_norm_rejected;
       /* Present operator-facing gains as positive values; controller internals keep the tested signs. */
-      vofa_data[7] = -vofa_data[7];
-      vofa_data[8] = -vofa_data[8];
       vofa_data[9] = -vofa_data[9];
       vofa_data[10] = -vofa_data[10];
       vofa_data[18] = -vofa_data[18];
       vofa_data[19] = -vofa_data[19];
-      /* 22 floats + VOFA tail = 92 bytes. */
+      /* 28 floats + VOFA tail = 116 bytes. */
       APP_VOFA_SendFloats(vofa_data, VOFA_DATA_SIZE);
     }
   }

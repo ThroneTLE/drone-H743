@@ -1,0 +1,50 @@
+{
+  "format": "drone-h743-fusion-analysis-v1",
+  "created_at": "2026-07-27T14:41:54.582518+08:00",
+  "input_csv": "D:\\stm32hal\\drone-H743\\tools\\imu_attitude_data\\imu_fixed_roll_hold_20260727_144100.csv",
+  "input_sha256": "5b17684e11dcd720091b2008987d160a033074283ee9232dd8a43785d94a5feb",
+  "quality": {
+    "row_count": 3500,
+    "valid": true,
+    "stage_counts": {
+      "baseline": 1000,
+      "shake": 300,
+      "settle": 2200
+    },
+    "host_duration_s": 34.99028690000705,
+    "observed_rate_hz": 99.99918005814622,
+    "timestamp_nonforward": 0,
+    "sequence_nonforward": 0,
+    "sequence_gap_max": 13
+  },
+  "fusion_diagnostics_present": true,
+  "firmware_settings": {
+    "gain": 0.5,
+    "acceleration_rejection_deg": 10.0,
+    "rejection_timeout_s": 5.0,
+    "accel_norm_gate_g": [
+      0.85,
+      1.15
+    ]
+  },
+  "final": {
+    "window_s": 2.0,
+    "row_count": 201,
+    "roll_median_deg": -5.94191837310791,
+    "pitch_median_deg": -20.9446964263916,
+    "tilt_median_deg": 21.771235664205616,
+    "roll_std_deg": 1.547336537442303,
+    "pitch_std_deg": 2.2442881036489206
+  },
+  "fusion": {
+    "acceleration_error_max_deg": 56.836246490478516,
+    "acceleration_error_final_median_deg": 43.11919403076172,
+    "acceleration_recovery_trigger_max": 0.48179998993873596,
+    "acceleration_recovery_trigger_final": 0.48179998993873596,
+    "accelerometer_ignored_fraction": 0.32057142857142856,
+    "accel_norm_rejected_fraction": 0.002857142857142857,
+    "accel_correction_count_delta": 23591
+  },
+  "decision": "review_capture_before_parameter_change",
+  "parameter_changes_applied": false
+}

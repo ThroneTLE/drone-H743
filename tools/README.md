@@ -1,7 +1,77 @@
-# Ai-WB2-12F PC Tools
+# drone-H743 PC Tools
 
-This folder contains PC-side helpers for testing the Ai-WB2-12F module before
-the STM32 firmware owns the link.
+PC 侧调试与分析脚本。脚本放在本目录顶层，采集到的数据和分析产物统一放在
+`tools/data/` 下，不要再散落在顶层：
+
+| 目录 | 内容 |
+| --- | --- |
+| `data/imu_vibration/` | 满速率原始 IMU 采集与频谱报告（`imu_vibration_capture.py`） |
+| `data/imu_attitude_data/` | Fusion 姿态录制与诊断报告（`imu_attitude_tuner.py`） |
+| `data/motor_ident/` | 电机 Hammerstein 辨识原始数据与拟合产物 |
+| `data/thrust_ident/` | 推力标定数据与拟合曲线 |
+| `data/ident_runs/` | 姿态激励辨识批次 |
+| `data/pressure/` | RS485 压力传感器标定与手册 |
+| `data/spi_captures/` | Saleae SPI 抓包 |
+
+## 振动频谱采集（IMU 原始满速率）
+
+飞行日志（约 250Hz）和 VOFA（40Hz）都是抽取且已滤波的数据，看不到 150~300Hz
+的桨叶振动带，因此无法用来确定 AAF 和软件 IIR 的截止频率。`IMUCAP` 采集的是
+未抽取、未滤波的原始样本，固件侧见 `App/Src/app_imu_capture.c`。
+
+图形界面（推荐）——下拉选 COM 口、选测试档位，点按钮即可采集并出报告：
+
+```powershell
+python tools\imu_vibration_ui.py
+```
+
+档位预设为 静止 / 定速 30·50·70·90% / 悬停，会自动按档位给文件打 tag，方便
+后续横向对比。选中会让电机转动的档位时，界面会先弹出机架固定确认。串口读写
+在后台线程执行，导出过程中界面不会卡死。
+
+命令行等价用法：
+
+```powershell
+# 采集约 6 秒并立即分析（--tag 用于标注油门档位）
+python tools\imu_vibration_capture.py --port COM7 --capture --analyse --tag thr50
+
+# 只分析已有采集，不连接硬件
+python tools\imu_vibration_capture.py --analyse-file tools\data\imu_vibration\xxx.csv
+```
+
+固件命令：`IMUCAP?` 查状态，`IMUCAP START [samples]` 开始，`IMUCAP STOP` 停止，
+`IMUCAP DUMP` 通过 USB CDC 导出，`IMUCAP CANCEL` 取消导出。
+
+采集时的建议档位：静止（噪声底）→ 机架固定后电机定速扫描 30/50/70/90%
+（桨叶基频随转速移动，用于区分真实振动和混叠假峰）→ 悬停。定速扫描时机架必须
+固定牢靠。
+
+分析报告会给出各轴主频、削顶比例、IIR 实测衰减、Fusion 门限健康度，并在主频
+超过 Nyquist 的 80%（可能是混叠）或加速度削顶时明确告警。
+
+## IMU Fusion 录制与分析
+
+飞行时不需要连接 OpenOCD。使用正常 VOFA 串口流录制 28 通道，数据和元数据
+直接保存在仓库的 `tools/data/imu_attitude_data/`：
+
+```powershell
+python tools\vofa_serial_capture.py --port COM10 --duration 30 `
+  --out-dir tools\data\imu_attitude_data --prefix imu_fusion
+```
+
+新增加的通道 23..27 分别记录加速度方向误差、是否拒绝、恢复触发进度、
+累计修正次数和加速度模长拒绝。录制后生成 Fusion 分析报告：
+
+```powershell
+python tools\imu_attitude_tuner.py analyze `
+  tools\data\imu_attitude_data\imu_fusion_YYYYMMDD_HHMMSS.csv
+```
+
+`imu_attitude_tuner.py record/run` 仍可在静态台架上通过 OpenOCD telnet `4444`
+只读录制，不执行 halt、reset、写内存或刷写，但它不是飞行采集前提。分析器
+不会根据单个样本自动改飞行参数；旧 `dwell/tau` 报告属于已移除算法，不能
+用于当前 x-io Fusion。新报告只依据真实拒绝、恢复和最终落地残差决定是否需要
+进一步审查。
 
 ## Direct SoftAP UDP mode
 
@@ -151,6 +221,60 @@ print(analysis.gain_groups)
 ```bash
 python3 tools/flight_log_sysid_ui.py flightlog_20260724_200832.csv
 ```
+
+如果想用一个窗口完成“选文件、选片段、看波形、弹出 Rerun 回放”，使用 All-in-One 工作台：
+
+```powershell
+python tools\flight_log_workbench.py log
+```
+
+工作台左侧选择日志文件和文件内片段，右侧选择通道并查看当前片段波形；
+点击“弹出Rerun回放”会通过 `.tmp/rerun_env` 隔离环境打开该片段的三维现场回放。
+
+如果只是想自己选文件、选通道、快速看波形，也可以单独用离线波形查看器：
+
+```bash
+python3 tools/flight_log_waveform_ui.py log
+```
+
+也可以直接打开某个 CSV：
+
+```bash
+python3 tools/flight_log_waveform_ui.py log/flightlog_20260727_045138.csv
+```
+
+界面左侧选择日志文件，中间搜索/选择通道，右侧点击“画选中”即可查看曲线；
+支持多通道同图、分图、归一化、按时间断点断开，并显示选中通道的统计值。
+图表区可以选择滚轮模式：总缩放、只缩横轴、只缩纵轴；滚轮会以鼠标所在位置为中心缩放。
+
+如果想用 Rerun 做三维现场回放和时间轴播放，推荐用隔离虚拟环境启动脚本；
+它会把 `rerun-sdk` 装到 `.tmp/rerun_env`，避免 Rerun 依赖升级影响主 Python 分析环境。
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools\run_flight_log_rerun_replay.ps1 log
+```
+
+也可以直接列出最新日志的分片：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools\run_flight_log_rerun_replay.ps1 log --list
+```
+
+播放某一个分片：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools\run_flight_log_rerun_replay.ps1 log --play --segment 13
+```
+
+如果你已经在当前 Python 环境里安装好了 `rerun-sdk`，也可以直接运行 Python 脚本：
+
+```bash
+python3 tools/flight_log_rerun_replay.py log --list
+```
+
+工具会按时间断点把日志切成多个片段，导出 `.tmp/rerun_replay/*.rrd`；
+Rerun 中可以播放三维机体姿态、粗略轨迹/高度、推力方向估计，以及姿态、舵机、
+电机、光流、控制量等时间曲线。
 
 Optional serial auto-configuration through CH340 requires `pyserial`:
 

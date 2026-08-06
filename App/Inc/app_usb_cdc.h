@@ -7,6 +7,12 @@
 extern "C" {
 #endif
 
+/*
+ * Maximum single-transfer payload. APP_USB_CDC_Write() rejects any length above
+ * this, so callers that build fixed-size frames should size-check against it.
+ */
+#define APP_USB_CDC_TX_SIZE 1536U
+
 void APP_USB_CDC_Init(void);
 void APP_USB_CDC_Task_Step(void);
 void APP_USB_CDC_SetConfigured(uint8_t configured);

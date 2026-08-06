@@ -4,6 +4,7 @@
 #include "app_baro.h"
 #include "app_flash.h"
 #include "app_flight_log.h"
+#include "app_imu_capture.h"
 #include "app_diag.h"
 #include "app_gps.h"
 #include "app_ident.h"
@@ -45,7 +46,8 @@
 #include <string.h>
 
 #define APP_CONTROL_CFG_MAGIC       0x44524346UL
-#define APP_CONTROL_CFG_VERSION     14U
+#define APP_CONTROL_CFG_VERSION     16U
+#define APP_CONTROL_CFG_VERSION_V15 15U
 #define APP_CONTROL_CFG_ADDRESS     (APP_FLASH_SERVICE_SIZE_BYTES - 4096UL)
 #define APP_CONTROL_MAX_LINE        128U
 #define APP_CONTROL_HEARTBEAT_ENABLED 0U
@@ -68,8 +70,36 @@
 #define APP_CONTROL_ALLOW_IDENT_MOTOR_TEST 0U
 #define APP_CONTROL_FLASH_AUTOSAVE_DELAY_MS 1500U
 #define APP_CONTROL_DEG_TO_RAD 0.017453292519943295f
-#define APP_CONTROL_TILT_LIMIT_MAX_DEG 18.0f
+#define APP_CONTROL_TILT_LIMIT_MAX_DEG 28.0f
+#define APP_CONTROL_TILT_LIMIT_DEFAULT_RAD 0.4886922f
+#define APP_CONTROL_TILT_LIMIT_LEGACY_18_RAD 0.31415927f
+#define APP_CONTROL_TILT_LIMIT_LEGACY_25_RAD 0.43633231f
+#define APP_CONTROL_TILT_LIMIT_LEGACY_EPS_RAD 0.001f
 #define APP_CONTROL_FLOW_RAW_MAX_BYTES 32U
+
+typedef struct {
+    float pos_x_kp;
+    float pos_y_kp;
+    float pos_z_kp;
+    float pos_z_ki;
+    float vel_x_kd;
+    float vel_y_kd;
+    float vel_z_kd;
+    float vel_loop_enable;
+    float vel_loop_x_kp;
+    float vel_loop_x_ki;
+    float vel_loop_x_kd;
+    float vel_loop_y_kp;
+    float vel_loop_y_ki;
+    float vel_loop_y_kd;
+    float roll_angle_kp;
+    float pitch_angle_kp;
+    float roll_rate_kd;
+    float pitch_rate_kd;
+    float tilt_limit_rad;
+    float yaw_angle_kp;
+    float yaw_rate_kd;
+} APP_ControlCoaxTunableParams;
 
 typedef struct {
     float pos_x_kp;
@@ -92,7 +122,7 @@ typedef struct {
     float tilt_limit_rad;
     float yaw_angle_kp;
     float yaw_rate_kd;
-} APP_ControlCoaxTunableParams;
+} APP_ControlCoaxTunableParamsV15;
 
 typedef struct {
     uint32_t magic;
@@ -102,6 +132,15 @@ typedef struct {
     APP_ControlCoaxTunableParams coax_tunables;
     uint32_t checksum;
 } APP_ControlFlashRecord;
+
+typedef struct {
+    uint32_t magic;
+    uint16_t version;
+    uint16_t size;
+    APP_ControlConfig config;
+    APP_ControlCoaxTunableParamsV15 coax_tunables;
+    uint32_t checksum;
+} APP_ControlFlashRecordV15;
 
 static APP_ControlConfig control_config;
 #if (APP_CONTROL_HEARTBEAT_ENABLED != 0U)
@@ -136,6 +175,7 @@ static void app_control_report_wifi(void);
 void APP_Control_QueueText(const char *format, ...);
 static void app_control_queue_proto_text(uint16_t function, const char *format, ...);
 static void app_control_handle_flight_log(char **tokens, uint32_t count);
+static void app_control_handle_imu_capture(char **tokens, uint32_t count);
 static void app_control_dispatch_tokens(char **tokens, uint32_t count, uint8_t emit_ack);
 static uint32_t app_control_tokenize(char *buffer, char **tokens, uint32_t max_tokens);
 static uint8_t app_control_parse_u32(const char *text, uint32_t *value);
@@ -449,6 +489,93 @@ static void app_control_handle_flight_log(char **tokens, uint32_t count)
     }
 
     APP_Control_QueueText("ERR usage FLOG? | FLOG DUMP | FLOG CANCEL | FLOG TESTFILL [sectors]\r\n");
+}
+
+/*
+ * Full-rate raw IMU capture control. Used to record undecimated pre-filter
+ * samples for vibration spectrum analysis; see App/Inc/app_imu_capture.h.
+ */
+static void app_control_handle_imu_capture(char **tokens, uint32_t count)
+{
+    APP_IMU_CaptureStatus status;
+    APP_IMU_CaptureCommandStatus cmd_status;
+
+    if ((tokens == NULL) || (count == 0U)) {
+        return;
+    }
+
+    if (strcmp(tokens[0], "IMUCAP?") == 0) {
+        APP_IMU_Capture_GetStatus(&status);
+        APP_Control_QueueText("IMUCAP state=%s stored=%lu capacity=%lu "
+                              "requested=%lu dropped=%lu export_sent=%lu "
+                              "session=%lu sample_bytes=%u "
+                              "accel_range=%uG gyro_range=%udps "
+                              "accel_aaf=%uHz gyro_aaf=%uHz\r\n",
+                              APP_IMU_Capture_StateText(status.state),
+                              (unsigned long)status.stored,
+                              (unsigned long)status.capacity,
+                              (unsigned long)status.requested,
+                              (unsigned long)status.dropped,
+                              (unsigned long)status.export_sent,
+                              (unsigned long)status.session_id,
+                              (unsigned int)sizeof(APP_IMU_CaptureSample),
+                              (unsigned int)status.accel_range_g,
+                              (unsigned int)status.gyro_range_dps,
+                              (unsigned int)status.accel_aaf_hz,
+                              (unsigned int)status.gyro_aaf_hz);
+        return;
+    }
+
+    if ((count >= 2U) && (strcmp(tokens[1], "START") == 0)) {
+        uint32_t samples = 0U; /* 0 selects the full buffer */
+
+        if ((count >= 3U) &&
+            (app_control_parse_u32(tokens[2], &samples) == 0U)) {
+            APP_Control_QueueText("ERR usage IMUCAP START [samples]\r\n");
+            return;
+        }
+
+        cmd_status = APP_IMU_Capture_Start(samples);
+        APP_IMU_Capture_GetStatus(&status);
+        APP_Control_QueueText("IMUCAP START %s requested=%lu\r\n",
+                              APP_IMU_Capture_CommandStatusText(cmd_status),
+                              (unsigned long)status.requested);
+        return;
+    }
+
+    if ((count >= 2U) && (strcmp(tokens[1], "STOP") == 0)) {
+        cmd_status = APP_IMU_Capture_Stop();
+        APP_IMU_Capture_GetStatus(&status);
+        APP_Control_QueueText("IMUCAP STOP %s stored=%lu\r\n",
+                              APP_IMU_Capture_CommandStatusText(cmd_status),
+                              (unsigned long)status.stored);
+        return;
+    }
+
+    if ((count >= 2U) && (strcmp(tokens[1], "DUMP") == 0)) {
+        cmd_status = APP_IMU_Capture_StartDump();
+        if (cmd_status != APP_IMU_CAPTURE_CMD_OK) {
+            APP_Control_QueueText("IMUCAP ERROR start %s\r\n",
+                                  APP_IMU_Capture_CommandStatusText(cmd_status));
+            return;
+        }
+        APP_IMU_Capture_GetStatus(&status);
+        /* Host reads this line to size the binary stream that follows. */
+        APP_Control_QueueText("IMUCAP DUMP ok samples=%lu sample_bytes=%u\r\n",
+                              (unsigned long)status.stored,
+                              (unsigned int)sizeof(APP_IMU_CaptureSample));
+        return;
+    }
+
+    if ((count >= 2U) && (strcmp(tokens[1], "CANCEL") == 0)) {
+        cmd_status = APP_IMU_Capture_CancelDump();
+        APP_Control_QueueText("IMUCAP CANCEL %s\r\n",
+                              APP_IMU_Capture_CommandStatusText(cmd_status));
+        return;
+    }
+
+    APP_Control_QueueText("ERR usage IMUCAP? | IMUCAP START [samples] | "
+                          "IMUCAP STOP | IMUCAP DUMP | IMUCAP CANCEL\r\n");
 }
 
 static const char *app_control_aiwb2_state_name(APP_AiWB2_State state)
@@ -842,21 +969,21 @@ static void app_control_format_float(float value, char *buffer, uint32_t size)
                    (unsigned int)abs(scaled % 1000000));
 }
 
+/*
+ * UI 与内部表示的符号换算。
+ *
+ * 历史上部分增益内部存负值，这里再翻一次让界面显示正数——于是"符号"这件事
+ * 在 UI 层和控制层各有一套约定，两者不一致时极难发现（界面显示 -0.600 而
+ * 内部实际是 +0.600 之类）。现在增益内部一律为正，UI 直接显示内部值，不再
+ * 做任何翻转：只保留这个函数作为单一换算入口，恒返回 +1。
+ *
+ * 极性的唯一真相在 Driver/Src/drv_coax_ctrl.c 的"极性约定"块和
+ * Core/Src/freertos.c 的摇杆映射常数，由 tests/test_coax_sign_convention.py
+ * 锁定。
+ */
 static float app_control_ui_sign_for_param(const char *name)
 {
-    if (name == NULL) {
-        return 1.0f;
-    }
-
-    if ((strcmp(name, "coax.roll_rate_kd") == 0) ||
-        (strcmp(name, "coax.pitch_rate_kd") == 0) ||
-        (strcmp(name, "coax.roll_angle_kp") == 0) ||
-        (strcmp(name, "coax.pitch_angle_kp") == 0) ||
-        (strcmp(name, "coax.yaw_angle_kp") == 0) ||
-        (strcmp(name, "coax.yaw_rate_kd") == 0)) {
-        return -1.0f;
-    }
-
+    (void)name;
     return 1.0f;
 }
 
@@ -916,6 +1043,7 @@ static void app_control_capture_coax_tunables(APP_ControlCoaxTunableParams *out)
     out->pos_x_kp = params.pos_x_kp;
     out->pos_y_kp = params.pos_y_kp;
     out->pos_z_kp = params.pos_z_kp;
+    out->pos_z_ki = params.pos_z_ki;
     out->vel_x_kd = params.vel_x_kd;
     out->vel_y_kd = params.vel_y_kd;
     out->vel_z_kd = params.vel_z_kd;
@@ -947,6 +1075,7 @@ static void app_control_apply_coax_tunables(const APP_ControlCoaxTunableParams *
     params.pos_x_kp = in->pos_x_kp;
     params.pos_y_kp = in->pos_y_kp;
     params.pos_z_kp = in->pos_z_kp;
+    params.pos_z_ki = in->pos_z_ki;
     params.vel_x_kd = in->vel_x_kd;
     params.vel_y_kd = in->vel_y_kd;
     params.vel_z_kd = in->vel_z_kd;
@@ -962,6 +1091,51 @@ static void app_control_apply_coax_tunables(const APP_ControlCoaxTunableParams *
     params.roll_rate_kd = in->roll_rate_kd;
     params.pitch_rate_kd = in->pitch_rate_kd;
     params.tilt_limit_rad = in->tilt_limit_rad;
+    if ((fabsf(params.tilt_limit_rad - APP_CONTROL_TILT_LIMIT_LEGACY_18_RAD) <=
+         APP_CONTROL_TILT_LIMIT_LEGACY_EPS_RAD) ||
+        (fabsf(params.tilt_limit_rad - APP_CONTROL_TILT_LIMIT_LEGACY_25_RAD) <=
+         APP_CONTROL_TILT_LIMIT_LEGACY_EPS_RAD)) {
+        params.tilt_limit_rad = APP_CONTROL_TILT_LIMIT_DEFAULT_RAD;
+    }
+    params.yaw_angle_kp = in->yaw_angle_kp;
+    params.yaw_rate_kd = in->yaw_rate_kd;
+    DRV_COAX_CTRL_SetParams(&params);
+}
+
+static void app_control_apply_coax_tunables_v15(
+    const APP_ControlCoaxTunableParamsV15 *in)
+{
+    DRV_COAX_CTRL_Params params;
+
+    if (in == NULL) {
+        return;
+    }
+
+    DRV_COAX_CTRL_GetDefaultParams(&params);
+    params.pos_x_kp = in->pos_x_kp;
+    params.pos_y_kp = in->pos_y_kp;
+    params.pos_z_kp = in->pos_z_kp;
+    params.vel_x_kd = in->vel_x_kd;
+    params.vel_y_kd = in->vel_y_kd;
+    params.vel_z_kd = in->vel_z_kd;
+    params.vel_loop_enable = in->vel_loop_enable;
+    params.vel_loop_x_kp = in->vel_loop_x_kp;
+    params.vel_loop_x_ki = in->vel_loop_x_ki;
+    params.vel_loop_x_kd = in->vel_loop_x_kd;
+    params.vel_loop_y_kp = in->vel_loop_y_kp;
+    params.vel_loop_y_ki = in->vel_loop_y_ki;
+    params.vel_loop_y_kd = in->vel_loop_y_kd;
+    params.roll_angle_kp = in->roll_angle_kp;
+    params.pitch_angle_kp = in->pitch_angle_kp;
+    params.roll_rate_kd = in->roll_rate_kd;
+    params.pitch_rate_kd = in->pitch_rate_kd;
+    params.tilt_limit_rad = in->tilt_limit_rad;
+    if ((fabsf(params.tilt_limit_rad - APP_CONTROL_TILT_LIMIT_LEGACY_18_RAD) <=
+         APP_CONTROL_TILT_LIMIT_LEGACY_EPS_RAD) ||
+        (fabsf(params.tilt_limit_rad - APP_CONTROL_TILT_LIMIT_LEGACY_25_RAD) <=
+         APP_CONTROL_TILT_LIMIT_LEGACY_EPS_RAD)) {
+        params.tilt_limit_rad = APP_CONTROL_TILT_LIMIT_DEFAULT_RAD;
+    }
     params.yaw_angle_kp = in->yaw_angle_kp;
     params.yaw_rate_kd = in->yaw_rate_kd;
     DRV_COAX_CTRL_SetParams(&params);
@@ -2172,6 +2346,25 @@ static APP_FlashService_Status app_control_load_config(void)
         }
         control_config = record.config;
         app_control_apply_coax_tunables(&record.coax_tunables);
+    } else if ((record.version == APP_CONTROL_CFG_VERSION_V15) &&
+               (record.size == (sizeof(record.config) +
+                                sizeof(APP_ControlCoaxTunableParamsV15)))) {
+        APP_ControlFlashRecordV15 legacy_record;
+
+        status = APP_FlashService_ReadData(APP_CONTROL_CFG_ADDRESS,
+                                           (uint8_t *)&legacy_record,
+                                           sizeof(legacy_record));
+        if (status != APP_FLASH_SERVICE_OK) {
+            return status;
+        }
+
+        checksum = app_control_checksum((const uint8_t *)&legacy_record.config,
+                                        legacy_record.size);
+        if (checksum != legacy_record.checksum) {
+            return APP_FLASH_SERVICE_ERROR;
+        }
+        control_config = legacy_record.config;
+        app_control_apply_coax_tunables_v15(&legacy_record.coax_tunables);
     } else {
         return APP_FLASH_SERVICE_BAD_ID;
     }
@@ -3359,14 +3552,14 @@ static uint8_t app_control_handle_pid_slider_line(const char *line)
         { "pitch_rate_kd",  "coax.pitch_rate_kd"  },
         { "yaw_angle_kp",   "coax.yaw_angle_kp"   },
         { "yaw_rate_kd",    "coax.yaw_rate_kd"    },
+        { "pos_x_kp",       "coax.pos_x_kp"       },
+        { "pos_y_kp",       "coax.pos_y_kp"       },
+        { "pos_z_kp",       "coax.pos_z_kp"       },
+        { "pos_z_ki",       "coax.pos_z_ki"       },
+        { "vel_x_kd",       "coax.vel_x_kd"       },
+        { "vel_y_kd",       "coax.vel_y_kd"       },
         { "vel_z_kd",       "coax.vel_z_kd"       },
         { "vel_loop_enable", "coax.vel_loop_enable" },
-        { "vel_loop_x_kp",  "coax.vel_loop_x_kp" },
-        { "vel_loop_x_ki",  "coax.vel_loop_x_ki" },
-        { "vel_loop_x_kd",  "coax.vel_loop_x_kd" },
-        { "vel_loop_y_kp",  "coax.vel_loop_y_kp" },
-        { "vel_loop_y_ki",  "coax.vel_loop_y_ki" },
-        { "vel_loop_y_kd",  "coax.vel_loop_y_kd" },
         { "aw_angle_kp",    "coax.yaw_angle_kp"   },
         { "aw_rate_kd",     "coax.yaw_rate_kd"    },
     };
@@ -3804,6 +3997,9 @@ static void app_control_dispatch_tokens(char **tokens, uint32_t count, uint8_t e
     } else if ((strcmp(tokens[0], "FLOG?") == 0) ||
                (strcmp(tokens[0], "FLOG") == 0)) {
         app_control_handle_flight_log(tokens, count);
+    } else if ((strcmp(tokens[0], "IMUCAP?") == 0) ||
+               (strcmp(tokens[0], "IMUCAP") == 0)) {
+        app_control_handle_imu_capture(tokens, count);
     } else if (strcmp(tokens[0], "Sensor_Data:1") == 0) {
         vofaStreamActive = 1U;
         APP_Control_QueueText("OK IMU stream started\r\n");

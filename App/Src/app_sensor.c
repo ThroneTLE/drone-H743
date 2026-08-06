@@ -7,13 +7,14 @@
 #include "cmsis_os2.h"
 
 #include <math.h>
+#include <string.h>
 
 /*
  * APP_IMU 模块
  *
  * 传感器度量转换 API（由 freertos.c 中的 Sensor_Task 调用）：
  *   APP_IMU_RawToScaled      — ICM-42688 原始读数 → 物理单位
- *   APP_IMU_UpdateAttitude   — 互补滤波姿态解算
+ *   DRV_AttitudeFusion_Update — x-io Fusion AHRS（由 StabilizerTask 调用）
  *   APP_IMU_ConvertBaro      — SPL06-007 气压计 (TODO)
  *
  * 中断和诊断：
@@ -24,111 +25,55 @@
 
 #define APP_IMU_DATA_READY_FLAG 0x0001U
 
+typedef struct {
+    volatile uint32_t sequence;
+    volatile uint32_t timestamp_low;
+    volatile uint32_t timestamp_high;
+} APP_IMU_DataReadyTimestampLatch;
+
+static APP_IMU_DataReadyTimestampLatch app_imu_drdy_timestamp;
+
 /* ════════════════════════════════════════════════════════════════════════ */
 /*  IMU 原始读数 → 物理单位转换                                             */
 /*                                                                        */
-/*  ICM-42688 16 位有符号数 (±32768)，量程在 BSP 层配置：                   */
-/*    加速度 ±4G    → 8192 LSB/g   (= 32768 / 4)                         */
-/*    陀螺仪 ±1000dps → 32.8 LSB/dps (数据手册 §14.2)                    */
+/*  ICM-42688 16 位有符号数 (±32768)，量程在 BSP 层配置。                   */
+/*  刻度必须由实际配置的量程推导，不能写死：曾经这里硬编码 8192 LSB/g       */
+/*  (±4G)，一旦 BSP 改量程，姿态就会整体错一个倍数且不报错。                */
+/*  当前 BSP 配置为 ±16G / ±1000dps —— 见 BSP_IMU_Init() 中关于振动削顶     */
+/*  的说明。                                                               */
 /*    温度: 128 LSB/°C，偏移 +25°C                                         */
 /* ════════════════════════════════════════════════════════════════════════ */
 
-#define APP_IMU_ACCEL_LSB_PER_G   8192.0f
-#define APP_IMU_GYRO_LSB_PER_DPS  32.8f
 #define APP_IMU_TEMP_LSB_PER_C    128.0f
 #define APP_IMU_TEMP_OFFSET_C     25.0f
 
 void APP_IMU_RawToScaled(const DRV_IMU_RawData *raw,
                          DRV_IMU_ScaledData *scaled)
 {
+    const DRV_IMU_Device *dev;
+    float accel_lsb_per_g;
+    float gyro_lsb_per_dps;
+
     if ((raw == NULL) || (scaled == NULL)) return;
+
+    /* 从设备实际配置推导刻度，回退值与 BSP_IMU_Init() 的配置保持一致。 */
+    dev = BSP_IMU_GetDevice();
+    if (dev != NULL) {
+        accel_lsb_per_g  = DRV_IMU_AccelLsbPerG(dev->config.accel_range);
+        gyro_lsb_per_dps = DRV_IMU_GyroLsbPerDps(dev->config.gyro_range);
+    } else {
+        accel_lsb_per_g  = DRV_IMU_AccelLsbPerG(DRV_IMU_ACCEL_RANGE_16G);
+        gyro_lsb_per_dps = DRV_IMU_GyroLsbPerDps(DRV_IMU_GYRO_RANGE_1000DPS);
+    }
 
     scaled->temperature_c = (float)raw->temperature / APP_IMU_TEMP_LSB_PER_C
                           + APP_IMU_TEMP_OFFSET_C;
-    scaled->accel_x_g    = (float)raw->accel_x / APP_IMU_ACCEL_LSB_PER_G;
-    scaled->accel_y_g    = (float)raw->accel_y / APP_IMU_ACCEL_LSB_PER_G;
-    scaled->accel_z_g    = (float)raw->accel_z / APP_IMU_ACCEL_LSB_PER_G;
-    scaled->gyro_x_dps   = (float)raw->gyro_x / APP_IMU_GYRO_LSB_PER_DPS;
-    scaled->gyro_y_dps   = (float)raw->gyro_y / APP_IMU_GYRO_LSB_PER_DPS;
-    scaled->gyro_z_dps   = (float)raw->gyro_z / APP_IMU_GYRO_LSB_PER_DPS;
-}
-
-/* ════════════════════════════════════════════════════════════════════════ */
-/*  姿态估计 — 互补滤波                                                     */
-/*                                                                        */
-/*  alpha 接近 1.0 → 更信任陀螺仪积分；                                      */
-/*  (1-alpha)      → 更信任加速度计重力向量。                                */
-/* ════════════════════════════════════════════════════════════════════════ */
-
-#define APP_IMU_ACCEL_CORRECTION_TAU_SEC  0.05f
-#define APP_IMU_DEFAULT_DT_SEC            0.001f
-#define APP_IMU_MAX_DT_SEC                0.05f
-#define APP_IMU_RAD_TO_DEG        57.2957795f
-#define APP_IMU_ROLL_SIGN         (1.0f)
-#define APP_IMU_PITCH_SIGN        (-1.0f)
-#define APP_IMU_GYRO_ROLL_SIGN    (-1.0f)
-#define APP_IMU_GYRO_PITCH_SIGN   (1.0f)
-#define APP_IMU_GYRO_YAW_SIGN     (1.0f)//-1
-
-static APP_IMU_AttitudeDebug imu_attitude_debug;
-
-void APP_IMU_UpdateAttitude(const DRV_IMU_ScaledData *imu,
-                            float *roll_deg,
-                            float *pitch_deg,
-                            float *yaw_deg,
-                            float dt_sec,
-                            uint32_t sample_count)
-{
-    float alpha;
-
-    if (dt_sec <= 0.0f) {
-        dt_sec = APP_IMU_DEFAULT_DT_SEC;
-    } else if (dt_sec > APP_IMU_MAX_DT_SEC) {
-        dt_sec = APP_IMU_MAX_DT_SEC;
-    }
-
-    alpha = APP_IMU_ACCEL_CORRECTION_TAU_SEC /
-            (APP_IMU_ACCEL_CORRECTION_TAU_SEC + dt_sec);
-
-    float roll_acc  = APP_IMU_ROLL_SIGN *
-                      atan2f(imu->accel_y_g, imu->accel_z_g) * APP_IMU_RAD_TO_DEG;
-    float pitch_acc = APP_IMU_PITCH_SIGN *
-                      atan2f(-imu->accel_x_g,
-                             sqrtf(imu->accel_y_g * imu->accel_y_g +
-                                   imu->accel_z_g * imu->accel_z_g)) * APP_IMU_RAD_TO_DEG;
-    float roll_gyro = *roll_deg +
-                      APP_IMU_GYRO_ROLL_SIGN * imu->gyro_x_dps * dt_sec;
-    float pitch_gyro = *pitch_deg +
-                       APP_IMU_GYRO_PITCH_SIGN * imu->gyro_y_dps * dt_sec;
-
-    if (sample_count <= 1U) {
-        *roll_deg  = roll_acc;
-        *pitch_deg = pitch_acc;
-        roll_gyro = roll_acc;
-        pitch_gyro = pitch_acc;
-    } else {
-        *roll_deg  = alpha * roll_gyro + (1.0f - alpha) * roll_acc;
-        *pitch_deg = alpha * pitch_gyro + (1.0f - alpha) * pitch_acc;
-        *yaw_deg  += APP_IMU_GYRO_YAW_SIGN * imu->gyro_z_dps * dt_sec;
-    }
-
-    imu_attitude_debug.roll_acc_deg = roll_acc;
-    imu_attitude_debug.pitch_acc_deg = pitch_acc;
-    imu_attitude_debug.roll_gyro_deg = roll_gyro;
-    imu_attitude_debug.pitch_gyro_deg = pitch_gyro;
-    imu_attitude_debug.roll_residual_deg = roll_acc - roll_gyro;
-    imu_attitude_debug.pitch_residual_deg = pitch_acc - pitch_gyro;
-    imu_attitude_debug.alpha = alpha;
-    imu_attitude_debug.dt_ms = dt_sec * 1000.0f;
-
-    if (*yaw_deg > 180.0f)       *yaw_deg -= 360.0f;
-    else if (*yaw_deg < -180.0f) *yaw_deg += 360.0f;
-}
-
-void APP_IMU_GetAttitudeDebug(APP_IMU_AttitudeDebug *debug)
-{
-    if (debug == NULL) return;
-    *debug = imu_attitude_debug;
+    scaled->accel_x_g    = (float)raw->accel_x / accel_lsb_per_g;
+    scaled->accel_y_g    = (float)raw->accel_y / accel_lsb_per_g;
+    scaled->accel_z_g    = (float)raw->accel_z / accel_lsb_per_g;
+    scaled->gyro_x_dps   = (float)raw->gyro_x / gyro_lsb_per_dps;
+    scaled->gyro_y_dps   = (float)raw->gyro_y / gyro_lsb_per_dps;
+    scaled->gyro_z_dps   = (float)raw->gyro_z / gyro_lsb_per_dps;
 }
 
 /* ════════════════════════════════════════════════════════════════════════ */
@@ -231,31 +176,75 @@ void APP_IMU_ConvertBaro(const int32_t pressure_raw,
 }
 
 /* ════════════════════════════════════════════════════════════════════════ */
-/*  低通滤波器 (一阶 IIR)                                                  */
+/*  低通滤波器 (二阶 Butterworth biquad)                                   */
 /*                                                                        */
-/*  公式：alpha = 1 - exp(-2π * fc * dt)                                  */
-/*        output = state + alpha * (input - state)                        */
+/*  设计依据见 app_sensor.h。RBJ cookbook 低通系数：                        */
+/*    w0 = 2π*fc*dt,  alpha = sin(w0) / (2Q),  Q = 1/sqrt(2)              */
+/*    b = [(1-cos)/2, 1-cos, (1-cos)/2],  a = [1+alpha, -2cos, 1-alpha]   */
+/*  全部系数预先除以 a0，运行时只需 5 乘 4 加。                             */
 /* ════════════════════════════════════════════════════════════════════════ */
 
 void APP_Sensor_LpfInit(APP_Sensor_Lpf *lpf, float cutoff_hz, float dt_sec)
 {
+    float w0, cos_w0, sin_w0, alpha, a0_inv;
+
     if (lpf == NULL) return;
-    float rc = 1.0f / (6.2831853f * cutoff_hz);
-    lpf->alpha = dt_sec / (rc + dt_sec);
-    lpf->state = 0.0f;
-    lpf->initialized = 0U;
+
+    memset(lpf, 0, sizeof(*lpf));
+
+    /*
+     * 截止频率必须低于 Nyquist，否则 cookbook 公式退化。夹在 0.45/dt 以内，
+     * 留出余量；非法输入退化为直通，避免产生 NaN 污染姿态。
+     */
+    if ((dt_sec <= 0.0f) || (cutoff_hz <= 0.0f)) {
+        lpf->b0 = 1.0f;
+        return;
+    }
+    if (cutoff_hz > (0.45f / dt_sec)) {
+        cutoff_hz = 0.45f / dt_sec;
+    }
+
+    w0 = 6.2831853f * cutoff_hz * dt_sec;
+    cos_w0 = cosf(w0);
+    sin_w0 = sinf(w0);
+    alpha = sin_w0 * 0.70710678f;   /* sin(w0) / (2 * 1/sqrt(2)) */
+
+    a0_inv = 1.0f / (1.0f + alpha);
+    lpf->b0 = ((1.0f - cos_w0) * 0.5f) * a0_inv;
+    lpf->b1 = (1.0f - cos_w0) * a0_inv;
+    lpf->b2 = lpf->b0;
+    lpf->a1 = (-2.0f * cos_w0) * a0_inv;
+    lpf->a2 = (1.0f - alpha) * a0_inv;
 }
 
 float APP_Sensor_LpfApply(APP_Sensor_Lpf *lpf, float input)
 {
+    float output;
+
     if (lpf == NULL) return input;
+
     if (lpf->initialized == 0U) {
-        lpf->state = input;
+        /*
+         * 用首个样本填充历史，使滤波器从稳态启动。否则零初始化会让输出从 0
+         * 爬升到重力量级，姿态解算在启动瞬间会看到一个假的大倾角。
+         */
+        lpf->x1 = input;
+        lpf->x2 = input;
+        lpf->y1 = input;
+        lpf->y2 = input;
         lpf->initialized = 1U;
-        return lpf->state;
+        return input;
     }
-    lpf->state += lpf->alpha * (input - lpf->state);
-    return lpf->state;
+
+    output = (lpf->b0 * input) + (lpf->b1 * lpf->x1) + (lpf->b2 * lpf->x2)
+           - (lpf->a1 * lpf->y1) - (lpf->a2 * lpf->y2);
+
+    lpf->x2 = lpf->x1;
+    lpf->x1 = input;
+    lpf->y2 = lpf->y1;
+    lpf->y1 = output;
+
+    return output;
 }
 
 void APP_Sensor_LpfApply3f(APP_Sensor_Lpf lpf[3],
@@ -344,20 +333,24 @@ float APP_SensorRateMeter_Update(APP_Sensor_RateMeter *meter,
 }
 
 /* ════════════════════════════════════════════════════════════════════════ */
-/*  坐标系对齐（IMU 芯片坐标系 → 机体坐标系）                               */
+/*  采集轴对齐（IMU 芯片坐标系 → 本机标定中间轴）                           */
 /*                                                                        */
 /*  当前飞控板安装方向：                                                    */
 /*    IMU +Y 朝飞机下方，IMU +Z 朝飞机后方，IMU +X 朝飞机左方。              */
 /*                                                                        */
-/*  机体系采用前右下约定（与当前互补滤波公式一致）：                          */
-/*    body X = 前，body Y = 右，body Z = 下。                                */
+/*  下列映射仅定义采集后的中间轴。实机确认的最终姿态符号补偿为：               */
+/*    roll rate = -gyro X, pitch rate = +gyro Y, yaw rate = +gyro Z           */
+/*    specific force = [-accel X, +accel Y, -accel Z]                         */
+/*  该补偿在 StabilizerTask 的 Fusion AHRS 输入边界执行，使动态角速度与       */
+/*  静态重力得到的 roll/pitch 方向一致。                                      */
 /*                                                                        */
 /*  因此轴映射为：                                                           */
 /*    body X = -imu Z                                                       */
 /*    body Y = -imu X                                                       */
 /*    body Z =  imu Y                                                       */
 /*                                                                        */
-/*  加速度和陀螺仪都必须使用同一套刚体轴变换。                               */
+/*  这里的采集轴变换必须同时用于加速度和陀螺仪；Fusion 边界再转换到上述       */
+/*  已由实机确认的姿态/比力契约。                                             */
 /* ════════════════════════════════════════════════════════════════════════ */
 
 void APP_Sensor_AlignToAirframe(const float in[3], float out[3])
@@ -366,6 +359,40 @@ void APP_Sensor_AlignToAirframe(const float in[3], float out[3])
     out[0] = -in[2];
     out[1] = -in[0];
     out[2] =  in[1];
+}
+
+uint8_t APP_IMU_ReadDataReadyTimestamp(uint64_t *timestamp_us)
+{
+    uint32_t sequence_before;
+    uint32_t sequence_after;
+    uint32_t timestamp_low;
+    uint32_t timestamp_high;
+
+    if (timestamp_us == NULL) {
+        return 0U;
+    }
+    for (;;) {
+        sequence_before = app_imu_drdy_timestamp.sequence;
+        if ((sequence_before & 1U) != 0U) {
+            continue;
+        }
+        __DMB();
+        timestamp_low = app_imu_drdy_timestamp.timestamp_low;
+        timestamp_high = app_imu_drdy_timestamp.timestamp_high;
+        __DMB();
+        sequence_after = app_imu_drdy_timestamp.sequence;
+        if ((sequence_before == sequence_after) &&
+            ((sequence_after & 1U) == 0U)) {
+            break;
+        }
+    }
+
+    if (sequence_after == 0U) {
+        return 0U;
+    }
+    *timestamp_us = ((uint64_t)timestamp_high << 32) |
+                    (uint64_t)timestamp_low;
+    return 1U;
 }
 
 /* ════════════════════════════════════════════════════════════════════════ */
@@ -386,6 +413,16 @@ const APP_IMU_SampleMessage *APP_IMU_GetLastSample(void)
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
     if (GPIO_Pin == GPIO_PIN_0) {
+        const uint64_t timestamp_us = SVC_Timestamp_Us();
+        const uint32_t write_sequence =
+            app_imu_drdy_timestamp.sequence + 1U;
+        app_imu_drdy_timestamp.sequence = write_sequence;
+        __DMB();
+        app_imu_drdy_timestamp.timestamp_low = (uint32_t)timestamp_us;
+        app_imu_drdy_timestamp.timestamp_high =
+            (uint32_t)(timestamp_us >> 32);
+        __DMB();
+        app_imu_drdy_timestamp.sequence = write_sequence + 1U;
         (void)osThreadFlagsSet(SensorTaskHandle, APP_IMU_DATA_READY_FLAG);
     }
 }

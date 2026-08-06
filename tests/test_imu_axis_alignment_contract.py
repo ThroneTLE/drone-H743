@@ -15,11 +15,13 @@ def test_imu_mount_axis_alignment_is_documented() -> None:
     assert "IMU +Y 朝飞机下方" in source
     assert "IMU +Z 朝飞机后方" in source
     assert "IMU +X 朝飞机左方" in source
-    assert "机体系采用前右下约定" in source
-    assert "当前安装：IMU +Y 朝下，+Z 朝后，+X 朝左" in header
+    assert "本机标定中间轴" in source
+    assert "roll rate = -gyro X, pitch rate = +gyro Y, yaw rate = +gyro Z" in source
+    assert "specific force = [-accel X, +accel Y, -accel Z]" in source
+    assert "姿态最终正负号以实机补偿后的输出为准" in header
 
 
-def test_imu_axes_are_rotated_to_filter_forward_right_down_body_frame() -> None:
+def test_imu_axes_are_rotated_to_calibrated_intermediate_frame() -> None:
     source = read("App/Src/app_sensor.c")
 
     assert "body X = -imu Z" in source

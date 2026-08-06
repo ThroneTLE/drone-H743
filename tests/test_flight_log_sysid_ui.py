@@ -16,6 +16,7 @@ def test_ui_helpers_are_importable_without_starting_tk() -> None:
     assert ui.format_cell(None) == ""
     assert ui.format_cell(1.23456, 2) == "1.23"
     assert ui.default_report_dir(Path("flightlog_demo.csv")) == Path(".tmp") / "sysid_flightlog_demo"
+    assert ui.translate_severity("bad") == "严重"
 
 
 def test_ui_exposes_expected_flight_log_views() -> None:
@@ -24,6 +25,7 @@ def test_ui_exposes_expected_flight_log_views() -> None:
     assert "class FlightLogSysidUI(tk.Tk)" in source
     assert "ttk.Notebook" in source
     assert '"参数组"' in source
+    assert '"调参建议"' in source
     assert '"时间片段"' in source
     assert '"执行器拟合"' in source
     assert '"通道统计"' in source
@@ -32,6 +34,8 @@ def test_ui_exposes_expected_flight_log_views() -> None:
     assert '"打开CSV"' in source
     assert "中文注释" in source
     assert "translate_flag" in source
+    assert "translate_severity" in source
+    assert "_refresh_advice" in source
     assert "sysid.analyze_flight_log" in source
     assert "sysid.write_reports" in source
     assert "filedialog.askopenfilename" in source

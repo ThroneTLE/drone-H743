@@ -1,0 +1,22 @@
+{
+  "created_at": "2026-07-27T12:26:23.753621+00:00",
+  "port": "COM31",
+  "tag": "thr70",
+  "sample_count": 6144,
+  "block_header": {
+    "magic": 2781038925,
+    "version": 3,
+    "header_size": 40,
+    "session_id": 3,
+    "total_samples": 6144,
+    "offset_samples": 6112,
+    "block_samples": 32,
+    "sample_size": 46,
+    "accel_aaf_hz": 213,
+    "gyro_aaf_hz": 213,
+    "accel_range_g": 16,
+    "gyro_range_dps": 1000,
+    "flags": 1,
+    "payload_crc32": 2348946700
+  }
+}

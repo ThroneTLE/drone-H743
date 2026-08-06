@@ -41,3 +41,10 @@ __pycache__/
 .mxproject
 *.launch
 CMakeUserPresets.json
+
+# Temporary analysis scripts and data
+.tmp/
+log/
+dis.txt
+flightlog_*.csv
+flightlog_*.json

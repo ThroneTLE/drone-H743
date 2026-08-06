@@ -148,7 +148,7 @@ def test_rangefinder_filters_weak_samples_without_step_change_gating() -> None:
 def test_vofa_channel_three_reports_combo_flow_height() -> None:
     freertos = read("Core/Src/freertos.c")
 
-    assert "#define VOFA_DATA_SIZE 22U" in freertos
+    assert "#define VOFA_DATA_SIZE 28U" in freertos
     assert "APP_OpticalFlow_GetStatus(&flow_status);" in freertos
     assert "vofa_data[3] = (flow_status.height_valid != 0U) ?" in freertos
     assert "flow_status.height_m : 0.0f;" in freertos
@@ -158,6 +158,6 @@ def test_vofa_channel_three_reports_combo_flow_height() -> None:
 def test_vofa_compact_frame_keeps_dashboard_velocity_channels() -> None:
     freertos = read("Core/Src/freertos.c")
 
-    assert "#define VOFA_DATA_SIZE 22U" in freertos
+    assert "#define VOFA_DATA_SIZE 28U" in freertos
     assert "vofa_data[5] = vofa_debug.vel_est_m_s[0];" in freertos
     assert "vofa_data[6] = vofa_debug.vel_est_m_s[1];" in freertos

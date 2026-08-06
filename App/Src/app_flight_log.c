@@ -19,7 +19,7 @@
 #define APP_FLIGHT_LOG_SECTOR_MAGIC       0x31534C46UL /* FLS1 */
 #define APP_FLIGHT_LOG_RECORD_MAGIC       0x31524C46UL /* FLR1 */
 #define APP_FLIGHT_LOG_EXPORT_BLOCK_MAGIC 0x31424C46UL /* FLB1 */
-#define APP_FLIGHT_LOG_VERSION            5U
+#define APP_FLIGHT_LOG_VERSION            7U
 #define APP_FLIGHT_LOG_EXPORT_VERSION     1U
 #define APP_FLIGHT_LOG_REGION_SIZE \
     (APP_FLIGHT_LOG_REGION_END_EXCL - APP_FLIGHT_LOG_REGION_START)
@@ -57,7 +57,7 @@ typedef struct __attribute__((packed)) {
     uint32_t params_size;
     uint32_t header_crc32;
     DRV_COAX_CTRL_Params params;
-    uint8_t reserved[88];
+    uint8_t reserved[84];
 } APP_FlightLogSectorHeader;
 
 typedef struct __attribute__((packed)) {
@@ -112,6 +112,32 @@ typedef struct __attribute__((packed)) {
     DRV_COAX_CTRL_Debug ctrl_debug;
     float z_ref_m;
     APP_IdentAttLog ident_att;
+    uint16_t servo_alpha_sent_us;
+    uint16_t servo_beta_sent_us;
+    int16_t flow_raw_x;
+    int16_t flow_raw_y;
+    uint16_t flow_sample_age_ms;
+    uint16_t flow_height_age_ms;
+    uint8_t flow_quality;
+    uint8_t flow_valid;
+    uint8_t flow_velocity_valid;
+    uint8_t flow_height_valid;
+    float flow_height_raw_m;
+    float flow_height_m;
+    float flow_sensor_velocity_m_s[2];
+    float flow_optical_rot_comp_m_s[2];
+    float flow_offset_rot_comp_m_s[2];
+    float flow_corrected_velocity_m_s[2];
+    uint32_t servo_move_attempt_count;
+    uint32_t servo_move_sent_count;
+    uint32_t servo_move_busy_count;
+    uint32_t servo_move_error_count;
+    uint32_t servo_feedback_request_count;
+    uint32_t servo_feedback_response_count;
+    uint32_t servo_feedback_timeout_count;
+    uint32_t servo_feedback_parse_error_count;
+    uint32_t servo_feedback_uart_error_count;
+    uint32_t servo_feedback_busy_count;
     uint32_t record_crc32;
 } APP_FlightLogRecord;
 
@@ -128,7 +154,7 @@ typedef struct __attribute__((packed)) {
 
 _Static_assert(sizeof(APP_FlightLogSectorHeader) == APP_FLIGHT_LOG_SECTOR_HEADER_SIZE,
                "flight log sector header must stay 256 bytes");
-_Static_assert(sizeof(APP_FlightLogRecord) == 428U,
+_Static_assert(sizeof(APP_FlightLogRecord) == 528U,
                "flight log record must match tools/flight_log_receive.py");
 _Static_assert(sizeof(APP_FlightLogExportBlockHeader) == 24U,
                "flight log export header must match tools/flight_log_receive.py");
@@ -527,6 +553,42 @@ static void flight_log_record_from_snapshot(APP_FlightLogRecord *record,
     record->ctrl_debug = snapshot->ctrl_debug;
     record->z_ref_m = snapshot->z_ref_m;
     record->ident_att = snapshot->ident_att;
+    record->servo_alpha_sent_us = snapshot->servo_alpha_sent_us;
+    record->servo_beta_sent_us = snapshot->servo_beta_sent_us;
+    record->flow_raw_x = snapshot->flow_raw_x;
+    record->flow_raw_y = snapshot->flow_raw_y;
+    record->flow_sample_age_ms = snapshot->flow_sample_age_ms;
+    record->flow_height_age_ms = snapshot->flow_height_age_ms;
+    record->flow_quality = snapshot->flow_quality;
+    record->flow_valid = snapshot->flow_valid;
+    record->flow_velocity_valid = snapshot->flow_velocity_valid;
+    record->flow_height_valid = snapshot->flow_height_valid;
+    record->flow_height_raw_m = snapshot->flow_height_raw_m;
+    record->flow_height_m = snapshot->flow_height_m;
+    memcpy(record->flow_sensor_velocity_m_s,
+           snapshot->flow_sensor_velocity_m_s,
+           sizeof(record->flow_sensor_velocity_m_s));
+    memcpy(record->flow_optical_rot_comp_m_s,
+           snapshot->flow_optical_rot_comp_m_s,
+           sizeof(record->flow_optical_rot_comp_m_s));
+    memcpy(record->flow_offset_rot_comp_m_s,
+           snapshot->flow_offset_rot_comp_m_s,
+           sizeof(record->flow_offset_rot_comp_m_s));
+    memcpy(record->flow_corrected_velocity_m_s,
+           snapshot->flow_corrected_velocity_m_s,
+           sizeof(record->flow_corrected_velocity_m_s));
+    record->servo_move_attempt_count = snapshot->servo_move_attempt_count;
+    record->servo_move_sent_count = snapshot->servo_move_sent_count;
+    record->servo_move_busy_count = snapshot->servo_move_busy_count;
+    record->servo_move_error_count = snapshot->servo_move_error_count;
+    record->servo_feedback_request_count = snapshot->servo_feedback_request_count;
+    record->servo_feedback_response_count = snapshot->servo_feedback_response_count;
+    record->servo_feedback_timeout_count = snapshot->servo_feedback_timeout_count;
+    record->servo_feedback_parse_error_count =
+        snapshot->servo_feedback_parse_error_count;
+    record->servo_feedback_uart_error_count =
+        snapshot->servo_feedback_uart_error_count;
+    record->servo_feedback_busy_count = snapshot->servo_feedback_busy_count;
     record->record_crc32 = 0U;
     record->record_crc32 = flight_log_crc32((const uint8_t *)record, sizeof(*record));
 }

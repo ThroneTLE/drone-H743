@@ -16,14 +16,19 @@ def test_stabilizer_uses_nonblocking_servo_dma_path() -> None:
     assert "DRV_SERVO_MoveCmd moves[2]" in freertos
     assert "BSP_PWM_SetServoPulse" not in freertos
     assert "stabilizer_servo_should_send" in freertos
+    assert "stabilizer_servo_command_slot_due" in freertos
     assert "stabilizer_servo_record_target(moves);" in freertos
+    assert "STABILIZER_SERVO_BUS_FRAME_MS" in freertos
     assert "STABILIZER_SERVO_REFRESH_MS" in freertos
     assert "STABILIZER_SERVO_DELTA_US" in freertos
     assert "#define STABILIZER_CONTROL_PERIOD_MS   2U" in freertos
+    assert "#define STABILIZER_SERVO_BUS_FRAME_MS 10U" in freertos
     assert "#define STABILIZER_SERVO_MOVE_TIME_MS 0U" in freertos
     assert "#define STABILIZER_SERVO_REFRESH_MS    500U" in freertos
     assert "#define VOFA_SEND_PERIOD_MS            25U" in freertos
     assert "stabilizer_servo_commit_sent(moves, now);" in freertos
+    assert "stabilizer_servo_bus_diag.move_attempt_count++;" in freertos
+    assert "stabilizer_servo_bus_diag.move_busy_count++;" in freertos
     assert "== DRV_SERVO_OK" in freertos
 
 
@@ -86,7 +91,7 @@ def test_uart_callbacks_route_uart7_to_servo_dma_diagnostics() -> None:
 def test_vofa_stream_sends_compact_dashboard_channels() -> None:
     freertos = read("Core/Src/freertos.c")
 
-    assert "#define VOFA_DATA_SIZE 22U" in freertos
+    assert "#define VOFA_DATA_SIZE 28U" in freertos
     assert "DRV_SERVO_Diag servo_diag;" not in freertos
     assert "BSP_BusServo_GetDiag(&servo_diag);" not in freertos
     assert "vofa_data[4] = (float)(SVC_Timestamp_Us() / 1000ULL) * 0.001f;" in freertos
@@ -97,7 +102,8 @@ def test_vofa_stream_sends_compact_dashboard_channels() -> None:
     assert '(void)DRV_COAX_CTRL_GetParam("coax.roll_angle_kp", &vofa_data[18]);' in freertos
     assert '(void)DRV_COAX_CTRL_GetParam("coax.pitch_angle_kp", &vofa_data[19]);' in freertos
     assert '(void)DRV_COAX_CTRL_GetParam("coax.pos_z_kp", &vofa_data[20]);' in freertos
-    assert '(void)DRV_COAX_CTRL_GetParam("coax.vel_z_kd", &vofa_data[21]);' in freertos
+    assert '(void)DRV_COAX_CTRL_GetParam("coax.pos_z_ki", &vofa_data[21]);' in freertos
+    assert '(void)DRV_COAX_CTRL_GetParam("coax.vel_z_kd", &vofa_data[22]);' in freertos
     assert "osDelay(VOFA_SEND_PERIOD_MS);" in freertos
 
 
@@ -111,7 +117,7 @@ def test_vofa_runtime_frames_drop_instead_of_queueing_stale_samples() -> None:
 def test_vofa_capture_parser_uses_compact_runtime_count() -> None:
     source = read("tools/vofa_serial_capture.py")
 
-    assert "VOFA_FLOAT_COUNT = 22" in source
+    assert "VOFA_FLOAT_COUNT = 28" in source
     assert 'struct.unpack(f"<{VOFA_FLOAT_COUNT}f", payload)' in source
     assert 'struct.unpack("<63f", payload)' not in source
 

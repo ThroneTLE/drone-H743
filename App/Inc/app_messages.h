@@ -44,7 +44,7 @@ typedef struct {
     DRV_IMU_RawData raw_imu;
     DRV_IMU_ScaledData imu;
 
-    /* Attitude estimate from complementary filter */
+    /* Attitude estimate from x-io Fusion AHRS */
     float roll_deg;
     float pitch_deg;
     float yaw_deg;
@@ -65,6 +65,15 @@ typedef struct {
     /* IMU data-ready counter (debug) */
     uint32_t imu_data_ready_count;
     uint32_t imu_poll_ready_count;
+
+    /* Fusion rejection/recovery diagnostics (appended for log compatibility) */
+    float fusion_acceleration_error_deg;
+    float fusion_acceleration_recovery_trigger;
+    uint32_t fusion_accel_correction_count;
+    uint8_t fusion_accelerometer_ignored;
+    uint8_t fusion_acceleration_recovery;
+    uint8_t fusion_angular_rate_recovery;
+    uint8_t fusion_accel_norm_rejected;
 } APP_Sensor_SampleMessage;
 
 typedef struct {

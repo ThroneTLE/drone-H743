@@ -95,6 +95,7 @@ def test_end_line_requires_done_and_matching_counts() -> None:
 
 
 def test_parse_record_and_csv_fields(tmp_path) -> None:
+    assert flog.MOTOR_REASON_NAMES[8] == "attitude_debug"
     packed = make_record()
 
     row = flog.parse_record(packed)
@@ -110,10 +111,37 @@ def test_parse_record_and_csv_fields(tmp_path) -> None:
     assert row["servo_alpha_feedback_age_ms"] == 3
     assert row["servo_beta_feedback_age_ms"] == 4
     assert row["servo_feedback_valid_mask"] == 0x03
+    assert row["servo_alpha_sent_us"] == 1520
+    assert row["servo_beta_sent_us"] == 1480
+    assert row["flow_raw_x"] == -12
+    assert row["flow_raw_y"] == 34
+    assert row["flow_quality"] == 180
+    assert row["flow_valid"] == 1
+    assert row["flow_velocity_valid"] == 1
+    assert row["flow_height_valid"] == 1
+    assert row["flow_height_raw_m"] == pytest.approx(0.42)
+    assert row["flow_height_m"] == pytest.approx(0.40)
+    assert row["flow_sensor_velocity_m_s_0"] == pytest.approx(0.10)
+    assert row["flow_optical_rot_comp_m_s_1"] == pytest.approx(-0.02)
+    assert row["flow_offset_rot_comp_m_s_0"] == pytest.approx(0.03)
+    assert row["flow_corrected_velocity_m_s_1"] == pytest.approx(0.08)
+    assert row["servo_move_attempt_count"] == 101
+    assert row["servo_move_sent_count"] == 102
+    assert row["servo_move_busy_count"] == 103
+    assert row["servo_move_error_count"] == 104
+    assert row["servo_feedback_request_count"] == 105
+    assert row["servo_feedback_response_count"] == 106
+    assert row["servo_feedback_timeout_count"] == 107
+    assert row["servo_feedback_parse_error_count"] == 108
+    assert row["servo_feedback_uart_error_count"] == 109
+    assert row["servo_feedback_busy_count"] == 110
     assert row["servo_alpha_feedback_deg"] == pytest.approx(90.9)
     assert row["servo_beta_feedback_tilt_deg"] == pytest.approx(-0.9)
     assert row["vel_pid_d_m_s2_1"] == 17.0
     assert row["ctrl_pos_p_m_s2_0"] == 19.0
+    assert row["ctrl_pos_z_i_m_s2"] == pytest.approx(-0.25)
+    assert row["ctrl_target_attitude_rp_rad_0"] == 31.0
+    assert row["ctrl_target_attitude_rp_rad_1"] == 32.0
     assert row["ctrl_tilt_angle_p_rad_0"] == 33.0
     assert row["ctrl_motor_cmd_us_1"] == 46.0
     assert row["ctrl_velocity_integral_m_0"] == 47.0
@@ -139,7 +167,39 @@ def test_parse_record_and_csv_fields(tmp_path) -> None:
 
 def make_record() -> bytes:
     values = []
-    values.extend([flog.RECORD_MAGIC, 1, flog.RECORD_SIZE, 3, 0, 1000, 12, 99])
+    values.extend([flog.RECORD_MAGIC, 7, flog.RECORD_SIZE, 3, 0, 1000, 12, 99])
+    values.extend([1, 2, 3, 4, 5, 6, 7])
+    values.extend([25.0, 0.1, 0.2, 0.3, 10.0, 11.0, 12.0])
+    values.extend([1.0, 2.0, 3.0])
+    values.extend([1000 + i for i in range(8)])
+    values.extend([1200, 1500, 1500, 1300, 1310])
+    values.extend([1510, 1490, 3, 4, 10, 11])
+    values.extend([0x03, 0, 0, 0])
+    values.extend([1, 1, 1, 1, 5, 1, 1, 1, 1, 0, 0, 0])
+    debug_values = [float(i) for i in range(64)]
+    debug_values.insert(22, -0.25)
+    values.extend(debug_values)
+    values.append(0x0A)
+    values.append(64.0)
+    values.extend([1, 2, 1, 0, 42, 0.017, 0.171, 1234])
+    values.extend([1520, 1480])
+    values.extend([-12, 34])
+    values.extend([6, 7])
+    values.extend([180, 1, 1, 1])
+    values.extend(
+        [0.42, 0.40, 0.10, 0.20, -0.01, -0.02, 0.03, 0.04, 0.12, 0.08]
+    )
+    values.extend(range(101, 111))
+    values.append(0)
+    packed_without_crc = flog.RECORD_STRUCT.pack(*values)
+    crc = flog.crc32(packed_without_crc[:-4] + b"\x00\x00\x00\x00")
+    values[-1] = crc
+    return flog.RECORD_STRUCT.pack(*values)
+
+
+def make_v5_record() -> bytes:
+    values = []
+    values.extend([flog.RECORD_MAGIC, 5, flog.V5_RECORD_SIZE, 6, 0, 1750, 15, 100])
     values.extend([1, 2, 3, 4, 5, 6, 7])
     values.extend([25.0, 0.1, 0.2, 0.3, 10.0, 11.0, 12.0])
     values.extend([1.0, 2.0, 3.0])
@@ -153,10 +213,10 @@ def make_record() -> bytes:
     values.append(64.0)
     values.extend([1, 2, 1, 0, 42, 0.017, 0.171, 1234])
     values.append(0)
-    packed_without_crc = flog.RECORD_STRUCT.pack(*values)
+    packed_without_crc = flog.V5_RECORD_STRUCT.pack(*values)
     crc = flog.crc32(packed_without_crc[:-4] + b"\x00\x00\x00\x00")
     values[-1] = crc
-    return flog.RECORD_STRUCT.pack(*values)
+    return flog.V5_RECORD_STRUCT.pack(*values)
 
 
 def make_v4_record() -> bytes:
@@ -220,6 +280,20 @@ def test_parse_v4_record_without_attitude_ident() -> None:
     assert row["ident_att_active"] == 0
     assert row["ident_att_signal_rad"] == 0.0
     assert row["ident_att_elapsed_ms"] == 0
+
+
+def test_parse_v5_record_without_flow_and_bus_diagnostics() -> None:
+    row = flog.parse_record(make_v5_record())
+
+    assert row is not None
+    assert row["version"] == 5
+    assert row["ident_att_active"] == 1
+    assert row["servo_alpha_sent_us"] == 0
+    assert row["flow_raw_x"] == 0
+    assert row["flow_height_m"] is None
+    assert row["flow_corrected_velocity_m_s_0"] is None
+    assert row["servo_move_attempt_count"] == 0
+    assert row["servo_feedback_busy_count"] == 0
 
 
 def make_sector_header() -> bytes:
@@ -330,7 +404,12 @@ def test_sector_header_and_flash_image_parse() -> None:
     assert errors == []
     assert records == []
     assert sectors[0]["session_id"] == 123
-    assert sectors[0]["params"]["vel_loop_x_kp"] == float(flog.PARAM_NAMES.index("vel_loop_x_kp"))
+    assert sectors[0]["params"]["pos_x_kp"] == float(
+        flog.PARAM_NAMES.index("pos_x_kp")
+    )
+    assert sectors[0]["params"]["vel_x_kd"] == float(
+        flog.PARAM_NAMES.index("vel_x_kd")
+    )
     assert sectors[0]["params"]["yaw_torque_lower_m_per_n"] == float(
         flog.PARAM_NAMES.index("yaw_torque_lower_m_per_n")
     )

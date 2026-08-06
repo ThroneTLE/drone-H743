@@ -13,6 +13,12 @@ typedef struct {
     uint16_t position_us[APP_SERVO_FEEDBACK_SLOT_COUNT];
     uint16_t age_ms[APP_SERVO_FEEDBACK_SLOT_COUNT];
     uint16_t sample_sequence[APP_SERVO_FEEDBACK_SLOT_COUNT];
+    uint32_t request_count;
+    uint32_t response_count;
+    uint32_t timeout_count;
+    uint32_t parse_error_count;
+    uint32_t uart_error_count;
+    uint32_t busy_count;
     uint8_t valid_mask;
 } APP_ServoFeedbackLogSample;
 

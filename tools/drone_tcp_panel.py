@@ -3452,16 +3452,14 @@ class DronePanel(tk.Tk):
             "pid.pitch.kd": "coax.pitch_rate_kd",
             "pid.yaw.kp": "coax.yaw_angle_kp",
             "pid.yaw.kd": "coax.yaw_rate_kd",
+            "pid.pos.x.kp": "coax.pos_x_kp",
+            "pid.pos.y.kp": "coax.pos_y_kp",
+            "pid.pos.z.kp": "coax.pos_z_kp",
+            "pid.pos.z.ki": "coax.pos_z_ki",
             "pid.vel.x.kd": "coax.vel_x_kd",
             "pid.vel.y.kd": "coax.vel_y_kd",
             "pid.vel.z.kd": "coax.vel_z_kd",
             "pid.vel_loop.enable": "coax.vel_loop_enable",
-            "pid.vel_loop.x.kp": "coax.vel_loop_x_kp",
-            "pid.vel_loop.x.ki": "coax.vel_loop_x_ki",
-            "pid.vel_loop.x.kd": "coax.vel_loop_x_kd",
-            "pid.vel_loop.y.kp": "coax.vel_loop_y_kp",
-            "pid.vel_loop.y.ki": "coax.vel_loop_y_ki",
-            "pid.vel_loop.y.kd": "coax.vel_loop_y_kd",
         }
         if lowered in pid_aliases:
             payload = f"PARAM SET {pid_aliases[lowered]} {value}"

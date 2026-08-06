@@ -1,0 +1,25 @@
+{
+  "format": "drone-h743-openocd-imu-v1",
+  "captured_at": "2026-07-27T13:01:09+08:00",
+  "capture_method": "read-only OpenOCD mdw of vofaLogQueueHandle storage",
+  "source_branch": "fix_IMU",
+  "firmware_state": "pre-ground-gravity-correction runtime image",
+  "schedule": {
+    "duration_s": 30.0,
+    "nominal_rate_hz": 100.0,
+    "baseline_s": 5.0,
+    "shake_s": 8.0,
+    "settle_s": 17.0
+  },
+  "csv": {
+    "file": "imu_vertical_shake_20260727_130109.csv",
+    "sha256": "8256811935d945793f68985c9972866e6a51279b80a53d23f2d29f7a69f259a8",
+    "rows": 3000,
+    "timestamp_nonforward": 0,
+    "sequence_nonforward": 0
+  },
+  "notes": [
+    "Actual continuous settled interval begins at host time 19.6274325 s.",
+    "No halt, reset, write-memory, erase, or flash command was issued."
+  ]
+}

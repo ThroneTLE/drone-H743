@@ -35,6 +35,7 @@ typedef enum {
     APP_FLIGHT_LOG_MOTOR_REASON_RC_LOSS_DISABLE = 5,
     APP_FLIGHT_LOG_MOTOR_REASON_IDENT_DIRECT = 6,
     APP_FLIGHT_LOG_MOTOR_REASON_IMU_INVALID_DIRECT = 7,
+    APP_FLIGHT_LOG_MOTOR_REASON_ATTITUDE_DEBUG = 8,
 } APP_FlightLogMotorOutputReason;
 
 typedef struct {
@@ -83,6 +84,32 @@ typedef struct {
     DRV_COAX_CTRL_Debug ctrl_debug;
     float z_ref_m;
     APP_IdentAttLog ident_att;
+    uint16_t servo_alpha_sent_us;
+    uint16_t servo_beta_sent_us;
+    int16_t flow_raw_x;
+    int16_t flow_raw_y;
+    uint16_t flow_sample_age_ms;
+    uint16_t flow_height_age_ms;
+    uint8_t flow_quality;
+    uint8_t flow_valid;
+    uint8_t flow_velocity_valid;
+    uint8_t flow_height_valid;
+    float flow_height_raw_m;
+    float flow_height_m;
+    float flow_sensor_velocity_m_s[2];
+    float flow_optical_rot_comp_m_s[2];
+    float flow_offset_rot_comp_m_s[2];
+    float flow_corrected_velocity_m_s[2];
+    uint32_t servo_move_attempt_count;
+    uint32_t servo_move_sent_count;
+    uint32_t servo_move_busy_count;
+    uint32_t servo_move_error_count;
+    uint32_t servo_feedback_request_count;
+    uint32_t servo_feedback_response_count;
+    uint32_t servo_feedback_timeout_count;
+    uint32_t servo_feedback_parse_error_count;
+    uint32_t servo_feedback_uart_error_count;
+    uint32_t servo_feedback_busy_count;
 } APP_FlightLogSnapshot;
 
 typedef struct {

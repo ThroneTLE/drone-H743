@@ -1,0 +1,43 @@
+{
+  "format": "drone-h743-openocd-imu-v2",
+  "created_at": "2026-07-27T14:41:12.180923+08:00",
+  "capture": {
+    "duration_s": 35.0,
+    "sample_rate_hz": 100.0,
+    "baseline_s": 10.0,
+    "shake_s": 3.0,
+    "settle_s": 22.0,
+    "read_failures": 0
+  },
+  "openocd": {
+    "host": "127.0.0.1",
+    "port": 4444,
+    "read_only": true,
+    "queue_handle_address": "0x20013f24",
+    "queue_address": "0x20004b90",
+    "message_address": "0x20004be0",
+    "queue_item_size": 176
+  },
+  "elf": {
+    "path": "D:\\stm32hal\\drone-H743\\build\\Debug\\drone-H743.elf",
+    "sha256": "dab293eb986b0ca4d5b49784ae945fe1eb3ca1d13577ea955f666d84f8603670"
+  },
+  "csv": {
+    "path": "D:\\stm32hal\\drone-H743\\tools\\imu_attitude_data\\imu_fixed_roll_hold_20260727_144100.csv",
+    "sha256": "5b17684e11dcd720091b2008987d160a033074283ee9232dd8a43785d94a5feb"
+  },
+  "quality": {
+    "row_count": 3500,
+    "valid": true,
+    "stage_counts": {
+      "baseline": 1000,
+      "shake": 300,
+      "settle": 2200
+    },
+    "host_duration_s": 34.99028690000705,
+    "observed_rate_hz": 99.99918005814622,
+    "timestamp_nonforward": 0,
+    "sequence_nonforward": 0,
+    "sequence_gap_max": 13
+  }
+}

@@ -51,33 +51,45 @@ def test_stabilizer_records_snapshots_without_direct_flash_access() -> None:
     assert "msg.raw_imu              = raw;" in freertos
     assert "APP_FlashService_" not in freertos
     assert "typedef struct {\n    float pos_p_m_s2[3];" in drv_header
+    assert "float pos_z_i_m_s2;" in drv_header
     assert "void DRV_COAX_CTRL_GetLastDebug(DRV_COAX_CTRL_Debug *debug);" in drv_header
     assert "debug->yaw_angle_p_rad_s" in drv_source
     assert "debug.yaw_torque_cmd =" in drv_source
     assert "coax_ctrl_last_debug = debug;" in drv_source
 
 
-def test_flight_log_v5_records_controller_servo_feedback_and_attitude_ident() -> None:
+def test_flight_log_v7_records_flow_servo_bus_attitude_ident_and_z_integral() -> None:
     header = read("Driver/Inc/drv_coax_ctrl.h")
     source = read("App/Src/app_flight_log.c")
     receiver = read("tools/flight_log_receive.py")
 
-    assert "#define APP_FLIGHT_LOG_VERSION            5U" in source
-    assert "sizeof(APP_FlightLogRecord) == 428U" in source
+    assert "sizeof(APP_FlightLogRecord) == 528U" in source
+    assert "#define APP_FLIGHT_LOG_VERSION            7U" in source
     assert "float desired_attitude_rpy_rad[3];" in header
     assert "float moment_cmd_n_m[3];" in header
     assert "float horizontal_command_scale;" in header
     assert "uint32_t protection_flags;" in header
+    assert "float pos_z_i_m_s2;" in header
+    assert '"ctrl_pos_z_i_m_s2"' in receiver
     assert '"ctrl_desired_attitude_rpy_rad"' in receiver
     assert '"ctrl_moment_cmd_n_m"' in receiver
     assert 'row["ctrl_protection_flags"]' in receiver
     assert "servo_alpha_feedback_us" in source
     assert "servo_beta_feedback_age_ms" in source
     assert "servo_feedback_valid_mask" in source
+    assert "servo_alpha_sent_us" in source
+    assert "flow_raw_x" in source
+    assert "flow_height_raw_m" in source
+    assert "flow_optical_rot_comp_m_s" in source
+    assert "flow_offset_rot_comp_m_s" in source
+    assert "servo_move_busy_count" in source
+    assert "servo_feedback_timeout_count" in source
     assert "APP_IdentAttLog ident_att;" in source
     assert '"ident_att_signal_rad"' in receiver
     assert '"ident_att_signal_m_s2"' in receiver
     assert 'row[f"servo_{axis}_feedback_deg"]' in receiver
+    assert "V5_RECORD_STRUCT" in receiver
+    assert "V6_RECORD_STRUCT" in receiver
     assert "V4_RECORD_STRUCT" in receiver
     assert "LEGACY_RECORD_STRUCT" in receiver
 

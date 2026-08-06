@@ -8,13 +8,14 @@ import csv
 import json
 import math
 import statistics
+import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable
 
 
 DEFAULT_GAP_S = 0.100
-DEFAULT_TILT_LIMIT_RAD = 0.314159
+DEFAULT_TILT_LIMIT_RAD = 0.4886922
 DEFAULT_MOTOR_MIN_US = 1100.0
 DEFAULT_MOTOR_MAX_US = 1940.0
 DEFAULT_SERVO_MIN_US = 1300.0
@@ -25,7 +26,13 @@ DEFAULT_GROUP_PARAM_FIELDS = (
     "roll_rate_kd",
     "pitch_angle_kp",
     "pitch_rate_kd",
+    "pos_x_kp",
+    "pos_y_kp",
+    "vel_x_kd",
+    "vel_y_kd",
+    "vel_loop_enable",
     "pos_z_kp",
+    "vel_z_kd",
     "yaw_rate_kd",
 )
 
@@ -42,23 +49,77 @@ DEFAULT_CHANNELS = (
     "vel_est_m_s_0",
     "vel_est_m_s_1",
     "vel_est_m_s_2",
+    "vel_ref_m_s_0",
+    "vel_ref_m_s_1",
+    "vel_err_m_s_0",
+    "vel_err_m_s_1",
+    "vel_pid_out_m_s2_0",
+    "vel_pid_out_m_s2_1",
+    "vel_pid_p_m_s2_0",
+    "vel_pid_p_m_s2_1",
+    "vel_pid_i_m_s2_0",
+    "vel_pid_i_m_s2_1",
+    "vel_pid_d_m_s2_0",
+    "vel_pid_d_m_s2_1",
+    "vel_loop_active",
     "throttle_us",
     "servo_alpha_us",
     "servo_beta_us",
+    "servo_alpha_sent_us",
+    "servo_beta_sent_us",
+    "servo_alpha_feedback_us",
+    "servo_beta_feedback_us",
     "motor_upper_us",
     "motor_lower_us",
+    "flow_raw_x",
+    "flow_raw_y",
+    "flow_quality",
+    "flow_sample_age_ms",
+    "flow_height_age_ms",
+    "flow_height_raw_m",
+    "flow_height_m",
+    "flow_sensor_velocity_m_s_0",
+    "flow_sensor_velocity_m_s_1",
+    "flow_optical_rot_comp_m_s_0",
+    "flow_optical_rot_comp_m_s_1",
+    "flow_offset_rot_comp_m_s_0",
+    "flow_offset_rot_comp_m_s_1",
+    "flow_corrected_velocity_m_s_0",
+    "flow_corrected_velocity_m_s_1",
+    "servo_move_busy_count",
+    "servo_move_error_count",
+    "servo_feedback_timeout_count",
+    "servo_feedback_parse_error_count",
+    "servo_feedback_uart_error_count",
+    "servo_feedback_busy_count",
     "ctrl_total_force_n",
     "ctrl_force_cmd_n_0",
     "ctrl_force_cmd_n_1",
     "ctrl_force_cmd_n_2",
-    "ctrl_tilt_ff_rad_0",
-    "ctrl_tilt_ff_rad_1",
+    "ctrl_pos_p_m_s2_0",
+    "ctrl_pos_p_m_s2_1",
+    "ctrl_vel_d_m_s2_0",
+    "ctrl_vel_d_m_s2_1",
+    "ctrl_accel_out_m_s2_0",
+    "ctrl_accel_out_m_s2_1",
+    "ctrl_target_attitude_rp_rad_0",
+    "ctrl_target_attitude_rp_rad_1",
     "ctrl_tilt_angle_p_rad_0",
     "ctrl_tilt_angle_p_rad_1",
     "ctrl_tilt_rate_d_rad_0",
     "ctrl_tilt_rate_d_rad_1",
     "ctrl_tilt_out_rad_0",
     "ctrl_tilt_out_rad_1",
+    "ctrl_attitude_error_0",
+    "ctrl_attitude_error_1",
+    "ctrl_rate_error_rad_s_0",
+    "ctrl_rate_error_rad_s_1",
+    "ctrl_moment_cmd_n_m_0",
+    "ctrl_moment_cmd_n_m_1",
+    "ctrl_horizontal_command_scale",
+    "ctrl_moment_utilization",
+    "ctrl_thrust_utilization",
+    "ctrl_protection_flags",
     "z_ref_m",
 )
 
@@ -129,6 +190,16 @@ class LinearFit:
 
 
 @dataclass(frozen=True)
+class TuningAdvice:
+    loop: str
+    axis: str
+    severity: str
+    recommendation: str
+    evidence: str
+    channels: str
+
+
+@dataclass(frozen=True)
 class FlightLogAnalysis:
     csv_path: str
     meta_path: str | None
@@ -145,6 +216,7 @@ class FlightLogAnalysis:
     channel_stats: dict[str, ChannelStats]
     gain_groups: list[GainGroupSummary]
     actuator_fits: list[LinearFit]
+    tuning_advice: list[TuningAdvice]
     flags: list[str]
 
     def to_dict(self) -> dict[str, Any]:
@@ -224,6 +296,49 @@ def rms_or_none(values: list[float]) -> float | None:
     if not values:
         return None
     return math.sqrt(statistics.fmean([value * value for value in values]))
+
+
+def mean_abs_or_none(values: list[float]) -> float | None:
+    if not values:
+        return None
+    return statistics.fmean([abs(value) for value in values])
+
+
+def pct_where(values: list[float], predicate: Callable[[float], bool]) -> float:
+    if not values:
+        return 0.0
+    return pct(sum(1 for value in values if predicate(value)), len(values))
+
+
+def correlation_or_none(xs: list[float], ys: list[float]) -> float | None:
+    if len(xs) != len(ys) or len(xs) < 3:
+        return None
+    mean_x = statistics.fmean(xs)
+    mean_y = statistics.fmean(ys)
+    ss_x = sum((value - mean_x) ** 2 for value in xs)
+    ss_y = sum((value - mean_y) ** 2 for value in ys)
+    if ss_x <= 0.0 or ss_y <= 0.0:
+        return None
+    cov = sum((x - mean_x) * (y - mean_y) for x, y in zip(xs, ys))
+    return cov / math.sqrt(ss_x * ss_y)
+
+
+def channel_pairs(rows: list[Row], x_channel: str, y_channel: str) -> tuple[list[float], list[float]]:
+    xs: list[float] = []
+    ys: list[float] = []
+    for row in rows:
+        x_value = to_float(row, x_channel)
+        y_value = to_float(row, y_channel)
+        if x_value is not None and y_value is not None:
+            xs.append(x_value)
+            ys.append(y_value)
+    return xs, ys
+
+
+def format_metric(value: float | None, suffix: str = "") -> str:
+    if value is None:
+        return "NA"
+    return f"{value:.3f}{suffix}"
 
 
 def sequence_missing(rows: list[Row]) -> int:
@@ -469,6 +584,399 @@ def build_actuator_fits(rows: list[Row]) -> list[LinearFit]:
     return [fit for fit in fits if fit is not None]
 
 
+def build_tuning_advice(
+    rows: list[Row],
+    channel_names: list[str],
+    gain_groups: list[GainGroupSummary],
+    gap_s: float,
+) -> list[TuningAdvice]:
+    advice: list[TuningAdvice] = []
+    if not rows:
+        return advice
+
+    duration = contiguous_duration_s(rows, gap_s)
+    missing = sequence_missing(rows)
+    direct_pct = pct(
+        sum(row.get("motor_output_reason_name") == "direct_throttle" for row in rows),
+        len(rows),
+    )
+    tilt_sat_pct = max((group.tilt_saturation_pct for group in gain_groups), default=0.0)
+    motor_hi_pct = max((group.motor_high_saturation_pct for group in gain_groups), default=0.0)
+    scale_values = numeric_values(rows, "ctrl_horizontal_command_scale")
+    horizontal_limited_pct = pct_where(scale_values, lambda value: value < 0.95) if scale_values else 0.0
+    moment_values = numeric_values(rows, "ctrl_moment_utilization")
+    moment_high_pct = pct_where(moment_values, lambda value: value >= 0.90) if moment_values else 0.0
+    thrust_values = numeric_values(rows, "ctrl_thrust_utilization")
+    thrust_high_pct = pct_where(thrust_values, lambda value: value >= 0.90) if thrust_values else 0.0
+    protection_values = numeric_values(rows, "ctrl_protection_flags")
+    protection_pct = pct_where(protection_values, lambda value: int(value) != 0) if protection_values else 0.0
+    limit_pct = max(horizontal_limited_pct, moment_high_pct, thrust_high_pct, protection_pct, tilt_sat_pct)
+
+    if duration < 3.0 or len(rows) < 200:
+        advice.append(
+            TuningAdvice(
+                loop="数据质量",
+                axis="整体",
+                severity="warn",
+                recommendation="这段日志太短，只适合看方向和通道是否生效，不适合据此定最终 P/D。",
+                evidence=f"连续有效时长={duration:.2f}s, 样本数={len(rows)}",
+                channels="timestamp_us, sequence",
+            )
+        )
+    if missing > 0:
+        advice.append(
+            TuningAdvice(
+                loop="数据质量",
+                axis="整体",
+                severity="warn",
+                recommendation="日志存在序号缺失，先用连续片段判断，缺失附近不要做响应时间或相位判断。",
+                evidence=f"sequence 缺失={missing} 条",
+                channels="sequence, dropped_records",
+            )
+        )
+    if direct_pct >= 50.0:
+        advice.append(
+            TuningAdvice(
+                loop="控制状态",
+                axis="整体",
+                severity="bad",
+                recommendation="大部分样本是油门直通，姿态/速度控制没有完整接管；这份日志不能用来调角度或速度闭环。",
+                evidence=f"direct_throttle={direct_pct:.1f}%",
+                channels="motor_output_reason_name",
+            )
+        )
+    elif direct_pct >= 5.0:
+        advice.append(
+            TuningAdvice(
+                loop="控制状态",
+                axis="整体",
+                severity="warn",
+                recommendation="日志中混入了油门直通样本，调参时优先看 stabilized_mix 区间。",
+                evidence=f"direct_throttle={direct_pct:.1f}%",
+                channels="motor_output_reason_name",
+            )
+        )
+    if limit_pct >= 20.0:
+        advice.append(
+            TuningAdvice(
+                loop="控制余量",
+                axis="整体",
+                severity="bad",
+                recommendation="控制输出大量被限幅或保护压缩，先解决余量/保护问题，再继续加大 P 或 D。",
+                evidence=(
+                    f"水平缩放={horizontal_limited_pct:.1f}%, 力矩高利用={moment_high_pct:.1f}%, "
+                    f"推力高利用={thrust_high_pct:.1f}%, 保护={protection_pct:.1f}%, 倾角饱和={tilt_sat_pct:.1f}%"
+                ),
+                channels=(
+                    "ctrl_horizontal_command_scale, ctrl_moment_utilization, "
+                    "ctrl_thrust_utilization, ctrl_protection_flags, ctrl_tilt_out_rad_*"
+                ),
+            )
+        )
+    elif limit_pct >= 5.0:
+        advice.append(
+            TuningAdvice(
+                loop="控制余量",
+                axis="整体",
+                severity="warn",
+                recommendation="已经能看到限幅/保护介入，调参结论要避开这些样本。",
+                evidence=(
+                    f"水平缩放={horizontal_limited_pct:.1f}%, 力矩高利用={moment_high_pct:.1f}%, "
+                    f"推力高利用={thrust_high_pct:.1f}%, 保护={protection_pct:.1f}%, 倾角饱和={tilt_sat_pct:.1f}%"
+                ),
+                channels=(
+                    "ctrl_horizontal_command_scale, ctrl_moment_utilization, "
+                    "ctrl_thrust_utilization, ctrl_protection_flags, ctrl_tilt_out_rad_*"
+                ),
+            )
+        )
+
+    angle_axes = (
+        {
+            "axis": "roll",
+            "angle": "roll_deg",
+            "gyro": "gyro_x_dps",
+            "att_err": "ctrl_attitude_error_0",
+            "rate_err": "ctrl_rate_error_rad_s_0",
+            "p": "ctrl_tilt_angle_p_rad_1",
+            "d": "ctrl_tilt_rate_d_rad_1",
+            "out": "ctrl_tilt_out_rad_1",
+            "moment": "ctrl_moment_cmd_n_m_0",
+        },
+        {
+            "axis": "pitch",
+            "angle": "pitch_deg",
+            "gyro": "gyro_y_dps",
+            "att_err": "ctrl_attitude_error_1",
+            "rate_err": "ctrl_rate_error_rad_s_1",
+            "p": "ctrl_tilt_angle_p_rad_0",
+            "d": "ctrl_tilt_rate_d_rad_0",
+            "out": "ctrl_tilt_out_rad_0",
+            "moment": "ctrl_moment_cmd_n_m_1",
+        },
+    )
+    for axis in angle_axes:
+        if axis["angle"] not in channel_names or axis["gyro"] not in channel_names:
+            continue
+        attitude_error = numeric_values(rows, axis["att_err"]) if axis["att_err"] in channel_names else []
+        angle_values = numeric_values(rows, axis["angle"])
+        angle_error_rms_deg = (
+            math.degrees(rms_or_none(attitude_error) or 0.0)
+            if attitude_error
+            else (rms_or_none(angle_values) or 0.0)
+        )
+        gyro_rms_dps = rms_or_none(numeric_values(rows, axis["gyro"])) or 0.0
+        p_rms_rad = rms_or_none(numeric_values(rows, axis["p"])) if axis["p"] in channel_names else None
+        d_rms_rad = rms_or_none(numeric_values(rows, axis["d"])) if axis["d"] in channel_names else None
+        out_values = numeric_values(rows, axis["out"]) if axis["out"] in channel_names else []
+        out_sat_pct = pct_where(
+            out_values,
+            lambda value: abs(value) >= DEFAULT_TILT_LIMIT_RAD - 1.0e-4,
+        ) if out_values else 0.0
+        p_rms_deg = math.degrees(p_rms_rad) if p_rms_rad is not None else None
+        d_rms_deg = math.degrees(d_rms_rad) if d_rms_rad is not None else None
+        evidence = (
+            f"角度误差RMS={angle_error_rms_deg:.2f}deg, 角速度RMS={gyro_rms_dps:.1f}dps, "
+            f"P项RMS={format_metric(p_rms_deg, 'deg')}, D项RMS={format_metric(d_rms_deg, 'deg')}, "
+            f"输出饱和={out_sat_pct:.1f}%, 保护/限幅={limit_pct:.1f}%"
+        )
+        channels = ", ".join(
+            [
+                axis["angle"],
+                axis["gyro"],
+                axis["att_err"],
+                axis["rate_err"],
+                axis["p"],
+                axis["d"],
+                axis["out"],
+            ]
+        )
+        if out_sat_pct >= 10.0 or moment_high_pct >= 20.0:
+            advice.append(
+                TuningAdvice(
+                    loop="角度环",
+                    axis=axis["axis"],
+                    severity="bad",
+                    recommendation="这个轴已经接近舵机/力矩饱和，先不要继续加角度 P/D；降低激励或释放控制余量后再判断。",
+                    evidence=evidence,
+                    channels=channels,
+                )
+            )
+        elif (p_rms_rad is None or p_rms_rad < math.radians(0.05)) and angle_error_rms_deg >= 2.0:
+            advice.append(
+                TuningAdvice(
+                    loop="角度环",
+                    axis=axis["axis"],
+                    severity="warn",
+                    recommendation="角度 P 项几乎没有进入舵机输出，先确认角度 KP 参数、分支开关和通道映射是否真的生效。",
+                    evidence=evidence,
+                    channels=channels,
+                )
+            )
+        elif angle_error_rms_deg >= 3.0 and gyro_rms_dps >= 25.0:
+            if d_rms_rad is not None and d_rms_rad < math.radians(0.20):
+                recommendation = "角速度很大但 D 项很小，优先确认阻尼极性，然后小步增加该轴 KD。"
+            elif p_rms_rad is not None and d_rms_rad is not None and d_rms_rad > max(2.0 * p_rms_rad, math.radians(2.0)):
+                recommendation = "D 项已经明显大于 P 项，震荡可能来自 D 过大或陀螺噪声，先降低 KD 或加滤波。"
+            else:
+                recommendation = "角度误差和角速度都偏大，先小步增加 KD 抑制摆动，再小步增加 KP 提高回正。"
+            advice.append(
+                TuningAdvice(
+                    loop="角度环",
+                    axis=axis["axis"],
+                    severity="warn",
+                    recommendation=recommendation,
+                    evidence=evidence,
+                    channels=channels,
+                )
+            )
+        elif angle_error_rms_deg >= 3.0 and gyro_rms_dps < 25.0 and limit_pct < 5.0:
+            advice.append(
+                TuningAdvice(
+                    loop="角度环",
+                    axis=axis["axis"],
+                    severity="warn",
+                    recommendation="角度误差偏大但角速度不高，表现更像回正偏软；在确认极性正确后可以小步增加 KP。",
+                    evidence=evidence,
+                    channels=channels,
+                )
+            )
+        elif angle_error_rms_deg < 2.0 and gyro_rms_dps < 20.0 and limit_pct < 5.0:
+            advice.append(
+                TuningAdvice(
+                    loop="角度环",
+                    axis=axis["axis"],
+                    severity="info",
+                    recommendation="这个轴的角度误差和角速度都不高，可作为当前角度 P/D 的基准段。",
+                    evidence=evidence,
+                    channels=channels,
+                )
+            )
+
+    active_values = numeric_values(rows, "vel_loop_active")
+    active_pct = pct_where(active_values, lambda value: value >= 0.5) if active_values else None
+    if active_pct is None:
+        advice.append(
+            TuningAdvice(
+                loop="速度环",
+                axis="整体",
+                severity="warn",
+                recommendation="日志里没有 vel_loop_active，无法确认速度环是否真正接管。",
+                evidence="缺少 vel_loop_active 通道",
+                channels="vel_loop_active",
+            )
+        )
+    elif active_pct <= 0.0:
+        advice.append(
+            TuningAdvice(
+                loop="速度环",
+                axis="整体",
+                severity="warn",
+                recommendation="水平外环未启用，这份日志不能用来判断位置比例或速度阻尼。",
+                evidence=f"vel_loop_active={active_pct:.1f}%",
+                channels="vel_loop_active",
+            )
+        )
+    else:
+        active_rows = [
+            row
+            for row in rows
+            if (to_float(row, "vel_loop_active") or 0.0) >= 0.5
+        ]
+        velocity_axes = (
+            {
+                "axis": "x",
+                "err": "vel_err_m_s_0",
+                "ref": "vel_ref_m_s_0",
+                "est": "vel_est_m_s_0",
+                "out": "vel_pid_out_m_s2_0",
+                "p": "vel_pid_p_m_s2_0",
+                "i": "vel_pid_i_m_s2_0",
+                "d": "vel_pid_d_m_s2_0",
+                "accel": "ctrl_accel_out_m_s2_0",
+                "target_att": "ctrl_target_attitude_rp_rad_1",
+            },
+            {
+                "axis": "y",
+                "err": "vel_err_m_s_1",
+                "ref": "vel_ref_m_s_1",
+                "est": "vel_est_m_s_1",
+                "out": "vel_pid_out_m_s2_1",
+                "p": "vel_pid_p_m_s2_1",
+                "i": "vel_pid_i_m_s2_1",
+                "d": "vel_pid_d_m_s2_1",
+                "accel": "ctrl_accel_out_m_s2_1",
+                "target_att": "ctrl_target_attitude_rp_rad_0",
+            },
+        )
+        for axis in velocity_axes:
+            if axis["err"] not in channel_names:
+                continue
+            err_values = numeric_values(active_rows, axis["err"])
+            if not err_values:
+                continue
+            out_values = numeric_values(active_rows, axis["out"])
+            p_values = numeric_values(active_rows, axis["p"])
+            d_values = numeric_values(active_rows, axis["d"])
+            accel_values = numeric_values(active_rows, axis["accel"])
+            err_rms = rms_or_none(err_values) or 0.0
+            err_abs_mean = mean_abs_or_none(err_values) or 0.0
+            out_rms = rms_or_none(out_values)
+            p_rms = rms_or_none(p_values)
+            d_rms = rms_or_none(d_values)
+            accel_rms = rms_or_none(accel_values)
+            corr_x, corr_y = channel_pairs(active_rows, axis["err"], axis["p"])
+            err_p_corr = correlation_or_none(corr_x, corr_y)
+            evidence = (
+                f"速度环有效={active_pct:.1f}%, 误差RMS={err_rms:.3f}m/s, "
+                f"误差均值绝对值={err_abs_mean:.3f}m/s, 输出RMS={format_metric(out_rms, 'm/s2')}, "
+                f"位置比例项RMS={format_metric(p_rms, 'm/s2')}, 速度阻尼项RMS={format_metric(d_rms, 'm/s2')}, "
+                f"加速度命令RMS={format_metric(accel_rms, 'm/s2')}, 误差-位置项相关={format_metric(err_p_corr)}"
+            )
+            channels = ", ".join(
+                [
+                    axis["err"],
+                    axis["ref"],
+                    axis["est"],
+                    axis["out"],
+                    axis["p"],
+                    axis["i"],
+                    axis["d"],
+                    axis["accel"],
+                    axis["target_att"],
+                    "ctrl_horizontal_command_scale",
+                ]
+            )
+            if err_rms >= 0.15 and limit_pct >= 20.0:
+                advice.append(
+                    TuningAdvice(
+                        loop="速度环",
+                        axis=axis["axis"],
+                        severity="bad",
+                        recommendation="速度误差存在，但水平命令/力矩/推力已经被压缩；现在加大位置比例或速度阻尼只会更顶保护，先放开余量或降低外层需求。",
+                        evidence=evidence,
+                        channels=channels,
+                    )
+                )
+            elif err_rms >= 0.15 and (out_rms is None or out_rms < 0.20) and limit_pct < 10.0:
+                advice.append(
+                    TuningAdvice(
+                        loop="速度环",
+                        axis=axis["axis"],
+                        severity="warn",
+                        recommendation="速度误差明显但外环加速度命令很小，优先检查位置比例/速度阻尼参数是否写入、速度单位和坐标极性是否正确。",
+                        evidence=evidence,
+                        channels=channels,
+                    )
+                )
+            elif err_rms >= 0.15 and limit_pct < 10.0:
+                advice.append(
+                    TuningAdvice(
+                        loop="速度环",
+                        axis=axis["axis"],
+                        severity="warn",
+                        recommendation="外环有加速度命令且没有明显保护，若姿态环已经稳定，可小步增加位置比例；若机身开始摆动，先降低位置比例或增加速度阻尼/滤波。",
+                        evidence=evidence,
+                        channels=channels,
+                    )
+                )
+            if d_rms is not None and d_rms < 0.02 and err_rms >= 0.20:
+                advice.append(
+                    TuningAdvice(
+                        loop="速度环",
+                        axis=axis["axis"],
+                        severity="info",
+                        recommendation="速度阻尼项接近 0，当前外环主要靠位置比例；若速度估计噪声可控，可再尝试很小的速度阻尼抑制超调。",
+                        evidence=evidence,
+                        channels=channels,
+                    )
+                )
+            if err_p_corr is not None and abs(err_p_corr) < 0.30 and (p_rms or 0.0) >= 0.10:
+                advice.append(
+                    TuningAdvice(
+                        loop="速度环",
+                        axis=axis["axis"],
+                        severity="warn",
+                        recommendation="速度误差和 P 输出相关性偏低，优先查速度误差定义、坐标极性、限幅缩放或日志是否混入了不同控制状态。",
+                        evidence=evidence,
+                        channels=channels,
+                    )
+                )
+
+    if not advice:
+        advice.append(
+            TuningAdvice(
+                loop="整体",
+                axis="整体",
+                severity="info",
+                recommendation="没有触发明显的调参告警；下一步建议用小幅 PRBS/阶跃激励采集更有辨识价值的数据。",
+                evidence="未检测到明显饱和、失能或高误差模式",
+                channels="ident_att_*, roll/pitch/gyro, vel_err, ctrl_*",
+            )
+        )
+    return advice
+
+
 def nominal_log_rate(meta: dict[str, Any]) -> float | None:
     begin = meta.get("begin")
     if isinstance(begin, dict):
@@ -514,7 +1022,17 @@ def build_flags(
         p1 = numeric_values(rows, "ctrl_tilt_angle_p_rad_1")
         if p0 and p1 and max(abs(value) for value in p0 + p1) == 0.0:
             flags.append("angle-P tilt contribution is zero; angle KP is acting through force terms or disabled")
-    if not any(name in channel_names for name in ("range_m", "height_m", "z_est_m", "rangefinder_m")):
+    if not any(
+        name in channel_names
+        for name in (
+            "range_m",
+            "height_m",
+            "flow_height_m",
+            "flow_height_raw_m",
+            "z_est_m",
+            "rangefinder_m",
+        )
+    ):
         flags.append("no direct range/height channel found; Z position-loop identification is limited")
     return flags
 
@@ -531,8 +1049,9 @@ def analyze_flight_log(
     meta = load_meta(meta_file)
 
     timestamps = numeric_values(rows, "timestamp_us")
-    duration = ((timestamps[-1] - timestamps[0]) / 1_000_000.0) if len(timestamps) > 1 else 0.0
     contiguous_duration = contiguous_duration_s(rows, gap_s)
+    raw_duration = ((timestamps[-1] - timestamps[0]) / 1_000_000.0) if len(timestamps) > 1 else 0.0
+    duration = raw_duration if raw_duration >= 0.0 else contiguous_duration
     observed_rate = ((len(rows) - 1) / contiguous_duration) if contiguous_duration > 0.0 and len(rows) > 1 else None
     dropped_values = numeric_values(rows, "dropped_records")
     dropped_delta = int(dropped_values[-1] - dropped_values[0]) if len(dropped_values) > 1 else None
@@ -547,6 +1066,7 @@ def analyze_flight_log(
     segments = split_segments(rows, gap_s)
     gain_groups = build_gain_groups(rows, meta, gap_s)
     actuator_fits = build_actuator_fits(rows)
+    tuning_advice = build_tuning_advice(rows, column_names, gain_groups, gap_s)
     flags = build_flags(rows, meta, segments, gain_groups, column_names)
     return FlightLogAnalysis(
         csv_path=str(csv_file),
@@ -564,6 +1084,7 @@ def analyze_flight_log(
         channel_stats=stats,
         gain_groups=gain_groups,
         actuator_fits=actuator_fits,
+        tuning_advice=tuning_advice,
         flags=flags,
     )
 
@@ -620,6 +1141,17 @@ def write_markdown_report(analysis: FlightLogAnalysis, path: Path) -> None:
     if analysis.flags:
         lines.append("## Flags")
         lines.extend(f"- {flag}" for flag in analysis.flags)
+        lines.append("")
+
+    if analysis.tuning_advice:
+        lines.append("## Tuning Advice")
+        lines.append("|loop|axis|severity|recommendation|evidence|channels|")
+        lines.append("|---|---|---|---|---|---|")
+        for item in analysis.tuning_advice:
+            lines.append(
+                f"|{item.loop}|{item.axis}|{item.severity}|"
+                f"{item.recommendation}|{item.evidence}|{item.channels}|"
+            )
         lines.append("")
 
     lines.append("## Segments")
@@ -690,6 +1222,11 @@ def print_console_summary(analysis: FlightLogAnalysis) -> None:
         )
     for flag in analysis.flags:
         print(f"FLAG: {flag}")
+    for item in analysis.tuning_advice:
+        print(
+            f"ADVICE[{item.severity}] {item.loop}/{item.axis}: "
+            f"{item.recommendation} ({item.evidence})"
+        )
     print("gain groups:")
     for group in analysis.gain_groups:
         print(
@@ -709,6 +1246,8 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> int:
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     args = parse_args()
     analysis = analyze_flight_log(args.csv, args.meta, gap_s=args.gap_ms / 1000.0)
     print_console_summary(analysis)

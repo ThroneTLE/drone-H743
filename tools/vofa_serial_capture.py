@@ -1,6 +1,6 @@
 """Capture USART1/VOFA JustFloat telemetry from the flight controller.
 
-The firmware currently sends 22 little-endian float32 values followed by the
+The firmware currently sends 28 little-endian float32 values followed by the
 VOFA JustFloat tail 00 00 80 7f. This tool records those frames to CSV and
 keeps text replies in a sidecar log so flight tuning can be reviewed later.
 """
@@ -21,7 +21,7 @@ from typing import Iterable
 
 
 VOFA_TAIL = b"\x00\x00\x80\x7f"
-VOFA_FLOAT_COUNT = 22
+VOFA_FLOAT_COUNT = 28
 VOFA_PAYLOAD_BYTES = VOFA_FLOAT_COUNT * 4
 VOFA_FRAME_BYTES = VOFA_PAYLOAD_BYTES + len(VOFA_TAIL)
 
@@ -37,17 +37,23 @@ CHANNEL_NAMES = [
     "coax_pitch_rate_kd",
     "coax_yaw_angle_kp",
     "coax_yaw_rate_kd",
-    "vel_loop_x_kp",
-    "vel_loop_y_kp",
-    "vel_loop_x_ki",
-    "vel_loop_y_ki",
-    "vel_loop_x_kd",
-    "vel_loop_y_kd",
+    "coax_pos_x_kp",
+    "coax_pos_y_kp",
+    "coax_vel_x_kd",
+    "coax_vel_y_kd",
+    "pos_x_m",
+    "pos_y_m",
     "vel_loop_enable",
     "coax_roll_angle_kp",
     "coax_pitch_angle_kp",
     "coax_pos_z_kp",
+    "coax_pos_z_ki",
     "coax_vel_z_kd",
+    "imu_accel_error_deg",
+    "imu_accel_ignored",
+    "imu_accel_recovery",
+    "imu_accel_correction_count",
+    "imu_accel_norm_rejected",
 ]
 
 TUNING_CHANNELS = [
@@ -57,6 +63,10 @@ TUNING_CHANNELS = [
     "range_height_m",
     "vel_est_x_m_s",
     "vel_est_y_m_s",
+    "imu_accel_error_deg",
+    "imu_accel_ignored",
+    "imu_accel_recovery",
+    "imu_accel_norm_rejected",
 ]
 
 

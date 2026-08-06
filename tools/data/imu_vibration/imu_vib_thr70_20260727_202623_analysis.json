@@ -1,0 +1,241 @@
+{
+  "label": "imu_vib_thr70_20260727_202623.csv",
+  "samples": 6144,
+  "effective_rate_hz": 992.063492063492,
+  "nyquist_hz": 496.031746031746,
+  "duration_s": 6.193152,
+  "freq_resolution_hz": 0.16146866732804233,
+  "timing": {
+    "dt_us_median": 1008.0,
+    "dt_us_p99": 1009.0,
+    "dt_us_max": 1046.0
+  },
+  "firmware": {
+    "accel_range_g": 16,
+    "gyro_range_dps": 1000,
+    "accel_aaf_hz": 213,
+    "gyro_aaf_hz": 213
+  },
+  "clipping": {
+    "accel": {
+      "abs_max_lsb": 3722.0,
+      "p99_9_lsb": 3288.2760000000126,
+      "clipped_pct": 0.0
+    },
+    "gyro": {
+      "abs_max_lsb": 610.0,
+      "p99_9_lsb": 538.5690000000031,
+      "clipped_pct": 0.0
+    }
+  },
+  "rotor": {
+    "motor_upper_us_median": 1633.0,
+    "motor_upper_us_min": 1632.0,
+    "motor_upper_us_max": 1633.0,
+    "spinning": true
+  },
+  "raw_spectra": {
+    "accel_x": {
+      "unit": "g",
+      "rms": 0.4481486600066541,
+      "peaks_hz": [
+        {
+          "freq_hz": 140.64,
+          "amplitude": 0.44584
+        },
+        {
+          "freq_hz": 129.01,
+          "amplitude": 0.27821
+        },
+        {
+          "freq_hz": 269.65,
+          "amplitude": 0.04009
+        },
+        {
+          "freq_hz": 141.61,
+          "amplitude": 0.03132
+        },
+        {
+          "freq_hz": 281.44,
+          "amplitude": 0.02917
+        }
+      ]
+    },
+    "gyro_x": {
+      "unit": "dps",
+      "rms": 4.775272266364527,
+      "peaks_hz": [
+        {
+          "freq_hz": 140.64,
+          "amplitude": 4.50079
+        },
+        {
+          "freq_hz": 129.01,
+          "amplitude": 2.51841
+        },
+        {
+          "freq_hz": 11.79,
+          "amplitude": 0.5479
+        },
+        {
+          "freq_hz": 93.81,
+          "amplitude": 0.42175
+        },
+        {
+          "freq_hz": 93.49,
+          "amplitude": 0.3952
+        }
+      ]
+    },
+    "accel_y": {
+      "unit": "g",
+      "rms": 0.30194205797818124,
+      "peaks_hz": [
+        {
+          "freq_hz": 140.64,
+          "amplitude": 0.31454
+        },
+        {
+          "freq_hz": 129.01,
+          "amplitude": 0.12344
+        },
+        {
+          "freq_hz": 269.65,
+          "amplitude": 0.03707
+        },
+        {
+          "freq_hz": 117.23,
+          "amplitude": 0.02909
+        },
+        {
+          "freq_hz": 281.44,
+          "amplitude": 0.02434
+        }
+      ]
+    },
+    "gyro_y": {
+      "unit": "dps",
+      "rms": 7.284723356605237,
+      "peaks_hz": [
+        {
+          "freq_hz": 129.01,
+          "amplitude": 6.73864
+        },
+        {
+          "freq_hz": 140.64,
+          "amplitude": 5.1337
+        },
+        {
+          "freq_hz": 117.23,
+          "amplitude": 0.83658
+        },
+        {
+          "freq_hz": 117.55,
+          "amplitude": 0.43473
+        },
+        {
+          "freq_hz": 95.27,
+          "amplitude": 0.39636
+        }
+      ]
+    },
+    "accel_z": {
+      "unit": "g",
+      "rms": 0.633023678708986,
+      "peaks_hz": [
+        {
+          "freq_hz": 140.64,
+          "amplitude": 0.58505
+        },
+        {
+          "freq_hz": 129.01,
+          "amplitude": 0.41209
+        },
+        {
+          "freq_hz": 117.23,
+          "amplitude": 0.07506
+        },
+        {
+          "freq_hz": 117.55,
+          "amplitude": 0.04935
+        },
+        {
+          "freq_hz": 47.15,
+          "amplitude": 0.04479
+        }
+      ]
+    },
+    "gyro_z": {
+      "unit": "dps",
+      "rms": 2.8905010421696256,
+      "peaks_hz": [
+        {
+          "freq_hz": 140.64,
+          "amplitude": 2.87885
+        },
+        {
+          "freq_hz": 129.01,
+          "amplitude": 1.81459
+        },
+        {
+          "freq_hz": 117.23,
+          "amplitude": 0.19787
+        },
+        {
+          "freq_hz": 11.79,
+          "amplitude": 0.19072
+        },
+        {
+          "freq_hz": 269.65,
+          "amplitude": 0.16431
+        }
+      ]
+    }
+  },
+  "lpf_measured": {
+    "accel_x": {
+      "pre_rms": 0.44815,
+      "post_rms": 0.13614,
+      "attenuation_db": -10.35
+    },
+    "accel_y": {
+      "pre_rms": 0.30194,
+      "post_rms": 0.08968,
+      "attenuation_db": -10.54
+    },
+    "accel_z": {
+      "pre_rms": 0.63302,
+      "post_rms": 0.05886,
+      "attenuation_db": -20.63
+    },
+    "gyro_x": {
+      "pre_rms": 4.77527,
+      "post_rms": 1.2894,
+      "attenuation_db": -11.37
+    },
+    "gyro_y": {
+      "pre_rms": 7.28472,
+      "post_rms": 2.2211,
+      "attenuation_db": -10.32
+    },
+    "gyro_z": {
+      "pre_rms": 2.8905,
+      "post_rms": 3.38986,
+      "attenuation_db": 1.38
+    }
+  },
+  "fusion_health": {
+    "accel_ignored": 0.0,
+    "norm_rejected": 0.0,
+    "accel_recovery": 0.0,
+    "rate_recovery": 0.0,
+    "startup": 0.0,
+    "accel_error_deg_median": 8.43
+  },
+  "recommendation": {
+    "dominant_gyro_tone_hz": 140.64,
+    "suggested_gyro_lpf_hz": 70,
+    "suggested_accel_lpf_hz": 35,
+    "notes": []
+  }
+}

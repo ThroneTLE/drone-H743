@@ -10,7 +10,7 @@
 
 #define APP_USB_CDC_RX_RING_SIZE 1024U
 #define APP_USB_CDC_LINE_SIZE    128U
-#define APP_USB_CDC_TX_SIZE      1536U
+/* APP_USB_CDC_TX_SIZE now lives in app_usb_cdc.h so callers can size-check. */
 
 static volatile uint8_t app_usb_cdc_configured;
 static volatile uint8_t app_usb_cdc_tx_in_flight;

@@ -22,17 +22,23 @@ CHANNEL_NAMES = [
     "Pitch_Rate_KD",
     "Yaw_Angle_KP",
     "Yaw_Rate_KD",
-    "Vel_X_KP",
-    "Vel_Y_KP",
-    "Vel_X_KI",
-    "Vel_Y_KI",
+    "Pos_X_KP",
+    "Pos_Y_KP",
     "Vel_X_KD",
     "Vel_Y_KD",
+    "Pos_X_m",
+    "Pos_Y_m",
     "Vel_Loop_Enable",
     "Roll_Angle_KP",
     "Pitch_Angle_KP",
     "Pos_Z_KP",
+    "Pos_Z_KI",
     "Vel_Z_KD",
+    "IMU_Accel_Error_deg",
+    "IMU_Accel_Ignored",
+    "IMU_Accel_Recovery",
+    "IMU_Accel_Correction_Count",
+    "IMU_Accel_Norm_Rejected",
 ]
 
 WORKSPACE_ORDER = ["飞行监控", "姿态参数", "速度参数", "ws1"]
@@ -139,11 +145,23 @@ def finalize_config(source: Path, output: Path) -> int:
         int(reread.value(f"PlotSettings/Page{index}/tileCount"))
         for index in range(1, 5)
     ] == [11, 18, 19, 19]
+    assert reread.value("ChannelNames/name11") == "Pos_X_KP"
+    assert reread.value("ChannelNames/name12") == "Pos_Y_KP"
+    assert reread.value("ChannelNames/name13") == "Vel_X_KD"
+    assert reread.value("ChannelNames/name14") == "Vel_Y_KD"
+    assert reread.value("ChannelNames/name15") == "Pos_X_m"
+    assert reread.value("ChannelNames/name16") == "Pos_Y_m"
     assert reread.value("ChannelNames/name17") == "Vel_Loop_Enable"
     assert reread.value("ChannelNames/name18") == "Roll_Angle_KP"
     assert reread.value("ChannelNames/name19") == "Pitch_Angle_KP"
     assert reread.value("ChannelNames/name20") == "Pos_Z_KP"
-    assert reread.value("ChannelNames/name21") == "Vel_Z_KD"
+    assert reread.value("ChannelNames/name21") == "Pos_Z_KI"
+    assert reread.value("ChannelNames/name22") == "Vel_Z_KD"
+    assert reread.value("ChannelNames/name23") == "IMU_Accel_Error_deg"
+    assert reread.value("ChannelNames/name24") == "IMU_Accel_Ignored"
+    assert reread.value("ChannelNames/name25") == "IMU_Accel_Recovery"
+    assert reread.value("ChannelNames/name26") == "IMU_Accel_Correction_Count"
+    assert reread.value("ChannelNames/name27") == "IMU_Accel_Norm_Rejected"
     print(f"wrote={output} status={reread.status().name} keys={len(reread.allKeys())}")
     return 0 if reread.status() == QSettings.NoError else 1
 
