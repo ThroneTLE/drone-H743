@@ -576,7 +576,11 @@ class FlightLogWorkbench(tk.Tk):
         if not channels:
             return
         max_points = self._read_int(self.max_points_var, DEFAULT_MAX_POINTS, 100)
-        time_label, time_values = time_axis_for_segment(segment_frame, self.time_var.get())
+        try:
+            time_label, time_values = time_axis_for_segment(segment_frame, self.time_var.get())
+        except RuntimeError as exc:
+            messagebox.showerror("依赖缺失", str(exc))
+            return
 
         self.figure.clear()
         axes = []

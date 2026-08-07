@@ -23,6 +23,7 @@ DEFAULT_PORT = 6666
 DEFAULT_MODULE_IP = "192.168.223.181"
 DEFAULT_UDP_LOCAL_PORT = 6668
 DEFAULT_UDP_MODULE_PORT = 7777
+DATA_ROOT = Path(__file__).resolve().parent / "data"
 MAX_BARO_SAMPLES = 2000
 MAX_GPS_TRACK_POINTS = 5000
 MAX_IDENT_SAMPLES = 5000
@@ -839,7 +840,7 @@ class DronePanel(tk.Tk):
         self.ident_current_var = tk.StringVar(value="-")
         self.ident_fit_var = tk.StringVar(value="no fit")
         self.ident_airframe_var = tk.StringVar(value="AIRFRAME: not loaded")
-        self.ident_save_dir = Path(__file__).resolve().parent / "ident_runs"
+        self.ident_save_dir = DATA_ROOT / "ident_runs"
         self.ident_output_dir_var = tk.StringVar(value=f"save dir: {self.ident_save_dir}")
         self.ident_last_file_var = tk.StringVar(value="last file: none")
         self.ident_link_var = tk.StringVar(value="UDP text: waiting")
@@ -2820,10 +2821,11 @@ class DronePanel(tk.Tk):
         if not self.baro_buffer:
             messagebox.showinfo("没有数据", "气压计暂存区为空")
             return
-        initial = Path.cwd() / f"baro_{time.strftime('%Y%m%d_%H%M%S')}.csv"
+        initial = DATA_ROOT / "telemetry" / f"baro_{time.strftime('%Y%m%d_%H%M%S')}.csv"
         filename = filedialog.asksaveasfilename(
             title="导出气压计暂存数据",
             defaultextension=".csv",
+            initialdir=str(initial.parent),
             initialfile=initial.name,
             filetypes=[("CSV", "*.csv"), ("All files", "*.*")],
         )
@@ -3055,10 +3057,11 @@ class DronePanel(tk.Tk):
         if not self.gps_track:
             messagebox.showinfo("没有数据", "GPS 轨迹为空")
             return
-        initial = Path.cwd() / f"gps_track_{time.strftime('%Y%m%d_%H%M%S')}.csv"
+        initial = DATA_ROOT / "telemetry" / f"gps_track_{time.strftime('%Y%m%d_%H%M%S')}.csv"
         filename = filedialog.asksaveasfilename(
             title="导出 GPS 轨迹",
             defaultextension=".csv",
+            initialdir=str(initial.parent),
             initialfile=initial.name,
             filetypes=[("CSV", "*.csv"), ("All files", "*.*")],
         )

@@ -36,7 +36,7 @@ except Exception:  # pragma: no cover - depends on host optional packages
 
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
-DEFAULT_LOG_DIR = ROOT_DIR / "log"
+DEFAULT_LOG_DIR = ROOT_DIR / "tools" / "data" / "flight_logs"
 DEFAULT_MAX_POINTS = 6000
 DEFAULT_GAP_MS = 200.0
 WHEEL_ZOOM_BASE = 1.25

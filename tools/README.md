@@ -12,6 +12,7 @@ PC 侧调试与分析脚本。脚本放在本目录顶层，采集到的数据�
 | `data/ident_runs/` | 姿态激励辨识批次 |
 | `data/pressure/` | RS485 压力传感器标定与手册 |
 | `data/spi_captures/` | Saleae SPI 抓包 |
+| `data/flight_logs/` | USART1 导出的原始/转换飞行日志（flight_log_receive.py，bin+csv+json） |
 
 ## 振动频谱采集（IMU 原始满速率）
 
@@ -195,13 +196,28 @@ Optional read throughput test:
 python3 tools/flash_diag_test.py --serial COM18 --baud 115200 --bench --final-rtos
 ```
 
+## 飞行日志接收（flight_log_receive.py）
+
+飞行日志通过 USART1 从飞控导出，flight_log_receive.py 负责接收并转成 .bin（原始）、.csv（解析后）和 _meta.json（元数据）三件套，默认保存到 tools/data/flight_logs/。
+
+```powershell
+# 图形界面：选串口、选保存目录
+python tools\flight_log_receive.py
+# 命令行：免界面直接导出到默认目录
+python tools\flight_log_receive.py --port COM7
+# 指定串口、波特率和保存目录
+python tools\flight_log_receive.py --port COM7 --baud 57600 --out-dir tools\data\flight_logs
+```
+
+固件端命令：FLOG DUMP 开始导出，FLOG CANCEL 取消。
+
 ## 飞行日志系统辨识
 
 使用 `flight_log_sysid.py` 可以把 `flightlog_*.csv` 和匹配的
 `flightlog_*_meta.json` 转成可复用的系统辨识摘要：
 
 ```bash
-python3 tools/flight_log_sysid.py flightlog_20260724_200832.csv --out-dir .tmp/sysid_flightlog_20260724_200832
+python3 tools/flight_log_sysid.py tools/data/flight_logs/flightlog_20260724_200832.csv --out-dir .tmp/sysid_flightlog_20260724_200832
 ```
 
 也可以被其他脚本直接导入：
@@ -209,7 +225,7 @@ python3 tools/flight_log_sysid.py flightlog_20260724_200832.csv --out-dir .tmp/s
 ```python
 from tools.flight_log_sysid import analyze_flight_log
 
-analysis = analyze_flight_log("flightlog_20260724_200832.csv")
+analysis = analyze_flight_log("tools/data/flight_logs/flightlog_20260724_200832.csv")
 print(analysis.gain_groups)
 ```
 
@@ -219,13 +235,13 @@ print(analysis.gain_groups)
 如果需要中文表格和图表界面：
 
 ```bash
-python3 tools/flight_log_sysid_ui.py flightlog_20260724_200832.csv
+python3 tools/flight_log_sysid_ui.py tools/data/flight_logs/flightlog_20260724_200832.csv
 ```
 
 如果想用一个窗口完成“选文件、选片段、看波形、弹出 Rerun 回放”，使用 All-in-One 工作台：
 
 ```powershell
-python tools\flight_log_workbench.py log
+python tools\flight_log_workbench.py tools\data\flight_logs
 ```
 
 工作台左侧选择日志文件和文件内片段，右侧选择通道并查看当前片段波形；
@@ -234,13 +250,13 @@ python tools\flight_log_workbench.py log
 如果只是想自己选文件、选通道、快速看波形，也可以单独用离线波形查看器：
 
 ```bash
-python3 tools/flight_log_waveform_ui.py log
+python3 tools/flight_log_waveform_ui.py tools/data/flight_logs
 ```
 
 也可以直接打开某个 CSV：
 
 ```bash
-python3 tools/flight_log_waveform_ui.py log/flightlog_20260727_045138.csv
+python3 tools/flight_log_waveform_ui.py tools/data/flight_logs/flightlog_20260727_045138.csv
 ```
 
 界面左侧选择日志文件，中间搜索/选择通道，右侧点击“画选中”即可查看曲线；
@@ -251,25 +267,25 @@ python3 tools/flight_log_waveform_ui.py log/flightlog_20260727_045138.csv
 它会把 `rerun-sdk` 装到 `.tmp/rerun_env`，避免 Rerun 依赖升级影响主 Python 分析环境。
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File tools\run_flight_log_rerun_replay.ps1 log
+powershell -ExecutionPolicy Bypass -File tools\run_flight_log_rerun_replay.ps1 tools\data\flight_logs
 ```
 
 也可以直接列出最新日志的分片：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File tools\run_flight_log_rerun_replay.ps1 log --list
+powershell -ExecutionPolicy Bypass -File tools\run_flight_log_rerun_replay.ps1 tools\data\flight_logs --list
 ```
 
 播放某一个分片：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File tools\run_flight_log_rerun_replay.ps1 log --play --segment 13
+powershell -ExecutionPolicy Bypass -File tools\run_flight_log_rerun_replay.ps1 tools\data\flight_logs --play --segment 13
 ```
 
 如果你已经在当前 Python 环境里安装好了 `rerun-sdk`，也可以直接运行 Python 脚本：
 
 ```bash
-python3 tools/flight_log_rerun_replay.py log --list
+python3 tools/flight_log_rerun_replay.py tools/data/flight_logs --list
 ```
 
 工具会按时间断点把日志切成多个片段，导出 `.tmp/rerun_replay/*.rrd`；
@@ -302,3 +318,22 @@ Suggested VOFA settings:
 - `远程IP`: `192.168.43.1` in default SoftAP mode, or the IP shown by `WIFI?`
 - `远程端口`: `7777`
 - `本地端口`: any free local UDP port, for example `6668`
+
+## 其他工具
+
+| 脚本 | 说明 |
+| --- | --- |
+| `imu_filter_report.py` | IMU 滤波器效果报告 |
+| `aiwb2_tcp_loop_test.py` | Ai-WB2 TCP 回环测试 |
+| `tcp_bidirectional_test.py` | TCP 双向转发测试 |
+| `vofa_udp_bridge.py` | VOFA UDP 桥接 |
+| `pressure_rs485_gui.py` | RS485 压力/称重传感器 GUI（含推力标定） |
+| `pressure_rs485_test.py` | RS485 压力传感器命令行自检 |
+| `thrust_ident_auto_viewer.py` | 推力标定结果自动查看 |
+| `attitude_ident_pid.py` | 姿态激励辨识 PID 分析 |
+| `fit_motor_hammerstein.py` | 电机 Hammerstein 拟合 |
+| `flow_velocity_filter_eval.py` | 光流速度滤波评估 |
+| `decode_saleae_spi_csv.py` | Saleae SPI CSV 解码 |
+| `saleae_imu_spi_capture.py` | Saleae 抓取 ICM42688 SPI 总线 |
+| `servo_baud_sweep.py` | 舵机总线波特率扫描 |
+| `synex_config_builder.py` | Synex 配置生成 |

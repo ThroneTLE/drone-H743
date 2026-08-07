@@ -15,6 +15,9 @@ import time
 from saleae import automation
 
 
+DEFAULT_OUT_DIR = Path(__file__).resolve().parent / "data" / "spi_captures"
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--port", type=int, default=10430, help="Logic 2 automation port")
@@ -28,7 +31,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--miso", type=int, default=3)
     parser.add_argument("--mode", type=int, choices=[0, 3], default=0)
     parser.add_argument("--no-analyzer", action="store_true", help="skip adding/exporting Saleae SPI analyzer")
-    parser.add_argument("--out", type=Path, default=Path("saleae_capture"))
+    parser.add_argument("--out", type=Path, default=DEFAULT_OUT_DIR)
     parser.add_argument("--device-id", default=None)
     return parser.parse_args()
 

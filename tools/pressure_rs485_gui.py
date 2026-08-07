@@ -36,7 +36,7 @@ from pressure_rs485_test import (
     write_single_register,
 )
 
-CALIBRATION_FILE = Path(__file__).with_name("pressure_calibration.json")
+CALIBRATION_FILE = Path(__file__).resolve().parent / "data" / "pressure" / "pressure_calibration.json"
 DEFAULT_REFERENCE_WEIGHTS = (231.8, 346.5, 504.9)
 DEFAULT_MOTOR_KV = 1300.0
 DEFAULT_BATTERY_VOLTAGE = 12.6
@@ -1087,7 +1087,7 @@ class PressureGui(tk.Tk):
     def default_ident_file(self, motor: int | None = None) -> Path:
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         suffix = "auto" if motor is None else ("dual" if motor == 0 else f"m{motor}")
-        return Path(__file__).with_name(f"thrust_ident_{suffix}_{stamp}.csv")
+        return Path(__file__).resolve().parent / "data" / "thrust_ident" / f"thrust_ident_{suffix}_{stamp}.csv"
 
     def _raw_log(self, request: bytes, response: bytes) -> None:
         if not self.raw_log_enabled:
@@ -1177,7 +1177,7 @@ class PressureGui(tk.Tk):
         return kv, voltage, load_factor, prop
 
     def _history_csv_paths(self) -> list[Path]:
-        paths = set(Path(__file__).resolve().parent.glob("thrust_ident_*.csv"))
+        paths = set((Path(__file__).resolve().parent / "data" / "thrust_ident").glob("thrust_ident_*.csv"))
         current_text = self.ident_file_var.get().strip()
         if current_text:
             current_path = Path(current_text)
@@ -1279,7 +1279,7 @@ class PressureGui(tk.Tk):
         if not self.latest_loss_rows:
             messagebox.showinfo("No loss data", "Need M1, M2, and Dual runs with common pct points first.")
             return
-        path = Path(__file__).with_name("dual_prop_loss_report.csv")
+        path = Path(__file__).resolve().parent / "data" / "thrust_ident" / "dual_prop_loss_report.csv"
         try:
             write_loss_report(path, self.latest_loss_rows)
         except Exception as exc:

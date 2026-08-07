@@ -4,6 +4,7 @@ from pathlib import Path
 import os
 
 import pandas as pd
+import pytest
 
 from tools import flight_log_rerun_replay as replay
 
@@ -93,3 +94,20 @@ def test_rerun_replay_wrapper_keeps_sdk_in_isolated_venv() -> None:
     assert "flight_log_rerun_replay.py" in source
     assert "run_flight_log_rerun_replay.ps1" in readme
     assert ".tmp/rerun_env" in readme
+
+
+def test_parse_segment_selection_rejects_bad_tokens() -> None:
+    with pytest.raises(ValueError):
+        replay.parse_segment_selection("abc", 5)
+    with pytest.raises(ValueError):
+        replay.parse_segment_selection("0-", 5)
+    with pytest.raises(ValueError):
+        replay.parse_segment_selection("2-1-x", 5)
+
+
+def test_rerun_cli_handles_bad_inputs_gracefully() -> None:
+    source = read("tools/flight_log_rerun_replay.py")
+
+    assert "except (ValueError, RuntimeError) as exc:" in source
+    assert 'print(f"error: {exc}", file=sys.stderr)' in source
+    assert "return 2" in source

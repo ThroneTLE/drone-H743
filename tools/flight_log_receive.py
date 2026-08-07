@@ -3,11 +3,13 @@
 
 from __future__ import annotations
 
+import argparse
 import csv
 import json
 import queue
 import re
 import struct
+import sys
 import threading
 import time
 from dataclasses import dataclass, field
@@ -33,6 +35,8 @@ except Exception:  # pragma: no cover - handled at runtime in the GUI.
 
 
 DEFAULT_BAUD = 57600
+ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_OUT_DIR = ROOT / "tools" / "data" / "flight_logs"
 DEFAULT_TIMEOUT_S = 2.0
 SECTOR_SIZE = 4096
 SECTOR_HEADER_SIZE = 256
@@ -1035,7 +1039,7 @@ class FlightLogGui:
 
         self.port_var = tk.StringVar()
         self.baud_var = tk.StringVar(value=str(DEFAULT_BAUD))
-        self.dir_var = tk.StringVar(value=str(Path.cwd()))
+        self.dir_var = tk.StringVar(value=str(DEFAULT_OUT_DIR))
         self.progress_var = tk.DoubleVar(value=0.0)
 
         self._build()
@@ -1099,11 +1103,15 @@ class FlightLogGui:
         if not port_name:
             messagebox.showerror("Serial", "Select a serial port")
             return
+        try:
+            baud = int(self.baud_var.get())
+        except ValueError:
+            messagebox.showerror("Serial", f"Invalid baud rate: {self.baud_var.get()!r}")
+            return
         self.cancel_requested = False
         self.receive_btn.configure(state="disabled")
         self.cancel_btn.configure(state="normal")
         self.progress_var.set(0.0)
-        baud = int(self.baud_var.get())
         output_dir = Path(self.dir_var.get())
         self.worker = threading.Thread(target=self._worker, args=(port_name, baud, output_dir), daemon=True)
         self.worker.start()
@@ -1156,13 +1164,39 @@ class FlightLogGui:
         self.root.after(100, self._poll_events)
 
 
-def main() -> None:
-    if tk is None or ttk is None:
-        raise SystemExit("tkinter is not available")
-    root = tk.Tk()
-    FlightLogGui(root)
-    root.mainloop()
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Receive FlightLog dumps from USART1 and convert them to bin/csv/json."
+    )
+    parser.add_argument("--port", default=None, help="serial port; if given, dump to files and exit (headless CLI)")
+    parser.add_argument("--baud", type=int, default=DEFAULT_BAUD, help=f"serial baud rate, default {DEFAULT_BAUD}")
+    parser.add_argument("--out-dir", type=Path, default=DEFAULT_OUT_DIR, help="output directory for bin/csv/json")
+    args = parser.parse_args()
+
+    if args.port is None:
+        if tk is None or ttk is None:
+            raise SystemExit("tkinter is not available; pass --port for headless dump")
+        root = tk.Tk()
+        FlightLogGui(root)
+        root.mainloop()
+        return 0
+
+    if serial is None:
+        print("error: pyserial is required for serial dump: python -m pip install pyserial", file=sys.stderr)
+        return 1
+    output_dir = args.out_dir
+    output_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        with serial.Serial(args.port, baudrate=args.baud, timeout=DEFAULT_TIMEOUT_S, write_timeout=2.0) as port:
+            result = receive_dump(port, output_dir)
+    except Exception as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    print(f"done: {result.records} records, {result.total_bytes} bytes, {result.good_bytes} good, {result.missing_bytes} missing")
+    for label, path in (("bin", result.bin_path), ("csv", result.csv_path), ("meta", result.meta_path)):
+        print(f"{label}: {path}")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

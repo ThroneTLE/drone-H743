@@ -21,6 +21,7 @@ from typing import Iterable
 
 
 VOFA_TAIL = b"\x00\x00\x80\x7f"
+DEFAULT_OUT_DIR = Path(__file__).resolve().parent / "data" / "imu_attitude_data"
 VOFA_FLOAT_COUNT = 28
 VOFA_PAYLOAD_BYTES = VOFA_FLOAT_COUNT * 4
 VOFA_FRAME_BYTES = VOFA_PAYLOAD_BYTES + len(VOFA_TAIL)
@@ -119,8 +120,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--out-dir",
-        default="captures",
-        help="output directory, default captures",
+        default=DEFAULT_OUT_DIR,
+        help="output directory, default tools/data/imu_attitude_data",
     )
     parser.add_argument(
         "--prefix",

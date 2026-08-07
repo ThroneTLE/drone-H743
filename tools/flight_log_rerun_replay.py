@@ -23,7 +23,7 @@ except Exception:  # pragma: no cover - depends on host optional packages
 
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
-DEFAULT_LOG_DIR = ROOT_DIR / "log"
+DEFAULT_LOG_DIR = ROOT_DIR / "tools" / "data" / "flight_logs"
 DEFAULT_OUT_DIR = ROOT_DIR / ".tmp" / "rerun_replay"
 DEFAULT_GAP_MS = 200.0
 DEFAULT_MAX_ROWS_PER_SEGMENT = 2600
@@ -759,31 +759,35 @@ def main() -> int:
         app.mainloop()
         return 0
 
-    csv_path = resolve_csv_path(args.path)
-    frame = load_csv(csv_path)
-    segments = split_segments(frame, gap_ms=args.gap_ms)
-    selected = parse_segment_selection(args.segment, len(segments))
-    if args.list:
-        print(f"csv={csv_path}")
-        print_segments(segments)
-    if args.export or args.play:
-        exported: list[Path] = []
-        for index in selected:
-            exported.append(
-                export_segment_to_rrd(
-                    frame,
-                    csv_path,
-                    segments[index],
-                    args.out_dir,
-                    max_rows=args.max_rows,
-                    stride=args.stride,
+    try:
+        csv_path = resolve_csv_path(args.path)
+        frame = load_csv(csv_path)
+        segments = split_segments(frame, gap_ms=args.gap_ms)
+        selected = parse_segment_selection(args.segment, len(segments))
+        if args.list:
+            print(f"csv={csv_path}")
+            print_segments(segments)
+        if args.export or args.play:
+            exported: list[Path] = []
+            for index in selected:
+                exported.append(
+                    export_segment_to_rrd(
+                        frame,
+                        csv_path,
+                        segments[index],
+                        args.out_dir,
+                        max_rows=args.max_rows,
+                        stride=args.stride,
+                    )
                 )
-            )
-        for path in exported:
-            print(f"rrd={path}")
-        if args.play and exported:
-            launch_rerun(exported[0])
-    return 0
+            for path in exported:
+                print(f"rrd={path}")
+            if args.play and exported:
+                launch_rerun(exported[0])
+        return 0
+    except (ValueError, RuntimeError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":

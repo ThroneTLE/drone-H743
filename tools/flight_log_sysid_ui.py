@@ -29,6 +29,9 @@ except Exception:  # pragma: no cover - depends on host optional packages
     NavigationToolbar2Tk = None
 
 
+DEFAULT_LOG_DIR = Path(__file__).resolve().parent / "data" / "flight_logs"
+
+
 def format_cell(value: object, digits: int = 3) -> str:
     # 中文注释：表格统一格式化，空值留空，浮点数保留指定小数位。
     if value is None:
@@ -269,7 +272,7 @@ class FlightLogSysidUI(tk.Tk):
     def open_csv(self) -> None:
         path = filedialog.askopenfilename(
             title="打开飞行日志 CSV",
-            initialdir=Path.cwd(),
+            initialdir=str(DEFAULT_LOG_DIR),
             filetypes=(("飞行日志 CSV", "flightlog_*.csv"), ("CSV 文件", "*.csv"), ("所有文件", "*.*")),
         )
         if path:

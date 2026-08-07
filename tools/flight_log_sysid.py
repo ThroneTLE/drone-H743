@@ -1236,11 +1236,21 @@ def print_console_summary(analysis: FlightLogAnalysis) -> None:
         )
 
 
+def default_report_dir(csv_path: Path) -> Path:
+    # 中文注释：默认把报告放到日志同目录的 .tmp/sysid_xxx，方便每次复查。
+    return csv_path.parent / ".tmp" / f"sysid_{csv_path.stem}"
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Analyze H743 FLOG CSV files for system identification.")
     parser.add_argument("csv", type=Path, help="flightlog_*.csv path")
     parser.add_argument("--meta", type=Path, default=None, help="flightlog_*_meta.json path")
-    parser.add_argument("--out-dir", type=Path, default=None, help="directory for JSON/CSV/Markdown reports")
+    parser.add_argument(
+        "--out-dir",
+        type=Path,
+        default=None,
+        help="directory for JSON/CSV/Markdown reports; default: <csv dir>/.tmp/sysid_<csv stem>",
+    )
     parser.add_argument("--gap-ms", type=float, default=DEFAULT_GAP_S * 1000.0, help="segment break gap in ms")
     return parser.parse_args()
 
@@ -1251,10 +1261,10 @@ def main() -> int:
     args = parse_args()
     analysis = analyze_flight_log(args.csv, args.meta, gap_s=args.gap_ms / 1000.0)
     print_console_summary(analysis)
-    if args.out_dir is not None:
-        paths = write_reports(analysis, args.out_dir, args.csv.stem)
-        for label, path in paths.items():
-            print(f"{label}: {path}")
+    out_dir = args.out_dir if args.out_dir is not None else default_report_dir(args.csv)
+    paths = write_reports(analysis, out_dir, args.csv.stem)
+    for label, path in paths.items():
+        print(f"{label}: {path}")
     return 0
 
 
