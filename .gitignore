@@ -48,3 +48,6 @@ log/
 dis.txt
 flightlog_*.csv
 flightlog_*.json
+
+tools/data/flight_logs/
+debug_flog_exports/
