@@ -112,6 +112,24 @@ V6_PARAMS_STRUCT = struct.Struct("<" + "f" * len(V6_PARAM_NAMES))
 LEGACY_PARAMS_STRUCT = struct.Struct("<" + "f" * len(LEGACY_PARAM_NAMES))
 EXPORT_HEADER = struct.Struct("<IHHIIHHI")
 EXPORT_BLOCK_MAGIC_BYTES = struct.pack("<I", EXPORT_BLOCK_MAGIC)
+# V3 (320B) was the record layout until 2026-07-24; it has no servo
+# feedback / ident_att / v6/v7 diagnostic sections.  Layout derived from
+# commit 85a5cac (APP_FlightLogRecord packed) and verified by CRC on real logs.
+V3_RECORD_STRUCT = struct.Struct(
+    "<IHHIIQII"
+    + "h" * 7
+    + "f" * 7
+    + "f" * 3
+    + "H" * 8
+    + "H" * 5
+    + "B" * 12
+    + "f" * 18
+    + "f"
+    + "f" * 28
+    + "f"
+    + "I"
+)
+V3_RECORD_SIZE = V3_RECORD_STRUCT.size
 LEGACY_RECORD_STRUCT = struct.Struct(
     "<IHHIIQII"
     + "h" * 7
@@ -565,7 +583,109 @@ def parse_sector_header(data: bytes, offset: int) -> dict[str, object] | None:
     }
 
 
+def _parse_record_v3(record_bytes: bytes) -> dict[str, object] | None:
+    """Parse a 320-byte (V3) record into a row dict in the historical column
+    order (no servo-feedback / ident_att / v6 / v7 sections)."""
+    values = V3_RECORD_STRUCT.unpack(record_bytes)
+    if values[0] != RECORD_MAGIC or values[2] != len(record_bytes):
+        return None
+    saved_crc = values[-1]
+    check = bytearray(record_bytes)
+    check[-4:] = b"\x00\x00\x00\x00"
+    if crc32(bytes(check)) != saved_crc:
+        return None
+
+    i = 0
+    row: dict[str, object] = {}
+    for name in ("magic", "version", "size", "sequence", "dropped_records", "timestamp_us", "tick_ms", "imu_sequence"):
+        row[name] = values[i]
+        i += 1
+    for name in ("raw_temperature", "raw_accel_x", "raw_accel_y", "raw_accel_z", "raw_gyro_x", "raw_gyro_y", "raw_gyro_z"):
+        row[name] = values[i]
+        i += 1
+    for name in ("temperature_c", "accel_x_g", "accel_y_g", "accel_z_g", "gyro_x_dps", "gyro_y_dps", "gyro_z_dps"):
+        row[name] = values[i]
+        i += 1
+    for name in ("roll_deg", "pitch_deg", "yaw_deg"):
+        row[name] = values[i]
+        i += 1
+    for ch in range(8):
+        row[f"rc_ch{ch + 1}_us"] = values[i]
+        i += 1
+    for name in ("throttle_us", "servo_alpha_us", "servo_beta_us", "motor_upper_us", "motor_lower_us"):
+        row[name] = values[i]
+        i += 1
+    for name in (
+        "rc_armed",
+        "rc_link_ok",
+        "throttle_over_20",
+        "imu_valid",
+        "motor_output_reason",
+        "rc_link_seen",
+        "arm_switch_high",
+        "arm_throttle_low",
+        "arm_switch_seen_low",
+        "arm_switch_prev_high",
+        "imu_fault_latched",
+        "imu_fault_reason",
+    ):
+        row[name] = values[i]
+        i += 1
+    row["motor_output_reason_name"] = MOTOR_REASON_NAMES.get(
+        int(row["motor_output_reason"]), "unknown"
+    )
+    for prefix, count in (
+        ("acc_nav_m_s2", 3),
+        ("vel_est_m_s", 3),
+        ("vel_ref_m_s", 2),
+        ("vel_err_m_s", 2),
+        ("vel_pid_out_m_s2", 2),
+        ("vel_pid_p_m_s2", 2),
+        ("vel_pid_i_m_s2", 2),
+        ("vel_pid_d_m_s2", 2),
+    ):
+        for axis in range(count):
+            row[f"{prefix}_{axis}"] = values[i]
+            i += 1
+    row["vel_loop_active"] = values[i]
+    i += 1
+    for prefix, count in (
+        ("ctrl_pos_p_m_s2", 3),
+        ("ctrl_vel_d_m_s2", 3),
+        ("ctrl_accel_out_m_s2", 3),
+        ("ctrl_force_cmd_n", 3),
+        ("ctrl_tilt_ff_rad", 2),
+        ("ctrl_tilt_angle_p_rad", 2),
+        ("ctrl_tilt_rate_d_rad", 2),
+        ("ctrl_tilt_out_rad", 2),
+    ):
+        for axis in range(count):
+            row[f"{prefix}_{axis}"] = values[i]
+            i += 1
+    for name in (
+        "ctrl_yaw_angle_p_rad_s",
+        "ctrl_yaw_rate_d_rad_s",
+        "ctrl_yaw_torque_cmd",
+        "ctrl_total_force_n",
+    ):
+        row[name] = values[i]
+        i += 1
+    for prefix, count in (
+        ("ctrl_motor_thrust_cmd_n", 2),
+        ("ctrl_motor_cmd_us", 2),
+    ):
+        for axis in range(count):
+            row[f"{prefix}_{axis}"] = values[i]
+            i += 1
+    row["z_ref_m"] = values[i]
+    i += 1
+    row["record_crc32"] = saved_crc
+    return row
+
+
 def parse_record(record_bytes: bytes) -> dict[str, object] | None:
+    if len(record_bytes) == V3_RECORD_SIZE:
+        return _parse_record_v3(record_bytes)
     has_v6_diagnostics = False
     has_v7_z_integral = False
     if len(record_bytes) == RECORD_SIZE:
@@ -864,6 +984,7 @@ def parse_flash_image(data: bytes) -> tuple[list[dict[str, object]], list[dict[s
                 V6_RECORD_SIZE,
                 V5_RECORD_SIZE,
                 V4_RECORD_SIZE,
+                V3_RECORD_SIZE,
                 LEGACY_RECORD_SIZE,
             ):
                 errors.append(f"unsupported record size {record_size} at sector offset {offset}")

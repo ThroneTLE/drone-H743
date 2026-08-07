@@ -197,6 +197,26 @@ def make_record() -> bytes:
     return flog.RECORD_STRUCT.pack(*values)
 
 
+def make_v3_record() -> bytes:
+    values = []
+    values.extend([flog.RECORD_MAGIC, 3, flog.V3_RECORD_SIZE, 4, 0, 2000, 16, 100])
+    values.extend([1, 2, 3, 4, 5, 6, 7])  # raw 7 x i16
+    values.extend([25.0, 0.1, 0.2, 0.3, 10.0, 11.0, 12.0])  # scaled 7 x f32
+    values.extend([1.0, 2.0, 3.0])  # roll/pitch/yaw
+    values.extend([1000 + i for i in range(8)])  # rc_channels[8]
+    values.extend([1200, 1500, 1500, 1300, 1310])  # throttle + servos + motors
+    values.extend([1, 1, 1, 1, 5, 1, 1, 1, 1, 0, 0, 0])  # flags
+    values.extend([float(i) for i in range(18)])  # nav/vel
+    values.append(1.0)  # vel_loop_active
+    values.extend([float(i) for i in range(28)])  # ctrl_debug
+    values.append(5.0)  # z_ref_m
+    values.append(0)  # crc placeholder
+    packed_without_crc = flog.V3_RECORD_STRUCT.pack(*values)
+    crc = flog.crc32(packed_without_crc[:-4] + b"\x00\x00\x00\x00")
+    values[-1] = crc
+    return flog.V3_RECORD_STRUCT.pack(*values)
+
+
 def make_v5_record() -> bytes:
     values = []
     values.extend([flog.RECORD_MAGIC, 5, flog.V5_RECORD_SIZE, 6, 0, 1750, 15, 100])
@@ -576,3 +596,36 @@ def test_receive_dump_cancel_sends_flog_cancel(tmp_path) -> None:
         b"FLOG DUMP\r\n",
         b"FLOG CANCEL\r\n",
     ]
+
+
+def test_v3_record_format_supported() -> None:
+    assert flog.V3_RECORD_SIZE == 320
+    assert flog.V3_RECORD_SIZE not in (
+        flog.RECORD_SIZE,
+        flog.V6_RECORD_SIZE,
+        flog.V5_RECORD_SIZE,
+        flog.V4_RECORD_SIZE,
+        flog.LEGACY_RECORD_SIZE,
+    )
+
+
+def test_parse_record_v3_returns_row() -> None:
+    record = make_v3_record()
+    row = flog.parse_record(record)
+
+    assert row is not None
+    assert row["magic"] == flog.RECORD_MAGIC
+    assert row["version"] == 3
+    assert row["size"] == 320
+    assert row["sequence"] == 4
+    # V3-era control fields are exposed with their historical names.
+    assert row["ctrl_tilt_ff_rad_0"] == 12.0
+    assert row["ctrl_motor_cmd_us_0"] == 26.0
+    assert row["z_ref_m"] == 5.0
+    assert "servo_alpha_feedback_us" not in row  # no feedback section in V3
+
+
+def test_parse_record_v3_rejects_bad_crc() -> None:
+    record = bytearray(make_v3_record())
+    record[40] ^= 0xFF  # corrupt a byte inside the imu_raw payload
+    assert flog.parse_record(bytes(record)) is None
