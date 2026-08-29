@@ -23,6 +23,15 @@ uint8_t APP_USB_CDC_Write(const uint8_t *data,
                           uint16_t length,
                           uint32_t timeout_ms);
 
+/*
+ * Every APP_USB_CDC_Write() that gives up is counted here.  A dropped write is
+ * a silently deleted line or frame on the host: the ground station then waits
+ * forever for a reply that was never sent.  Callers that ignore the return value
+ * must at least leave this counter reachable from a diagnostic command.
+ */
+uint32_t APP_USB_CDC_GetTxDropped(void);
+uint32_t APP_USB_CDC_GetTxSent(void);
+
 #ifdef __cplusplus
 }
 #endif

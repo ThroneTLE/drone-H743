@@ -20,6 +20,8 @@ static volatile uint16_t app_usb_cdc_rx_tail;
 static volatile uint32_t app_usb_cdc_rx_bytes;
 static volatile uint32_t app_usb_cdc_rx_lines;
 static volatile uint32_t app_usb_cdc_rx_dropped;
+static volatile uint32_t app_usb_cdc_tx_dropped;
+static volatile uint32_t app_usb_cdc_tx_sent;
 __attribute__((section(".dma_buffer"), aligned(32)))
 static uint8_t app_usb_cdc_rx_ring[APP_USB_CDC_RX_RING_SIZE];
 static char app_usb_cdc_line[APP_USB_CDC_LINE_SIZE];
@@ -118,8 +120,20 @@ void APP_USB_CDC_Init(void)
     app_usb_cdc_rx_bytes = 0U;
     app_usb_cdc_rx_lines = 0U;
     app_usb_cdc_rx_dropped = 0U;
+    app_usb_cdc_tx_dropped = 0U;
+    app_usb_cdc_tx_sent = 0U;
     app_usb_cdc_tx_in_flight = 0U;
     app_usb_cdc_tx_locked = 0U;
+}
+
+uint32_t APP_USB_CDC_GetTxDropped(void)
+{
+    return app_usb_cdc_tx_dropped;
+}
+
+uint32_t APP_USB_CDC_GetTxSent(void)
+{
+    return app_usb_cdc_tx_sent;
 }
 
 void APP_USB_CDC_Task_Step(void)
@@ -199,12 +213,17 @@ uint8_t APP_USB_CDC_Write(const uint8_t *data,
     uint32_t deadline_ms;
     uint8_t result;
 
-    if ((data == NULL) || (length == 0U) || (length > APP_USB_CDC_TX_SIZE) ||
-        (APP_USB_CDC_IsReady() == 0U)) {
+    if ((data == NULL) || (length == 0U) || (length > APP_USB_CDC_TX_SIZE)) {
+        app_usb_cdc_tx_dropped++;
+        return 0U;
+    }
+    if (APP_USB_CDC_IsReady() == 0U) {
+        /* 没有主机在听不算丢：链路本来就不存在。 */
         return 0U;
     }
 
     if (app_usb_cdc_take_tx_lock(timeout_ms) == 0U) {
+        app_usb_cdc_tx_dropped++;
         return 0U;
     }
 
@@ -215,6 +234,7 @@ uint8_t APP_USB_CDC_Write(const uint8_t *data,
     }
 
     if (app_usb_cdc_tx_in_flight != 0U) {
+        app_usb_cdc_tx_dropped++;
         app_usb_cdc_give_tx_lock();
         return 0U;
     }
@@ -224,6 +244,7 @@ uint8_t APP_USB_CDC_Write(const uint8_t *data,
     result = CDC_Transmit_FS(app_usb_cdc_tx_buffer, length);
     if (result != USBD_OK) {
         app_usb_cdc_tx_in_flight = 0U;
+        app_usb_cdc_tx_dropped++;
         app_usb_cdc_give_tx_lock();
         return 0U;
     }
@@ -235,6 +256,11 @@ uint8_t APP_USB_CDC_Write(const uint8_t *data,
     }
 
     result = (app_usb_cdc_tx_in_flight == 0U) ? 1U : 0U;
+    if (result != 0U) {
+        app_usb_cdc_tx_sent++;
+    } else {
+        app_usb_cdc_tx_dropped++;
+    }
     app_usb_cdc_give_tx_lock();
     return result;
 }
