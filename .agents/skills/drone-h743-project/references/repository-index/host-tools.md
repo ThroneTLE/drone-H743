@@ -4,7 +4,7 @@
 
 Read this shard only when the task uses serial/TCP diagnostics, log analysis, identification, capture, calibration, or desktop UIs.
 
-Source snapshot: `c4377a169c98`; aggregate snapshot: `e3b0c44298fc`. Covered files: 53.
+Source snapshot: `b4f28873352a`; aggregate snapshot: `a7c900a113d5`. Covered files: 5287.
 
 | File/module or scope | Content outline | Key entry points / size |
 |---|---|---|
@@ -30,14 +30,9 @@ Source snapshot: `c4377a169c98`; aggregate snapshot: `e3b0c44298fc`. Covered fil
 | `tools/flight_log_workbench.py` | H743 飞行日志 All-in-One 查看与 Rerun 回放工作台。 | `segment_label`, `available_preset_channels`, `make_rerun_wrapper_command`, `format_optional`, `time_axis_for_segment`, `FlightLogWorkbench` (+2) |
 | `tools/flight_validation.py` | Read-only V0 flight-sensor validation algorithms. This module deliberately has no transport, parameter, Flash, or firmw… | `ValidationStatus`, `ValidationStage`, `StageDefinition`, `ValidationThresholds`, `ImuSample`, `ValidationSession` (+22) |
 | `tools/flow_velocity_filter_eval.py` | Evaluate optical-flow velocity robustness from H743 flight-log CSV files. 这个脚本用于对比旧的光流直通速度和当前固件里的抗离群思路： 1. 原始 Micolink… | `SeriesStats`, `ReplayResult`, `parse_float`, `parse_int`, `time_s`, `quality_to_noise` (+6) |
-| `tools/ground_station/Drone-H743-GCS.ssproj` | Host-side utility for Drone H743 GCS | — |
 | `tools/ground_station/drone_simulator.py` | Drone-H743 High-Fidelity Flight Telemetry Simulator & Test Server for Serial-Studio. Simulates: - 3D Attitude (Roll, Pi… | `DroneSimulator` |
-| `tools/ground_station/extensions/org.drone-h743.control-panel/ControlPanel.qml` | Host-side utility for ControlPanel | — |
-| `tools/ground_station/extensions/org.drone-h743.control-panel/info.json` | Host-side utility for info | — |
 | `tools/ground_station/README.md` | drone-H743 专属上位机与飞控自检架构 | `0. 先读这一节：当前真实状态`, ``Drone-H743-GCS.ssproj` 是对着仿真器做的，不是对着固件`, `1. 核心工程思想：上位机不持有危险动作的时间轴`, `反模式：时间轴在上位机手里`, `这两行之间进程被杀 / USB 被拔 / 用户 Ctrl+C`, `> 舵机永远停在 500，堵转发热，固件一无所知` (+23) |
-| `tools/ground_station/ROADMAP.md` | 上位机与飞控自检体系 —— 框架与推进记录 | `一、整体框架`, `贯穿全层的两条原则`, `二、进度总览`, `三、已完成事项明细`, `2026-08-29 · Serial-Studio 能力探底（L3）`, `2026-08-29 · 遥测通道 schema（L1）· `c3b163f`` (+13) |
-| `tools/ground_station/run_gcs.bat` | Host-side utility for run gcs | — |
-| `tools/ground_station/run_sim.bat` | Host-side utility for run sim | — |
+| `tools/ground_station/ROADMAP.md` | 上位机与飞控自检体系 —— 框架与推进记录 | `一、整体框架`, `贯穿全层的两条原则`, `二、进度总览`, `三、已完成事项明细`, `2026-08-29 · Serial-Studio 能力探底（L3）`, `2026-08-29 · 遥测通道 schema（L1）· `c3b163f`` (+15) |
 | `tools/ground_station/ss-api-schema-gpl3.json` | Host-side utility for ss api schema gpl3 | — |
 | `tools/imu_attitude_tuner.py` | Record IMU samples and analyse x-io Fusion rejection/recovery diagnostics | `OpenOcdTelnet`, `decode_message`, `resolve_symbol_address`, `quality_summary`, `record_openocd`, `analyze_capture` (+2) |
 | `tools/imu_filter_report.py` | Visualise the vibration spectrum and the 1st- vs 2nd-order filter tradeoff. Reads the throttle-sweep captures produced… | `biquad_coeffs`, `apply_biquad`, `apply_iir1`, `response_db`, `group_delay_ms`, `spectrum` (+5) |
@@ -61,5 +56,6 @@ Source snapshot: `c4377a169c98`; aggregate snapshot: `e3b0c44298fc`. Covered fil
 | `tools/v1_metrology_session.py` | Resumable host-side V1 IMU metrology capture sessions | `measure_capture_rate`, `validate_capture_sample_rate`, `CapturePlan`, `CaptureRecord`, `V1Session`, `AnalysisSummary` (+10) |
 | `tools/vofa_serial_capture.py` | Capture USART1/VOFA JustFloat telemetry from the flight controller. The firmware currently sends 28 little-endian float… | `RunningStats`, `build_parser`, `safe_text`, `split_lines`, `parse_frame`, `write_metadata` (+1) |
 | `tools/vofa_udp_bridge.py` | Bridge Ai-WB2 UDP transparent mode to fixed VOFA UDP ports. Why this exists: - Ai-WB2 auto transparent mode is configur… | `log`, `main` |
+| `tools/ground_station/ bundled tree` | Bundled application/runtime distribution; inspect an exact file only when maintaining that bundle | 5239 files / 135.6 MiB / .svg×854, .h×841, .cpp×635, .md×459, .py×257 |
 
 Open the smallest listed tool or bundle landmark first; do not preload bundled runtimes.

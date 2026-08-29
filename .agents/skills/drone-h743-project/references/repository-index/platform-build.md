@@ -4,7 +4,7 @@
 
 Read this shard only when the task touches CubeMX output, pins/clocks/peripherals, startup/linker layout, USB, build configuration, HAL, FreeRTOS internals, or vendor code.
 
-Source snapshot: `404756efa06f`; aggregate snapshot: `13fc4f243386`. Covered files: 1425.
+Source snapshot: `ff29c2fe7d21`; aggregate snapshot: `13fc4f243386`. Covered files: 1424.
 
 | File/module or scope | Content outline | Key entry points / size |
 |---|---|---|
@@ -31,7 +31,6 @@ Source snapshot: `404756efa06f`; aggregate snapshot: `13fc4f243386`. Covered fil
 | `USB_DEVICE/App/usbd_desc.h`<br>`USB_DEVICE/App/usbd_desc.c` | CubeMX USB device integration for usbd desc | — |
 | `.clangd` | clangd compile database and indexing settings | — |
 | `.gitignore` | Repository ignore policy for generated artifacts and local data | — |
-| `.gitmodules` | Project configuration for .gitmodules | — |
 | `.mcp.json` | Repository-local MCP server configuration | — |
 | `cmake/gcc-arm-none-eabi.cmake` | Project configuration for gcc arm none eabi | — |
 | `cmake/starm-clang.cmake` | Project configuration for starm clang | — |

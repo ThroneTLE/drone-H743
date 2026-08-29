@@ -261,12 +261,20 @@ Lemon Squeezy 验证，验不过 `FATAL_ERROR`。
 工具栏的 Action 按钮只能发固定字符串 —— **PID 滑条这类"运行时决定数值"的交互
 无法用 Action 实现**，必须走 5.1 的扩展控件。
 
-### 5.6 子模块需要 Qt 6.7 / MinGW 移植补丁
+### 5.6 Serial-Studio 已 vendored 进本仓库，且带 Qt 6.7 / MinGW 移植补丁
 
-上游针对 Qt 6.8+ 与 MSVC。子模块提交 `4bbf511` 带着一批 `#if QT_VERSION >= 6.8.0`
-门控、LuaJIT 在 MinGW 下的 VM 目标格式修正等，**没有它们编译不出来**。
-该提交尚未推送到 origin，换机器需先取得。它同时含一批往硬编码绝对路径写日志的
-临时调试插桩，去除方式记在其提交信息里。
+`tools/ground_station/Serial-Studio/` 是以 **git subtree** 并入的，不是子模块 ——
+普通 `git clone` 就能拿到完整可构建的地面站，不需要 `--recurse-submodules`。
+
+上游针对 Qt 6.8+ 与 MSVC，本机是 Qt 6.7.2 + MinGW。目录内含一批
+`#if QT_VERSION >= 6.8.0` 门控、LuaJIT 在 MinGW 下的 VM 目标格式修正等，
+**没有它们编译不出来**（详见 subtree 并入前的提交 `4bbf511`）。同时含一批往硬编码
+绝对路径写日志的临时调试插桩（`main.cpp` / `ModuleManager.cpp` / `main.qml`），
+定位完成后应移除。
+
+> **授权边界**：Serial-Studio 是 GPL-3.0-or-later 或商业双授权。它被完整放在
+> `tools/ground_station/Serial-Studio/` **单一目录**内，与本项目固件不链接、
+> 非衍生作品。若本仓库将来需要闭源，删除该目录即可，不影响其余部分。
 
 ---
 
@@ -327,12 +335,23 @@ Action 的超时/断线/急停已有 host 确定性测试，但从未在真硬�
 
 - 上游：[Serial-Studio/Serial-Studio](https://github.com/Serial-Studio/Serial-Studio)（GPLv3 / 商业双授权）
 - 本工程 fork：[ThroneTLE/Serial-Studio](https://github.com/ThroneTLE/Serial-Studio)
-- 子模块路径：`tools/ground_station/Serial-Studio`
+- 并入方式：**git subtree**（非子模块），路径 `tools/ground_station/Serial-Studio`
 - 环境：Qt 6.7.2 MinGW 64-bit、CMake 3.20+、Ninja
 
+普通克隆即可，**无需** `git submodule update`：
+
 ```bash
-git submodule update --init --recursive
+git clone https://github.com/ThroneTLE/drone-H743.git
 ```
+
+追上游更新（并入时用了 `--squash`，所以后续也必须带 `--squash`，否则历史会打架）：
+
+```bash
+git remote add serial-studio https://github.com/ThroneTLE/Serial-Studio.git
+git subtree pull --prefix=tools/ground_station/Serial-Studio serial-studio master --squash
+```
+
+> 拉上游后请重新确认 5.6 提到的 Qt 6.7 移植补丁没有被覆盖，否则本机将无法构建。
 
 | 脚本 | 说明 |
 |:--|:--|
