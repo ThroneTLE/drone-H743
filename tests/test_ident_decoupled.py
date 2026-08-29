@@ -33,8 +33,9 @@ def test_ident_control_payload_and_decoupled_servo_takeover() -> None:
     assert "DRV_COAX_CTRL_Run(&frame->attitude, &frame->reference, &frame->ctrl_out);" in freertos
     assert "BSP_PWM_SetEscPulse" not in ident
     assert "DRV_Motor" not in ident
-    assert "if (ident_ctx.axis == APP_IDENT_AXIS_ROLL) {\n        alpha += offset;" in ident
-    assert "} else {\n        beta += offset;" in ident
+    assert "if (ident_ctx.axis == APP_IDENT_AXIS_ROLL) {\n        alpha += offset *" in ident
+    assert "} else {\n        beta += offset *" in ident
+    assert "calibration.pulse_sign[DRV_COAX_CTRL_SERVO_ALPHA_INDEX]" in ident
 
 
 def test_ident_commands_exist_and_are_text_based() -> None:

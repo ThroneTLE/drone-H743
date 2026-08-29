@@ -94,11 +94,15 @@ def test_sign_convention_is_documented_in_one_block() -> None:
     for name in ("DRV_COAX_CTRL_FORCE_FRAME_ROLL_SIGN",
                  "DRV_COAX_CTRL_FORCE_FRAME_PITCH_SIGN",
                  "DRV_COAX_CTRL_RATE_FRAME_ROLL_SIGN",
-                 "DRV_COAX_CTRL_RATE_FRAME_PITCH_SIGN",
-                 "DRV_COAX_CTRL_SERVO_ALPHA_SIGN",
-                 "DRV_COAX_CTRL_SERVO_BETA_SIGN"):
+                 "DRV_COAX_CTRL_RATE_FRAME_PITCH_SIGN"):
         first = source.index(f"#define {name}")
         assert first > header_at, f"{name} must be declared inside the block"
+    # Mechanical installation polarity is measured per aircraft and therefore
+    # comes from the one runtime servo-calibration record, not compile-time
+    # alpha/beta sign switches that can drift away from the saved evidence.
+    assert "coax_ctrl_servo_calibration.pulse_sign[" in source
+    assert "DRV_COAX_CTRL_SERVO_ALPHA_SIGN" not in source
+    assert "DRV_COAX_CTRL_SERVO_BETA_SIGN" not in source
 
 
 # ── runtime checks: physical direction, using the real controller ──

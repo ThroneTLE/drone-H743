@@ -136,8 +136,9 @@ def test_stabilizer_holds_last_servo_target_on_imu_dropout_after_first_sample() 
     assert "frame->moves[1].pulse_us = stabilizer_latest_servo_target_us[1];" in freertos
     assert "} else if (ctx->has_imu_sample == 0U) {" in freertos
     assert "运行中 IMU 异常保持上一目标" in freertos
-    assert "frame->moves[0].pulse_us = DRV_COAX_CTRL_SERVO_ALPHA_CENTER_US;" in freertos
-    assert "frame->moves[1].pulse_us = DRV_COAX_CTRL_SERVO_BETA_CENTER_US;" in freertos
+    assert "DRV_COAX_CTRL_GetServoCalibration(&servo_calibration);" in freertos
+    assert "servo_calibration.center_us[DRV_COAX_CTRL_SERVO_ALPHA_INDEX]" in freertos
+    assert "servo_calibration.center_us[DRV_COAX_CTRL_SERVO_BETA_INDEX]" in freertos
 
 
 def test_stabilizer_uses_boot_attitude_average_as_zero_point() -> None:

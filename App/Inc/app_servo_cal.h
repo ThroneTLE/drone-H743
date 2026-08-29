@@ -24,5 +24,7 @@ APP_ServoCalResult APP_ServoCal_Step(const uint16_t ch[16],
                                      uint32_t now_ms);
 uint8_t APP_ServoCal_IsActive(void);
 APP_ServoCalState APP_ServoCal_GetState(void);
+/* 取走控制环里缓存的最新事件文本（0 = 无事件）。只允许通信任务调用。 */
+uint16_t APP_ServoCal_TakeNotice(char *out, uint16_t capacity);
 
 #endif

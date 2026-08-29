@@ -20,8 +20,10 @@ def test_servo_cal_uses_release_startup_save_and_restore_without_center_save() -
     assert "BSP_BusServo_RestoreTorque(1U)" in source
     assert "BSP_BusServo_RestoreTorque(2U)" in source
     assert "BSP_BusServo_SaveCenter" not in source
-    assert 'APP_Control_QueueText("OK servo_cal released\\r\\n")' in source
-    assert 'APP_Control_QueueText("OK servo_cal startup_saved\\r\\n")' in source
+    # 事件文本经通告缓冲由通信任务补发，不允许在 500Hz 状态机里直接阻塞发送
+    # （见 tests/test_control_loop_blocking_contract.py）。
+    assert 'servo_cal_post_notice("OK servo_cal released\\r\\n")' in source
+    assert 'servo_cal_post_notice("OK servo_cal startup_saved\\r\\n")' in source
 
 
 def test_servo_cal_requires_disarmed_low_throttle_rc_gate_and_corner_hold() -> None:

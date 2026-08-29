@@ -1,10 +1,10 @@
 #include "app_acceptance.h"
 
 #include "bsp_pwm.h"
+#include "drv_coax_ctrl.h"
 
 #include <string.h>
 
-#define APP_ACCEPTANCE_SERVO_CENTER_US 1500U
 #define APP_ACCEPTANCE_SERVO_DELTA_US    50U
 #define APP_ACCEPTANCE_SNAPSHOT_RETRIES   8U
 
@@ -160,19 +160,29 @@ uint8_t APP_Acceptance_GetServoOverride(uint16_t *alpha_us,
                                         uint16_t *beta_us)
 {
     APP_AcceptanceState state = acceptance_read_state();
+    DRV_COAX_CTRL_ServoCalibration calibration;
     if ((state.active == 0U) || (alpha_us == NULL) || (beta_us == NULL)) {
         return 0U;
     }
-    *alpha_us = APP_ACCEPTANCE_SERVO_CENTER_US;
-    *beta_us = APP_ACCEPTANCE_SERVO_CENTER_US;
+    DRV_COAX_CTRL_GetServoCalibration(&calibration);
+    *alpha_us = calibration.center_us[DRV_COAX_CTRL_SERVO_ALPHA_INDEX];
+    *beta_us = calibration.center_us[DRV_COAX_CTRL_SERVO_BETA_INDEX];
     if (state.stage == APP_ACCEPT_STAGE_SERVO_ALPHA_POSITIVE) {
-        *alpha_us += APP_ACCEPTANCE_SERVO_DELTA_US;
+        *alpha_us = (uint16_t)((int32_t)*alpha_us +
+            (int32_t)calibration.pulse_sign[DRV_COAX_CTRL_SERVO_ALPHA_INDEX] *
+            (int32_t)APP_ACCEPTANCE_SERVO_DELTA_US);
     } else if (state.stage == APP_ACCEPT_STAGE_SERVO_ALPHA_NEGATIVE) {
-        *alpha_us -= APP_ACCEPTANCE_SERVO_DELTA_US;
+        *alpha_us = (uint16_t)((int32_t)*alpha_us -
+            (int32_t)calibration.pulse_sign[DRV_COAX_CTRL_SERVO_ALPHA_INDEX] *
+            (int32_t)APP_ACCEPTANCE_SERVO_DELTA_US);
     } else if (state.stage == APP_ACCEPT_STAGE_SERVO_BETA_POSITIVE) {
-        *beta_us += APP_ACCEPTANCE_SERVO_DELTA_US;
+        *beta_us = (uint16_t)((int32_t)*beta_us +
+            (int32_t)calibration.pulse_sign[DRV_COAX_CTRL_SERVO_BETA_INDEX] *
+            (int32_t)APP_ACCEPTANCE_SERVO_DELTA_US);
     } else if (state.stage == APP_ACCEPT_STAGE_SERVO_BETA_NEGATIVE) {
-        *beta_us -= APP_ACCEPTANCE_SERVO_DELTA_US;
+        *beta_us = (uint16_t)((int32_t)*beta_us -
+            (int32_t)calibration.pulse_sign[DRV_COAX_CTRL_SERVO_BETA_INDEX] *
+            (int32_t)APP_ACCEPTANCE_SERVO_DELTA_US);
     }
     return 1U;
 }
@@ -182,6 +192,7 @@ void APP_Acceptance_PublishObservation(
 {
     APP_AcceptanceSnapshot next = {0};
     APP_AcceptanceState state;
+    DRV_COAX_CTRL_ServoCalibration servo_calibration;
     if (observation == NULL) {
         return;
     }
@@ -202,8 +213,11 @@ void APP_Acceptance_PublishObservation(
     memcpy(next.damping_moment_n_m, observation->damping_moment_n_m,
            sizeof(next.damping_moment_n_m));
     memcpy(next.rc_us, observation->rc_us, sizeof(next.rc_us));
-    next.servo_center_us[0] = APP_ACCEPTANCE_SERVO_CENTER_US;
-    next.servo_center_us[1] = APP_ACCEPTANCE_SERVO_CENTER_US;
+    DRV_COAX_CTRL_GetServoCalibration(&servo_calibration);
+    next.servo_center_us[0] =
+        servo_calibration.center_us[DRV_COAX_CTRL_SERVO_ALPHA_INDEX];
+    next.servo_center_us[1] =
+        servo_calibration.center_us[DRV_COAX_CTRL_SERVO_BETA_INDEX];
     memcpy(next.servo_command_us, observation->servo_command_us,
            sizeof(next.servo_command_us));
     memcpy(next.servo_sent_us, observation->servo_sent_us,

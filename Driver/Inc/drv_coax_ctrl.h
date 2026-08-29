@@ -32,6 +32,10 @@ extern "C" {
     DRV_COAX_CTRL_SERVO_CENTER_MAX_US(DRV_COAX_CTRL_SERVO_BETA_CENTER_US)
 #define DRV_COAX_CTRL_SERVO_TRAVEL_DEG       180.0f
 #define DRV_COAX_CTRL_SERVO_LIMIT_DEG         90.0f
+#define DRV_COAX_CTRL_SERVO_COUNT               2U
+#define DRV_COAX_CTRL_SERVO_ALPHA_INDEX         0U
+#define DRV_COAX_CTRL_SERVO_BETA_INDEX          1U
+#define DRV_COAX_CTRL_SERVO_MIN_CAL_SPAN_US    50U
 
 #define DRV_COAX_CTRL_PROTECT_VELOCITY_INVALID (1UL << 0)
 #define DRV_COAX_CTRL_PROTECT_ATTITUDE         (1UL << 1)
@@ -156,6 +160,19 @@ typedef struct {
     float yaw_torque_lower_m_per_n;
 } DRV_COAX_CTRL_Params;
 
+/*
+ * Runtime mechanical adapter.  pulse_sign is +1 when a positive mechanism
+ * tilt increases pulse width and -1 when installation reverses that motion.
+ * This polarity lives after controller/body-frame allocation; it must never
+ * be compensated with negative control gains.
+ */
+typedef struct {
+    uint16_t center_us[DRV_COAX_CTRL_SERVO_COUNT];
+    uint16_t min_us[DRV_COAX_CTRL_SERVO_COUNT];
+    uint16_t max_us[DRV_COAX_CTRL_SERVO_COUNT];
+    int8_t pulse_sign[DRV_COAX_CTRL_SERVO_COUNT];
+} DRV_COAX_CTRL_ServoCalibration;
+
 void DRV_COAX_CTRL_Init(void);
 void DRV_COAX_CTRL_ResetState(void);
 
@@ -172,6 +189,16 @@ uint32_t DRV_COAX_CTRL_ParamCount(void);
 const char *DRV_COAX_CTRL_ParamName(uint32_t index);
 uint8_t DRV_COAX_CTRL_GetParam(const char *name, float *value);
 uint8_t DRV_COAX_CTRL_SetParam(const char *name, float value);
+
+void DRV_COAX_CTRL_GetDefaultServoCalibration(
+    DRV_COAX_CTRL_ServoCalibration *calibration);
+uint8_t DRV_COAX_CTRL_ValidateServoCalibration(
+    const DRV_COAX_CTRL_ServoCalibration *calibration);
+void DRV_COAX_CTRL_ResetServoCalibration(void);
+void DRV_COAX_CTRL_GetServoCalibration(
+    DRV_COAX_CTRL_ServoCalibration *calibration);
+uint8_t DRV_COAX_CTRL_SetServoCalibration(
+    const DRV_COAX_CTRL_ServoCalibration *calibration);
 
 uint16_t DRV_COAX_CTRL_AlphaTiltRadToServoPulse(float tilt_rad);
 uint16_t DRV_COAX_CTRL_BetaTiltRadToServoPulse(float tilt_rad);

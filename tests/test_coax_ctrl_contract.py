@@ -12,18 +12,17 @@ def test_servo_output_compensates_90_degree_ccw_mounting() -> None:
     source = read("Driver/Src/drv_coax_ctrl.c")
     header = read("Driver/Inc/drv_coax_ctrl.h")
 
-    assert "DRV_COAX_CTRL_SERVO_ALPHA_SIGN    (1.0f)" in source
-    assert "DRV_COAX_CTRL_SERVO_BETA_SIGN     (1.0f)" in source
+    assert "DRV_COAX_CTRL_ServoCalibration" in header
+    assert "pulse_sign[DRV_COAX_CTRL_SERVO_COUNT]" in header
     assert "void DRV_COAX_CTRL_BodyTiltRadToServoPulses(float body_x_tilt_rad," in header
     assert "static void coax_ctrl_body_tilt_to_servo_tilts(float body_x_tilt_rad," in source
     assert "*servo_alpha_tilt_rad = -body_y_tilt_rad;" in source
     assert "*servo_beta_tilt_rad = -body_x_tilt_rad;" in source
     assert "DRV_COAX_CTRL_BodyTiltRadToServoPulses(output->alpha_rad," in source
     assert "output->beta_rad," in source
-    assert "servo_alpha_tilt_rad * DRV_COAX_CTRL_SERVO_ALPHA_SIGN" in source
-    assert "servo_beta_tilt_rad * DRV_COAX_CTRL_SERVO_BETA_SIGN" in source
-    assert "output->alpha_rad * DRV_COAX_CTRL_SERVO_ALPHA_SIGN" not in source
-    assert "output->beta_rad * DRV_COAX_CTRL_SERVO_BETA_SIGN" not in source
+    assert "coax_ctrl_servo_calibration.pulse_sign[" in source
+    assert "DRV_COAX_CTRL_SERVO_ALPHA_SIGN" not in source
+    assert "DRV_COAX_CTRL_SERVO_BETA_SIGN" not in source
 
 
 def test_tilt_limit_is_twenty_eight_degrees_in_driver_controller() -> None:
@@ -83,8 +82,9 @@ def test_bus_servos_are_180_degree_centered_and_limited_to_90_degrees() -> None:
     assert "DRV_COAX_CTRL_SERVO_BETA_MAX_US" in source
     # BodyTiltRadToServoPulses was only called from dead debug functions.
     assert "DRV_COAX_CTRL_BodyTiltRadToServoPulses(body_x_tilt_rad," not in freertos
-    assert "frame->moves[0].pulse_us = DRV_COAX_CTRL_SERVO_ALPHA_CENTER_US;" in freertos
-    assert "frame->moves[1].pulse_us = DRV_COAX_CTRL_SERVO_BETA_CENTER_US;" in freertos
+    assert "DRV_COAX_CTRL_GetServoCalibration(&servo_calibration);" in freertos
+    assert "servo_calibration.center_us[DRV_COAX_CTRL_SERVO_ALPHA_INDEX]" in freertos
+    assert "servo_calibration.center_us[DRV_COAX_CTRL_SERVO_BETA_INDEX]" in freertos
 
 
 def test_manual_and_ident_servo_limits_follow_each_calibrated_center() -> None:
@@ -92,15 +92,14 @@ def test_manual_and_ident_servo_limits_follow_each_calibrated_center() -> None:
     ident = read("App/Src/app_ident.c")
 
     assert "app_control_servo_clamp_pulse(uint32_t index, uint16_t pulse_us)" in control
-    assert "DRV_COAX_CTRL_SERVO_ALPHA_MIN_US" in control
-    assert "DRV_COAX_CTRL_SERVO_ALPHA_MAX_US" in control
-    assert "DRV_COAX_CTRL_SERVO_BETA_MIN_US" in control
-    assert "DRV_COAX_CTRL_SERVO_BETA_MAX_US" in control
+    assert "DRV_COAX_CTRL_GetServoCalibration(&calibration);" in control
+    assert "calibration.min_us[index]" in control
+    assert "calibration.max_us[index]" in control
     assert "app_control_servo_clamp_pulse(index," in control
-    assert "DRV_COAX_CTRL_SERVO_ALPHA_MIN_US" in ident
-    assert "DRV_COAX_CTRL_SERVO_ALPHA_MAX_US" in ident
-    assert "DRV_COAX_CTRL_SERVO_BETA_MIN_US" in ident
-    assert "DRV_COAX_CTRL_SERVO_BETA_MAX_US" in ident
+    assert "DRV_COAX_CTRL_GetServoCalibration(&calibration);" in ident
+    assert "calibration.min_us[DRV_COAX_CTRL_SERVO_ALPHA_INDEX]" in ident
+    assert "calibration.max_us[DRV_COAX_CTRL_SERVO_BETA_INDEX]" in ident
+    assert "calibration.pulse_sign[DRV_COAX_CTRL_SERVO_ALPHA_INDEX]" in ident
     assert "DRV_COAX_CTRL_SERVO_MIN_US" not in ident
     assert "DRV_COAX_CTRL_SERVO_MAX_US" not in ident
 
@@ -200,11 +199,11 @@ def test_controller_wrapper_exposes_velocity_first_vector_control_inputs() -> No
     assert "STABILIZER_XY_VEL_REF_MAX_M_S" in freertos
     assert (
         "frame->reference.vx_m_s =\n"
-        "        stabilizer_rc_normalized(frame->ch[STABILIZER_RC_CH_PITCH]) *"
+        "        frame->rc.norm[APP_RC_FUNC_PITCH] *"
         in freertos
     )
-    assert "static float stabilizer_rc_throttle_height_rate_m_s(uint16_t ch_us)" in freertos
-    assert "return stabilizer_rc_normalized(ch_us) * STABILIZER_Z_REF_RATE_MAX_M_S;" in freertos
+    assert "static float stabilizer_rc_throttle_height_rate_m_s(float throttle_norm)" in freertos
+    assert "return throttle_norm * STABILIZER_Z_REF_RATE_MAX_M_S;" in freertos
     assert "stabilizer_rc_throttle_thrust_bias_m_s2" not in freertos
     assert "STABILIZER_Z_THRUST_BIAS_MAX_M_S2" not in freertos
     assert "frame->reference.ax_m_s2 =" in freertos
@@ -516,3 +515,50 @@ def test_synex_channels_exclude_executor_model_params() -> None:
     assert '"coax_yaw_torque_lower_m_per_n",' not in capture
     assert '"coax_accel_xy_limit_m_s2"' not in capture
     assert '"vel_loop_output_limit_m_s2"' not in capture
+
+
+def _function_body(source: str, name: str) -> str:
+    start = source.index(name)
+    open_brace = source.index("{", start)
+    depth = 0
+    for position in range(open_brace, len(source)):
+        if source[position] == "{":
+            depth += 1
+        elif source[position] == "}":
+            depth -= 1
+            if depth == 0:
+                return source[open_brace : position + 1]
+    raise AssertionError(f"unbalanced braces after {name}")
+
+
+def test_servo_calibration_criteria_stay_in_lockstep_across_layers() -> None:
+    """app_flight_calibration.c 因 host 单测无法链接整个驱动而保留判据副本；
+    本用例强制副本与 Driver 真源逐条一致，单方面改动即失败。"""
+    driver = read("Driver/Src/drv_coax_ctrl.c")
+    app = read("App/Src/app_flight_calibration.c")
+
+    driver_valid = _function_body(driver, "uint8_t DRV_COAX_CTRL_ValidateServoCalibration(")
+    app_valid = _function_body(app, "static uint8_t app_flight_cal_servo_valid(")
+    normalize = lambda text: "".join(text.split())
+    loop_marker = "for(index=0U;index<DRV_COAX_CTRL_SERVO_COUNT;++index){"
+    driver_loop = normalize(driver_valid)
+    app_loop = normalize(app_valid)
+    assert loop_marker in driver_loop and loop_marker in app_loop
+    assert driver_loop[driver_loop.index(loop_marker):] == app_loop[app_loop.index(loop_marker):], (
+        "servo calibration validity criteria diverged between drv_coax_ctrl.c "
+        "and app_flight_calibration.c; update both sides together"
+    )
+
+    driver_defaults = _function_body(driver, "void DRV_COAX_CTRL_GetDefaultServoCalibration(")
+    app_defaults = _function_body(app, "static void app_flight_cal_servo_defaults(")
+    for macro in (
+        "DRV_COAX_CTRL_SERVO_ALPHA_CENTER_US",
+        "DRV_COAX_CTRL_SERVO_BETA_CENTER_US",
+        "DRV_COAX_CTRL_SERVO_ALPHA_MIN_US",
+        "DRV_COAX_CTRL_SERVO_BETA_MIN_US",
+        "DRV_COAX_CTRL_SERVO_ALPHA_MAX_US",
+        "DRV_COAX_CTRL_SERVO_BETA_MAX_US",
+    ):
+        assert macro in driver_defaults and macro in app_defaults
+    assert normalize(driver_defaults).count("pulse_sign[") == 2
+    assert normalize(app_defaults).count("pulse_sign[") == 2

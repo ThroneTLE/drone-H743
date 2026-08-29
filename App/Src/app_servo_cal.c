@@ -1,6 +1,9 @@
 #include "app_servo_cal.h"
 
-#include "app_control.h"
+#include <stdarg.h>
+#include <stdio.h>
+#include <string.h>
+
 #include "app_led.h"
 #include "bsp_bus_servo.h"
 
@@ -19,6 +22,31 @@ static APP_ServoCalState servo_cal_state;
 static uint32_t servo_cal_release_hold_start_ms;
 static uint32_t servo_cal_save_hold_start_ms;
 static uint32_t servo_cal_transient_start_ms;
+
+/*
+ * 本模块整条状态机跑在 500Hz 控制环（stabilizer_control_prepare）里，
+ * 绝不能在这里同步调用 APP_Control_QueueText：那条路径会阻塞等 USB CDC
+ * 发送（最坏 3x 超时）。事件文本先存进单条通告缓冲，由通信任务上下文的
+ * APP_Control_Tick 通过 APP_ServoCal_TakeNotice() 取走后再排队发送。
+ * 只保留最新一条：标定事件是人操作频率，覆盖旧通告可接受。
+ */
+static char servo_cal_notice_text[64];
+static volatile uint8_t servo_cal_notice_pending;
+
+static void servo_cal_post_notice(const char *format, ...)
+{
+    va_list args;
+    int written;
+
+    va_start(args, format);
+    written = vsnprintf(servo_cal_notice_text, sizeof(servo_cal_notice_text),
+                        format, args);
+    va_end(args);
+
+    if (written > 0) {
+        servo_cal_notice_pending = 1U;
+    }
+}
 
 static uint8_t servo_cal_low(uint16_t value)
 {
@@ -63,7 +91,7 @@ static void servo_cal_set_error(const char *op, uint8_t id, DRV_SERVO_Status sta
     servo_cal_state = APP_SERVO_CAL_STATE_ERROR;
     servo_cal_transient_start_ms = now_ms;
     APP_LED_SetServoCalMode(APP_LED_SERVO_CAL_ERROR);
-    APP_Control_QueueText("ERR servo_cal %s id=%u st=%u\r\n",
+    servo_cal_post_notice("ERR servo_cal %s id=%u st=%u\r\n",
                           op,
                           (unsigned int)id,
                           (unsigned int)status);
@@ -88,7 +116,7 @@ static uint8_t servo_cal_release_all(uint32_t now_ms)
     servo_cal_state = APP_SERVO_CAL_STATE_RELEASED;
     servo_cal_save_hold_start_ms = 0U;
     APP_LED_SetServoCalMode(APP_LED_SERVO_CAL_RELEASED);
-    APP_Control_QueueText("OK servo_cal released\r\n");
+    servo_cal_post_notice("OK servo_cal released\r\n");
     return 1U;
 }
 
@@ -134,7 +162,7 @@ static uint8_t servo_cal_save_startup_all(uint32_t now_ms)
     servo_cal_state = APP_SERVO_CAL_STATE_SAVE_LOCK_ACK;
     servo_cal_transient_start_ms = now_ms;
     APP_LED_SetServoCalMode(APP_LED_SERVO_CAL_SAVE_ACK);
-    APP_Control_QueueText("OK servo_cal startup_saved\r\n");
+    servo_cal_post_notice("OK servo_cal startup_saved\r\n");
     return 1U;
 }
 
@@ -144,7 +172,27 @@ void APP_ServoCal_Init(void)
     servo_cal_release_hold_start_ms = 0U;
     servo_cal_save_hold_start_ms = 0U;
     servo_cal_transient_start_ms = 0U;
+    servo_cal_notice_pending = 0U;
+    servo_cal_notice_text[0] = '\0';
     APP_LED_SetServoCalMode(APP_LED_SERVO_CAL_NONE);
+}
+
+uint16_t APP_ServoCal_TakeNotice(char *out, uint16_t capacity)
+{
+    size_t length;
+
+    if ((out == NULL) || (capacity == 0U) || (servo_cal_notice_pending == 0U)) {
+        return 0U;
+    }
+    /* 先清标志再拷贝：拷贝期间控制环若写入新事件会重新置位，下个 Tick 取走。 */
+    servo_cal_notice_pending = 0U;
+    length = strlen(servo_cal_notice_text);
+    if (length >= capacity) {
+        length = (size_t)capacity - 1U;
+    }
+    memcpy(out, servo_cal_notice_text, length);
+    out[length] = '\0';
+    return (uint16_t)length;
 }
 
 APP_ServoCalResult APP_ServoCal_Step(const uint16_t ch[16],
@@ -176,7 +224,7 @@ APP_ServoCalResult APP_ServoCal_Step(const uint16_t ch[16],
             (void)servo_cal_restore_all(now_ms, 0U);
             servo_cal_state = APP_SERVO_CAL_STATE_IDLE;
             APP_LED_SetServoCalMode(APP_LED_SERVO_CAL_NONE);
-            APP_Control_QueueText("ERR servo_cal aborted\r\n");
+            servo_cal_post_notice("ERR servo_cal aborted\r\n");
             return APP_SERVO_CAL_RESULT_ERROR;
         }
         return APP_SERVO_CAL_RESULT_NONE;

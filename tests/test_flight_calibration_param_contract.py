@@ -42,6 +42,10 @@ def test_fcal_schema_owns_v0_v1_and_reserved_v2_fields() -> None:
         "v2_controller_mapping",
         "v2_rc_mapping",
         "v2_actuator_mapping",
+        "servo_center_us",
+        "servo_min_us",
+        "servo_max_us",
+        "servo_pulse_sign",
     ):
         assert field in header
     assert "sizeof(APP_FlightCalibration) == 160U" in source
@@ -92,6 +96,8 @@ int main(void)
 {
     APP_FlightCalibration cal;
     APP_FlightCalibration decoded;
+    DRV_COAX_CTRL_ServoCalibration servo;
+    DRV_COAX_CTRL_ServoCalibration built_servo;
     uint8_t encoded[sizeof(APP_FlightCalibration)];
     LegacyImuf legacy = {0x494D5546U, 1U, 1U, 3U, {0U, 0U, 0U}};
     uint32_t size;
@@ -105,6 +111,8 @@ int main(void)
     CHECK(cal.accel_correction[0][0] == 1.0f, 6);
     CHECK(cal.gyro_correction[2][2] == 1.0f, 7);
     CHECK(APP_FlightCalibration_Validate(&cal) == 1U, 8);
+    CHECK(cal.servo_center_us[0] == 1500U, 37);
+    CHECK(cal.servo_pulse_sign[1] == 1, 38);
 
     cal.accel_bias[0] = 0.125f;
     cal.gyro_temp_slope[2] = -0.02f;
@@ -147,6 +155,30 @@ int main(void)
                             APP_FLIGHT_CAL_VALID_GYRO_TEMP)) == 0U, 33);
     CHECK(APP_FlightCalibration_UpdateOrientation(&cal, 255U) == 1U, 34);
     CHECK((cal.valid_mask & APP_FLIGHT_CAL_VALID_ORIENTATION) == 0U, 35);
+
+    APP_FlightCalibration_Defaults(&cal);
+    memset(&servo, 0, sizeof(servo));
+    servo.center_us[0] = 1475U;
+    servo.min_us[0] = 1000U;
+    servo.max_us[0] = 1950U;
+    servo.pulse_sign[0] = -1;
+    servo.center_us[1] = 1525U;
+    servo.min_us[1] = 1050U;
+    servo.max_us[1] = 2050U;
+    servo.pulse_sign[1] = 1;
+    CHECK(APP_FlightCalibration_UpdateServoMechanical(&cal, &servo) == 1U, 39);
+    CHECK((cal.valid_mask & APP_FLIGHT_CAL_VALID_SERVO_MECHANICAL) != 0U, 40);
+    CHECK(APP_FlightCalibration_BuildServoMechanical(&cal, &built_servo) == 1U, 41);
+    CHECK(built_servo.center_us[0] == 1475U, 42);
+    CHECK(built_servo.pulse_sign[0] == -1, 43);
+    CHECK(APP_FlightCalibration_UpdateOrientation(&cal, 3U) == 1U, 44);
+    CHECK((cal.valid_mask & APP_FLIGHT_CAL_VALID_SERVO_MECHANICAL) != 0U, 45);
+    size = APP_FlightCalibration_Encode(&cal, encoded, sizeof(encoded));
+    CHECK(APP_FlightCalibration_Decode(encoded, size, &decoded) ==
+          APP_FLIGHT_CAL_DECODE_CURRENT, 46);
+    CHECK(decoded.servo_center_us[1] == 1525U, 47);
+    servo.pulse_sign[1] = 0;
+    CHECK(APP_FlightCalibration_UpdateServoMechanical(&cal, &servo) == 0U, 48);
 
     APP_FlightCalibration_Defaults(&cal);
     cal.accel_bias[0] = NAN;

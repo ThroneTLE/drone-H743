@@ -211,9 +211,59 @@ static uint8_t app_flight_cal_matrix_finite(const float matrix[3][3])
     return 1U;
 }
 
+/*
+ * 与 Driver/Src/drv_coax_ctrl.c 的 DRV_COAX_CTRL_GetDefault/Validate-
+ * ServoCalibration 判据逐条锁步（本文件参与 host 单测编译，不能链接整个
+ * 驱动，故保留本地副本）。改任何一侧判据都必须同步另一侧，并由
+ * tests/test_coax_ctrl_contract.py 的 lockstep 用例强制校验。
+ */
+static void app_flight_cal_servo_defaults(
+    DRV_COAX_CTRL_ServoCalibration *calibration)
+{
+    if (calibration == NULL) {
+        return;
+    }
+    calibration->center_us[0] = DRV_COAX_CTRL_SERVO_ALPHA_CENTER_US;
+    calibration->center_us[1] = DRV_COAX_CTRL_SERVO_BETA_CENTER_US;
+    calibration->min_us[0] = DRV_COAX_CTRL_SERVO_ALPHA_MIN_US;
+    calibration->min_us[1] = DRV_COAX_CTRL_SERVO_BETA_MIN_US;
+    calibration->max_us[0] = DRV_COAX_CTRL_SERVO_ALPHA_MAX_US;
+    calibration->max_us[1] = DRV_COAX_CTRL_SERVO_BETA_MAX_US;
+    calibration->pulse_sign[0] = 1;
+    calibration->pulse_sign[1] = 1;
+}
+
+static uint8_t app_flight_cal_servo_valid(
+    const DRV_COAX_CTRL_ServoCalibration *calibration)
+{
+    uint32_t index;
+
+    if (calibration == NULL) {
+        return 0U;
+    }
+    for (index = 0U; index < DRV_COAX_CTRL_SERVO_COUNT; ++index) {
+        const uint16_t center = calibration->center_us[index];
+        const uint16_t minimum = calibration->min_us[index];
+        const uint16_t maximum = calibration->max_us[index];
+        if ((minimum < DRV_COAX_CTRL_SERVO_PHYSICAL_MIN_US) ||
+            (maximum > DRV_COAX_CTRL_SERVO_PHYSICAL_MAX_US) ||
+            (minimum >= center) || (center >= maximum) ||
+            ((uint16_t)(center - minimum) <
+             DRV_COAX_CTRL_SERVO_MIN_CAL_SPAN_US) ||
+            ((uint16_t)(maximum - center) <
+             DRV_COAX_CTRL_SERVO_MIN_CAL_SPAN_US) ||
+            ((calibration->pulse_sign[index] != 1) &&
+             (calibration->pulse_sign[index] != -1))) {
+            return 0U;
+        }
+    }
+    return 1U;
+}
+
 void APP_FlightCalibration_Defaults(APP_FlightCalibration *calibration)
 {
     uint32_t axis;
+    DRV_COAX_CTRL_ServoCalibration servo_defaults;
 
     if (calibration == NULL) {
         return;
@@ -229,11 +279,32 @@ void APP_FlightCalibration_Defaults(APP_FlightCalibration *calibration)
         calibration->accel_correction[axis][axis] = 1.0f;
         calibration->gyro_correction[axis][axis] = 1.0f;
     }
+    app_flight_cal_servo_defaults(&servo_defaults);
+    memcpy(calibration->servo_center_us, servo_defaults.center_us,
+           sizeof(calibration->servo_center_us));
+    memcpy(calibration->servo_min_us, servo_defaults.min_us,
+           sizeof(calibration->servo_min_us));
+    memcpy(calibration->servo_max_us, servo_defaults.max_us,
+           sizeof(calibration->servo_max_us));
+    memcpy(calibration->servo_pulse_sign, servo_defaults.pulse_sign,
+           sizeof(calibration->servo_pulse_sign));
 }
 
 uint8_t APP_FlightCalibration_Validate(
     const APP_FlightCalibration *calibration)
 {
+    DRV_COAX_CTRL_ServoCalibration servo_calibration;
+
+    if (calibration != NULL) {
+        memcpy(servo_calibration.center_us, calibration->servo_center_us,
+               sizeof(servo_calibration.center_us));
+        memcpy(servo_calibration.min_us, calibration->servo_min_us,
+               sizeof(servo_calibration.min_us));
+        memcpy(servo_calibration.max_us, calibration->servo_max_us,
+               sizeof(servo_calibration.max_us));
+        memcpy(servo_calibration.pulse_sign, calibration->servo_pulse_sign,
+               sizeof(servo_calibration.pulse_sign));
+    }
     if ((calibration == NULL) ||
         (calibration->magic != APP_FLIGHT_CAL_MAGIC) ||
         (calibration->schema != APP_FLIGHT_CAL_SCHEMA) ||
@@ -252,7 +323,10 @@ uint8_t APP_FlightCalibration_Validate(
              calibration->gyro_temp_slope,
              calibration->reference_temp_c) == 0U) ||
         (app_flight_cal_matrix_valid(calibration->accel_correction) == 0U) ||
-        (app_flight_cal_matrix_valid(calibration->gyro_correction) == 0U)) {
+        (app_flight_cal_matrix_valid(calibration->gyro_correction) == 0U) ||
+        (((calibration->valid_mask &
+           APP_FLIGHT_CAL_VALID_SERVO_MECHANICAL) != 0U) &&
+         (app_flight_cal_servo_valid(&servo_calibration) == 0U))) {
         return 0U;
     }
     return 1U;
@@ -532,6 +606,54 @@ uint8_t APP_FlightCalibration_BuildImuCalibration(
     return effective_mask;
 }
 
+uint8_t APP_FlightCalibration_UpdateServoMechanical(
+    APP_FlightCalibration *calibration,
+    const DRV_COAX_CTRL_ServoCalibration *servo_calibration)
+{
+    if ((APP_FlightCalibration_Validate(calibration) == 0U) ||
+        (app_flight_cal_servo_valid(servo_calibration) == 0U)) {
+        return 0U;
+    }
+    memcpy(calibration->servo_center_us, servo_calibration->center_us,
+           sizeof(calibration->servo_center_us));
+    memcpy(calibration->servo_min_us, servo_calibration->min_us,
+           sizeof(calibration->servo_min_us));
+    memcpy(calibration->servo_max_us, servo_calibration->max_us,
+           sizeof(calibration->servo_max_us));
+    memcpy(calibration->servo_pulse_sign, servo_calibration->pulse_sign,
+           sizeof(calibration->servo_pulse_sign));
+    calibration->valid_mask |= APP_FLIGHT_CAL_VALID_SERVO_MECHANICAL;
+    ++calibration->calibration_generation;
+    if (calibration->calibration_generation == 0U) {
+        calibration->calibration_generation = 1U;
+    }
+    return APP_FlightCalibration_Validate(calibration);
+}
+
+uint8_t APP_FlightCalibration_BuildServoMechanical(
+    const APP_FlightCalibration *calibration,
+    DRV_COAX_CTRL_ServoCalibration *servo_calibration)
+{
+    if (servo_calibration == NULL) {
+        return 0U;
+    }
+    app_flight_cal_servo_defaults(servo_calibration);
+    if ((APP_FlightCalibration_Validate(calibration) == 0U) ||
+        ((calibration->valid_mask &
+          APP_FLIGHT_CAL_VALID_SERVO_MECHANICAL) == 0U)) {
+        return 0U;
+    }
+    memcpy(servo_calibration->center_us, calibration->servo_center_us,
+           sizeof(servo_calibration->center_us));
+    memcpy(servo_calibration->min_us, calibration->servo_min_us,
+           sizeof(servo_calibration->min_us));
+    memcpy(servo_calibration->max_us, calibration->servo_max_us,
+           sizeof(servo_calibration->max_us));
+    memcpy(servo_calibration->pulse_sign, calibration->servo_pulse_sign,
+           sizeof(servo_calibration->pulse_sign));
+    return app_flight_cal_servo_valid(servo_calibration);
+}
+
 uint32_t APP_FlightCalibration_Crc32(const uint8_t *data, uint32_t size)
 {
     uint32_t crc = 0xFFFFFFFFUL;
@@ -704,7 +826,7 @@ APP_FlightCalibrationTransferStatus APP_FlightCalibration_ValidateV1Candidate(
         return APP_FLIGHT_CAL_TRANSFER_BAD_ORIENTATION;
     }
     if (((candidate->valid_mask &
-          (uint8_t)~APP_FLIGHT_CAL_VALID_MASK_SUPPORTED) != 0U) ||
+          (uint8_t)~APP_FLIGHT_CAL_V1_VALID_MASK_SUPPORTED) != 0U) ||
         ((candidate->valid_mask & APP_FLIGHT_CAL_VALID_ORIENTATION) == 0U)) {
         return APP_FLIGHT_CAL_TRANSFER_BAD_VALID_MASK;
     }

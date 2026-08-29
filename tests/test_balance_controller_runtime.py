@@ -68,6 +68,9 @@ int main(void)
     DRV_COAX_CTRL_Output output;
     DRV_COAX_CTRL_Debug debug;
     DRV_COAX_CTRL_Params params;
+    DRV_COAX_CTRL_ServoCalibration servo_cal;
+    uint16_t servo_alpha_us;
+    uint16_t servo_beta_us;
     float desired_body_r[3][3];
     float integral_before;
 
@@ -355,6 +358,26 @@ int main(void)
             attitude.gyro_z_rad_s *
             attitude.gyro_x_rad_s,
         1.0e-6f), 81);
+
+    DRV_COAX_CTRL_GetDefaultServoCalibration(&servo_cal);
+    servo_cal.center_us[0] = 1475U;
+    servo_cal.min_us[0] = 1200U;
+    servo_cal.max_us[0] = 1800U;
+    servo_cal.pulse_sign[0] = -1;
+    servo_cal.center_us[1] = 1525U;
+    servo_cal.min_us[1] = 1250U;
+    servo_cal.max_us[1] = 1850U;
+    servo_cal.pulse_sign[1] = 1;
+    CHECK(DRV_COAX_CTRL_SetServoCalibration(&servo_cal) == 1U, 90);
+    DRV_COAX_CTRL_BodyTiltRadToServoPulses(0.0f, 0.0f,
+                                           &servo_alpha_us, &servo_beta_us);
+    CHECK(servo_alpha_us == 1475U, 91);
+    CHECK(servo_beta_us == 1525U, 92);
+    DRV_COAX_CTRL_BodyTiltRadToServoPulses(0.0f, -0.1f,
+                                           &servo_alpha_us, &servo_beta_us);
+    CHECK(servo_alpha_us < 1475U, 93);
+    servo_cal.pulse_sign[0] = 0;
+    CHECK(DRV_COAX_CTRL_SetServoCalibration(&servo_cal) == 0U, 94);
 
     return 0;
 }

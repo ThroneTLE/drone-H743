@@ -46,9 +46,6 @@
 #define DRV_COAX_CTRL_RATE_FRAME_ROLL_SIGN   (1.0f)
 #define DRV_COAX_CTRL_RATE_FRAME_PITCH_SIGN  (1.0f)
 
-/* 舵机机械安装方向：+1 表示正倾角指令对应舵机脉宽增大。 */
-#define DRV_COAX_CTRL_SERVO_ALPHA_SIGN    (1.0f)
-#define DRV_COAX_CTRL_SERVO_BETA_SIGN     (1.0f)
 #define DRV_COAX_CTRL_FORCE_EPS_N          1.0e-4f
 #define DRV_COAX_CTRL_RATE_SCALE_EPS       1.0e-6f
 #define DRV_COAX_CTRL_PROP9047_YAW_M_PER_N 0.0001f
@@ -99,6 +96,7 @@ typedef struct {
 
 static uint8_t coax_ctrl_initialized;
 static DRV_COAX_CTRL_Params coax_ctrl_params;
+static DRV_COAX_CTRL_ServoCalibration coax_ctrl_servo_calibration;
 static DRV_COAX_CTRL_Debug coax_ctrl_last_debug;
 static DRV_COAX_CTRL_State coax_ctrl_state;
 
@@ -1011,7 +1009,10 @@ static void coax_ctrl_allocate_motor_thrust(float total_force_n,
 void DRV_COAX_CTRL_Init(void)
 {
     if (coax_ctrl_initialized == 0U) {
-        DRV_COAX_CTRL_ResetParams();
+        DRV_COAX_CTRL_GetDefaultParams(&coax_ctrl_params);
+        DRV_COAX_CTRL_GetDefaultServoCalibration(
+            &coax_ctrl_servo_calibration);
+        DRV_COAX_CTRL_ResetState();
         coax_ctrl_initialized = 1U;
     }
 }
@@ -1153,6 +1154,83 @@ uint8_t DRV_COAX_CTRL_SetParam(const char *name, float value)
     return 1U;
 }
 
+void DRV_COAX_CTRL_GetDefaultServoCalibration(
+    DRV_COAX_CTRL_ServoCalibration *calibration)
+{
+    if (calibration == NULL) {
+        return;
+    }
+    calibration->center_us[DRV_COAX_CTRL_SERVO_ALPHA_INDEX] =
+        DRV_COAX_CTRL_SERVO_ALPHA_CENTER_US;
+    calibration->center_us[DRV_COAX_CTRL_SERVO_BETA_INDEX] =
+        DRV_COAX_CTRL_SERVO_BETA_CENTER_US;
+    calibration->min_us[DRV_COAX_CTRL_SERVO_ALPHA_INDEX] =
+        DRV_COAX_CTRL_SERVO_ALPHA_MIN_US;
+    calibration->min_us[DRV_COAX_CTRL_SERVO_BETA_INDEX] =
+        DRV_COAX_CTRL_SERVO_BETA_MIN_US;
+    calibration->max_us[DRV_COAX_CTRL_SERVO_ALPHA_INDEX] =
+        DRV_COAX_CTRL_SERVO_ALPHA_MAX_US;
+    calibration->max_us[DRV_COAX_CTRL_SERVO_BETA_INDEX] =
+        DRV_COAX_CTRL_SERVO_BETA_MAX_US;
+    calibration->pulse_sign[DRV_COAX_CTRL_SERVO_ALPHA_INDEX] = 1;
+    calibration->pulse_sign[DRV_COAX_CTRL_SERVO_BETA_INDEX] = 1;
+}
+
+uint8_t DRV_COAX_CTRL_ValidateServoCalibration(
+    const DRV_COAX_CTRL_ServoCalibration *calibration)
+{
+    uint32_t index;
+
+    if (calibration == NULL) {
+        return 0U;
+    }
+    for (index = 0U; index < DRV_COAX_CTRL_SERVO_COUNT; ++index) {
+        const uint16_t center = calibration->center_us[index];
+        const uint16_t minimum = calibration->min_us[index];
+        const uint16_t maximum = calibration->max_us[index];
+        if ((minimum < DRV_COAX_CTRL_SERVO_PHYSICAL_MIN_US) ||
+            (maximum > DRV_COAX_CTRL_SERVO_PHYSICAL_MAX_US) ||
+            (minimum >= center) || (center >= maximum) ||
+            ((uint16_t)(center - minimum) <
+             DRV_COAX_CTRL_SERVO_MIN_CAL_SPAN_US) ||
+            ((uint16_t)(maximum - center) <
+             DRV_COAX_CTRL_SERVO_MIN_CAL_SPAN_US) ||
+            ((calibration->pulse_sign[index] != 1) &&
+             (calibration->pulse_sign[index] != -1))) {
+            return 0U;
+        }
+    }
+    return 1U;
+}
+
+void DRV_COAX_CTRL_ResetServoCalibration(void)
+{
+    DRV_COAX_CTRL_GetDefaultServoCalibration(&coax_ctrl_servo_calibration);
+    DRV_COAX_CTRL_ResetState();
+}
+
+void DRV_COAX_CTRL_GetServoCalibration(
+    DRV_COAX_CTRL_ServoCalibration *calibration)
+{
+    if (calibration == NULL) {
+        return;
+    }
+    DRV_COAX_CTRL_Init();
+    *calibration = coax_ctrl_servo_calibration;
+}
+
+uint8_t DRV_COAX_CTRL_SetServoCalibration(
+    const DRV_COAX_CTRL_ServoCalibration *calibration)
+{
+    if (DRV_COAX_CTRL_ValidateServoCalibration(calibration) == 0U) {
+        return 0U;
+    }
+    DRV_COAX_CTRL_Init();
+    coax_ctrl_servo_calibration = *calibration;
+    DRV_COAX_CTRL_ResetState();
+    return 1U;
+}
+
 static uint16_t coax_ctrl_tilt_rad_to_servo_pulse(float tilt_rad,
                                                   uint16_t center_us,
                                                   uint16_t min_us,
@@ -1174,18 +1252,20 @@ static uint16_t coax_ctrl_tilt_rad_to_servo_pulse(float tilt_rad,
 
 uint16_t DRV_COAX_CTRL_AlphaTiltRadToServoPulse(float tilt_rad)
 {
+    DRV_COAX_CTRL_Init();
     return coax_ctrl_tilt_rad_to_servo_pulse(tilt_rad,
-                                             DRV_COAX_CTRL_SERVO_ALPHA_CENTER_US,
-                                             DRV_COAX_CTRL_SERVO_ALPHA_MIN_US,
-                                             DRV_COAX_CTRL_SERVO_ALPHA_MAX_US);
+        coax_ctrl_servo_calibration.center_us[DRV_COAX_CTRL_SERVO_ALPHA_INDEX],
+        coax_ctrl_servo_calibration.min_us[DRV_COAX_CTRL_SERVO_ALPHA_INDEX],
+        coax_ctrl_servo_calibration.max_us[DRV_COAX_CTRL_SERVO_ALPHA_INDEX]);
 }
 
 uint16_t DRV_COAX_CTRL_BetaTiltRadToServoPulse(float tilt_rad)
 {
+    DRV_COAX_CTRL_Init();
     return coax_ctrl_tilt_rad_to_servo_pulse(tilt_rad,
-                                             DRV_COAX_CTRL_SERVO_BETA_CENTER_US,
-                                             DRV_COAX_CTRL_SERVO_BETA_MIN_US,
-                                             DRV_COAX_CTRL_SERVO_BETA_MAX_US);
+        coax_ctrl_servo_calibration.center_us[DRV_COAX_CTRL_SERVO_BETA_INDEX],
+        coax_ctrl_servo_calibration.min_us[DRV_COAX_CTRL_SERVO_BETA_INDEX],
+        coax_ctrl_servo_calibration.max_us[DRV_COAX_CTRL_SERVO_BETA_INDEX]);
 }
 
 static void coax_ctrl_body_tilt_to_servo_tilts(float body_x_tilt_rad,
@@ -1221,11 +1301,15 @@ void DRV_COAX_CTRL_BodyTiltRadToServoPulses(float body_x_tilt_rad,
                                        &servo_beta_tilt_rad);
     if (servo_alpha_us != NULL) {
         *servo_alpha_us = DRV_COAX_CTRL_AlphaTiltRadToServoPulse(
-            servo_alpha_tilt_rad * DRV_COAX_CTRL_SERVO_ALPHA_SIGN);
+            servo_alpha_tilt_rad *
+            (float)coax_ctrl_servo_calibration.pulse_sign[
+                DRV_COAX_CTRL_SERVO_ALPHA_INDEX]);
     }
     if (servo_beta_us != NULL) {
         *servo_beta_us = DRV_COAX_CTRL_BetaTiltRadToServoPulse(
-            servo_beta_tilt_rad * DRV_COAX_CTRL_SERVO_BETA_SIGN);
+            servo_beta_tilt_rad *
+            (float)coax_ctrl_servo_calibration.pulse_sign[
+                DRV_COAX_CTRL_SERVO_BETA_INDEX]);
     }
 }
 

@@ -11,8 +11,6 @@
 #define APP_IDENT_MAX_OFFSET_US       80
 #define APP_IDENT_MAX_DURATION_MS     10000U
 #define APP_IDENT_SAMPLE_PERIOD_MS    20U
-#define APP_IDENT_DEFAULT_ALPHA_US    DRV_COAX_CTRL_SERVO_ALPHA_CENTER_US
-#define APP_IDENT_DEFAULT_BETA_US     DRV_COAX_CTRL_SERVO_BETA_CENTER_US
 #define APP_IDENT_ATTITUDE_LIMIT_DEG  25.0f
 
 #define APP_IDENT_ATT_MAX_AMP_MDEG        2000
@@ -57,6 +55,7 @@ typedef struct {
     uint16_t beta_center_us;
     uint16_t alpha_target_us;
     uint16_t beta_target_us;
+    uint8_t center_overridden;
     char last_reason[24];
 } APP_IdentContext;
 
@@ -179,18 +178,23 @@ static uint8_t ident_targets_from_offset(int32_t offset,
 {
     int32_t alpha = (int32_t)ident_ctx.alpha_center_us;
     int32_t beta = (int32_t)ident_ctx.beta_center_us;
+    DRV_COAX_CTRL_ServoCalibration calibration;
+
+    DRV_COAX_CTRL_GetServoCalibration(&calibration);
 
     /* Current tilt module mounting: servo 1/alpha is roll, servo 2/beta is pitch. */
     if (ident_ctx.axis == APP_IDENT_AXIS_ROLL) {
-        alpha += offset;
+        alpha += offset *
+            (int32_t)calibration.pulse_sign[DRV_COAX_CTRL_SERVO_ALPHA_INDEX];
     } else {
-        beta += offset;
+        beta += offset *
+            (int32_t)calibration.pulse_sign[DRV_COAX_CTRL_SERVO_BETA_INDEX];
     }
 
-    if ((alpha < (int32_t)DRV_COAX_CTRL_SERVO_ALPHA_MIN_US) ||
-        (alpha > (int32_t)DRV_COAX_CTRL_SERVO_ALPHA_MAX_US) ||
-        (beta < (int32_t)DRV_COAX_CTRL_SERVO_BETA_MIN_US) ||
-        (beta > (int32_t)DRV_COAX_CTRL_SERVO_BETA_MAX_US)) {
+    if ((alpha < (int32_t)calibration.min_us[DRV_COAX_CTRL_SERVO_ALPHA_INDEX]) ||
+        (alpha > (int32_t)calibration.max_us[DRV_COAX_CTRL_SERVO_ALPHA_INDEX]) ||
+        (beta < (int32_t)calibration.min_us[DRV_COAX_CTRL_SERVO_BETA_INDEX]) ||
+        (beta > (int32_t)calibration.max_us[DRV_COAX_CTRL_SERVO_BETA_INDEX])) {
         return 0U;
     }
 
@@ -484,10 +488,16 @@ static uint8_t ident_start(APP_IdentAxis axis,
 
 void APP_Ident_Init(void)
 {
+    DRV_COAX_CTRL_ServoCalibration calibration;
+
     memset(&ident_ctx, 0, sizeof(ident_ctx));
     ident_ctx.state = APP_IDENT_STATE_IDLE;
-    ident_ctx.alpha_center_us = APP_IDENT_DEFAULT_ALPHA_US;
-    ident_ctx.beta_center_us = APP_IDENT_DEFAULT_BETA_US;
+    DRV_COAX_CTRL_GetServoCalibration(&calibration);
+    ident_ctx.alpha_center_us =
+        calibration.center_us[DRV_COAX_CTRL_SERVO_ALPHA_INDEX];
+    ident_ctx.beta_center_us =
+        calibration.center_us[DRV_COAX_CTRL_SERVO_BETA_INDEX];
+    ident_ctx.center_overridden = 0U;
     ident_set_center_targets();
     ident_set_reason("init");
 
@@ -537,6 +547,8 @@ void APP_Ident_ReportStatus(void)
 
 uint8_t APP_Ident_Arm(void)
 {
+    DRV_COAX_CTRL_ServoCalibration calibration;
+
     if (ident_ctx.state == APP_IDENT_STATE_RUNNING) {
         APP_Control_QueueText("ERR ident running\r\n");
         return 0U;
@@ -544,6 +556,13 @@ uint8_t APP_Ident_Arm(void)
     if (ident_att_pending_or_running() != 0U) {
         APP_Control_QueueText("ERR ident att running\r\n");
         return 0U;
+    }
+    if (ident_ctx.center_overridden == 0U) {
+        DRV_COAX_CTRL_GetServoCalibration(&calibration);
+        ident_ctx.alpha_center_us =
+            calibration.center_us[DRV_COAX_CTRL_SERVO_ALPHA_INDEX];
+        ident_ctx.beta_center_us =
+            calibration.center_us[DRV_COAX_CTRL_SERVO_BETA_INDEX];
     }
     ident_set_center_targets();
     ident_ctx.state = APP_IDENT_STATE_ARMED;
@@ -582,19 +601,23 @@ void APP_Ident_Stop(const char *reason)
 
 uint8_t APP_Ident_SetCenter(uint16_t alpha_us, uint16_t beta_us)
 {
+    DRV_COAX_CTRL_ServoCalibration calibration;
+
     if (ident_ctx.state == APP_IDENT_STATE_RUNNING) {
         APP_Control_QueueText("ERR ident running\r\n");
         return 0U;
     }
-    if ((alpha_us < DRV_COAX_CTRL_SERVO_ALPHA_MIN_US) ||
-        (alpha_us > DRV_COAX_CTRL_SERVO_ALPHA_MAX_US) ||
-        (beta_us < DRV_COAX_CTRL_SERVO_BETA_MIN_US) ||
-        (beta_us > DRV_COAX_CTRL_SERVO_BETA_MAX_US)) {
+    DRV_COAX_CTRL_GetServoCalibration(&calibration);
+    if ((alpha_us < calibration.min_us[DRV_COAX_CTRL_SERVO_ALPHA_INDEX]) ||
+        (alpha_us > calibration.max_us[DRV_COAX_CTRL_SERVO_ALPHA_INDEX]) ||
+        (beta_us < calibration.min_us[DRV_COAX_CTRL_SERVO_BETA_INDEX]) ||
+        (beta_us > calibration.max_us[DRV_COAX_CTRL_SERVO_BETA_INDEX])) {
         APP_Control_QueueText("ERR ident center range\r\n");
         return 0U;
     }
     ident_ctx.alpha_center_us = alpha_us;
     ident_ctx.beta_center_us = beta_us;
+    ident_ctx.center_overridden = 1U;
     ident_set_center_targets();
     APP_Control_QueueText("OK ident center alpha_us=%u beta_us=%u\r\n",
                           (unsigned int)alpha_us,

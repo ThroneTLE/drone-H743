@@ -45,7 +45,9 @@ def test_v2a_stage_names_match_offline_engine_and_servo_delta_is_bounded() -> No
         assert f'"{stage}"' in source
         assert stage in engine
     assert "APP_ACCEPTANCE_SERVO_DELTA_US    50U" in source
-    assert "APP_ACCEPTANCE_SERVO_CENTER_US 1500U" in source
+    assert "DRV_COAX_CTRL_GetServoCalibration(&calibration);" in source
+    assert "calibration.pulse_sign[DRV_COAX_CTRL_SERVO_ALPHA_INDEX]" in source
+    assert "APP_ACCEPTANCE_SERVO_CENTER_US" not in source
 
 
 def test_v2a_protocol_is_explicit_and_panel_keeps_lease_alive() -> None:

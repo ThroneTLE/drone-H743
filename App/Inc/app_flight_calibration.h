@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 
+#include "drv_coax_ctrl.h"
 #include "drv_imu_calibration.h"
 
 #ifdef __cplusplus
@@ -16,7 +17,9 @@ extern "C" {
 #define APP_FLIGHT_CAL_VALID_ACCEL       (1U << 1)
 #define APP_FLIGHT_CAL_VALID_GYRO        (1U << 2)
 #define APP_FLIGHT_CAL_VALID_GYRO_TEMP   (1U << 3)
-#define APP_FLIGHT_CAL_VALID_MASK_SUPPORTED 0x0FU
+#define APP_FLIGHT_CAL_VALID_SERVO_MECHANICAL (1U << 4)
+#define APP_FLIGHT_CAL_VALID_MASK_SUPPORTED 0x1FU
+#define APP_FLIGHT_CAL_V1_VALID_MASK_SUPPORTED 0x0FU
 
 #define APP_FLIGHT_CAL_V1_CANDIDATE_MAGIC  0x31564349UL /* "ICV1" */
 #define APP_FLIGHT_CAL_V1_CANDIDATE_SCHEMA 1U
@@ -45,7 +48,13 @@ typedef struct {
     uint8_t v2_controller_mapping;
     uint8_t v2_rc_mapping;
     uint8_t v2_actuator_mapping;
-    uint32_t v2_reserved[7];
+    /* Mechanical adapter after controller allocation; record stays 160 B. */
+    uint16_t servo_center_us[DRV_COAX_CTRL_SERVO_COUNT];
+    uint16_t servo_min_us[DRV_COAX_CTRL_SERVO_COUNT];
+    uint16_t servo_max_us[DRV_COAX_CTRL_SERVO_COUNT];
+    int8_t servo_pulse_sign[DRV_COAX_CTRL_SERVO_COUNT];
+    uint8_t servo_reserved[2];
+    uint32_t v2_reserved[3];
 } APP_FlightCalibration;
 
 /* Immutable reader view published by the text/control task. */
@@ -161,6 +170,13 @@ uint8_t APP_FlightCalibration_BuildImuCalibration(
     const APP_FlightCalibration *calibration,
     uint8_t active_orientation_code,
     DRV_IMU_Calibration *imu_calibration);
+
+uint8_t APP_FlightCalibration_UpdateServoMechanical(
+    APP_FlightCalibration *calibration,
+    const DRV_COAX_CTRL_ServoCalibration *servo_calibration);
+uint8_t APP_FlightCalibration_BuildServoMechanical(
+    const APP_FlightCalibration *calibration,
+    DRV_COAX_CTRL_ServoCalibration *servo_calibration);
 
 uint32_t APP_FlightCalibration_Crc32(const uint8_t *data, uint32_t size);
 void APP_FlightCalibration_UploadReset(APP_FlightCalibrationUpload *upload);
