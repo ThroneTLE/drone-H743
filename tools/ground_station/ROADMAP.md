@@ -56,7 +56,7 @@
 | L3 | Serial-Studio 能力探底 | ✅ 完成 | 2026-08-29 |
 | L3 | 子模块 Qt 6.7/MinGW 移植固化 | ✅ 完成 | 2026-08-29 |
 | L3 | 子模块 → subtree（随主仓库分发） | ✅ 完成 | 2026-08-29 |
-| L3 | 扩展包机制实证（运行时） | 🟡 结构已证，**待人工点一下** | — |
+| L3 | 扩展包机制实证（运行时） | ✅ 完成（含字节上线验证） | 2026-08-29 |
 | L3 | ssproj 接真固件（只读） | ⬜ 未开始 | — |
 | L3 | 控制脚本（自动建表 + 看门狗） | ⬜ 未开始 | — |
 | L4 | 全部 | ⬜ 未开始 | — |
@@ -121,6 +121,23 @@ README 的 TEST-01/02/03 现在是真跑的代码；另有 I1~I5 五条不变量
 - `build/`（731 MB 构建产物）在转换中保留并恢复；仅丢失 140 个 `__pycache__/*.pyc`
 - 追上游用 `git subtree pull --squash`，见 [README 第 8 节](README.md)
 
+### 2026-08-29 · 扩展包机制运行时实证（L3）
+
+D1/D2 此前只有结构证据（源码 + SPDX + 内置包），这次用 `--api-server`（TCP 7777）
+逐项实测，**未知已消除**。完整证据表见 [README 5.1](README.md)，要点：
+
+- 包被扫描加载、清单通过校验、`compatibleWidgetTypes` 变为 `[100]`（`DashboardExtension`）
+- 授权 finding 依次为 `widget-not-installed` → `widget-consent-required` → 授权后消失
+- 控件在实时仪表盘上真正实例化，**全日志零 QML 错误** —— 这条即证明
+  `import SerialStudio` 同时解析出了 `ExtensionDataModel` 与 `ApiTerminalBridge`
+- **字节真正上线**：对本地回环 TCP 服务端实收 `b'TELEM?\r\n'` 与 `b'TELEM CH from=0\r\n'`
+
+顺带踩到三个坑，已写进 [README 5.1.1](README.md)：`console.send` 断链时仍返回
+`sent: true`（原型包因此改用 `io.writeData`）；`isOpen` 字段不可信；Serial-Studio
+退出时会自动保存工程（测试产物被写进 `.ssproj` 两次，均已回滚）。
+
+另外实跑 `problems.list` 发现 `.ssproj` 有 **16 个无效控件 id**，已记入 README 第 0 节。
+
 ### 2026-08-29 · 文档重写 · `677a130`
 
 原 README 把"设想"和"已完成"混写，会让后来者以为 `.ssproj` 已可用。重写为现状先行、
@@ -162,6 +179,13 @@ README 的 TEST-01/02/03 现在是真跑的代码；另有 I1~I5 五条不变量
 - **结论**：Action 自己设计成可 host 化的纯状态机。不合并那个分支（提交含 3660 文件 /
   71 万行，绝大部分是采集数据）
 
+### D5 · 混流分帧：暂缓（2026-08-29）
+
+- 曾判断它卡住 `TELEM?`。实查 `vofaStreamActive` 默认为 `0`，连接时取 schema 时序
+  天然干净 → **不卡 L1、不卡 L3 只读打通**
+- 但流开着时命令回包仍会混在浮点里 → **卡 L2 接线**（Action 状态轮询必然在流开着时发命令）
+- 推荐方案：给遥测帧加与文本不可能冲突的魔数头（改动集中）
+
 ### D6 · Serial-Studio 并入方式：submodule → subtree（2026-08-29）
 
 - **原状**：子模块。主仓库只存 commit 指针，代码在 `ThroneTLE/Serial-Studio`
@@ -178,13 +202,6 @@ README 的 TEST-01/02/03 现在是真跑的代码；另有 I1~I5 五条不变量
 - **注意**：并入用了 `--squash`，后续 `git subtree pull` **必须也带 `--squash`**，
   否则历史会打架
 
-### D5 · 混流分帧：暂缓（2026-08-29）
-
-- 曾判断它卡住 `TELEM?`。实查 `vofaStreamActive` 默认为 `0`，连接时取 schema 时序
-  天然干净 → **不卡 L1、不卡 L3 只读打通**
-- 但流开着时命令回包仍会混在浮点里 → **卡 L2 接线**（Action 状态轮询必然在流开着时发命令）
-- 推荐方案：给遥测帧加与文本不可能冲突的魔数头（改动集中）
-
 ---
 
 ## 五、未验证 / 风险
@@ -192,7 +209,6 @@ README 的 TEST-01/02/03 现在是真跑的代码；另有 I1~I5 五条不变量
 | 项 | 性质 | 说明 |
 |:--|:--|:--|
 | Action 全部安全路径 | **无实机验证** | 有 26 项 host 确定性测试，但从未在真硬件上跑过。无法烧板是当前的硬约束 |
-| 扩展包运行时行为 | 待人工确认 | 结构上已闭合，但首次运行的信任对话框、写设备是否弹确认框未实测。**装上点一下即可消除** |
 | IMU DRDY 失效锁存 | 无实机验证 | 属另一条工作线，同样待上板 |
 | 主仓库未推送 | 协作风险 | 本轮全部提交仍只在本机，需要你的凭据推送 |
 
@@ -200,18 +216,18 @@ README 的 TEST-01/02/03 现在是真跑的代码；另有 I1~I5 五条不变量
 
 ## 六、下一步（按建议顺序）
 
-1. **【半小时，消除最后一个未知】** 安装
-   [`extensions/org.drone-h743.control-panel/`](extensions/org.drone-h743.control-panel/)
-   到 `~/Documents/Serial Studio/Extensions/widget/`，点一下按钮确认能发出字节。
-   这一步的结果决定 L3/L4 的整个形态。
-2. **L3 只读打通（零风险）** —— ssproj 换真数据源 + JustFloat 二进制 frameParser；
-   控制脚本做 `连接 → TELEM? → ensureDashboard → Sensor_Data:1`；删掉 7 个假按钮。
+L3 的载体问题已经全部探明并实证，**路上没有未知了**，可以直接开工。
+
+1. **L3 只读打通（零风险）** —— ssproj 换真数据源 + JustFloat 二进制 frameParser；
+   控制脚本做 `连接 → TELEM? → ensureDashboard → Sensor_Data:1`；删掉 7 个假按钮；
+   顺手修掉 16 个无效控件 id。
    验收：连真机看到姿态曲线，且固件加通道时上位机自动跟随。
-3. **L3 交互控件** —— 只放安全命令（`PARAM`/`PID`/`SAVE`/查询类），不碰执行器。
-4. **L1 分帧** —— 这是 L2 接线的前提。
-5. **L2 接线** —— 先做一个真正危险的任务（`SERVO_SWEEP` 或 `MOTOR_SPIN`）。
+2. **L3 交互控件** —— 扩展包已验证可用，只放安全命令（`PARAM`/`PID`/`SAVE`/查询类），
+   不碰执行器。
+3. **L1 分帧** —— 这是 L2 接线的前提。
+4. **L2 接线** —— 先做一个真正危险的任务（`SERVO_SWEEP` 或 `MOTOR_SPIN`）。
    注意 `APP_Action_Tick()` 必须挂在不被通信阻塞的固定周期任务上。
-6. **L2 归一化 + L4 应用功能**。
+5. **L2 归一化 + L4 应用功能**。
 
 ---
 
@@ -221,13 +237,13 @@ README 的 TEST-01/02/03 现在是真跑的代码；另有 I1~I5 五条不变量
 
 ```bash
 python .agents/skills/drone-h743-project/scripts/update_repository_index.py
-python -m pytest tests/ -q          # 期望 499 passed
+python -m pytest tests/ -q          # 全绿；总数随双方工作推进增长
 cmake --build --preset Debug        # 期望链接成功、零警告
 ```
 
 | 指标 | 基线值 |
 |:--|:--|
-| 全量测试 | 499 passed |
+| 全量测试 | 591 passed（2026-08-29 16:20 快照；两条工作线并行，数字会涨，**关键是全绿**） |
 | 本体系相关测试 | 38（遥测 12 + Action 26） |
 | 固件编译 | 零警告 |
 | FLASH | 352580 B / 2 MB（16.81%） |

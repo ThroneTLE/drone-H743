@@ -4,7 +4,7 @@
 
 Read this shard only when the task uses serial/TCP diagnostics, log analysis, identification, capture, calibration, or desktop UIs.
 
-Source snapshot: `b4f28873352a`; aggregate snapshot: `a7c900a113d5`. Covered files: 5287.
+Source snapshot: `82893c13a27c`; aggregate snapshot: `ce7def1f86a3`. Covered files: 5287.
 
 | File/module or scope | Content outline | Key entry points / size |
 |---|---|---|
@@ -13,7 +13,7 @@ Source snapshot: `b4f28873352a`; aggregate snapshot: `a7c900a113d5`. Covered fil
 | `tools/aiwb2_tcp_loop_test.py` | End-to-end Ai-WB2 TCP transparent-mode loop test via CH340. This script treats the CH340 serial port as the MCU side an… | `env_int`, `read_idle`, `send_at`, `ensure_at_mode`, `configure_module`, `wait_for_client` (+3) |
 | `tools/attitude_ident_pid.py` | Analyze closed-loop attitude-identification FLOG CSVs and suggest PD gains. This tool is intentionally conservative: it… | `SegmentFit`, `split_segments`, `clean_segment`, `uniform_signal`, `simulate_second_order`, `fit_closed_loop` (+3) |
 | `tools/decode_saleae_spi_csv.py` | Decode SPI bytes from a Saleae raw digital.csv export. Default mapping follows the current Saleae hookup: Channel 0 = C… | `parse_args`, `load_rows`, `decode`, `bits_to_bytes`, `fmt_bytes`, `main` |
-| `tools/drone_tcp_panel.py` | Ground-station panel for the drone-H743 Ai-WB2 transparent link | `udp_payload_is_probably_text`, `parse_kv`, `safe_int`, `firmware_update_snapshot_gate`, `v0_workflow_guidance`, `validation_history_artifacts` (+23) |
+| `tools/drone_tcp_panel.py` | Ground-station panel for the drone-H743 Ai-WB2 transparent link | `udp_payload_is_probably_text`, `parse_kv`, `safe_int`, `rc_channel_travel`, `rc_detect_channel`, `rc_map_is_valid` (+35) |
 | `tools/esp8266_pwm_calibrator/.gitignore` | Host-side utility for .gitignore | — |
 | `tools/esp8266_pwm_calibrator/platformio.ini` | Host-side utility for platformio | — |
 | `tools/esp8266_pwm_calibrator/README.md` | ESP8266 PWM Calibrator | `Wiring`, `Build And Upload`, `Serial Protocol`, `GUI Workflow`, `OLED Status`, `Test Flow And Loss Coefficient` (+1) |
@@ -31,8 +31,8 @@ Source snapshot: `b4f28873352a`; aggregate snapshot: `a7c900a113d5`. Covered fil
 | `tools/flight_validation.py` | Read-only V0 flight-sensor validation algorithms. This module deliberately has no transport, parameter, Flash, or firmw… | `ValidationStatus`, `ValidationStage`, `StageDefinition`, `ValidationThresholds`, `ImuSample`, `ValidationSession` (+22) |
 | `tools/flow_velocity_filter_eval.py` | Evaluate optical-flow velocity robustness from H743 flight-log CSV files. 这个脚本用于对比旧的光流直通速度和当前固件里的抗离群思路： 1. 原始 Micolink… | `SeriesStats`, `ReplayResult`, `parse_float`, `parse_int`, `time_s`, `quality_to_noise` (+6) |
 | `tools/ground_station/drone_simulator.py` | Drone-H743 High-Fidelity Flight Telemetry Simulator & Test Server for Serial-Studio. Simulates: - 3D Attitude (Roll, Pi… | `DroneSimulator` |
-| `tools/ground_station/README.md` | drone-H743 专属上位机与飞控自检架构 | `0. 先读这一节：当前真实状态`, ``Drone-H743-GCS.ssproj` 是对着仿真器做的，不是对着固件`, `1. 核心工程思想：上位机不持有危险动作的时间轴`, `反模式：时间轴在上位机手里`, `这两行之间进程被杀 / USB 被拔 / 用户 Ctrl+C`, `> 舵机永远停在 500，堵转发热，固件一无所知` (+23) |
-| `tools/ground_station/ROADMAP.md` | 上位机与飞控自检体系 —— 框架与推进记录 | `一、整体框架`, `贯穿全层的两条原则`, `二、进度总览`, `三、已完成事项明细`, `2026-08-29 · Serial-Studio 能力探底（L3）`, `2026-08-29 · 遥测通道 schema（L1）· `c3b163f`` (+15) |
+| `tools/ground_station/README.md` | drone-H743 专属上位机与飞控自检架构 | `0. 先读这一节：当前真实状态`, ``Drone-H743-GCS.ssproj` 是对着仿真器做的，不是对着固件`, ``.ssproj` 还有 16 个无效的控件 id`, `1. 核心工程思想：上位机不持有危险动作的时间轴`, `反模式：时间轴在上位机手里`, `这两行之间进程被杀 / USB 被拔 / 用户 Ctrl+C` (+25) |
+| `tools/ground_station/ROADMAP.md` | 上位机与飞控自检体系 —— 框架与推进记录 | `一、整体框架`, `贯穿全层的两条原则`, `二、进度总览`, `三、已完成事项明细`, `2026-08-29 · Serial-Studio 能力探底（L3）`, `2026-08-29 · 遥测通道 schema（L1）· `c3b163f`` (+16) |
 | `tools/ground_station/ss-api-schema-gpl3.json` | Host-side utility for ss api schema gpl3 | — |
 | `tools/imu_attitude_tuner.py` | Record IMU samples and analyse x-io Fusion rejection/recovery diagnostics | `OpenOcdTelnet`, `decode_message`, `resolve_symbol_address`, `quality_summary`, `record_openocd`, `analyze_capture` (+2) |
 | `tools/imu_filter_report.py` | Visualise the vibration spectrum and the 1st- vs 2nd-order filter tradeoff. Reads the throttle-sweep captures produced… | `biquad_coeffs`, `apply_biquad`, `apply_iir1`, `response_db`, `group_delay_ms`, `spectrum` (+5) |

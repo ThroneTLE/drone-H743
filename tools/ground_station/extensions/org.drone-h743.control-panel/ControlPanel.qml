@@ -38,12 +38,23 @@ Item {
   //
   // Sends one raw line to the flight controller.
   //
-  // console.send is used rather than io.writeData because the firmware protocol is
-  // line-based ASCII and console.send appends the configured line ending, whereas
-  // io.writeData transmits the decoded bytes verbatim with nothing appended.
+  // io.writeData is used rather than console.send, despite console.send being the
+  // documented choice for text protocols. Reason, found by measuring against a
+  // loopback TCP server:
+  //
+  //   console.send returns {ok: true, sent: true} EVEN WHEN THE LINK IS DOWN.
+  //   io.writeData fails honestly with {errorCode: EXECUTION_ERROR,
+  //   category: "connection_lost", message: "Not connected"}.
+  //
+  // A button that reports "sent" while nothing left the machine is worse than one
+  // that reports nothing, so the honest call wins and the line ending is appended
+  // here instead. Both were verified to put the exact bytes on the wire.
+  //
+  // io.writeData takes base64, so the line is encoded before transmission.
   //
   function sendLine(line) {
-    const response = api.run("console.send " + JSON.stringify({ data: line + "\r\n" }))
+    const payload = Qt.btoa(line + "\r\n")
+    const response = api.run("io.writeData " + JSON.stringify({ data: payload }))
     root.lastOk = response.ok === true
     root.lastLine = root.lastOk
         ? ("TX  " + line)

@@ -38,6 +38,17 @@
 | `CONFIG SAVE` | 实际是 `SAVE` |
 | `REBOOT` | 全仓库搜不到 |
 
+### `.ssproj` 还有 16 个无效的控件 id
+
+实跑 `problems.list` 拿到的（2026-08-29）：16 条 `widget-not-installed` 错误。dataset 的
+`widget` 字段写成了 `"roll"`、`"pitch"`、`"x"`、`"y"`、`"z"` 这类值，它们**不是合法的
+内置控件 id**，Serial-Studio 于是把它们当成"缺失的扩展包"，对应控件退化为占位符。
+
+合法的 dataset 级控件靠 `DatasetOption` 位标志（`plot` / `fft` / `bar` / `gauge` /
+`compass` / `led` / `waterfall`），group 级才用 `widget` 字符串（`datagrid` /
+`multiplot` / `gyroscope` 等，见 `ensureDashboard` 的 `__ssGroupWidgets` 映射）。
+修 ssproj 时要按这个区分改，不能只改字符串。
+
 UI 布局和控件选型是实打实的成果，别推倒；但要清楚它离真机还隔着一整个协议适配层。
 
 ---
@@ -212,11 +223,40 @@ ModuleManager::registerQmlTypes():
 可执行**任意 API 命令**。
 
 原型包见 [`extensions/org.drone-h743.control-panel/`](extensions/org.drone-h743.control-panel/)。
-安装：整个目录复制到 `~/Documents/Serial Studio/Extensions/widget/`，重启，
-在工程编辑器里给某个 group 选该控件。
+安装：整个目录复制到工作区的 `Extensions/widget/`（本机是
+`E:\User\Doc\Serial Studio\Extensions\widget\`，路径取决于系统的"文档"位置），
+重启，在工程编辑器里给某个 group 选该控件。
 
-> **仍待人工确认**：首次运行的信任对话框、写设备是否弹确认框
-> （`io.writeData` 文档称 "in-process scripts are not prompted"，未实测）。
+**已实测通过（2026-08-29）**，不是推断。用 `--api-server`（TCP 7777）逐项核对：
+
+| 验证点 | 证据 |
+|:--|:--|
+| 包被扫描加载 | 从工作区 `Extensions/widget/` 发现 |
+| 清单通过校验 | `scope: "group"`、config 类型、`accepts` 全部被接受，无 finding |
+| 被识别为扩展控件 | group 的 `compatibleWidgetTypes` 变为 `[100]`（`DashboardExtension`） |
+| 授权机制 | finding 依次为 `widget-not-installed` → `widget-consent-required` → 授权后消失 |
+| **控件真的实例化** | 仪表盘实时渲染，`ui.window.listGroups` 含该 group |
+| **QML 零错误** | 全日志无 `not a type` —— 说明 `import SerialStudio` 同时解析出了 `ExtensionDataModel` 和 `ApiTerminalBridge`，否则会加载失败 |
+| **字节真正上线** | 对本地回环 TCP 服务端，实收 `b'TELEM?\r\n'`（`console.send`）与 `b'TELEM CH from=0\r\n'`（`io.writeData`） |
+
+授权是**一次性**的，按包版本记住（`WidgetExtensionConsent/<id>` = 版本号）；包升版会再问一次。
+写设备**没有**额外确认框（文档所述 "in-process scripts are not prompted" 属实）。
+
+### 5.1.1 三个实测踩到的坑（照抄前务必看）
+
+**① `console.send` 会撒谎。** 链路已断时它仍返回 `{ok: true, sent: true}`；同场景下
+`io.writeData` 老实报 `connection_lost` / `"Not connected"`。**按钮的发送反馈不能信
+`console.send` 的返回值**，否则界面显示"已发送"而实际什么都没出去。原型包因此改用
+`io.writeData` 并自行拼接行结束符 —— 这与官方"文本协议用 console.send"的建议相反，
+是有意为之。
+
+**② `io.network.getConfig` 的 `isOpen` 不可信。** 实测中它报 `false` 的同时，字节正常
+在链路上跑。判断链路状态请用 `io.getLatestFrame().ageMs`（控制脚本文档也是这么建议的），
+不要用 `isOpen`。
+
+**③ Serial-Studio 会自动保存工程。** 通过 API 改了 group / widget 之后，退出时会写回
+`.ssproj`。用 API 做实验请先备份或用临时工程副本，否则会把测试产物提交进仓库
+（本次就发生过两次，均已回滚）。
 
 ### 5.2 Canvas / Painter 是死路，别规划它
 
