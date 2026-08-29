@@ -177,6 +177,10 @@ int main(void)
     invalid.reference_temp_c = 85.01f;
     CHECK(APP_FlightCalibration_ValidateV1Candidate(&invalid) ==
           APP_FLIGHT_CAL_TRANSFER_BAD_RANGE, 41);
+    invalid = candidate;
+    invalid.valid_mask |= APP_FLIGHT_CAL_VALID_SERVO_MECHANICAL;
+    CHECK(APP_FlightCalibration_ValidateV1Candidate(&invalid) ==
+          APP_FLIGHT_CAL_TRANSFER_BAD_VALID_MASK, 49);
 
     APP_FlightCalibration_Defaults(&base);
     CHECK(APP_FlightCalibration_UpdateOrientation(&base, 3U) != 0U, 26);
@@ -184,7 +188,7 @@ int main(void)
     base.v2_controller_mapping = 12U;
     base.v2_rc_mapping = 13U;
     base.v2_actuator_mapping = 14U;
-    base.v2_reserved[3] = 0x12345678UL;
+    base.v2_reserved[2] = 0x12345678UL;
     CHECK(APP_FlightCalibration_MergeV1Candidate(&base, &candidate,
                                                   &merged) != 0U, 27);
     CHECK(merged.orientation_code == base.orientation_code, 28);
@@ -192,7 +196,7 @@ int main(void)
           merged.v2_controller_mapping == 12U &&
           merged.v2_rc_mapping == 13U &&
           merged.v2_actuator_mapping == 14U &&
-          merged.v2_reserved[3] == 0x12345678UL, 29);
+          merged.v2_reserved[2] == 0x12345678UL, 29);
     CHECK(merged.calibration_generation == 8U, 30);
     CHECK(merged.accel_bias[0] == candidate.accel_bias[0], 31);
     invalid = candidate;

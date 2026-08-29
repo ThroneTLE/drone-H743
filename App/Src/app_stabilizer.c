@@ -35,6 +35,7 @@
 #include "app_led.h"
 #include "app_nav_estimator.h"
 #include "app_optical_flow.h"
+#include "app_rc_config.h"
 #include "app_sensor.h"
 #include "app_messages.h"
 #include "app_servo_cal.h"
@@ -123,7 +124,7 @@
 #define STABILIZER_Z_REF_RATE_MAX_M_S  0.30f     /* CH3 满杆高度目标积分速度 [m/s]       */
 #define STABILIZER_Z_REF_MAX_M         0.40f     /* 上电光流测高基准以上高度上限 [m]     */
 #define STABILIZER_Z_POS_ERR_MAX_M     0.35f     /* Z 位置 PID 单次位置误差限幅 [m]      */
-#define STABILIZER_RC_DEADBAND_US      20        /* RC 摇杆死区 [μs]，中位 1500±20      */
+/* 摇杆死区已移入 APP_RcConfig.deadband_us（可标定），此处不再定义。 */
 
 /*
  * ============================================================================
@@ -139,25 +140,19 @@
  *   CH6 → 姿态调试模式开关       → 高位启用手动总推力 + 目标姿态
  *
  * CRSF 驱动输出的是 16 路 us 值，数组下标从 0 开始，所以 CH1 对应 ch[0]。
- * CH5 用阈值判断：>1500us 视为开锁，<=1500us 视为上锁。
- * 解锁还必须满足 CH3 低油门：CH3 <=1100us。防止开关误触后电机带油门启动。
+ * CH5 用阈值判断：高于中位视为开锁，否则上锁。
+ * 解锁还必须满足低油门：油门 <=10% 行程。防止开关误触后电机带油门启动。
+ *
+ * 上面这张表现在只是"出厂默认值"（见 app_rc_config.c 的 app_rc_default_channel），
+ * 实际通道号、正反向和端点由 APP_RcConfig 提供，可在上位机标定后写入 Flash。
+ * 本文件的 RC 判读不再出现通道下标字面量——要改映射请走 RCMAP 协议，不要改代码。
+ * 已知例外：第 1740 行附近仍把原始 ch[] 直传给 app_servo_cal.c 的摇杆手势状态机，
+ * 该模块内部还有写死的 CH1..CH4 下标，属 RC 映射迁移未完成部分（见 PIPELINE 副线）。
  */
-#define STABILIZER_RC_CH_ROLL          0U
-#define STABILIZER_RC_CH_PITCH         1U
-#define STABILIZER_RC_CH_THROTTLE_Z    2U
-#define STABILIZER_RC_CH_YAW           3U
-#define STABILIZER_RC_CH_ARM           4U
-#define STABILIZER_RC_CH_ATTITUDE_DEBUG 5U
-#define STABILIZER_RC_ARM_THRESHOLD_US 1500U
-#define STABILIZER_RC_ATTITUDE_DEBUG_THRESHOLD_US 1500U
-#define STABILIZER_RC_THROTTLE_INPUT_LOW_US  1000U
-#define STABILIZER_RC_THROTTLE_INPUT_HIGH_US 2000U
-#define STABILIZER_RC_THROTTLE_ARM_LOW_US    1100U
+/* 开关判高低、油门判低位，都按各自标定端点的百分比算，不再用绝对 us 阈值。 */
+#define STABILIZER_RC_SWITCH_HIGH_PERCENT    50U
+#define STABILIZER_RC_THROTTLE_ARM_LOW_PERCENT 10U
 #define STABILIZER_RC_STABILIZE_MIN_PERCENT 70U
-#define STABILIZER_RC_STABILIZE_MIN_US \
-  (STABILIZER_RC_THROTTLE_INPUT_LOW_US + \
-   (((STABILIZER_RC_THROTTLE_INPUT_HIGH_US - STABILIZER_RC_THROTTLE_INPUT_LOW_US) * \
-     STABILIZER_RC_STABILIZE_MIN_PERCENT) / 100U))
 #define STABILIZER_RC_LOSS_TIMEOUT_MS  500U
 #define STABILIZER_FLIGHT_LOG_TAIL_RECORDS 125U /* 250 Hz log tail, about 500 ms */
 #define STABILIZER_USE_RC_DIRECT_TILT_SERVO 0U   /* 0=自稳定控制器(永久), 1=CH1/CH2直控舵机调试 */
@@ -222,41 +217,44 @@
    */
 
   /*
-   * stabilizer_rc_normalized() — RC 通道值归一化到 [-1, +1]
-   *   输入：RC 脉宽 [μs]，典型范围 1000~2000，中位 1500
-   *   处理：减去中位 1500 → 死区过滤 → 限幅 ±500 → 除以 500
-   *   仅在 USE_DIRECT_ANGLE_SERVO=0（同轴控制器模式）时编译
+   * 摇杆量已经由 APP_RcConfig_Resolve() 按标定端点归一化到 [-1,+1] / [0,1]，
+   * 这里的函数只负责把它换算成物理量，不再自己解释脉宽。
    */
-  static float stabilizer_rc_normalized(uint16_t ch_us)
+  static float stabilizer_rc_throttle_height_rate_m_s(float throttle_norm)
   {
-    int32_t centered = (int32_t)ch_us - 1500;
+    return throttle_norm * STABILIZER_Z_REF_RATE_MAX_M_S;
+  }
 
-    if ((centered > -STABILIZER_RC_DEADBAND_US) &&
-        (centered < STABILIZER_RC_DEADBAND_US)) {
-      return 0.0f;
+  /*
+   * 开关高低不能直接比绝对 us：两段开关的低位常在 1000 附近、高位在 2000 附近，
+   * 但三段开关或做过端点标定的通道中位并不是 1500。统一按该通道自身行程的百分比判。
+   */
+  static uint8_t stabilizer_rc_channel_above_percent(
+    const APP_RcConfig *config, uint8_t function, uint16_t ch_us, uint8_t percent)
+  {
+    const APP_RcFunctionMap *map;
+    int32_t span;
+    int32_t threshold;
+
+    if ((config == NULL) || (function >= APP_RC_FUNC_COUNT)) {
+      return 0U;
     }
-    if (centered > 500) { centered = 500; }
-    if (centered < -500) { centered = -500; }
-
-    return (float)centered / 500.0f;
-  }
-
-  static float stabilizer_rc_throttle_01(uint16_t ch_us)
-  {
-    const int32_t span =
-      (int32_t)STABILIZER_RC_THROTTLE_INPUT_HIGH_US -
-      (int32_t)STABILIZER_RC_THROTTLE_INPUT_LOW_US;
-    int32_t value = (int32_t)ch_us - (int32_t)STABILIZER_RC_THROTTLE_INPUT_LOW_US;
-
-    if (value < 0) { value = 0; }
-    if (value > span) { value = span; }
-
-    return (float)value / (float)span;
-  }
-
-  static float stabilizer_rc_throttle_height_rate_m_s(uint16_t ch_us)
-  {
-    return stabilizer_rc_normalized(ch_us) * STABILIZER_Z_REF_RATE_MAX_M_S;
+    map = &config->function[function];
+    if (map->channel == APP_RC_CHANNEL_UNBOUND) {
+      return 0U;
+    }
+    span = (int32_t)map->max_us - (int32_t)map->min_us;
+    if (span <= 0) {
+      return 0U;
+    }
+    threshold = (int32_t)map->min_us + ((span * (int32_t)percent) / 100);
+    if (map->reversed != 0U) {
+      /* 与正向分支严格镜像：value > threshold 经 value ↦ min+max−value 映射后
+       * 等价于 value < min+max−threshold（同为严格不等号，阈值点两侧语义一致）。 */
+      return ((int32_t)ch_us < ((int32_t)map->min_us + (int32_t)map->max_us -
+                                threshold)) ? 1U : 0U;
+    }
+    return ((int32_t)ch_us > threshold) ? 1U : 0U;
   }
 
   static float stabilizer_wrap_pi(float angle_rad)
@@ -270,9 +268,9 @@
     return angle_rad;
   }
 
-  static float stabilizer_rc_yaw_rate_rad_s(uint16_t ch_us)
+  static float stabilizer_rc_yaw_rate_rad_s(float yaw_norm)
   {
-    return stabilizer_rc_normalized(ch_us) * STABILIZER_YAW_RATE_REF_MAX_RAD_S;
+    return yaw_norm * STABILIZER_YAW_RATE_REF_MAX_RAD_S;
   }
 
   static uint16_t stabilizer_motor_pulse_clamp(int32_t pulse_us)
@@ -286,9 +284,8 @@
     return (uint16_t)pulse_us;
   }
 
-  static uint16_t stabilizer_rc_throttle_to_motor_pulse(uint16_t ch_us)
+  static uint16_t stabilizer_rc_throttle_to_motor_pulse(float throttle_01)
   {
-    float throttle_01 = stabilizer_rc_throttle_01(ch_us);
     float pulse_f = (float)BSP_PWM_ESC_MIN_US +
                     throttle_01 * (float)(BSP_PWM_ESC_MAX_US - BSP_PWM_ESC_MIN_US);
     int32_t pulse_i = (int32_t)(pulse_f + 0.5f);
@@ -296,9 +293,10 @@
     return stabilizer_motor_pulse_clamp(pulse_i);
   }
 
-  static uint8_t stabilizer_rc_use_stabilized_motor_mix(uint16_t ch_us)
+  static uint8_t stabilizer_rc_use_stabilized_motor_mix(float throttle_01)
   {
-    return (ch_us >= STABILIZER_RC_STABILIZE_MIN_US) ? 1U : 0U;
+    return (throttle_01 >=
+            ((float)STABILIZER_RC_STABILIZE_MIN_PERCENT / 100.0f)) ? 1U : 0U;
   }
 
   static float stabilizer_clamp_f32(float value, float lo, float hi)
@@ -434,13 +432,10 @@
     }
   }
 
-  static uint8_t stabilizer_rc_update_armed(const uint16_t ch[CRSF_CHANNEL_COUNT],
+  static uint8_t stabilizer_rc_update_armed(uint8_t switch_high,
+                                            uint8_t throttle_low,
                                             uint8_t rc_link_ok)
   {
-    uint8_t switch_high =
-      (ch[STABILIZER_RC_CH_ARM] > STABILIZER_RC_ARM_THRESHOLD_US) ? 1U : 0U;
-    uint8_t throttle_low =
-      (ch[STABILIZER_RC_CH_THROTTLE_Z] <= STABILIZER_RC_THROTTLE_ARM_LOW_US) ? 1U : 0U;
 
     /* V0 may preview/persist only the sensor+Fusion seam.  Keep the aircraft
      * physically disarmed until every downstream FLU migration bit is proven. */
@@ -532,6 +527,42 @@
 
   static StabilizerServoBusDiag stabilizer_servo_bus_diag;
   static StabilizerFlowDebug stabilizer_flow_debug;
+  static volatile uint32_t stabilizer_flow_comp_seqlock;
+  static volatile uint8_t stabilizer_flow_comp_valid;
+  static volatile StabilizerFlowCompensationSnapshot
+    stabilizer_flow_comp_snapshot;
+
+  static void stabilizer_flow_compensation_publish(
+    const StabilizerFlowDebug *debug,
+    uint32_t sample_ms,
+    uint8_t orientation_code,
+    uint8_t valid)
+  {
+    StabilizerFlowCompensationSnapshot next;
+
+    memset(&next, 0, sizeof(next));
+    next.sample_ms = sample_ms;
+    next.frame_contract = DRV_FRAME_CONTRACT_VERSION;
+    next.orientation_code = orientation_code;
+    next.valid = (valid != 0U) ? 1U : 0U;
+    if ((debug != NULL) && (valid != 0U)) {
+      next.sensor_velocity_flu_m_s[0] = debug->sensor_velocity_m_s[0];
+      next.sensor_velocity_flu_m_s[1] = -debug->sensor_velocity_m_s[1];
+      next.optical_rot_comp_flu_m_s[0] = debug->optical_rot_comp_m_s[0];
+      next.optical_rot_comp_flu_m_s[1] = -debug->optical_rot_comp_m_s[1];
+      next.offset_rot_comp_flu_m_s[0] = debug->offset_rot_comp_m_s[0];
+      next.offset_rot_comp_flu_m_s[1] = -debug->offset_rot_comp_m_s[1];
+      next.corrected_velocity_flu_m_s[0] = debug->corrected_velocity_m_s[0];
+      next.corrected_velocity_flu_m_s[1] = -debug->corrected_velocity_m_s[1];
+    }
+
+    stabilizer_flow_comp_seqlock++;
+    __DMB();
+    stabilizer_flow_comp_snapshot = next;
+    stabilizer_flow_comp_valid = next.valid;
+    __DMB();
+    stabilizer_flow_comp_seqlock++;
+  }
 
 
   typedef struct {
@@ -901,6 +932,8 @@ typedef struct
 {
   uint32_t now_ms;
   uint16_t ch[16];
+  APP_RcConfig rc_config;
+  APP_RcInputs rc;
   DRV_COAX_CTRL_AttitudeInput attitude;
   DRV_COAX_CTRL_Reference reference;
   DRV_COAX_CTRL_Output ctrl_out;
@@ -945,6 +978,7 @@ static volatile uint8_t stabilizer_validation_imu_valid;
 static volatile StabilizerValidationImuSnapshot
   stabilizer_validation_imu_snapshot;
 static volatile uint8_t stabilizer_imu_calibration_candidate_arm_lock;
+static volatile uint8_t stabilizer_servo_calibration_candidate_arm_lock;
 
 static void stabilizer_validation_imu_reset(void)
 {
@@ -1081,9 +1115,50 @@ uint8_t APP_Stabilizer_ReadValidationImuSnapshot(
   return 0U;
 }
 
+uint8_t APP_Stabilizer_ReadFlowCompensationSnapshot(
+  StabilizerFlowCompensationSnapshot *out)
+{
+  StabilizerFlowCompensationSnapshot current;
+  uint32_t before;
+  uint32_t after;
+  uint32_t attempt;
+  uint8_t valid;
+
+  if (out == NULL) {
+    return 0U;
+  }
+  for (attempt = 0U;
+       attempt < STABILIZER_VALIDATION_SNAPSHOT_READ_RETRIES;
+       ++attempt) {
+    before = stabilizer_flow_comp_seqlock;
+    if ((before & 1U) != 0U) {
+      continue;
+    }
+    __DMB();
+    current = stabilizer_flow_comp_snapshot;
+    valid = stabilizer_flow_comp_valid;
+    __DMB();
+    after = stabilizer_flow_comp_seqlock;
+    if ((before == after) && ((after & 1U) == 0U)) {
+      if (valid == 0U) {
+        return 0U;
+      }
+      *out = current;
+      return 1U;
+    }
+  }
+  return 0U;
+}
+
+uint8_t APP_Stabilizer_IsArmed(void)
+{
+  return stabilizer_capture_armed;
+}
+
 uint8_t APP_Stabilizer_IsImuFrameArmLocked(void)
 {
   return ((stabilizer_imu_calibration_candidate_arm_lock != 0U) ||
+          (stabilizer_servo_calibration_candidate_arm_lock != 0U) ||
           ((APP_Sensor_IsFluOrientationActive() != 0U) &&
            (DRV_FRAME_RUNTIME_MIGRATION_COMPLETE == 0U))) ? 1U : 0U;
 }
@@ -1099,10 +1174,27 @@ uint8_t APP_Stabilizer_IsImuCalibrationCandidateArmLocked(void)
   return stabilizer_imu_calibration_candidate_arm_lock;
 }
 
+void APP_Stabilizer_SetServoCalibrationCandidateArmLock(uint8_t locked)
+{
+  stabilizer_servo_calibration_candidate_arm_lock =
+    (locked != 0U) ? 1U : 0U;
+  __DMB();
+}
+
+uint8_t APP_Stabilizer_IsServoCalibrationCandidateArmLocked(void)
+{
+  return stabilizer_servo_calibration_candidate_arm_lock;
+}
+
 static void stabilizer_init(StabilizerContext *ctx)
 {
   memset(ctx, 0, sizeof(*ctx));
   stabilizer_imu_calibration_candidate_arm_lock = 0U;
+  stabilizer_servo_calibration_candidate_arm_lock = 0U;
+  stabilizer_flow_comp_seqlock = 0U;
+  stabilizer_flow_comp_valid = 0U;
+  memset((void *)&stabilizer_flow_comp_snapshot, 0,
+         sizeof(stabilizer_flow_comp_snapshot));
   ctx->imu_frame_orientation_code = APP_SENSOR_FLU_ORIENTATION_LEGACY;
   stabilizer_validation_imu_reset();
   DRV_AttitudeFusion_Init();
@@ -1181,6 +1273,7 @@ static void stabilizer_imu_step(StabilizerContext *ctx,
   const uint8_t flu_active =
     (orientation_code != APP_SENSOR_FLU_ORIENTATION_LEGACY) ? 1U : 0U;
   APP_FlightCalibrationSnapshot calibration_snapshot;
+  DRV_COAX_CTRL_ServoCalibration servo_calibration;
   uint8_t calibration_changed = 0U;
 
   msg->imu_frame_orientation_code = orientation_code;
@@ -1194,6 +1287,14 @@ static void stabilizer_imu_step(StabilizerContext *ctx,
           &calibration_snapshot.calibration,
           orientation_code,
           &ctx->imu_calibration);
+      (void)APP_FlightCalibration_BuildServoMechanical(
+        &calibration_snapshot.calibration,
+        &servo_calibration);
+      (void)DRV_COAX_CTRL_SetServoCalibration(&servo_calibration);
+      stabilizer_latest_servo_target_us[0] =
+        servo_calibration.center_us[DRV_COAX_CTRL_SERVO_ALPHA_INDEX];
+      stabilizer_latest_servo_target_us[1] =
+        servo_calibration.center_us[DRV_COAX_CTRL_SERVO_BETA_INDEX];
       ctx->imu_calibration_snapshot_ready = 1U;
       calibration_changed = 1U;
     }
@@ -1202,6 +1303,12 @@ static void stabilizer_imu_step(StabilizerContext *ctx,
     memset(&ctx->imu_calibration, 0, sizeof(ctx->imu_calibration));
     ctx->imu_calibration_valid_mask = 0U;
     ctx->imu_calibration_snapshot_ready = 0U;
+    DRV_COAX_CTRL_ResetServoCalibration();
+    DRV_COAX_CTRL_GetServoCalibration(&servo_calibration);
+    stabilizer_latest_servo_target_us[0] =
+      servo_calibration.center_us[DRV_COAX_CTRL_SERVO_ALPHA_INDEX];
+    stabilizer_latest_servo_target_us[1] =
+      servo_calibration.center_us[DRV_COAX_CTRL_SERVO_BETA_INDEX];
     calibration_snapshot.generation = ctx->imu_calibration_generation;
     calibration_changed = 1U;
   }
@@ -1518,6 +1625,11 @@ static void stabilizer_imu_step(StabilizerContext *ctx,
       } else {
         memset(&stabilizer_flow_debug, 0, sizeof(stabilizer_flow_debug));
       }
+      stabilizer_flow_compensation_publish(
+        &stabilizer_flow_debug,
+        flow_sample_ms,
+        msg->imu_frame_orientation_code,
+        flow_valid);
 
       flow_accepted = stabilizer_velocity_estimator_step(&ctx->vel_estimator,
                                                          imu_accel_x_m_s2,
@@ -1584,23 +1696,38 @@ static void stabilizer_control_prepare(StabilizerContext *ctx,
   ctx->last_ctrl_model_ms = frame->now_ms;
 
   APP_ELRS_GetChannels(frame->ch);       /* 读取 ELRS 遥控器 16 通道             */
+  /*
+   * 每周期重读一次映射快照：上位机改绑定/标定后必须立刻生效，否则用户得重启飞控
+   * 才能看到效果。seqlock 读是几十个周期的拷贝，1kHz 下可以忽略。
+   */
+  if (APP_RcConfig_ReadActive(&frame->rc_config) == 0U) {
+    APP_RcConfig_Defaults(&frame->rc_config);
+  }
+  APP_RcConfig_Resolve(&frame->rc_config, frame->ch, &frame->rc);
   frame->rc_link_ok = APP_ELRS_IsRcFresh(frame->now_ms, STABILIZER_RC_LOSS_TIMEOUT_MS);
   frame->rc_link_seen = (APP_ELRS_GetLastRcMs() != 0U) ? 1U : 0U;
   frame->rc_arm_switch_high =
-    (frame->ch[STABILIZER_RC_CH_ARM] > STABILIZER_RC_ARM_THRESHOLD_US) ? 1U : 0U;
+    stabilizer_rc_channel_above_percent(&frame->rc_config, APP_RC_FUNC_ARM,
+                                        frame->rc.us[APP_RC_FUNC_ARM],
+                                        STABILIZER_RC_SWITCH_HIGH_PERCENT);
   frame->rc_arm_throttle_low =
-    (frame->ch[STABILIZER_RC_CH_THROTTLE_Z] <= STABILIZER_RC_THROTTLE_ARM_LOW_US) ? 1U : 0U;
-  frame->rc_armed = stabilizer_rc_update_armed(frame->ch, frame->rc_link_ok);
+    (frame->rc.throttle_01 <=
+     ((float)STABILIZER_RC_THROTTLE_ARM_LOW_PERCENT / 100.0f)) ? 1U : 0U;
+  frame->rc_armed = stabilizer_rc_update_armed(frame->rc_arm_switch_high,
+                                               frame->rc_arm_throttle_low,
+                                               frame->rc_link_ok);
   stabilizer_capture_armed = frame->rc_armed;
   frame->rc_throttle_motor_us =
-    stabilizer_rc_throttle_to_motor_pulse(frame->ch[STABILIZER_RC_CH_THROTTLE_Z]);
+    stabilizer_rc_throttle_to_motor_pulse(frame->rc.throttle_01);
   frame->rc_use_stabilized_motor_mix =
-    stabilizer_rc_use_stabilized_motor_mix(frame->ch[STABILIZER_RC_CH_THROTTLE_Z]);
+    stabilizer_rc_use_stabilized_motor_mix(frame->rc.throttle_01);
   frame->rc_attitude_debug_mode =
     ((frame->rc_link_ok != 0U) &&
      (frame->rc_use_stabilized_motor_mix != 0U) &&
-     (frame->ch[STABILIZER_RC_CH_ATTITUDE_DEBUG] >
-      STABILIZER_RC_ATTITUDE_DEBUG_THRESHOLD_US)) ? 1U : 0U;
+     (stabilizer_rc_channel_above_percent(
+        &frame->rc_config, APP_RC_FUNC_MODE,
+        frame->rc.us[APP_RC_FUNC_MODE],
+        STABILIZER_RC_SWITCH_HIGH_PERCENT) != 0U)) ? 1U : 0U;
   frame->rc_control_motor_mix_allowed =
     (frame->rc_use_stabilized_motor_mix != 0U) ? 1U : 0U;
   (void)APP_ServoCal_Step(frame->ch, frame->rc_link_ok, frame->rc_arm_switch_high, frame->now_ms);
@@ -1693,6 +1820,7 @@ static void stabilizer_control_compute(StabilizerContext *ctx,
     frame->moves[0].pulse_us = ident_alpha_us;
     frame->moves[1].pulse_us = ident_beta_us;
   } else if (frame->rc_control_motor_mix_allowed == 0U) {
+    DRV_COAX_CTRL_ServoCalibration servo_calibration;
     /*
      * Throttle below the stabilization threshold is the low-power
      * direct-throttle stage. Keep tilt servos centered there so stick
@@ -1718,8 +1846,11 @@ static void stabilizer_control_compute(StabilizerContext *ctx,
     ctx->yaw_ref_ready = 0U;
     ctx->vofa_debug.vel_loop_active = 0.0f;
     stabilizer_vofa_debug_publish(&ctx->vofa_debug);
-    frame->moves[0].pulse_us = DRV_COAX_CTRL_SERVO_ALPHA_CENTER_US;
-    frame->moves[1].pulse_us = DRV_COAX_CTRL_SERVO_BETA_CENTER_US;
+    DRV_COAX_CTRL_GetServoCalibration(&servo_calibration);
+    frame->moves[0].pulse_us =
+      servo_calibration.center_us[DRV_COAX_CTRL_SERVO_ALPHA_INDEX];
+    frame->moves[1].pulse_us =
+      servo_calibration.center_us[DRV_COAX_CTRL_SERVO_BETA_INDEX];
   } else if (frame->imu_control_valid != 0U) {
 
     /*
@@ -1774,21 +1905,21 @@ static void stabilizer_control_compute(StabilizerContext *ctx,
         frame->reference.manual_total_force_n =
           DRV_COAX_CTRL_MotorPulseToTotalThrust(frame->rc_throttle_motor_us);
         frame->reference.target_pitch_rad =
-          stabilizer_rc_normalized(frame->ch[STABILIZER_RC_CH_PITCH]) *
+          frame->rc.norm[APP_RC_FUNC_PITCH] *
           STABILIZER_RC_ATTITUDE_TARGET_LIMIT_RAD *
           STABILIZER_RC_ATTITUDE_TARGET_PITCH_SIGN;
         frame->reference.target_roll_rad =
-          stabilizer_rc_normalized(frame->ch[STABILIZER_RC_CH_ROLL]) *
+          frame->rc.norm[APP_RC_FUNC_ROLL] *
           STABILIZER_RC_ATTITUDE_TARGET_LIMIT_RAD *
           STABILIZER_RC_ATTITUDE_TARGET_ROLL_SIGN;
         frame->reference.horizontal_velocity_valid = 0U;
         velocity_loop_enabled = 0U;
       } else {
         frame->reference.vx_m_s =
-        stabilizer_rc_normalized(frame->ch[STABILIZER_RC_CH_PITCH]) *
+        frame->rc.norm[APP_RC_FUNC_PITCH] *
           STABILIZER_XY_VEL_REF_MAX_M_S;
         frame->reference.vy_m_s =
-        stabilizer_rc_normalized(frame->ch[STABILIZER_RC_CH_ROLL]) *
+        frame->rc.norm[APP_RC_FUNC_ROLL] *
           STABILIZER_XY_VEL_REF_MAX_M_S;
         frame->reference.horizontal_velocity_valid = velocity_loop_enabled;
       }
@@ -1882,7 +2013,7 @@ static void stabilizer_control_compute(StabilizerContext *ctx,
         }
         ctx->height_ref_m +=
           stabilizer_rc_throttle_height_rate_m_s(
-            frame->ch[STABILIZER_RC_CH_THROTTLE_Z]) * frame->ctrl_dt_sec;
+            frame->rc.norm[APP_RC_FUNC_THROTTLE]) * frame->ctrl_dt_sec;
         ctx->height_ref_m =
           stabilizer_clamp_f32(ctx->height_ref_m,
                                0.0f,
@@ -1901,7 +2032,7 @@ static void stabilizer_control_compute(StabilizerContext *ctx,
     }
     {
       float yaw_rate_ref_rad_s =
-        stabilizer_rc_yaw_rate_rad_s(frame->ch[STABILIZER_RC_CH_YAW]);
+        stabilizer_rc_yaw_rate_rad_s(frame->rc.norm[APP_RC_FUNC_YAW]);
 
       if (ctx->yaw_ref_ready == 0U) {
         ctx->yaw_ref_rad = frame->attitude.yaw_rad;
@@ -1961,6 +2092,7 @@ static void stabilizer_control_compute(StabilizerContext *ctx,
     ctx->vofa_debug.motor_lower_us = (float)frame->ctrl_out.motor_lower_us;
     stabilizer_vofa_debug_publish(&ctx->vofa_debug);
   } else if (ctx->has_imu_sample == 0U) {
+    DRV_COAX_CTRL_ServoCalibration servo_calibration;
     DRV_IMU_NAV_Reset(&ctx->nav_state);
     stabilizer_velocity_estimator_reset(&ctx->vel_estimator);
     DRV_COAX_CTRL_ResetState();
@@ -1972,8 +2104,11 @@ static void stabilizer_control_compute(StabilizerContext *ctx,
     ctx->vofa_debug.vel_loop_active = 0.0f;
     stabilizer_vofa_debug_publish(&ctx->vofa_debug);
     /* 上电尚无有效姿态时才使用中位；运行中 IMU 异常保持上一目标。 */
-    frame->moves[0].pulse_us = DRV_COAX_CTRL_SERVO_ALPHA_CENTER_US;
-    frame->moves[1].pulse_us = DRV_COAX_CTRL_SERVO_BETA_CENTER_US;
+    DRV_COAX_CTRL_GetServoCalibration(&servo_calibration);
+    frame->moves[0].pulse_us =
+      servo_calibration.center_us[DRV_COAX_CTRL_SERVO_ALPHA_INDEX];
+    frame->moves[1].pulse_us =
+      servo_calibration.center_us[DRV_COAX_CTRL_SERVO_BETA_INDEX];
   }
 
   if (frame->ident_running != 0U) {
@@ -2105,9 +2240,9 @@ static void stabilizer_control_commit(StabilizerContext *ctx,
       -params.roll_rate_kd * debug.rate_error_rad_s[0];
     observation.damping_moment_n_m[1] =
       -params.pitch_rate_kd * debug.rate_error_rad_s[1];
-    observation.rc_us[0] = frame->ch[STABILIZER_RC_CH_ROLL];
-    observation.rc_us[1] = frame->ch[STABILIZER_RC_CH_PITCH];
-    observation.rc_us[2] = frame->ch[STABILIZER_RC_CH_YAW];
+    observation.rc_us[0] = frame->rc.us[APP_RC_FUNC_ROLL];
+    observation.rc_us[1] = frame->rc.us[APP_RC_FUNC_PITCH];
+    observation.rc_us[2] = frame->rc.us[APP_RC_FUNC_YAW];
     observation.servo_command_us[0] = frame->moves[0].pulse_us;
     observation.servo_command_us[1] = frame->moves[1].pulse_us;
     observation.servo_sent_us[0] = stabilizer_last_successful_servo_pulse_us[0];

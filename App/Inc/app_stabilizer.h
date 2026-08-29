@@ -79,6 +79,22 @@
     uint8_t imu_health_fault_ever;
   } StabilizerValidationImuSnapshot;
 
+  /*
+   * One flow sample after the runtime rotation/lever-arm compensation seam.
+   * Export vectors are converted from the current controller Y-right adapter
+   * to canonical FLU Y-left and carry orientation provenance explicitly.
+   */
+  typedef struct {
+    uint32_t sample_ms;
+    uint16_t frame_contract;
+    uint8_t orientation_code;
+    uint8_t valid;
+    float sensor_velocity_flu_m_s[2];
+    float optical_rot_comp_flu_m_s[2];
+    float offset_rot_comp_flu_m_s[2];
+    float corrected_velocity_flu_m_s[2];
+  } StabilizerFlowCompensationSnapshot;
+
 void APP_Stabilizer_LatchImuFault(StabilizerImuFaultReason reason);
 void APP_Stabilizer_ClearImuFault(void);
 void APP_Stabilizer_MarkImuSample(uint32_t now_ms);
@@ -86,11 +102,18 @@ void APP_Stabilizer_ReadVofaDebug(StabilizerVofaDebug *out);
 /* Returns 1 only after a real sensor message has traversed the pipeline. */
 uint8_t APP_Stabilizer_ReadValidationImuSnapshot(
   StabilizerValidationImuSnapshot *out);
+uint8_t APP_Stabilizer_ReadFlowCompensationSnapshot(
+  StabilizerFlowCompensationSnapshot *out);
 /* Nonzero while a partial FLU migration must remain physically disarmed. */
 uint8_t APP_Stabilizer_IsImuFrameArmLocked(void);
+/* Latest armed state as seen by the control loop; used to gate config writes. */
+uint8_t APP_Stabilizer_IsArmed(void);
 /* Independent hard lock while a V1 RAM candidate exists or is committing. */
 void APP_Stabilizer_SetImuCalibrationCandidateArmLock(uint8_t locked);
 uint8_t APP_Stabilizer_IsImuCalibrationCandidateArmLocked(void);
+/* Independent hard lock while servo-mechanical FCAL preview is active. */
+void APP_Stabilizer_SetServoCalibrationCandidateArmLock(uint8_t locked);
+uint8_t APP_Stabilizer_IsServoCalibrationCandidateArmLocked(void);
 void APP_Stabilizer_Run(osSemaphoreId_t imu_ready_sem,
                         osMessageQueueId_t sensor_sample_q,
                         osMessageQueueId_t vofa_log_q);

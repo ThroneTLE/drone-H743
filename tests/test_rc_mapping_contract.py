@@ -27,17 +27,17 @@ def test_freertos_documents_fixed_elrs_channel_map() -> None:
 def test_controller_uses_named_rc_channels_for_references() -> None:
     freertos = read("Core/Src/freertos.c") + read("App/Src/app_stabilizer.c")
 
-    assert "#define STABILIZER_RC_CH_ROLL          0U" in freertos
-    assert "#define STABILIZER_RC_CH_PITCH         1U" in freertos
-    assert "#define STABILIZER_RC_CH_THROTTLE_Z    2U" in freertos
-    assert "#define STABILIZER_RC_CH_YAW           3U" in freertos
-    assert "#define STABILIZER_RC_CH_ARM           4U" in freertos
-    assert "#define STABILIZER_RC_CH_ATTITUDE_DEBUG 5U" in freertos
-    assert "#define STABILIZER_RC_ATTITUDE_DEBUG_THRESHOLD_US 1500U" in freertos
-    assert "#define STABILIZER_RC_ARM_THRESHOLD_US 1500U" in freertos
-    assert "#define STABILIZER_RC_THROTTLE_INPUT_LOW_US  1000U" in freertos
-    assert "#define STABILIZER_RC_THROTTLE_INPUT_HIGH_US 2000U" in freertos
-    assert "#define STABILIZER_RC_THROTTLE_ARM_LOW_US    1100U" in freertos
+    # 通道号和端点已经搬进可标定的 APP_RcConfig；出厂默认仍是 CH1..CH6 / 1000-1500-2000，
+    # 由 tests/test_rc_mapping.py 逐条钉住。这里只钉"控制环按功能名取值"这件事。
+    assert "STABILIZER_RC_CH_" not in freertos
+    assert "frame->rc.norm[APP_RC_FUNC_PITCH]" in freertos
+    assert "frame->rc.norm[APP_RC_FUNC_ROLL]" in freertos
+    assert "frame->rc.norm[APP_RC_FUNC_YAW]" in freertos
+    assert "frame->rc.norm[APP_RC_FUNC_THROTTLE]" in freertos
+    # 阈值由绝对 us 换成各通道自身行程的百分比，语义等价：
+    # 1500us@1000..2000 = 50%，1100us = 10%，1700us = 70%。
+    assert "#define STABILIZER_RC_SWITCH_HIGH_PERCENT    50U" in freertos
+    assert "#define STABILIZER_RC_THROTTLE_ARM_LOW_PERCENT 10U" in freertos
     assert "#define STABILIZER_RC_LOSS_TIMEOUT_MS  500U" in freertos
     assert "#define STABILIZER_XY_VEL_REF_MAX_M_S  0.40f" in freertos
     assert "#define STABILIZER_Z_REF_RATE_MAX_M_S  0.30f" in freertos
@@ -48,12 +48,12 @@ def test_controller_uses_named_rc_channels_for_references() -> None:
     assert "#define STABILIZER_YAW_RATE_REF_MAX_RAD_S 1.04719758f" in freertos
     assert (
         "frame->reference.vx_m_s =\n"
-        "        stabilizer_rc_normalized(frame->ch[STABILIZER_RC_CH_PITCH]) *"
+        "        frame->rc.norm[APP_RC_FUNC_PITCH] *"
         in freertos
     )
     assert (
         "frame->reference.vy_m_s =\n"
-        "        stabilizer_rc_normalized(frame->ch[STABILIZER_RC_CH_ROLL]) *"
+        "        frame->rc.norm[APP_RC_FUNC_ROLL] *"
         in freertos
     )
     assert "ctx->position_ref_x_m += frame->reference.vx_m_s * frame->ctrl_dt_sec;" in freertos
@@ -88,8 +88,8 @@ def test_ch6_selects_true_attitude_debug_mode_with_twenty_degree_limit() -> None
     assert "#define STABILIZER_RC_ATTITUDE_TARGET_LIMIT_RAD 0.349065850f" in freertos
     assert "frame->rc_attitude_debug_mode =" in freertos
     assert "(frame->rc_use_stabilized_motor_mix != 0U) &&" in freertos
-    assert "frame->ch[STABILIZER_RC_CH_ATTITUDE_DEBUG] >" in freertos
-    assert "STABILIZER_RC_ATTITUDE_DEBUG_THRESHOLD_US" in freertos
+    assert "frame->rc.us[APP_RC_FUNC_MODE],\n" \
+           "        STABILIZER_RC_SWITCH_HIGH_PERCENT" in freertos
     assert "if (frame->rc_attitude_debug_mode != 0U)" in freertos
     assert "frame->reference.direct_attitude_target_valid = 1U;" in freertos
     assert "frame->reference.manual_total_force_valid = 1U;" in freertos
@@ -122,15 +122,16 @@ def test_arm_switch_gates_motor_output_but_not_controller_reference() -> None:
     assert "static uint8_t stabilizer_rc_arm_latched = 0U;" in freertos
     assert "static uint8_t stabilizer_rc_switch_seen_low = 0U;" in freertos
     assert "static uint8_t stabilizer_rc_switch_prev_high = 0U;" in freertos
-    assert "static uint8_t stabilizer_rc_update_armed(const uint16_t ch[CRSF_CHANNEL_COUNT]," in freertos
+    assert "static uint8_t stabilizer_rc_update_armed(uint8_t switch_high," in freertos
     assert "frame->rc_link_ok = APP_ELRS_IsRcFresh(frame->now_ms, STABILIZER_RC_LOSS_TIMEOUT_MS);" in freertos
     assert "frame->rc_link_seen = (APP_ELRS_GetLastRcMs() != 0U) ? 1U : 0U;" in freertos
-    assert "frame->rc_armed = stabilizer_rc_update_armed(frame->ch, frame->rc_link_ok);" in freertos
+    assert "frame->rc_armed = stabilizer_rc_update_armed(frame->rc_arm_switch_high," in freertos
     assert "frame->rc_throttle_motor_us =" in freertos
-    assert "stabilizer_rc_throttle_to_motor_pulse(frame->ch[STABILIZER_RC_CH_THROTTLE_Z]);" in freertos
+    assert "stabilizer_rc_throttle_to_motor_pulse(frame->rc.throttle_01);" in freertos
     assert "frame->rc_use_stabilized_motor_mix =" in freertos
-    assert "stabilizer_rc_use_stabilized_motor_mix(frame->ch[STABILIZER_RC_CH_THROTTLE_Z]);" in freertos
-    assert "frame->ch[STABILIZER_RC_CH_THROTTLE_Z] <= STABILIZER_RC_THROTTLE_ARM_LOW_US" in freertos
+    assert "stabilizer_rc_use_stabilized_motor_mix(frame->rc.throttle_01);" in freertos
+    assert "(frame->rc.throttle_01 <=\n" \
+           "     ((float)STABILIZER_RC_THROTTLE_ARM_LOW_PERCENT / 100.0f)) ? 1U : 0U;" in freertos
     assert "stabilizer_rc_switch_prev_high == 0U" in freertos
     assert "} else if ((frame->rc_link_ok != 0U) && (frame->rc_armed != 0U)) {" in freertos
     assert "if ((frame->rc_control_motor_mix_allowed != 0U) &&" in freertos
@@ -183,22 +184,22 @@ def test_ch3_is_rc_intent_with_direct_throttle_below_20_percent() -> None:
     freertos = read("Core/Src/freertos.c") + read("App/Src/app_stabilizer.c")
 
     assert "#define STABILIZER_RC_STABILIZE_MIN_PERCENT 70U" in freertos
-    assert "#define STABILIZER_RC_STABILIZE_MIN_US \\" in freertos
-    assert "static float stabilizer_rc_throttle_01(uint16_t ch_us)" in freertos
-    assert "static float stabilizer_rc_throttle_height_rate_m_s(uint16_t ch_us)" in freertos
+    # 油门归一化搬进 APP_RcConfig_Throttle01（按标定端点），控制环只消费结果。
+    assert "float APP_RcConfig_Throttle01(" in read("App/Src/app_rc_config.c")
+    assert "static float stabilizer_rc_throttle_height_rate_m_s(float throttle_norm)" in freertos
     assert "stabilizer_rc_throttle_thrust_bias_m_s2" not in freertos
-    assert "(int32_t)STABILIZER_RC_THROTTLE_INPUT_HIGH_US -" in freertos
-    assert "(int32_t)STABILIZER_RC_THROTTLE_INPUT_LOW_US" in freertos
-    assert "int32_t value = (int32_t)ch_us - (int32_t)STABILIZER_RC_THROTTLE_INPUT_LOW_US;" in freertos
-    assert "return (float)value / (float)span;" in freertos
+    rc_config = read("App/Src/app_rc_config.c")
+    assert "span = (int32_t)map->max_us - (int32_t)map->min_us;" in rc_config
+    assert "value = (int32_t)channel_us - (int32_t)map->min_us;" in rc_config
     assert "stabilizer_clamp_f32(ctx->position_ref_z_m," in freertos
     assert "stabilizer_rc_throttle_height_rate_m_s(" in freertos
     assert "STABILIZER_Z_REF_RATE_MAX_M_S" in freertos
     assert "STABILIZER_Z_REF_STICK_SPAN_M" not in freertos
     assert "STABILIZER_Z_THRUST_BIAS_MAX_M_S2" not in freertos
-    assert "static uint16_t stabilizer_rc_throttle_to_motor_pulse(uint16_t ch_us)" in freertos
-    assert "static uint8_t stabilizer_rc_use_stabilized_motor_mix(uint16_t ch_us)" in freertos
-    assert "return (ch_us >= STABILIZER_RC_STABILIZE_MIN_US) ? 1U : 0U;" in freertos
+    assert "static uint16_t stabilizer_rc_throttle_to_motor_pulse(float throttle_01)" in freertos
+    assert "static uint8_t stabilizer_rc_use_stabilized_motor_mix(float throttle_01)" in freertos
+    assert "return (throttle_01 >=\n" \
+           "            ((float)STABILIZER_RC_STABILIZE_MIN_PERCENT / 100.0f)) ? 1U : 0U;" in freertos
     assert "} else if (frame->rc_control_motor_mix_allowed == 0U) {" in freertos
     assert "stabilizer_mix_rc_base_with_ctrl" not in freertos
     assert "ctrl_us - (int32_t)ctrl_avg_us" not in freertos
@@ -211,8 +212,8 @@ def test_yaw_stick_integrates_reference_and_wraps_at_pi_boundary() -> None:
     assert "static float stabilizer_wrap_pi(float angle_rad)" in freertos
     assert "while (angle_rad > STABILIZER_PI)" in freertos
     assert "while (angle_rad < -STABILIZER_PI)" in freertos
-    assert "static float stabilizer_rc_yaw_rate_rad_s(uint16_t ch_us)" in freertos
-    assert "return stabilizer_rc_normalized(ch_us) * STABILIZER_YAW_RATE_REF_MAX_RAD_S;" in freertos
+    assert "static float stabilizer_rc_yaw_rate_rad_s(float yaw_norm)" in freertos
+    assert "return yaw_norm * STABILIZER_YAW_RATE_REF_MAX_RAD_S;" in freertos
     assert "float yaw_ref_rad;" in freertos
     assert "uint8_t yaw_ref_ready;" in freertos
     assert freertos.count("yaw_ref_ready = 0U;") >= 2

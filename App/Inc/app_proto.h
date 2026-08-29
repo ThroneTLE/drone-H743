@@ -42,6 +42,9 @@
 #define APP_PROTO_REQ_BOOT           0x101FU
 #define APP_PROTO_REQ_IMU_CAL        0x1020U
 #define APP_PROTO_REQ_ACCEPTANCE     0x1021U
+#define APP_PROTO_REQ_RC             0x1022U
+#define APP_PROTO_REQ_RCMAP          0x1023U
+#define APP_PROTO_REQ_SERVO_CAL      0x1024U
 
 #define APP_PROTO_MSG_CMD_LINE  0x2000U
 #define APP_PROTO_MSG_TEXT_LINE 0x2001U
@@ -84,6 +87,9 @@
 #define APP_PROTO_MSG_BOOT_STATUS       0x2220U
 #define APP_PROTO_MSG_IMU_CAL           0x2221U
 #define APP_PROTO_MSG_ACCEPTANCE        0x2222U
+#define APP_PROTO_MSG_RC_LIVE           0x2223U
+#define APP_PROTO_MSG_RC_MAP            0x2224U
+#define APP_PROTO_MSG_SERVO_CAL         0x2225U
 
 /* Temporarily disabled for VOFA migration
 typedef struct {

@@ -14,9 +14,12 @@
 #include "app_ident.h"
 #include "app_optical_flow.h"
 #include "app_rangefinder.h"
+#include "app_servo_cal.h"
 #include "app_servo_feedback.h"
 #include "app_servo_feedback_bench.h"
 #include "app_sensor.h"
+#include "app_elrs.h"
+#include "app_rc_config.h"
 #include "app_stabilizer.h"
 #include "app_mag.h"
 #include "app_maint_uart.h"
@@ -55,10 +58,26 @@
 #include <string.h>
 
 #define APP_CONTROL_CFG_MAGIC       0x44524346UL
-#define APP_CONTROL_CFG_VERSION     16U
+#define APP_CONTROL_CFG_VERSION     17U
+#define APP_CONTROL_CFG_VERSION_V16 16U
 #define APP_CONTROL_CFG_VERSION_V15 15U
 #define APP_CONTROL_CFG_ADDRESS     (APP_FLASH_SERVICE_SIZE_BYTES - 4096UL)
 #define APP_CONTROL_MAX_LINE        128U
+/*
+ * 一条 IMU? 会连发 8 行文本，上位机必须把其中两行（provenance + 采样值）凑成同一
+ * 个 seq 才算一份有效快照。之前这里只给 2ms：HAL_GetTick 是 1ms 粒度，实际预算只有
+ * 1~2 个 USB 帧，主机稍微晚一帧收包整行就被丢掉，而返回值又被 (void) 吃掉。结果是
+ * 快照永远凑不齐、validation_latest_host_time 永远是 0，界面显示"安全快照已过期"。
+ * 同一个任务里 IMUCAP 导出本来就按 50ms/块阻塞，所以 10ms 在该任务的时间尺度内。
+ *
+ * 契约：APP_Control_QueueText / app_control_queue_proto_text 只允许在通信任务
+ * 上下文（APP_UART_Task_Step -> APP_Control_Tick 及命令分发）调用——它们会同步
+ * 阻塞等 USB CDC，最坏 3x 本超时。控制环模块（如 app_servo_cal 的 500Hz 状态机）
+ * 一律改置事件标志，由 app_control_tick_common 里的 notice 服务补发。
+ */
+#define APP_CONTROL_USB_TEXT_TX_TIMEOUT_MS 10U
+/* 与 STABILIZER_RC_LOSS_TIMEOUT_MS 一致：上位机看到的 fresh 要和控制环判定同源。 */
+#define APP_CONTROL_RC_FRESH_TIMEOUT_MS 500U
 #define APP_CONTROL_HEARTBEAT_ENABLED 0U
 #define APP_CONTROL_BOOT_READY_ENABLED 0U
 #define APP_CONTROL_ASCII_RX_ECHO_ENABLED 0U
@@ -141,8 +160,19 @@ typedef struct {
     uint16_t size;
     APP_ControlConfig config;
     APP_ControlCoaxTunableParams coax_tunables;
+    APP_RcConfig rc_config;
     uint32_t checksum;
 } APP_ControlFlashRecord;
+
+/* V16 = 加入 rc_config 之前的布局，仅用于迁移读取，不要再往里加字段。 */
+typedef struct {
+    uint32_t magic;
+    uint16_t version;
+    uint16_t size;
+    APP_ControlConfig config;
+    APP_ControlCoaxTunableParams coax_tunables;
+    uint32_t checksum;
+} APP_ControlFlashRecordV16;
 
 typedef struct {
     uint32_t magic;
@@ -154,6 +184,12 @@ typedef struct {
 } APP_ControlFlashRecordV15;
 
 static APP_ControlConfig control_config;
+/*
+ * RAM 中的遥控映射工作副本。RCMAP SET 只改这里并立刻 Publish（所见即所得，
+ * 上位机能马上在实时条上看到反向/端点的效果），RCMAP COMMIT 才落 Flash。
+ */
+static APP_RcConfig control_rc_config;
+static uint8_t control_rc_config_dirty;
 #if (APP_CONTROL_HEARTBEAT_ENABLED != 0U)
 static uint32_t control_last_heartbeat_ms;
 static uint8_t control_reported_hw_once;
@@ -186,6 +222,14 @@ static uint8_t control_imucal_applied;
 static uint8_t control_imucal_commit_pending;
 static const char *control_imucal_last_event;
 static const char *control_imucal_last_reason;
+static APP_FlightCalibration control_servocal_preview;
+static APP_FlightCalibration control_servocal_pending_record;
+static uint32_t control_servocal_preview_generation;
+static uint32_t control_servocal_last_request;
+static uint8_t control_servocal_applied;
+static uint8_t control_servocal_commit_pending;
+static const char *control_servocal_last_event;
+static const char *control_servocal_last_reason;
 static uint8_t ident_active;
 static uint8_t ident_motor;
 static uint32_t ident_min_percent;
@@ -204,6 +248,9 @@ static void app_control_handle_param(char **tokens, uint32_t count);
 static void app_control_report_pid_legacy(void);
 static uint8_t app_control_handle_pid_slider_line(const char *line);
 static void app_control_report_wifi(void);
+static void app_control_report_usb_cdc_stats(void);
+static void app_control_apply_rc_config(const APP_RcConfig *config);
+static APP_FlashService_Status app_control_save_config(void);
 void APP_Control_QueueText(const char *format, ...);
 static void app_control_queue_proto_text(uint16_t function, const char *format, ...);
 static uint8_t app_control_send_boot_scheduled(void);
@@ -212,6 +259,7 @@ static void app_control_handle_imu_capture(char **tokens, uint32_t count);
 static void app_control_dispatch_tokens(char **tokens, uint32_t count, uint8_t emit_ack);
 static uint32_t app_control_tokenize(char *buffer, char **tokens, uint32_t max_tokens);
 static uint8_t app_control_parse_u32(const char *text, uint32_t *value);
+static uint8_t app_control_parse_i32(const char *text, int32_t *value);
 static const char *app_control_token_value(char **tokens,
                                            uint32_t count,
                                            const char *key);
@@ -395,7 +443,7 @@ void APP_Control_QueueText(const char *format, ...)
 
     (void)APP_USB_CDC_Write((const uint8_t *)tx_message.text,
                             tx_message.length,
-                            2U);
+                            APP_CONTROL_USB_TEXT_TX_TIMEOUT_MS);
 
     if (control_maint_output_active == 0U) {
         if (osMessageQueuePut(uartTxQueueHandle, &tx_message, 0U, 0U) != osOK) {
@@ -444,7 +492,7 @@ static void app_control_queue_proto_text(uint16_t function, const char *format, 
     if (APP_IMU_Capture_IsExportActive() == 0U) {
         (void)APP_USB_CDC_Write((const uint8_t *)tx_message.text,
                                 tx_message.length,
-                                2U);
+                                APP_CONTROL_USB_TEXT_TX_TIMEOUT_MS);
     }
 
     if (control_maint_output_active == 0U) {
@@ -494,6 +542,24 @@ static void app_control_imucal_set_event(const char *event,
 {
     control_imucal_last_event = (event != NULL) ? event : "status";
     control_imucal_last_reason = (reason != NULL) ? reason : "none";
+}
+
+static void app_control_servocal_clear_preview(void)
+{
+    memset(&control_servocal_preview, 0, sizeof(control_servocal_preview));
+    memset(&control_servocal_pending_record, 0,
+           sizeof(control_servocal_pending_record));
+    control_servocal_preview_generation = 0U;
+    control_servocal_applied = 0U;
+    control_servocal_commit_pending = 0U;
+    APP_Stabilizer_SetServoCalibrationCandidateArmLock(0U);
+}
+
+static void app_control_servocal_set_event(const char *event,
+                                           const char *reason)
+{
+    control_servocal_last_event = (event != NULL) ? event : "status";
+    control_servocal_last_reason = (reason != NULL) ? reason : "none";
 }
 
 /*
@@ -572,6 +638,20 @@ static void app_control_imuframe_sync_param(void)
         /* A separately confirmed Param change invalidates the RAM preview. */
         app_control_imucal_set_event("reverted", "persisted_changed");
         app_control_imucal_clear_candidate();
+    }
+
+    if (control_servocal_commit_pending != 0U) {
+        if (memcmp(&calibration,
+                   &control_servocal_pending_record,
+                   sizeof(calibration)) == 0) {
+            app_control_servocal_set_event("committed", "none");
+        } else {
+            app_control_servocal_set_event("commit_failed", "record_mismatch");
+        }
+        app_control_servocal_clear_preview();
+    } else if (control_servocal_applied != 0U) {
+        app_control_servocal_set_event("reverted", "persisted_changed");
+        app_control_servocal_clear_preview();
     }
 
     control_imuframe_confirmed_code = orientation_code;
@@ -833,6 +913,12 @@ static void app_control_handle_imucal(char **tokens, uint32_t count)
             "ERR usage IMUCAL BEGIN|DATA|END|APPLY|REVERT|COMMIT\r\n");
         return;
     }
+    if ((control_servocal_applied != 0U) ||
+        (control_servocal_commit_pending != 0U)) {
+        app_control_imucal_set_event("rejected", "servocal_busy");
+        app_control_report_imucal();
+        return;
+    }
 
     if (strcmp(tokens[1], "BEGIN") == 0) {
         size_text = app_control_token_value(tokens, count, "size");
@@ -1085,6 +1171,277 @@ static void app_control_service_imucal(void)
     }
 }
 
+static void app_control_report_servocal_record(
+    const char *scope,
+    const APP_FlightCalibration *record,
+    uint32_t runtime_generation)
+{
+    DRV_COAX_CTRL_ServoCalibration calibration;
+    uint8_t valid = 0U;
+
+    DRV_COAX_CTRL_GetDefaultServoCalibration(&calibration);
+    if (record != NULL) {
+        valid = APP_FlightCalibration_BuildServoMechanical(
+            record, &calibration);
+    }
+    app_control_queue_proto_text(
+        APP_PROTO_MSG_SERVO_CAL,
+        "SERVOCAL scope=%s runtime_gen=%lu record_gen=%lu valid=%u "
+        "alpha_center=%u alpha_min=%u alpha_max=%u alpha_sign=%d "
+        "beta_center=%u beta_min=%u beta_max=%u beta_sign=%d\r\n",
+        (scope != NULL) ? scope : "unknown",
+        (unsigned long)runtime_generation,
+        (unsigned long)((record != NULL) ?
+            record->calibration_generation : 0U),
+        (unsigned int)valid,
+        calibration.center_us[DRV_COAX_CTRL_SERVO_ALPHA_INDEX],
+        calibration.min_us[DRV_COAX_CTRL_SERVO_ALPHA_INDEX],
+        calibration.max_us[DRV_COAX_CTRL_SERVO_ALPHA_INDEX],
+        (int)calibration.pulse_sign[DRV_COAX_CTRL_SERVO_ALPHA_INDEX],
+        calibration.center_us[DRV_COAX_CTRL_SERVO_BETA_INDEX],
+        calibration.min_us[DRV_COAX_CTRL_SERVO_BETA_INDEX],
+        calibration.max_us[DRV_COAX_CTRL_SERVO_BETA_INDEX],
+        (int)calibration.pulse_sign[DRV_COAX_CTRL_SERVO_BETA_INDEX]);
+}
+
+static void app_control_report_servocal(void)
+{
+    APP_FlightCalibrationSnapshot active;
+
+    app_control_imuframe_sync_param();
+    memset(&active, 0, sizeof(active));
+    (void)APP_FlightCalibration_ReadActive(&active);
+    app_control_queue_proto_text(
+        APP_PROTO_MSG_SERVO_CAL,
+        "SERVOCAL event=%s reason=%s applied=%u commit_pending=%u "
+        "dirty=%u arm_lock=%u request=%lu\r\n",
+        (control_servocal_last_event != NULL) ?
+            control_servocal_last_event : "status",
+        (control_servocal_last_reason != NULL) ?
+            control_servocal_last_reason : "none",
+        (unsigned int)control_servocal_applied,
+        (unsigned int)control_servocal_commit_pending,
+        (unsigned int)SVC_Param_IsDirty(),
+        (unsigned int)APP_Stabilizer_IsServoCalibrationCandidateArmLocked(),
+        (unsigned long)control_servocal_last_request);
+    app_control_report_servocal_record(
+        "active", &active.calibration, active.generation);
+    app_control_report_servocal_record(
+        "persisted",
+        (control_imucal_confirmed_valid != 0U) ?
+            &control_imucal_confirmed : NULL,
+        control_imucal_confirmed_generation);
+}
+
+static uint8_t app_control_parse_servocal(
+    char **tokens,
+    uint32_t count,
+    DRV_COAX_CTRL_ServoCalibration *calibration)
+{
+    static const char *const center_keys[DRV_COAX_CTRL_SERVO_COUNT] = {
+        "ac", "bc"
+    };
+    static const char *const min_keys[DRV_COAX_CTRL_SERVO_COUNT] = {
+        "an", "bn"
+    };
+    static const char *const max_keys[DRV_COAX_CTRL_SERVO_COUNT] = {
+        "ax", "bx"
+    };
+    static const char *const sign_keys[DRV_COAX_CTRL_SERVO_COUNT] = {
+        "as", "bs"
+    };
+    uint32_t index;
+
+    if ((tokens == NULL) || (calibration == NULL)) {
+        return 0U;
+    }
+    for (index = 0U; index < DRV_COAX_CTRL_SERVO_COUNT; ++index) {
+        uint32_t center;
+        uint32_t minimum;
+        uint32_t maximum;
+        int32_t sign;
+        const char *center_text = app_control_token_value(
+            tokens, count, center_keys[index]);
+        const char *min_text = app_control_token_value(
+            tokens, count, min_keys[index]);
+        const char *max_text = app_control_token_value(
+            tokens, count, max_keys[index]);
+        const char *sign_text = app_control_token_value(
+            tokens, count, sign_keys[index]);
+        if ((app_control_parse_u32(center_text, &center) == 0U) ||
+            (app_control_parse_u32(min_text, &minimum) == 0U) ||
+            (app_control_parse_u32(max_text, &maximum) == 0U) ||
+            (app_control_parse_i32(sign_text, &sign) == 0U) ||
+            (center > 65535U) || (minimum > 65535U) ||
+            (maximum > 65535U) || (sign < -128) || (sign > 127)) {
+            return 0U;
+        }
+        calibration->center_us[index] = (uint16_t)center;
+        calibration->min_us[index] = (uint16_t)minimum;
+        calibration->max_us[index] = (uint16_t)maximum;
+        calibration->pulse_sign[index] = (int8_t)sign;
+    }
+    return DRV_COAX_CTRL_ValidateServoCalibration(calibration);
+}
+
+static void app_control_handle_servocal(char **tokens, uint32_t count)
+{
+    APP_FlightCalibrationSnapshot active;
+    DRV_COAX_CTRL_ServoCalibration servo_calibration;
+    StabilizerValidationImuSnapshot safety;
+    const char *safety_error;
+    uint8_t encoded[sizeof(APP_FlightCalibration)];
+    uint32_t encoded_size;
+    SVC_ParamStatus param_status;
+
+    if ((tokens == NULL) || (count == 0U)) {
+        return;
+    }
+    app_control_imuframe_sync_param();
+    if (strcmp(tokens[0], "SERVOCAL?") == 0) {
+        app_control_servocal_set_event("status", "none");
+        app_control_report_servocal();
+        return;
+    }
+    if ((count < 2U) || (strcmp(tokens[0], "SERVOCAL") != 0)) {
+        APP_Control_QueueText(
+            "ERR usage SERVOCAL? | SERVOCAL APPLY ac= an= ax= as= bc= bn= bx= bs= | REVERT | COMMIT\r\n");
+        return;
+    }
+    if ((control_imucal_applied != 0U) ||
+        (control_imucal_commit_pending != 0U) ||
+        (control_imucal_upload.state != APP_FLIGHT_CAL_UPLOAD_EMPTY)) {
+        app_control_servocal_set_event("rejected", "imucal_busy");
+        app_control_report_servocal();
+        return;
+    }
+    if (APP_Sensor_GetFluOrientation() != control_imuframe_confirmed_code) {
+        app_control_servocal_set_event("rejected", "imuframe_preview_active");
+        app_control_report_servocal();
+        return;
+    }
+
+    if (strcmp(tokens[1], "APPLY") == 0) {
+        if ((control_servocal_applied != 0U) ||
+            (control_servocal_commit_pending != 0U) ||
+            (SVC_Param_IsDirty() != 0U) ||
+            (control_imucal_confirmed_valid == 0U) ||
+            (APP_Acceptance_IsActive() != 0U) ||
+            (app_control_parse_servocal(
+                 tokens, count, &servo_calibration) == 0U)) {
+            app_control_servocal_set_event("apply_rejected", "bad_state_or_values");
+            app_control_report_servocal();
+            return;
+        }
+        safety_error = app_control_imucal_safety(&safety, 0U);
+        if (safety_error != NULL) {
+            app_control_servocal_set_event("apply_rejected", safety_error);
+            app_control_report_servocal();
+            return;
+        }
+        control_servocal_preview = control_imucal_confirmed;
+        if (APP_FlightCalibration_UpdateServoMechanical(
+                &control_servocal_preview, &servo_calibration) == 0U) {
+            app_control_servocal_set_event("apply_rejected", "merge_invalid");
+            app_control_report_servocal();
+            return;
+        }
+        APP_Stabilizer_SetServoCalibrationCandidateArmLock(1U);
+        if ((APP_FlightCalibration_PublishPreview(
+                 &control_servocal_preview) == 0U) ||
+            (APP_FlightCalibration_ReadActive(&active) == 0U)) {
+            APP_Stabilizer_SetServoCalibrationCandidateArmLock(0U);
+            app_control_servocal_set_event("apply_rejected", "publish_failed");
+            app_control_report_servocal();
+            return;
+        }
+        control_servocal_preview_generation = active.generation;
+        control_servocal_last_request = 0U;
+        control_servocal_applied = 1U;
+        app_control_servocal_set_event("applied", "none");
+        app_control_report_servocal();
+        return;
+    }
+
+    if (strcmp(tokens[1], "REVERT") == 0) {
+        safety_error = app_control_imucal_safety(&safety, 0U);
+        if ((count != 2U) || (control_servocal_applied == 0U) ||
+            (control_servocal_commit_pending != 0U) ||
+            (SVC_Param_IsDirty() != 0U) || (safety_error != NULL) ||
+            (APP_FlightCalibration_PublishPreview(
+                 &control_imucal_confirmed) == 0U)) {
+            app_control_servocal_set_event(
+                "revert_rejected",
+                (safety_error != NULL) ? safety_error : "bad_state");
+            app_control_report_servocal();
+            return;
+        }
+        app_control_servocal_clear_preview();
+        app_control_servocal_set_event("reverted", "none");
+        app_control_report_servocal();
+        return;
+    }
+
+    if (strcmp(tokens[1], "COMMIT") == 0) {
+        safety_error = app_control_imucal_safety(&safety, 0U);
+        if ((count != 2U) || (control_servocal_applied == 0U) ||
+            (control_servocal_commit_pending != 0U) ||
+            (SVC_Param_IsDirty() != 0U) || (safety_error != NULL) ||
+            (APP_FlightCalibration_ReadActive(&active) == 0U) ||
+            (active.generation != control_servocal_preview_generation) ||
+            (memcmp(&active.calibration, &control_servocal_preview,
+                    sizeof(active.calibration)) != 0)) {
+            app_control_servocal_set_event(
+                "commit_rejected",
+                (safety_error != NULL) ? safety_error : "bad_state");
+            app_control_report_servocal();
+            return;
+        }
+        control_servocal_pending_record = control_imucal_confirmed;
+        (void)APP_FlightCalibration_BuildServoMechanical(
+            &control_servocal_preview, &servo_calibration);
+        if (APP_FlightCalibration_UpdateServoMechanical(
+                &control_servocal_pending_record,
+                &servo_calibration) == 0U) {
+            app_control_servocal_set_event("commit_rejected", "merge_invalid");
+            app_control_report_servocal();
+            return;
+        }
+        encoded_size = APP_FlightCalibration_Encode(
+            &control_servocal_pending_record, encoded, sizeof(encoded));
+        if (encoded_size == 0U) {
+            app_control_servocal_set_event("commit_rejected", "encode_failed");
+            app_control_report_servocal();
+            return;
+        }
+        param_status = SVC_Param_SetBlob(encoded, encoded_size);
+        if (param_status != SVC_PARAM_STATUS_OK) {
+            app_control_servocal_set_event("commit_rejected", "param_failed");
+            app_control_report_servocal();
+            return;
+        }
+        control_servocal_commit_pending = 1U;
+        control_servocal_last_request = SVC_Param_RequestSaveBlob();
+        app_control_servocal_set_event(
+            "commit_queued",
+            (control_servocal_last_request != 0U) ? "none" : "queue_retry");
+        app_control_report_servocal();
+        return;
+    }
+
+    APP_Control_QueueText(
+        "ERR usage SERVOCAL? | SERVOCAL APPLY ac= an= ax= as= bc= bn= bx= bs= | REVERT | COMMIT\r\n");
+}
+
+static void app_control_service_servocal(void)
+{
+    if ((control_servocal_commit_pending != 0U) &&
+        (SVC_Param_IsDirty() != 0U) &&
+        (control_servocal_last_request == 0U)) {
+        control_servocal_last_request = SVC_Param_RequestSaveBlob();
+    }
+}
+
 static int32_t app_control_acceptance_milli(float value)
 {
     if ((!isfinite(value)) || (value > 2147483.0f)) return 2147483647L;
@@ -1182,12 +1539,15 @@ static void app_control_handle_acceptance(char **tokens, uint32_t count)
             (control_imucal_applied != 0U) ||
             (control_imucal_commit_pending != 0U) ||
             (APP_Stabilizer_IsImuCalibrationCandidateArmLocked() != 0U) ||
+            (APP_Stabilizer_IsServoCalibrationCandidateArmLocked() != 0U) ||
             (APP_FlightCalibration_ReadActive(&calibration) == 0U) ||
             ((calibration.calibration.valid_mask &
               (APP_FLIGHT_CAL_VALID_ORIENTATION | APP_FLIGHT_CAL_VALID_ACCEL |
-               APP_FLIGHT_CAL_VALID_GYRO)) !=
+               APP_FLIGHT_CAL_VALID_GYRO |
+               APP_FLIGHT_CAL_VALID_SERVO_MECHANICAL)) !=
               (APP_FLIGHT_CAL_VALID_ORIENTATION | APP_FLIGHT_CAL_VALID_ACCEL |
-               APP_FLIGHT_CAL_VALID_GYRO)) ||
+               APP_FLIGHT_CAL_VALID_GYRO |
+               APP_FLIGHT_CAL_VALID_SERVO_MECHANICAL)) ||
             (calibration.calibration.orientation_code !=
              APP_Sensor_GetFluOrientation()) ||
             (APP_Stabilizer_ReadValidationImuSnapshot(&safety) == 0U)) {
@@ -1369,7 +1729,8 @@ static void app_control_handle_imuframe(char **tokens, uint32_t count)
         return;
     }
 
-    if (APP_Stabilizer_IsImuCalibrationCandidateArmLocked() != 0U) {
+    if ((APP_Stabilizer_IsImuCalibrationCandidateArmLocked() != 0U) ||
+        (APP_Stabilizer_IsServoCalibrationCandidateArmLocked() != 0U)) {
         app_control_report_imuframe("imucal_busy", 0U);
         return;
     }
@@ -1863,18 +2224,23 @@ static const char *app_control_aiwb2_state_name(APP_AiWB2_State state)
 
 static void app_control_defaults(APP_ControlConfig *config)
 {
+    DRV_COAX_CTRL_ServoCalibration servo_calibration;
+
     if (config == NULL) {
         return;
     }
 
     memset(config, 0, sizeof(*config));
+    DRV_COAX_CTRL_GetServoCalibration(&servo_calibration);
     config->servo[0].id = 1U;
-    config->servo[0].pulse_us = DRV_COAX_CTRL_SERVO_ALPHA_CENTER_US;
+    config->servo[0].pulse_us =
+        servo_calibration.center_us[DRV_COAX_CTRL_SERVO_ALPHA_INDEX];
     config->servo[0].time_ms = 500U;
     config->servo[0].mode = 1U;
     config->servo[0].enabled = 1U;
     config->servo[1].id = 2U;
-    config->servo[1].pulse_us = DRV_COAX_CTRL_SERVO_BETA_CENTER_US;
+    config->servo[1].pulse_us =
+        servo_calibration.center_us[DRV_COAX_CTRL_SERVO_BETA_INDEX];
     config->servo[1].time_ms = 500U;
     config->servo[1].mode = 1U;
     config->servo[1].enabled = 1U;
@@ -1902,10 +2268,13 @@ static uint16_t app_control_servo_angle_to_pulse(uint32_t angle)
 
 static uint16_t app_control_servo_clamp_pulse(uint32_t index, uint16_t pulse_us)
 {
-    uint16_t min_us = (index == 0U) ? DRV_COAX_CTRL_SERVO_ALPHA_MIN_US
-                                    : DRV_COAX_CTRL_SERVO_BETA_MIN_US;
-    uint16_t max_us = (index == 0U) ? DRV_COAX_CTRL_SERVO_ALPHA_MAX_US
-                                    : DRV_COAX_CTRL_SERVO_BETA_MAX_US;
+    DRV_COAX_CTRL_ServoCalibration calibration;
+    uint16_t min_us;
+    uint16_t max_us;
+
+    DRV_COAX_CTRL_GetServoCalibration(&calibration);
+    min_us = calibration.min_us[index];
+    max_us = calibration.max_us[index];
 
     if (pulse_us < min_us) {
         return min_us;
@@ -3650,7 +4019,262 @@ static void app_control_report_status(void)
                                  (unsigned long)uart_rx_events,
                                  (unsigned long)uart_rx_restarts,
                                  (unsigned long)uart_last_rx_event_size);
+    app_control_report_usb_cdc_stats();
     app_control_report_wifi();
+}
+
+/*
+ * USB CDC 的 TX 丢弃必须能被看见：文本镜像忽略返回值，一旦 tx_dropped 开始涨，就
+ * 说明上位机收到的是残缺的多行回复（例如 IMU? 少一行导致快照永远凑不齐）。
+ */
+static void app_control_report_usb_cdc_stats(void)
+{
+    app_control_queue_proto_text(APP_PROTO_MSG_UART_STATS,
+                                 "USBCDC tx_sent=%lu tx_dropped=%lu\r\n",
+                                 (unsigned long)APP_USB_CDC_GetTxSent(),
+                                 (unsigned long)APP_USB_CDC_GetTxDropped());
+}
+
+/* ---------------------------------------------------------------------------
+ * 遥控通道映射与端点标定
+ * ------------------------------------------------------------------------ */
+
+static void app_control_apply_rc_config(const APP_RcConfig *config)
+{
+    if ((config == NULL) || (APP_RcConfig_Validate(config) == 0U)) {
+        APP_RcConfig_Defaults(&control_rc_config);
+    } else {
+        control_rc_config = *config;
+    }
+    control_rc_config_dirty = 0U;
+    (void)APP_RcConfig_PublishActive(&control_rc_config);
+}
+
+static void app_control_report_rc_map(const char *state)
+{
+    uint8_t function;
+
+    app_control_queue_proto_text(
+        APP_PROTO_MSG_RC_MAP,
+        "RCMAP state=%s funcs=%u channels=%u deadband_us=%u calibrated=%u "
+        "dirty=%u generation=%lu valid=%u\r\n",
+        state,
+        (unsigned int)APP_RC_FUNC_COUNT,
+        (unsigned int)CRSF_CHANNEL_COUNT,
+        (unsigned int)control_rc_config.deadband_us,
+        (unsigned int)control_rc_config.calibrated,
+        (unsigned int)control_rc_config_dirty,
+        (unsigned long)APP_RcConfig_GetActiveGeneration(),
+        (unsigned int)APP_RcConfig_Validate(&control_rc_config));
+    for (function = 0U; function < APP_RC_FUNC_COUNT; ++function) {
+        const APP_RcFunctionMap *map = &control_rc_config.function[function];
+
+        app_control_queue_proto_text(
+            APP_PROTO_MSG_RC_MAP,
+            "RCMAP func=%s id=%u ch=%d rev=%u min=%u mid=%u max=%u\r\n",
+            APP_RcConfig_FunctionName(function),
+            (unsigned int)function,
+            (map->channel == APP_RC_CHANNEL_UNBOUND) ? -1 : (int)map->channel,
+            (unsigned int)map->reversed,
+            (unsigned int)map->min_us,
+            (unsigned int)map->mid_us,
+            (unsigned int)map->max_us);
+    }
+}
+
+static void app_control_report_rc_live(void)
+{
+    uint16_t channels[CRSF_CHANNEL_COUNT];
+    APP_RcInputs inputs;
+    const DRV_ELRS_LinkStats *link;
+    uint32_t now_ms = HAL_GetTick();
+    uint8_t fresh;
+
+    APP_ELRS_GetChannels(channels);
+    APP_RcConfig_Resolve(&control_rc_config, channels, &inputs);
+    link = APP_ELRS_GetLinkStats();
+    fresh = APP_ELRS_IsRcFresh(now_ms, APP_CONTROL_RC_FRESH_TIMEOUT_MS);
+
+    /*
+     * 两行拆分是为了每行都留在 APP_UART_TX_TEXT_SIZE 以内：16 路各 4 位数字
+     * 加分隔符已经接近上限，链路统计只能另起一行。
+     */
+    app_control_queue_proto_text(
+        APP_PROTO_MSG_RC_LIVE,
+        "RC us=%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u\r\n",
+        (unsigned int)channels[0], (unsigned int)channels[1],
+        (unsigned int)channels[2], (unsigned int)channels[3],
+        (unsigned int)channels[4], (unsigned int)channels[5],
+        (unsigned int)channels[6], (unsigned int)channels[7],
+        (unsigned int)channels[8], (unsigned int)channels[9],
+        (unsigned int)channels[10], (unsigned int)channels[11],
+        (unsigned int)channels[12], (unsigned int)channels[13],
+        (unsigned int)channels[14], (unsigned int)channels[15]);
+    app_control_queue_proto_text(
+        APP_PROTO_MSG_RC_LIVE,
+        "RC link fresh=%u frames=%lu crc_err=%lu fps_x10=%lu lq=%u rssi=%u "
+        "snr=%d age_ms=%lu armed=%u bound=0x%02X\r\n",
+        (unsigned int)fresh,
+        (unsigned long)APP_ELRS_GetRcFrames(),
+        (unsigned long)APP_ELRS_GetCrcErrors(),
+        (unsigned long)DRV_ELRS_GetFpsX10(),
+        (unsigned int)((link != NULL) ? link->uplink_lq : 0U),
+        (unsigned int)((link != NULL) ? link->uplink_rssi_1 : 0U),
+        (int)((link != NULL) ? link->uplink_snr : 0),
+        (unsigned long)(now_ms - APP_ELRS_GetLastRcMs()),
+        (unsigned int)APP_Stabilizer_IsArmed(),
+        (unsigned int)inputs.bound_mask);
+    /* 归一化值单独一行：上位机据此画摇杆十字，无需自己复现标定公式。 */
+    app_control_queue_proto_text(
+        APP_PROTO_MSG_RC_LIVE,
+        "RC norm roll=%d pitch=%d throttle=%d yaw=%d arm=%d mode=%d thr01=%d\r\n",
+        (int)(inputs.norm[APP_RC_FUNC_ROLL] * 1000.0f),
+        (int)(inputs.norm[APP_RC_FUNC_PITCH] * 1000.0f),
+        (int)(inputs.norm[APP_RC_FUNC_THROTTLE] * 1000.0f),
+        (int)(inputs.norm[APP_RC_FUNC_YAW] * 1000.0f),
+        (int)(inputs.norm[APP_RC_FUNC_ARM] * 1000.0f),
+        (int)(inputs.norm[APP_RC_FUNC_MODE] * 1000.0f),
+        (int)(inputs.throttle_01 * 1000.0f));
+}
+
+/*
+ * 改映射等于改"哪根杆是油门"。解锁状态下改一次就可能让电机响应错通道，
+ * 所以所有写操作都要求飞控 disarmed，和 IMUFRAME 的安全门同源。
+ */
+static uint8_t app_control_rc_write_allowed(void)
+{
+    return (APP_Stabilizer_IsArmed() == 0U) ? 1U : 0U;
+}
+
+static void app_control_handle_rc_map(char *tokens[], uint32_t count)
+{
+    APP_RcConfig candidate;
+    uint8_t function;
+    long channel;
+    long reversed;
+    long min_us;
+    long mid_us;
+    long max_us;
+    long deadband;
+
+    if ((count == 1U) || (strcmp(tokens[0], "RCMAP?") == 0)) {
+        app_control_report_rc_map("status");
+        return;
+    }
+
+    if (strcmp(tokens[1], "SET") == 0) {
+        if (count != 8U) {
+            app_control_report_rc_map("invalid_usage");
+            return;
+        }
+        if (app_control_rc_write_allowed() == 0U) {
+            app_control_report_rc_map("armed_blocked");
+            return;
+        }
+        function = APP_RcConfig_FunctionFromName(tokens[2]);
+        if (function >= APP_RC_FUNC_COUNT) {
+            app_control_report_rc_map("bad_function");
+            return;
+        }
+        channel  = strtol(tokens[3], NULL, 0);
+        reversed = strtol(tokens[4], NULL, 0);
+        min_us   = strtol(tokens[5], NULL, 0);
+        mid_us   = strtol(tokens[6], NULL, 0);
+        max_us   = strtol(tokens[7], NULL, 0);
+
+        candidate = control_rc_config;
+        candidate.function[function].channel =
+            (channel < 0) ? APP_RC_CHANNEL_UNBOUND : (uint8_t)channel;
+        candidate.function[function].reversed = (reversed != 0) ? 1U : 0U;
+        candidate.function[function].min_us = (uint16_t)min_us;
+        candidate.function[function].mid_us = (uint16_t)mid_us;
+        candidate.function[function].max_us = (uint16_t)max_us;
+        if (APP_RcConfig_Validate(&candidate) == 0U) {
+            app_control_report_rc_map("rejected");
+            return;
+        }
+        control_rc_config = candidate;
+        control_rc_config_dirty = 1U;
+        (void)APP_RcConfig_PublishActive(&control_rc_config);
+        app_control_report_rc_map("applied_ram");
+        return;
+    }
+
+    if (strcmp(tokens[1], "DEADBAND") == 0) {
+        if (count != 3U) {
+            app_control_report_rc_map("invalid_usage");
+            return;
+        }
+        if (app_control_rc_write_allowed() == 0U) {
+            app_control_report_rc_map("armed_blocked");
+            return;
+        }
+        deadband = strtol(tokens[2], NULL, 0);
+        candidate = control_rc_config;
+        candidate.deadband_us = (uint16_t)((deadband < 0) ? 0 : deadband);
+        if (APP_RcConfig_Validate(&candidate) == 0U) {
+            app_control_report_rc_map("rejected");
+            return;
+        }
+        control_rc_config = candidate;
+        control_rc_config_dirty = 1U;
+        (void)APP_RcConfig_PublishActive(&control_rc_config);
+        app_control_report_rc_map("applied_ram");
+        return;
+    }
+
+    if (strcmp(tokens[1], "CALIBRATED") == 0) {
+        if ((count != 3U) || (app_control_rc_write_allowed() == 0U)) {
+            app_control_report_rc_map(
+                (count != 3U) ? "invalid_usage" : "armed_blocked");
+            return;
+        }
+        control_rc_config.calibrated =
+            (strtol(tokens[2], NULL, 0) != 0) ? 1U : 0U;
+        control_rc_config_dirty = 1U;
+        (void)APP_RcConfig_PublishActive(&control_rc_config);
+        app_control_report_rc_map("applied_ram");
+        return;
+    }
+
+    if (strcmp(tokens[1], "RESET") == 0) {
+        if (app_control_rc_write_allowed() == 0U) {
+            app_control_report_rc_map("armed_blocked");
+            return;
+        }
+        APP_RcConfig_Defaults(&control_rc_config);
+        control_rc_config_dirty = 1U;
+        (void)APP_RcConfig_PublishActive(&control_rc_config);
+        app_control_report_rc_map("reset_ram");
+        return;
+    }
+
+    if (strcmp(tokens[1], "COMMIT") == 0) {
+        APP_FlashService_Status save_status;
+
+        if (app_control_rc_write_allowed() == 0U) {
+            app_control_report_rc_map("armed_blocked");
+            return;
+        }
+        if (APP_RcConfig_Validate(&control_rc_config) == 0U) {
+            app_control_report_rc_map("rejected");
+            return;
+        }
+        save_status = app_control_save_config();
+        if (save_status != APP_FLASH_SERVICE_OK) {
+            control_config.last_flash_status = (uint8_t)save_status;
+            app_control_report_rc_map("commit_failed");
+            return;
+        }
+        control_config.last_flash_status = (uint8_t)save_status;
+        control_config.loaded_from_flash = 1U;
+        control_config.flash_valid = 1U;
+        control_rc_config_dirty = 0U;
+        app_control_report_rc_map("committed");
+        return;
+    }
+
+    app_control_report_rc_map("invalid_usage");
 }
 
 static void app_control_report_uart_stats(uint32_t rx_bytes,
@@ -3674,6 +4298,7 @@ static void app_control_report_uart_stats(uint32_t rx_bytes,
                                  (unsigned long)rx_events,
                                  (unsigned long)rx_restarts,
                                  (unsigned long)last_rx_event_size);
+    app_control_report_usb_cdc_stats();
 }
 
 static APP_FlashService_Status app_control_load_config(void)
@@ -3694,7 +4319,8 @@ static APP_FlashService_Status app_control_load_config(void)
     }
 
     if ((record.version == APP_CONTROL_CFG_VERSION) &&
-        (record.size == (sizeof(record.config) + sizeof(record.coax_tunables)))) {
+        (record.size == (sizeof(record.config) + sizeof(record.coax_tunables) +
+                         sizeof(record.rc_config)))) {
         checksum = app_control_checksum((const uint8_t *)&record.config,
                                         record.size);
         if (checksum != record.checksum) {
@@ -3702,6 +4328,27 @@ static APP_FlashService_Status app_control_load_config(void)
         }
         control_config = record.config;
         app_control_apply_coax_tunables(&record.coax_tunables);
+        app_control_apply_rc_config(&record.rc_config);
+    } else if ((record.version == APP_CONTROL_CFG_VERSION_V16) &&
+               (record.size == (sizeof(record.config) +
+                                sizeof(record.coax_tunables)))) {
+        APP_ControlFlashRecordV16 legacy_record;
+
+        status = APP_FlashService_ReadData(APP_CONTROL_CFG_ADDRESS,
+                                           (uint8_t *)&legacy_record,
+                                           sizeof(legacy_record));
+        if (status != APP_FLASH_SERVICE_OK) {
+            return status;
+        }
+        checksum = app_control_checksum((const uint8_t *)&legacy_record.config,
+                                        legacy_record.size);
+        if (checksum != legacy_record.checksum) {
+            return APP_FLASH_SERVICE_ERROR;
+        }
+        control_config = legacy_record.config;
+        app_control_apply_coax_tunables(&legacy_record.coax_tunables);
+        /* V16 没有遥控映射，装出厂默认 —— 与旧固件写死的 CH1..CH6 完全一致。 */
+        app_control_apply_rc_config(NULL);
     } else if ((record.version == APP_CONTROL_CFG_VERSION_V15) &&
                (record.size == (sizeof(record.config) +
                                 sizeof(APP_ControlCoaxTunableParamsV15)))) {
@@ -3721,6 +4368,7 @@ static APP_FlashService_Status app_control_load_config(void)
         }
         control_config = legacy_record.config;
         app_control_apply_coax_tunables_v15(&legacy_record.coax_tunables);
+        app_control_apply_rc_config(NULL);
     } else {
         return APP_FLASH_SERVICE_BAD_ID;
     }
@@ -3737,11 +4385,13 @@ static APP_FlashService_Status app_control_save_config(void)
     memset(&record, 0xFF, sizeof(record));
     record.magic = APP_CONTROL_CFG_MAGIC;
     record.version = APP_CONTROL_CFG_VERSION;
-    record.size = (uint16_t)(sizeof(record.config) + sizeof(record.coax_tunables));
+    record.size = (uint16_t)(sizeof(record.config) + sizeof(record.coax_tunables) +
+                             sizeof(record.rc_config));
     record.config = control_config;
     record.config.loaded_from_flash = 1U;
     record.config.flash_valid = 1U;
     app_control_capture_coax_tunables(&record.coax_tunables);
+    record.rc_config = control_rc_config;
     record.checksum = app_control_checksum((const uint8_t *)&record.config,
                                            record.size);
 
@@ -4812,6 +5462,49 @@ static void app_control_handle_flow(char **tokens, uint32_t count)
                           (unsigned long)tx_count);
 }
 
+static void app_control_report_flow(void)
+{
+    StabilizerFlowCompensationSnapshot snapshot;
+
+    APP_OpticalFlow_Report();
+    memset(&snapshot, 0, sizeof(snapshot));
+    if (APP_Stabilizer_ReadFlowCompensationSnapshot(&snapshot) == 0U) {
+        APP_Control_QueueText(
+            "FLOW comp valid=0 export=canonical_flu reason=no_snapshot\r\n");
+        return;
+    }
+    APP_Control_QueueText(
+        "FLOW comp valid=%u sample_ms=%lu contract=%u orientation=%u "
+        "source=controller_legacy_x_forward_y_right export=canonical_flu "
+        "sensor_vx_mm_s=%ld sensor_vy_mm_s=%ld "
+        "corr_vx_mm_s=%ld corr_vy_mm_s=%ld\r\n",
+        (unsigned int)snapshot.valid,
+        (unsigned long)snapshot.sample_ms,
+        (unsigned int)snapshot.frame_contract,
+        (unsigned int)snapshot.orientation_code,
+        (long)app_control_acceptance_milli(
+            snapshot.sensor_velocity_flu_m_s[0]),
+        (long)app_control_acceptance_milli(
+            snapshot.sensor_velocity_flu_m_s[1]),
+        (long)app_control_acceptance_milli(
+            snapshot.corrected_velocity_flu_m_s[0]),
+        (long)app_control_acceptance_milli(
+            snapshot.corrected_velocity_flu_m_s[1]));
+    APP_Control_QueueText(
+        "FLOW comp_terms sample_ms=%lu export=canonical_flu "
+        "opt_rot_vx_mm_s=%ld opt_rot_vy_mm_s=%ld "
+        "offset_rot_vx_mm_s=%ld offset_rot_vy_mm_s=%ld\r\n",
+        (unsigned long)snapshot.sample_ms,
+        (long)app_control_acceptance_milli(
+            snapshot.optical_rot_comp_flu_m_s[0]),
+        (long)app_control_acceptance_milli(
+            snapshot.optical_rot_comp_flu_m_s[1]),
+        (long)app_control_acceptance_milli(
+            snapshot.offset_rot_comp_flu_m_s[0]),
+        (long)app_control_acceptance_milli(
+            snapshot.offset_rot_comp_flu_m_s[1]));
+}
+
 static void app_control_handle_pid(char **tokens, uint32_t count)
 {
     const char *kp_text;
@@ -5128,6 +5821,16 @@ void APP_Control_Init(void)
     control_imucal_commit_pending = 0U;
     app_control_imucal_set_event("init", "none");
     APP_Stabilizer_SetImuCalibrationCandidateArmLock(0U);
+    memset(&control_servocal_preview, 0,
+           sizeof(control_servocal_preview));
+    memset(&control_servocal_pending_record, 0,
+           sizeof(control_servocal_pending_record));
+    control_servocal_preview_generation = 0U;
+    control_servocal_last_request = 0U;
+    control_servocal_applied = 0U;
+    control_servocal_commit_pending = 0U;
+    app_control_servocal_set_event("init", "none");
+    APP_Stabilizer_SetServoCalibrationCandidateArmLock(0U);
     app_control_defaults(&control_config);
     control_imuframe_confirmed_code = APP_SENSOR_FLU_ORIENTATION_LEGACY;
     control_imuframe_pending_code = APP_SENSOR_FLU_ORIENTATION_LEGACY;
@@ -5143,6 +5846,8 @@ void APP_Control_Init(void)
     APP_Ident_Init();
     APP_ServoFeedback_Init();
     APP_ServoFeedbackBench_Init();
+    /* Flash 记录无效时也要有一份可用的映射，否则控制环只能退回默认且无从上报。 */
+    app_control_apply_rc_config(NULL);
     load_status = app_control_load_config();
     control_config.last_flash_status = (uint8_t)load_status;
     if (load_status != APP_FLASH_SERVICE_OK) {
@@ -5172,11 +5877,23 @@ void APP_Control_MaintTick(void)
     control_maint_output_active = saved_output;
 }
 
+/* 补发 500Hz 舵机手势标定状态机缓存的事件文本（见 app_servo_cal.c 的通告注释）。 */
+static void app_control_service_servo_cal_notice(void)
+{
+    char notice[64];
+
+    if (APP_ServoCal_TakeNotice(notice, (uint16_t)sizeof(notice)) != 0U) {
+        APP_Control_QueueText("%s", notice);
+    }
+}
+
 static void app_control_tick_common(uint8_t emit_heartbeat)
 {
+    app_control_service_servo_cal_notice();
     app_control_service_boot();
     app_control_imuframe_sync_param();
     app_control_service_imucal();
+    app_control_service_servocal();
     APP_Acceptance_Service(HAL_GetTick());
     app_control_service_wifi_reset();
     app_control_service_flash_autosave();
@@ -5315,14 +6032,22 @@ static void app_control_dispatch_tokens(char **tokens, uint32_t count, uint8_t e
     } else if ((strcmp(tokens[0], "IMUCAL?") == 0) ||
                (strcmp(tokens[0], "IMUCAL") == 0)) {
         app_control_handle_imucal(tokens, count);
+    } else if ((strcmp(tokens[0], "SERVOCAL?") == 0) ||
+               (strcmp(tokens[0], "SERVOCAL") == 0)) {
+        app_control_handle_servocal(tokens, count);
     } else if ((strcmp(tokens[0], "ACCEPT?") == 0) ||
                (strcmp(tokens[0], "ACCEPT") == 0)) {
         app_control_handle_acceptance(tokens, count);
     } else if ((strcmp(tokens[0], "IMUFRAME?") == 0) ||
                (strcmp(tokens[0], "IMUFRAME") == 0)) {
         app_control_handle_imuframe(tokens, count);
+    } else if (strcmp(tokens[0], "RC?") == 0) {
+        app_control_report_rc_live();
+    } else if ((strcmp(tokens[0], "RCMAP?") == 0) ||
+               (strcmp(tokens[0], "RCMAP") == 0)) {
+        app_control_handle_rc_map(tokens, count);
     } else if (strcmp(tokens[0], "FLOW?") == 0) {
-        APP_OpticalFlow_Report();
+        app_control_report_flow();
     } else if (strcmp(tokens[0], "FLOW") == 0) {
         app_control_handle_flow(tokens, count);
     } else if (strcmp(tokens[0], "RANGE?") == 0) {

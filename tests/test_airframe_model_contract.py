@@ -90,11 +90,15 @@ def test_coax_defaults_use_airframe_model_not_old_placeholder_mass() -> None:
 def test_flash_config_preserves_current_record_and_migrates_v15_coax_tunables() -> None:
     source = read("App/Src/app_control.c")
 
-    assert "#define APP_CONTROL_CFG_VERSION     16U" in source
+    # V17 = 加入遥控映射；V16/V15 都必须还能读回来，否则升级会连舵机/PID 一起丢。
+    assert "#define APP_CONTROL_CFG_VERSION     17U" in source
+    assert "#define APP_CONTROL_CFG_VERSION_V16 16U" in source
     assert "#define APP_CONTROL_CFG_VERSION_V15 15U" in source
+    assert "APP_ControlFlashRecordV16" in source
     assert "APP_ControlFlashRecordV15" in source
     assert "app_control_migrate_coax_params" not in source
     assert "record.version == APP_CONTROL_CFG_VERSION" in source
+    assert "record.version == APP_CONTROL_CFG_VERSION_V16" in source
     assert "record.version == APP_CONTROL_CFG_VERSION_V15" in source
     assert "APP_ControlCoaxTunableParams coax_tunables;" in source
     assert "float pos_z_ki;" in source
