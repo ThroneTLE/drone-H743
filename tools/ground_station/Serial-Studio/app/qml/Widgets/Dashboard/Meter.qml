@@ -1,0 +1,1116 @@
+/*
+ * Serial Studio
+ * https://serial-studio.com/
+ *
+ * Copyright (C) 2020–2025 Alex Spataru
+ *
+ * This file is dual-licensed:
+ *
+ * - Under the GNU GPLv3 (or later) for builds that exclude Pro modules.
+ * - Under the Serial Studio Commercial License for builds that include
+ *   any Pro functionality.
+ *
+ * You must comply with the terms of one of these licenses, depending
+ * on your use case.
+ *
+ * For GPL terms, see <https://www.gnu.org/licenses/gpl-3.0.html>
+ * For commercial terms, see LICENSES/LicenseRef-SerialStudio-Commercial.txt.
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later OR LicenseRef-SerialStudio-Commercial
+ */
+
+import QtQuick
+import QtQuick.Shapes
+import QtQuick.Effects
+import QtQuick.Layouts
+import QtQuick.Controls
+
+import SerialStudio
+
+import "../"
+import "ValueFormat.js" as ValueFormat
+
+Item {
+  id: root
+
+  required property color color
+  required property var windowRoot
+  required property string widgetId
+  required property MeterModel model
+
+  //
+  // Freeze-mode title gate: the delegate arbitrates the per-widget mode; painted titles
+  // hide while frozen unless the effective mode is "painted" (name shown at most once)
+  //
+  readonly property bool titleFrozenOut: windowRoot && windowRoot.frozen === true
+                                         && windowRoot.effectiveFreezeTitle !== "painted"
+  readonly property string displayTitle: windowRoot && windowRoot.title ? windowRoot.title
+                                                                        : model.title
+
+  //
+  // Spring follower emulates a real spring-driven movement: it tracks moving targets
+  // continuously instead of restarting a fixed-duration animation on every sample.
+  //
+  property real normalizedValue: model.normalizedValue
+  Behavior on normalizedValue {
+    SpringAnimation {
+      spring: 4.5
+      damping: 0.4
+      epsilon: 0.001
+    }
+  }
+
+  //
+  // Severity-first needle color (spec 0052): the active band's color when bands exist, the
+  // accent otherwise. alarmColorForSeverity(-1) resolves to WARNING, so the gate is explicit.
+  //
+  readonly property color needleBaseColor: model.activeBandSeverity >= 0
+                                           ? Cpp_ThemeManager.alarmColorForSeverity(model.activeBandSeverity)
+                                           : root.color
+
+  //
+  // Theme-aware chrome stops that adapt lighten/darken amounts to widget_base luminance
+  //
+  readonly property bool darkBg: {
+    const c = Cpp_ThemeManager.colors["widget_base"]
+    return (0.299 * c.r + 0.587 * c.g + 0.114 * c.b) < 0.5
+  }
+  readonly property color chromeTop: Qt.lighter(Cpp_ThemeManager.colors["widget_base"], darkBg ? 2.0 : 1.30)
+  readonly property color chromeMid: Cpp_ThemeManager.colors["widget_base"]
+  readonly property color chromeBot: Qt.darker(Cpp_ThemeManager.colors["widget_base"], darkBg ? 1.05 : 1.18)
+
+  readonly property real endAngleDeg: 85
+  readonly property real startAngleDeg: -85
+  readonly property real angleRangeDeg: endAngleDeg - startAngleDeg
+
+  //
+  // Odd minor-tick count adapted to the arc space per major gap, so a half tick
+  // always lands on the midpoint between two majors.
+  //
+  readonly property int subTicksPerMajor: {
+    if (meterArea.tickCount < 2)
+      return 0
+
+    const arcStep = (angleRangeDeg * Math.PI / 180) * meterArea.faceR / (meterArea.tickCount - 1)
+    const fit = Math.floor(arcStep / 6) - 1
+    const odd = fit % 2 === 0 ? fit - 1 : fit
+    return Math.max(1, Math.min(7, odd))
+  }
+  readonly property real fontSize: Math.max(10, Math.min(28, Math.min(width, height) / 22))
+                                   * Cpp_Misc_CommonFonts.widgetFontScale
+  readonly property real digitalFontSize: Math.max(11, Math.min(36, Math.min(width, height) / 16))
+                                          * Cpp_Misc_CommonFonts.widgetFontScale
+
+  function evenTickValues(minV, maxV, n) {
+    if (n < 2 || minV >= maxV) return [minV, maxV]
+    const ticks = []
+    const step = (maxV - minV) / (n - 1)
+    for (let i = 0; i < n; i++)
+      ticks.push(minV + step * i)
+
+    return ticks
+  }
+
+  //
+  // Shared instrument-widget formatters (ValueFormat.js), bound to this model
+  //
+  function formatValue(val) { return ValueFormat.formatValue(model, val) }
+  function formatTickValue(val) { return ValueFormat.formatTickValue(model, val) }
+  function getPaddedText(val) { return ValueFormat.getPaddedText(model, val) }
+  function getPaddedFormattedText(val) { return ValueFormat.getPaddedFormattedText(model, val) }
+
+  function niceTickValues(minV, maxV, target) {
+    if (minV >= maxV || target < 2) return [minV, maxV]
+    const range = maxV - minV
+    const roughStep = range / Math.max(1, target - 1)
+    const mag = Math.pow(10, Math.floor(Math.log10(roughStep)))
+    const norm = roughStep / mag
+    let niceStep
+    if (norm < 1.5) niceStep = 1 * mag
+    else if (norm < 3) niceStep = 2 * mag
+    else if (norm < 7) niceStep = 5 * mag
+    else niceStep = 10 * mag
+    const ticks = []
+    const startNice = Math.ceil(minV / niceStep) * niceStep
+    const endNice = Math.floor(maxV / niceStep) * niceStep
+    for (let v = startNice; v <= endNice + 0.0001 * niceStep; v += niceStep) {
+      if (v >= minV - 0.0001 && v <= maxV + 0.0001) {
+        ticks.push(Math.round(v * 1e6) / 1e6)
+      }
+    }
+    return ticks.length > 0 ? ticks : [minV, maxV]
+  }
+
+  //
+  // Measures the widest label as actually displayed (trimmed), so the fit test
+  // does not overestimate width from trailing zeros.
+  //
+  TextMetrics {
+    id: tickLabelMetrics
+
+    font.pixelSize: fontSize
+    font.family: Cpp_Misc_CommonFonts.widgetFontFamily
+    text: {
+      let longest = ""
+      for (let i = 0; i < meterArea.tickValues.length; ++i) {
+        const s = formatTickValue(meterArea.tickValues[i])
+        if (s.length > longest.length)
+          longest = s
+      }
+      return longest
+    }
+  }
+
+  //
+  // SwipeView: page 0 = analog meter, page 1 = digital readout.
+  // Active page is persisted per-widget via Cpp_JSON_ProjectModel.
+  //
+  SwipeView {
+    id: swipeView
+
+    clip: true
+    interactive: true
+    anchors.fill: parent
+    anchors.bottomMargin: pageIndicator.height + 4
+
+    //
+    // PAGE 0: Analog meter
+    //
+    Item {
+      clip: true
+      visible: opacity > 0
+      opacity: SwipeView.isCurrentItem ? 1.0 : 0.0
+      Behavior on opacity { NumberAnimation { duration: 150 } }
+
+      Item {
+        id: meterArea
+
+        anchors.margins: 14
+        anchors.fill: parent
+
+        readonly property real topMargin: 6
+        readonly property real bottomMargin: 8
+        readonly property real sideMargin: 6
+        readonly property bool showLabels: width >= 130 && height >= 90
+        readonly property bool showFaceLabels: width >= 140 && height >= 150
+        readonly property real labelBaseRowHeight: meterArea.showFaceLabels
+                                                   ? Math.round(digitalFontSize * 2.0 + 12) : 0
+        readonly property real chromeW: Math.max(4, Math.min(14, Math.min(width, height) * 0.045))
+        readonly property real faceR: meterArea.showFaceLabels
+                                      ? Math.max(16, Math.min(
+                                                   width / 2 - meterArea.chromeW - meterArea.sideMargin,
+                                                   (height - meterArea.topMargin - meterArea.bottomMargin
+                                                    - meterArea.labelBaseRowHeight - meterArea.chromeW - 2) / 1.13))
+                                      : Math.max(16, Math.min(
+                                                   width / 2 - meterArea.chromeW - meterArea.sideMargin,
+                                                   (height - meterArea.topMargin - meterArea.bottomMargin) / 1.16))
+        readonly property real tailExtension: Math.max(meterArea.chromeW, meterArea.faceR * 0.13 + 2)
+        readonly property real labelBaseHeight: meterArea.showFaceLabels
+                                                ? meterArea.tailExtension + meterArea.labelBaseRowHeight + meterArea.chromeW
+                                                : 0
+        readonly property real visualHeight: meterArea.faceR + meterArea.tailExtension
+        readonly property real faceCx: width / 2
+        readonly property real faceCy: Math.max(meterArea.faceR + meterArea.topMargin,
+                                                (meterArea.height - meterArea.labelBaseHeight
+                                                 - meterArea.faceR) / 2 + meterArea.faceR)
+        //
+        // Scale chrome depth: major ticks span it, the alarm ring sits inside it, and
+        // labelClearR is the deepest radius any of that chrome reaches
+        //
+        readonly property real arcBand: Math.max(8, meterArea.faceR * 0.11)
+        readonly property real scaleOuterR: meterArea.faceR - 0.75
+        readonly property real labelClearR: meterArea.scaleOuterR - meterArea.arcBand
+                                            - Math.max(4, fontSize * 0.35)
+        readonly property int autoTargetTickCount: {
+          const arcLen = (angleRangeDeg * Math.PI / 180) * meterArea.faceR
+          const labelW = fontSize * 4.0
+          const minTicks = meterArea.faceR < 40 ? 3 : 4
+          const maxTicks = meterArea.faceR < 80 ? 6 : 9
+          return Math.max(minTicks, Math.min(maxTicks, Math.floor(arcLen / (labelW * 1.6))))
+        }
+
+        readonly property var tickValues: root.model.displayTickCount > 0
+                                          ? root.evenTickValues(root.model.minValue, root.model.maxValue, root.model.displayTickCount)
+                                          : root.niceTickValues(root.model.minValue, root.model.maxValue, meterArea.autoTargetTickCount)
+        readonly property int tickCount: meterArea.tickValues.length
+
+        readonly property real labelsArcStep: meterArea.tickCount < 2
+                                              ? 0
+                                              : (angleRangeDeg * Math.PI / 180) * meterArea.faceR * 0.7 / (meterArea.tickCount - 1)
+        readonly property bool labelsFitAll: meterArea.tickCount < 2
+                                             || meterArea.labelsArcStep > tickLabelMetrics.width * 0.8
+        readonly property bool labelsFitAlternate: meterArea.tickCount < 2
+                                                   || meterArea.labelsArcStep * 2 > tickLabelMetrics.width * 0.8
+
+        //
+        // Outer chrome ring: hidden source for MultiEffect drop shadow
+        //
+        Shape {
+          id: chromeShape
+
+          smooth: true
+          antialiasing: true
+          anchors.fill: parent
+          preferredRendererType: Shape.CurveRenderer
+          visible: !Cpp_Misc_GraphicsBackend.effectsEnabled
+
+          readonly property real bottomExtension: meterArea.labelBaseHeight
+          readonly property real rOuter: meterArea.faceR + meterArea.chromeW
+
+          ShapePath {
+            strokeColor: Qt.darker(Cpp_ThemeManager.colors["widget_border"], 1.40)
+            strokeWidth: 1
+            fillGradient: LinearGradient {
+              x1: meterArea.faceCx
+              x2: meterArea.faceCx
+              y1: meterArea.faceCy - chromeShape.rOuter
+              y2: meterArea.faceCy + chromeShape.bottomExtension
+              GradientStop { position: 0.0; color: root.chromeTop }
+              GradientStop { position: 0.5; color: root.chromeMid }
+              GradientStop { position: 1.0; color: root.chromeBot }
+            }
+
+            startY: meterArea.faceCy
+            startX: meterArea.faceCx - chromeShape.rOuter
+            PathArc {
+              y: meterArea.faceCy
+              radiusX: chromeShape.rOuter
+              radiusY: chromeShape.rOuter
+              direction: PathArc.Clockwise
+              x: meterArea.faceCx + chromeShape.rOuter
+            }
+            PathLine {
+              x: meterArea.faceCx + chromeShape.rOuter
+              y: meterArea.faceCy + chromeShape.bottomExtension
+            }
+            PathLine {
+              x: meterArea.faceCx - chromeShape.rOuter
+              y: meterArea.faceCy + chromeShape.bottomExtension
+            }
+            PathLine {
+              y: meterArea.faceCy
+              x: meterArea.faceCx - chromeShape.rOuter
+            }
+          }
+        }
+        MultiEffect {
+          shadowBlur: 0.60
+          source: chromeShape
+          shadowEnabled: true
+          shadowOpacity: 0.15
+          shadowColor: "#000000"
+          shadowVerticalOffset: 1
+          anchors.fill: chromeShape
+          visible: Cpp_Misc_GraphicsBackend.effectsEnabled
+          enabled: Cpp_Misc_GraphicsBackend.effectsEnabled
+        }
+
+        Shape {
+          id: faceShape
+
+          smooth: true
+          antialiasing: true
+          anchors.fill: parent
+          preferredRendererType: Shape.CurveRenderer
+
+          readonly property real bottomExtension: Math.max(0, meterArea.labelBaseHeight - meterArea.chromeW)
+
+          ShapePath {
+            strokeColor: Qt.darker(Cpp_ThemeManager.colors["widget_border"], 1.40)
+            strokeWidth: 1.5
+            capStyle: ShapePath.FlatCap
+            joinStyle: ShapePath.RoundJoin
+            fillGradient: LinearGradient {
+              x1: meterArea.faceCx
+              x2: meterArea.faceCx
+              y1: meterArea.faceCy - meterArea.faceR
+              y2: meterArea.faceCy + faceShape.bottomExtension
+              GradientStop { position: 0.0; color: Qt.lighter(Cpp_ThemeManager.colors["widget_base"], 1.28) }
+              GradientStop { position: 0.5; color: Qt.lighter(Cpp_ThemeManager.colors["widget_base"], 1.20) }
+              GradientStop { position: 1.0; color: Qt.lighter(Cpp_ThemeManager.colors["widget_base"], 1.10) }
+            }
+
+            startY: meterArea.faceCy
+            startX: meterArea.faceCx - meterArea.faceR
+            PathArc {
+              y: meterArea.faceCy
+              radiusX: meterArea.faceR
+              radiusY: meterArea.faceR
+              direction: PathArc.Clockwise
+              x: meterArea.faceCx + meterArea.faceR
+            }
+            PathLine {
+              x: meterArea.faceCx + meterArea.faceR
+              y: meterArea.faceCy + faceShape.bottomExtension
+            }
+            PathLine {
+              x: meterArea.faceCx - meterArea.faceR
+              y: meterArea.faceCy + faceShape.bottomExtension
+            }
+            PathLine {
+              y: meterArea.faceCy
+              x: meterArea.faceCx - meterArea.faceR
+            }
+          }
+        }
+
+        //
+        // Alarm bands at the outer rim; bands touching scale min/max extend past the +/-85 deg
+        // sweep to the dial base so the border never shows a bare wedge past the scale end.
+        //
+        Repeater {
+          model: root.model.alarmBands
+          delegate: Shape {
+            id: alarmZoneShape
+
+            smooth: true
+            opacity: 0.60
+            antialiasing: true
+            anchors.fill: parent
+            preferredRendererType: Shape.CurveRenderer
+
+            required property var modelData
+            readonly property color bandColor: modelData.customColor && modelData.customColor.length > 0
+                                               ? modelData.customColor
+                                               : Cpp_ThemeManager.alarmColorForSeverity(modelData.severity)
+            readonly property real rOut: meterArea.faceR - 0.5
+            readonly property real rIn: alarmZoneShape.rOut - Math.max(6, meterArea.faceR * 0.075)
+            readonly property real angADeg: modelData.fracMin <= 0
+                                            ? -90 : startAngleDeg + modelData.fracMin * angleRangeDeg
+            readonly property real angBDeg: modelData.fracMax >= 1
+                                            ? 90 : startAngleDeg + modelData.fracMax * angleRangeDeg
+            readonly property real angA: alarmZoneShape.angADeg * Math.PI / 180
+            readonly property real angB: alarmZoneShape.angBDeg * Math.PI / 180
+            readonly property bool largeArc: alarmZoneShape.angBDeg - alarmZoneShape.angADeg > 180
+
+            ShapePath {
+              strokeWidth: -1
+              fillColor: alarmZoneShape.bandColor
+
+              startX: meterArea.faceCx + alarmZoneShape.rOut * Math.sin(alarmZoneShape.angA)
+              startY: meterArea.faceCy - alarmZoneShape.rOut * Math.cos(alarmZoneShape.angA)
+
+              PathArc {
+                radiusX: alarmZoneShape.rOut
+                radiusY: alarmZoneShape.rOut
+                direction: PathArc.Clockwise
+                useLargeArc: alarmZoneShape.largeArc
+                x: meterArea.faceCx + alarmZoneShape.rOut * Math.sin(alarmZoneShape.angB)
+                y: meterArea.faceCy - alarmZoneShape.rOut * Math.cos(alarmZoneShape.angB)
+              }
+              PathLine {
+                x: meterArea.faceCx + alarmZoneShape.rIn * Math.sin(alarmZoneShape.angB)
+                y: meterArea.faceCy - alarmZoneShape.rIn * Math.cos(alarmZoneShape.angB)
+              }
+              PathArc {
+                radiusX: alarmZoneShape.rIn
+                radiusY: alarmZoneShape.rIn
+                direction: PathArc.Counterclockwise
+                useLargeArc: alarmZoneShape.largeArc
+                x: meterArea.faceCx + alarmZoneShape.rIn * Math.sin(alarmZoneShape.angA)
+                y: meterArea.faceCy - alarmZoneShape.rIn * Math.cos(alarmZoneShape.angA)
+              }
+              PathLine {
+                x: meterArea.faceCx + alarmZoneShape.rOut * Math.sin(alarmZoneShape.angA)
+                y: meterArea.faceCy - alarmZoneShape.rOut * Math.cos(alarmZoneShape.angA)
+              }
+            }
+          }
+        }
+
+        Repeater {
+          model: meterArea.tickValues
+          delegate: Item {
+            required property int index
+            required property var modelData
+            readonly property real tickValue: modelData
+            readonly property real rTickOuter: meterArea.scaleOuterR
+            readonly property real angleRad: angleDeg * Math.PI / 180
+            readonly property real rTickInner: rTickOuter - meterArea.arcBand
+            readonly property real angleDeg: startAngleDeg + frac * angleRangeDeg
+            readonly property real tickMidX: meterArea.faceCx + Math.sin(angleRad) * (rTickOuter + rTickInner) / 2
+            readonly property real tickMidY: meterArea.faceCy - Math.cos(angleRad) * (rTickOuter + rTickInner) / 2
+            readonly property real frac: (modelData - root.model.minValue) / (root.model.maxValue - root.model.minValue)
+
+            Rectangle {
+              width: 2
+              radius: 1
+              antialiasing: true
+              height: parent.rTickOuter - parent.rTickInner
+              color: Cpp_ThemeManager.colors["widget_border"]
+              transformOrigin: Item.Center
+              rotation: parent.angleDeg
+              x: parent.tickMidX - width / 2
+              y: parent.tickMidY - height / 2
+            }
+
+            Text {
+              visible: meterArea.showLabels && (meterArea.labelsFitAll
+                                                || (meterArea.labelsFitAlternate
+                                                    && (parent.index % 2 === 0
+                                                        || parent.index === meterArea.tickCount - 1)))
+              font.pixelSize: fontSize
+              text: formatTickValue(parent.tickValue)
+              color: Cpp_ThemeManager.colors["widget_text"]
+              font.family: Cpp_Misc_CommonFonts.widgetFontFamily
+
+              //
+              // Clearance uses the label box half-extent projected onto its own radial
+              // ray, so diagonal labels back off as much as their corner needs
+              //
+              readonly property real radialHalf: Math.abs(Math.sin(parent.angleRad)) * width / 2
+                                                 + Math.abs(Math.cos(parent.angleRad)) * height / 2
+              readonly property real rLabel: Math.max(0, meterArea.labelClearR - radialHalf)
+
+              x: meterArea.faceCx + Math.sin(parent.angleRad) * rLabel - width / 2
+              y: meterArea.faceCy - Math.cos(parent.angleRad) * rLabel - height / 2
+            }
+          }
+        }
+
+        Repeater {
+          model: Math.max(0, meterArea.tickValues.length - 1) * subTicksPerMajor
+          delegate: Item {
+            required property int index
+            readonly property int subIndex: (index % subTicksPerMajor) + 1
+            readonly property int majorIndex: Math.floor(index / subTicksPerMajor)
+            readonly property bool halfTick: 2 * subIndex === subTicksPerMajor + 1
+            readonly property real valueA: meterArea.tickValues[majorIndex]
+            readonly property real valueB: meterArea.tickValues[majorIndex + 1]
+            readonly property real tickValue: valueA + subIndex * (valueB - valueA) / (subTicksPerMajor + 1)
+            readonly property real frac: (tickValue - root.model.minValue) / (root.model.maxValue - root.model.minValue)
+            readonly property real angleDeg: startAngleDeg + frac * angleRangeDeg
+            readonly property real angleRad: angleDeg * Math.PI / 180
+            readonly property real rOuter: meterArea.scaleOuterR
+            readonly property real rInner: rOuter - meterArea.arcBand * (halfTick ? 0.68 : 0.45)
+            readonly property real midX: meterArea.faceCx + Math.sin(angleRad) * (rOuter + rInner) / 2
+            readonly property real midY: meterArea.faceCy - Math.cos(angleRad) * (rOuter + rInner) / 2
+
+            Rectangle {
+              width: parent.halfTick ? 1.5 : 1
+              opacity: parent.halfTick ? 0.85 : 0.7
+              antialiasing: true
+              height: parent.rOuter - parent.rInner
+              color: Cpp_ThemeManager.colors["widget_border"]
+              transformOrigin: Item.Center
+              rotation: parent.angleDeg
+              x: parent.midX - width / 2
+              y: parent.midY - height / 2
+            }
+          }
+        }
+
+        //
+        // Min/max hold markers (spec 0052): tick pair pinned at the extreme values
+        // observed since the last data reset
+        //
+        Repeater {
+          model: 2
+          delegate: Item {
+            required property int index
+            visible: root.model.extremesValid
+            readonly property real markerFrac: index === 0 ? root.model.minSeenFrac
+                                                           : root.model.maxSeenFrac
+            readonly property real markOuter: meterArea.scaleOuterR
+            readonly property real angleRad: angleDeg * Math.PI / 180
+            readonly property real markInner: markOuter - meterArea.arcBand
+            readonly property real angleDeg: startAngleDeg + markerFrac * angleRangeDeg
+            readonly property real midX: meterArea.faceCx + Math.sin(angleRad) * (markOuter + markInner) / 2
+            readonly property real midY: meterArea.faceCy - Math.cos(angleRad) * (markOuter + markInner) / 2
+
+            Rectangle {
+              width: 2.5
+              opacity: 0.9
+              antialiasing: true
+              rotation: parent.angleDeg
+              transformOrigin: Item.Center
+              height: parent.markOuter - parent.markInner
+              color: Cpp_ThemeManager.colors["widget_text"]
+              x: parent.midX - width / 2
+              y: parent.midY - height / 2
+            }
+          }
+        }
+
+        //
+        // Bezel inner shadow: radial falloff just inside the rim arc so the chrome
+        // reads as overhanging the dial face.
+        //
+        Shape {
+          id: bezelShadow
+
+          smooth: true
+          antialiasing: true
+          anchors.fill: parent
+          preferredRendererType: Shape.CurveRenderer
+
+          readonly property real rOut: meterArea.faceR
+          readonly property real rIn: meterArea.faceR - Math.max(5, meterArea.faceR * 0.10)
+
+          ShapePath {
+            strokeWidth: -1
+            fillGradient: RadialGradient {
+              focalRadius: 0
+              focalX: meterArea.faceCx
+              focalY: meterArea.faceCy
+              centerX: meterArea.faceCx
+              centerY: meterArea.faceCy
+              centerRadius: bezelShadow.rOut
+              GradientStop { position: bezelShadow.rIn / bezelShadow.rOut; color: "transparent" }
+              GradientStop { position: 1.0; color: Qt.rgba(0, 0, 0, 0.10) }
+            }
+
+            startY: meterArea.faceCy
+            startX: meterArea.faceCx - bezelShadow.rOut
+            PathArc {
+              y: meterArea.faceCy
+              radiusX: bezelShadow.rOut
+              radiusY: bezelShadow.rOut
+              direction: PathArc.Clockwise
+              x: meterArea.faceCx + bezelShadow.rOut
+            }
+            PathLine {
+              y: meterArea.faceCy
+              x: meterArea.faceCx + bezelShadow.rIn
+            }
+            PathArc {
+              y: meterArea.faceCy
+              radiusX: bezelShadow.rIn
+              radiusY: bezelShadow.rIn
+              direction: PathArc.Counterclockwise
+              x: meterArea.faceCx - bezelShadow.rIn
+            }
+            PathLine {
+              y: meterArea.faceCy
+              x: meterArea.faceCx - bezelShadow.rOut
+            }
+          }
+        }
+
+        //
+        // Display panel fill
+        //
+        Rectangle {
+          antialiasing: true
+          visible: meterArea.showFaceLabels
+          y: meterArea.faceCy + 1.5
+          x: meterArea.faceCx - meterArea.faceR + 0.75
+          width: meterArea.faceR * 2 - 1.5
+          height: meterArea.labelBaseHeight - meterArea.chromeW - 1.5
+          color: Cpp_ThemeManager.colors["widget_base"]
+        }
+
+        //
+        // Display panel top border
+        //
+        Rectangle {
+          height: 1.5
+          antialiasing: true
+          visible: meterArea.showFaceLabels
+          y: meterArea.faceCy
+          x: meterArea.faceCx - meterArea.faceR + 0.75
+          width: meterArea.faceR * 2 - 1.5
+          color: Qt.darker(Cpp_ThemeManager.colors["widget_border"], 1.25)
+        }
+
+        //
+        // Label row
+        //
+        Item {
+          id: labelBase
+
+          y: meterArea.faceCy + 2
+          width: meterArea.faceR * 2 - 2
+          visible: meterArea.showFaceLabels
+          x: meterArea.faceCx - meterArea.faceR + 1
+          height: meterArea.labelBaseHeight - meterArea.chromeW - 4
+
+          //
+          // Hide the title and let the value box span the full row when either the
+          // title would elide or the value text would overflow its half-row slot.
+          //
+          readonly property real rowInnerWidth: width - 12
+          readonly property real halfWidth: (rowInnerWidth - 4) / 2
+          readonly property bool titleFits: titleTextMetrics.width <= halfWidth - 8
+          readonly property bool valueFits: valueBoxMetrics.width + 18 <= halfWidth
+          readonly property bool showTitle: root.displayTitle.length > 0 && !root.titleFrozenOut
+                                            && titleFits && valueFits
+
+          TextMetrics {
+            id: titleTextMetrics
+
+            font.bold: true
+            text: root.displayTitle
+            font.pixelSize: digitalFontSize
+            font.family: Cpp_Misc_CommonFonts.widgetFontFamily
+          }
+
+          RowLayout {
+            spacing: 4
+            anchors.fill: parent
+            anchors.leftMargin: 6
+            anchors.rightMargin: 6
+
+            Item {
+              Layout.fillWidth: true
+              Layout.fillHeight: true
+              visible: labelBase.showTitle
+
+              Text {
+                id: titleText
+
+                font.bold: true
+                elide: Text.ElideRight
+                anchors.fill: parent
+                anchors.leftMargin: 4
+                anchors.rightMargin: 4
+                text: root.displayTitle
+                font.pixelSize: digitalFontSize
+                verticalAlignment: Text.AlignVCenter
+                horizontalAlignment: Text.AlignHCenter
+                color: Cpp_ThemeManager.colors["widget_text"]
+                font.family: Cpp_Misc_CommonFonts.widgetFontFamily
+              }
+            }
+
+            //
+            // Value readout
+            //
+            Item {
+              Layout.fillWidth: true
+              Layout.fillHeight: true
+
+              Rectangle {
+                id: valueBox
+
+                radius: 3
+                border.width: 1
+                antialiasing: true
+                anchors.centerIn: parent
+                height: valueText.implicitHeight + 8
+                width: Math.min(parent.width, valueBoxMetrics.width + 18)
+                border.color: Qt.darker(Cpp_ThemeManager.colors["widget_border"], 1.35)
+                color: model.alarmTriggered
+                       ? (valueBox.alarmFlashOn
+                          ? Cpp_ThemeManager.alarmColorForSeverity(root.model.activeBandSeverity)
+                          : Cpp_ThemeManager.colors["console_base"])
+                       : Cpp_ThemeManager.colors["console_base"]
+
+                Behavior on color { ColorAnimation { duration: 280; easing.type: Easing.InOutQuad } }
+
+                property bool alarmFlashOn: false
+
+                TextMetrics {
+                  id: valueBoxMetrics
+
+                  font.bold: true
+                  font.pixelSize: digitalFontSize * 1.05
+                  font.family: Cpp_Misc_CommonFonts.widgetFontFamily
+                  text: {
+                    const a = root.formatValue(root.model.minValue)
+                    const b = root.formatValue(root.model.maxValue)
+                    const longer = a.length >= b.length ? a : b
+                    return longer + (root.model.units.length > 0 ? " " + root.model.units : "")
+                  }
+                }
+
+                SequentialAnimation {
+                  loops: Animation.Infinite
+                  running: model.alarmTriggered
+                  PropertyAction { target: valueBox; property: "alarmFlashOn"; value: true }
+                  PauseAnimation { duration: 450 }
+                  PropertyAction { target: valueBox; property: "alarmFlashOn"; value: false }
+                  PauseAnimation { duration: 450 }
+                }
+
+                Text {
+                  id: valueText
+
+                  font.bold: true
+                  anchors.centerIn: parent
+                  font.pixelSize: digitalFontSize * 1.05
+                  font.family: Cpp_Misc_CommonFonts.widgetFontFamily
+                  color: model.alarmTriggered
+                         ? (valueBox.alarmFlashOn
+                            ? "#ffffff"
+                            : Cpp_ThemeManager.alarmColorForSeverity(root.model.activeBandSeverity))
+                         : Cpp_ThemeManager.colors["console_text"]
+                  text: root.getPaddedFormattedText(root.model.value)
+
+                  Behavior on color { ColorAnimation { duration: 280; easing.type: Easing.InOutQuad } }
+                }
+              }
+            }
+          }
+        }
+
+        //
+        // Needle drop shadow: same silhouette offset straight down in screen
+        // space, so the light direction stays fixed while the needle rotates.
+        //
+        Item {
+          width: meterArea.faceR * 2
+          height: meterArea.faceR * 2
+          x: meterArea.faceCx - width / 2
+          rotation: startAngleDeg + root.normalizedValue * angleRangeDeg
+          y: meterArea.faceCy - height / 2 + Math.max(1, meterArea.faceR * 0.008)
+
+          Shape {
+            smooth: true
+            antialiasing: true
+            anchors.fill: parent
+            preferredRendererType: Shape.CurveRenderer
+
+            ShapePath {
+              strokeWidth: -1
+              fillColor: Qt.rgba(0, 0, 0, 0.10)
+
+              startY: needleShape.cy
+              startX: needleShape.cx - needleShape.baseW / 2
+              PathLine { x: needleShape.cx; y: needleShape.cy - needleShape.tipLen }
+              PathLine { x: needleShape.cx + needleShape.baseW / 2; y: needleShape.cy }
+              PathLine { x: needleShape.cx + needleShape.tailW / 2; y: needleShape.cy + needleShape.tailLen }
+              PathLine { x: needleShape.cx - needleShape.tailW / 2; y: needleShape.cy + needleShape.tailLen }
+              PathLine { x: needleShape.cx - needleShape.baseW / 2; y: needleShape.cy }
+            }
+          }
+        }
+
+        //
+        // Pointed needle: tapered triangle with a small counterweight tail.
+        // Document order is the stacking order: dial furniture below, border above.
+        //
+        Item {
+          id: needleHolder
+
+          width: meterArea.faceR * 2
+          height: meterArea.faceR * 2
+          x: meterArea.faceCx - width / 2
+          y: meterArea.faceCy - height / 2
+          rotation: startAngleDeg + root.normalizedValue * angleRangeDeg
+
+          Shape {
+            id: needleShape
+
+            smooth: true
+            antialiasing: true
+            anchors.fill: parent
+            preferredRendererType: Shape.CurveRenderer
+
+            readonly property real cx: needleShape.width / 2
+            readonly property real cy: needleShape.height / 2
+            readonly property real baseW: Math.max(4, meterArea.faceR * 0.07)
+            readonly property real tailW: Math.max(3, meterArea.faceR * 0.05)
+            readonly property real tailLen: Math.max(6, meterArea.faceR * 0.13)
+            readonly property real tipLen: meterArea.faceR - 0.75 - Math.max(4, meterArea.faceR * 0.05)
+
+            ShapePath {
+              strokeWidth: 0.6
+              joinStyle: ShapePath.MiterJoin
+              strokeColor: Qt.darker(root.needleBaseColor, 1.35)
+              fillGradient: LinearGradient {
+                x1: needleShape.cx
+                x2: needleShape.cx
+                y1: needleShape.cy
+                y2: needleShape.cy - needleShape.tipLen
+                GradientStop { position: 0.0; color: Qt.darker(root.needleBaseColor, 1.10) }
+                GradientStop { position: 0.5; color: root.needleBaseColor }
+                GradientStop { position: 1.0; color: Qt.lighter(root.needleBaseColor, 1.18) }
+              }
+
+              startY: needleShape.cy
+              startX: needleShape.cx - needleShape.baseW / 2
+              PathLine { x: needleShape.cx; y: needleShape.cy - needleShape.tipLen }
+              PathLine { x: needleShape.cx + needleShape.baseW / 2; y: needleShape.cy }
+              PathLine { x: needleShape.cx + needleShape.tailW / 2; y: needleShape.cy + needleShape.tailLen }
+              PathLine { x: needleShape.cx - needleShape.tailW / 2; y: needleShape.cy + needleShape.tailLen }
+              PathLine { x: needleShape.cx - needleShape.baseW / 2; y: needleShape.cy }
+            }
+          }
+        }
+
+        //
+        // Pivot hub shadow: soft radial falloff under the hub
+        //
+        Shape {
+          id: hubShadow
+
+          smooth: true
+          height: width
+          antialiasing: true
+          x: meterArea.faceCx - width / 2
+          preferredRendererType: Shape.CurveRenderer
+          width: Math.max(10, meterArea.faceR * 0.11) * 1.7
+          y: meterArea.faceCy - height / 2 + Math.max(1, meterArea.faceR * 0.012)
+
+          readonly property real r: width / 2
+
+          ShapePath {
+            strokeWidth: -1
+            fillGradient: RadialGradient {
+              focalRadius: 0
+              focalX: hubShadow.r
+              focalY: hubShadow.r
+              centerX: hubShadow.r
+              centerY: hubShadow.r
+              centerRadius: hubShadow.r
+              GradientStop { position: 0.0;  color: Qt.rgba(0, 0, 0, 0.20) }
+              GradientStop { position: 0.55; color: Qt.rgba(0, 0, 0, 0.14) }
+              GradientStop { position: 1.0;  color: "transparent" }
+            }
+
+            startY: hubShadow.r
+            startX: hubShadow.width
+            PathArc {
+              x: 0
+              y: hubShadow.r
+              radiusX: hubShadow.r
+              radiusY: hubShadow.r
+            }
+            PathArc {
+              y: hubShadow.r
+              x: hubShadow.width
+              radiusX: hubShadow.r
+              radiusY: hubShadow.r
+            }
+          }
+        }
+
+        //
+        // Pivot hub (unified style across Gauge and Meter)
+        //
+        Rectangle {
+          id: pivotHub
+
+          x: meterArea.faceCx - width / 2
+          y: meterArea.faceCy - height / 2
+          width: Math.max(10, meterArea.faceR * 0.11)
+          height: width
+          radius: width / 2
+          antialiasing: true
+          border.width: 1
+          border.color: Qt.darker(Cpp_ThemeManager.colors["widget_border"], 1.45)
+          gradient: Gradient {
+            GradientStop { position: 0.0; color: Qt.lighter(Cpp_ThemeManager.colors["widget_border"], 1.35) }
+            GradientStop { position: 0.5; color: Cpp_ThemeManager.colors["widget_border"] }
+            GradientStop { position: 1.0; color: Qt.darker(Cpp_ThemeManager.colors["widget_border"], 1.30) }
+          }
+
+          Rectangle {
+            height: width
+            radius: width / 2
+            antialiasing: true
+            color: Qt.rgba(0, 0, 0, 0.45)
+            x: (parent.width  - width)  / 2
+            y: (parent.height - height) / 2
+            width: Math.round(parent.width * 0.40)
+          }
+        }
+
+        //
+        // Face border painted last: the bezel/border always sits above everything
+        // on the dial.
+        //
+        Shape {
+          z: 9999
+          smooth: true
+          antialiasing: true
+          anchors.fill: parent
+          preferredRendererType: Shape.CurveRenderer
+
+          ShapePath {
+            strokeColor: Qt.darker(Cpp_ThemeManager.colors["widget_border"], 1.25)
+            strokeWidth: 1.5
+            fillColor: "transparent"
+            capStyle: ShapePath.FlatCap
+            joinStyle: ShapePath.RoundJoin
+
+            startY: meterArea.faceCy
+            startX: meterArea.faceCx - meterArea.faceR
+            PathArc {
+              y: meterArea.faceCy
+              radiusX: meterArea.faceR
+              radiusY: meterArea.faceR
+              direction: PathArc.Clockwise
+              x: meterArea.faceCx + meterArea.faceR
+            }
+            PathLine {
+              x: meterArea.faceCx + meterArea.faceR
+              y: meterArea.faceCy + faceShape.bottomExtension
+            }
+            PathLine {
+              x: meterArea.faceCx - meterArea.faceR
+              y: meterArea.faceCy + faceShape.bottomExtension
+            }
+            PathLine {
+              y: meterArea.faceCy
+              x: meterArea.faceCx - meterArea.faceR
+            }
+          }
+        }
+      }
+    }
+
+    //
+    // PAGE 1: Big digital readout
+    //
+    Item {
+      id: digitalPage
+
+      clip: true
+      visible: opacity > 0
+      opacity: SwipeView.isCurrentItem ? 1.0 : 0.0
+      Behavior on opacity { NumberAnimation { duration: 150 } }
+
+      TextMetrics {
+        id: bigValueMetrics
+
+        font.bold: true
+        font.pixelSize: 100
+        font.family: Cpp_Misc_CommonFonts.monoFont.family
+        text: {
+          const a = root.formatValue(root.model.minValue)
+          const b = root.formatValue(root.model.maxValue)
+          const longer = a.length >= b.length ? a : b
+          return longer + (root.model.units.length > 0 ? " " + root.model.units : "")
+        }
+      }
+
+      readonly property real availableW: Math.max(0, width  - 32)
+      readonly property real availableH: Math.max(0, height - 64)
+      readonly property real bigValueFontPx: {
+        const metricsW = Math.max(8, bigValueMetrics.width)
+        const widthFit  = (digitalPage.availableW * 0.85 / metricsW) * bigValueMetrics.font.pixelSize
+        const heightFit = digitalPage.availableH * 0.50
+        return Math.max(20, Math.min(160, widthFit, heightFit))
+      }
+
+      Rectangle {
+        id: digitalBox
+
+        radius: 4
+        antialiasing: true
+        anchors.centerIn: parent
+        border.width: 1
+        border.color: root.model.alarmTriggered
+                      ? Qt.darker(Cpp_ThemeManager.alarmColorForSeverity(root.model.activeBandSeverity), 1.20)
+                      : Qt.darker(root.color, 1.30)
+        width: Math.min(parent.width - 16, digitalColumn.implicitWidth + 32)
+        height: Math.min(parent.height - 16, digitalColumn.implicitHeight + 24)
+        color: digitalBox.targetColor
+
+        Behavior on color { ColorAnimation { duration: 280; easing.type: Easing.InOutQuad } }
+
+        property bool alarmFlashOn: false
+        readonly property color targetColor: root.model.alarmTriggered && digitalBox.alarmFlashOn
+                                              ? Cpp_ThemeManager.alarmColorForSeverity(root.model.activeBandSeverity)
+                                              : Cpp_ThemeManager.colors["console_base"]
+        SequentialAnimation {
+          loops: Animation.Infinite
+          running: root.model.alarmTriggered
+          PropertyAction { target: digitalBox; property: "alarmFlashOn"; value: true }
+          PauseAnimation { duration: 450 }
+          PropertyAction { target: digitalBox; property: "alarmFlashOn"; value: false }
+          PauseAnimation { duration: 450 }
+        }
+
+        Column {
+          id: digitalColumn
+
+          spacing: 6
+          anchors.centerIn: parent
+
+          Text {
+            id: bigValueText
+
+            anchors.horizontalCenter: parent.horizontalCenter
+            width: Math.min(implicitWidth, digitalPage.width - 32)
+            elide: Text.ElideRight
+            horizontalAlignment: Text.AlignHCenter
+            text: getPaddedText(root.model.value)
+            font.family: Cpp_Misc_CommonFonts.monoFont.family
+            font.bold: true
+            font.pixelSize: digitalPage.bigValueFontPx
+            color: root.model.alarmTriggered
+                   ? (digitalBox.alarmFlashOn ? "#ffffff" : Cpp_ThemeManager.alarmColorForSeverity(root.model.activeBandSeverity))
+                   : root.color
+            Behavior on color { ColorAnimation { duration: 280; easing.type: Easing.InOutQuad } }
+          }
+
+          Text {
+            opacity: 0.80
+            anchors.horizontalCenter: parent.horizontalCenter
+            width: Math.min(implicitWidth, digitalPage.width - 32)
+            elide: Text.ElideRight
+            horizontalAlignment: Text.AlignHCenter
+            text: root.displayTitle
+            visible: root.displayTitle.length > 0 && !root.titleFrozenOut
+            color: root.model.alarmTriggered
+                   ? (digitalBox.alarmFlashOn ? "#ffffff" : Cpp_ThemeManager.alarmColorForSeverity(root.model.activeBandSeverity))
+                   : root.color
+            font.family: Cpp_Misc_CommonFonts.monoFont.family
+            font.pixelSize: bigValueText.font.pixelSize * 0.30
+            Behavior on color { ColorAnimation { duration: 280; easing.type: Easing.InOutQuad } }
+          }
+        }
+      }
+    }
+  }
+
+  //
+  // Page indicator
+  //
+  PageIndicator {
+    id: pageIndicator
+
+    interactive: true
+    count: swipeView.count
+    anchors.bottomMargin: 4
+    anchors.bottom: parent.bottom
+    currentIndex: swipeView.currentIndex
+    anchors.horizontalCenter: parent.horizontalCenter
+
+    delegate: Rectangle {
+      required property int index
+      implicitWidth: 8
+      implicitHeight: 8
+      radius: width / 2
+      antialiasing: true
+      color: Cpp_ThemeManager.colors["widget_text"]
+      opacity: index === pageIndicator.currentIndex ? 0.95 : 0.40
+      Behavior on opacity { NumberAnimation { duration: 120 } }
+    }
+
+    onCurrentIndexChanged: {
+      if (swipeView.currentIndex !== currentIndex)
+        swipeView.currentIndex = currentIndex
+    }
+  }
+
+  //
+  // Suppresses the page auto-save while restore assigns the persisted index
+  //
+  property bool restoringPage: false
+
+  //
+  // Restore per-widget page from project settings, then persist on change.
+  //
+  Component.onCompleted: {
+    root.restoringPage = true
+    const s = Cpp_JSON_ProjectModel.widgetSettings(root.widgetId)
+    if (s["page"] !== undefined)
+      swipeView.currentIndex = parseInt(s["page"])
+
+    root.restoringPage = false
+  }
+  Connections {
+    target: swipeView
+    function onCurrentIndexChanged() {
+      if (root.restoringPage)
+        return
+
+      Cpp_JSON_ProjectModel.saveWidgetSetting(
+            root.widgetId, "page", swipeView.currentIndex)
+    }
+  }
+}

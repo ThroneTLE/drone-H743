@@ -1,0 +1,287 @@
+#!/usr/bin/env python3
+
+# --------------------------------------------------------------------------------------
+# Automatic dependency install (first run)
+#
+# Creates a private virtualenv next to this script (falling back to
+# ~/.serial-studio/example-venvs when the example lives in a read-only install) and
+# re-executes inside it, so system Python installs (PEP 668 "externally managed") are
+# never modified. Requires only the standard library.
+# --------------------------------------------------------------------------------------
+import importlib.util
+import os
+import subprocess
+import sys
+
+
+def _ensure_deps(mod_to_pip):
+    missing = [
+        pip for mod, pip in mod_to_pip.items() if importlib.util.find_spec(mod) is None
+    ]
+    if not missing:
+        return
+
+    if os.environ.get("SS_EXAMPLE_BOOTSTRAPPED") == "1":
+        sys.stderr.write("dependency bootstrap failed: %s\n" % ", ".join(missing))
+        sys.exit(1)
+
+    base = os.path.dirname(os.path.abspath(__file__))
+    candidates = [
+        os.path.join(base, ".venv"),
+        os.path.join(
+            os.path.expanduser("~"),
+            ".serial-studio",
+            "example-venvs",
+            os.path.basename(base),
+        ),
+    ]
+
+    py = None
+    for venv in candidates:
+        try:
+            binary = (
+                os.path.join(venv, "Scripts", "python.exe")
+                if os.name == "nt"
+                else os.path.join(venv, "bin", "python")
+            )
+            if not os.path.exists(binary):
+                subprocess.check_call([sys.executable, "-m", "venv", venv])
+
+            py = binary
+            break
+        except (OSError, subprocess.CalledProcessError):
+            continue
+
+    if py is None:
+        sys.stderr.write("dependency bootstrap failed: cannot create a virtualenv\n")
+        sys.exit(1)
+
+    subprocess.check_call(
+        [py, "-m", "pip", "install", "--disable-pip-version-check"] + missing
+    )
+
+    env = dict(os.environ, SS_EXAMPLE_BOOTSTRAPPED="1")
+    argv = [py, "-u", os.path.abspath(__file__)] + sys.argv[1:]
+    if os.name == "nt":
+        sys.exit(subprocess.call(argv, env=env))
+
+    os.execve(py, argv, env)
+
+
+_ensure_deps({"numpy": "numpy"})
+
+import sys
+
+# Force UTF-8 console output: Windows defaults to cp1252, which cannot encode
+# the Unicode characters this script prints (e.g. arrows / check marks).
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8")
+    except (AttributeError, ValueError):
+        pass
+
+import os
+import re
+import csv
+import wave
+import argparse
+import numpy as np
+
+DEFAULT_SAMPLE_RATE = 44100
+INPUT_FORMATS = ["float32", "int16", "uint8", "int24", "int32"]
+
+# Matches an audio channel column in any Serial Studio header layout: the bare
+# legacy "Audio Input/Channel 1", the newer "<Group>/Channel 1", and the full
+# "<Device>/<Group>/Channel 1". The case-insensitive trailing "Channel <n>" is
+# the stable part across versions.
+CHANNEL_RE = re.compile(r"channel\s*\d+\s*$", re.IGNORECASE)
+
+# Serial Studio always emits the relative timestamp as the first column.
+TIME_HEADER = "Elapsed (s)"
+
+
+def is_channel_header(header):
+    return CHANNEL_RE.search(header.strip()) is not None
+
+
+def find_audio_columns(headers):
+    return [i for i, h in enumerate(headers) if is_channel_header(h)]
+
+
+def read_csv_audio(file_path):
+    # utf-8-sig transparently strips the UTF-8 BOM that Serial Studio writes on
+    # the first column header; without it the BOM corrupts the first match.
+    with open(file_path, "r", newline="", encoding="utf-8-sig") as f:
+        reader = csv.reader(f)
+        headers = next(reader)
+
+        audio_cols = find_audio_columns(headers)
+        if not audio_cols:
+            raise ValueError("No audio channels found in CSV headers")
+
+        time_col = None
+        if headers and headers[0].strip() == TIME_HEADER:
+            time_col = 0
+
+        rows = []
+        times = []
+        for row in reader:
+            try:
+                vals = [float(row[i]) for i in audio_cols]
+                rows.append(vals)
+                if time_col is not None:
+                    times.append(float(row[time_col]))
+            except Exception:
+                continue
+
+    audio = np.asarray(rows, dtype=np.float32)
+    if audio.ndim == 1:
+        audio = audio[:, None]
+    audio = np.nan_to_num(audio, nan=0.0, posinf=0.0, neginf=0.0)
+    return audio, times
+
+
+def sample_rate_from_times(times):
+    # Derive the capture rate from the Elapsed (s) column so the user does not
+    # have to know it up front. Needs at least two samples and a positive span.
+    if len(times) < 2:
+        return None
+
+    span = times[-1] - times[0]
+    if span <= 0.0:
+        return None
+
+    return int(round((len(times) - 1) / span))
+
+
+def decode_input_to_float(audio, in_format):
+    if in_format == "float32":
+        x = audio.astype(np.float32)
+        peak = np.max(np.abs(x))
+        return x / peak if peak > 1.0 else x
+
+    if in_format == "int16":
+        return np.clip(audio / 32768.0, -1.0, 1.0).astype(np.float32)
+
+    if in_format == "uint8":
+        return np.clip((audio - 128.0) / 127.5, -1.0, 1.0).astype(np.float32)
+
+    if in_format == "int24":
+        return np.clip(audio / 8388608.0, -1.0, 1.0).astype(np.float32)
+
+    if in_format == "int32":
+        return np.clip(audio / 2147483648.0, -1.0, 1.0).astype(np.float32)
+
+    raise ValueError(f"Unsupported input format {in_format}")
+
+
+def remove_dc(audio):
+    mean = np.mean(audio, axis=0, keepdims=True)
+    return audio - mean
+
+
+def normalize_per_channel(audio, headroom_db=0.5):
+    peaks = np.max(np.abs(audio), axis=0)
+    peaks[peaks == 0.0] = 1.0
+    target = 10.0 ** (-headroom_db / 20.0)
+    scale = target / peaks
+    return audio * scale
+
+
+def float_to_int16(x, dither=False, rng=None):
+    y = np.clip(x, -1.0, 1.0) * 32767.0
+    if dither:
+        if rng is None:
+            rng = np.random.default_rng()
+        tpdf = rng.random(y.shape, dtype=np.float32) - rng.random(
+            y.shape, dtype=np.float32
+        )
+        y = y + tpdf
+
+    return np.round(y).astype(np.int16)
+
+
+def write_wav(audio_float, sample_rate, output_path, dither=False):
+    num_channels = audio_float.shape[1] if audio_float.ndim > 1 else 1
+    audio_float = remove_dc(audio_float)
+    audio_float = normalize_per_channel(audio_float, headroom_db=0.5)
+    int_data = float_to_int16(audio_float, dither=dither)
+
+    with wave.open(output_path, "w") as wf:
+        wf.setnchannels(num_channels)
+        wf.setsampwidth(2)  # 16 bit PCM
+        wf.setframerate(sample_rate)
+        wf.writeframes(int_data.tobytes())
+
+
+def convert_csv_to_wav(
+    csv_path,
+    wav_path=None,
+    sample_rate=None,
+    in_format="float32",
+    dither=False,
+):
+    if in_format not in INPUT_FORMATS:
+        raise ValueError(
+            f"Unsupported input format '{in_format}'. Supported: {', '.join(INPUT_FORMATS)}"
+        )
+
+    raw, times = read_csv_audio(csv_path)
+    audio_float = decode_input_to_float(raw, in_format)
+
+    # An explicit --rate always wins; otherwise prefer the rate implied by the
+    # Elapsed (s) column, and fall back to the default for time-less CSVs.
+    if sample_rate is None:
+        detected = sample_rate_from_times(times)
+        if detected:
+            sample_rate = detected
+            print(f"Detected sample rate from timestamps: {sample_rate} Hz")
+        else:
+            sample_rate = DEFAULT_SAMPLE_RATE
+            print(f"No usable timestamps; using default {sample_rate} Hz")
+
+    if wav_path is None:
+        base = os.path.splitext(csv_path)[0]
+        wav_path = base + ".wav"
+
+    write_wav(audio_float, sample_rate, wav_path, dither=dither)
+    print(f"WAV file written: {wav_path}")
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Convert CSV audio data to WAV")
+    parser.add_argument("csv_file", help="Input CSV file path")
+    parser.add_argument("wav_file", nargs="?", help="Output WAV file path")
+    parser.add_argument(
+        "--rate",
+        type=int,
+        default=None,
+        help=(
+            "Sample rate in Hz. When omitted, it is derived from the "
+            f"'{TIME_HEADER}' column, falling back to {DEFAULT_SAMPLE_RATE}."
+        ),
+    )
+    parser.add_argument(
+        "--in_format",
+        default="float32",
+        choices=INPUT_FORMATS,
+        help="Input sample format of CSV values",
+    )
+    parser.add_argument(
+        "--dither",
+        action="store_true",
+        help="Apply TPDF dither before int16 quantization",
+    )
+
+    args = parser.parse_args()
+    convert_csv_to_wav(
+        args.csv_file,
+        args.wav_file,
+        args.rate,
+        in_format=args.in_format,
+        dither=args.dither,
+    )
+
+
+if __name__ == "__main__":
+    main()

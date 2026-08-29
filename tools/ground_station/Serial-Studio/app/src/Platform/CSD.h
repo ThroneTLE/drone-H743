@@ -1,0 +1,190 @@
+/*
+ * Serial Studio
+ * https://serial-studio.com/
+ *
+ * Copyright (C) 2020–2025 Alex Spataru
+ *
+ * This file is dual-licensed:
+ *
+ * - Under the GNU GPLv3 (or later) for builds that exclude Pro modules.
+ * - Under the Serial Studio Commercial License for builds that include
+ *   any Pro functionality.
+ *
+ * You must comply with the terms of one of these licenses, depending
+ * on your use case.
+ *
+ * For GPL terms, see <https://www.gnu.org/licenses/gpl-3.0.html>
+ * For commercial terms, see LICENSES/LicenseRef-SerialStudio-Commercial.txt.
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later OR LicenseRef-SerialStudio-Commercial
+ */
+
+#pragma once
+
+#include <QHash>
+#include <QObject>
+#include <QPointer>
+#include <QQuickItem>
+#include <QQuickPaintedItem>
+#include <QQuickWindow>
+#include <QWindow>
+
+namespace CSD {
+// Chrome dimensions shared between CSD.cpp and NativeWindow_CSD.cpp (pre-show fallback).
+inline constexpr int TitleBarHeight          = 32;
+inline constexpr int TitleBarHeightMaximized = 28;
+
+/**
+ * @brief Custom title bar widget with window controls for CSD windows.
+ */
+class Titlebar : public QQuickPaintedItem {
+  Q_OBJECT
+
+signals:
+  void titleChanged();
+  void closeClicked();
+  void minimizeClicked();
+  void maximizeClicked();
+  void systemMenuRequested();
+  void windowActiveChanged();
+  void backgroundColorChanged();
+
+public:
+  explicit Titlebar(QQuickItem* parent = nullptr);
+
+  void paint(QPainter* painter) override;
+
+  [[nodiscard]] QString title() const;
+  [[nodiscard]] bool windowActive() const;
+  [[nodiscard]] QColor backgroundColor() const;
+
+public slots:
+  void setTitle(const QString& title);
+  void setWindowActive(bool active);
+  void setBackgroundColor(const QColor& color);
+
+protected:
+  void mouseUngrabEvent() override;
+  void mouseMoveEvent(QMouseEvent* event) override;
+  void hoverMoveEvent(QHoverEvent* event) override;
+  void hoverLeaveEvent(QHoverEvent* event) override;
+  void mousePressEvent(QMouseEvent* event) override;
+  void mouseReleaseEvent(QMouseEvent* event) override;
+  void mouseDoubleClickEvent(QMouseEvent* event) override;
+
+private:
+  enum class Button {
+    None,
+    Minimize,
+    Maximize,
+    Close
+  };
+
+  [[nodiscard]] QColor foregroundColor() const;
+  [[nodiscard]] QRectF buttonRect(Button button) const;
+  [[nodiscard]] Button buttonAt(const QPointF& pos) const;
+  [[nodiscard]] bool shouldShowButton(Button button) const;
+  [[nodiscard]] QRectF buttonBackgroundRect(Button button) const;
+
+  [[nodiscard]] inline bool isMaximized() const
+  {
+    if (!window())
+      return false;
+
+    bool m = window()->windowStates() & Qt::WindowMaximized;
+    bool f = window()->windowStates() & Qt::WindowFullScreen;
+    return m || f;
+  }
+
+  void drawButton(QPainter* painter, Button button, const QString& svgPath);
+
+  [[nodiscard]] QColor buttonIconColor(Button button, bool hovered, bool pressed) const;
+  void drawButtonHoverBackground(QPainter* painter, Button button, bool hovered, bool pressed);
+  [[nodiscard]] QPixmap renderColorizedSvg(const QString& svgPath,
+                                           const QSize& pixelSize,
+                                           const QRectF& logicalRect,
+                                           qreal dpr,
+                                           const QColor& iconColor) const;
+
+private:
+  QString m_title;
+  QPixmap m_icon;
+  bool m_dragging;
+  bool m_windowActive;
+  Button m_hoveredButton;
+  Button m_pressedButton;
+  QColor m_backgroundColor;
+  QHash<QString, QPixmap> m_iconCache;
+
+  mutable QColor m_fgCache;
+  mutable QColor m_fgCacheKey;
+};
+
+/**
+ * @brief Manages client-side decorations for a QQuickWindow.
+ */
+class Window : public QObject {
+  Q_OBJECT
+
+public:
+  explicit Window(QWindow* window, const QString& color = QString(), QObject* parent = nullptr);
+  ~Window() override;
+
+  [[nodiscard]] QWindow* window() const;
+  [[nodiscard]] Titlebar* titleBar() const;
+
+  [[nodiscard]] int titleBarHeight() const;
+
+public slots:
+  void updateTheme();
+  void setColor(const QString& color);
+
+private slots:
+  void setupBorder();
+  void setupTitleBar();
+  void updateMinimumSize();
+  void updateBorderGeometry();
+  void onMinimumSizeChanged();
+  void setupContentContainer();
+  void updateTitleBarGeometry();
+  void updateContentContainerGeometry();
+
+private:
+  [[nodiscard]] QSize preferredSize() const;
+
+private:
+  enum class ResizeEdge {
+    None        = 0,
+    Left        = 1,
+    Right       = 2,
+    Top         = 4,
+    Bottom      = 8,
+    TopLeft     = Top | Left,
+    TopRight    = Top | Right,
+    BottomLeft  = Bottom | Left,
+    BottomRight = Bottom | Right
+  };
+
+  [[nodiscard]] ResizeEdge edgeAt(const QPointF& pos) const;
+  [[nodiscard]] Qt::CursorShape cursorForEdge(ResizeEdge edge) const;
+  [[nodiscard]] Qt::Edges qtEdgesFromResizeEdge(ResizeEdge edge) const;
+
+  void releaseResizeCursor();
+  void updateResizeCursor(const QPointF& pos);
+  void reparentChildToContainer(QQuickItem* child);
+
+protected:
+  bool eventFilter(QObject* watched, QEvent* event) override;
+
+private:
+  bool m_resizing;
+  QQuickItem* m_border;
+  QString m_color;
+  Titlebar* m_titleBar;
+  ResizeEdge m_resizeEdge;
+  QSize m_minSize;
+  QPointer<QWindow> m_window;
+  QQuickItem* m_contentContainer;
+  Qt::CursorShape m_lastCursor;
+};
+}  // namespace CSD

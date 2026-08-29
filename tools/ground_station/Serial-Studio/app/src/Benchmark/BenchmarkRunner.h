@@ -1,0 +1,171 @@
+/*
+ * Serial Studio
+ * https://serial-studio.com/
+ *
+ * Copyright (C) 2020-2025 Alex Spataru
+ *
+ * This file is dual-licensed:
+ *
+ * - Under the GNU GPLv3 (or later) for builds that exclude Pro modules.
+ * - Under the Serial Studio Commercial License for builds that include
+ *   any Pro functionality.
+ *
+ * You must comply with the terms of one of these licenses, depending
+ * on your use case.
+ *
+ * For GPL terms, see <https://www.gnu.org/licenses/gpl-3.0.html>
+ * For commercial terms, see LICENSES/LicenseRef-SerialStudio-Commercial.txt.
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later OR LicenseRef-SerialStudio-Commercial
+ */
+
+#pragma once
+
+#include <memory>
+#include <QObject>
+#include <QString>
+#include <QStringList>
+#include <QTemporaryDir>
+#include <QVariantList>
+#include <vector>
+
+namespace Benchmark {
+
+/**
+ * @brief One scheduled benchmark phase: language + workload flags + gated target.
+ */
+struct PhaseSpec {
+  int language;
+  bool exporters;
+  bool strings;
+  bool dashboard;
+  bool dataPipeline;
+  double minFps;
+  QString label;
+};
+
+/**
+ * @brief Drives the in-app hotpath benchmark and exposes its progress/results to QML.
+ */
+class BenchmarkRunner : public QObject {
+  // clang-format off
+  Q_OBJECT
+  Q_PROPERTY(bool running
+             READ running
+             NOTIFY runningChanged)
+  Q_PROPERTY(double progress
+             READ progress
+             NOTIFY progressChanged)
+  Q_PROPERTY(QString currentPhase
+             READ currentPhase
+             NOTIFY currentPhaseChanged)
+  Q_PROPERTY(QVariantList results
+             READ results
+             NOTIFY resultsChanged)
+  Q_PROPERTY(QString peakMemory
+             READ peakMemory
+             NOTIFY peakMemoryChanged)
+  Q_PROPERTY(QStringList frameOptions
+             READ frameOptions
+             NOTIFY optionsChanged)
+  Q_PROPERTY(QStringList secondsOptions
+             READ secondsOptions
+             NOTIFY optionsChanged)
+  Q_PROPERTY(bool deviceConnected
+             READ deviceConnected
+             NOTIFY deviceConnectedChanged)
+  Q_PROPERTY(bool playerOpen
+             READ playerOpen
+             NOTIFY playerOpenChanged)
+  // clang-format on
+
+signals:
+  void runningChanged();
+  void playerOpenChanged();
+  void deviceConnectedChanged();
+  void progressChanged();
+  void currentPhaseChanged();
+  void resultsChanged();
+  void peakMemoryChanged();
+  void optionsChanged();
+  void finished();
+  void dashboardPreviewActive(bool active);
+
+private:
+  explicit BenchmarkRunner();
+  BenchmarkRunner(BenchmarkRunner&&)                 = delete;
+  BenchmarkRunner(const BenchmarkRunner&)            = delete;
+  BenchmarkRunner& operator=(BenchmarkRunner&&)      = delete;
+  BenchmarkRunner& operator=(const BenchmarkRunner&) = delete;
+
+public:
+  [[nodiscard]] static BenchmarkRunner& instance();
+
+  [[nodiscard]] bool running() const noexcept;
+  [[nodiscard]] bool playerOpen() const;
+  [[nodiscard]] bool deviceConnected() const;
+  [[nodiscard]] double progress() const noexcept;
+  [[nodiscard]] QString currentPhase() const;
+  [[nodiscard]] QVariantList results() const;
+  [[nodiscard]] QString peakMemory() const;
+  [[nodiscard]] QStringList frameOptions() const;
+  [[nodiscard]] QStringList secondsOptions() const;
+  [[nodiscard]] Q_INVOKABLE QString formatCount(double value) const;
+
+public slots:
+  void copyResults();
+  void clearResults();
+  void start(int framesIndex,
+             int secondsIndex,
+             bool parsers,
+             bool dataExport,
+             bool dashboard,
+             bool numeric,
+             bool mixed);
+
+private slots:
+  void retranslate();
+
+private:
+  void beginSession();
+  void endSession();
+  void abortSession();
+  void finishSession();
+  void restoreEnvironment();
+  void announcePhase(int index);
+  void executePhase(int index);
+  void buildPhases(bool parsers, bool dataExport, bool dashboard, bool numeric, bool mixed);
+  void appendParserPhases(bool numeric, bool mixed);
+  void appendDataExportPhases(bool numeric, bool mixed);
+  void appendDashboardPhases(bool numeric, bool mixed);
+
+private:
+  bool m_running;
+  double m_progress;
+  int m_phaseIndex;
+  quint64 m_frames;
+  double m_seconds;
+  QString m_currentPhase;
+  QString m_peakMemory;
+  QVariantList m_results;
+  std::vector<PhaseSpec> m_phases;
+  QStringList m_frameOptions;
+  QStringList m_secondsOptions;
+
+  int m_savedMode;
+  bool m_savedEphemeral;
+  double m_savedPlotTimeRange;
+  QString m_savedProjectPath;
+  bool m_savedCsvExport;
+  bool m_savedApiServer;
+#ifdef BUILD_COMMERCIAL
+  bool m_savedMdfExport;
+  bool m_savedSessionExport;
+#endif
+#ifdef ENABLE_GRPC
+  bool m_savedGrpcServer;
+#endif
+  std::unique_ptr<QTemporaryDir> m_tempWorkspace;
+};
+
+}  // namespace Benchmark

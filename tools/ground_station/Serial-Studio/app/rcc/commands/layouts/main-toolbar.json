@@ -1,0 +1,70 @@
+{
+  "surface": "main-toolbar",
+  "sections": [
+    {
+      "type": "section",
+      "items": [
+        { "type": "command", "id": "app.projectEditor" },
+        { "type": "grid", "rows": 3,
+          "itemHints": { "iconSize": 16, "horizontalLayout": true },
+          "items": [
+            { "type": "command", "id": "project.open" },
+            { "type": "command", "id": "csv.open" },
+            { "type": "command", "id": "mdf4.open" }
+          ] }
+      ]
+    },
+    {
+      "type": "section",
+      "collapsible": true, "collapsiblePro": true, "collapsePriority": 30,
+      "collapsedCommands": ["app.ai", "app.extensions"],
+      "items": [
+        { "type": "command", "id": "app.ai", "pro": true,
+          "title": "Assistant", "icon": "editor/ai",
+          "tooltip": "Chat with an AI to build and edit your project" },
+        { "type": "command", "id": "app.extensions", "gplOnly": true },
+        { "type": "grid", "rows": 3, "pro": true,
+          "itemHints": { "iconSize": 16, "horizontalLayout": true },
+          "items": [
+            { "type": "command", "id": "app.deploy", "title": "Deploy" },
+            { "type": "command", "id": "app.sessions" },
+            { "type": "command", "id": "app.extensions" }
+          ] }
+      ]
+    },
+    {
+      "type": "section",
+      "collapsible": true, "collapsePriority": 10,
+      "collapsedCommands": ["app.preferences"],
+      "items": [
+        { "type": "command", "id": "app.preferences" },
+        { "type": "grid", "rows": 3,
+          "itemHints": { "iconSize": 16, "horizontalLayout": true },
+          "items": [
+            { "type": "command", "id": "app.macros" },
+            { "type": "command", "id": "app.remoteAttach" },
+            { "type": "command", "id": "app.connectionDiagnostics" }
+          ] }
+      ]
+    },
+    {
+      "type": "section",
+      "collapsible": true, "collapsePriority": 30, "showSeparator": false,
+      "collapsedCommands": ["app.about"],
+      "items": [
+        { "type": "command", "id": "app.about" },
+        { "type": "grid", "rows": 3,
+          "itemHints": { "iconSize": 16, "horizontalLayout": true },
+          "items": [
+            { "type": "command", "id": "app.examples" },
+            { "type": "command", "id": "app.helpCenter" },
+            { "type": "command", "id": "palette.open" }
+          ] }
+      ]
+    }
+  ],
+  "pinnedEnd": [
+    { "type": "command", "id": "license.activate" },
+    { "type": "command", "id": "io.toggleConnection", "role": "connect" }
+  ]
+}

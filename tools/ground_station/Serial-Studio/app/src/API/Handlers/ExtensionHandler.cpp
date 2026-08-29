@@ -1,0 +1,399 @@
+/*
+ * Serial Studio
+ * https://serial-studio.com/
+ *
+ * Copyright (C) 2020–2025 Alex Spataru
+ *
+ * This file is dual-licensed:
+ *
+ * - Under the GNU GPLv3 (or later) for builds that exclude Pro modules.
+ * - Under the Serial Studio Commercial License for builds that include
+ *   any Pro functionality.
+ *
+ * You must comply with the terms of one of these licenses, depending
+ * on your use case.
+ *
+ * For GPL terms, see <https://www.gnu.org/licenses/gpl-3.0.html>
+ * For commercial terms, see LICENSES/LicenseRef-SerialStudio-Commercial.txt.
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later OR LicenseRef-SerialStudio-Commercial
+ */
+
+#include "API/Handlers/ExtensionHandler.h"
+
+#include <QJsonArray>
+
+#include "API/CommandRegistry.h"
+#include "API/SchemaBuilder.h"
+#include "DataModel/ProjectModel.h"
+#include "Misc/ExtensionManager.h"
+
+//--------------------------------------------------------------------------------------------------
+// Command registration
+//--------------------------------------------------------------------------------------------------
+
+/**
+ * @brief Register all extension management commands with the registry.
+ */
+void API::Handlers::ExtensionHandler::registerCommands()
+{
+  registerCatalogCommands();
+  registerStateCommands();
+#ifdef BUILD_COMMERCIAL
+  registerRepositoryCommands();
+#endif
+}
+
+/**
+ * @brief Register catalog browse / install / uninstall commands.
+ */
+void API::Handlers::ExtensionHandler::registerCatalogCommands()
+{
+  static auto& registry = CommandRegistry::instance();
+  const auto empty      = emptySchema();
+
+  registry.registerCommand(
+    QStringLiteral("extensions.list"),
+    QStringLiteral("List all available extensions from configured repositories"),
+    empty,
+    &listAddons);
+
+  registry.registerCommand(
+    QStringLiteral("extensions.getInfo"),
+    QStringLiteral("Get detailed info for a specific extension (params: extensionId)"),
+    makeSchema({
+      {QStringLiteral("extensionId"),
+       QStringLiteral("string"),
+       QStringLiteral("Unique identifier of the extension")}
+  }),
+    &getAddonInfo);
+
+  registry.registerCommand(
+    QStringLiteral("extensions.install"),
+    QStringLiteral("Install an extension by selecting it (params: addonIndex)"),
+    makeSchema({
+      {QStringLiteral("addonIndex"),
+       QStringLiteral("integer"),
+       QStringLiteral("Index of the extension in the addon list")}
+  }),
+    &installExtension);
+
+  registry.registerCommand(
+    QStringLiteral("extensions.uninstall"),
+    QStringLiteral("Uninstall an extension by selecting it (params: addonIndex). DESTRUCTIVE: "
+                   "removes the extension files irreversibly. Pass dryRun:true to see what "
+                   "would be removed without committing."),
+    makeSchema(
+      {
+        {QStringLiteral("addonIndex"),
+         QStringLiteral("integer"),
+         QStringLiteral("Index of the extension in the addon list")}
+  },
+      {{QStringLiteral("dryRun"),
+        QStringLiteral("boolean"),
+        QStringLiteral("If true, return what would be removed without committing.")}}),
+    &uninstallExtension);
+
+  registry.registerCommand(QStringLiteral("extensions.refresh"),
+                           QStringLiteral("Refresh extension catalogs from all repositories"),
+                           empty,
+                           &refreshRepositories);
+}
+
+/**
+ * @brief Register plugin state save/load commands.
+ */
+void API::Handlers::ExtensionHandler::registerStateCommands()
+{
+  static auto& registry = CommandRegistry::instance();
+
+  registry.registerCommand(
+    QStringLiteral("extensions.saveState"),
+    QStringLiteral("Save plugin state to the project file (params: pluginId, state)"),
+    makeSchema({
+      {QStringLiteral("pluginId"),
+       QStringLiteral("string"),
+       QStringLiteral("Unique identifier of the plugin")},
+      {   QStringLiteral("state"),
+       QStringLiteral("object"),
+       QStringLiteral("Plugin state object to persist") }
+  }),
+    &savePluginState);
+
+  registry.registerCommand(
+    QStringLiteral("extensions.loadState"),
+    QStringLiteral("Load plugin state from the project file (params: pluginId)"),
+    makeSchema({
+      {QStringLiteral("pluginId"),
+       QStringLiteral("string"),
+       QStringLiteral("Unique identifier of the plugin")}
+  }),
+    &loadPluginState);
+}
+
+#ifdef BUILD_COMMERCIAL
+/**
+ * @brief Register addon-repository management commands (Commercial).
+ */
+void API::Handlers::ExtensionHandler::registerRepositoryCommands()
+{
+  static auto& registry = CommandRegistry::instance();
+
+  registry.registerCommand(QStringLiteral("extensions.listRepositories"),
+                           QStringLiteral("List configured addon repository URLs"),
+                           emptySchema(),
+                           &listRepositories);
+
+  registry.registerCommand(QStringLiteral("extensions.addRepository"),
+                           QStringLiteral("Add a new addon repository URL (params: url)"),
+                           makeSchema({
+                             {QStringLiteral("url"),
+                              QStringLiteral("string"),
+                              QStringLiteral("URL of the addon repository")}
+  }),
+                           &addRepository);
+
+  registry.registerCommand(QStringLiteral("extensions.removeRepository"),
+                           QStringLiteral("Remove a repository by index (params: index)"),
+                           makeSchema({
+                             {QStringLiteral("index"),
+                              QStringLiteral("integer"),
+                              QStringLiteral("Index of the repository to remove")}
+  }),
+                           &removeRepository);
+}
+#endif
+
+//--------------------------------------------------------------------------------------------------
+// Command implementations
+//--------------------------------------------------------------------------------------------------
+
+/**
+ * @brief Returns the list of available extensions with install status.
+ */
+API::CommandResponse API::Handlers::ExtensionHandler::listAddons(const QString& id,
+                                                                 const QJsonObject&)
+{
+  static auto& mgr = Misc::ExtensionManager::instance();
+  QJsonArray result;
+  for (const auto& addon : mgr.extensions())
+    result.append(QJsonObject::fromVariantMap(addon.toMap()));
+
+  QJsonObject data;
+  data.insert("count", result.count());
+  data.insert("addons", result);
+  return CommandResponse::makeSuccess(id, data);
+}
+
+/**
+ * @brief Returns detailed info for a specific extension by ID.
+ */
+API::CommandResponse API::Handlers::ExtensionHandler::getAddonInfo(const QString& id,
+                                                                   const QJsonObject& params)
+{
+  const auto extensionId = params.value("extensionId").toString();
+  if (extensionId.isEmpty())
+    return CommandResponse::makeError(
+      id, QStringLiteral("INVALID_PARAMS"), "Missing extensionId parameter");
+
+  static auto& mgr = Misc::ExtensionManager::instance();
+  for (const auto& addon : mgr.extensions()) {
+    const auto map = addon.toMap();
+    if (map.value("id").toString() == extensionId) {
+      auto data = QJsonObject::fromVariantMap(map);
+      data.insert("installed", mgr.isInstalled(extensionId));
+      data.insert("updateAvailable", mgr.hasUpdate(extensionId));
+      data.insert("installedVersion", mgr.installedVersion(extensionId));
+      return CommandResponse::makeSuccess(id, data);
+    }
+  }
+
+  return CommandResponse::makeError(
+    id, QStringLiteral("NOT_FOUND"), "Extension not found: " + extensionId);
+}
+
+/**
+ * @brief Installs an extension by setting the selected index and triggering install.
+ */
+API::CommandResponse API::Handlers::ExtensionHandler::installExtension(const QString& id,
+                                                                       const QJsonObject& params)
+{
+  const int index = params.value("addonIndex").toInt(-1);
+  if (index < 0)
+    return CommandResponse::makeError(
+      id, QStringLiteral("INVALID_PARAMS"), "Missing or invalid addonIndex");
+
+  static auto& mgr = Misc::ExtensionManager::instance();
+  mgr.setSelectedIndex(index);
+  mgr.installExtension();
+  return CommandResponse::makeSuccess(id,
+                                      QJsonObject{
+                                        {"status", "installing"}
+  });
+}
+
+/**
+ * @brief Uninstalls an extension by selecting it and triggering an irreversible directory
+ *        removal. With dryRun:true, reports what would be removed without mutating; otherwise
+ *        the manager's removal result plus the post-removal install state decide the outcome.
+ */
+API::CommandResponse API::Handlers::ExtensionHandler::uninstallExtension(const QString& id,
+                                                                         const QJsonObject& params)
+{
+  const int index = params.value("addonIndex").toInt(-1);
+  if (index < 0)
+    return CommandResponse::makeError(
+      id, QStringLiteral("INVALID_PARAMS"), "Missing or invalid addonIndex");
+
+  static auto& mgr = Misc::ExtensionManager::instance();
+  mgr.setSelectedIndex(index);
+
+  const auto selected     = mgr.selectedExtension();
+  const QString addonId   = selected.value("id").toString();
+  const QString addonName = selected.value("name").toString();
+
+  if (addonId.isEmpty())
+    return CommandResponse::makeError(
+      id, QStringLiteral("NOT_FOUND"), "No extension at addonIndex: " + QString::number(index));
+
+  if (!mgr.isInstalled(addonId))
+    return CommandResponse::makeError(
+      id, QStringLiteral("NOT_FOUND"), "Extension is not installed: " + addonId);
+
+  const bool isDryRun = params.value("dryRun").toBool(false);
+  if (isDryRun)
+    return CommandResponse::makeSuccess(id,
+                                        QJsonObject{
+                                          {    "dryRun",true                                                        },
+                                          {        "id",               addonId},
+                                          {      "name",             addonName},
+                                          {"willRemove",                  true},
+                                          {   "warning",
+                                           "DRY RUN: no files were removed. Re-call "
+                                           "without dryRun:true to uninstall."}
+    });
+
+  const bool removed = mgr.uninstallExtension();
+  if (!removed || mgr.isInstalled(addonId))
+    return CommandResponse::makeError(
+      id, QStringLiteral("OPERATION_FAILED"), "Failed to uninstall extension: " + addonId);
+
+  return CommandResponse::makeSuccess(
+    id,
+    QJsonObject{
+      {         "id",   addonId},
+      {       "name", addonName},
+      {"uninstalled",      true}
+  });
+}
+
+/**
+ * @brief Returns the list of configured repository URLs.
+ */
+API::CommandResponse API::Handlers::ExtensionHandler::listRepositories(const QString& id,
+                                                                       const QJsonObject&)
+{
+  static auto& mgr = Misc::ExtensionManager::instance();
+  QJsonArray repos;
+  for (const auto& url : mgr.repositories())
+    repos.append(url);
+
+  QJsonObject data;
+  data.insert("repositories", repos);
+  return CommandResponse::makeSuccess(id, data);
+}
+
+/**
+ * @brief Adds a new repository URL.
+ */
+API::CommandResponse API::Handlers::ExtensionHandler::addRepository(const QString& id,
+                                                                    const QJsonObject& params)
+{
+  const auto url = params.value("url").toString();
+  if (url.isEmpty())
+    return CommandResponse::makeError(
+      id, QStringLiteral("INVALID_PARAMS"), "Missing url parameter");
+
+  static auto& mgr = Misc::ExtensionManager::instance();
+  mgr.addRepository(url);
+  return CommandResponse::makeSuccess(id,
+                                      QJsonObject{
+                                        {"status", "added"}
+  });
+}
+
+/**
+ * @brief Removes a repository by index.
+ */
+API::CommandResponse API::Handlers::ExtensionHandler::removeRepository(const QString& id,
+                                                                       const QJsonObject& params)
+{
+  const int index = params.value("index").toInt(-1);
+  if (index < 0)
+    return CommandResponse::makeError(
+      id, QStringLiteral("INVALID_PARAMS"), "Missing or invalid index");
+
+  static auto& mgr = Misc::ExtensionManager::instance();
+  mgr.removeRepository(index);
+  return CommandResponse::makeSuccess(id,
+                                      QJsonObject{
+                                        {"status", "removed"}
+  });
+}
+
+/**
+ * @brief Triggers a refresh of all repository catalogs.
+ */
+API::CommandResponse API::Handlers::ExtensionHandler::refreshRepositories(const QString& id,
+                                                                          const QJsonObject&)
+{
+  static auto& mgr = Misc::ExtensionManager::instance();
+  mgr.refreshRepositories();
+  return CommandResponse::makeSuccess(id,
+                                      QJsonObject{
+                                        {"status", "refreshing"}
+  });
+}
+
+//--------------------------------------------------------------------------------------------------
+// Plugin state persistence
+//--------------------------------------------------------------------------------------------------
+
+/**
+ * @brief Saves a plugin's state to the current project file.
+ */
+API::CommandResponse API::Handlers::ExtensionHandler::savePluginState(const QString& id,
+                                                                      const QJsonObject& params)
+{
+  const auto pluginId = params.value("pluginId").toString();
+  if (pluginId.isEmpty())
+    return CommandResponse::makeError(
+      id, QStringLiteral("INVALID_PARAMS"), "Missing pluginId parameter");
+
+  const auto state          = params.value("state").toObject();
+  static auto& projectModel = DataModel::ProjectModel::instance();
+  projectModel.savePluginState(pluginId, state);
+  return CommandResponse::makeSuccess(id,
+                                      QJsonObject{
+                                        {"status", "saved"}
+  });
+}
+
+/**
+ * @brief Loads a plugin's state from the current project file.
+ */
+API::CommandResponse API::Handlers::ExtensionHandler::loadPluginState(const QString& id,
+                                                                      const QJsonObject& params)
+{
+  const auto pluginId = params.value("pluginId").toString();
+  if (pluginId.isEmpty())
+    return CommandResponse::makeError(
+      id, QStringLiteral("INVALID_PARAMS"), "Missing pluginId parameter");
+
+  static auto& projectModel = DataModel::ProjectModel::instance();
+  const auto state          = projectModel.pluginState(pluginId);
+  return CommandResponse::makeSuccess(id,
+                                      QJsonObject{
+                                        {"state", state}
+  });
+}

@@ -1,0 +1,44 @@
+# Serial Studio Integration Test Dependencies
+# Python 3.8+ required
+
+# Core testing framework
+pytest>=7.4.0
+pytest-timeout>=2.1.0
+pytest-xdist>=3.3.0  # Parallel test execution
+pytest-rerunfailures>=14.0  # Retry transient connect/timeout flakes on loaded CI runners
+
+# Performance benchmarking
+pytest-benchmark>=4.0.0
+
+# Code coverage
+pytest-cov>=4.1.0
+
+# Network testing
+requests>=2.31.0
+
+# WebSocket test server for the Network driver WS client (spec 0068)
+websockets>=12.0
+
+# MQTT broker client for publisher/scripting tests
+paho-mqtt>=2.0.0
+
+# OPC UA server for the driver simulator example and its integration tests
+asyncua>=1.1.0
+
+# Data generation and validation
+faker>=19.0.0
+
+# CSV/JSON validation
+pandas>=2.0.0
+jsonschema>=4.19.0
+
+# Audio-pipeline round-trip analysis (WAV reconstruction, correlation/SNR scoring)
+numpy>=1.24.0
+
+# Performance monitoring
+psutil>=5.9.0
+memory-profiler>=0.61.0
+
+# Static-analysis backend for scripts/code-format.py (semantic Qt/C++ rules)
+tree-sitter>=0.23,<0.25
+tree-sitter-cpp>=0.23,<0.24

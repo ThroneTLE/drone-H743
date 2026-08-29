@@ -1,0 +1,208 @@
+{
+  "context": "dashboard",
+  "window": "main",
+  "commands": [
+    {
+      "id": "dashboard.autoLayout",
+      "title": "Auto Layout",
+      "icon": "commands/auto-layout",
+      "kind": "toggle",
+      "contexts": [
+        "dashboard"
+      ],
+      "shortcut": "Ctrl+Shift+L",
+      "shortcutWindows": [
+        "main"
+      ],
+      "order": 1,
+      "category": "view"
+    },
+    {
+      "id": "dashboard.console",
+      "title": "Console",
+      "icon": "commands/console",
+      "kind": "toggle",
+      "contexts": [
+        "dashboard"
+      ],
+      "order": 4,
+      "category": "view"
+    },
+    {
+      "id": "dashboard.notifications",
+      "title": "Notifications",
+      "icon": "widgets/notification-log",
+      "kind": "toggle",
+      "contexts": [
+        "dashboard"
+      ],
+      "pro": true,
+      "order": 5,
+      "category": "view"
+    },
+    {
+      "id": "dashboard.clock",
+      "title": "Clock",
+      "icon": "widgets/clock",
+      "kind": "toggle",
+      "contexts": [
+        "dashboard"
+      ],
+      "order": 6,
+      "category": "view"
+    },
+    {
+      "id": "dashboard.stopwatch",
+      "title": "Stopwatch",
+      "icon": "widgets/stopwatch",
+      "kind": "toggle",
+      "contexts": [
+        "dashboard"
+      ],
+      "order": 7,
+      "category": "view"
+    },
+    {
+      "id": "dashboard.freeze",
+      "title": "Freeze Dashboard",
+      "icon": "commands/freeze",
+      "kind": "toggle",
+      "contexts": [
+        "dashboard"
+      ],
+      "shortcut": "Ctrl+Shift+F",
+      "shortcutWindows": [
+        "main"
+      ],
+      "category": "view"
+    },
+    {
+      "id": "dashboard.reset",
+      "title": "Reset",
+      "icon": "commands/reset",
+      "kind": "action",
+      "contexts": [
+        "dashboard"
+      ],
+      "category": "connection"
+    },
+    {
+      "id": "io.pause",
+      "title": "Pause",
+      "titleChecked": "Resume",
+      "icon": "commands/pause",
+      "iconChecked": "commands/resume",
+      "kind": "toggle",
+      "contexts": [
+        "dashboard"
+      ],
+      "category": "connection"
+    },
+    {
+      "id": "io.disconnect",
+      "title": "Disconnect",
+      "icon": "commands/disconnect",
+      "kind": "action",
+      "contexts": [
+        "dashboard"
+      ],
+      "category": "connection"
+    },
+    {
+      "id": "export.csv",
+      "title": "CSV File",
+      "icon": "commands/csv-log",
+      "kind": "toggle",
+      "contexts": [
+        "dashboard"
+      ],
+      "category": "export"
+    },
+    {
+      "id": "export.mdf4",
+      "title": "MDF4 File",
+      "icon": "commands/mf4-log",
+      "kind": "toggle",
+      "contexts": [
+        "dashboard"
+      ],
+      "category": "export"
+    },
+    {
+      "id": "export.console",
+      "title": "Console Transcript",
+      "icon": "commands/console-log",
+      "kind": "toggle",
+      "contexts": [
+        "dashboard"
+      ],
+      "category": "export"
+    },
+    {
+      "id": "export.database",
+      "title": "Historian",
+      "icon": "commands/database-export",
+      "kind": "toggle",
+      "contexts": [
+        "dashboard"
+      ],
+      "pro": true,
+      "category": "export"
+    },
+    {
+      "id": "console.echo",
+      "title": "Console Echo",
+      "icon": "console/plain-text",
+      "tooltip": "Echo transmitted data in the console",
+      "kind": "toggle",
+      "category": "console",
+      "contexts": [
+        "dashboard"
+      ]
+    },
+    {
+      "id": "console.timestamp",
+      "title": "Console Timestamps",
+      "icon": "console/settings",
+      "tooltip": "Show timestamps in the console",
+      "kind": "toggle",
+      "category": "console",
+      "contexts": [
+        "dashboard"
+      ]
+    },
+    {
+      "id": "console.clear",
+      "title": "Clear Console",
+      "icon": "console/clear",
+      "tooltip": "Clear the console output",
+      "kind": "action",
+      "category": "console",
+      "contexts": [
+        "dashboard"
+      ]
+    },
+    {
+      "id": "console.hex",
+      "title": "Hex Display",
+      "icon": "console/hexadecimal",
+      "tooltip": "Toggle hexadecimal console display",
+      "kind": "toggle",
+      "category": "console",
+      "contexts": [
+        "dashboard"
+      ]
+    },
+    {
+      "id": "console.collapseDuplicates",
+      "title": "Collapse Duplicates",
+      "icon": "console/collapse-duplicates",
+      "tooltip": "Collapse repeated console lines",
+      "kind": "toggle",
+      "category": "console",
+      "contexts": [
+        "dashboard"
+      ]
+    }
+  ]
+}

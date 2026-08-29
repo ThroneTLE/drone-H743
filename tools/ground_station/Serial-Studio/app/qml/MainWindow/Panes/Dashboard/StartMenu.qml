@@ -1,0 +1,840 @@
+/*
+ * Serial Studio
+ * https://serial-studio.com/
+ *
+ * Copyright (C) 2020-2025 Alex Spataru
+ *
+ * This file is dual-licensed:
+ *
+ * - Under the GNU GPLv3 (or later) for builds that exclude Pro modules.
+ * - Under the Serial Studio Commercial License for builds that include
+ *   any Pro functionality.
+ *
+ * You must comply with the terms of one of these licenses, depending
+ * on your use case.
+ *
+ * For GPL terms, see <https://www.gnu.org/licenses/gpl-3.0.html>
+ * For commercial terms, see LICENSES/LicenseRef-SerialStudio-Commercial.txt.
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later OR LicenseRef-SerialStudio-Commercial
+ */
+
+import QtCore
+import QtQuick
+import QtQuick.Layouts
+import QtQuick.Controls
+
+import SerialStudio.UI as SS_Ui
+
+import "../../../Widgets" as Widgets
+import "../../../Commands" as Commands
+
+Popup {
+  id: root
+
+  modal: true
+  focus: true
+  width: _layout.implicitWidth + gradientWidth + 32
+  closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+  height: Math.max(gradientHeight, _layout.implicitHeight + 16)
+
+  Component.onCompleted: {
+    contentItem.LayoutMirroring.enabled = Qt.binding(() => Cpp_Misc_Translator.rtl)
+    contentItem.LayoutMirroring.childrenInherit = true
+  }
+
+  enter: Transition {
+    NumberAnimation {
+      duration: 200
+      from: 0; to: 1
+      property: "opacity"
+      easing.type: Easing.OutCubic
+    }
+  }
+
+  exit: Transition {
+    NumberAnimation {
+      duration: 120
+      from: 1; to: 0
+      property: "opacity"
+      easing.type: Easing.InCubic
+    }
+  }
+
+  //
+  // Required data inputs
+  //
+  required property SS_Ui.TaskBar taskBar
+
+  //
+  // Custom properties
+  //
+  property var hostWindow: null
+  property bool isExternalWindow: false
+  readonly property real gradientWidth: _versionLabel.implicitHeight + 16
+  readonly property real gradientHeight: _versionLabel.implicitWidth + 32
+
+  //
+  // Save settings
+  //
+  Settings {
+    property alias autoLayout: _autoLayoutBt.checked
+    category: "WindowManagement" + app.settingsSuffix
+  }
+
+  //
+  // Signals
+  //
+  signal externalWindowClicked()
+  signal fullScreenRequested()
+  signal newWorkspaceRequested()
+  signal renameWorkspaceRequested(int workspaceId, string currentName)
+
+  //
+  // Behavior bindings and registry-backed command model shared with the command palette.
+  //
+  Commands.DashboardCommandBindings {
+    id: _menuBindings
+
+    taskBar: root.taskBar
+    hostWindow: root.hostWindow
+    onFullScreenRequested: root.fullScreenRequested()
+    onExternalWindowRequested: root.externalWindowClicked()
+  }
+
+  Commands.CommandModel {
+    id: _menuModel
+
+    context: "dashboard"
+    bindingSets: [_menuBindings]
+  }
+
+  //
+  // Returns visible commands matching `filter`; forwarded to the command palette.
+  //
+  function searchableItems(filter) {
+    return _menuModel.items(filter)
+  }
+
+  //
+  // Start-menu layout tree, re-pulled when the registry retranslates.
+  //
+  readonly property var menuLayout: {
+    void _menuModel.revision
+    var tree = Cpp_UI_CommandRegistry.layout("start-menu")
+    return tree.items !== undefined ? tree.items : []
+  }
+
+  //
+  // Looks up a start-menu submenu node ("export"/"tools") by name; null when absent.
+  //
+  function submenuNode(name) {
+    for (var i = 0; i < root.menuLayout.length; ++i) {
+      if (root.menuLayout[i].type === "submenu" && root.menuLayout[i].name === name)
+        return root.menuLayout[i]
+    }
+
+    return null
+  }
+
+  //
+  // True when at least one child command node resolves to a visible entry.
+  //
+  function anyChildVisible(children) {
+    for (var i = 0; i < children.length; ++i) {
+      var entry = _menuModel.entryFor(children[i].id)
+      if (entry !== null && entry.visible)
+        return true
+    }
+
+    return false
+  }
+
+  //
+  // True when at least one child command node is a toggle (reserves the checkmark column).
+  //
+  function anyChildToggle(children) {
+    for (var i = 0; i < children.length; ++i) {
+      if (children[i].kind === "toggle")
+        return true
+    }
+
+    return false
+  }
+
+  //
+  // Custom components
+  //
+  Component {
+    id: _subMenuComponent
+
+    Widgets.SubMenuCombo {}
+  }
+
+  //
+  // Renders one action/toggle command as a start-menu button; closes the menu unless told not to.
+  //
+  component StartMenuCommand: Widgets.MenuButton {
+    id: _command
+
+    expandable: false
+    Layout.fillWidth: true
+    text: entry !== null ? entry.name : ""
+    checked: entry !== null && entry.checked
+    enabled: entry === null || entry.enabled
+    visible: entry !== null && entry.visible
+    icon.source: entry !== null ? Cpp_Misc_IconRegistry.iconById(entry.iconId, 32) : ""
+
+    property bool closesMenu: true
+    required property string commandId
+    readonly property var entry: {
+      void _menuModel.revision
+      return _menuModel.entryFor(commandId)
+    }
+
+    onClicked: {
+      if (_command.closesMenu)
+        root.close()
+
+      if (entry !== null)
+        entry.run()
+    }
+  }
+
+  //
+  // Renders a checkable command entry; the click flips state directly and never closes.
+  //
+  component StartMenuToggle: Widgets.MenuButton {
+    id: _toggle
+
+    checkable: true
+    expandable: false
+    Layout.fillWidth: true
+    text: entry !== null ? entry.name : ""
+    checked: entry !== null && entry.checked
+    enabled: entry === null || entry.enabled
+    visible: entry !== null && entry.visible
+    icon.source: entry !== null ? Cpp_Misc_IconRegistry.iconById(entry.iconId, 32) : ""
+
+    required property string commandId
+    readonly property var entry: {
+      void _menuModel.revision
+      return _menuModel.entryFor(commandId)
+    }
+
+    //
+    // run() can refuse the toggle (e.g. freeze without a license shows a dialog instead); the
+    // deferred resync pulls the checkmark back to the real backing state in that case.
+    //
+    function resync() {
+      const e = _menuModel.entryFor(commandId)
+      if (e !== null && _toggle.checked !== e.checked)
+        _toggle.checked = e.checked
+    }
+
+    onCheckedChanged: {
+      if (entry !== null && checked !== entry.checked) {
+        entry.run()
+        Qt.callLater(_toggle.resync)
+      }
+    }
+
+    onEntryChanged: {
+      if (entry !== null && checked !== entry.checked)
+        checked = entry.checked
+    }
+  }
+
+  //
+  // Custom overlay that does not dim everything else
+  //
+  Overlay.modal: Rectangle {
+    color: "transparent"
+  }
+
+  background: Rectangle {
+    id: _bg
+
+    border.width: 1
+    color: Cpp_ThemeManager.colors["start_menu_background"]
+    border.color: Cpp_ThemeManager.colors["start_menu_border"]
+
+    Rectangle {
+      anchors {
+        top: _bg.top
+        left: _bg.left
+        bottom: _bg.bottom
+      }
+
+      width: root.gradientWidth
+      border.width: _bg.border.width
+      border.color: _bg.border.color
+
+      gradient: Gradient {
+        GradientStop {
+          position: 0
+          color: Cpp_ThemeManager.colors["start_menu_gradient_top"]
+        }
+
+        GradientStop {
+          position: 1
+          color: Cpp_ThemeManager.colors["start_menu_gradient_bottom"]
+        }
+      }
+
+      Label {
+        id: _versionLabel
+
+        anchors {
+          bottom: parent.bottom
+          bottomMargin: implicitWidth / 2
+          horizontalCenter: parent.horizontalCenter
+        }
+
+        rotation: -90
+        font: Cpp_Misc_CommonFonts.customUiFont(1.4, true)
+        text: Application.displayName + " " + Cpp_AppVersion
+        color: Cpp_ThemeManager.colors["start_menu_version_text"]
+      }
+    }
+  }
+
+  ColumnLayout {
+    id: _layout
+
+    anchors {
+      margins: 4
+      fill: parent
+      leftMargin: root.gradientWidth + 4
+    }
+
+    spacing: 4
+
+    Widgets.MenuButton {
+      id: _groups
+
+      expandable: true
+      Layout.fillWidth: true
+      text: qsTr("Workspaces")
+      icon.source: Cpp_Misc_IconRegistry.iconById("commands/workspaces", 32)
+
+      property var popup: null
+      function showMenu() {
+        // Submenu is reparented to the Start menu's parent so the CSD shadow doesn't shift it.
+        if (_groups.popup === null) {
+          _groups.popup = _subMenuComponent.createObject(root)
+          _groups.popup.parent = root.parent
+          popup.valueSelected.connect((value) => {
+            if (value === "__new_workspace__") {
+              if (_groups.popup)
+                _groups.popup.close()
+
+              root.close()
+              root.newWorkspaceRequested()
+            } else if (value === "__show_all_hidden__") {
+              if (_groups.popup)
+                _groups.popup.close()
+
+              Cpp_JSON_ProjectModel.showAllHiddenGroups()
+            } else if (typeof value === "string" && value.startsWith("__show_hidden_")) {
+              if (_groups.popup)
+                _groups.popup.close()
+
+              const gid = parseInt(value.substring("__show_hidden_".length))
+              if (!isNaN(gid))
+                Cpp_JSON_ProjectModel.showGroup(gid)
+            } else {
+              taskBar.activeGroupId = value
+              root.close()
+            }
+          })
+
+          popup.valueRightClicked.connect((value, text, gx, gy) => {
+            // Suppress edit/hide/delete context menu in operator runtime mode
+            var runtimeMode = (typeof CLI_RUNTIME_MODE !== "undefined" && CLI_RUNTIME_MODE === true)
+            if (value >= 0 && !runtimeMode) {
+              wsContextId = value
+              wsContextName = text
+              _wsContextMenu.popup()
+            }
+          })
+        }
+
+        //
+        // Workspace model + separator + "New Workspace..." (hidden in operator runtime mode)
+        //
+        var model = []
+        var roots = taskBar.workspaceTree()
+        for (var r = 0; r < roots.length; ++r) {
+          var node = roots[r]
+          if (node.isFolder) {
+            model.push({ "folder": true, "separator": false, "children": node.children,
+                         "id": node.id, "text": node.text, "icon": node.icon })
+          } else {
+            var entry = { "id": node.id, "separator": false,
+                          "text": node.text, "icon": node.icon }
+            if (node.id === taskBar.activeGroupId)
+              entry["checked"] = true
+
+            model.push(entry)
+          }
+        }
+
+        var runtimeMode = (typeof CLI_RUNTIME_MODE !== "undefined" && CLI_RUNTIME_MODE === true)
+        var hiddenGroups = Cpp_JSON_ProjectModel.hiddenGroupsSummary()
+        if (!runtimeMode && hiddenGroups.length > 0) {
+          model.push({"id": "__hidden_separator__", "text": "",
+                       "icon": "", "separator": true})
+          for (var h = 0; h < hiddenGroups.length; ++h) {
+            const hg = hiddenGroups[h]
+            model.push({"id": "__show_hidden_" + hg.id,
+                         "separator": false,
+                         "text": qsTr("Show \"%1\"").arg(hg.title),
+                         "icon": Cpp_Misc_IconRegistry.iconById("commands/workspaces", 32)})
+          }
+          if (hiddenGroups.length > 1) {
+            model.push({"id": "__show_all_hidden__", "separator": false,
+                         "text": qsTr("Show All Hidden Workspaces"),
+                         "icon": Cpp_Misc_IconRegistry.iconById("commands/workspaces", 32)})
+          }
+        }
+
+        if (!runtimeMode) {
+          model.push({"id": "__separator__", "text": "",
+                       "icon": "", "separator": true})
+          model.push({"id": "__new_workspace__", "separator": false,
+                       "text": qsTr("New Workspace…"),
+                       "icon": Cpp_Misc_IconRegistry.iconById("commands/add-workspace", 32)})
+        }
+
+        //
+        // Update popup state
+        //
+        _groups.popup.y = root.y
+        _groups.popup.showCheckable = true
+        _groups.popup.maximumHeight = root.height
+        _groups.popup.x = Cpp_Misc_Translator.rtl
+                          ? root.x - _groups.popup.width + 1
+                          : root.x + root.width - 1
+        _groups.popup.currentValue = taskBar.activeGroupId
+        _groups.popup.placeholderText = qsTr("No Workspaces Available")
+        _groups.popup.setRootModel(model)
+
+        //
+        // Open the popup
+        //
+        _groups.popup.open()
+
+        //
+        // Close other menus
+        //
+        if (_actions.popup)
+          _actions.popup.close()
+
+        if (_plugins.popup)
+          _plugins.popup.close()
+
+        if (_export.popup)
+          _export.popup.close()
+
+        if (_tools.popup)
+          _tools.popup.close()
+      }
+
+      onClicked: _groups.showMenu()
+      onContainsMouseChanged: {
+        if (containsMouse)
+          _groups.showMenu()
+      }
+    }
+
+    Widgets.MenuButton {
+      id: _actions
+
+      expandable: true
+      text: qsTr("Actions")
+      Layout.fillWidth: true
+      visible: Cpp_UI_Dashboard.actions.length > 0
+      icon.source: Cpp_Misc_IconRegistry.iconById("commands/actions", 32)
+
+      property var popup: null
+      function showMenu() {
+        if (_actions.popup === null) {
+          _actions.popup = _subMenuComponent.createObject(root)
+          _actions.popup.parent = root.parent
+          popup.valueSelected.connect((value) => {
+                                        Cpp_UI_Dashboard.activateAction(value, true)
+                                        root.close()
+                                      })
+        }
+
+        // Update popup state
+        _actions.popup.maximumHeight = root.height
+        _actions.popup.model = Cpp_UI_Dashboard.actions
+        _actions.popup.x = Cpp_Misc_Translator.rtl
+                           ? root.x - _actions.popup.width + 1
+                           : root.x + root.width - 1
+        _actions.popup.y = _actions.y + _layout.y + root.y + 4
+        _actions.popup.placeholderText = qsTr("No Actions Available")
+
+        // Open the popup
+        _actions.popup.open()
+
+        // Close other menus
+        if (_groups.popup)
+          _groups.popup.close()
+
+        if (_plugins.popup)
+          _plugins.popup.close()
+
+        if (_export.popup)
+          _export.popup.close()
+
+        if (_tools.popup)
+          _tools.popup.close()
+      }
+
+      onClicked: _actions.showMenu()
+      onContainsMouseChanged: {
+        if (containsMouse)
+          _actions.showMenu()
+      }
+    }
+
+    Widgets.MenuButton {
+      id: _plugins
+
+      expandable: true
+      text: qsTr("Plugins")
+      Layout.fillWidth: true
+      visible: Cpp_ExtensionManager.installedPlugins.length > 0
+      icon.source: Cpp_Misc_IconRegistry.iconById("commands/extensions", 48)
+
+      property var popup: null
+      function showMenu() {
+        if (_plugins.popup === null) {
+          _plugins.popup = _subMenuComponent.createObject(root)
+          _plugins.popup.parent = root.parent
+          _plugins.popup.textRole = "title"
+          _plugins.popup.valueRole = "id"
+          _plugins.popup.iconRole = "icon"
+          popup.valueSelected.connect((value) => {
+                                        if (value === "__manage_plugins__") {
+                                          Cpp_ExtensionManager.setFilterType("plugin")
+                                          app.showExtensionManager()
+                                        } else {
+                                          Cpp_ExtensionManager.launchPlugin(value)
+                                        }
+
+                                        root.close()
+                                      })
+        }
+
+        //
+        // Build model: plugins + separator + "Manage Plugins..."
+        //
+        var items = []
+        var plugins = Cpp_ExtensionManager.installedPlugins
+        for (var i = 0; i < plugins.length; ++i)
+          items.push(plugins[i])
+
+        if (plugins.length > 0)
+          items.push({"id": "__separator__", "title": "", "icon": ""})
+
+        items.push({
+                     "id": "__manage_plugins__",
+                     "title": qsTr("Manage Plugins…"),
+                     "icon": Cpp_Misc_IconRegistry.iconById("commands/extensions", 48)
+                   })
+
+        _plugins.popup.model = items
+        _plugins.popup.maximumHeight = root.height
+        _plugins.popup.x = Cpp_Misc_Translator.rtl
+                           ? root.x - _plugins.popup.width + 1
+                           : root.x + root.width - 1
+        _plugins.popup.y = _plugins.y + _layout.y + root.y + 4
+        _plugins.popup.placeholderText = qsTr("No Plugins Installed")
+        _plugins.popup.open()
+
+        if (_groups.popup)
+          _groups.popup.close()
+
+        if (_actions.popup)
+          _actions.popup.close()
+
+        if (_export.popup)
+          _export.popup.close()
+
+        if (_tools.popup)
+          _tools.popup.close()
+      }
+
+      onClicked: _plugins.showMenu()
+      onContainsMouseChanged: {
+        if (containsMouse)
+          _plugins.showMenu()
+      }
+    }
+
+    Rectangle {
+      opacity: 0.5
+      implicitHeight: 1
+      Layout.fillWidth: true
+      color: Cpp_ThemeManager.colors["start_menu_text"]
+    }
+
+    StartMenuToggle {
+      id: _autoLayoutBt
+
+      commandId: "dashboard.autoLayout"
+    }
+
+    StartMenuToggle {
+      id: _freezeBt
+
+      commandId: "dashboard.freeze"
+    }
+
+    Rectangle {
+      opacity: 0.5
+      implicitHeight: 1
+      Layout.fillWidth: true
+      color: Cpp_ThemeManager.colors["start_menu_text"]
+      visible: _autoLayoutBt.visible || _freezeBt.visible
+    }
+
+    StartMenuCommand {
+      commandId: "app.fullScreen"
+    }
+
+    StartMenuCommand {
+      commandId: "window.external"
+    }
+
+    Rectangle {
+      opacity: 0.5
+      implicitHeight: 1
+      Layout.fillWidth: true
+      color: Cpp_ThemeManager.colors["start_menu_text"]
+      visible: !(typeof CLI_RUNTIME_MODE !== "undefined" && CLI_RUNTIME_MODE === true)
+    }
+
+    Widgets.MenuButton {
+      id: _export
+
+      expandable: true
+      text: node !== null ? node.title : ""
+      Layout.fillWidth: true
+      visible: root.anyChildVisible(childItems)
+      icon.source: node !== null ? Cpp_Misc_IconRegistry.iconById(node.icon, 32) : ""
+
+      readonly property var node: root.submenuNode("export")
+      readonly property var childItems: node !== null ? node.items : []
+
+      property var popup: null
+      function showMenu() {
+        if (_export.popup === null) {
+          _export.popup = _subMenuComponent.createObject(root)
+          _export.popup.parent = root.parent
+          _export.popup.valueSelected.connect((value) => {
+            var entry = _menuModel.entryFor(value)
+            if (entry !== null)
+              entry.run()
+          })
+        }
+
+        // Build model from the registry's child command entries
+        var model = []
+        for (var i = 0; i < _export.childItems.length; ++i) {
+          var entry = _menuModel.entryFor(_export.childItems[i].id)
+          if (entry === null || !entry.visible)
+            continue
+
+          model.push({
+            "id": entry.id,
+            "text": entry.name,
+            "icon": Cpp_Misc_IconRegistry.iconById(entry.iconId, 32),
+            "checked": entry.checked
+          })
+        }
+
+        // Update popup state
+        _export.popup.model = model
+        _export.popup.showCheckable = root.anyChildToggle(_export.childItems)
+        _export.popup.maximumHeight = root.height
+        _export.popup.x = Cpp_Misc_Translator.rtl
+                          ? root.x - _export.popup.width + 1
+                          : root.x + root.width - 1
+        _export.popup.y = _export.y + _layout.y + root.y + 4
+        _export.popup.placeholderText = qsTr("No Export Formats Available")
+
+        // Open the popup
+        _export.popup.open()
+
+        // Close other menus
+        if (_groups.popup)
+          _groups.popup.close()
+
+        if (_actions.popup)
+          _actions.popup.close()
+
+        if (_plugins.popup)
+          _plugins.popup.close()
+
+        if (_tools.popup)
+          _tools.popup.close()
+      }
+
+      onClicked: _export.showMenu()
+      onContainsMouseChanged: {
+        if (containsMouse)
+          _export.showMenu()
+      }
+    }
+
+    Widgets.MenuButton {
+      id: _tools
+
+      expandable: true
+      text: node !== null ? node.title : ""
+      Layout.fillWidth: true
+      visible: root.anyChildVisible(childItems)
+      icon.source: node !== null ? Cpp_Misc_IconRegistry.iconById(node.icon, 32) : ""
+
+      readonly property var node: root.submenuNode("tools")
+      readonly property var childItems: node !== null ? node.items : []
+
+      property var popup: null
+      function showMenu() {
+        if (_tools.popup === null) {
+          _tools.popup = _subMenuComponent.createObject(root)
+          _tools.popup.parent = root.parent
+          _tools.popup.valueSelected.connect((value) => {
+            var entry = _menuModel.entryFor(value)
+            if (entry !== null) {
+              root.close()
+              entry.run()
+            }
+          })
+        }
+
+        // Build model from the registry's child command entries
+        var model = []
+        for (var i = 0; i < _tools.childItems.length; ++i) {
+          var entry = _menuModel.entryFor(_tools.childItems[i].id)
+          if (entry === null || !entry.visible)
+            continue
+
+          model.push({
+            "id": entry.id,
+            "text": entry.name,
+            "icon": Cpp_Misc_IconRegistry.iconById(entry.iconId, 32),
+            "checked": entry.checked
+          })
+        }
+
+        // Update popup state
+        _tools.popup.model = model
+        _tools.popup.showCheckable = root.anyChildToggle(_tools.childItems)
+        _tools.popup.maximumHeight = root.height
+        _tools.popup.x = Cpp_Misc_Translator.rtl
+                         ? root.x - _tools.popup.width + 1
+                         : root.x + root.width - 1
+        _tools.popup.y = _tools.y + _layout.y + root.y + 4
+        _tools.popup.placeholderText = qsTr("No Tools Available")
+
+        // Open the popup
+        _tools.popup.open()
+
+        // Close other menus
+        if (_groups.popup)
+          _groups.popup.close()
+
+        if (_actions.popup)
+          _actions.popup.close()
+
+        if (_plugins.popup)
+          _plugins.popup.close()
+
+        if (_export.popup)
+          _export.popup.close()
+      }
+
+      onClicked: _tools.showMenu()
+      onContainsMouseChanged: {
+        if (containsMouse)
+          _tools.showMenu()
+      }
+    }
+
+    Rectangle {
+      opacity: 0.5
+      implicitHeight: 1
+      Layout.fillWidth: true
+      color: Cpp_ThemeManager.colors["start_menu_text"]
+    }
+
+    StartMenuCommand {
+      commandId: "app.helpCenter"
+    }
+
+    Rectangle {
+      opacity: 0.5
+      implicitHeight: 1
+      Layout.fillWidth: true
+      color: Cpp_ThemeManager.colors["start_menu_text"]
+    }
+
+    StartMenuCommand {
+      closesMenu: false
+      commandId: "io.pause"
+    }
+
+    StartMenuCommand {
+      commandId: "dashboard.reset"
+    }
+
+    StartMenuCommand {
+      commandId: "io.disconnect"
+    }
+
+    StartMenuCommand {
+      commandId: "app.quit"
+    }
+  }
+
+  //
+  // Workspace context menu state
+  //
+  property int wsContextId: -1
+  property string wsContextName: ""
+
+  //
+  // Right-click context menu for workspaces
+  //
+  Menu {
+    id: _wsContextMenu
+
+    MenuItem {
+      text: qsTr("Edit…")
+      visible: root.wsContextId >= 1000
+      height: visible ? implicitHeight : 0
+      onTriggered: {
+        root.close()
+        root.renameWorkspaceRequested(root.wsContextId,
+                                      root.wsContextName)
+      }
+    }
+
+    MenuItem {
+      text: root.wsContextId >= 1000 ? qsTr("Delete")
+                                      : qsTr("Hide")
+      onTriggered: {
+        taskBar.deleteWorkspace(root.wsContextId)
+        if (_groups.popup)
+          _groups.popup.close()
+      }
+    }
+  }
+
+}

@@ -1,0 +1,326 @@
+{
+  "surface": "project-toolbar",
+  "sections": [
+    {
+      "type": "section",
+      "items": [
+        {
+          "type": "command",
+          "id": "editor.new",
+          "title": "New"
+        },
+        {
+          "type": "grid",
+          "rows": 3,
+          "itemHints": {
+            "iconSize": 16,
+            "horizontalLayout": true
+          },
+          "items": [
+            {
+              "type": "command",
+              "id": "editor.open",
+              "title": "Open"
+            },
+            {
+              "type": "command",
+              "id": "editor.save",
+              "title": "Save"
+            },
+            {
+              "type": "command",
+              "id": "editor.saveAs",
+              "title": "Save As"
+            }
+          ]
+        },
+        {
+          "type": "grid",
+          "rows": 3,
+          "itemHints": {
+            "iconSize": 16,
+            "horizontalLayout": true
+          },
+          "items": [
+            {
+              "type": "command",
+              "id": "editor.undo",
+              "title": "Undo"
+            },
+            {
+              "type": "command",
+              "id": "editor.redo",
+              "title": "Redo"
+            },
+            {
+              "type": "command",
+              "id": "editor.restoreBackup",
+              "title": "Restore"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "section",
+      "items": [
+        {
+          "type": "command",
+          "id": "editor.lock",
+          "title": "Lock"
+        }
+      ]
+    },
+    {
+      "type": "section",
+      "collapsible": false,
+      "collapsePriority": 40,
+      "collapsedCommands": [
+        "editor.importProto"
+      ],
+      "items": [
+        {
+          "type": "command",
+          "id": "editor.importProto",
+          "title": "Protobuf"
+        }
+      ]
+    },
+    {
+      "type": "section",
+      "pro": true,
+      "items": [
+        {
+          "type": "command",
+          "id": "editor.addDevice"
+        }
+      ]
+    },
+    {
+      "type": "section",
+      "collapsedIcon": "editor/add-output-panel",
+      "collapsedTitle": "Output",
+      "collapsible": true,
+      "collapsePriority": 10,
+      "collapsedCommands": [
+        "editor.addOutputPanel"
+      ],
+      "items": [
+        {
+          "type": "command",
+          "id": "editor.addOutputPanel",
+          "title": "Output"
+        },
+        {
+          "type": "command",
+          "id": "editor.addAction",
+          "title": "Action"
+        },
+        {
+          "type": "grid",
+          "rows": 3,
+          "itemHints": {
+            "iconSize": 16,
+            "horizontalLayout": true
+          },
+          "items": [
+            {
+              "type": "command",
+              "id": "editor.addOutputSlider",
+              "title": "Slider"
+            },
+            {
+              "type": "command",
+              "id": "editor.addOutputToggle",
+              "title": "Toggle"
+            },
+            {
+              "type": "command",
+              "id": "editor.addOutputKnob",
+              "title": "Knob"
+            },
+            {
+              "type": "command",
+              "id": "editor.addOutputTextField",
+              "title": "Text Field"
+            },
+            {
+              "type": "command",
+              "id": "editor.addOutputButton",
+              "title": "Button"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "section",
+      "collapsedIcon": "editor/add-dataset",
+      "collapsedTitle": "Dataset",
+      "collapsible": true,
+      "collapsePriority": 20,
+      "collapsedCommands": [
+        "editor.addDataset"
+      ],
+      "items": [
+        {
+          "type": "command",
+          "id": "editor.addDataset",
+          "title": "Dataset"
+        },
+        {
+          "type": "grid",
+          "rows": 3,
+          "itemHints": {
+            "iconSize": 16,
+            "horizontalLayout": true
+          },
+          "items": [
+            {
+              "type": "command",
+              "id": "editor.addPlot",
+              "title": "Plot"
+            },
+            {
+              "type": "command",
+              "id": "editor.addFFT",
+              "title": "FFT Plot"
+            },
+            {
+              "type": "command",
+              "id": "editor.addGauge",
+              "title": "Gauge"
+            },
+            {
+              "type": "command",
+              "id": "editor.addBar",
+              "title": "Level Indicator"
+            },
+            {
+              "type": "command",
+              "id": "editor.addCompass",
+              "title": "Compass"
+            },
+            {
+              "type": "command",
+              "id": "editor.addLED",
+              "title": "LED Indicator"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "section",
+      "collapsedIcon": "editor/add-group",
+      "collapsedTitle": "Group",
+      "collapsible": true,
+      "collapsePriority": 30,
+      "collapsedCommands": [
+        "editor.addGroup"
+      ],
+      "items": [
+        {
+          "type": "command",
+          "id": "editor.addGroup",
+          "title": "Group"
+        },
+        {
+          "type": "grid",
+          "rows": 3,
+          "itemHints": {
+            "iconSize": 16,
+            "horizontalLayout": true
+          },
+          "items": [
+            {
+              "type": "command",
+              "id": "editor.addImageView",
+              "title": "Image"
+            },
+            {
+              "type": "command",
+              "id": "editor.addWebView",
+              "title": "Web View"
+            },
+            {
+              "type": "command",
+              "id": "editor.addPainter",
+              "title": "Canvas"
+            },
+            {
+              "type": "command",
+              "id": "editor.addDataGrid",
+              "title": "Table"
+            },
+            {
+              "type": "command",
+              "id": "editor.addBarPanel",
+              "title": "Bar Panel"
+            },
+            {
+              "type": "command",
+              "id": "editor.addMultiPlot",
+              "title": "Multi-Plot"
+            },
+            {
+              "type": "command",
+              "id": "editor.addPlot3D",
+              "title": "3D Plot"
+            },
+            {
+              "type": "command",
+              "id": "editor.addAccelerometer",
+              "title": "Accelerometer"
+            },
+            {
+              "type": "command",
+              "id": "editor.addGyroscope",
+              "title": "Gyroscope"
+            },
+            {
+              "type": "command",
+              "id": "editor.addGPS",
+              "title": "GPS Map"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "section",
+      "collapsible": false,
+      "showSeparator": false,
+      "items": [
+        {
+          "type": "grid",
+          "rows": 3,
+          "itemHints": {
+            "iconSize": 16,
+            "horizontalLayout": true
+          },
+          "items": [
+            {
+              "type": "command",
+              "id": "app.ai",
+              "pro": true,
+              "title": "Assistant",
+              "icon": "editor/ai",
+              "tooltip": "Open the Assistant"
+            },
+            {
+              "type": "command",
+              "id": "editor.helpCenter",
+              "title": "Help Center"
+            },
+            {
+              "type": "command",
+              "id": "app.problems",
+              "title": "Problem Center"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

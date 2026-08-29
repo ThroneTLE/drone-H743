@@ -1,0 +1,30 @@
+[
+  {
+    "file": "home_assistant",
+    "name": "Home Assistant Discovery + State",
+    "translations": {
+      "en_US": "Home Assistant Discovery + State"
+    }
+  },
+  {
+    "file": "influxdb",
+    "name": "InfluxDB Line Protocol",
+    "translations": {
+      "en_US": "InfluxDB Line Protocol"
+    }
+  },
+  {
+    "file": "sparkplug_b",
+    "name": "Sparkplug B (NDATA)",
+    "translations": {
+      "en_US": "Sparkplug B (NDATA)"
+    }
+  },
+  {
+    "file": "aws_iot",
+    "name": "AWS IoT / Azure IoT Shadow",
+    "translations": {
+      "en_US": "AWS IoT / Azure IoT Shadow"
+    }
+  }
+]

@@ -1,0 +1,61 @@
+/*
+ * Serial Studio
+ * https://serial-studio.com/
+ *
+ * Copyright (C) 2020–2025 Alex Spataru
+ *
+ * This file is dual-licensed:
+ *
+ * - Under the GNU GPLv3 (or later) for builds that exclude Pro modules.
+ * - Under the Serial Studio Commercial License for builds that include
+ *   any Pro functionality.
+ *
+ * You must comply with the terms of one of these licenses, depending
+ * on your use case.
+ *
+ * For GPL terms, see <https://www.gnu.org/licenses/gpl-3.0.html>
+ * For commercial terms, see LICENSES/LicenseRef-SerialStudio-Commercial.txt.
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later OR LicenseRef-SerialStudio-Commercial
+ */
+
+#pragma once
+
+#include "API/CommandProtocol.h"
+
+namespace API {
+class CommandRegistry;
+
+namespace Handlers {
+/**
+ * @brief Registers API commands for IO::Drivers::Network operations.
+ */
+class NetworkHandler {
+public:
+  static void registerCommands();
+
+private:
+  static void registerUrlTransportCommands(CommandRegistry& registry);
+
+  static CommandResponse setRemoteAddress(const QString& id, const QJsonObject& params);
+  static CommandResponse setTcpPort(const QString& id, const QJsonObject& params);
+  static CommandResponse setUdpLocalPort(const QString& id, const QJsonObject& params);
+  static CommandResponse setUdpRemotePort(const QString& id, const QJsonObject& params);
+  static CommandResponse setSocketType(const QString& id, const QJsonObject& params);
+  static CommandResponse setUdpMulticast(const QString& id, const QJsonObject& params);
+  static CommandResponse setWebSocketUrl(const QString& id, const QJsonObject& params);
+  static CommandResponse setHttpUrl(const QString& id, const QJsonObject& params);
+  static CommandResponse setHttpMethod(const QString& id, const QJsonObject& params);
+  static CommandResponse setHttpBody(const QString& id, const QJsonObject& params);
+  static CommandResponse setHttpHeaders(const QString& id, const QJsonObject& params);
+  static CommandResponse setHttpInterval(const QString& id, const QJsonObject& params);
+  static CommandResponse setIgnoreTlsErrors(const QString& id, const QJsonObject& params);
+  static CommandResponse lookup(const QString& id, const QJsonObject& params);
+
+  static CommandResponse getConfiguration(const QString& id, const QJsonObject& params);
+  static CommandResponse getSocketTypes(const QString& id, const QJsonObject& params);
+  static CommandResponse getStatus(const QString& id, const QJsonObject& params);
+};
+
+}  // namespace Handlers
+}  // namespace API

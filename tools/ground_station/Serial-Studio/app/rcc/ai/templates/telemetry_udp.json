@@ -1,0 +1,23 @@
+{
+  "title": "Network telemetry (UDP)",
+  "actions": [],
+  "frameStart": "$",
+  "frameEnd": "\\n",
+  "frameDetection": 1,
+  "decoder": 0,
+  "checksum": "",
+  "frameParser": "/**\n * UDP telemetry parser. Expected payload: timestamp,v1,v2,v3,v4\n * Adjust the dataset indexes / titles below to match your packet layout.\n */\nfunction parse(frame) {\n    return frame.split(',');\n}\n",
+  "groups": [
+    {
+      "title": "Telemetry",
+      "widget": "multiplot",
+      "datasets": [
+        { "title": "Timestamp", "units": "s", "index": 1, "graph": false },
+        { "title": "Value 1", "index": 2, "graph": true, "min": 0, "max": 100 },
+        { "title": "Value 2", "index": 3, "graph": true, "min": 0, "max": 100 },
+        { "title": "Value 3", "index": 4, "graph": true, "min": 0, "max": 100 },
+        { "title": "Value 4", "index": 5, "graph": true, "min": 0, "max": 100 }
+      ]
+    }
+  ]
+}

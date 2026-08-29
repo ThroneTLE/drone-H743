@@ -1,0 +1,243 @@
+{
+    "actions": [
+    ],
+    "changeDrivenTransforms": false,
+    "frozen": false,
+    "groups": [
+        {
+            "datasets": [
+                {
+                    "datasetId": 0,
+                    "displayFormat": "0d",
+                    "displayTickCount": 5,
+                    "fft": false,
+                    "fftMax": 0,
+                    "fftMin": 0,
+                    "fftSamples": 256,
+                    "fftSamplingRate": 100,
+                    "fftWindow": 5,
+                    "graph": false,
+                    "groupId": 0,
+                    "index": 1,
+                    "led": false,
+                    "ledHigh": 1,
+                    "log": false,
+                    "numericValue": 0,
+                    "plotMax": 0,
+                    "plotMin": 0,
+                    "title": "Latitude",
+                    "uniqueId": 0,
+                    "units": "°",
+                    "value": "",
+                    "widget": "lat",
+                    "widgetMax": 0,
+                    "widgetMin": 0,
+                    "xAxis": -2
+                },
+                {
+                    "datasetId": 1,
+                    "displayFormat": "0d",
+                    "displayTickCount": 5,
+                    "fft": false,
+                    "fftMax": 0,
+                    "fftMin": 0,
+                    "fftSamples": 256,
+                    "fftSamplingRate": 100,
+                    "fftWindow": 5,
+                    "graph": false,
+                    "groupId": 0,
+                    "index": 2,
+                    "led": false,
+                    "ledHigh": 1,
+                    "log": false,
+                    "numericValue": 0,
+                    "plotMax": 0,
+                    "plotMin": 0,
+                    "title": "Longitude",
+                    "uniqueId": 1,
+                    "units": "°",
+                    "value": "",
+                    "widget": "lon",
+                    "widgetMax": 0,
+                    "widgetMin": 0,
+                    "xAxis": -2
+                },
+                {
+                    "datasetId": 2,
+                    "displayFormat": "0d",
+                    "displayTickCount": 5,
+                    "fft": false,
+                    "fftMax": 0,
+                    "fftMin": 0,
+                    "fftSamples": 256,
+                    "fftSamplingRate": 100,
+                    "fftWindow": 5,
+                    "graph": false,
+                    "groupId": 0,
+                    "index": 3,
+                    "led": false,
+                    "ledHigh": 1,
+                    "log": false,
+                    "numericValue": 0,
+                    "plotMax": 0,
+                    "plotMin": 0,
+                    "title": "Altitude",
+                    "uniqueId": 2,
+                    "units": "km",
+                    "value": "",
+                    "widget": "alt",
+                    "widgetMax": 0,
+                    "widgetMin": 0,
+                    "xAxis": -2
+                }
+            ],
+            "title": "ISS Position",
+            "uniqueId": 10002,
+            "widget": "map"
+        },
+        {
+            "datasets": [
+            ],
+            "title": "3D Model",
+            "uniqueId": 10004,
+            "webViewUrl": "https://solarsystem.nasa.gov/gltf_embed/2378/",
+            "widget": "webview"
+        }
+    ],
+    "hexadecimalDelimiters": false,
+    "luaFastMode": false,
+    "mqttPublisher": {
+        "alpnEnabled": false,
+        "alpnProtocol": "x-amzn-mqtt-ca",
+        "cleanSession": true,
+        "clientCertPath": "",
+        "customClientId": false,
+        "enabled": false,
+        "hostname": "127.0.0.1",
+        "keepAlive": 60,
+        "mode": 0,
+        "mqttVersion": 2,
+        "notificationTopic": "",
+        "peerVerifyDepth": 10,
+        "peerVerifyMode": 3,
+        "port": 1883,
+        "privateKeyPath": "",
+        "publishFrequency": 10,
+        "publishNotifications": false,
+        "scriptCode": "",
+        "scriptLanguage": 0,
+        "scriptTopic": "",
+        "sslEnabled": false,
+        "sslProtocol": 5,
+        "topicBase": ""
+    },
+    "nextUniqueId": 10005,
+    "plotTimeRange": 60,
+    "pointCount": 1000,
+    "schemaVersion": 3,
+    "sources": [
+        {
+            "busType": 1,
+            "checksum": "",
+            "checksumAlgorithm": "",
+            "connection": {
+                "httpBody": "",
+                "httpHeaders": "",
+                "httpInterval": 5000,
+                "httpMethodIndex": 0,
+                "httpUrl": "http://api.open-notify.org/iss-now.json",
+                "ignoreTlsErrors": false,
+                "socketTypeIndex": 3
+            },
+            "decoder": 0,
+            "decoderMethod": 0,
+            "frameDetection": 2,
+            "frameEnd": "},",
+            "frameParserCode": "function parse(frame) {\n  try {\n    const data = JSON.parse(frame);\n    const position = data.iss_position;\n    return [position.latitude, position.longitude, 0];\n  } catch (e) {\n    return [];\n  }\n}",
+            "frameStart": "\"iss_position\":",
+            "hexadecimalDelimiters": false,
+            "sourceId": 0,
+            "title": "Device A"
+        }
+    ],
+    "title": "ISS Tracker",
+    "treeExpansion": {
+        "": false,
+        "ISS Tracker": true,
+        "ISS Tracker/ ": false,
+        "ISS Tracker/Control Loop": false,
+        "ISS Tracker/Dashboard Widgets": true,
+        "ISS Tracker/Dashboard Widgets/3D Model": true,
+        "ISS Tracker/Dashboard Widgets/ISS Position": true,
+        "ISS Tracker/Dashboard Widgets/ISS Position/Altitude": false,
+        "ISS Tracker/Dashboard Widgets/ISS Position/Latitude": false,
+        "ISS Tracker/Dashboard Widgets/ISS Position/Longitude": false,
+        "ISS Tracker/Device A": true,
+        "ISS Tracker/Device A/Frame Parser": false,
+        "ISS Tracker/MQTT Publisher": false,
+        "ISS Tracker/Variables": true,
+        "ISS Tracker/Variables/Dataset Values": false,
+        "ISS Tracker/Workspaces": true,
+        "ISS Tracker/Workspaces/3D Model": false,
+        "ISS Tracker/Workspaces/All Data": false,
+        "ISS Tracker/Workspaces/ISS Position": false,
+        "ISS Tracker/Workspaces/Overview": false
+    },
+    "widgetSettings": {
+        "5:0:-1": {
+            "mapType": 0,
+            "showNasaWeather": false,
+            "showWeather": true
+        },
+        "externalWindows": {
+            "data": [
+            ]
+        },
+        "layout:1000": {
+            "data": {
+                "autoLayout": true,
+                "canvasHeight": 500,
+                "canvasWidth": 1058,
+                "geometries": [
+                    {
+                        "height": 500,
+                        "id": 1,
+                        "relativeIndex": 0,
+                        "state": "normal",
+                        "widgetType": 5,
+                        "width": 529,
+                        "x": 0,
+                        "y": 0
+                    },
+                    {
+                        "height": 500,
+                        "id": 4,
+                        "relativeIndex": 0,
+                        "state": "normal",
+                        "widgetType": 16,
+                        "width": 529,
+                        "x": 528,
+                        "y": 0
+                    }
+                ],
+                "userReordered": true,
+                "windowOrder": [
+                    1,
+                    4
+                ],
+                "windowOrderTyped": [
+                    {
+                        "relativeIndex": 0,
+                        "widgetType": 5
+                    },
+                    {
+                        "relativeIndex": 0,
+                        "widgetType": 16
+                    }
+                ]
+            }
+        }
+    },
+    "writerVersion": "4.0.3",
+    "writerVersionAtCreation": "4.0.3"
+}

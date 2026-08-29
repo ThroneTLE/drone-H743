@@ -1,0 +1,165 @@
+/*
+ * Serial Studio
+ * https://serial-studio.com/
+ *
+ * Copyright (C) 2020–2025 Alex Spataru
+ *
+ * This file is dual-licensed:
+ *
+ * - Under the GNU GPLv3 (or later) for builds that exclude Pro modules.
+ * - Under the Serial Studio Commercial License for builds that include
+ *   any Pro functionality.
+ *
+ * You must comply with the terms of one of these licenses, depending
+ * on your use case.
+ *
+ * For GPL terms, see <https://www.gnu.org/licenses/gpl-3.0.html>
+ * For commercial terms, see LICENSES/LicenseRef-SerialStudio-Commercial.txt.
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later OR LicenseRef-SerialStudio-Commercial
+ */
+
+import QtCore
+import QtQuick
+import QtQuick.Layouts
+import QtQuick.Controls
+
+import "../Widgets" as Widgets
+
+Widgets.SmartDialog {
+  id: root
+
+  //
+  // Window options
+  //
+  staysOnTop: true
+  title: qsTr("Support Serial Studio")
+
+  //
+  // Direct CSD size hints (bypasses Page implicit-size propagation)
+  //
+  preferredWidth: column.implicitWidth
+  preferredHeight: column.implicitHeight
+
+  //
+  // Window controls
+  //
+  dialogContent: ColumnLayout {
+    id: column
+
+    spacing: 16
+    anchors.centerIn: parent
+
+      RowLayout {
+        spacing: 16
+        Layout.fillWidth: true
+        Layout.fillHeight: true
+
+        Image {
+          sourceSize: Qt.size(120, 120)
+          source: "qrc:/images/buy-qr.svg"
+          Layout.alignment: Qt.AlignVCenter
+
+          //
+          // Frame matches the QR code's own black modules; the SVG has opaque white backing.
+          //
+
+          // code-verify off
+          Rectangle {
+            border.width: 2
+            color: "transparent"
+            border.color: "#000"
+            anchors.fill: parent
+          }
+          // code-verify on
+        }
+
+        ColumnLayout {
+          spacing: 4
+          Layout.fillWidth: true
+          Layout.fillHeight: true
+
+          Item {
+            Layout.fillHeight: true
+          }
+
+          Label {
+            id: title
+
+            Layout.fillWidth: true
+            font: Cpp_Misc_CommonFonts.customUiFont(1.33, true)
+            text: qsTr("Support the development of %1!").arg("Serial Studio")
+          }
+
+          Item {
+            Layout.fillHeight: true
+          }
+
+          Label {
+            Layout.fillWidth: true
+            Layout.maximumWidth: title.implicitWidth
+            wrapMode: Label.WrapAtWordBoundaryOrAnywhere
+            text: qsTr("Serial Studio is free & open-source software supported by volunteers. " +
+                       "Consider donating or obtaining a Pro license to support development efforts :)")
+          }
+
+          Item {
+            Layout.fillHeight: true
+          }
+
+          Label {
+            opacity: 0.8
+            Layout.fillWidth: true
+            Layout.maximumWidth: title.implicitWidth
+            wrapMode: Label.WrapAtWordBoundaryOrAnywhere
+            text: qsTr("You can also support this project by sharing it, reporting bugs and proposing new features!")
+          }
+
+          Item {
+            Layout.fillHeight: true
+          }
+        }
+      }
+
+      RowLayout {
+        spacing: 4
+        Layout.fillWidth: true
+
+        Widgets.IconButton {
+          text: qsTr("Close")
+          onClicked: root.close()
+          Layout.alignment: Qt.AlignVCenter
+          icon.source: "qrc:/icons/buttons/close.svg"
+        }
+
+        Item {
+          Layout.fillWidth: true
+        }
+
+        Widgets.IconButton {
+          text: qsTr("Donate")
+          Layout.alignment: Qt.AlignVCenter
+          icon.source: "qrc:/icons/buttons/paypal.svg"
+          onClicked: {
+            root.close()
+            Qt.openUrlExternally("https://www.paypal.com/donate?hosted_button_id=XN68J47QJKYDE")
+          }
+        }
+
+        Widgets.IconButton {
+          highlighted: true
+          horizontalPadding: 8
+          Keys.onEnterPressed: clicked()
+          Keys.onReturnPressed: clicked()
+          Layout.alignment: Qt.AlignVCenter
+          text: qsTr("Get Serial Studio Pro")
+          icon.source: "qrc:/icons/buttons/buy.svg"
+          Component.onCompleted: Qt.callLater(forceActiveFocus)
+          onClicked: {
+            root.close()
+            Qt.openUrlExternally("https://store.serial-studio.com/checkout/buy/e33e6d04-639f-46b7-bd68-b46d341c5b16")
+          }
+        }
+      }
+    }
+}

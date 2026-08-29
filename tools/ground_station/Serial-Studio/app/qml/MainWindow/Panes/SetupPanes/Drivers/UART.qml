@@ -1,0 +1,317 @@
+/*
+ * Serial Studio
+ * https://serial-studio.com/
+ *
+ * Copyright (C) 2020–2025 Alex Spataru
+ *
+ * This file is dual-licensed:
+ *
+ * - Under the GNU GPLv3 (or later) for builds that exclude Pro modules.
+ * - Under the Serial Studio Commercial License for builds that include
+ *   any Pro functionality.
+ *
+ * You must comply with the terms of one of these licenses, depending
+ * on your use case.
+ *
+ * For GPL terms, see <https://www.gnu.org/licenses/gpl-3.0.html>
+ * For commercial terms, see LICENSES/LicenseRef-SerialStudio-Commercial.txt.
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later OR LicenseRef-SerialStudio-Commercial
+ */
+
+import QtCore
+import QtQuick
+import QtQuick.Layouts
+import QtQuick.Controls
+
+import "../../../../Widgets" as Widgets
+
+Item {
+  id: root
+
+  implicitHeight: layout.implicitHeight
+  implicitWidth: layout.implicitWidth + 16
+
+  //
+  // Controls
+  //
+  GridLayout {
+    id: layout
+
+    columns: 2
+    rowSpacing: 4
+    columnSpacing: 4
+    anchors.margins: 0
+    anchors.fill: parent
+
+    //
+    // COM port selector
+    //
+    Label {
+      opacity: enabled ? 1 : 0.5
+      text: qsTr("COM Port") + ":"
+      enabled: app.ioEnabled
+    } ComboBox {
+      id: _portCombo
+
+      Layout.fillWidth: true
+      enabled: app.ioEnabled
+      opacity: enabled ? 1 : 0.5
+      model: Cpp_IO_Serial.portList
+      currentIndex: Cpp_IO_Serial.portIndex
+      editable: Qt.platform.os !== "windows"
+
+      //
+      // Show the full port name on hover (Windows entries elide in the popup).
+      //
+      delegate: ItemDelegate {
+        text: modelData
+        hoverEnabled: true
+        width: _portCombo.width
+        highlighted: _portCombo.highlightedIndex === index
+        font: isCurrent ? Cpp_Misc_CommonFonts.boldUiFont : Cpp_Misc_CommonFonts.uiFont
+
+        readonly property bool isCurrent: _portCombo.currentIndex === index
+
+        ToolTip.delay: 400
+        ToolTip.text: modelData
+        ToolTip.visible: hovered
+      }
+
+      onActivated: (index) => {
+        if (enabled && index !== Cpp_IO_Serial.portIndex)
+          Cpp_IO_Serial.portIndex = index
+      }
+
+      onAccepted: {
+        if (_portCombo.editable && _portCombo.find(_portCombo.editText) === -1)
+          Cpp_IO_Serial.registerDevice(_portCombo.editText)
+      }
+    }
+
+    //
+    // Baud rate selector
+    //
+    Label {
+      opacity: enabled ? 1 : 0.5
+      text: qsTr("Baud Rate") + ":"
+      enabled: app.ioEnabled
+    } ComboBox {
+      id: _baudCombo
+
+      editable: true
+      Layout.fillWidth: true
+      enabled: app.ioEnabled
+      opacity: enabled ? 1 : 0.5
+
+      property bool initializing: true
+
+      validator: IntValidator { bottom: 1 }
+
+      Component.onCompleted: {
+        Qt.callLater(() => {
+          const rates = Cpp_IO_Serial.baudRateList
+          const current = String(Cpp_IO_Serial.baudRate)
+
+          _baudCombo.model = rates
+
+          const idx = rates.indexOf(current)
+          if (idx !== -1) {
+            _baudCombo.currentIndex = idx
+          } else {
+            _baudCombo.currentIndex = -1
+            _baudCombo.editText = current
+          }
+
+          initializing = false
+        })
+      }
+
+      Connections {
+        target: Cpp_IO_Serial
+        function onBaudRateChanged() {
+          if (!_baudCombo.initializing) {
+            const rates = Cpp_IO_Serial.baudRateList
+            const current = String(Cpp_IO_Serial.baudRate)
+            _baudCombo.model = rates
+
+            const idx = rates.indexOf(current)
+            if (idx !== -1)
+              _baudCombo.currentIndex = idx
+            else
+              _baudCombo.editText = current
+          }
+        }
+      }
+
+      onAccepted: {
+        if (!initializing) {
+          const value = parseInt(editText)
+          if (!isNaN(value) && value > 0) {
+            if (Cpp_IO_Serial.baudRate !== value)
+              Cpp_IO_Serial.baudRate = value
+          }
+        }
+      }
+
+      onActivated: (index) => {
+        if (index >= 0 && index < model.length) {
+          const value = parseInt(model[index])
+          if (!isNaN(value) && Cpp_IO_Serial.baudRate !== value)
+            Cpp_IO_Serial.baudRate = value
+        }
+      }
+    }
+
+    //
+    // Spacer
+    //
+    Item {
+      Layout.minimumHeight: 8 / 2
+      Layout.maximumHeight: 8 / 2
+    } Item {
+      Layout.minimumHeight: 8 / 2
+      Layout.maximumHeight: 8 / 2
+    }
+
+    //
+    // Data bits selector
+    //
+    Label {
+      text: qsTr("Data Bits") + ":"
+      opacity: enabled ? 1 : 0.5
+      enabled: app.ioEnabled
+    } Widgets.Combo {
+      id: _dataCombo
+
+      Layout.fillWidth: true
+      enabled: app.ioEnabled
+      opacity: enabled ? 1 : 0.5
+      model: Cpp_IO_Serial.dataBitsList
+      currentIndex: Cpp_IO_Serial.dataBitsIndex
+      onActivated: (index) => {
+        if (Cpp_IO_Serial.dataBitsIndex !== index)
+          Cpp_IO_Serial.dataBitsIndex = index
+      }
+    }
+
+    //
+    // Parity selector
+    //
+    Label {
+      text: qsTr("Parity") + ":"
+      opacity: enabled ? 1 : 0.5
+      enabled: app.ioEnabled
+    } Widgets.Combo {
+      id: _parityCombo
+
+      Layout.fillWidth: true
+      enabled: app.ioEnabled
+      opacity: enabled ? 1 : 0.5
+      model: Cpp_IO_Serial.parityList
+      currentIndex: Cpp_IO_Serial.parityIndex
+      onActivated: (index) => {
+        if (Cpp_IO_Serial.parityIndex !== index)
+          Cpp_IO_Serial.parityIndex = index
+      }
+    }
+
+    //
+    // Stop bits selector
+    //
+    Label {
+      text: qsTr("Stop Bits") + ":"
+      opacity: enabled ? 1 : 0.5
+      enabled: app.ioEnabled
+    } Widgets.Combo {
+      id: _stopBitsCombo
+
+      Layout.fillWidth: true
+      enabled: app.ioEnabled
+      opacity: enabled ? 1 : 0.5
+      model: Cpp_IO_Serial.stopBitsList
+      currentIndex: Cpp_IO_Serial.stopBitsIndex
+      onActivated: (index) => {
+        if (Cpp_IO_Serial.stopBitsIndex !== index)
+          Cpp_IO_Serial.stopBitsIndex = index
+      }
+    }
+
+    //
+    // Flow control selector
+    //
+    Label {
+      text: qsTr("Flow Control") + ":"
+      opacity: enabled ? 1 : 0.5
+      enabled: app.ioEnabled
+    } Widgets.Combo {
+      id: _flowCombo
+
+      Layout.fillWidth: true
+      enabled: app.ioEnabled
+      opacity: enabled ? 1 : 0.5
+      model: Cpp_IO_Serial.flowControlList
+      currentIndex: Cpp_IO_Serial.flowControlIndex
+      onActivated: (index) => {
+        if (Cpp_IO_Serial.flowControlIndex !== index)
+          Cpp_IO_Serial.flowControlIndex = index
+      }
+    }
+
+    //
+    // Spacer
+    //
+    Item {
+      Layout.minimumHeight: 8 / 2
+      Layout.maximumHeight: 8 / 2
+    } Item {
+      Layout.minimumHeight: 8 / 2
+      Layout.maximumHeight: 8 / 2
+    }
+
+    //
+    // Auto-reconnect
+    //
+    Label {
+      text: qsTr("Auto Reconnect") + ":"
+    } CheckBox {
+      id: _autoreconnect
+
+      Layout.leftMargin: -8
+      Layout.maximumHeight: 18
+      checked: Cpp_IO_Serial.autoReconnect
+      Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
+      onCheckedChanged: {
+        if (Cpp_IO_Serial.autoReconnect !== checked)
+          Cpp_IO_Serial.autoReconnect = checked
+      }
+    }
+
+    //
+    // DTR Signal
+    //
+    Label {
+      text: qsTr("Send DTR Signal") + ":"
+    } CheckBox {
+      id: _dtr
+
+      Layout.leftMargin: -8
+      Layout.maximumHeight: 18
+      checked: Cpp_IO_Serial.dtrEnabled
+      Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
+      onCheckedChanged: {
+        if (Cpp_IO_Serial.dtrEnabled !== checked)
+          Cpp_IO_Serial.dtrEnabled = checked
+      }
+    }
+
+    //
+    // Vertical spacer
+    //
+    Item {
+      Layout.fillHeight: true
+    } Item {
+      Layout.fillHeight: true
+    }
+  }
+}

@@ -1,0 +1,404 @@
+# Per-Dataset Value Transforms
+
+Transforms run on every parsed frame, after the frame parser, before the
+dashboard sees the value. They turn a raw value into the displayed value.
+
+## Picking a language
+
+Three exist. **Expression (`language: 3`) first** when the transform is
+arithmetic on this sample, its siblings, or a table variable: no engine,
+no allocation, cheapest at rate. See the section below for its syntax.
+
+Otherwise **Lua (`language: 1`) is the default**: measurably faster on
+the hotpath than `QJSEngine` at typical telemetry rates, with a lighter
+per-call cost. Use JavaScript only when you need a JS-specific feature
+(regex flavours, `JSON.stringify`, etc.), and use Lua or JavaScript
+whenever the transform needs state, multi-step logic, a table WRITE, or
+`deviceWrite`.
+
+When you push transform code, ALWAYS pass `language` so the dataset's
+`transformLanguage` is locked to the syntax you wrote. A mismatch is a
+silent compile failure: the dashboard will show the raw value with no
+visible error. Two ways to set both at once:
+
+```
+project.dataset.setTransformCode {groupId, datasetId, code, language: 1}
+project.dataset.update            {groupId, datasetId, transformCode, transformLanguage: 1}
+```
+
+## Expression: language 3, the cheapest option
+
+A third `transformLanguage` exists: **Expression** (`language: 3`). No
+script engine, no `transform()` function, no statements. The code is ONE
+arithmetic expression whose value becomes the reading:
+
+```
+project.dataset.setTransformCode {groupId, datasetId, code: "v * 0.01 + 273.15", language: 3}
+```
+
+Prefer it for scale/offset, clamping, unit conversion, and combining
+channels: it compiles to a flat program that runs without allocating, so
+it beats both scripting languages. Fall back to Lua when the transform
+needs state across frames, multi-step logic, table access, or
+`deviceWrite`.
+
+Inputs: `v` (this sample), `t` (seconds), `dt` (since previous sample),
+`n` (sample index), `pi`, `e`, `nan`, `inf`. Sibling datasets of the same
+source read by **Script Alias** (`v * shunt_current`), or by dataset
+uniqueId in braces (`v * {12}`) since a bare number is a constant. Titles
+do NOT resolve. Set the alias with `project.dataset.update {alias}` before
+referencing a sibling by name. History: `sample(name, k)` up to 256 back,
+with a bare or braced name, NEVER a quoted string. Lines starting with
+`#` are comments.
+
+Shared tables are readable with `table(name, register)` (`v * table(cal, scale)`),
+read-only: a write needs Lua or JavaScript. Table access is a frame-lane
+feature; on a stream-lane source `table()` is a compile error.
+
+Operators `|| && == != < <= > >= + - * / % ^ ! ?:` and the functions
+`abs floor ceil round sqrt cbrt exp log log10 log2 sin cos tan asin acos
+atan sinh cosh tanh deg rad min max pow atan2 hypot clamp lerp`.
+
+An expression compiles to at most 512 operations. A compile error is
+reported once and the dataset publishes its raw value, so a wrong
+expression fails the same silent way a language mismatch does: always
+pass `language: 3` when you write one.
+
+## Computed vs regular datasets: when to flip the flag
+
+`virtual: true` means **compute-only**: the dataset has no slot in the
+frame, the parser supplies no value for it, and its output is built
+entirely from peer datasets, table variables, or constants. **Do not**
+flip `virtual` on a regular dataset just because it has a transform.
+Most transforms (unit conversion, calibration, smoothing, deadband,
+hysteresis) operate on a parser-supplied `value` and stay
+**regular**.
+
+**Rule of thumb.** If the transform USES its `value` argument, the
+dataset is regular. If it ignores `value` and reads only from
+`datasetGetRaw` / `datasetGetFinal` / `tableGet`, it's computed.
+
+**Computed.** Power [W] = Voltage × Current. No parser slot; the value
+is computed from two peer datasets. Set `virtual: true`:
+
+```lua
+function transform(_v)
+  return datasetGetFinal(VOLTAGE_UID) * datasetGetFinal(CURRENT_UID)
+end
+```
+
+**Regular.** km/h from a m/s sensor reading. The parser writes
+m/s into `value`, the transform converts units. Leave `virtual: false`
+(the default):
+
+```lua
+function transform(value)
+  return value * 3.6
+end
+```
+
+Same rule for EMA smoothing, ADC-counts → volts, gear-ratio applied
+to RPM, and deadband filters: anything that touches `value` is a regular
+transform, not a computed dataset.
+
+```
+project.dataset.add {groupId, options: ["plot"]}     -- creates dataset N
+project.dataset.update {                              -- flip ONLY for compute-only
+  groupId, datasetId: N,
+  virtual: true,
+  title: "Power",
+  units: "W",
+  transformLanguage: 1,                              -- 1 = Lua
+  transformCode: "..."
+}
+```
+
+**Auto-detect on save.** The save path inspects each dataset's transform
+body. If `transformCode` is non-empty AND the body **never references
+`value`**, the dataset is auto-flagged `virtual: true`. So a Power-style
+transform is detected as computed on save even if you forgot the flag,
+but the dataset stays empty until that save. Set `virtual` explicitly
+when you push compute-only code.
+
+If `virtual=false` and `index<=0` after a `setTransformCode`, the API
+returns a `hint` field telling you to flip `virtual`. Listen to it, but
+only when the transform is compute-only. If you wrote a regular
+`value`-using transform on a dataset that has no parser slot, the fix
+is usually to assign `index` (give it a slot), not to flip `virtual`.
+
+### Why prefer computed datasets over an extra parser slot
+
+You COULD parse-and-emit a derived value from the frame parser
+directly (so the parser writes `channels[N] = computeSpeed(...)` and
+a regular dataset reads slot N). Don't. Computed datasets are the
+right shape because:
+
+- **Separation of concerns.** Frame parsers turn bytes into raw
+  channels; that is their whole job. Computation, calibration, and
+  derivation belong in transforms. Mixing both in the parser turns
+  it into an opaque blob that's painful to debug with `dryRun`.
+- **Testability.** `project.dataset.transform.dryRun{values, code}`
+  exercises a transform in isolation. You can't dry-run a derived
+  channel that lives inside `parse()`; you'd have to invent fake
+  byte frames every iteration.
+- **Cross-source reach.** A computed dataset's transform can read
+  `datasetGetFinal(uniqueId)` of any dataset, including peers from
+  *other* sources via the shared tables. A parser only sees its
+  own source's bytes.
+- **Unit + range hygiene.** Computed datasets carry their own
+  `units`, `plotMin/Max`, `widgetMin/Max`, alarms, and widget
+  bitflags. They show up cleanly in the project tree, the dashboard,
+  and CSV/MDF4 exports. A computation hidden inside the parser has
+  no presence in the schema.
+- **Templates.** A computed dataset (transform + units + widget
+  config) is the unit you copy across projects. Parser code is
+  source-bus-specific; transforms are portable.
+- **Performance.** Computed datasets share the source's transform
+  engine (no extra QJSEngine / Lua state per derivation). A bloated
+  parser, by contrast, runs every byte through one big function on
+  every frame, allocating intermediate arrays.
+
+Use a parser-emitted slot only when the derivation needs raw bytes
+that aren't otherwise exposed (uncommon; most cases are downstream
+arithmetic on already-extracted channels).
+
+## Contract
+
+```lua
+function transform(value)
+  return value  -- must return a finite number or string
+end
+```
+
+```js
+function transform(value) {
+  return value;  // must return a finite number (or QString-coercible)
+}
+```
+
+For numeric datasets, `value` is a `Number`. For string datasets, it's a
+`String`. Returning `NaN`, `Infinity`, or `undefined` rejects the output
+and the dashboard shows the raw value instead. No exception, just a
+silent fallback.
+
+## Per-dataset isolation
+
+Your transform script is wrapped in an IIFE at compile time:
+
+```js
+(function() {
+  /* your code */
+  return typeof transform === 'function' ? transform : null;
+})()
+```
+
+Top-level `var/let/const` are private per dataset, even when several
+datasets in the same source share a JS engine. Two datasets can both
+declare `let alpha = 0.2` without clobbering each other.
+
+## Iteration workflow
+
+1. Read the dataset's current transform:
+   `project.dataset.list` returns `transformCode` per dataset; or fetch
+   `project.frameParser.getCode` for context on what `value` looks like.
+2. Dry-run: `assistant.script.dryRun{kind:"transform", code, language,
+   values}`
+   compiles + runs `transform()` against an array of sample inputs.
+   Returns the per-input outputs. Iterate on the code until outputs look
+   right.
+3. Push: `assistant.script.apply{kind:"transform", groupId, datasetId,
+   code, language, values}`. It dry-runs first, then calls
+   `project.dataset.setTransformCode`. It does NOT set the `virtual`
+   flag (a `virtual` param is ignored); flip it separately via
+   `project.dataset.setVirtual` or `project.dataset.update`.
+
+## Tables: the central data bus
+
+Transforms read and write two kinds of variables:
+
+**System table** (`__datasets__`, always present): two variables per
+dataset, `raw:<uniqueId>` and `final:<uniqueId>` (also mirrored as
+`raw:<alias>` / `final:<alias>` when the dataset has a user-set alias).
+Read-only. Convenience helpers: `datasetGetRaw(uniqueId | "alias")` and
+`datasetGetFinal(uniqueId | "alias")`. Use those instead of
+`tableGet('__datasets__', 'raw:<uid>')`.
+
+**User tables**: project-defined. Two variable types:
+
+- `Constant`: single value across the session. Set when declared. Use for
+  calibration coefficients, lookup tables, configuration flags.
+- `Computed`: writable from transforms. Holds the last value written
+  indefinitely (no per-frame reset). Use for filter/integrator state,
+  cross-frame counters, latched flags, and derived values that another
+  transform reads later in the same frame. The `defaultValue` is the
+  starting value at project load, not a recurring reset.
+
+```js
+tableGet(tableName, registerName)              // -> number | string
+tableSet(tableName, registerName, value)       // user tables only
+tableHandle(tableName, registerName)           // -> handle (number), or -1; resolve ONCE at load
+tableHandleMany(tableName, registerNames)      // -> array of handles
+tableGetH(handle)                              // read by handle (fast path; no name lookup)
+tableSetH(handle, value)                       // write by handle (computed variables only)
+datasetGetRaw(uniqueId | "alias")              // EARLIER dataset = this frame, later = previous frame
+datasetGetFinal(uniqueId | "alias")            // EARLIER datasets only
+```
+
+`datasetGetRaw`/`datasetGetFinal` take **either** a numeric `uniqueId` **or** a
+string dataset `alias` — a string is ALWAYS an alias, a number ALWAYS a
+uniqueId (no coercion). An unknown alias returns `undefined` with a one-time
+warning. An `alias` is an optional, unique, user-set name from the Project
+Editor; it survives `uniqueId` renumbering.
+
+For a transform that hits the same variables every frame, resolve handles
+once in a top-level variable and use `tableGetH`/`tableSetH`; a stale handle
+after a table edit is a safe no-op. A table inside folders is addressed by
+its full path — parent folder titles joined with `/`, then the table name
+(`"Telemetry/BMS/State"`); a top-level table is its bare name.
+`project.dataTable.list` reports that `path`.
+
+`uniqueId` is a stable INTEGER, not a name. Read it from
+`assistant.dataset.resolve`, `project.dataset.list`, or
+`project.snapshot`. Treat it as opaque; do not compute it in chat.
+
+## Processing order
+
+Datasets are processed in group-array then dataset-array order. Inside a
+transform you can read:
+
+- raw values of **earlier** datasets in this frame (single-pass walk;
+  a later dataset's raw variable still holds the previous frame's value)
+- final values of **earlier** datasets only
+
+Trying to read `datasetGetFinal` of a dataset processed later returns
+the previous frame's (stale) value — or nil/undefined before the
+first-ever write or for an unknown `uniqueId` (silently; no warning is
+emitted) — never a guaranteed 0.
+
+## When to use what
+
+- **Per-dataset state across frames** (EMA, last value, deadband): use a
+  top-level `let`/`local` in the transform. Cheaper than a table variable
+  and isolated to the one dataset.
+- **State shared across datasets and frames** (a filter whose output
+  several downstream channels read; a derivative tracked at frame
+  cadence; a latched alarm): use a Computed variable, which persists.
+- **Shared *constants*** (calibration coefficients used by N channels,
+  lookup tables, full-scale ranges): use a Constant variable.
+- **Cross-dataset compute within one frame** (speed from dx and dt that
+  arrive together): use `datasetGetRaw` to read a peer, OR write to a
+  Computed variable in the earlier transform and `tableGet` it from the
+  later one.
+
+## Examples (Lua, preferred)
+
+```lua
+-- EMA smoothing (per-dataset state via upvalue)
+local ema = 0
+local alpha = 0.2
+function transform(value)
+  ema = alpha * value + (1 - alpha) * ema
+  return ema
+end
+
+-- Calibration from constants table
+function transform(value)
+  local offset = tableGet("Calibration", "offset")
+  local scale  = tableGet("Calibration", "scale")
+  return (value - offset) * scale
+end
+
+-- Cross-dataset speed (DT_MS_UID from project.dataset.list)
+local DT_MS_UID = 10003
+function transform(dx)
+  local dt = datasetGetRaw(DT_MS_UID)
+  if dt and dt > 0 then return (dx / dt) * 1000 end
+  return 0
+end
+```
+
+## Examples (JavaScript, when Lua won't do)
+
+```js
+let ema = 0;
+const alpha = 0.2;
+function transform(value) {
+  ema = alpha * value + (1 - alpha) * ema;
+  return ema;
+}
+```
+
+For ~20 more reference transforms (clamp, dead-zone, ADC-to-voltage,
+celsius/fahrenheit, accumulator, autozero, bit extract, ...), call
+`scripts.list{kind: "transform_lua"}` or
+`scripts.list{kind: "transform_js"}`.
+
+## Frame metadata: second `info` argument
+
+Transforms receive `{frameNumber, sourceId, timestampMs}` as a second arg.
+One-arg transforms keep working unchanged (both languages ignore extras).
+`timestampMs` is a **monotonic** ms counter (steady clock), not wall
+clock. Use it for deltas only.
+
+```lua
+local lastTs = 0
+function transform(v, info)
+  if info.timestampMs - lastTs >= 100 then
+    lastTs = info.timestampMs
+    deviceWrite("PING\n")
+  end
+  return v
+end
+```
+
+## Closed-loop control: `deviceWrite()` and `actionFire()`
+
+Transforms can drive output directly:
+
+- `deviceWrite(data, sourceId?)`: synchronous fire-and-forget byte
+  write. `{ ok, error? }`, never throws. `sourceId` defaults to the
+  source the dataset belongs to. Logged
+  `[deviceWrite] source=N bytes=M written=K`.
+- `actionFire(actionId)`: fires an existing project Action by its
+  stable `actionId` (NOT its index). Reuses the action's payload and
+  timer mode. Same shape. Logged `[actionFire] id=N index=M ok`.
+
+Transforms run on every frame. Always latch with a local flag or
+rate-limit via `info.timestampMs` so repeated triggers don't saturate
+the link:
+
+```lua
+local fired = false
+function transform(v, info)
+  if not fired and v > 100 then
+    if deviceWrite("ALARM=1\n").ok then fired = true end
+  end
+  return v
+end
+```
+
+Use for closed-loop control (setpoint write-back, alarm raise). For
+user-triggered actions, use an Output Widget instead.
+
+## Dashboard controls
+
+Seven runtime UI helpers, all `{ ok, error? }`, NO logging:
+
+- `clearPlots()`: wipe line / multiplot / FFT / GPS / 3D / waterfall buffers. Widgets, datasets, actions, axis bounds intact.
+- `setPlotPoints(n)`: horizontal sample window for line plots (n >= 1).
+- `setTerminalVisible(bool)`, `setNotificationLogVisible(bool)`, `setClockVisible(bool)`, `setStopwatchVisible(bool)`: show/hide the dashboard widgets.
+- `setActiveWorkspace(idOrName)`: switch active workspace tab. Numeric `workspaceId` (>= 1000) or case-insensitive title.
+
+Transforms run on every frame, so gate every call behind a latch (`local fired = false` / `let fired = false`) or a sentinel-value match. Example: any reading at the device reboot sentinel (>= 9999) clears the plot history:
+
+```lua
+function transform(value)
+  if value >= 9999 then
+    clearPlots()
+    return 0
+  end
+  return value
+end
+```
+
+Affects the active dashboard window only. Does NOT persist to the project file or QSettings.

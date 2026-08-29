@@ -1,0 +1,101 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 scripts/code-format.py *)",
+      "Bash(python3 scripts/code-verify.py *)",
+      "Bash(python3 scripts/documentation-verify.py *)",
+      "Bash(python3 scripts/sanitize-commit.py *)",
+      "Bash(otool *)",
+      "Bash(nm *)",
+      "Bash(pytest *)",
+      "Bash(python3 -m pytest *)",
+      "Bash(node *)",
+      "Bash(ctest *)",
+      "Bash(nc -z *)"
+    ],
+    "ask": [
+      "Bash(git commit *)",
+      "Bash(git push *)",
+      "Edit(app/translations/**)"
+    ],
+    "deny": [
+      "Bash(cmake *)",
+      "Bash(jom *)",
+      "Bash(ninja *)",
+      "Bash(make *)",
+      "Bash(msbuild *)",
+      "Bash(xcodebuild *)",
+      "Bash(clang *)",
+      "Bash(clang++ *)",
+      "Bash(gcc *)",
+      "Bash(g++ *)",
+      "Bash(cl *)",
+      "Bash(git checkout *)",
+      "Bash(git switch *)",
+      "Bash(git restore *)",
+      "Bash(git reset *)",
+      "Bash(git stash *)",
+      "Bash(git clean *)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|clear",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/protect-dirty-files.py\""
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/protect-dirty-files.py\""
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/commit-sanitize-gate.py\""
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/verify-on-save.py\""
+          },
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/protect-dirty-files.py\""
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/canary-check.py\"",
+            "timeout": 15,
+            "statusMessage": "Checking context canary"
+          }
+        ]
+      }
+    ]
+  }
+}

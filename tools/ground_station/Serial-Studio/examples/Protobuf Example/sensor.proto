@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+// Example environmental telemetry schema.
+//
+// Two top-level messages:
+//   - Sensor: full reading with embedded 3-axis vectors
+//   - Vec3:   bare 3-axis sample (sent independently to exercise the
+//             importer's per-frame multi-message auto-detect)
+//
+// Import into Serial Studio via Project Editor -> Import -> Protobuf,
+// then run sensor_simulator.py to feed live values.
+
+message Vec3 {
+  float x = 1;
+  float y = 2;
+  float z = 3;
+}
+
+message Sensor {
+  float  temperature = 1;  // ambient temperature, deg C
+  float  humidity    = 2;  // relative humidity, %
+  Vec3   accel       = 3;  // 3-axis accelerometer
+  Vec3   gyro        = 4;  // 3-axis gyroscope
+  uint32 status      = 5;  // status flags bitfield
+  string note        = 6;  // free-form diagnostic text
+}

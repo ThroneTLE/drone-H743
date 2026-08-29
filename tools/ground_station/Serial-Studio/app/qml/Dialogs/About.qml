@@ -1,0 +1,279 @@
+/*
+ * Serial Studio
+ * https://serial-studio.com/
+ *
+ * Copyright (C) 2020–2025 Alex Spataru
+ *
+ * This file is dual-licensed:
+ *
+ * - Under the GNU GPLv3 (or later) for builds that exclude Pro modules.
+ * - Under the Serial Studio Commercial License for builds that include
+ *   any Pro functionality.
+ *
+ * You must comply with the terms of one of these licenses, depending
+ * on your use case.
+ *
+ * For GPL terms, see <https://www.gnu.org/licenses/gpl-3.0.html>
+ * For commercial terms, see LICENSES/LicenseRef-SerialStudio-Commercial.txt.
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later OR LicenseRef-SerialStudio-Commercial
+ */
+
+import QtQuick
+import QtQuick.Layouts
+import QtQuick.Controls
+
+import "../Widgets" as Widgets
+
+Widgets.SmartDialog {
+  id: root
+
+  //
+  // Custom properties
+  //
+  readonly property int year: new Date().getFullYear()
+
+  //
+  // Window options
+  //
+  title: qsTr("About")
+
+  //
+  // Direct CSD size hints (bypasses Page implicit-size propagation)
+  //
+  preferredWidth: layout.implicitWidth
+  preferredHeight: layout.implicitHeight
+
+  //
+  // Window controls
+  //
+  dialogContent: ColumnLayout {
+    id: layout
+
+    spacing: 4
+    anchors.centerIn: parent
+
+      RowLayout {
+        id: _logo
+
+        spacing: 8
+        Layout.fillWidth: true
+
+        Item {
+          Layout.minimumWidth: 144
+          Layout.maximumWidth: 144
+          Layout.minimumHeight: 144
+          Layout.maximumHeight: 144
+          Layout.alignment: Qt.AlignVCenter
+
+          Image {
+            mipmap: true
+            smooth: true
+            sourceSize.width: 128
+            anchors.centerIn: parent
+            source: Qt.platform.os === "osx" ? "qrc:/logo/icon-macOS.png" :
+                                               "qrc:/logo/icon.svg"
+          }
+        }
+
+        ColumnLayout {
+          spacing: 0
+          Layout.fillWidth: true
+          Layout.alignment: Qt.AlignVCenter
+
+          Label {
+            rightPadding: 16
+            text: Application.displayName
+            font: Cpp_Misc_CommonFonts.customUiFont(2, true)
+          }
+
+          Item {
+            implicitHeight: 2
+          }
+
+          Label {
+            opacity: 0.8
+            text: qsTr("Version %1").arg(Cpp_AppVersion)
+            font: Cpp_Misc_CommonFonts.customUiFont(1.5, false)
+          }
+
+          Item {
+            implicitHeight: 4
+          }
+
+          Label {
+            opacity: 0.8
+            text: qsTr("Copyright © %1 %2").arg(root.year).arg(Cpp_AppOrganization)
+          }
+
+          Label {
+            opacity: 0.8
+            visible: Cpp_CommercialBuild
+            text: qsTr("All Rights Reserved")
+          }
+        }
+      }
+
+      //
+      // GPLv3 License label for Qt open source build
+      //
+      Label {
+        opacity: 0.8
+        Layout.fillWidth: true
+        Layout.minimumWidth: 360
+        visible: !Cpp_CommercialBuild
+        Layout.maximumWidth: _logo.implicitWidth
+        wrapMode: Label.WrapAtWordBoundaryOrAnywhere
+        text: qsTr("%1 is free software: you can redistribute it and/or modify " +
+                   "it under the terms of the GNU General Public License as " +
+                   "published by the Free Software Foundation; either version " +
+                   "3 of the License, or (at your option) any later version.\n\n" +
+                   "%1 is distributed in the hope that it will be useful, but " +
+                   "WITHOUT ANY WARRANTY; without even the implied warranty of " +
+                   "MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. " +
+                   "See the GNU General Public License for more details.").arg(Cpp_AppName)
+      }
+
+      //
+      // License label for activated commercial-build
+      //
+      Label {
+        opacity: 0.8
+        Layout.fillWidth: true
+        Layout.maximumWidth: _logo.implicitWidth
+        wrapMode: Label.WrapAtWordBoundaryOrAnywhere
+        visible: Cpp_CommercialBuild && Cpp_Licensing_LemonSqueezy.isActivated
+        text: qsTr("This configuration is licensed for commercial and proprietary use. " +
+                   "It may be used in closed-source and commercial applications, " +
+                   "subject to the terms of the commercial license.")
+      }
+
+      //
+      // License label for non-activated commercial-build
+      //
+      Label {
+        opacity: 0.8
+        Layout.fillWidth: true
+        Layout.maximumWidth: _logo.implicitWidth
+        wrapMode: Label.WrapAtWordBoundaryOrAnywhere
+        visible: Cpp_CommercialBuild && !Cpp_Licensing_LemonSqueezy.isActivated
+        text: qsTr("This configuration is for personal and evaluation purposes only. " +
+                   "Commercial use is prohibited unless a valid commercial " +
+                   "license is activated.")
+      }
+
+      //
+      // License label for all commercial builds
+      //
+      Label {
+        opacity: 0.7
+        Layout.fillWidth: true
+        visible: Cpp_CommercialBuild
+        Layout.maximumWidth: _logo.implicitWidth
+        wrapMode: Label.WrapAtWordBoundaryOrAnywhere
+        text: qsTr("This software is provided 'as is' without warranty of " +
+                   "any kind, express or implied, including but not limited " +
+                   "to the warranties of merchantability or fitness for a " +
+                   "particular purpose. In no event shall the author be " +
+                   "liable for any damages arising from the use of this " +
+                   "software.")
+      }
+
+      //
+      // Spacer
+      //
+      Item {
+        implicitHeight: 8
+      }
+
+      //
+      // License management
+      //
+      Button {
+        Layout.fillWidth: true
+        visible: Cpp_CommercialBuild
+        text: qsTr("Manage License")
+        onClicked: app.showLicenseDialog()
+      }
+
+      //
+      // Donate button (free & GPL3)
+      //
+      Button {
+        text: qsTr("Donate")
+        Layout.fillWidth: true
+        visible: !app.proVersion
+        onClicked: donateDialog.activate()
+      }
+
+      //
+      // Check for updates
+      //
+      Button {
+        Layout.fillWidth: true
+        text: qsTr("Check for Updates")
+        onClicked: app.checkForUpdates()
+      }
+
+      //
+      // License Agreement
+      //
+      Button {
+        Layout.fillWidth: true
+        text: qsTr("License Agreement")
+        onClicked: Qt.openUrlExternally("https://github.com/Serial-Studio/Serial-Studio/blob/master/LICENSE.md")
+      }
+
+      //
+      // Report bug
+      //
+      Button {
+        Layout.fillWidth: true
+        text: qsTr("Report Bug")
+        onClicked: Qt.openUrlExternally("https://github.com/Serial-Studio/Serial-Studio/issues")
+      }
+
+      //
+      // Acknowledgements
+      //
+      Button {
+        Layout.fillWidth: true
+        text: qsTr("Acknowledgements")
+        onClicked: app.showAcknowledgements()
+      }
+
+      //
+      // Hotpath benchmark
+      //
+      Button {
+        Layout.fillWidth: true
+        text: qsTr("Benchmark")
+        onClicked: app.showBenchmarkDialog()
+      }
+
+      //
+      // Website
+      //
+      Button {
+        text: qsTr("Website")
+        Layout.fillWidth: true
+        onClicked: Qt.openUrlExternally("https://serial-studio.com/")
+      }
+
+      //
+      // Spacer
+      //
+      Item {
+        implicitHeight: 8
+      }
+
+      //
+      // Close button
+      //
+      Button {
+        text: qsTr("Close")
+        Layout.fillWidth: true
+        onClicked: root.close()
+      }
+    }
+}

@@ -1,0 +1,313 @@
+/*
+ * Serial Studio
+ * https://serial-studio.com/
+ *
+ * Copyright (C) 2020-2025 Alex Spataru
+ *
+ * This file is dual-licensed:
+ *
+ * - Under the GNU GPLv3 (or later) for builds that exclude Pro modules.
+ * - Under the Serial Studio Commercial License for builds that include
+ *   any Pro functionality.
+ *
+ * You must comply with the terms of one of these licenses, depending
+ * on your use case.
+ *
+ * For GPL terms, see <https://www.gnu.org/licenses/gpl-3.0.html>
+ * For commercial terms, see LICENSES/LicenseRef-SerialStudio-Commercial.txt.
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later OR LicenseRef-SerialStudio-Commercial
+ */
+
+import QtQuick
+import QtQuick.Layouts
+import QtQuick.Controls
+
+import SerialStudio
+import "Drivers" as Drivers
+
+Rectangle {
+  id: root
+
+  radius: 2
+  border.width: 1
+  color: Cpp_ThemeManager.colors["groupbox_background"]
+  border.color: Cpp_ThemeManager.colors["groupbox_border"]
+
+  //
+  // Reassign (don't push) so the property notifies and width/height bindings stay live.
+  //
+  property var buses: []
+  readonly property int kPaddingV: 8
+  readonly property int kFadeHeight: 12
+
+  function registerBus(item) {
+    buses = buses.concat([item])
+  }
+
+  implicitWidth: {
+    let maxW = 0
+    for (let i = 0; i < root.buses.length; ++i) {
+      const item = root.buses[i]
+      if (item && item.implicitWidth > maxW)
+        maxW = item.implicitWidth
+    }
+    return maxW
+  }
+
+  //
+  // Flickable scrolls tall drivers (Modbus, BLE, CAN Bus...) without stretching the pane.
+  //
+  Flickable {
+    id: scroll
+
+    clip: true
+    anchors.margins: 1
+    contentWidth: width
+    anchors.fill: parent
+    contentHeight: outer.implicitHeight
+    interactive: contentHeight > height
+    boundsBehavior: Flickable.StopAtBounds
+    ScrollBar.vertical: ScrollBar {
+      policy: scroll.contentHeight > scroll.height
+              ? ScrollBar.AsNeeded
+              : ScrollBar.AlwaysOff
+    }
+
+    ColumnLayout {
+      id: outer
+
+      spacing: 0
+      x: kPaddingV
+      width: scroll.width - 2 * kPaddingV
+
+      Item {
+        Layout.fillWidth: true
+        implicitHeight: root.kPaddingV
+      }
+
+      StackLayout {
+        id: layout
+
+        //
+        // Settings lock while connected/dialing (no auto-reapply exists); BLE picks post-connect.
+        //
+        enabled: (!Cpp_IO_Manager.isConnected && !Cpp_IO_Manager.isConnecting)
+                 || Cpp_IO_Manager.busType === SerialStudio.BluetoothLE
+
+        Layout.fillWidth: true
+        currentIndex: Cpp_IO_Manager.busType
+        Layout.preferredHeight: implicitHeight
+        implicitHeight: {
+          let maxHeight = 0
+          for (let i = 0; i < root.buses.length; ++i) {
+            const item = root.buses[i]
+            if (item && item.implicitHeight > maxHeight)
+              maxHeight = item.implicitHeight
+          }
+
+          return maxHeight
+        }
+
+    Loader {
+      active: true
+      asynchronous: true
+      Layout.fillWidth: true
+      Layout.fillHeight: true
+      sourceComponent: Component {
+        Drivers.UART {
+          Component.onCompleted: root.registerBus(this)
+        }
+      }
+    }
+
+    Loader {
+      active: true
+      asynchronous: true
+      Layout.fillWidth: true
+      Layout.fillHeight: true
+      sourceComponent: Component {
+        Drivers.Network {
+          Component.onCompleted: root.registerBus(this)
+        }
+      }
+    }
+
+    Loader {
+      active: true
+      asynchronous: true
+      Layout.fillWidth: true
+      Layout.fillHeight: true
+      sourceComponent: Component {
+        Drivers.BluetoothLE {
+          Component.onCompleted: root.registerBus(this)
+        }
+      }
+    }
+
+    Loader {
+      asynchronous: true
+      Layout.fillWidth: true
+      Layout.fillHeight: true
+      active: Cpp_CommercialBuild
+      source: "qrc:/serial-studio.com/gui/qml/MainWindow/Panes/SetupPanes/Drivers/Audio.qml"
+
+      onLoaded: {
+        if (item)
+          root.registerBus(item)
+      }
+    }
+
+    Loader {
+      asynchronous: true
+      Layout.fillWidth: true
+      Layout.fillHeight: true
+      active: Cpp_CommercialBuild
+      source: "qrc:/serial-studio.com/gui/qml/MainWindow/Panes/SetupPanes/Drivers/Modbus.qml"
+
+      onLoaded: {
+        if (item)
+          root.registerBus(item)
+      }
+    }
+
+    Loader {
+      asynchronous: true
+      Layout.fillWidth: true
+      Layout.fillHeight: true
+      active: Cpp_CommercialBuild
+      source: "qrc:/serial-studio.com/gui/qml/MainWindow/Panes/SetupPanes/Drivers/CANBus.qml"
+
+      onLoaded: {
+        if (item)
+          root.registerBus(item)
+      }
+    }
+
+    Loader {
+      asynchronous: true
+      Layout.fillWidth: true
+      Layout.fillHeight: true
+      active: Cpp_CommercialBuild
+      source: "qrc:/serial-studio.com/gui/qml/MainWindow/Panes/SetupPanes/Drivers/USB.qml"
+
+      onLoaded: {
+        if (item)
+          root.registerBus(item)
+      }
+    }
+
+    Loader {
+      asynchronous: true
+      Layout.fillWidth: true
+      Layout.fillHeight: true
+      active: Cpp_CommercialBuild
+      source: "qrc:/serial-studio.com/gui/qml/MainWindow/Panes/SetupPanes/Drivers/HID.qml"
+
+      onLoaded: {
+        if (item)
+          root.registerBus(item)
+      }
+    }
+
+    Loader {
+      asynchronous: true
+      Layout.fillWidth: true
+      Layout.fillHeight: true
+      active: Cpp_CommercialBuild
+      source: "qrc:/serial-studio.com/gui/qml/MainWindow/Panes/SetupPanes/Drivers/Process.qml"
+
+      onLoaded: {
+        if (item)
+          root.registerBus(item)
+      }
+    }
+
+    Loader {
+      asynchronous: true
+      Layout.fillWidth: true
+      Layout.fillHeight: true
+      active: Cpp_CommercialBuild
+      source: "qrc:/serial-studio.com/gui/qml/MainWindow/Panes/SetupPanes/Drivers/MQTT.qml"
+
+      onLoaded: {
+        if (item)
+          root.registerBus(item)
+      }
+    }
+
+    Loader {
+      asynchronous: true
+      Layout.fillWidth: true
+      Layout.fillHeight: true
+      active: Cpp_CommercialBuild
+      source: "qrc:/serial-studio.com/gui/qml/MainWindow/Panes/SetupPanes/Drivers/OpcUa.qml"
+
+      onLoaded: {
+        if (item)
+          root.registerBus(item)
+      }
+    }
+      }
+
+      Item {
+        Layout.fillWidth: true
+        implicitHeight: root.kPaddingV
+      }
+    }
+  }
+
+  //
+  // Edge fade gradient; hidden at the scroll boundary.
+  //
+  Rectangle {
+    z: 2
+    visible: opacity > 0.01
+    height: root.kFadeHeight
+    opacity: scroll.contentY > 0.5 ? 1 : 0
+    anchors {
+      topMargin: 1
+      leftMargin: 1
+      rightMargin: 1
+      top: parent.top
+      left: parent.left
+      right: parent.right
+    }
+
+    Behavior on opacity { NumberAnimation { duration: 120 } }
+
+    gradient: Gradient {
+      GradientStop { position: 0; color: root.color }
+      GradientStop {
+        position: 1
+        color: Qt.rgba(root.color.r, root.color.g, root.color.b, 0)
+      }
+    }
+  }
+
+  Rectangle {
+    z: 2
+    height: root.kFadeHeight
+    visible: opacity > 0.01
+    opacity: (scroll.contentHeight - scroll.contentY - scroll.height) > 0.5
+             ? 1 : 0
+    anchors {
+      leftMargin: 1
+      rightMargin: 1
+      bottomMargin: 1
+      left: parent.left
+      right: parent.right
+      bottom: parent.bottom
+    }
+
+    Behavior on opacity { NumberAnimation { duration: 120 } }
+
+    gradient: Gradient {
+      GradientStop {
+        position: 0
+        color: Qt.rgba(root.color.r, root.color.g, root.color.b, 0)
+      }
+      GradientStop { position: 1; color: root.color }
+    }
+  }
+}

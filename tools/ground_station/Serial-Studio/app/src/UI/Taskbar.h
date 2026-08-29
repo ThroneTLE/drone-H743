@@ -1,0 +1,283 @@
+/*
+ * Serial Studio
+ * https://serial-studio.com/
+ *
+ * Copyright (C) 2020–2025 Alex Spataru
+ *
+ * This file is dual-licensed:
+ *
+ * - Under the GNU GPLv3 (or later) for builds that exclude Pro modules.
+ * - Under the Serial Studio Commercial License for builds that include
+ *   any Pro functionality.
+ *
+ * You must comply with the terms of one of these licenses, depending
+ * on your use case.
+ *
+ * For GPL terms, see <https://www.gnu.org/licenses/gpl-3.0.html>
+ * For commercial terms, see LICENSES/LicenseRef-SerialStudio-Commercial.txt.
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later OR LicenseRef-SerialStudio-Commercial
+ */
+
+#pragma once
+
+#include <QObject>
+#include <QQuickItem>
+#include <QStandardItemModel>
+#include <QTimer>
+#include <QVariantList>
+#include <QVector>
+
+#include "UI/WidgetRegistry.h"
+#include "UI/WindowManager.h"
+
+class AppState;
+
+namespace DataModel {
+class ProjectModel;
+struct WidgetRef;
+}  // namespace DataModel
+
+namespace UI {
+class Dashboard;
+class UISessionRegistry;
+
+/**
+ * @brief QStandardItemModel used to represent dashboard widgets in a hierarchical UI.
+ */
+class TaskbarModel : public QStandardItemModel {
+  Q_OBJECT
+
+public:
+  enum Roles {
+    WindowIdRole = Qt::UserRole + 1,
+    WidgetTypeRole,
+    WidgetNameRole,
+    WidgetIconRole,
+    GroupIdRole,
+    GroupNameRole,
+    IsGroupRole,
+    WindowStateRole,
+    IconIdRole,
+  };
+
+  enum WindowState {
+    WindowNormal    = 0,
+    WindowMinimized = 1,
+    WindowClosed    = 2
+  };
+  Q_ENUM(WindowState)
+
+  explicit TaskbarModel(QObject* parent = nullptr);
+  [[nodiscard]] QHash<int, QByteArray> roleNames() const override;
+};
+
+/**
+ * @brief Controller that manages dashboard window state and taskbar UI models.
+ */
+class Taskbar : public QQuickItem {
+  // clang-format off
+  Q_OBJECT
+  Q_PROPERTY(TaskbarModel* fullModel
+             READ fullModel
+             NOTIFY fullModelChanged)
+  Q_PROPERTY(TaskbarModel* taskbarButtons
+             READ taskbarButtons
+             NOTIFY taskbarButtonsChanged)
+  Q_PROPERTY(int activeGroupId
+             READ activeGroupId
+             WRITE setActiveGroupId
+             NOTIFY activeGroupIdChanged)
+  Q_PROPERTY(int activeGroupIndex
+             READ activeGroupIndex
+             WRITE setActiveGroupIndex
+             NOTIFY activeGroupIdChanged)
+  Q_PROPERTY(QQuickItem* activeWindow
+             READ activeWindow
+             WRITE setActiveWindow
+             NOTIFY activeWindowChanged)
+  Q_PROPERTY(QVariantList workspaceModel
+             READ workspaceModel
+             NOTIFY workspaceModelChanged)
+  Q_PROPERTY(QString searchFilter
+             READ searchFilter
+             WRITE setSearchFilter
+             NOTIFY searchFilterChanged)
+  Q_PROPERTY(QVariantList searchResults
+             READ searchResults
+             NOTIFY searchResultsChanged)
+  Q_PROPERTY(QVariantList allWidgets
+             READ allWidgets
+             NOTIFY fullModelChanged)
+  Q_PROPERTY(UI::WindowManager* windowManager
+             READ windowManager
+             WRITE setWindowManager
+             NOTIFY windowManagerChanged)
+  Q_PROPERTY(bool hasMaximizedWindow
+             READ hasMaximizedWindow
+             NOTIFY statesChanged)
+  Q_PROPERTY(bool independentWorkspace
+             READ independentWorkspace
+             WRITE setIndependentWorkspace
+             NOTIFY independentWorkspaceChanged)
+  Q_PROPERTY(QString layoutScope
+             READ layoutScope
+             WRITE setLayoutScope
+             NOTIFY layoutScopeChanged)
+  // clang-format on
+
+signals:
+  void statesChanged();
+  void fullModelChanged();
+  void searchDismissed();
+  void highlightWidget(int windowId);
+  void searchFilterChanged();
+  void searchResultsChanged();
+  void activeWindowChanged();
+  void windowStatesChanged();
+  void activeGroupIdChanged();
+  void windowManagerChanged();
+  void workspaceModelChanged();
+  void taskbarButtonsChanged();
+  void layoutScopeChanged();
+  void registeredWindowsChanged();
+  void independentWorkspaceChanged();
+  void aboutToChangeWorkspace(int fromIndex, int toIndex);
+
+public:
+  Taskbar(QQuickItem* parent = nullptr);
+  ~Taskbar();
+
+  [[nodiscard]] int activeGroupId() const;
+  [[nodiscard]] int activeGroupIndex() const;
+  [[nodiscard]] bool independentWorkspace() const;
+  [[nodiscard]] QString layoutScope() const;
+  [[nodiscard]] QString searchFilter() const;
+  [[nodiscard]] QVariantList allWidgets() const;
+  [[nodiscard]] QVariantList searchResults() const;
+  [[nodiscard]] QVariantList workspaceModel() const;
+  [[nodiscard]] QQuickItem* activeWindow() const;
+
+  [[nodiscard]] TaskbarModel* fullModel() const;
+  [[nodiscard]] TaskbarModel* taskbarButtons() const;
+  [[nodiscard]] WindowManager* windowManager() const;
+
+  [[nodiscard]] bool hasMaximizedWindow() const;
+
+  Q_INVOKABLE [[nodiscard]] QQuickItem* firstWindow() const;
+  Q_INVOKABLE [[nodiscard]] QQuickItem* windowData(const int id) const;
+  Q_INVOKABLE [[nodiscard]] QVariantList workspaceWidgetIds(int workspaceId) const;
+  Q_INVOKABLE [[nodiscard]] TaskbarModel::WindowState windowState(QQuickItem* window) const;
+  Q_INVOKABLE [[nodiscard]] QQuickItem* nextActiveWindow(int delta) const;
+  Q_INVOKABLE [[nodiscard]] QVariantList workspaceTree() const;
+  Q_INVOKABLE [[nodiscard]] int workspaceContainingWidget(int windowId) const;
+
+  [[nodiscard]] QVector<int> taskbarWindowIds() const;
+
+public slots:
+  void saveLayout();
+  void dismissSearch();
+  void setSearchFilter(const QString& filter);
+  void setActiveGroupId(int groupId);
+  void setActiveGroupIndex(int index);
+  void selectWorkspaceById(int workspaceId);
+  void setDesiredGroupId(int groupId);
+  void setIndependentWorkspace(bool independent);
+  void setLayoutScope(const QString& scope);
+  void showWindow(QQuickItem* window);
+  void closeWindow(QQuickItem* window);
+  void minimizeWindow(QQuickItem* window);
+  void setActiveWindow(QQuickItem* window);
+  void unregisterWindow(QQuickItem* window);
+  void setWindowManager(UI::WindowManager* manager);
+  void registerWindow(const int id, QQuickItem* window);
+  void setWindowState(const int id, const UI::TaskbarModel::WindowState state);
+  void navigateToWidget(int windowId, int groupId, bool allowAddToWorkspace = true);
+  void createWorkspace(const QString& name);
+  void deleteWorkspace(int workspaceId);
+  void renameWorkspace(int workspaceId, const QString& name);
+  void addWidgetToActiveWorkspace(int windowId);
+  void removeWidgetFromActiveWorkspace(int windowId);
+  void setWorkspaceWidgets(int workspaceId, const QVariantList& windowIds);
+
+private slots:
+  void onRegistryCleared();
+  void onWidgetCreated(UI::WidgetID id, const UI::WidgetInfo& info);
+  void onWidgetUpdated(UI::WidgetID id, const UI::WidgetInfo& info);
+  void onWidgetDestroyed(UI::WidgetID id);
+  void onFocusCycleTick();
+
+private:
+  void rebuildModel();
+  void connectToRegistry();
+  void startFocusCycle();
+  void applySavedWindowStates(const QJsonObject& layout);
+  void mapWidgetToWindow(UI::WidgetID wid, int windowId);
+  void populateTaskbarFromWorkspace(int groupId);
+  void populateTaskbarFromGroup(int groupId);
+  void removeWorkspaceTaskbarRow(int windowId);
+  void selectGroupAfterRebuild();
+  void appendGroupChildItem(QStandardItem* groupItem,
+                            int groupId,
+                            const QString& groupName,
+                            int windowId,
+                            SerialStudio::DashboardWidget widgetType,
+                            int relativeIndex);
+  void attachGroupItemToFullModel(QStandardItem* groupItem, int groupId, bool alreadyRegistered);
+  void collectGroupWidgetIds(int groupId,
+                             QList<int>& windowIds,
+                             QList<int>& relativeIds,
+                             QList<SerialStudio::DashboardWidget>& widgetTypes) const;
+  void mapMainGroupWidgetId(SerialStudio::DashboardWidget groupType, int groupId, int mainWindowId);
+  void buildOverviewGroupItem(QStandardItem* groupItem,
+                              int groupId,
+                              const QString& groupName,
+                              SerialStudio::DashboardWidget groupType,
+                              const QString& extensionId,
+                              int mainWindowId,
+                              bool alreadyRegistered);
+  [[nodiscard]] QStandardItem* findItemByWindowId(int windowId,
+                                                  QStandardItem* parentItem = nullptr,
+                                                  int depth                 = 0) const;
+  [[nodiscard]] QStandardItem* findItemByWidgetId(UI::WidgetID widgetId,
+                                                  QStandardItem* parentItem = nullptr) const;
+  [[nodiscard]] QStandardItem* findGroupItemByGroupId(int groupId) const;
+  [[nodiscard]] QStandardItem* createItemFromWidgetInfo(const UI::WidgetInfo& info);
+  [[nodiscard]] int findWindowIdByGroupAndIndex(int widgetType, int relativeIndex) const;
+  [[nodiscard]] int resolveWorkspaceRefWindowId(const DataModel::WidgetRef& ref) const;
+  [[nodiscard]] int relativeIndexForWindow(int windowId) const;
+  [[nodiscard]] int indexForGroupId(int groupId) const;
+  [[nodiscard]] QString layoutContextKey() const;
+  void emitWorkspaceChangeAnticipation(int toGroupId);
+
+  UI::Dashboard& m_dashboard;
+  DataModel::ProjectModel& m_projectModel;
+  UI::UISessionRegistry& m_uiSessionRegistry;
+  UI::WidgetRegistry& m_widgetRegistry;
+  AppState& m_appState;
+
+  int m_activeGroupId;
+  int m_desiredGroupId;
+  bool m_rebuildInProgress;
+  bool m_batchUpdateInProgress;
+  bool m_restoringLayout;
+  bool m_independentWorkspace;
+  QString m_layoutScope;
+  QString m_searchFilter;
+
+  QQuickItem* m_activeWindow;
+  UI::WindowManager* m_windowManager;
+  QMap<QQuickItem*, int> m_windowIDs;
+  QMap<QQuickItem*, QMetaObject::Connection> m_windowConnections;
+
+  QTimer m_focusCycleTimer;
+  QVector<QQuickItem*> m_focusCycleQueue;
+
+  QMap<UI::WidgetID, int> m_widgetIdToWindowId;
+  QMap<int, UI::WidgetID> m_windowIdToWidgetId;
+
+  TaskbarModel* m_fullModel;
+  TaskbarModel* m_taskbarButtons;
+};
+
+}  // namespace UI

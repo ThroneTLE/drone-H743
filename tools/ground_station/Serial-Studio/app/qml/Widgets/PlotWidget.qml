@@ -1,0 +1,2161 @@
+/*
+ * Serial Studio
+ * https://serial-studio.com/
+ *
+ * Copyright (C) 2020-2025 Alex Spataru
+ *
+ * This file is dual-licensed:
+ *
+ * - Under the GNU GPLv3 (or later) for builds that exclude Pro modules.
+ * - Under the Serial Studio Commercial License for builds that include
+ *   any Pro functionality.
+ *
+ * You must comply with the terms of one of these licenses, depending
+ * on your use case.
+ *
+ * For GPL terms, see <https://www.gnu.org/licenses/gpl-3.0.html>
+ * For commercial terms, see LICENSES/LicenseRef-SerialStudio-Commercial.txt.
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later OR LicenseRef-SerialStudio-Commercial
+ */
+
+import QtQuick
+import QtGraphs
+import QtQuick.Layouts
+import QtQuick.Controls
+
+import SerialStudio
+
+Item {
+  id: root
+
+  //
+  // Plot properties
+  //
+  property real xMin: 0
+  property real xMax: 1
+  property real yMin: 0
+  property real yMax: 1
+  property string xLabel: ""
+  property alias graph: _graph
+  property alias xAxis: _axisX
+  property alias yAxis: _axisY
+  property real triggerLevel: 0
+  property bool sweepMode: false
+  property alias zoom: _axisX.zoom
+  property alias yLabel: _yLabel.text
+  property bool triggerEditing: false
+  property alias plotArea: _graph.plotArea
+  property alias curveColors: _theme.seriesColors
+
+  //
+  // Area-under-curve fill: assign a curve series to areaFillSource and the fill
+  // renders as a GPU triangle strip under the crosshair overlay (PlotAreaFill)
+  //
+  property var areaFillSource: null
+  property real areaFillBaseline: 0
+  property color areaFillColor: "transparent"
+
+  //
+  // GPU curve layer: dashboard widgets parent PlotCurve items here (anchors.fill the
+  // layer); it sits above the area fill and below the crosshair overlay
+  //
+  property alias curveLayer: _curveLayer
+
+  //
+  // Emitted when the user drags the trigger-level line; the parent writes the
+  // new level back into the data model (triggerLevel is a one-way binding).
+  //
+  signal triggerLevelChangeRequested(real level)
+
+  //
+  // X-axis ruler (spec 0058): named markers, a zero point every X label and cursor readout
+  // becomes relative to, and a hover marker; the host persists them on rulerChanged()
+  //
+  property var xMarkers: []
+  property real xZero: 0
+  property bool xZeroSet: false
+  property bool hoverMarkerEnabled: false
+  signal rulerChanged()
+
+  function addMarker(worldX, name) {
+    const list = root.xMarkers.slice()
+    list.push({ "x": worldX, "name": name })
+    root.xMarkers = list
+    root.rulerChanged()
+  }
+
+  function removeMarker(index) {
+    if (index < 0 || index >= root.xMarkers.length)
+      return
+
+    const list = root.xMarkers.slice()
+    list.splice(index, 1)
+    root.xMarkers = list
+    root.rulerChanged()
+  }
+
+  function clearMarkers() {
+    root.xMarkers = []
+    root.rulerChanged()
+  }
+
+  function setZeroAt(worldX) {
+    root.xZero = worldX
+    root.xZeroSet = true
+    root.rulerChanged()
+  }
+
+  function resetZero() {
+    root.xZero = 0
+    root.xZeroSet = false
+    root.rulerChanged()
+  }
+
+  function setHoverMarker(enabled) {
+    root.hoverMarkerEnabled = enabled
+    root.rulerChanged()
+  }
+
+  //
+  // Restores the ruler from a widgetSettings object (missing keys keep the defaults)
+  //
+  function restoreRuler(settings) {
+    if (Array.isArray(settings["xMarkers"]))
+      root.xMarkers = settings["xMarkers"].filter(function(m) {
+        return m && isFinite(m.x) && typeof m.name === "string"
+      })
+
+    if (settings["xZeroSet"] === true && isFinite(settings["xZero"])) {
+      root.xZero = settings["xZero"]
+      root.xZeroSet = true
+    }
+
+    if (settings["hoverMarker"] !== undefined)
+      root.hoverMarkerEnabled = settings["hoverMarker"] === true
+  }
+
+  //
+  // Nearest marker to a plot-area pixel X, or -1 when none is within the hit threshold
+  //
+  function markerNear(pixelX) {
+    let best = -1
+    let bestDist = 8
+    for (let i = 0; i < root.xMarkers.length; ++i) {
+      const d = Math.abs(root.worldToPixelX(root.xMarkers[i].x) - pixelX)
+      if (d <= bestDist) {
+        bestDist = d
+        best = i
+      }
+    }
+
+    return best
+  }
+
+  //
+  // X value relative to the ruler zero (identity on log axes, which have no zero point)
+  //
+  function relativeX(worldX) {
+    return (root.xZeroSet && !root.logX) ? worldX - root.xZero : worldX
+  }
+
+  //
+  // Measures the labels the axes would actually draw. advanceWidth() is a pure call, so the
+  // tick-interval bindings capture no mutable dependency and cannot loop.
+  //
+  FontMetrics {
+    id: _tickMetrics
+
+    font: (Cpp_Misc_CommonFonts.widgetFontRevision, Cpp_Misc_CommonFonts.widgetFont(0.83))
+  }
+
+  FontMetrics {
+    id: _readoutMetrics
+
+    font: (Cpp_Misc_CommonFonts.widgetFontRevision, Cpp_Misc_CommonFonts.widgetFont(0.85, false))
+  }
+
+  //
+  // Tick fitting: 1-2-5 mantissas per decade, a fixed gutter between neighbouring labels, and
+  // a hard bound on the convergence walk (40 steps span 13 decades)
+  //
+  readonly property var tickMantissas: [1, 2, 5]
+  readonly property int tickGutterPx: 12
+  readonly property int tickGutterPy: 8
+  readonly property int maxTickSteps: 40
+
+  //
+  // Floor on the major-tick pitch: labels alone fit far tighter than the eye reads, and each
+  // major carries four minor grid lines, so a label-only fit produces a mesh
+  //
+  readonly property int minTickPitchPx: 76
+  readonly property int minTickPitchPy: 44
+
+  //
+  // Minor grid lines sit between the plot background and the border color so the fine
+  // subdivisions read as texture instead of competing with the majors
+  //
+  function fadedGrid(strength) {
+    const border = Qt.color(Cpp_ThemeManager.colors["widget_border"])
+    return Qt.tint(Cpp_ThemeManager.colors["widget_base"],
+                   Qt.rgba(border.r, border.g, border.b, strength))
+  }
+
+  //
+  // Log10-axis tick interval: whole decades when >= 2 decades are visible, otherwise a
+  // {1,2,5}*10^n decade fraction (capped at 0.5; every step divides a decade evenly)
+  //
+  function logInterval(range, maxLabels) {
+    if (range >= 2.0)
+      return Math.max(1.0, Math.ceil(range / maxLabels))
+
+    const rough = Math.max(range / maxLabels, 1e-9)
+    const magnitude = Math.pow(10, Math.floor(Math.log10(rough)))
+    const normalized = rough / magnitude
+
+    let niceInterval
+    if (normalized <= 1.0)
+      niceInterval = 1.0
+    else if (normalized <= 2.0)
+      niceInterval = 2.0
+    else if (normalized <= 5.0)
+      niceInterval = 5.0
+    else
+      niceInterval = 10.0
+
+    return Math.min(0.5, niceInterval * magnitude)
+  }
+
+  //
+  // Convergent tick period: walk the 1-2-5 sequence up from the finest plausible period until
+  // the widest drawn label plus the gutter fits one tick pitch (extentOf = px along the axis)
+  //
+  function fitInterval(min, max, pixels, gutter, minPitch, extentOf) {
+    const range = max - min
+    if (!(range > 0) || !(pixels > 0))
+      return 1.0
+
+    const finest = range / pixels
+    const magnitude0 = Math.floor(Math.log10(finest))
+    let candidate = Math.pow(10, magnitude0)
+    for (let step = 0; step < root.maxTickSteps; ++step) {
+      const mantissa = root.tickMantissas[step % 3]
+      candidate = mantissa * Math.pow(10, magnitude0 + Math.floor(step / 3))
+      const pitch = pixels * candidate / range
+      const first = Math.ceil(min / candidate) * candidate
+      const last = Math.floor(max / candidate) * candidate
+      const extent = Math.max(extentOf(first, candidate), extentOf(last, candidate))
+      if (extent + gutter <= pitch && pitch >= minPitch)
+        return candidate
+    }
+
+    return candidate
+  }
+
+  //
+  // Labels exactly as the axis delegates draw them, so the fit measures the real thing
+  //
+  function xTickLabel(value, interval) {
+    if (root.timeAxis)
+      return root.secondsAgoFormat(value, interval)
+
+    if (root.logX)
+      return root.logTickFormat(value, interval)
+
+    return root.engineeringFormat(root.relativeX(value), interval)
+  }
+
+  function yTickLabel(value, interval) {
+    if (root.logY)
+      return root.logTickFormat(value, interval)
+
+    return root.engineeringFormat(value, interval)
+  }
+
+  //
+  // Tick period for the X axis: log axes keep the decade rule, linear axes converge on the
+  // measured label width
+  //
+  function smartIntervalX(min, max) {
+    const range = max - min
+    if (range <= 0)
+      return 1.0
+
+    const availableWidth = root.settledPlotW
+    if (root.logX) {
+      const labelWidth = _tickMetrics.advanceWidth("-8888.88") + 20
+      return logInterval(range, Math.max(2, Math.floor(availableWidth / labelWidth)))
+    }
+
+    return fitInterval(min, max, availableWidth, root.tickGutterPx, root.minTickPitchPx,
+                       function(value, period) {
+      return _tickMetrics.advanceWidth(root.xTickLabel(value, period))
+    })
+  }
+
+  //
+  // Tick period for the Y axis: labels stack, so the extent is the font height
+  //
+  function smartIntervalY(min, max) {
+    const range = max - min
+    if (range <= 0)
+      return 1.0
+
+    const availableHeight = root.settledPlotH
+    if (root.logY) {
+      const labelHeight = _tickMetrics.height + root.tickGutterPy
+      return logInterval(range, Math.max(2, Math.floor(availableHeight / labelHeight)))
+    }
+
+    return fitInterval(min, max, availableHeight, root.tickGutterPy, root.minTickPitchPy,
+                       function(value, period) {
+      return _tickMetrics.height
+    })
+  }
+
+  //
+  // QtGraphs normalizes the tick anchor with an unbounded add/subtract loop, so a non-finite
+  // or far-out-of-range anchor freezes the app inside updatePolish: clamp into [min, max]
+  //
+  function safeTickAnchor(desired, min, max) {
+    const lo = Math.min(min, max)
+    const hi = Math.max(min, max)
+    const anchor = isFinite(desired) ? desired : (isFinite(lo) ? lo : 0)
+    if (!isFinite(lo) || !isFinite(hi))
+      return isFinite(anchor) ? anchor : 0
+
+    return Math.max(lo, Math.min(hi, anchor))
+  }
+
+  //
+  // Mantissa of a tick period (1, 2 or 5), tolerant of floating-point scaling
+  //
+  function tickMantissa(interval) {
+    if (!(interval > 0))
+      return 1
+
+    return Math.round(interval / Math.pow(10, Math.floor(Math.log10(interval))))
+  }
+
+  //
+  // Minor ticks between two majors: four subdivisions under a 2, five otherwise; log axes keep
+  // the single midpoint sub-tick
+  //
+  function subTicksFor(interval, logAxis) {
+    if (logAxis)
+      return 1
+
+    return tickMantissa(interval) === 2 ? 3 : 4
+  }
+
+  //
+  // Readout precision follows the tick period (one digit finer than the ticks) so cursors and
+  // ticks can never disagree about how many digits matter
+  //
+  function precisionForInterval(interval) {
+    if (!(interval > 0) || !isFinite(interval))
+      return 2
+
+    return Math.max(0, Math.min(6, Math.ceil(-Math.log10(interval) - 1e-9) + 1))
+  }
+
+  //
+  // Decimals QtGraphs keeps in the tick text the delegates re-parse: its auto precision (0
+  // decimals over a 0..10 range) collapses 0.5 to "1" and the axis repeats labels
+  //
+  function tickDecimals(interval) {
+    if (!(interval > 0) || !isFinite(interval))
+      return 6
+
+    return Math.max(0, Math.min(12, Math.ceil(-Math.log10(interval) + 1e-9) + 1))
+  }
+
+  //
+  // Engineering-unit formatter for tick labels (K/M/G, u/n/p)
+  //
+  function engineeringFormat(value, tickInterval) {
+    if (!isFinite(value))
+      return ""
+
+    const abs    = Math.abs(value)
+    const refMag = (tickInterval > 0) ? Math.max(abs, tickInterval) : abs
+
+    // Pick the engineering scale from refMag, ignore millis range
+    // code-verify off
+    let scaleFactor = 1
+    let suffix      = ""
+    if      (refMag >= 1e9)  { scaleFactor = 1e9;   suffix = "G" }
+    else if (refMag >= 1e6)  { scaleFactor = 1e6;   suffix = "M" }
+    else if (refMag >= 1e3)  { scaleFactor = 1e3;   suffix = "K" }
+    else if (refMag >= 1e-3) { scaleFactor = 1;     suffix = ""  }
+    else if (refMag >= 1e-6) { scaleFactor = 1e-6;  suffix = "µ" }
+    else if (refMag >= 1e-9) { scaleFactor = 1e-9;  suffix = "n" }
+    else if (refMag > 0)     { scaleFactor = 1e-12; suffix = "p" }
+    else                     { return "0" }
+    // code-verify on
+
+    // Decimals derive from the scaled tick interval
+    let decimals
+    if (tickInterval > 0) {
+      const scaledInterval = tickInterval / scaleFactor
+      decimals = scaledInterval >= 1
+                  ? 0
+                  : Math.min(6, Math.ceil(-Math.log10(scaledInterval) + 1e-9))
+    } else if (abs === 0) {
+      decimals = 0
+    } else {
+      const scaled = abs / scaleFactor
+      decimals     = scaled >= 1
+                      ? 0
+                      : Math.min(6, Math.max(0,
+                          2 - Math.floor(Math.log10(scaled))))
+    }
+
+    return (value / scaleFactor).toFixed(decimals) + suffix
+  }
+
+  //
+  // Log-axis tick label formatter: pow10 back to true units, precision derived from the
+  // local tick spacing so sub-decade zoom steps stay distinguishable (20.0K vs 20.5K)
+  //
+  function logTickFormat(logValue, logStep) {
+    if (!isFinite(logValue))
+      return ""
+
+    const value = Math.pow(10, logValue)
+    const spacing = logStep > 0 ? value * (Math.pow(10, logStep) - 1) : 0
+    return engineeringFormat(value, spacing)
+  }
+
+  //
+  // Relative-time X axis: pick a friendly unit (s / ms / us) from the visible span so the
+  // ticks and axis title read in whole, human numbers regardless of the time range.
+  //
+  readonly property real timeSpanSeconds: Math.abs(xMax - xMin)
+  readonly property real timeUnitFactor: timeSpanSeconds >= 1 ? 1
+                                       : (timeSpanSeconds >= 1e-3 ? 1e3 : 1e6)
+  // code-verify off
+  readonly property string timeUnitName: timeSpanSeconds >= 1 ? "s"
+                                       : (timeSpanSeconds >= 1e-3 ? "ms" : "µs")
+  // code-verify on
+
+  //
+  // Tick formatter for the relative-time X axis: shows the magnitude (time ago) in the
+  // chosen unit, so the axis reads e.g. 10 8 6 4 2 0 with 0 = now on the right.
+  //
+  function secondsAgoFormat(value, tickInterval) {
+    if (!isFinite(value))
+      return ""
+
+    const relative = root.relativeX(value)
+    const scaled   = (root.xZeroSet ? relative : Math.abs(value)) * root.timeUnitFactor
+    const scaledIv = tickInterval * root.timeUnitFactor
+    let decimals   = 0
+    if (scaledIv > 0 && scaledIv < 1)
+      decimals = Math.min(3, Math.ceil(-Math.log10(scaledIv) + 1e-9))
+
+    return scaled.toFixed(decimals)
+  }
+
+  //
+  // Cursor/readout formatter: absolute time-ago magnitude in the chosen unit (e.g. "12 ms").
+  //
+  function timeAgoLabel(worldX) {
+    const scaled = Math.abs(worldX) * root.timeUnitFactor
+    return scaled.toFixed(scaled >= 100 ? 0 : (scaled >= 1 ? 1 : 3)) + " " + root.timeUnitName
+  }
+
+  //
+  // Readout formatters: world coordinates are log10 units on a log axis, so every
+  // human-facing value converts back through pow10 before display
+  //
+  function displayValueX(worldX) {
+    if (root.timeAxis)
+      return root.xZeroSet ? root.relativeTimeLabel(worldX) : root.timeAgoLabel(worldX)
+
+    if (root.logX)
+      return root.engineeringFormat(Math.pow(10, worldX), 0)
+
+    return root.relativeX(worldX).toFixed(root.xPrecision)
+  }
+
+  //
+  // Signed time relative to the ruler zero, in the axis unit (e.g. "-12.5 ms")
+  //
+  function relativeTimeLabel(worldX) {
+    const scaled = root.relativeX(worldX) * root.timeUnitFactor
+    const magnitude = Math.abs(scaled)
+    return scaled.toFixed(magnitude >= 100 ? 0 : (magnitude >= 1 ? 1 : 3)) + " " + root.timeUnitName
+  }
+
+  function displayValueY(worldY) {
+    if (root.logY)
+      return root.engineeringFormat(Math.pow(10, worldY), 0)
+
+    return worldY.toFixed(root.yPrecision)
+  }
+
+  function displayDeltaX() {
+    if (root.timeAxis)
+      return root.timeAgoLabel(root.deltaX)
+
+    if (root.logX)
+      return root.engineeringFormat(Math.pow(10, root.cursorBX) - Math.pow(10, root.cursorAX), 0)
+
+    return root.deltaX.toFixed(root.xPrecision)
+  }
+
+  function displayDeltaY() {
+    if (root.logY)
+      return root.engineeringFormat(Math.pow(10, root.cursorBY) - Math.pow(10, root.cursorAY), 0)
+
+    return root.deltaY.toFixed(root.yPrecision)
+  }
+
+  //
+  // SI-prefixed frequency (mHz .. GHz) at @p digits significant digits, e.g. "1.25 kHz"
+  //
+  function frequencyLabel(hz, digits) {
+    if (!isFinite(hz) || !(hz > 0))
+      return ""
+
+    const scales = [[1e9, "GHz"], [1e6, "MHz"], [1e3, "kHz"], [1, "Hz"], [1e-3, "mHz"]]
+    let factor = 1e-3
+    let unit = "mHz"
+    for (let i = 0; i < scales.length; ++i) {
+      if (hz >= scales[i][0]) {
+        factor = scales[i][0]
+        unit = scales[i][1]
+        break
+      }
+    }
+
+    const scaled = hz / factor
+    const decimals = Math.max(0, digits - 1 - Math.floor(Math.log10(scaled)))
+    return scaled.toFixed(Math.min(6, decimals)) + " " + unit
+  }
+
+  //
+  // 1/dX for the cursor pair: only meaningful on a time axis with a non-zero separation
+  //
+  readonly property bool cursorFrequencyValid: root.timeAxis && root.cursorAVisible
+                                               && root.cursorBVisible
+                                               && Math.abs(root.deltaX) > 1e-12
+                                               && isFinite(root.deltaX)
+  readonly property real cursorFrequencyHz: cursorFrequencyValid ? 1.0 / Math.abs(root.deltaX) : 0
+
+  //
+  // Cursor readout that fits @p widthPx: the hint goes first, then frequency precision
+  // degrades, and the frequency drops last; units are never dropped
+  //
+  function cursorReadout(widthPx) {
+    const dx = root.displayDeltaX()
+    const dy = root.displayDeltaY()
+    const hint = qsTr("Drag to move, right-click to clear")
+    const base = qsTr("ΔX: %1  ΔY: %2").arg(dx).arg(dy)
+    if (!root.cursorFrequencyValid)
+      return qsTr("%1 — %2").arg(base).arg(hint)
+
+    const hz = root.cursorFrequencyHz
+    const withHz = function(digits) {
+      return qsTr("%1  1/ΔX: %2").arg(base).arg(root.frequencyLabel(hz, digits))
+    }
+    const candidates = [
+      qsTr("%1 — %2").arg(withHz(4)).arg(hint),
+      withHz(4),
+      withHz(3),
+      withHz(2),
+      base
+    ]
+
+    for (let i = 0; i < candidates.length; ++i)
+      if (_readoutMetrics.advanceWidth(candidates[i]) <= widthPx)
+        return candidates[i]
+
+    return candidates[candidates.length - 1]
+  }
+
+  function isPointVisible(worldX, worldY) {
+    return worldX >= xVisibleMin && worldX <= xVisibleMax &&
+           worldY >= yVisibleMin && worldY <= yVisibleMax
+  }
+
+  //
+  // Visible range calculations for dynamic tick intervals
+  //
+  readonly property real xVisibleMax: xVisibleMin + xVisibleRange
+  readonly property real yVisibleMax: yVisibleMin + yVisibleRange
+  readonly property real xVisibleRange: (xMax - xMin) / _axisX.zoom
+  readonly property real yVisibleRange: (yMax - yMin) / _axisY.zoom
+  readonly property real xVisibleMin: xMin + (xMax - xMin) / 2 + _axisX.pan - xVisibleRange / 2
+  readonly property real yVisibleMin: yMin + (yMax - yMin) / 2 + _axisY.pan - yVisibleRange / 2
+
+  //
+  // Settled plot-area extent for the tick math: reading live plotArea (which the interval resizes
+  // via the label containers) spins QtGraphs' polish; this debounced copy breaks the loop.
+  //
+  property real settledPlotW: 0
+  property real settledPlotH: 0
+  property bool plotSettlePending: false
+  function schedulePlotAreaSettle() {
+    if (root.plotSettlePending)
+      return
+
+    root.plotSettlePending = true
+    Qt.callLater(root.applyPlotAreaSettle)
+  }
+  function applyPlotAreaSettle() {
+    root.plotSettlePending = false
+    const w = _graph.plotArea.width
+    const h = _graph.plotArea.height
+    if (Math.abs(w - root.settledPlotW) > 1)
+      root.settledPlotW = w
+
+    if (Math.abs(h - root.settledPlotH) > 1)
+      root.settledPlotH = h
+  }
+
+  //
+  // Dynamic tick intervals based on visible range and available space
+  //
+  readonly property real xTickInterval: smartIntervalX(xVisibleMin, xVisibleMax)
+  readonly property real yTickInterval: smartIntervalY(yVisibleMin, yVisibleMax)
+
+  //
+  // Custom properties
+  //
+  property bool logX: false
+  property bool logY: false
+  property bool timeAxis: false
+  property bool xLabelVisible: true
+  property bool yLabelVisible: true
+  property bool showCrosshairs: false
+  property bool mouseAreaEnabled: true
+
+  //
+  // Cursor color properties
+  //
+  property color cursorAColor: Cpp_ThemeManager.colors["plot_cursor_a"]
+  property color cursorBColor: Cpp_ThemeManager.colors["plot_cursor_b"]
+  property color cursorATextColor: Cpp_ThemeManager.colors["widget_base"]
+  property color cursorBTextColor: Cpp_ThemeManager.colors["widget_base"]
+
+  //
+  // Cursor properties (internal - managed by showCrosshairs)
+  //
+  property real cursorAX: 0
+  property real cursorAY: 0
+  property real cursorBX: 0
+  property real cursorBY: 0
+  property bool cursorAVisible: false
+  property bool cursorBVisible: false
+
+  //
+  // Cursor mode replaces crosshairs when enabled
+  //
+  readonly property bool cursorMode: showCrosshairs
+
+  //
+  // The trigger-level line is draggable while it is shown (sweep mode + editing)
+  //
+  readonly property bool triggerDraggable: sweepMode && triggerEditing
+
+  //
+  // Reset cursor states when cursor mode is toggled off
+  //
+  onCursorModeChanged: {
+    if (!cursorMode) {
+      clearAllCursors()
+    }
+  }
+
+  //
+  // Cursor delta values
+  //
+  readonly property real deltaX: cursorBX - cursorAX
+  readonly property real deltaY: cursorBY - cursorAY
+
+  //
+  // Readout precision derived from the tick period the axis settled on
+  //
+  readonly property int xPrecision: precisionForInterval(xTickInterval)
+  readonly property int yPrecision: precisionForInterval(yTickInterval)
+
+  readonly property bool cursorAInView: isPointVisible(cursorAX, cursorAY)
+  readonly property bool cursorBInView: isPointVisible(cursorBX, cursorBY)
+  readonly property bool cursorAXInRange: cursorAX >= xVisibleMin && cursorAX <= xVisibleMax
+  readonly property bool cursorAYInRange: cursorAY >= yVisibleMin && cursorAY <= yVisibleMax
+  readonly property bool cursorBXInRange: cursorBX >= xVisibleMin && cursorBX <= xVisibleMax
+  readonly property bool cursorBYInRange: cursorBY >= yVisibleMin && cursorBY <= yVisibleMax
+
+  //
+  // Functions to manage cursors
+  //
+  function setCursorA(worldX, worldY) {
+    cursorAX = worldX
+    cursorAY = worldY
+    cursorAVisible = true
+  } function setCursorB(worldX, worldY) {
+    cursorBX = worldX
+    cursorBY = worldY
+    cursorBVisible = true
+  } function clearCursorA() {
+    cursorAVisible = false
+  } function clearCursorB() {
+    cursorBVisible = false
+  } function clearAllCursors() {
+    cursorAVisible = false
+    cursorBVisible = false
+  }
+
+  //
+  // Convert world coordinates to pixel coordinates
+  //
+  function worldToPixelX(worldX) {
+    const xFullRange = _axisX.max - _axisX.min
+    const xWorldCenter = _axisX.min + xFullRange / 2
+    const xVisibleRange = xFullRange / _axisX.zoom
+    const xViewStart = xWorldCenter + _axisX.pan - xVisibleRange / 2
+    const normalizedX = (worldX - xViewStart) / xVisibleRange
+    return normalizedX * _graph.plotArea.width
+  }
+
+  function worldToPixelY(worldY) {
+    const yFullRange = _axisY.max - _axisY.min
+    const yWorldCenter = _axisY.min + yFullRange / 2
+    const yVisibleRange = yFullRange / _axisY.zoom
+    const yViewStart = yWorldCenter + _axisY.pan - yVisibleRange / 2
+    const normalizedY = (worldY - yViewStart) / yVisibleRange
+    return (1 - normalizedY) * _graph.plotArea.height
+  }
+
+  //
+  // Convert pixel coordinates to world coordinates
+  //
+  function pixelToWorldX(pixelX) {
+    const xFullRange = _axisX.max - _axisX.min
+    const xWorldCenter = _axisX.min + xFullRange / 2
+    const xVisibleRange = xFullRange / _axisX.zoom
+    const xViewStart = xWorldCenter + _axisX.pan - xVisibleRange / 2
+    return xViewStart + xVisibleRange * (pixelX / _graph.plotArea.width)
+  }
+
+  function pixelToWorldY(pixelY) {
+    const yFullRange = _axisY.max - _axisY.min
+    const yWorldCenter = _axisY.min + yFullRange / 2
+    const yVisibleRange = yFullRange / _axisY.zoom
+    const yViewStart = yWorldCenter + _axisY.pan - yVisibleRange / 2
+    return yViewStart + yVisibleRange * (1 - (pixelY / _graph.plotArea.height))
+  }
+
+  function updateCrosshairLabels(mouseX, mouseY) {
+    if (!_overlayMouse.containsMouse)
+      return
+
+    const x = pixelToWorldX(mouseX)
+    const y = pixelToWorldY(mouseY)
+
+    _xPosLabel.text = x.toFixed(2)
+    _yPosLabel.text = y.toFixed(2)
+  }
+
+  function adjustAxisPan(axis, axisLength, cursorPos, dPx, inverted) {
+    const fullRange = axis.max - axis.min
+    const visibleRange = fullRange / axis.zoom
+    const unitPerPixel = fullRange / axisLength
+
+    const pxDiff = (inverted ? -dPx : dPx)
+    const zoomDampeningFactor = 1 / axis.zoom
+    let newPan = axis.pan + pxDiff * unitPerPixel * zoomDampeningFactor
+
+    const maxPan = (axis.max - (axis.min + visibleRange)) / 2
+    const minPan = (axis.min - (axis.max - visibleRange)) / 2
+    newPan = Math.min(Math.max(newPan, minPan), maxPan)
+
+    axis.pan = newPan
+  }
+
+  //
+  // Cursor-centered zoom: keeps the world point under the cursor fixed.
+  //
+  function applyCursorZoom(axis, oldZoom, newZoom, cursorPos, axisLength, inverted) {
+    // Ensure that zoom level stays limited
+    const minZoom = 1
+    const maxZoom = 100
+    const clampedZoom = Math.max(minZoom, Math.min(maxZoom, newZoom))
+
+    // Reset to default view when zoom reaches minimum
+    if (clampedZoom === 1) {
+      axis.pan = 0
+      axis.zoom = 1
+      return
+    }
+
+    // Skip if there's no effective zoom change
+    if (oldZoom === clampedZoom)
+      return
+
+    const fullRange = axis.max - axis.min
+    const worldCenter = axis.min + fullRange / 2
+
+    // Convert cursor position (in pixels) to ratio along axis (0..1)
+    const cursorRatio = inverted
+                      ? (1 - cursorPos / axisLength)
+                      : (cursorPos / axisLength)
+
+    // Get world coordinate under cursor before zoom
+    const visibleRangeBefore = fullRange / oldZoom
+    const visibleStartBefore = worldCenter + axis.pan - visibleRangeBefore / 2
+    const worldUnderCursor = visibleStartBefore + cursorRatio * visibleRangeBefore
+
+    // Apply new zoom level
+    axis.zoom = clampedZoom
+
+    // Calculate view window so that worldUnderCursor stays in the same position
+    const visibleRangeAfter = fullRange / clampedZoom
+    const newVisibleStart = worldUnderCursor - cursorRatio * visibleRangeAfter
+    const newCenter = newVisibleStart + visibleRangeAfter / 2
+    let newPan = newCenter - worldCenter
+
+    // Clamp the pan so the view doesn't go beyond the axis bounds
+    const maxPan = (axis.max - (axis.min + visibleRangeAfter)) / 2
+    const minPan = (axis.min - (axis.max - visibleRangeAfter)) / 2
+    newPan = Math.min(Math.max(newPan, minPan), maxPan)
+
+    // Update pan to match new center
+    axis.pan = newPan
+  }
+
+  //
+  // Plot widget
+  //
+  GraphsView {
+    id: _graph
+
+    onPlotAreaChanged: root.schedulePlotAreaSettle()
+
+    anchors {
+      margins: 2
+      leftMargin: 4
+      rightMargin: 4
+      top: parent.top
+      right: parent.right
+      left: _yLabelContainer.right
+      bottom: _xLabelContainer.top
+    }
+
+    //
+    // Set margins
+    //
+    marginTop: 8
+    marginRight: 8
+    marginBottom: 8
+    marginLeft: root.showCrosshairs && !yLabelVisible ? yLabelMargin : -8
+    readonly property real yLabelMargin: Math.max(_maxYMetric.width, _minYMetric.width) + 8 + _yPosLabel.padding * 2
+
+    TextMetrics {
+      id: _maxYMetric
+
+      text: yMax
+      font: _yPosLabel.font
+    }
+
+    TextMetrics {
+      id: _minYMetric
+
+      text: yMin
+      font: _yPosLabel.font
+    }
+
+    //
+    // Set plot colors
+    //
+    theme: GraphsTheme {
+      id: _theme
+
+      //
+      // Background
+      //
+      borderColors: [Cpp_ThemeManager.colors["widget_border"]]
+      plotAreaBackgroundVisible: true
+      theme: GraphsTheme.Theme.UserDefined
+      backgroundColor: Cpp_ThemeManager.colors["widget_window"]
+      plotAreaBackgroundColor: Cpp_ThemeManager.colors["widget_base"]
+
+      //
+      // Axis and grid colors
+      //
+      axisX.subWidth: 1
+      axisY.subWidth: 1
+      axisX.mainWidth: 1
+      axisY.mainWidth: 1
+      axisX.subColor: root.fadedGrid(0.4)
+      axisY.subColor: root.fadedGrid(0.4)
+      axisX.mainColor: Cpp_ThemeManager.colors["widget_border"]
+      axisY.mainColor: Cpp_ThemeManager.colors["widget_border"]
+      axisX.labelTextColor: Cpp_ThemeManager.colors["widget_text"]
+      axisY.labelTextColor: Cpp_ThemeManager.colors["widget_text"]
+
+      //
+      // Axis label fonts and colors
+      //
+      labelTextColor: Cpp_ThemeManager.colors["widget_text"]
+      axisXLabelFont: (Cpp_Misc_CommonFonts.widgetFontRevision, Cpp_Misc_CommonFonts.widgetFont(0.83))
+      axisYLabelFont: (Cpp_Misc_CommonFonts.widgetFontRevision, Cpp_Misc_CommonFonts.widgetFont(0.83))
+
+      //
+      // Grid settings
+      //
+      grid.subWidth: 1
+      gridVisible: true
+      grid.mainWidth: 1
+      grid.subColor: root.fadedGrid(0.4)
+      grid.mainColor: root.fadedGrid(0.75)
+
+      //
+      // Highlight colors for better contrast
+      //
+      multiHighlightColor: Cpp_ThemeManager.colors["widget_highlight"]
+      singleHighlightColor: Cpp_ThemeManager.colors["widget_highlighted_text"]
+
+      //
+      // Reapplies every themed color from the active palette.
+      //
+      function refreshColors() {
+        _theme.borderColors = [Cpp_ThemeManager.colors["widget_border"]]
+        _theme.backgroundColor = Cpp_ThemeManager.colors["widget_window"]
+        _theme.plotAreaBackgroundColor = Cpp_ThemeManager.colors["widget_base"]
+        _theme.axisX.subColor = root.fadedGrid(0.4)
+        _theme.axisY.subColor = root.fadedGrid(0.4)
+        _theme.axisX.mainColor = Cpp_ThemeManager.colors["widget_border"]
+        _theme.axisY.mainColor = Cpp_ThemeManager.colors["widget_border"]
+        _theme.axisX.labelTextColor = Cpp_ThemeManager.colors["widget_text"]
+        _theme.axisY.labelTextColor = Cpp_ThemeManager.colors["widget_text"]
+        _theme.labelTextColor = Cpp_ThemeManager.colors["widget_text"]
+        _theme.grid.subColor = root.fadedGrid(0.4)
+        _theme.grid.mainColor = root.fadedGrid(0.75)
+        _theme.multiHighlightColor = Cpp_ThemeManager.colors["widget_highlight"]
+        _theme.singleHighlightColor = Cpp_ThemeManager.colors["widget_highlighted_text"]
+      }
+
+      //
+      // QtGraphs can paint a stale light/dark pass on a theme switch, so reapply the colors
+      // immediately and once more after the transition settles to clear residual artifacts.
+      //
+      Timer {
+        id: _themeRefreshTimer
+
+        interval: 500
+        repeat: false
+        onTriggered: _theme.refreshColors()
+      }
+
+      Connections {
+        target: Cpp_ThemeManager
+        function onThemeChanged() {
+          _theme.refreshColors()
+          _themeRefreshTimer.restart()
+        }
+      }
+    }
+
+    //
+    // Disable built-in pan/zoom; root drives both manually
+    //
+    zoomAreaEnabled: false
+    enabled: root.mouseAreaEnabled
+    panStyle: GraphsView.PanStyle.None
+    zoomStyle: GraphsView.ZoomStyle.None
+
+    //
+    // Customize Y axis (engineering-unit tick labels)
+    //
+    axisY: ValueAxis {
+      id: _axisY
+
+      min: root.yMin
+      max: root.yMax
+      visible: root.yLabelVisible
+      tickInterval: root.yTickInterval
+      labelDecimals: root.tickDecimals(root.yTickInterval)
+      tickAnchor: root.safeTickAnchor(root.logY ? Math.ceil(root.yMin) : root.yMin,
+                                      root.yMin, root.yMax)
+      subTickCount: root.subTicksFor(root.yTickInterval, root.logY)
+
+      labelDelegate: Item {
+        id: _yLabelItem
+
+        property string text
+
+        implicitWidth:  _yEngLabel.implicitWidth
+        implicitHeight: _yEngLabel.implicitHeight
+
+        Text {
+          id: _yEngLabel
+
+          anchors.centerIn: parent
+          text: root.logY
+                ? root.logTickFormat(parseFloat(_yLabelItem.text), root.yTickInterval)
+                : root.engineeringFormat(parseFloat(_yLabelItem.text), root.yTickInterval)
+          color: Cpp_ThemeManager.colors["widget_text"]
+          font: (Cpp_Misc_CommonFonts.widgetFontRevision,
+                 Cpp_Misc_CommonFonts.widgetFont(0.83))
+        }
+      }
+    }
+
+    //
+    // Customize X axis (same engineering-unit treatment as Y)
+    //
+    axisX: ValueAxis {
+      id: _axisX
+
+      min: root.xMin
+      max: root.xMax
+      visible: root.xLabelVisible
+      tickInterval: root.xTickInterval
+      labelDecimals: root.tickDecimals(root.xTickInterval)
+      subTickCount: root.subTicksFor(root.xTickInterval, root.logX)
+      tickAnchor: root.safeTickAnchor(root.logX ? Math.ceil(root.xMin)
+                                                : (root.xZeroSet ? root.xZero : root.xMin),
+                                      root.xMin, root.xMax)
+
+      labelDelegate: Item {
+        id: _xLabelItem
+
+        property string text
+
+        implicitWidth:  _xEngLabel.implicitWidth
+        implicitHeight: _xEngLabel.implicitHeight
+
+        Text {
+          id: _xEngLabel
+
+          anchors.centerIn: parent
+          text: root.xTickLabel(parseFloat(_xLabelItem.text), root.xTickInterval)
+          color: Cpp_ThemeManager.colors["widget_text"]
+          font: (Cpp_Misc_CommonFonts.widgetFontRevision,
+                 Cpp_Misc_CommonFonts.widgetFont(0.83))
+        }
+      }
+    }
+  }
+
+  //
+  // Area-under-curve fill, tracking the visible window so it follows zoom/pan
+  //
+  PlotAreaFill {
+    clip: true
+    yMin: root.yVisibleMin
+    xMin: root.xVisibleMin
+    color: root.areaFillColor
+    source: root.areaFillSource
+    width: _graph.plotArea.width
+    height: _graph.plotArea.height
+    x: _graph.x + _graph.plotArea.x
+    y: _graph.y + _graph.plotArea.y
+    baselineValue: root.areaFillBaseline
+    visible: root.areaFillSource !== null
+    yMax: root.yVisibleMin + root.yVisibleRange
+    xMax: root.xVisibleMin + root.xVisibleRange
+  }
+
+  //
+  // GPU curve layer, tracking the plot area so PlotCurve children map world
+  // coordinates with the same visible-window transform as the fill and cursors
+  //
+  Item {
+    id: _curveLayer
+
+    clip: true
+    width: _graph.plotArea.width
+    height: _graph.plotArea.height
+    x: _graph.x + _graph.plotArea.x
+    y: _graph.y + _graph.plotArea.y
+  }
+
+  //
+  // Interactive Overlay: handles crosshairs, cursors, and CAD-like zooming
+  //
+  Item {
+    width: _graph.plotArea.width
+    height: _graph.plotArea.height
+    x: _graph.x + _graph.plotArea.x
+    y: _graph.y + _graph.plotArea.y
+
+    //
+    // MouseArea for interactive graph navigation and inspection
+    //
+    MouseArea {
+      id: _overlayMouse
+
+      anchors.fill: parent
+      preventStealing: true
+      propagateComposedEvents: true
+      acceptedButtons: Qt.LeftButton | Qt.RightButton
+
+      enabled: root.mouseAreaEnabled
+      visible: root.mouseAreaEnabled
+      hoverEnabled: root.mouseAreaEnabled
+
+      cursorShape: dragging ? Qt.ClosedHandCursor :
+                   (draggingTrigger || overTrigger ? Qt.SizeVerCursor :
+                   (draggedCursor !== null ? Qt.SizeAllCursor :
+                   (root.cursorMode ? Qt.CrossCursor : Qt.ArrowCursor)))
+
+      //
+      // Custom properties for drag handling
+      //
+      property real lastX: 0
+      property real lastY: 0
+      property real dragStartX: 0
+      property real dragStartY: 0
+      property bool didDrag: false
+      property bool overTrigger: false
+      property var draggedCursor: null
+      property bool draggingTrigger: false
+      property int pressedButton: Qt.NoButton
+      readonly property bool dragging: containsPress && _axisX.zoom > 1
+                                       && draggedCursor === null && !draggingTrigger
+
+      //
+      // Flash the trigger line when the pointer moves over it, so a faded line
+      // becomes visible before the user grabs it.
+      //
+      onOverTriggerChanged: {
+        if (overTrigger)
+          _triggerLine.flash()
+      }
+
+      function getNearestCursor(mouseX, mouseY) {
+        const threshold = 10
+
+        if (root.cursorAVisible) {
+          const aPixelX = root.worldToPixelX(root.cursorAX)
+          const aPixelY = root.worldToPixelY(root.cursorAY)
+          const distA = Math.sqrt(Math.pow(mouseX - aPixelX, 2) + Math.pow(mouseY - aPixelY, 2))
+          if (distA < threshold)
+            return "A"
+        }
+
+        if (root.cursorBVisible) {
+          const bPixelX = root.worldToPixelX(root.cursorBX)
+          const bPixelY = root.worldToPixelY(root.cursorBY)
+          const distB = Math.sqrt(Math.pow(mouseX - bPixelX, 2) + Math.pow(mouseY - bPixelY, 2))
+          if (distB < threshold)
+            return "B"
+        }
+
+        return null
+      }
+
+      //
+      // Vertical hit-test for the trigger-level line (sweep mode + editing only)
+      //
+      function nearTriggerLine(mouseY) {
+        if (!root.triggerDraggable)
+          return false
+
+        const threshold = 8
+        const linePixelY = root.worldToPixelY(root.triggerLevel)
+        return Math.abs(mouseY - linePixelY) <= threshold
+      }
+
+      //
+      // Drag state handling
+      //
+      onPressed: (mouse) => {
+        lastX = mouse.x
+        lastY = mouse.y
+        dragStartX = mouse.x
+        dragStartY = mouse.y
+        didDrag = false
+        pressedButton = mouse.button
+
+        // Grab the trigger line if the press lands on it (vertical drag only)
+        if (mouse.button === Qt.LeftButton && nearTriggerLine(mouse.y)) {
+          draggingTrigger = true
+          mouse.accepted = true
+          return
+        }
+
+        // Handle cursor interactions when in cursor mode
+        if (root.cursorMode) {
+          draggedCursor = getNearestCursor(mouse.x, mouse.y)
+
+          //
+          // Right click to clear cursors (immediate action)
+          //
+          if (mouse.button === Qt.RightButton) {
+            if (draggedCursor === "A") {
+              root.clearCursorA()
+            } else if (draggedCursor === "B") {
+              root.clearCursorB()
+            } else {
+              //
+              // Clear both if not clicking on a specific cursor
+              //
+              root.clearAllCursors()
+            }
+          }
+          //
+          // Left-click placement deferred to onReleased so drag still pans.
+          //
+        }
+
+        mouse.accepted = true
+      }
+
+      onReleased: (mouse) => {
+        // Trigger drag consumes the gesture; no cursor placement on release
+        if (draggingTrigger) {
+          draggingTrigger = false
+          pressedButton = Qt.NoButton
+          didDrag = false
+          overTrigger = nearTriggerLine(mouse.y)
+          return
+        }
+
+        // Ruler menu on a plain right-click outside cursor mode (cursor mode keeps clearing)
+        if (!root.cursorMode && pressedButton === Qt.RightButton && !didDrag) {
+          _rulerMenu.pressWorldX = root.pixelToWorldX(mouse.x)
+          _rulerMenu.pressMarker = root.markerNear(mouse.x)
+          _rulerMenu.popup()
+          pressedButton = Qt.NoButton
+          return
+        }
+
+        // Handle cursor placement on release (only if no drag occurred)
+        if (root.cursorMode && pressedButton === Qt.LeftButton && !didDrag && draggedCursor === null) {
+          const worldX = root.pixelToWorldX(mouse.x)
+          const worldY = root.pixelToWorldY(mouse.y)
+
+          //
+          // Place cursor A if not visible
+          //
+          if (!root.cursorAVisible)
+            root.setCursorA(worldX, worldY)
+
+          //
+          // Cursor A visible, place cursor B
+          //
+          else if (!root.cursorBVisible)
+            root.setCursorB(worldX, worldY)
+
+          //
+          // Both cursors exist, replace cursor A
+          //
+          else
+            root.setCursorA(worldX, worldY)
+        }
+
+        // Reset state
+        draggedCursor = null
+        pressedButton = Qt.NoButton
+        didDrag = false
+      }
+
+      //
+      // Handle mouse wheel zoom interaction
+      //
+      onWheel: (wheel) => {
+        // Abort if not mouse is not in plot
+        if (!containsMouse || !root.mouseAreaEnabled) {
+          wheel.accepted = false
+          return
+        }
+
+        // Obtain X/Y position relative to graph
+        const localX = mouseX - _graph.plotArea.x
+        const localY = mouseY - _graph.plotArea.y
+
+        // Calculate new zoom factor
+        const zoomFactor = 1.15
+        const delta = -wheel.angleDelta.y / 120
+        const factor = Math.pow(zoomFactor, -delta)
+
+        // Calculate new zoom values for both axes
+        const newZoomX = _axisX.zoom * factor
+        const newZoomY = _axisY.zoom * factor
+
+        // Zoom & navigate through the graph
+        root.applyCursorZoom(_axisX, _axisX.zoom, newZoomX, localX, _graph.plotArea.width, false)
+        root.applyCursorZoom(_axisY, _axisY.zoom, newZoomY, localY, _graph.plotArea.height, true)
+
+        // Update crosshair labels to reflect new view window
+        root.updateCrosshairLabels(localX, localY)
+        wheel.accepted = true
+      }
+
+      //
+      // Handle mouse movement
+      //
+      onPositionChanged: (mouse) => {
+        // Abort if not mouse is not in plot
+        if (!containsMouse) {
+          mouse.accepted = false
+          overTrigger = false
+          return
+        }
+
+        // Track hover over the trigger line so the cursor can hint a vertical drag
+        if (!containsPress)
+          overTrigger = nearTriggerLine(mouse.y)
+
+        // Drag the trigger level vertically and push it back to the model
+        if (draggingTrigger) {
+          const worldY = root.pixelToWorldY(mouse.y)
+          const clampedY = Math.min(Math.max(worldY, root.yVisibleMin), root.yVisibleMax)
+          root.triggerLevelChangeRequested(clampedY)
+          mouse.accepted = true
+          return
+        }
+
+        // Calculate drag distance from start position
+        const dragDistSq = Math.pow(mouse.x - dragStartX, 2) + Math.pow(mouse.y - dragStartY, 2)
+        const dragThreshold = 5
+
+        // Past the threshold, treat as a drag.
+        if (containsPress && dragDistSq > dragThreshold * dragThreshold) {
+          didDrag = true
+        }
+
+        // Handle cursor dragging
+        if (draggedCursor !== null && containsPress && root.cursorMode) {
+          const worldX = root.pixelToWorldX(mouse.x)
+          const worldY = root.pixelToWorldY(mouse.y)
+
+          if (draggedCursor === "A") {
+            root.cursorAX = worldX
+            root.cursorAY = worldY
+          } else if (draggedCursor === "B") {
+            root.cursorBX = worldX
+            root.cursorBY = worldY
+          }
+        }
+        //
+        // Micro-pan when dragging the plot (when not dragging a cursor)
+        //
+        else if (_overlayMouse.dragging) {
+          //
+          // Obtain drag distance
+          //
+          const dx = mouse.x - lastX
+          const dy = mouse.y - lastY
+
+          //
+          // Update pan
+          //
+          root.adjustAxisPan(_axisX, _graph.plotArea.width, mouse.x, dx, true)
+          root.adjustAxisPan(_axisY, _graph.plotArea.height, mouse.y, dy, false)
+
+          //
+          // Update drag start point
+          //
+          lastX = mouse.x
+          lastY = mouse.y
+        }
+      }
+    }
+
+    //
+    // Ruler zero line: drawn wherever the user set t = 0, with a chip on the top edge
+    //
+    Item {
+      id: _zeroLine
+
+      width: 1
+      height: parent.height
+      x: root.worldToPixelX(root.xZero)
+      visible: root.xZeroSet && !root.logX && root.xZero >= root.xVisibleMin
+               && root.xZero <= root.xVisibleMax
+
+      Rectangle {
+        width: 1
+        opacity: 0.7
+        height: parent.height
+        color: Cpp_ThemeManager.colors["widget_text"]
+      }
+
+      Label {
+        text: "0"
+        padding: 3
+        color: Cpp_ThemeManager.colors["widget_base"]
+        font: (Cpp_Misc_CommonFonts.widgetFontRevision, Cpp_Misc_CommonFonts.widgetFont(0.8, true))
+        background: Rectangle {
+          radius: 3
+          opacity: 0.9
+          color: Cpp_ThemeManager.colors["widget_text"]
+        }
+        anchors {
+          topMargin: 4
+          leftMargin: 3
+          top: parent.top
+          left: parent.right
+        }
+      }
+    }
+
+    //
+    // Named markers: a thin line and a name chip, only while inside the visible window
+    //
+    Repeater {
+      model: root.xMarkers
+
+      delegate: Item {
+        id: _markerItem
+
+        required property int index
+        required property var modelData
+
+        width: 1
+        height: parent.height
+        x: root.worldToPixelX(modelData.x)
+        visible: modelData.x >= root.xVisibleMin && modelData.x <= root.xVisibleMax
+
+        Rectangle {
+          width: 1
+          opacity: 0.8
+          height: parent.height
+          color: Cpp_ThemeManager.colors["widget_highlight"]
+        }
+
+        Label {
+          padding: 3
+          text: _markerItem.modelData.name
+          color: Cpp_ThemeManager.colors["widget_highlighted_text"]
+          font: (Cpp_Misc_CommonFonts.widgetFontRevision, Cpp_Misc_CommonFonts.widgetFont(0.8, true))
+          background: Rectangle {
+            radius: 3
+            opacity: 0.9
+            color: Cpp_ThemeManager.colors["widget_highlight"]
+          }
+          anchors {
+            topMargin: 4
+            leftMargin: 3
+            top: parent.top
+            left: parent.right
+          }
+        }
+      }
+    }
+
+    //
+    // Hover marker: tracks the pointer with an X readout while enabled
+    //
+    Item {
+      id: _hoverMarker
+
+      width: 1
+      height: parent.height
+      x: _overlayMouse.mouseX
+      visible: root.hoverMarkerEnabled && _overlayMouse.containsMouse && !_overlayMouse.dragging
+
+      Rectangle {
+        width: 1
+        opacity: 0.5
+        height: parent.height
+        color: Cpp_ThemeManager.colors["widget_text"]
+      }
+
+      Label {
+        padding: 3
+        color: Cpp_ThemeManager.colors["widget_base"]
+        text: root.displayValueX(root.pixelToWorldX(_overlayMouse.mouseX))
+        font: (Cpp_Misc_CommonFonts.widgetFontRevision, Cpp_Misc_CommonFonts.widgetFont(0.8))
+        background: Rectangle {
+          radius: 3
+          opacity: 0.85
+          color: Cpp_ThemeManager.colors["widget_text"]
+        }
+        anchors {
+          leftMargin: 3
+          bottomMargin: 4
+          left: parent.right
+          bottom: parent.bottom
+        }
+      }
+    }
+
+    //
+    // Ruler context menu (right-click outside cursor mode)
+    //
+    Menu {
+      id: _rulerMenu
+
+      property real pressWorldX: 0
+      property int pressMarker: -1
+
+      MenuItem {
+        text: qsTr("Add marker here...")
+        onTriggered: _markerNamePopup.openAt(_rulerMenu.pressWorldX)
+      }
+
+      MenuItem {
+        visible: _rulerMenu.pressMarker >= 0
+        height: visible ? implicitHeight : 0
+        text: qsTr("Remove marker \"%1\"").arg(_rulerMenu.pressMarker >= 0
+                                             ? root.xMarkers[_rulerMenu.pressMarker].name : "")
+        onTriggered: root.removeMarker(_rulerMenu.pressMarker)
+      }
+
+      MenuItem {
+        text: qsTr("Clear all markers")
+        enabled: root.xMarkers.length > 0
+        onTriggered: root.clearMarkers()
+      }
+
+      MenuSeparator {}
+
+      MenuItem {
+        enabled: !root.logX
+        text: root.timeAxis ? qsTr("Set time zero here") : qsTr("Set zero here")
+        onTriggered: root.setZeroAt(_rulerMenu.pressWorldX)
+      }
+
+      MenuItem {
+        enabled: root.xZeroSet
+        text: root.timeAxis ? qsTr("Reset time zero") : qsTr("Reset zero")
+        onTriggered: root.resetZero()
+      }
+
+      MenuSeparator {}
+
+      MenuItem {
+        checkable: true
+        text: qsTr("Hover marker")
+        checked: root.hoverMarkerEnabled
+        onTriggered: root.setHoverMarker(checked)
+      }
+    }
+
+    //
+    // Marker name prompt
+    //
+    Popup {
+      id: _markerNamePopup
+
+      property real worldX: 0
+
+      padding: 8
+      modal: true
+      focus: true
+      x: Math.round((parent.width - width) / 2)
+      y: Math.round((parent.height - height) / 2)
+
+      function openAt(worldXValue) {
+        worldX = worldXValue
+        _markerName.text = qsTr("M%1").arg(root.xMarkers.length + 1)
+        open()
+        _markerName.forceActiveFocus()
+        _markerName.selectAll()
+      }
+
+      function accept() {
+        const name = _markerName.text.trim()
+        root.addMarker(worldX, name.length > 0 ? name : qsTr("M%1").arg(root.xMarkers.length + 1))
+        close()
+      }
+
+      contentItem: RowLayout {
+        spacing: 6
+
+        Label {
+          text: qsTr("Marker name:")
+          color: Cpp_ThemeManager.colors["widget_text"]
+        }
+
+        TextField {
+          id: _markerName
+
+          Layout.preferredWidth: 140
+          onAccepted: _markerNamePopup.accept()
+        }
+
+        Button {
+          text: qsTr("Add")
+          onClicked: _markerNamePopup.accept()
+        }
+
+        Button {
+          text: qsTr("Cancel")
+          onClicked: _markerNamePopup.close()
+        }
+      }
+    }
+
+    //
+    // Cursor A (visible when in cursor mode and any part is in view)
+    //
+    Item {
+      id: _cursorA
+
+      x: root.worldToPixelX(root.cursorAX)
+      y: root.worldToPixelY(root.cursorAY)
+      visible: root.cursorMode && root.cursorAVisible && (root.cursorAXInRange || root.cursorAYInRange)
+
+      //
+      // Vertical line with dash-dot pattern (full height) - visible when X is in range
+      //
+      Canvas {
+        id: _cursorAVertical
+
+        x: 0
+        width: 2
+        y: -parent.y
+        height: parent.parent.height
+        visible: root.cursorAXInRange
+
+        onPaint: {
+          var ctx = getContext("2d")
+          ctx.clearRect(0, 0, width, height)
+          ctx.strokeStyle = root.cursorAColor
+          ctx.lineWidth = 2
+          ctx.setLineDash([8, 4, 2, 4])
+          ctx.lineDashOffset = 0
+
+          ctx.beginPath()
+          ctx.moveTo(1, 0)
+          ctx.lineTo(1, height)
+          ctx.stroke()
+        }
+      }
+
+      //
+      // Horizontal line with dash-dot pattern (full width) - visible when Y is in range
+      //
+      Canvas {
+        id: _cursorAHorizontal
+
+        y: 0
+        height: 2
+        x: -parent.x
+        width: parent.parent.width
+        visible: root.cursorAYInRange
+
+        onPaint: {
+          var ctx = getContext("2d")
+          ctx.clearRect(0, 0, width, height)
+          ctx.strokeStyle = root.cursorAColor
+          ctx.lineWidth = 2
+          ctx.setLineDash([8, 4, 2, 4])
+          ctx.lineDashOffset = 0
+
+          ctx.beginPath()
+          ctx.moveTo(0, 1)
+          ctx.lineTo(width, 1)
+          ctx.stroke()
+        }
+      }
+
+      //
+      // Center marker - only visible when fully in view
+      //
+      Rectangle {
+        width: 10
+        radius: 5
+        height: 10
+        border.width: 2
+        color: root.cursorAColor
+        anchors.centerIn: parent
+        visible: root.cursorAInView
+        border.color: Cpp_ThemeManager.colors["widget_base"]
+      }
+
+      //
+      // Cursor A identifier label - only visible when fully in view
+      //
+      Label {
+        text: "A"
+        padding: 4
+        visible: root.cursorAInView
+        color: root.cursorATextColor
+        font: (Cpp_Misc_CommonFonts.widgetFontRevision, Cpp_Misc_CommonFonts.widgetFont(0.9, true))
+        background: Rectangle {
+          radius: 3
+          opacity: 0.9
+          color: root.cursorAColor
+        }
+        anchors {
+          topMargin: 5
+          leftMargin: 5
+          left: parent.right
+          top: parent.bottom
+        }
+      }
+
+      //
+      // Trigger repaint when cursor moves
+      //
+      onXChanged: {
+        _cursorAVertical.requestPaint()
+        _cursorAHorizontal.requestPaint()
+      }
+      onYChanged: {
+        _cursorAVertical.requestPaint()
+        _cursorAHorizontal.requestPaint()
+      }
+    }
+
+    //
+    // Cursor B (visible when in cursor mode and any part is in view)
+    //
+    Item {
+      id: _cursorB
+
+      x: root.worldToPixelX(root.cursorBX)
+      y: root.worldToPixelY(root.cursorBY)
+      visible: root.cursorMode && root.cursorBVisible && (root.cursorBXInRange || root.cursorBYInRange)
+
+      //
+      // Vertical line with dash-dot pattern (full height) - visible when X is in range
+      //
+      Canvas {
+        id: _cursorBVertical
+
+        x: 0
+        width: 2
+        y: -parent.y
+        height: parent.parent.height
+        visible: root.cursorBXInRange
+
+        onPaint: {
+          var ctx = getContext("2d")
+          ctx.clearRect(0, 0, width, height)
+          ctx.strokeStyle = root.cursorBColor
+          ctx.lineWidth = 2
+          ctx.setLineDash([8, 4, 2, 4])
+          ctx.lineDashOffset = 0
+
+          ctx.beginPath()
+          ctx.moveTo(1, 0)
+          ctx.lineTo(1, height)
+          ctx.stroke()
+        }
+      }
+
+      //
+      // Horizontal line with dash-dot pattern (full width) - visible when Y is in range
+      //
+      Canvas {
+        id: _cursorBHorizontal
+
+        y: 0
+        height: 2
+        x: -parent.x
+        width: parent.parent.width
+        visible: root.cursorBYInRange
+
+        onPaint: {
+          var ctx = getContext("2d")
+          ctx.clearRect(0, 0, width, height)
+          ctx.strokeStyle = root.cursorBColor
+          ctx.lineWidth = 2
+          ctx.setLineDash([8, 4, 2, 4])
+          ctx.lineDashOffset = 0
+
+          ctx.beginPath()
+          ctx.moveTo(0, 1)
+          ctx.lineTo(width, 1)
+          ctx.stroke()
+        }
+      }
+
+      //
+      // Center marker - only visible when fully in view
+      //
+      Rectangle {
+        width: 10
+        radius: 5
+        height: 10
+        border.width: 2
+        color: root.cursorBColor
+        anchors.centerIn: parent
+        visible: root.cursorBInView
+        border.color: Cpp_ThemeManager.colors["widget_base"]
+      }
+
+      //
+      // Cursor B identifier label - only visible when fully in view
+      //
+      Label {
+        text: "B"
+        padding: 4
+        visible: root.cursorBInView
+        color: root.cursorBTextColor
+        font: (Cpp_Misc_CommonFonts.widgetFontRevision, Cpp_Misc_CommonFonts.widgetFont(0.9, true))
+        background: Rectangle {
+          radius: 3
+          opacity: 0.9
+          color: root.cursorBColor
+        }
+        anchors {
+          topMargin: 5
+          leftMargin: 5
+          left: parent.right
+          top: parent.bottom
+        }
+      }
+
+      //
+      // Trigger repaint when cursor moves
+      //
+      onXChanged: {
+        _cursorBVertical.requestPaint()
+        _cursorBHorizontal.requestPaint()
+      }
+      onYChanged: {
+        _cursorBVertical.requestPaint()
+        _cursorBHorizontal.requestPaint()
+      }
+    }
+
+    //
+    // X position label for Cursor A (on X-axis) - visible when X is in range
+    //
+    Label {
+      id: _cursorAXPosLabel
+
+      padding: 4
+      color: root.cursorATextColor
+      text: root.displayValueX(root.cursorAX)
+      visible: root.cursorMode && root.cursorAVisible && root.cursorAXInRange
+      font: (Cpp_Misc_CommonFonts.widgetFontRevision, Cpp_Misc_CommonFonts.widgetFont(0.8))
+
+      background: Rectangle {
+        radius: 3
+        opacity: 0.9
+        color: root.cursorAColor
+      }
+
+      x: Math.max(0, Math.min(parent.width - width, root.worldToPixelX(root.cursorAX) - width / 2))
+      anchors {
+        topMargin: 2
+        top: parent.bottom
+      }
+    }
+
+    //
+    // Y position label for Cursor A (on Y-axis) - visible when Y is in range
+    //
+    Label {
+      id: _cursorAYPosLabel
+
+      padding: 4
+      color: root.cursorATextColor
+      text: root.displayValueY(root.cursorAY)
+      visible: root.cursorMode && root.cursorAVisible && root.cursorAYInRange
+      font: (Cpp_Misc_CommonFonts.widgetFontRevision, Cpp_Misc_CommonFonts.widgetFont(0.8))
+
+      background: Rectangle {
+        radius: 3
+        opacity: 0.9
+        color: root.cursorAColor
+      }
+
+      y: Math.max(0, Math.min(parent.height - height, root.worldToPixelY(root.cursorAY) - height / 2))
+      anchors {
+        rightMargin: 2
+        right: parent.left
+      }
+    }
+
+    //
+    // X position label for Cursor B (on X-axis) - visible when X is in range
+    //
+    Label {
+      id: _cursorBXPosLabel
+
+      padding: 4
+      color: root.cursorBTextColor
+      text: root.displayValueX(root.cursorBX)
+      visible: root.cursorMode && root.cursorBVisible && root.cursorBXInRange
+      font: (Cpp_Misc_CommonFonts.widgetFontRevision, Cpp_Misc_CommonFonts.widgetFont(0.8))
+
+      background: Rectangle {
+        radius: 3
+        opacity: 0.9
+        color: root.cursorBColor
+      }
+
+      x: Math.max(0, Math.min(parent.width - width, root.worldToPixelX(root.cursorBX) - width / 2))
+      anchors {
+        topMargin: 2
+        top: parent.bottom
+      }
+    }
+
+    //
+    // Y position label for Cursor B (on Y-axis) - visible when Y is in range
+    //
+    Label {
+      id: _cursorBYPosLabel
+
+      padding: 4
+      color: root.cursorBTextColor
+      text: root.displayValueY(root.cursorBY)
+      visible: root.cursorMode && root.cursorBVisible && root.cursorBYInRange
+      font: (Cpp_Misc_CommonFonts.widgetFontRevision, Cpp_Misc_CommonFonts.widgetFont(0.8))
+
+      background: Rectangle {
+        radius: 3
+        opacity: 0.9
+        color: root.cursorBColor
+      }
+
+      y: Math.max(0, Math.min(parent.height - height, root.worldToPixelY(root.cursorBY) - height / 2))
+      anchors {
+        rightMargin: 2
+        right: parent.left
+      }
+    }
+
+    //
+    // X position label (removed - not needed in cursor mode)
+    //
+    Label {
+      id: _xPosLabel
+
+      padding: 4
+      visible: false
+      color: Cpp_ThemeManager.colors["widget_base"]
+      font: (Cpp_Misc_CommonFonts.widgetFontRevision, Cpp_Misc_CommonFonts.widgetFont(0.8))
+    }
+
+    //
+    // Y position label (removed - not needed in cursor mode)
+    //
+    Label {
+      id: _yPosLabel
+
+      padding: 4
+      visible: false
+      color: Cpp_ThemeManager.colors["widget_base"]
+      font: (Cpp_Misc_CommonFonts.widgetFontRevision, Cpp_Misc_CommonFonts.widgetFont(0.8))
+    }
+  }
+
+  //
+  // Y-axis label
+  //
+  Item {
+    id: _yLabelContainer
+
+    width: _yLabel.height
+    visible: root.yLabelVisible
+
+    anchors {
+      top: parent.top
+      left: parent.left
+      bottom: parent.bottom
+    }
+
+    Label {
+      id: _yLabel
+
+      rotation: 270
+      elide: Qt.ElideRight
+      width: parent.height
+      anchors.centerIn: parent
+      horizontalAlignment: Qt.AlignHCenter
+      color: Cpp_ThemeManager.colors["widget_text"]
+      font: (Cpp_Misc_CommonFonts.widgetFontRevision, Cpp_Misc_CommonFonts.widgetFont(0.91, true))
+      anchors.verticalCenterOffset: root.xLabelVisible && _yLabel.implicitWidth <= _graph.height ?
+                                      -1 * Math.abs(_graph.marginBottom - _graph.marginTop) : 0
+    }
+  }
+
+  //
+  // X-axis label + real time mouse position + cursor delta
+  //
+  Item {
+    id: _xLabelContainer
+
+    height: _layout.implicitHeight
+
+    anchors {
+      leftMargin: 4
+      right: parent.right
+      bottom: parent.bottom
+      left: _yLabelContainer.right
+    }
+
+    ColumnLayout {
+      id: _layout
+
+      spacing: 0
+      width: parent.width
+      anchors.centerIn: parent
+      anchors.horizontalCenterOffset: Math.abs(_graph.marginLeft - _graph.marginRight)
+
+      Label {
+        id: _xLabel
+
+        elide: Qt.ElideRight
+        visible: root.xLabelVisible
+        Layout.alignment: Qt.AlignHCenter
+        horizontalAlignment: Qt.AlignHCenter
+        text: {
+          const base = root.timeAxis ? qsTr("Time") : root.xLabel
+          const title = (root.xZeroSet && !root.logX) ? qsTr("%1 from zero").arg(base) : base
+          return root.timeAxis ? (title + " (" + root.timeUnitName + ")") : title
+        }
+        color: Cpp_ThemeManager.colors["widget_text"]
+        font: (Cpp_Misc_CommonFonts.widgetFontRevision, Cpp_Misc_CommonFonts.widgetFont(0.91, true))
+      }
+
+      Item {
+        implicitHeight: 2
+        visible: _deltaLabel.visible
+      }
+
+      Label {
+        id: _deltaLabel
+
+        elide: Qt.ElideRight
+        visible: root.cursorMode
+        Layout.maximumWidth: parent.width
+        Layout.alignment: Qt.AlignHCenter
+        horizontalAlignment: Qt.AlignHCenter
+        color: Cpp_ThemeManager.colors["widget_text"]
+        font: (Cpp_Misc_CommonFonts.widgetFontRevision, Cpp_Misc_CommonFonts.widgetFont(0.85, false))
+        text: {
+          if (root.cursorAVisible && root.cursorBVisible)
+            return root.cursorReadout(_layout.width)
+          else if (!root.cursorAVisible)
+            return qsTr("Click to place cursor")
+          else
+            return qsTr("Click to place second cursor — Drag to move")
+        }
+      }
+
+      Item {
+        implicitHeight: 4
+      }
+    }
+  }
+
+  //
+  // Ensure a border is always visible for the plot area
+  //
+  Rectangle {
+    border.width: 1
+    color: "transparent"
+    width: _graph.plotArea.width
+    height: _graph.plotArea.height
+    x: _graph.x + _graph.plotArea.x
+    y: _graph.y + _graph.plotArea.y
+    border.color: Cpp_ThemeManager.colors["widget_border"]
+  }
+
+  //
+  // Sweep-mode trigger indicator: dashed cursor-B-styled level line
+  //
+  Item {
+    id: _triggerLine
+
+    clip: true
+    width: _graph.plotArea.width
+    height: _graph.plotArea.height
+    x: _graph.x + _graph.plotArea.x
+    y: _graph.y + _graph.plotArea.y
+    visible: root.sweepMode && root.triggerEditing
+
+    readonly property color lineColor: Cpp_ThemeManager.colors["plot_cursor_b"]
+    readonly property real lineY: root.worldToPixelY(root.triggerLevel)
+    readonly property bool inRange: root.triggerLevel >= root.yVisibleMin
+                                    && root.triggerLevel <= root.yVisibleMax
+
+    //
+    // Restart the fade; only meaningful while the dialog is editing
+    //
+    function flash() {
+      if (!root.sweepMode || !root.triggerEditing)
+        return
+
+      _fade.stop()
+      _triggerContent.opacity = 1
+      _fade.start()
+    }
+
+    onVisibleChanged: {
+      if (visible)
+        flash()
+    }
+
+    Connections {
+      target: root
+      enabled: root.triggerEditing
+      function onTriggerLevelChanged() { _triggerLine.flash() }
+    }
+
+    Item {
+      id: _triggerContent
+
+      anchors.fill: parent
+      visible: _triggerLine.inRange
+
+      SequentialAnimation {
+        id: _fade
+
+        PauseAnimation { duration: 2500 }
+        NumberAnimation {
+          to: 0
+          duration: 750
+          property: "opacity"
+          target: _triggerContent
+          easing.type: Easing.InOutQuad
+        }
+      }
+
+      Canvas {
+        id: _triggerCanvas
+
+        x: 0
+        height: 2
+        width: parent.width
+        y: _triggerLine.lineY - 1
+
+        onPaint: {
+          var ctx = getContext("2d")
+          ctx.clearRect(0, 0, width, height)
+          ctx.strokeStyle = _triggerLine.lineColor
+          ctx.lineWidth = 2
+          ctx.setLineDash([8, 4, 2, 4])
+          ctx.lineDashOffset = 0
+
+          ctx.beginPath()
+          ctx.moveTo(0, 1)
+          ctx.lineTo(width, 1)
+          ctx.stroke()
+        }
+
+        onWidthChanged: requestPaint()
+
+        Connections {
+          target: _triggerLine
+          function onLineColorChanged() { _triggerCanvas.requestPaint() }
+        }
+      }
+
+      Label {
+        text: "T"
+        padding: 4
+        color: Cpp_ThemeManager.colors["widget_base"]
+        font: (Cpp_Misc_CommonFonts.widgetFontRevision,
+               Cpp_Misc_CommonFonts.widgetFont(0.9, true))
+        background: Rectangle {
+          radius: 3
+          opacity: 0.9
+          color: _triggerLine.lineColor
+        }
+        anchors {
+          rightMargin: 5
+          right: parent.right
+          verticalCenter: parent.top
+          verticalCenterOffset: _triggerLine.lineY
+        }
+      }
+    }
+  }
+}

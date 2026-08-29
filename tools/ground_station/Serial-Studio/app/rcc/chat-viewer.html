@@ -1,0 +1,1087 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <!-- Showdown.js for assistant Markdown -> HTML (bundled, see app/rcc/vendor/) -->
+  <script src="qrc:/vendor/showdown.min.js"></script>
+
+  <!-- Allow-list HTML sanitizer applied to model output before innerHTML -->
+  <script src="qrc:/vendor/sanitize.js"></script>
+
+  <!-- highlight.js for fenced code blocks (bundled, see app/rcc/vendor/) -->
+  <link rel="stylesheet" id="hljs-theme"
+        href="qrc:/vendor/highlight-github.min.css">
+  <script src="qrc:/vendor/highlight.min.js"></script>
+
+  <!-- Mermaid.js for assistant diagrams (bundled, see app/rcc/vendor/).
+       Initialized with securityLevel:'strict' because assistant output is
+       untrusted; mermaid sanitizes its own SVG (the chat sanitizer drops
+       raw <svg>, so diagrams are rendered after sanitize, from the source
+       text that survives as escaped <pre><code> content). -->
+  <script src="qrc:/vendor/mermaid.min.js"></script>
+
+  <!-- QWebChannel for HTML-to-QML IPC; served by Qt itself -->
+  <script src="qrc:/qtwebchannel/qwebchannel.js"></script>
+
+  <style>
+    :root {
+      --text:        #232629;
+      --bg:          #ffffff;
+      --accent:      #3daee9;
+      --border:      #c2c2c2;
+      --base:        #f5f5f5;
+      --code-bg:     #f6f8fa;
+      --highlight:   #3daee9;
+      --alarm:       #c0392b;
+      --mid:         #6f7378;
+      --section:     #6f7378;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html, body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica,
+                   Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+      font-size: 13px;
+      line-height: 1.55;
+      color: var(--text);
+      background: transparent;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    body {
+      padding: 8px 12px 8px 8px;
+    }
+
+    .messages {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .msg {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .msg.user {
+      align-items: flex-end;
+    }
+
+    .msg.assistant, .msg.error {
+      align-items: flex-start;
+    }
+
+    .role {
+      font-size: 0.75em;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      opacity: 0.85;
+      color: var(--section);
+      padding: 0 2px;
+    }
+
+    .msg.error .role {
+      color: var(--alarm);
+    }
+
+    .bubble.user {
+      max-width: min(640px, 86%);
+      padding: 10px 14px;
+      border-radius: 14px;
+      background: var(--highlight);
+      color: var(--bg);
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
+
+    .bubble.assistant {
+      width: 100%;
+      max-width: 100%;
+      padding: 0 2px;
+      color: var(--text);
+      word-wrap: break-word;
+    }
+
+    .bubble.error {
+      width: 100%;
+      max-width: 100%;
+      padding: 0 2px;
+      color: var(--alarm);
+      font-weight: 700;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
+
+    .thinking-row {
+      display: flex;
+      gap: 8px;
+      align-items: flex-start;
+      margin: 2px 2px 2px 2px;
+    }
+
+    .thinking-spinner {
+      width: 12px;
+      height: 12px;
+      flex: 0 0 auto;
+      margin-top: 2px;
+      border-radius: 50%;
+      border: 2px solid var(--border);
+      border-top-color: var(--accent);
+      animation: spin 0.9s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .thinking-text {
+      font-size: 0.92em;
+      color: var(--text);
+      opacity: 0.7;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      flex: 1 1 auto;
+    }
+
+    .typing {
+      display: flex;
+      gap: 5px;
+      padding: 6px 4px;
+    }
+
+    .typing > span {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--text);
+      opacity: 0.35;
+      animation: typing 1.0s ease-in-out infinite;
+    }
+
+    .typing > span:nth-child(2) { animation-delay: 0.15s; }
+    .typing > span:nth-child(3) { animation-delay: 0.30s; }
+
+    @keyframes typing {
+      0%, 60%, 100% { opacity: 0.30; }
+      30%           { opacity: 0.95; }
+    }
+
+    .bubble.assistant a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+
+    .bubble.assistant a:hover {
+      text-decoration: underline;
+    }
+
+    .bubble.assistant p {
+      margin: 0 0 8px;
+    }
+
+    .bubble.assistant p:last-child {
+      margin-bottom: 0;
+    }
+
+    .bubble.assistant ul,
+    .bubble.assistant ol {
+      padding-inline-start: 1.6em;
+      margin: 0 0 8px;
+    }
+
+    .bubble.assistant li + li {
+      margin-top: 0.2em;
+    }
+
+    .bubble.assistant h1,
+    .bubble.assistant h2,
+    .bubble.assistant h3,
+    .bubble.assistant h4,
+    .bubble.assistant h5,
+    .bubble.assistant h6 {
+      font-weight: 600;
+      line-height: 1.25;
+      margin: 14px 0 8px;
+    }
+
+    .bubble.assistant h1 { font-size: 1.4em; }
+    .bubble.assistant h2 { font-size: 1.25em; }
+    .bubble.assistant h3 { font-size: 1.1em; }
+    .bubble.assistant h4 { font-size: 1em; }
+
+    .bubble.assistant blockquote {
+      margin: 0 0 8px;
+      padding: 0 1em;
+      opacity: 0.75;
+      border-inline-start: 0.25em solid var(--accent);
+    }
+
+    .bubble.assistant code {
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo,
+                   Courier, monospace;
+      font-size: 0.9em;
+      direction: ltr;
+      unicode-bidi: isolate;
+    }
+
+    .bubble.assistant p code,
+    .bubble.assistant li code,
+    .bubble.assistant td code {
+      padding: 0.15em 0.35em;
+      background: var(--code-bg);
+      border-radius: 4px;
+      font-size: 85%;
+    }
+
+    .bubble.assistant pre {
+      position: relative;
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 10px 12px;
+      overflow-x: auto;
+      margin: 0 0 8px;
+      line-height: 1.45;
+      direction: ltr;
+      text-align: left;
+    }
+
+    .bubble.assistant pre code {
+      background: transparent;
+      padding: 0;
+      border-radius: 0;
+      white-space: pre;
+    }
+
+    .bubble.assistant pre code.hljs {
+      background: transparent !important;
+      padding: 0 !important;
+    }
+
+    .bubble.assistant pre .copy-btn {
+      position: absolute;
+      top: 4px;
+      inset-inline-end: 4px;
+      padding: 2px 6px;
+      font-size: 11px;
+      font-family: inherit;
+      line-height: 1;
+      color: var(--text);
+      background: var(--base);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      cursor: pointer;
+      opacity: 0;
+      transition: opacity 0.15s;
+    }
+
+    .bubble.assistant pre:hover .copy-btn {
+      opacity: 0.8;
+    }
+
+    .bubble.assistant .mermaid-diagram {
+      margin: 0 0 8px;
+      overflow-x: auto;
+      text-align: center;
+    }
+
+    .bubble.assistant .mermaid-diagram svg {
+      max-width: 100%;
+      height: auto;
+    }
+
+    .bubble.assistant table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 0 0 8px;
+    }
+
+    .bubble.assistant th,
+    .bubble.assistant td {
+      padding: 4px 8px;
+      border: 1px solid var(--border);
+    }
+
+    .bubble.assistant th {
+      font-weight: 600;
+      background: var(--base);
+    }
+
+    .tool-section-label {
+      margin-top: 10px;
+      margin-bottom: 2px;
+      padding: 0 2px;
+      font-size: 0.75em;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--section);
+      opacity: 0.85;
+    }
+
+    .group-banner {
+      margin-top: 4px;
+      padding: 8px 10px;
+      border: 1px solid var(--accent);
+      border-radius: 8px;
+      background: var(--bg);
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .group-banner .group-text {
+      flex: 1 1 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .group-banner .group-title {
+      font-weight: 700;
+    }
+
+    .group-banner .group-sub {
+      font-size: 0.85em;
+      opacity: 0.75;
+    }
+
+    .group-banner button {
+      flex: 0 0 auto;
+    }
+
+    button.btn {
+      padding: 4px 10px;
+      font: inherit;
+      font-size: 0.92em;
+      color: var(--text);
+      background: var(--base);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
+    button.btn:hover {
+      background: var(--bg);
+    }
+
+    button.btn.primary {
+      color: var(--bg);
+      background: var(--accent);
+      border-color: var(--accent);
+    }
+
+    button.btn.primary:hover {
+      filter: brightness(1.05);
+    }
+
+    .tool-card {
+      margin-top: 4px;
+      padding: 8px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background: var(--bg);
+    }
+
+    .tool-head {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .tool-caret {
+      width: 10px;
+      height: 10px;
+      flex: 0 0 auto;
+      transition: transform 0.12s;
+    }
+
+    .tool-card.expanded .tool-caret {
+      transform: rotate(90deg);
+    }
+
+    .tool-name {
+      flex: 1 1 auto;
+      font-weight: 600;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .tool-pill {
+      flex: 0 0 auto;
+      padding: 2px 8px;
+      font-size: 0.78em;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      color: var(--bg);
+      border-radius: 3px;
+      border: 1px solid transparent;
+    }
+
+    .tool-pill.running        { background: var(--mid);       border-color: var(--mid); }
+    .tool-pill.awaiting       { background: var(--accent);    border-color: var(--accent); }
+    .tool-pill.done           { background: var(--highlight); border-color: var(--highlight); }
+    .tool-pill.error,
+    .tool-pill.blocked        { background: var(--alarm);     border-color: var(--alarm); }
+    .tool-pill.denied         { background: var(--mid);       border-color: var(--mid); }
+
+    .tool-confirm-row {
+      margin-top: 6px;
+      display: flex;
+      gap: 8px;
+    }
+
+    .tool-body {
+      margin-top: 6px;
+      display: none;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .tool-card.expanded .tool-body {
+      display: flex;
+    }
+
+    .tool-body .field-label {
+      font-size: 0.75em;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--section);
+      opacity: 0.85;
+    }
+
+    .tool-body pre {
+      padding: 6px 8px;
+      background: var(--base);
+      border: 1px solid var(--border);
+      border-radius: 2px;
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo,
+                   Courier, monospace;
+      font-size: 0.85em;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      overflow-x: auto;
+    }
+
+    .payload-note {
+      font-size: 0.8em;
+      opacity: 0.75;
+      margin: 2px 2px 4px;
+    }
+
+    .payload-label {
+      font-size: 0.72em;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--section);
+      opacity: 0.85;
+      margin-top: 4px;
+    }
+
+    .tool-body pre.payload-hex {
+      white-space: pre;
+      letter-spacing: 0.5px;
+    }
+
+    .empty {
+      display: none;
+    }
+
+    .messages.is-empty {
+      display: none;
+    }
+
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: var(--border);
+      border-radius: 4px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: var(--accent);
+    }
+  </style>
+</head>
+<body>
+  <div id="messages" class="messages"></div>
+
+  <script>
+    // QWebChannel bridge to QML. `window.ai` is populated asynchronously
+    // when the channel handshake completes; bridge() queues calls made
+    // before that point and replays them once `ai` is ready.
+    var __ai = null;
+    var __pendingBridgeCalls = [];
+
+    new QWebChannel(qt.webChannelTransport, function (channel) {
+      __ai = channel.objects.ai;
+      for (var i = 0; i < __pendingBridgeCalls.length; i++) {
+        var p = __pendingBridgeCalls[i];
+        if (__ai[p.method]) __ai[p.method](p.payload);
+      }
+      __pendingBridgeCalls.length = 0;
+    });
+
+    function bridge(method, payload) {
+      payload = payload || "";
+      if (__ai && __ai[method]) {
+        __ai[method](payload);
+      } else {
+        __pendingBridgeCalls.push({ method: method, payload: payload });
+      }
+    }
+
+    var converter = new showdown.Converter({
+      tables:                    true,
+      tasklists:                 true,
+      strikethrough:             true,
+      ghCodeBlocks:              true,
+      ghCompatibleHeaderId:      true,
+      simpleLineBreaks:          true,
+      openLinksInNewWindow:      false,
+      emoji:                     true,
+      underline:                 false,
+      literalMidWordUnderscores: true,
+      simplifiedAutoLink:        true
+    });
+
+    // Mermaid renders ```mermaid fenced blocks into SVG *after* the sanitizer
+    // has run (see renderMermaidDiagrams). securityLevel 'strict' + htmlLabels
+    // off keeps a poisoned model from smuggling script through diagram labels
+    // or click directives; the help viewer can afford 'loose' because its
+    // content is trusted, this viewer cannot.
+    var MERMAID_FONT =
+      '-apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif';
+
+    function initMermaid(isDark) {
+      if (typeof mermaid === "undefined") return;
+      mermaid.initialize({
+        startOnLoad:   false,
+        securityLevel: "strict",
+        theme:         isDark ? "dark" : "default",
+        fontFamily:    MERMAID_FONT,
+        flowchart:     { useMaxWidth: true, htmlLabels: false }
+      });
+    }
+
+    initMermaid(false);
+
+    var mermaidSeq = 0;
+    var mermaidCache = {};
+
+    var L10N = {
+      you:           "You",
+      assistant:     "Assistant",
+      error:         "Error",
+      discovery:     "Discovery",
+      execution:     "Execution",
+      running:       "Running",
+      awaiting:      "Awaiting approval",
+      done:          "Done",
+      errStatus:     "Error",
+      denied:        "Denied",
+      blocked:       "Blocked",
+      approve:       "Approve",
+      deny:          "Deny",
+      approveAll:    "Approve all",
+      denyAll:       "Deny all",
+      arguments:     "Arguments",
+      result:        "Result",
+      groupTitle:    "Approve {n} actions in {family}?",
+      groupSubtitle: "These calls will run together. Expand each card to inspect arguments.",
+      copy:          "Copy",
+      payloadOnDevice: "Payload sent to device",
+      payloadText:     "Text",
+      payloadHex:      "Hex"
+    };
+
+    var STATUS = {
+      0: { cls: "running",  label: "running"  },
+      1: { cls: "awaiting", label: "awaiting" },
+      2: { cls: "done",     label: "done"     },
+      3: { cls: "error",    label: "errStatus"},
+      4: { cls: "denied",   label: "denied"   },
+      5: { cls: "blocked",  label: "blocked"  }
+    };
+
+    var expandedCalls = {};
+    var lastSerialized = "";
+
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, function (c) {
+        return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;",
+                  "\"": "&quot;", "'": "&#39;" })[c];
+      });
+    }
+
+    function isMermaidCode(block) {
+      return !!(block && block.classList &&
+                (block.classList.contains("mermaid") ||
+                 block.classList.contains("language-mermaid")));
+    }
+
+    function renderMarkdown(md) {
+      if (!md) return "";
+      // Showdown emits HTML and lets raw HTML in the source pass through. The
+      // sanitizer applies a tight allow-list before the string is inserted as
+      // innerHTML, so a poisoned model or injected prompt cannot reach the
+      // QWebChannel bridge through <script>, on*, or javascript: URLs.
+      var html = SerialStudioSanitize.sanitize(converter.makeHtml(md));
+      var tmp = document.createElement("div");
+      tmp.innerHTML = html;
+
+      // Mermaid blocks survive sanitize as escaped <pre><code> text; leave them
+      // untouched here so renderMermaidDiagrams can turn them into SVG once the
+      // fragment is in the document. Highlighting/copy would corrupt the source.
+      tmp.querySelectorAll("pre code").forEach(function (block) {
+        if (isMermaidCode(block)) return;
+        try { hljs.highlightElement(block); } catch (e) {}
+      });
+
+      tmp.querySelectorAll("pre").forEach(function (pre) {
+        var code = pre.querySelector("code");
+        if (code && isMermaidCode(code)) return;
+        var btn = document.createElement("button");
+        btn.className = "copy-btn";
+        btn.textContent = L10N.copy;
+        btn.setAttribute("data-copy", "1");
+        pre.appendChild(btn);
+      });
+
+      return tmp.innerHTML;
+    }
+
+    // Turn ```mermaid fenced blocks (now escaped <pre><code> nodes in the live
+    // DOM) into SVG. Rendered SVG is cached by source so the full re-render on
+    // every streaming tick reuses finished diagrams instead of re-parsing them.
+    function renderMermaidDiagrams(root) {
+      if (typeof mermaid === "undefined" || !root) return;
+      var blocks = root.querySelectorAll(
+        "pre code.mermaid, pre code.language-mermaid");
+      for (var i = 0; i < blocks.length; i++) {
+        renderOneMermaid(blocks[i]);
+      }
+    }
+
+    function renderOneMermaid(block) {
+      var source = block.textContent || "";
+      var pre = block.parentElement;
+      if (!pre || !pre.parentElement) return;
+
+      var wrapper = document.createElement("div");
+      wrapper.className = "mermaid-diagram";
+      wrapper.setAttribute("data-mermaid-src", source);
+      pre.parentElement.replaceChild(wrapper, pre);
+
+      var cached = mermaidCache[source];
+      if (cached) {
+        wrapper.innerHTML = cached;
+        return;
+      }
+      paintMermaid(wrapper, source);
+    }
+
+    function paintMermaid(wrapper, source) {
+      var id = "chat-mermaid-" + (mermaidSeq++);
+      try {
+        mermaid.render(id, source).then(function (result) {
+          mermaidCache[source] = result.svg;
+          wrapper.innerHTML = result.svg;
+          if (isAtBottom()) scrollToBottom();
+        }).catch(function () {
+          wrapper.textContent = source;
+        });
+      } catch (e) {
+        wrapper.textContent = source;
+      }
+    }
+
+    function statusPill(statusValue) {
+      var s = STATUS[statusValue] || STATUS[0];
+      return '<span class="tool-pill ' + s.cls + '">' +
+             escapeHtml(L10N[s.label]) + '</span>';
+    }
+
+    function groupSizeFor(toolCalls, idx) {
+      var cur = toolCalls[idx];
+      if (!cur || cur.status !== 1) return 0;
+      var fam = cur.family || "";
+
+      var start = idx;
+      while (start > 0) {
+        var prev = toolCalls[start - 1];
+        if (!prev || prev.status !== 1) break;
+        if ((prev.family || "") !== fam) break;
+        start -= 1;
+      }
+      if (start !== idx) return 0;
+
+      var n = 0;
+      for (var i = start; i < toolCalls.length; i++) {
+        var c = toolCalls[i];
+        if (!c || c.status !== 1) break;
+        if ((c.family || "") !== fam) break;
+        n += 1;
+      }
+      return n >= 2 ? n : 0;
+    }
+
+    function renderToolCard(card, grouped) {
+      var expanded = expandedCalls[card.callId] === true;
+      var status = STATUS[card.status] || STATUS[0];
+
+      var html = '<div class="tool-card' + (expanded ? " expanded" : "") +
+                 '" data-call-id="' + escapeHtml(card.callId) + '">';
+
+      html += '<div class="tool-head" data-toggle="' +
+              escapeHtml(card.callId) + '">';
+      html += '<svg class="tool-caret" viewBox="0 0 10 10">' +
+              '<path d="M2 1 L8 5 L2 9 Z" fill="currentColor"/></svg>';
+      html += '<div class="tool-name">' + escapeHtml(card.name || "") + '</div>';
+      html += statusPill(card.status);
+      html += '</div>';
+
+      if (card.status === 1 && !grouped) {
+        html += '<div class="tool-confirm-row">';
+        html += '<button class="btn primary" data-approve="' +
+                escapeHtml(card.callId) + '">' +
+                escapeHtml(L10N.approve) + '</button>';
+        html += '<button class="btn" data-deny="' +
+                escapeHtml(card.callId) + '">' +
+                escapeHtml(L10N.deny) + '</button>';
+        html += '</div>';
+      }
+
+      html += '<div class="tool-body">';
+
+      // Hardware-write preview: show the actual text + hex bytes that will
+      // land on the device, with the JSON-arg blob hidden behind it.
+      if (card.payloadPreview) {
+        var pv = card.payloadPreview;
+        var byteSuffix = pv.byteCount === 1 ? '' : 's';
+        html += '<div class="field-label">' +
+                escapeHtml(L10N.payloadOnDevice) + ' (' +
+                pv.byteCount + ' byte' + byteSuffix + ')</div>';
+        if (pv.textNote) {
+          html += '<div class="payload-note">' +
+                  escapeHtml(pv.textNote) + '</div>';
+        }
+        html += '<div class="payload-label">' +
+                escapeHtml(L10N.payloadText) + '</div>';
+        html += '<pre class="payload-text">' +
+                escapeHtml(pv.text || '') + '</pre>';
+        html += '<div class="payload-label">' +
+                escapeHtml(L10N.payloadHex) + '</div>';
+        html += '<pre class="payload-hex">' +
+                escapeHtml(pv.hex || '') + '</pre>';
+      } else {
+        html += '<div class="field-label">' +
+                escapeHtml(L10N.arguments) + '</div>';
+        html += '<pre>' + escapeHtml(card.args || "") + '</pre>';
+      }
+      if (card.result && card.result.length > 0) {
+        html += '<div class="field-label">' +
+                escapeHtml(L10N.result) + '</div>';
+        html += '<pre>' + escapeHtml(card.result) + '</pre>';
+      }
+      html += '</div>';
+
+      html += '</div>';
+      return html;
+    }
+
+    function renderToolCalls(toolCalls) {
+      if (!toolCalls || toolCalls.length === 0) return "";
+
+      var out = "";
+      var prevCategory = "";
+
+      for (var i = 0; i < toolCalls.length; i++) {
+        var card = toolCalls[i];
+        var category = card.category || "";
+
+        if (category && category !== prevCategory) {
+          var label = category === "discovery"
+                      ? L10N.discovery
+                      : L10N.execution;
+          out += '<div class="tool-section-label">' +
+                 escapeHtml(label) + '</div>';
+        }
+        prevCategory = category;
+
+        var groupSize = groupSizeFor(toolCalls, i);
+        if (groupSize > 0) {
+          var family = card.family || "";
+          out += '<div class="group-banner">';
+          out += '<div class="group-text">';
+          out += '<div class="group-title">' +
+                 escapeHtml(L10N.groupTitle
+                              .replace("{n}", groupSize)
+                              .replace("{family}", family)) +
+                 '</div>';
+          out += '<div class="group-sub">' +
+                 escapeHtml(L10N.groupSubtitle) + '</div>';
+          out += '</div>';
+          out += '<button class="btn primary" data-approve-all="' +
+                 escapeHtml(family) + '">' +
+                 escapeHtml(L10N.approveAll) + '</button>';
+          out += '<button class="btn" data-deny-all="' +
+                 escapeHtml(family) + '">' +
+                 escapeHtml(L10N.denyAll) + '</button>';
+          out += '</div>';
+        }
+
+        var grouped = false;
+        for (var j = i; j >= 0; j--) {
+          var probe = toolCalls[j];
+          if (!probe || probe.status !== 1) break;
+          if ((probe.family || "") !== (card.family || "")) break;
+          if (groupSizeFor(toolCalls, j) > 0) {
+            grouped = true;
+            break;
+          }
+        }
+
+        out += renderToolCard(card, grouped);
+      }
+
+      return out;
+    }
+
+    function renderMessage(msg) {
+      var role = msg.role || "assistant";
+      var html = '<div class="msg ' + escapeHtml(role) + '">';
+
+      var hasText = (msg.text || "").length > 0;
+      var hasThinking = (msg.thinking || "").length > 0;
+      var streaming = msg.streaming === true;
+      var showTyping = role === "assistant" && streaming &&
+                       !hasText && !hasThinking;
+
+      if (hasText || hasThinking || showTyping) {
+        var label = role === "user" ? L10N.you
+                  : role === "error" ? L10N.error
+                  : L10N.assistant;
+        html += '<div class="role">' + escapeHtml(label) + '</div>';
+      }
+
+      if (role === "assistant" && hasThinking && streaming) {
+        html += '<div class="thinking-row">' +
+                '<div class="thinking-spinner"></div>' +
+                '<div class="thinking-text">' +
+                  escapeHtml(msg.thinking) +
+                '</div></div>';
+      }
+
+      if (showTyping) {
+        html += '<div class="typing"><span></span><span></span><span></span></div>';
+      }
+
+      if (hasText) {
+        if (role === "user") {
+          html += '<div class="bubble user">' +
+                  escapeHtml(msg.text) + '</div>';
+        } else if (role === "error") {
+          html += '<div class="bubble error">' +
+                  escapeHtml(msg.text) + '</div>';
+        } else {
+          var body = streaming
+                     ? '<p>' + escapeHtml(msg.text).replace(/\n/g, "<br>") + '</p>'
+                     : renderMarkdown(msg.text);
+          html += '<div class="bubble assistant">' + body + '</div>';
+        }
+      }
+
+      if (role !== "user" && msg.toolCalls && msg.toolCalls.length > 0) {
+        html += renderToolCalls(msg.toolCalls);
+      }
+
+      html += '</div>';
+      return html;
+    }
+
+    function setMessages(json) {
+      var serialized = typeof json === "string" ? json : JSON.stringify(json);
+      if (serialized === lastSerialized) return;
+      lastSerialized = serialized;
+
+      var list;
+      try {
+        list = typeof json === "string" ? JSON.parse(json) : json;
+      } catch (e) {
+        list = [];
+      }
+      if (!Array.isArray(list)) list = [];
+
+      var validIds = {};
+      for (var i = 0; i < list.length; i++) {
+        var calls = list[i].toolCalls || [];
+        for (var j = 0; j < calls.length; j++) {
+          if (calls[j] && calls[j].callId)
+            validIds[calls[j].callId] = true;
+        }
+      }
+      for (var id in expandedCalls) {
+        if (!validIds[id]) delete expandedCalls[id];
+      }
+
+      var atBottom = isAtBottom();
+      var html = "";
+      for (var k = 0; k < list.length; k++)
+        html += renderMessage(list[k]);
+
+      var container = document.getElementById("messages");
+      container.innerHTML = html;
+      container.classList.toggle("is-empty", list.length === 0);
+
+      renderMermaidDiagrams(container);
+
+      if (atBottom) scrollToBottom();
+    }
+
+    function isAtBottom() {
+      var threshold = 32;
+      var doc = document.documentElement;
+      return (window.innerHeight + window.scrollY) >=
+             (doc.scrollHeight - threshold);
+    }
+
+    function scrollToBottom() {
+      window.scrollTo(0, document.documentElement.scrollHeight);
+    }
+
+    function setTheme(json) {
+      var colors = (typeof json === "string") ? JSON.parse(json) : json;
+      var root = document.documentElement;
+      root.style.setProperty("--text",      colors.text      || "#232629");
+      root.style.setProperty("--bg",        colors.bg        || "#ffffff");
+      root.style.setProperty("--accent",    colors.accent    || "#3daee9");
+      root.style.setProperty("--border",    colors.border    || "#c2c2c2");
+      root.style.setProperty("--base",      colors.base      || "#f5f5f5");
+      root.style.setProperty("--code-bg",   colors.codeBg    || "#f6f8fa");
+      root.style.setProperty("--highlight", colors.highlight || "#3daee9");
+      root.style.setProperty("--alarm",     colors.alarm     || "#c0392b");
+      root.style.setProperty("--mid",       colors.mid       || "#6f7378");
+      root.style.setProperty("--section",   colors.section   ||
+                                            colors.text      || "#6f7378");
+
+      var hljsLink = document.getElementById("hljs-theme");
+      var theme = colors.isDark ? "github-dark" : "github";
+      hljsLink.href = "qrc:/vendor/highlight-" + theme + ".min.css";
+
+      // Re-theme mermaid: drop the cache (SVGs bake in the old palette) and
+      // repaint diagrams already in the DOM from their retained source.
+      initMermaid(colors.isDark === true);
+      mermaidCache = {};
+      var wrappers =
+        document.querySelectorAll(".mermaid-diagram[data-mermaid-src]");
+      for (var i = 0; i < wrappers.length; i++) {
+        paintMermaid(wrappers[i], wrappers[i].getAttribute("data-mermaid-src"));
+      }
+
+      lastSerialized = "";
+    }
+
+    function setL10N(json) {
+      var src = (typeof json === "string") ? JSON.parse(json) : json;
+      for (var key in src) {
+        if (Object.prototype.hasOwnProperty.call(src, key))
+          L10N[key] = src[key];
+      }
+      lastSerialized = "";
+    }
+
+    function setDirection(rtl) {
+      document.documentElement.dir = rtl ? "rtl" : "ltr";
+      lastSerialized = "";
+    }
+
+    document.addEventListener("click", function (e) {
+      var el = e.target;
+
+      var copyBtn = el.closest && el.closest("button[data-copy]");
+      if (copyBtn) {
+        var pre = copyBtn.parentElement;
+        var code = pre && pre.querySelector("code");
+        var text = code ? code.textContent : (pre ? pre.textContent : "");
+        e.preventDefault();
+        bridge("copy", text);
+        return;
+      }
+
+      var approve = el.closest && el.closest("button[data-approve]");
+      if (approve) {
+        e.preventDefault();
+        bridge("approve", approve.getAttribute("data-approve"));
+        return;
+      }
+
+      var deny = el.closest && el.closest("button[data-deny]");
+      if (deny) {
+        e.preventDefault();
+        bridge("deny", deny.getAttribute("data-deny"));
+        return;
+      }
+
+      var approveAll = el.closest && el.closest("button[data-approve-all]");
+      if (approveAll) {
+        e.preventDefault();
+        bridge("approveAll", approveAll.getAttribute("data-approve-all"));
+        return;
+      }
+
+      var denyAll = el.closest && el.closest("button[data-deny-all]");
+      if (denyAll) {
+        e.preventDefault();
+        bridge("denyAll", denyAll.getAttribute("data-deny-all"));
+        return;
+      }
+
+      var head = el.closest && el.closest(".tool-head[data-toggle]");
+      if (head) {
+        e.preventDefault();
+        var card = head.parentElement;
+        var cid = head.getAttribute("data-toggle");
+        var nowExpanded = !card.classList.contains("expanded");
+        card.classList.toggle("expanded", nowExpanded);
+        if (nowExpanded) expandedCalls[cid] = true;
+        else delete expandedCalls[cid];
+        return;
+      }
+
+      var anchor = el.closest && el.closest("a");
+      if (anchor) {
+        var href = anchor.getAttribute("href") || "";
+        if (href.startsWith("http://") || href.startsWith("https://") ||
+            href.startsWith("mailto:")) {
+          e.preventDefault();
+          bridge("ext", href);
+          return;
+        }
+      }
+    });
+  </script>
+</body>
+</html>

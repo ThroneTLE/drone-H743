@@ -1,0 +1,820 @@
+"""
+Serial Studio API Client
+
+Clean wrapper around the Serial Studio TCP API for testing.
+
+Copyright (C) 2020-2025 Alex Spataru
+SPDX-License-Identifier: GPL-3.0-or-later OR LicenseRef-SerialStudio-Commercial
+"""
+
+import json
+import socket
+import time
+import uuid
+from typing import Any, Optional
+
+
+class APIError(Exception):
+    """Exception raised when API returns an error."""
+
+    def __init__(self, code: str, message: str):
+        self.code = code
+        self.message = message
+        super().__init__(f"{code}: {message}")
+
+
+class SerialStudioClient:
+    """
+    High-level client for Serial Studio API.
+
+    Provides clean interface for testing without worrying about
+    low-level socket communication details.
+    """
+
+    DEFAULT_HOST = "127.0.0.1"
+    DEFAULT_PORT = 7777
+    TIMEOUT = 5.0
+
+    def __init__(
+        self,
+        host: str = DEFAULT_HOST,
+        port: int = DEFAULT_PORT,
+        timeout: float = TIMEOUT,
+    ):
+        self.host = host
+        self.port = port
+        self.timeout = timeout
+        self._socket: Optional[socket.socket] = None
+        self._buffer = b""
+
+    def __enter__(self):
+        self.connect()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.disconnect()
+
+    def connect(self) -> None:
+        """Establish connection to Serial Studio API."""
+        if self._socket:
+            return
+
+        self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self._socket.settimeout(self.timeout)
+        try:
+            self._socket.connect((self.host, self.port))
+        except (ConnectionRefusedError, socket.timeout) as e:
+            raise ConnectionError(
+                f"Could not connect to Serial Studio at {self.host}:{self.port}. "
+                f"Ensure Serial Studio is running with API Server enabled."
+            ) from e
+
+    def disconnect(self) -> None:
+        """Close the connection."""
+        if self._socket:
+            try:
+                self._socket.close()
+            except Exception:
+                pass
+            self._socket = None
+        self._buffer = b""
+
+    def _recv_message(self, timeout: Optional[float] = None) -> dict:
+        """Receive a single JSON message from the socket."""
+        if not self._socket:
+            raise RuntimeError("Not connected")
+
+        timeout = timeout or self.timeout
+        end_time = time.time() + timeout
+
+        while True:
+            newline_pos = self._buffer.find(b"\n")
+            if newline_pos != -1:
+                line = self._buffer[:newline_pos]
+                self._buffer = self._buffer[newline_pos + 1 :]
+
+                if line.strip():
+                    return json.loads(line.decode("utf-8"))
+                continue
+
+            remaining = end_time - time.time()
+            if remaining <= 0:
+                raise TimeoutError("Timeout waiting for response")
+
+            self._socket.settimeout(min(remaining, 0.1))
+            try:
+                chunk = self._socket.recv(65536)
+                if not chunk:
+                    raise ConnectionError("Connection closed by server")
+                self._buffer += chunk
+            except socket.timeout:
+                continue
+
+    def _send_message(self, message: dict) -> None:
+        """Send a JSON message to the server."""
+        if not self._socket:
+            raise RuntimeError("Not connected")
+
+        data = json.dumps(message, separators=(",", ":")) + "\n"
+        self._socket.sendall(data.encode("utf-8"))
+
+    def command(
+        self,
+        command: str,
+        params: Optional[dict] = None,
+        timeout: Optional[float] = None,
+    ) -> dict:
+        """
+        Send a command and return the result.
+
+        Args:
+            command: Command name (e.g., "io.getStatus")
+            params: Optional parameters dict
+            timeout: Optional timeout override
+
+        Returns:
+            Result dict on success
+
+        Raises:
+            APIError: If command fails
+            TimeoutError: If response not received in time
+        """
+        request_id = str(uuid.uuid4())
+        message = {"type": "command", "id": request_id, "command": command}
+
+        if params:
+            message["params"] = params
+
+        self._send_message(message)
+
+        deadline = time.time() + (timeout or self.timeout)
+
+        while True:
+            remaining = deadline - time.time()
+            if remaining <= 0:
+                raise TimeoutError("Timeout waiting for response")
+
+            response = self._recv_message(remaining)
+
+            if response.get("type") == "response" and response.get("id") == request_id:
+                if response.get("success"):
+                    return response.get("result", {})
+                else:
+                    error = response.get("error", {})
+                    raise APIError(
+                        error.get("code", "UNKNOWN"),
+                        error.get("message", "Unknown error"),
+                    )
+
+            # Server-level rejections (rate/size/depth limits) are minted with
+            # an empty id; surface them instead of timing out silently.
+            if (
+                response.get("type") == "response"
+                and not response.get("id")
+                and not response.get("success", True)
+            ):
+                error = response.get("error", {})
+                raise APIError(
+                    error.get("code", "UNKNOWN"),
+                    error.get("message", "Server-level rejection"),
+                )
+
+    def batch(
+        self, commands: list[dict], timeout: Optional[float] = None
+    ) -> list[dict] | dict:
+        """
+        Send batch of commands.
+
+        Args:
+            commands: List of dicts with "command" and optional "params"
+            timeout: Optional timeout override
+
+        Returns:
+            List of results (may include errors) on success, or error dict if batch rejected
+
+        Raises:
+            TimeoutError: If response not received in time
+        """
+        request_id = str(uuid.uuid4())
+
+        batch_commands = []
+        for i, cmd in enumerate(commands):
+            batch_cmd = {
+                "id": f"{request_id}-{i}",
+                "command": cmd["command"],
+            }
+            if "params" in cmd:
+                batch_cmd["params"] = cmd["params"]
+            batch_commands.append(batch_cmd)
+
+        message = {"type": "batch", "id": request_id, "commands": batch_commands}
+
+        self._send_message(message)
+
+        deadline = time.time() + (timeout or self.timeout)
+
+        while True:
+            remaining = deadline - time.time()
+            if remaining <= 0:
+                raise TimeoutError("Timeout waiting for response")
+
+            response = self._recv_message(remaining)
+
+            if response.get("type") == "response" and response.get("id") == request_id:
+                # Batch was processed: return individual results even if some failed.
+                # A "results" key means the batch ran and each entry has its own
+                # success/failure status (partial failure is normal).
+                if "results" in response:
+                    return response.get("results", [])
+
+                # No "results" key means the batch was rejected at the protocol
+                # level before any commands were executed (e.g. empty batch, size
+                # limit exceeded).
+                return {
+                    "error": True,
+                    "success": False,
+                    "message": response.get("error", {}).get(
+                        "message", "Batch rejected"
+                    ),
+                    "code": response.get("error", {}).get("code", "UNKNOWN"),
+                }
+
+    def set_bus_type(self, bus_type: str) -> None:
+        """
+        Set the bus type.
+
+        Args:
+            bus_type: "uart", "network", "ble", "audio", "modbus", "canbus",
+                "usb", "hid", "process", or "mqtt"
+        """
+        bus_map = {
+            "uart": 0,
+            "network": 1,
+            "ble": 2,
+            "audio": 3,
+            "modbus": 4,
+            "canbus": 5,
+            "usb": 6,
+            "rawusb": 6,
+            "hid": 7,
+            "hiddevice": 7,
+            "process": 8,
+            "mqtt": 9,
+            "opcua": 10,
+        }
+
+        if bus_type.lower() not in bus_map:
+            raise ValueError(f"Invalid bus type: {bus_type}")
+
+        self.command("io.setBusType", {"busType": bus_map[bus_type.lower()]})
+
+    def configure_network(
+        self,
+        host: str = "127.0.0.1",
+        port: int = 9000,
+        socket_type: str = "tcp",
+    ) -> None:
+        """Configure network driver for device simulation."""
+        socket_type_map = {"tcp": 0, "udp": 1, "websocket": 2, "http": 3}
+
+        commands = [
+            {"command": "io.setBusType", "params": {"busType": 1}},
+            {"command": "io.network.setRemoteAddress", "params": {"address": host}},
+            {
+                "command": "io.network.setSocketType",
+                "params": {"socketTypeIndex": socket_type_map[socket_type.lower()]},
+            },
+        ]
+
+        if socket_type.lower() == "tcp":
+            commands.append(
+                {"command": "io.network.setTcpPort", "params": {"port": port}}
+            )
+        else:
+            commands.append(
+                {"command": "io.network.setUdpRemotePort", "params": {"port": port}}
+            )
+
+        self.batch(commands)
+
+    def connect_device(self) -> None:
+        """Connect to the configured device."""
+        self.command("io.connect")
+
+    def disconnect_device(self) -> None:
+        """Disconnect from the device."""
+        self.command("io.disconnect")
+
+    def is_connected(self) -> bool:
+        """Check if device is connected."""
+        status = self.command("io.getStatus")
+        return status.get("isConnected", False)
+
+    def enable_csv_export(self) -> None:
+        """Enable CSV export."""
+        self.command("csvExport.setEnabled", {"enabled": True})
+
+    def disable_csv_export(self) -> None:
+        """Disable CSV export."""
+        self.command("csvExport.setEnabled", {"enabled": False})
+
+    def get_csv_export_status(self) -> dict:
+        """Get CSV export status."""
+        return self.command("csvExport.getStatus")
+
+    def load_project(self, file_path: str) -> None:
+        """Load a project file."""
+        self.command("project.open", {"filePath": file_path})
+
+    def create_new_project(self, title: Optional[str] = None) -> None:
+        """Create a new empty project."""
+        self.command("project.new")
+        if title is None:
+            title = f"Test Project {time.time_ns()}"
+        try:
+            self.command("project.setTitle", {"title": title})
+        except Exception:
+            pass
+
+    def get_project_status(self) -> dict:
+        """Get project information."""
+        return self.command("project.getStatus")
+
+    def set_dashboard_fps(self, fps: int) -> None:
+        """
+        Set dashboard UI rendering/refresh rate.
+
+        Args:
+            fps: Frames per second for UI updates (typically 30-60)
+                 Note: This is NOT the data processing rate.
+                 Serial Studio can process data at much higher rates.
+        """
+        self.command("dashboard.setFps", {"fps": fps})
+
+    def set_dashboard_time_range(self, seconds: float) -> None:
+        """
+        Set the visible plot time window.
+
+        Args:
+            seconds: Width of the plot time window (e.g., 5.0, 10.0).
+                     Valid range is 0.001-300 seconds.
+        """
+        self.command("dashboard.setTimeRange", {"seconds": seconds})
+
+    def get_dashboard_time_range(self) -> float:
+        """Get the visible plot time window in seconds."""
+        result = self.command("dashboard.getTimeRange")
+        return result.get("seconds")
+
+    def get_dashboard_status(self) -> dict:
+        """Get dashboard configuration."""
+        return self.command("dashboard.getStatus")
+
+    def get_available_commands(self) -> list[dict]:
+        """Get list of available API commands."""
+        result = self.command("api.getCommands")
+        return result.get("commands", [])
+
+    def command_exists(self, name: str) -> bool:
+        """Check if a command exists in the API."""
+        commands = self.get_available_commands()
+        return any(cmd.get("name") == name for cmd in commands)
+
+    def set_operation_mode(self, mode: str) -> None:
+        """
+        Set dashboard operation mode.
+
+        Args:
+            mode: "project" (0), "console" (1), or "quickplot" (2).
+                  Legacy "json" is accepted as an alias for "console" — the
+                  old DeviceSendsJSON mode was replaced by ConsoleOnly in
+                  v3.3 and slot 1 in the enum was repurposed.
+        """
+        mode_map = {
+            "project": 0,  # ProjectFile mode
+            "console": 1,  # ConsoleOnly mode (replaces old DeviceSendsJSON)
+            "json": 1,  # Legacy alias — still maps to slot 1
+            "quickplot": 2,  # QuickPlot mode
+        }
+
+        if mode.lower() not in mode_map:
+            raise ValueError(f"Invalid operation mode: {mode}")
+
+        mode_index = mode_map[mode.lower()]
+        self.command("dashboard.setOperationMode", {"mode": mode_index})
+
+    def wait_for_connection(self, timeout: float = 10.0) -> bool:
+        """
+        Wait for device to connect.
+
+        Returns:
+            True if connected within timeout, False otherwise
+        """
+        end_time = time.time() + timeout
+        while time.time() < end_time:
+            if self.is_connected():
+                return True
+            time.sleep(0.1)
+        return False
+
+    def load_project_from_json(self, config: dict) -> dict:
+        """
+        Load project configuration from JSON object.
+
+        Args:
+            config: Project configuration dict with frameParser, groups, datasets, etc.
+
+        Returns:
+            Result dict with loaded project info
+        """
+        return self.command("project.loadJson", {"config": config})
+
+    def configure_frame_parser(
+        self,
+        start_sequence: str = None,
+        end_sequence: str = None,
+        checksum_algorithm: str = None,
+        operation_mode: int = None,
+        frame_detection: int = None,
+    ) -> dict:
+        """
+        Configure frame parser settings.
+
+        Args:
+            start_sequence: Frame start delimiter (e.g., "$", "/*")
+            end_sequence: Frame end delimiter (e.g., "\\r\\n", "*/", ";")
+            checksum_algorithm: Checksum name (e.g., "None", "CRC-16", "CRC-32", "Adler-32")
+            operation_mode: Operation mode (0=ProjectFile, 1=ConsoleOnly, 2=QuickPlot)
+            frame_detection: Frame detection mode (0=EndDelimiterOnly, 1=StartAndEndDelimiter, 2=NoDelimiters, 3=StartDelimiterOnly)
+
+        Returns:
+            Result dict
+        """
+        checksum_algorithm = self._normalize_checksum_algorithm(checksum_algorithm)
+
+        params = {}
+        if start_sequence is not None:
+            params["startSequence"] = start_sequence
+        if end_sequence is not None:
+            params["endSequence"] = end_sequence
+        if checksum_algorithm is not None:
+            params["checksumAlgorithm"] = checksum_algorithm
+        if operation_mode is not None:
+            params["operationMode"] = operation_mode
+        if frame_detection is not None:
+            params["frameDetection"] = frame_detection
+        if not params:
+            return {}
+
+        return self.command("project.frameParser.update", params)
+
+    @staticmethod
+    def _normalize_checksum_algorithm(
+        checksum_algorithm: Optional[str],
+    ) -> Optional[str]:
+        if checksum_algorithm is None:
+            return None
+
+        normalized = checksum_algorithm.strip()
+        lowered = normalized.lower()
+
+        if lowered in ("", "none", "no", "null"):
+            return ""
+        if lowered == "xor":
+            return "XOR-8"
+        if lowered in ("sum", "mod-256", "mod256"):
+            return "MOD-256"
+
+        return normalized
+
+    def get_frame_parser_config(self) -> dict:
+        """
+        Get current frame parser configuration.
+
+        Returns:
+            Dict with startSequence, endSequence, checksumAlgorithm, operationMode
+        """
+        return self.command("project.frameParser.getConfig")
+
+    def set_frame_parser_language(self, language: int, source_id: int = 0) -> dict:
+        """
+        Set the scripting language for the frame parser on a given source.
+
+        Args:
+            language: 0 = JavaScript, 1 = Lua
+            source_id: Logical source identifier (default 0)
+
+        Returns:
+            Dict with {"sourceId": int, "language": int}
+        """
+        return self.command(
+            "project.frameParser.setLanguage",
+            {"language": language, "sourceId": source_id},
+        )
+
+    def get_frame_parser_language(self, source_id: int = 0) -> int:
+        """
+        Get the scripting language for the frame parser on a given source.
+
+        Args:
+            source_id: Logical source identifier (default 0)
+
+        Returns:
+            0 for JavaScript, 1 for Lua
+        """
+        result = self.command(
+            "project.frameParser.getLanguage", {"sourceId": source_id}
+        )
+        return int(result.get("language", 0))
+
+    def set_frame_parser_code(
+        self,
+        code: str,
+        language: int = 0,
+        source_id: int = 0,
+    ) -> dict:
+        """
+        Set the frame parser script for a given source, explicitly specifying
+        the language so the project model and the script engine stay in sync.
+
+        New projects default to the Native template parser (language 2, see
+        ProjectModel::seedDefaultFrameParser), so tests that ship JS or Lua
+        snippets MUST pass the matching language — otherwise the code is
+        persisted but a different engine stays active and frame parsing
+        silently produces unexpected output.
+
+        Args:
+            code: Frame parser script source.
+            language: 0 = JavaScript, 1 = Lua. Defaults to JS.
+            source_id: Logical source identifier (default 0).
+
+        Returns:
+            Dict with {"sourceId": int, "codeLength": int}.
+        """
+        return self.command(
+            "project.frameParser.setCode",
+            {"code": code, "language": language, "sourceId": source_id},
+        )
+
+    def set_frame_parser_template(
+        self,
+        template: str,
+        params: Optional[dict] = None,
+        source_id: int = 0,
+    ) -> dict:
+        """
+        Select a Native (C++) frame parser template for a source. Switches the
+        source to the Native language (2); omitted params use schema defaults.
+
+        Args:
+            template: Template id (see project.frameParser.listTemplates).
+            params: Optional template parameters dict.
+            source_id: Logical source identifier (default 0).
+
+        Returns:
+            Dict with {"sourceId": int, "language": 2, "template": str, "params": dict}.
+        """
+        payload = {"template": template, "sourceId": source_id}
+        if params is not None:
+            payload["params"] = params
+        return self.command("project.frameParser.setTemplate", payload)
+
+    def get_dashboard_data(self) -> dict:
+        """
+        Get current dashboard dataset values.
+
+        Returns:
+            Dict with groups, datasets, and their current values
+        """
+        return self.command("dashboard.getData")
+
+    def get_dataset_count(self) -> int:
+        """
+        Get total number of datasets across all groups in current frame.
+
+        Returns:
+            Total dataset count
+        """
+        status = self.get_project_status()
+        return status.get("datasetCount", 0)
+
+    def get_widget_count(self) -> int:
+        """
+        Get total number of dashboard widgets currently active.
+
+        This works in all modes (ProjectFile, ConsoleOnly, QuickPlot).
+
+        Returns:
+            Total widget count
+        """
+        status = self.get_dashboard_status()
+        return status.get("widgetCount", 0)
+
+    # ------------------------------------------------------------------
+    # Multi-source (project.source.*) helpers
+    # ------------------------------------------------------------------
+
+    def source_list(self) -> list:
+        """Return list of all sources in the current project."""
+        result = self.command("project.source.list")
+        return result.get("sources", [])
+
+    def source_add(self) -> int:
+        """Add a new source (Commercial only). Returns the new sourceId."""
+        result = self.command("project.source.add")
+        return result.get("sourceId", -1)
+
+    def source_delete(self, source_id: int) -> None:
+        """Delete a source by ID (Commercial only; sourceId >= 1)."""
+        self.command("project.source.delete", {"sourceId": source_id})
+
+    def source_update(self, source_id: int, **kwargs) -> None:
+        """Update source fields. Accepted kwargs: title, busType, frameStart,
+        frameEnd, checksumAlgorithm, frameDetection, decoderMethod,
+        hexadecimalDelimiters (Commercial only for multi-source projects).
+        """
+        params = {"sourceId": source_id}
+        params.update(kwargs)
+        self.command("project.source.update", params)
+
+    def source_set_property(self, source_id: int, key: str, value) -> None:
+        """Set a driver connection property for a source."""
+        self.command(
+            "project.source.setProperty",
+            {"sourceId": source_id, "key": key, "propertyValue": value},
+        )
+
+    def source_get_configuration(self, source_id: int) -> dict:
+        """Return full Source struct including connectionSettings."""
+        return self.command("project.source.getConfig", {"sourceId": source_id})
+
+    def source_configure(self, source_id: int, settings: dict) -> None:
+        """
+        Apply multiple driver connection properties to a source in one call.
+
+        For source 0 in single-source ProjectFile mode this is equivalent to
+        the user editing the Setup panel: changes propagate to the UI and are
+        saved into source[0].connectionSettings. For multi-source projects
+        (sourceId >= 1) uses the editing-driver path.
+
+        Args:
+            source_id: Source ID (0 for primary/single-source projects)
+            settings: Dict of driver property key/value pairs, e.g.
+                      {"address": "127.0.0.1", "tcpPort": 9000, "socketTypeIndex": 0}
+        """
+        self.command(
+            "project.source.setProperties",
+            {"sourceId": source_id, "settings": settings},
+        )
+
+    def source_set_frame_parser_code(self, source_id: int, code: str) -> None:
+        """Set per-source JavaScript frame parser code."""
+        self.command(
+            "project.source.setFrameParserCode", {"sourceId": source_id, "code": code}
+        )
+
+    def source_get_frame_parser_code(self, source_id: int) -> str:
+        """Return per-source JavaScript frame parser code."""
+        result = self.command(
+            "project.source.getFrameParserCode", {"sourceId": source_id}
+        )
+        return result.get("code", "")
+
+    # ------------------------------------------------------------------
+    # Project structure helpers (stateless / id-based, v3.3)
+    # ------------------------------------------------------------------
+
+    def list_groups(self) -> list:
+        """Return all groups (each carries groupId, title, datasetCount, datasetSummary)."""
+        return self.command("project.group.list").get("groups", [])
+
+    def list_datasets(self) -> list:
+        """Return all datasets across all groups, each carrying groupId+datasetId."""
+        return self.command("project.dataset.list").get("datasets", [])
+
+    def list_actions(self) -> list:
+        """Return all project actions, each carrying actionId."""
+        return self.command("project.action.list").get("actions", [])
+
+    def add_group(self, title: str = "Group", widget_type: int = 0) -> int:
+        """
+        Add a group and return its positional groupId.
+
+        project.group.add doesn't echo the new id; the positional groupId is
+        the last array index in project.group.list. Use this with the
+        project.group.* (positional) handlers. For uniqueId-based handlers
+        (workspace refs, dataset.xAxisId, ...) read `uniqueId` from
+        project.group.list yourself.
+        """
+        self.command("project.group.add", {"title": title, "widgetType": widget_type})
+        groups = self.list_groups()
+        return len(groups) - 1 if groups else -1
+
+    def update_group(self, group_id: int, **fields) -> dict:
+        """PATCH a group (title, widget, columns, sourceId, painterCode, ...)."""
+        params = {"groupId": group_id, **fields}
+        return self.command("project.group.update", params)
+
+    def delete_group(self, group_id: int) -> None:
+        self.command("project.group.delete", {"groupId": group_id})
+
+    def duplicate_group(self, group_id: int) -> dict:
+        return self.command("project.group.duplicate", {"groupId": group_id})
+
+    def add_dataset(self, group_id: int, options: int = 0) -> dict:
+        """Add a dataset to a group; returns the new dataset record."""
+        return self.command(
+            "project.dataset.add", {"groupId": group_id, "options": options}
+        )
+
+    def update_dataset(self, group_id: int, dataset_id: int, **fields) -> dict:
+        """PATCH a dataset (title, units, widget, ranges, transformCode, ...)."""
+        params = {"groupId": group_id, "datasetId": dataset_id, **fields}
+        return self.command("project.dataset.update", params)
+
+    def delete_dataset(self, group_id: int, dataset_id: int) -> None:
+        self.command(
+            "project.dataset.delete",
+            {"groupId": group_id, "datasetId": dataset_id},
+        )
+
+    def duplicate_dataset(self, group_id: int, dataset_id: int) -> dict:
+        return self.command(
+            "project.dataset.duplicate",
+            {"groupId": group_id, "datasetId": dataset_id},
+        )
+
+    def set_dataset_option(
+        self, group_id: int, dataset_id: int, option: int, enabled: bool
+    ) -> None:
+        self.command(
+            "project.dataset.setOption",
+            {
+                "groupId": group_id,
+                "datasetId": dataset_id,
+                "option": option,
+                "enabled": enabled,
+            },
+        )
+
+    def set_dataset_options(self, group_id: int, dataset_id: int, options: int) -> None:
+        self.command(
+            "project.dataset.setOptions",
+            {
+                "groupId": group_id,
+                "datasetId": dataset_id,
+                "options": options,
+            },
+        )
+
+    def add_action(self) -> int:
+        """
+        Add an action and return its actionId.
+
+        project.action.add takes no params and doesn't echo the new id; ids
+        are sequential indexes so the new action is the last entry.
+        Use update_action(aid, title=...) to populate fields.
+        """
+        self.command("project.action.add")
+        actions = self.list_actions()
+        return actions[-1]["actionId"] if actions else -1
+
+    def update_action(self, action_id: int, **fields) -> dict:
+        params = {"actionId": action_id, **fields}
+        return self.command("project.action.update", params)
+
+    def delete_action(self, action_id: int) -> None:
+        self.command("project.action.delete", {"actionId": action_id})
+
+    def duplicate_action(self, action_id: int) -> dict:
+        return self.command("project.action.duplicate", {"actionId": action_id})
+
+    def add_output_widget(self, group_id: int, widget_type: int) -> dict:
+        """Add an output widget. type: 0=Button, 1=Slider, 2=Toggle, 3=TextField, 4=Knob."""
+        return self.command(
+            "project.outputWidget.add", {"groupId": group_id, "type": widget_type}
+        )
+
+    def update_output_widget(self, group_id: int, widget_id: int, **fields) -> dict:
+        params = {"groupId": group_id, "widgetId": widget_id, **fields}
+        return self.command("project.outputWidget.update", params)
+
+    def delete_output_widget(self, group_id: int, widget_id: int) -> None:
+        self.command(
+            "project.outputWidget.delete",
+            {"groupId": group_id, "widgetId": widget_id},
+        )
+
+    def duplicate_output_widget(self, group_id: int, widget_id: int) -> dict:
+        return self.command(
+            "project.outputWidget.duplicate",
+            {"groupId": group_id, "widgetId": widget_id},
+        )
+
+    def validate_project(self) -> dict:
+        """Walk the active project and report info/warning/error issues."""
+        return self.command("project.validate")
+
+    def activate_project(self) -> dict:
+        """Push the in-memory project into the FrameBuilder pipeline."""
+        return self.command("project.activate")

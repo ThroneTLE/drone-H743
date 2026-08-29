@@ -1,0 +1,40 @@
+{
+  "surface": "start-menu",
+  "items": [
+    { "type": "slot", "name": "workspaces" },
+    { "type": "slot", "name": "actions" },
+    { "type": "slot", "name": "plugins" },
+    { "type": "separator" },
+    { "type": "command", "id": "dashboard.autoLayout" },
+    { "type": "command", "id": "dashboard.freeze" },
+    { "type": "separator" },
+    { "type": "command", "id": "app.fullScreen" },
+    { "type": "command", "id": "window.external" },
+    { "type": "separator" },
+    { "type": "submenu", "name": "export", "title": "Export", "icon": "commands/export",
+      "items": [
+        { "type": "command", "id": "export.csv" },
+        { "type": "command", "id": "export.mdf4" },
+        { "type": "command", "id": "export.console" },
+        { "type": "command", "id": "export.database" }
+      ] },
+    { "type": "submenu", "name": "tools", "title": "Tools", "icon": "commands/tools",
+      "items": [
+        { "type": "command", "id": "dashboard.console" },
+        { "type": "command", "id": "dashboard.notifications" },
+        { "type": "command", "id": "dashboard.clock" },
+        { "type": "command", "id": "dashboard.stopwatch" },
+        { "type": "command", "id": "app.preferences" },
+        { "type": "command", "id": "app.sessions" },
+        { "type": "command", "id": "app.fileTransmission" },
+        { "type": "command", "id": "app.ai" }
+      ] },
+    { "type": "separator" },
+    { "type": "command", "id": "app.helpCenter" },
+    { "type": "separator" },
+    { "type": "command", "id": "io.pause" },
+    { "type": "command", "id": "dashboard.reset" },
+    { "type": "command", "id": "io.disconnect" },
+    { "type": "command", "id": "app.quit" }
+  ]
+}

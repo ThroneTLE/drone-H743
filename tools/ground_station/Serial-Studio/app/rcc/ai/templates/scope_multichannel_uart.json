@@ -1,0 +1,26 @@
+{
+  "title": "Multi-channel scope (UART)",
+  "actions": [],
+  "frameStart": "$",
+  "frameEnd": "\\n",
+  "frameDetection": 1,
+  "decoder": 0,
+  "checksum": "",
+  "frameParser": "function parse(frame) {\n    return frame.split(',');\n}\n",
+  "groups": [
+    {
+      "title": "Channels",
+      "widget": "multiplot",
+      "datasets": [
+        { "title": "CH1", "index": 1, "graph": true, "min": 0, "max": 100 },
+        { "title": "CH2", "index": 2, "graph": true, "min": 0, "max": 100 },
+        { "title": "CH3", "index": 3, "graph": true, "min": 0, "max": 100 },
+        { "title": "CH4", "index": 4, "graph": true, "min": 0, "max": 100 },
+        { "title": "CH5", "index": 5, "graph": true, "min": 0, "max": 100 },
+        { "title": "CH6", "index": 6, "graph": true, "min": 0, "max": 100 },
+        { "title": "CH7", "index": 7, "graph": true, "min": 0, "max": 100 },
+        { "title": "CH8", "index": 8, "graph": true, "min": 0, "max": 100 }
+      ]
+    }
+  ]
+}

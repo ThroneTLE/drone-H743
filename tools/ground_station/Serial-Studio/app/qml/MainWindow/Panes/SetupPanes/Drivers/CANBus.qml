@@ -1,0 +1,417 @@
+/*
+ * Serial Studio - https://serial-studio.com/
+ *
+ * Copyright (C) 2020–2025 Alex Spataru <https://aspatru.com>
+ *
+ * This file is part of the proprietary features of Serial Studio and is
+ * licensed under the Serial Studio Commercial License.
+ *
+ * Redistribution, modification, or use of this file in any form is permitted
+ * only under the terms of a valid Serial Studio Commercial License obtained
+ * from the author.
+ *
+ * This file must not be used or included in builds distributed under the
+ * GNU General Public License (GPL) unless explicitly permitted by a
+ * commercial agreement.
+ *
+ * For details, see:
+ * https://github.com/Serial-Studio/Serial-Studio/blob/master/LICENSE.md
+ *
+ * SPDX-License-Identifier: LicenseRef-SerialStudio-Commercial
+ */
+
+import QtCore
+import QtQuick
+import QtQuick.Layouts
+import QtQuick.Controls
+
+import "../../../../Widgets" as Widgets
+
+Item {
+  id: root
+
+  implicitHeight: layout.implicitHeight
+  implicitWidth: layout.implicitWidth + 16
+
+  //
+  // No Plugin Available Indicator
+  //
+  ColumnLayout {
+    spacing: 4
+    anchors.centerIn: parent
+    visible: Cpp_IO_CANBus.pluginList.length === 0
+
+    Image {
+      sourceSize: Qt.size(96, 96)
+      source: "qrc:/images/driver.svg"
+      Layout.alignment: Qt.AlignHCenter
+    }
+
+    Item {
+      implicitHeight: 12
+    }
+
+    Label {
+      wrapMode: Label.WordWrap
+      Layout.alignment: Qt.AlignHCenter
+      text: qsTr("No CAN Drivers Found")
+      Layout.maximumWidth: root.width - 64
+      horizontalAlignment: Label.AlignHCenter
+      font: Cpp_Misc_CommonFonts.customUiFont(1.4, true)
+    }
+
+    Label {
+      opacity: 0.8
+      wrapMode: Label.WordWrap
+      Layout.alignment: Qt.AlignHCenter
+      Layout.maximumWidth: root.width - 64
+      horizontalAlignment: Label.AlignHCenter
+      font: Cpp_Misc_CommonFonts.customUiFont(1.2, false)
+      text: qsTr("Install CAN hardware drivers for your system")
+    }
+  }
+
+  //
+  // Main Layout
+  //
+  ColumnLayout {
+    spacing: 4
+    anchors.margins: 0
+    anchors.fill: parent
+    visible: Cpp_IO_CANBus.pluginList.length > 0
+
+    GridLayout {
+      id: layout
+
+      columns: 2
+      rowSpacing: 4
+      columnSpacing: 4
+      Layout.fillWidth: true
+      enabled: app.ioEnabled
+      opacity: enabled ? 1 : 0.5
+
+      //
+      // CAN Driver selector
+      //
+      Label {
+        text: qsTr("CAN Driver") + ":"
+      } Widgets.Combo {
+        id: _pluginCombo
+
+        textRole: "display"
+        Layout.fillWidth: true
+        Component.onCompleted: _pluginCombo.updatePluginModel()
+        onActivated: (index) => {
+          if (Cpp_IO_CANBus.pluginIndex !== index)
+            Cpp_IO_CANBus.pluginIndex = index
+        }
+
+        model: ListModel {
+          id: pluginModel
+        }
+
+        Connections {
+          target: Cpp_IO_CANBus
+          function onAvailablePluginsChanged() {
+            _pluginCombo.updatePluginModel()
+          }
+          function onPluginIndexChanged() {
+            _pluginCombo.currentIndex = Cpp_IO_CANBus.pluginIndex
+          }
+        }
+
+        function updatePluginModel() {
+          pluginModel.clear()
+          const plugins = Cpp_IO_CANBus.pluginList
+          for (let i = 0; i < plugins.length; ++i) {
+            pluginModel.append({
+              "display": Cpp_IO_CANBus.pluginDisplayName(plugins[i]),
+              "value": plugins[i]
+            })
+          }
+          currentIndex = Cpp_IO_CANBus.pluginIndex
+        }
+      }
+
+      //
+      // CAN Interface selector
+      //
+      Label {
+        text: qsTr("Interface") + ":"
+        visible: Cpp_IO_CANBus.interfaceList.length > 0
+      } Widgets.Combo {
+        id: _interfaceCombo
+
+        Layout.fillWidth: true
+        model: Cpp_IO_CANBus.interfaceList
+        visible: Cpp_IO_CANBus.interfaceList.length > 0
+        Component.onCompleted: _interfaceCombo.currentIndex = Cpp_IO_CANBus.interfaceIndex
+        onActivated: (index) => {
+          if (Cpp_IO_CANBus.interfaceIndex !== index)
+            Cpp_IO_CANBus.interfaceIndex = index
+        }
+
+        Connections {
+          target: Cpp_IO_CANBus
+          function onInterfaceIndexChanged() {
+            _interfaceCombo.currentIndex = Cpp_IO_CANBus.interfaceIndex
+          }
+          function onAvailableInterfacesChanged() {
+            _interfaceCombo.currentIndex = Cpp_IO_CANBus.interfaceIndex
+          }
+        }
+      }
+
+      //
+      // Bitrate selector
+      //
+      Label {
+        text: qsTr("Bitrate") + ":"
+        visible: Cpp_IO_CANBus.interfaceList.length > 0
+      } ComboBox {
+        id: _bitrateCombo
+
+        editable: true
+        Layout.fillWidth: true
+        model: Cpp_IO_CANBus.bitrateList
+        visible: Cpp_IO_CANBus.interfaceList.length > 0
+
+        validator: IntValidator { bottom: 1 }
+
+        function syncFromDriver() {
+          const current = String(Cpp_IO_CANBus.bitrate)
+          const rates = Cpp_IO_CANBus.bitrateList
+          const idx = rates.indexOf(current)
+          if (idx !== -1) {
+            _bitrateCombo.currentIndex = idx
+            _bitrateCombo.editText = current
+          } else {
+            _bitrateCombo.currentIndex = -1
+            _bitrateCombo.editText = current
+          }
+        }
+
+        Component.onCompleted: Qt.callLater(syncFromDriver)
+
+        Connections {
+          target: Cpp_IO_CANBus
+          function onBitrateChanged() {
+            _bitrateCombo.syncFromDriver()
+          }
+        }
+
+        onAccepted: {
+          const value = parseInt(editText)
+          if (!isNaN(value) && value > 0 && Cpp_IO_CANBus.bitrate !== value)
+            Cpp_IO_CANBus.bitrate = value
+        }
+
+        onActivated: (index) => {
+          if (index < 0 || index >= model.length)
+            return
+
+          const value = parseInt(model[index])
+          if (!isNaN(value) && Cpp_IO_CANBus.bitrate !== value)
+            Cpp_IO_CANBus.bitrate = value
+        }
+      }
+
+      //
+      // CAN FD checkbox
+      //
+      Label {
+        text: qsTr("Flexible Data-Rate") + ":"
+        opacity: Cpp_IO_CANBus.interfaceSupportsFD ? 1 : 0.5
+        visible: Cpp_IO_CANBus.interfaceList.length > 0
+      } CheckBox {
+        id: _canFDCheck
+
+        Layout.leftMargin: -8
+        Layout.maximumHeight: 18
+        checked: Cpp_IO_CANBus.canFD
+        enabled: Cpp_IO_CANBus.interfaceSupportsFD
+        visible: Cpp_IO_CANBus.interfaceList.length > 0
+        Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
+        onCheckedChanged: {
+          if (Cpp_IO_CANBus.canFD !== checked)
+            Cpp_IO_CANBus.canFD = checked
+        }
+
+        ToolTip.delay: 500
+        ToolTip.visible: hovered && !Cpp_IO_CANBus.interfaceSupportsFD
+        ToolTip.text: qsTr("The selected adapter does not support CAN FD")
+      }
+
+      //
+      // Data bitrate selector (FD data phase)
+      //
+      Label {
+        text: qsTr("Data Bitrate") + ":"
+        visible: _dataBitrateCombo.visible
+      } ComboBox {
+        id: _dataBitrateCombo
+
+        editable: true
+        Layout.fillWidth: true
+        model: Cpp_IO_CANBus.dataBitrateList
+        visible: Cpp_IO_CANBus.interfaceList.length > 0 && Cpp_IO_CANBus.canFD
+                 && Cpp_IO_CANBus.interfaceSupportsFD
+
+        validator: IntValidator { bottom: 1 }
+
+        function syncFromDriver() {
+          const current = String(Cpp_IO_CANBus.dataBitrate)
+          const rates = Cpp_IO_CANBus.dataBitrateList
+          const idx = rates.indexOf(current)
+          if (idx !== -1) {
+            _dataBitrateCombo.currentIndex = idx
+            _dataBitrateCombo.editText = current
+          } else {
+            _dataBitrateCombo.currentIndex = -1
+            _dataBitrateCombo.editText = current
+          }
+        }
+
+        Component.onCompleted: Qt.callLater(syncFromDriver)
+
+        Connections {
+          target: Cpp_IO_CANBus
+          function onDataBitrateChanged() {
+            _dataBitrateCombo.syncFromDriver()
+          }
+        }
+
+        onAccepted: {
+          const value = parseInt(editText)
+          if (!isNaN(value) && value > 0 && Cpp_IO_CANBus.dataBitrate !== value)
+            Cpp_IO_CANBus.dataBitrate = value
+        }
+
+        onActivated: (index) => {
+          if (index < 0 || index >= model.length)
+            return
+
+          const value = parseInt(model[index])
+          if (!isNaN(value) && Cpp_IO_CANBus.dataBitrate !== value)
+            Cpp_IO_CANBus.dataBitrate = value
+        }
+      }
+
+      //
+      // Loopback checkbox
+      //
+      Label {
+        text: qsTr("Loopback") + ":"
+        visible: Cpp_IO_CANBus.interfaceList.length > 0
+      } CheckBox {
+        id: _loopbackCheck
+
+        Layout.leftMargin: -8
+        Layout.maximumHeight: 18
+        checked: Cpp_IO_CANBus.loopback
+        visible: Cpp_IO_CANBus.interfaceList.length > 0
+        Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
+        onCheckedChanged: {
+          if (Cpp_IO_CANBus.loopback !== checked)
+            Cpp_IO_CANBus.loopback = checked
+        }
+      }
+
+      //
+      // Listen-Only checkbox
+      //
+      Label {
+        text: qsTr("Listen-Only") + ":"
+        visible: Cpp_IO_CANBus.interfaceList.length > 0
+      } CheckBox {
+        id: _listenOnlyCheck
+
+        Layout.leftMargin: -8
+        Layout.maximumHeight: 18
+        checked: Cpp_IO_CANBus.listenOnly
+        visible: Cpp_IO_CANBus.interfaceList.length > 0
+        Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
+        onCheckedChanged: {
+          if (Cpp_IO_CANBus.listenOnly !== checked)
+            Cpp_IO_CANBus.listenOnly = checked
+        }
+      }
+
+      //
+      // Import DBC button
+      //
+      Label {
+        text: qsTr("DBC Database") + ":"
+        visible: Cpp_IO_CANBus.interfaceList.length > 0
+      } Button {
+        Layout.fillWidth: true
+        text: qsTr("Import DBC File…")
+        visible: Cpp_IO_CANBus.interfaceList.length > 0
+        onClicked: Cpp_JSON_DBCImporter.importDBC()
+      }
+    }
+
+    //
+    // No Interface Found Indicator
+    //
+    ColumnLayout {
+      spacing: 4
+      Layout.fillWidth: true
+      Layout.alignment: Qt.AlignHCenter
+      visible: Cpp_IO_CANBus.interfaceList.length === 0
+
+      Item {
+        implicitHeight: 4
+      }
+
+      Image {
+        sourceSize: Qt.size(96, 96)
+        source: "qrc:/images/driver.svg"
+        Layout.alignment: Qt.AlignHCenter
+      }
+
+      Item {
+        implicitHeight: 4
+      }
+
+      Label {
+        wrapMode: Label.WordWrap
+        Layout.alignment: Qt.AlignHCenter
+        Layout.maximumWidth: root.width - 64
+        text: qsTr("No CAN Interfaces Found")
+        horizontalAlignment: Label.AlignHCenter
+        font: Cpp_Misc_CommonFonts.customUiFont(1.4, true)
+      }
+
+      Label {
+        opacity: 0.8
+        wrapMode: Label.WordWrap
+        textFormat: Label.RichText
+        Layout.alignment: Qt.AlignHCenter
+        text: Cpp_IO_CANBus.interfaceError
+        Layout.maximumWidth: root.width - 64
+        horizontalAlignment: Label.AlignHCenter
+        onLinkActivated: Qt.openUrlExternally(link)
+        font: Cpp_Misc_CommonFonts.customUiFont(1.2, false)
+      }
+
+      Item {
+        implicitHeight: 16
+      }
+    }
+
+    //
+    // Spacer
+    //
+    Item {
+      Layout.fillHeight: true
+    }
+  }
+
+  //
+  // DBC Preview Dialog
+  //
+  DBCPreviewDialog {
+    id: dbcPreviewDialog
+  }
+}
