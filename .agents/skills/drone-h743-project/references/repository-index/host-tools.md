@@ -4,7 +4,7 @@
 
 Read this shard only when the task uses serial/TCP diagnostics, log analysis, identification, capture, calibration, or desktop UIs.
 
-Source snapshot: `fb7d593da3ab`; aggregate snapshot: `e3b0c44298fc`. Covered files: 52.
+Source snapshot: `c4377a169c98`; aggregate snapshot: `e3b0c44298fc`. Covered files: 53.
 
 | File/module or scope | Content outline | Key entry points / size |
 |---|---|---|
@@ -35,6 +35,7 @@ Source snapshot: `fb7d593da3ab`; aggregate snapshot: `e3b0c44298fc`. Covered fil
 | `tools/ground_station/extensions/org.drone-h743.control-panel/ControlPanel.qml` | Host-side utility for ControlPanel | — |
 | `tools/ground_station/extensions/org.drone-h743.control-panel/info.json` | Host-side utility for info | — |
 | `tools/ground_station/README.md` | drone-H743 专属上位机与飞控自检架构 | `0. 先读这一节：当前真实状态`, ``Drone-H743-GCS.ssproj` 是对着仿真器做的，不是对着固件`, `1. 核心工程思想：上位机不持有危险动作的时间轴`, `反模式：时间轴在上位机手里`, `这两行之间进程被杀 / USB 被拔 / 用户 Ctrl+C`, `> 舵机永远停在 500，堵转发热，固件一无所知` (+23) |
+| `tools/ground_station/ROADMAP.md` | 上位机与飞控自检体系 —— 框架与推进记录 | `一、整体框架`, `贯穿全层的两条原则`, `二、进度总览`, `三、已完成事项明细`, `2026-08-29 · Serial-Studio 能力探底（L3）`, `2026-08-29 · 遥测通道 schema（L1）· `c3b163f`` (+13) |
 | `tools/ground_station/run_gcs.bat` | Host-side utility for run gcs | — |
 | `tools/ground_station/run_sim.bat` | Host-side utility for run sim | — |
 | `tools/ground_station/ss-api-schema-gpl3.json` | Host-side utility for ss api schema gpl3 | — |

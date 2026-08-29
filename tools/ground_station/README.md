@@ -2,6 +2,9 @@
 
 > **定位**：面向 `drone-H743` 飞控的跨平台可视化调试地面站与自检工作台，基于
 > [Serial-Studio](https://github.com/Serial-Studio/Serial-Studio) 做特异性扩展。
+>
+> 本文记录**架构结论与已知陷阱**；进度、决策时间线与下一步见
+> [ROADMAP.md](ROADMAP.md)。
 
 ---
 
