@@ -1,0 +1,18 @@
+Copyright (c) 2020–2026 Alex Spataru <https://github.com/alex-spataru>
+
+Bedankt voor het gebruik van Serial Studio Pro en het ondersteunen van 
+open source-ontwikkeling! Uw licentie is actief en goedgekeurd voor 
+commercieel en propriëtair gebruik.
+
+→ Ondersteuning: alex@serial-studio.com
+→ Plan een gesprek: https://calendly.com/serial-studio
+→ Klantenportaal: https://store.serial-studio.com/billing
+→ Meer informatie: https://serial-studio.com/
+
+Pro-functies:
+→ MQTT-, XY- en 3D-visualisatie
+→ Audio-, CAN Bus-, Modbus-, USB-, HID- en Process-I/O-drivers
+→ Output-widgets, MDF4-export en XMODEM/YMODEM/ZMODEM-overdracht
+→ Historian, Variabelen en waardetransformaties (JS + Lua)
+→ Multi-bron-projecten en aangepaste werkruimtes
+→ Prioriteitsondersteuning

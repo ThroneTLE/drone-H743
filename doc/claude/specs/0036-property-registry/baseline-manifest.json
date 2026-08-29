@@ -1,0 +1,96 @@
+{
+  "spec": "0036-property-registry",
+  "kind": "provisional-static-baseline",
+  "capturedOn": "2026-08-05",
+  "note": "sha256 of the on-disk project corpus before any registry change. Not a substitute for the live project.open + project.exportJson baseline (T1); it only proves the input files were unchanged when the maintainer runs the capture.",
+  "projects": [
+    {
+      "path": "examples/BLE Battery/BLE Battery Level.ssproj",
+      "sha256": "eb339d77c0c232c9a7c5b945100a778aae965d5f4fc9ea8df9f4e8544596fb44"
+    },
+    {
+      "path": "examples/CAN Bus Example/ecu_simulator.ssproj",
+      "sha256": "682f1d3e0372a9556c1d8bbadbd6f0cc016068629d42071331d9b896290129f9"
+    },
+    {
+      "path": "examples/Camera Telemetry/Camera Telemetry.ssproj",
+      "sha256": "79a5d73ed763bf0869267acc50073d9bbb72fe94ce619a986105cfc11b7d261e"
+    },
+    {
+      "path": "examples/Dual Drone Telemetry/Dual Drone Telemetry.ssproj",
+      "sha256": "90c3f2d998f9e59a9c3ea067dcbce9c92533b7eca1153518f4326bace02c3f79"
+    },
+    {
+      "path": "examples/EM Wave Simulator/EMWaveSimulator.ssproj",
+      "sha256": "6694172db32af7e28bd9278ef8635f5d148618c4e0cc98bcb81941093f7f5cf4"
+    },
+    {
+      "path": "examples/HexadecimalADC/HexadecimalADC.ssproj",
+      "sha256": "812588cba6b5f08451703a486b28679afb32f6c7202e23c017d6cf58f43ee547"
+    },
+    {
+      "path": "examples/Hydrogen/Hydrogen.ssproj",
+      "sha256": "5312969e73e9dfe94382a828bbdfc4707f176eca4f0db3fa952b31a46943679e"
+    },
+    {
+      "path": "examples/IMU Simulator/imu_batched.ssproj",
+      "sha256": "62dd052de7c572f768b05d5be11dcc46dab2b39bae31c5b96f66edd9c5042ab0"
+    },
+    {
+      "path": "examples/ISS Tracker/iss-tracker.ssproj",
+      "sha256": "1592962c6e84eab34f3eeea7f563677c7e16a1508de6bbd504237adcadfbd4c3"
+    },
+    {
+      "path": "examples/LTE modem/LTE Modem.ssproj",
+      "sha256": "87a71a57543000f02ff4413e225a2a880c6dcfaeb670374efae481a3f1b6bd18"
+    },
+    {
+      "path": "examples/LorenzAttractor/LorenzAttractor.ssproj",
+      "sha256": "8489d6ecf3c38123352cd047144e561a182300d49c88787a33552fdf1f857b29"
+    },
+    {
+      "path": "examples/MPU6050/MPU6050.ssproj",
+      "sha256": "8c174c7bfe5f514e19675b6584d75cd4e248f1a2ca323f44029bf84822518c7b"
+    },
+    {
+      "path": "examples/MQTT Subscriber Example/HSL Helsinki Public Transit.ssproj",
+      "sha256": "823beefe85667f782a38b1348037f9e7b687f22720708402c68e55bc500fa756"
+    },
+    {
+      "path": "examples/Modbus PLC Simulator/Modbus PLC Simulator.ssproj",
+      "sha256": "e11db17bb363ee4753acd71097511fab9239c65a065cefe2094cb338302e840b"
+    },
+    {
+      "path": "examples/OBD-II/OBD-II.ssproj",
+      "sha256": "c428357e5d9401a6939d6614676ab67f1d3df4a483b6a9a72901d1fea6993900"
+    },
+    {
+      "path": "examples/OPC UA PLC Simulator/OPC UA PLC Simulator.ssproj",
+      "sha256": "13d4af3471beb353b7711cb3be872a989f6ffb2f0e2ce2a7bfde494840a42522"
+    },
+    {
+      "path": "examples/Protobuf Example/Protobuf Example.ssproj",
+      "sha256": "0753686cd4e748f48e25773fce667fed02a92ff28075a1bc98a7e5326e9e33c8"
+    },
+    {
+      "path": "examples/RC Plane Simulator/RC Plane Simulator.ssproj",
+      "sha256": "35f90d726b08136d44be33ce27bea95e36d6a1be6cd6699a40718fad43de87fd"
+    },
+    {
+      "path": "examples/System Monitor/system-monitor.ssproj",
+      "sha256": "953afa6e23e4e1f48cca980a70db5c00e7ef5e5117d1f48befff25930ec03c05"
+    },
+    {
+      "path": "examples/Testo T549i/Testo T549i.ssproj",
+      "sha256": "5f7f2f75763246d9a052fb1357804a40d6011fb8f0cfa8748575b9029c6e9e8d"
+    },
+    {
+      "path": "examples/TinyGPS/TinyGPS.ssproj",
+      "sha256": "4464d7dd53aea42b17ab57e4a0b7c14c0152a4a6aae557e3d78c0c7ee4ef3a23"
+    },
+    {
+      "path": "examples/Vibration Test Rig/VibrationTestRig.ssproj",
+      "sha256": "435749d714ec3ab97ee35d8b2cbf9618c3c7e6d7d9d0b0c2354d5e61faf5b5ad"
+    }
+  ]
+}

@@ -1,0 +1,303 @@
+/*
+ * Serial Studio
+ * https://serial-studio.com/
+ *
+ * Copyright (C) 2020-2025 Alex Spataru
+ *
+ * This file is dual-licensed:
+ *
+ * - Under the GNU GPLv3 (or later) for builds that exclude Pro modules.
+ * - Under the Serial Studio Commercial License for builds that include
+ *   any Pro functionality.
+ *
+ * You must comply with the terms of one of these licenses, depending
+ * on your use case.
+ *
+ * For GPL terms, see <https://www.gnu.org/licenses/gpl-3.0.html>
+ * For commercial terms, see LICENSES/LicenseRef-SerialStudio-Commercial.txt.
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later OR LicenseRef-SerialStudio-Commercial
+ */
+
+import QtQuick
+import QtQuick.Effects
+import QtQuick.Layouts
+import QtQuick.Controls
+
+Item {
+  id: root
+
+  //
+  // Signals
+  //
+  signal clicked()
+  signal dragStarted()
+  signal dragMoved(real dx)
+  signal dragEnded()
+
+  //
+  // Optional drag-to-reorder support
+  //
+  property int dragThreshold: 6
+  property bool draggable: false
+
+  //
+  // Display properties
+  //
+  property alias icon: _icon
+  property real iconSize: 18
+  property bool startMenu: false
+  property alias layout: _layout
+  property alias font: _label.font
+  property alias text: _label.text
+  property alias background: _background
+
+  //
+  // State flags
+  //
+  property bool open: true
+  property bool focused: false
+  property bool minimized: false
+
+  //
+  // Control flags
+  //
+  property bool checkable: false
+  property bool forceHidden: false
+  property bool forceVisible: false
+
+  //
+  // Opacity control properties
+  //
+  property real hoverOpacity: 0.5
+  property real focusedOpacity: 1.0
+
+  //
+  // Hide taskbar when not needed; forceHidden wins over every show condition
+  //
+  visible: opacity > 0
+  opacity: !forceHidden && (!open || minimized || startMenu || forceVisible) ? 1 : 0
+
+  //
+  // Layout options
+  //
+  implicitHeight: startMenu ? 30 : 24
+  implicitWidth: Math.min(128, Math.max(implicitHeight, _layout.implicitWidth))
+
+  //
+  // Tooltip
+  //
+  ToolTip.delay: 500
+  ToolTip.visible: root.hovered && ToolTip.text !== ""
+
+  //
+  // General Opacity
+  //
+  Behavior on opacity { NumberAnimation{} }
+
+  //
+  // Visual State Styling
+  //
+  states: [
+    State {
+      name: "startMenu"
+      when: root.startMenu
+      PropertyChanges { target: _label; font: Cpp_Misc_CommonFonts.boldUiFont }
+      PropertyChanges { target: _label; color: Cpp_ThemeManager.colors["taskbar_indicator_active"] }
+    },
+    State {
+      name: "closed"
+      when: !root.open
+      //
+      //PropertyChanges { target: _label; opacity: 0.3 }
+      //
+    },
+    State {
+      name: "minimized"
+      when: root.open && root.minimized
+      //
+      //PropertyChanges { target: _label; opacity: 0.5 }
+      //
+    },
+    State {
+      name: "focused"
+      when: root.open && !root.minimized && root.focused
+      //
+      //PropertyChanges { target: _label; font: Cpp_Misc_CommonFonts.boldUiFont }
+      //
+      PropertyChanges { target: _label; color: Cpp_ThemeManager.colors["taskbar_indicator_active"] }
+    },
+    State {
+      name: "idle"
+      when: root.open && !root.minimized && !root.focused
+      PropertyChanges { target: _label; font: Cpp_Misc_CommonFonts.uiFont }
+      PropertyChanges { target: _label; color: Cpp_ThemeManager.colors["taskbar_text"] }
+    }
+  ]
+
+  //
+  // Animations
+  //
+  transitions: [
+    Transition {
+      NumberAnimation { properties: "opacity"; duration: 150 }
+    }
+  ]
+
+  //
+  // Hover state via HoverHandler (survives modal grab steals)
+  //
+  readonly property bool hovered: _hoverHandler.hovered
+
+  HoverHandler {
+    id: _hoverHandler
+
+    blocking: false
+  }
+
+  //
+  // Background
+  //
+  Rectangle {
+    id: _background
+
+    visible: false
+    anchors.fill: parent
+    border.width: root.focused || root.hovered ? 1 : 0
+    border.color: Cpp_ThemeManager.colors["taskbar_checked_button_border"]
+
+    property real baseVisibility: root.startMenu ? 0 : (root.enabled ? 1 : 0.5)
+    property real hoverStateOpacity: root.focused ? root.focusedOpacity : (root.hovered ? root.hoverOpacity : 0)
+
+    gradient: Gradient {
+      GradientStop {
+        position: root.focused ? 0 : 1
+        color: Cpp_ThemeManager.colors["taskbar_checked_button_top"]
+      }
+      GradientStop {
+        position: root.focused ? 1 : 0
+        color: Cpp_ThemeManager.colors["taskbar_checked_button_bottom"]
+      }
+    }
+  }
+
+  //
+  // Background effects
+  //
+  MultiEffect {
+    source: _background
+    anchors.fill: _background
+    opacity: baseVisibility * hoverStateOpacity
+    visible: Cpp_Misc_GraphicsBackend.effectsEnabled
+    enabled: Cpp_Misc_GraphicsBackend.effectsEnabled
+    brightness: root.enabled && root.hovered ? (_mouseArea.pressed ? -0.07 : 0.07) : 0
+
+    property real baseVisibility: root.startMenu ? 0 : (root.enabled ? 1 : 0.5)
+    property real hoverStateOpacity: root.focused ? root.focusedOpacity : (root.hovered ? root.hoverOpacity : 0)
+  }
+
+  //
+  // Content Layout
+  //
+  RowLayout {
+    id: _layout
+
+    spacing: 0
+    anchors.fill: parent
+    visible: root.startMenu ? !Cpp_ThemeManager.colors["start_menu_button_gradient_enabled"] : true
+
+    Item { implicitWidth: 4 }
+
+    Item {
+      implicitWidth: root.iconSize
+      implicitHeight: root.iconSize
+      Layout.alignment: Qt.AlignVCenter
+
+      Image {
+        id: _icon
+
+        anchors.fill: parent
+        sourceSize.width: root.iconSize
+        sourceSize.height: root.iconSize
+        visible: !Cpp_Misc_GraphicsBackend.effectsEnabled
+      }
+
+      MultiEffect {
+        id: _effects
+
+        source: _icon
+        anchors.fill: _icon
+        visible: Cpp_Misc_GraphicsBackend.effectsEnabled
+        enabled: Cpp_Misc_GraphicsBackend.effectsEnabled
+        saturation: !root.open ? -1 : (root.hovered && root.enabled ? 0.07 : 0)
+        brightness: root.hovered && root.enabled ? (_mouseArea.pressed ? -0.07 : 0.07) : 0
+      }
+    }
+
+    Item { implicitWidth: 4 }
+
+    Label {
+      id: _label
+
+      elide: Qt.ElideRight
+      Layout.fillWidth: true
+      font: Cpp_Misc_CommonFonts.uiFont
+      Layout.alignment: Qt.AlignVCenter
+      horizontalAlignment: Label.AlignLeft
+      color: Cpp_ThemeManager.colors["taskbar_text"]
+    }
+  }
+
+  //
+  // Mouse Interaction
+  //
+  MouseArea {
+    id: _mouseArea
+
+    //
+    // Hover tracked by sibling HoverHandler, so keep hoverEnabled off
+    //
+    anchors.fill: parent
+
+    property real pressStartX: 0
+    property bool isDragging: false
+
+    onPressed: (mouse) => {
+      pressStartX   = mouse.x
+      isDragging = false
+    }
+
+    onPositionChanged: (mouse) => {
+      if (!root.draggable || !pressed)
+        return
+
+      const dx = mouse.x - pressStartX
+      if (!isDragging) {
+        if (Math.abs(dx) >= root.dragThreshold) {
+          isDragging = true
+          root.dragStarted()
+          root.dragMoved(dx)
+        }
+      } else {
+        root.dragMoved(dx)
+      }
+    }
+
+    onReleased: () => {
+      if (isDragging) {
+        isDragging = false
+        root.dragEnded()
+      }
+    }
+
+    onClicked: () => {
+      if (isDragging)
+        return
+
+      if (root.checkable)
+        root.focused = !root.focused
+
+      root.clicked()
+    }
+  }
+}

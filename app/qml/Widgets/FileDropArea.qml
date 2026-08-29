@@ -1,0 +1,146 @@
+/*
+ * Serial Studio
+ * https://serial-studio.com/
+ *
+ * Copyright (C) 2020–2025 Alex Spataru
+ *
+ * This file is dual-licensed:
+ *
+ * - Under the GNU GPLv3 (or later) for builds that exclude Pro modules.
+ * - Under the Serial Studio Commercial License for builds that include
+ *   any Pro functionality.
+ *
+ * You must comply with the terms of one of these licenses, depending
+ * on your use case.
+ *
+ * For GPL terms, see <https://www.gnu.org/licenses/gpl-3.0.html>
+ * For commercial terms, see LICENSES/LicenseRef-SerialStudio-Commercial.txt.
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later OR LicenseRef-SerialStudio-Commercial
+ */
+
+import QtQuick
+import QtQuick.Layouts
+import QtQuick.Controls
+
+import SerialStudio
+
+DropArea {
+  //
+  // Show rectangle and set color based on file extension on drag enter
+  //
+  onEntered: (drag) => {
+    // Get file name & set color of rectangle accordingly
+    if (drag.urls.length > 0) {
+      var path = drag.urls[0].toString()
+      if (path.endsWith(".json") || path.endsWith(".csv") || path.endsWith(".ssproj") || path.endsWith(".mf4") || path.endsWith(".dat") || path.endsWith(".db")) {
+        drag.accept(Qt.LinkAction)
+        dropRectangle.color = Qt.darker(palette.highlight, 1.4)
+      }
+
+      //
+      // Invalid file name, show red rectangle
+      //
+      else
+        dropRectangle.color = Cpp_ThemeManager.colors["error"]
+
+      //
+      // Show drag&drop rectangle
+      //
+      dropRectangle.opacity = 0.8
+    }
+  }
+
+  //
+  // Open *.json & *.csv files on drag drop
+  //
+  onDropped: (drop) => {
+    // Hide rectangle
+    dropRectangle.hide()
+
+    // Get dropped file URL and remove prefixed "file://"
+    var path = drop.urls[0].toString()
+    if (Qt.platform.os !== "windows")
+      path = path.replace(/^(file:\/{2})/,"");
+    else
+      path = path.replace(/^(file:\/{3})/,"");
+
+    // Unescape html codes like '%23' for '#'
+    var cleanPath = decodeURIComponent(path);
+    var lowerCase = cleanPath.toLowerCase();
+
+    // Process JSON files
+    if (lowerCase.endsWith(".json") || lowerCase.endsWith(".ssproj")) {
+      Cpp_AppState.operationMode = SerialStudio.ProjectFile
+      Cpp_JSON_ProjectModel.openJsonFile(cleanPath)
+    }
+
+    // Process CSV files
+    else if (lowerCase.endsWith(".csv"))
+      Cpp_CSV_Player.openFile(cleanPath)
+
+    // Process MDF4 files
+    else if (lowerCase.endsWith(".mf4") || lowerCase.endsWith(".dat"))
+      Cpp_MDF4_Player.openFile(cleanPath)
+
+    // Process SQLite recordings (Pro)
+    else if (lowerCase.endsWith(".db") && Cpp_CommercialBuild)
+      Cpp_Sessions_Player.openFile(cleanPath)
+  }
+
+  //
+  // Hide drag & drop rectangle on drag exit
+  //
+  onExited: {
+    dropRectangle.hide()
+  }
+
+  //
+  // Drop rectangle + icon + text
+  //
+  Rectangle {
+    id: dropRectangle
+
+    function hide() {
+      rectTimer.start()
+    }
+
+    opacity: 0
+    border.width: 1
+    anchors.centerIn: parent
+    width: dropLayout.implicitWidth + 48
+    height: dropLayout.implicitHeight + 48
+    color: Cpp_ThemeManager.colors["highlight"]
+    border.color: Cpp_ThemeManager.colors["text"]
+
+    ColumnLayout {
+      id: dropLayout
+
+      spacing: 16
+      anchors.centerIn: parent
+
+      Image {
+        sourceSize: Qt.size(128, 128)
+        Layout.alignment: Qt.AlignHCenter
+        source: "qrc:/images/drag-and-drop.svg"
+      }
+
+      Label {
+        Layout.alignment: Qt.AlignHCenter
+        text: qsTr("Drop Projects and CSV files here")
+        font: Cpp_Misc_CommonFonts.customUiFont(2, true)
+        color: Cpp_ThemeManager.colors["highlighted_text"]
+      }
+    }
+
+    Timer {
+      id: rectTimer
+
+      interval: 200
+      repeat: false
+      onTriggered: dropRectangle.opacity = 0
+    }
+
+    Behavior on opacity {NumberAnimation{}}
+  }
+}

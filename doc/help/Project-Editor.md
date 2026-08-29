@@ -1,0 +1,536 @@
+# Project Editor
+
+## Overview
+
+The Project Editor lets you create and edit JSON project files that define how Serial Studio interprets incoming data and displays it on the dashboard. Open it from the toolbar's Project Editor button (or the wrench button in the device setup panel).
+
+A project file describes three things: the structure of your data (groups and datasets), how to detect and parse frames from the wire, and what actions (commands) the user can send back to the device. Serial Studio reads the file at connect time and builds the dashboard from it.
+
+## Project hierarchy
+
+The diagram below shows the tree structure of a Serial Studio project file and how each element maps to the dashboard.
+
+```mermaid
+flowchart TD
+    Root["Project Root"]
+    Root --> CL["Control Loop"]
+    Root --> A["Action: ..."]
+    Root --> S["Source: ..."]
+    Root --> DW["Dashboard Widgets"]
+    S --> FP["Frame Parser"]
+    DW --> G["Group → Datasets"]
+```
+
+Control Loop, every action, and every source sit directly under the project root — there is
+no intermediate "Actions" or "Sources" node. Groups are the exception: they are filed under a
+"Dashboard Widgets" node instead of sitting at the root.
+
+### Frame index mapping
+
+Each value in the incoming data frame is assigned a 1-based frame index that you reference when configuring datasets. The mapping works like this:
+
+```mermaid
+flowchart LR
+    A["23.5, 1013, 45.2"] --> B["parse()"]
+    B --> C["[0]→IDX 1<br/>[1]→IDX 2<br/>[2]→IDX 3"]
+```
+
+## Interface layout
+
+The editor window has three areas: a toolbar across the top, a tree view on the left, and a property panel on the right.
+
+### Toolbar
+
+File actions sit on the left; the rest of the toolbar is "add" buttons grouped by what they create.
+
+- **New / Open / Save / Save As.** File actions. **Save** (Ctrl+S / Cmd+S) writes the project to disk; **Open** loads an existing `.json` or `.ssproj` file.
+- **Protobuf.** Generate a project from a Protocol Buffers (`.proto`) schema. Available in all builds; only the Pro widgets it can generate require a license. See [Auto-Generating Projects](Auto-Generating-Projects.md).
+- **Restore.** Restore a recent automatic snapshot. See [Backups & Recovery](Backup-Recovery.md).
+- **Lock.** Set a password and lock the editor. See [Project Lock](Project-Lock.md).
+- **Add Device** (Pro). Add another data source for multi-device projects.
+- **Output / Action / Slider / Toggle / Knob / Text Field / Button.** Add an [output control](Output-Controls.md) panel or an [action](Actions.md).
+- **Dataset / Plot / FFT Plot / Gauge / Level Indicator / Compass / LED Indicator.** Add a dataset to the selected group, pre-configured for that widget.
+- **Group / Image / Web View / Canvas / Table / Multi-Plot / 3D Plot / Accelerometer / Gyroscope / GPS Map.** Add a group with the matching group widget (Image, Canvas, and 3D Plot are Pro).
+
+Every button, with its icon, is listed in the [Toolbar & Button Reference](Toolbar-Reference.md#project-editor-toolbar).
+
+### Tree view (left panel)
+
+Shows the project's hierarchical structure:
+
+```
+Project Root
+  Control Loop
+  Action: "Reset Device"
+  Source: "Main Device"
+    Frame Parser
+  Dashboard Widgets
+    Group: "Sensors"
+      Dataset: "Temperature"   [IDX 1]
+      Dataset: "Humidity"      [IDX 2]
+      Dataset: "Pressure"      [IDX 3]
+    Group: "Status"
+      Dataset: "Battery"       [IDX 4]
+```
+
+The number in brackets is the dataset's frame index: its position in the parsed data array. Click any item to edit its properties in the right panel.
+
+#### Navigation and quick actions
+
+The caption bar above the tree carries two groups of buttons. On the left are **Back** and **Forward**, which step through the items you have visited, the same way a file manager or browser does. Back returns to the previously selected item; Forward returns to the item you stepped back from. Selecting a new item after going back drops the forward trail from that point. Deleted items are skipped automatically, so you never land on an empty panel.
+
+You can trigger the same navigation three other ways:
+
+- The **back and forward buttons on a mouse** that has them (for example a Logitech MX Master).
+- **Alt+Left** (back) and **Alt+Right** (forward) from anywhere in the editor.
+- **Backspace** to go back, while the tree has keyboard focus. It never interferes with typing, because it only acts when a text field is not focused.
+
+On the right of the caption bar are **Move Up** and **Move Down**, which reorder the current selection among its siblings. Each button is enabled only when it applies to what is selected, and produces the same result as the matching entry in the right-click menu. **New Folder** and **Move to Folder** are not on the caption bar; reach them from the right-click context menu (New Folder is also available as an **Add Folder** button in the property panel when a branch root is selected — see [Organizing with folders](#organizing-with-folders) below).
+
+### Property panel (right panel)
+
+Shows a form for the selected tree item. Every change takes effect immediately in the project model. The form fields vary depending on whether you selected the project root, a group, a dataset, an action, or a source.
+
+## Project Overview
+
+Select the project root in the tree and the right panel switches to the **Project Overview** (also called the Summary). It is a read-only diagram of the entire project configuration, laid out left-to-right in four columns:
+
+1. **Sources** (devices). One card per data source, with its bus type, frame detection, and decoder.
+2. **Frame parsers and actions**. The parser script attached to each source, plus any global action buttons.
+3. **Groups**. The dataset containers and group-level widgets (Multi-Plot, GPS, Accelerometer, etc.).
+4. **Datasets**. Per-dataset pills, with their transform block (if any) drawn between the group and the dataset pill.
+
+Shared tables, output widgets, and workspaces are drawn alongside as their own cards. Arrows show how parsed bytes flow into datasets and how transforms feed downstream consumers.
+
+The diagram is interactive:
+
+- **Double-click any block** to jump into the matching configuration form. Double-clicking a source card opens that source's settings; a group card opens the group form; a dataset pill opens the dataset form; a frame-parser card opens the script editor; an action card opens the action form; a shared-table card opens the table editor; an output-widget card opens the output editor.
+- **Right-click any block** for a context menu tailored to that node: add a sibling group, add a dataset to that group, rename, move up or down, duplicate, delete, and edit the frame parser or canvas code. Right-clicking empty background opens the "add source / add table / add action" shortcuts. This lets you grow a project once the high-level shape is in place without walking back through the tree on the left.
+- **Ctrl+scroll wheel** zooms the diagram in and out; plain scrolling pans it (Shift+scroll pans horizontally). The toolbar has a reset-zoom button.
+
+The overview is useful as a sanity check ("does my group widget have the three datasets it needs?") and as a navigation surface once a project gets too large to keep entirely in the tree.
+
+## Organizing with folders
+
+Once a project grows past a handful of groups, the flat tree gets long. Folders let you file items under named, collapsible containers so the tree stays readable. Folders are available in every edition (free and Pro); they are purely organizational and never change how data is parsed.
+
+Three independent folder trees exist, one per branch:
+
+- **Group folders** organize groups.
+- **Table folders** organize [shared tables](Data-Tables.md).
+- **Workspace folders** organize [workspaces](Toolbar-Reference.md#a-note-on-workspaces).
+
+A folder in one branch cannot hold an item from another (a group folder holds groups, not tables). Items left outside any folder stay at the top level of their branch.
+
+```
+Groups
+  Folder: "Powertrain"
+    Folder: "Battery"
+      Group: "Cell Voltages"
+      Group: "Pack Temps"
+    Group: "Motor"
+  Group: "Cabin"          (top level, no folder)
+```
+
+### Creating and filling folders
+
+- **Add a folder.** Select the branch root (Groups, Variables, or Workspaces); the property panel shows an **Add Folder** button in its own toolbar, or right-click the branch and choose **New Folder**.
+- **Nest a folder.** Select an existing folder and click **Add Sub-folder**, or right-click it and choose **New Sub-Folder**. Folders nest to any depth.
+- **Move an item in.** Right-click a group, table, workspace, or folder and use the **Move to Folder** submenu. It mirrors the folder tree, so you can drop the item into any folder at any depth, or back to the top level.
+- **Add items directly into a folder.** With a folder selected, the matching add button (**Add Group**, **Add Shared Table**, **Add Workspace**) creates the new item already filed inside it.
+
+### Renaming and deleting
+
+Select a folder and use **Rename** to change its title. **Delete** removes the folder but never its contents: the folder's items and sub-folders are promoted to the deleted folder's parent (or to the top level if the folder was already there). The confirmation dialog states this explicitly, for example "The folder is removed; its groups and sub-folders move up to the parent." For table folders it also notes that the accessor path of the moved tables changes accordingly.
+
+### How group folders shape the dashboard
+
+In the automatic dashboard layout, the workspace tree on the taskbar's Start menu mirrors your group-folder tree as a cascading menu (folders become submenus, workspaces become clickable items). Two rules decide how groups become workspaces:
+
+- A **leaf** group folder (one with no sub-folders) collapses into a **single workspace** that aggregates every widget of every group inside it. The workspace takes the folder's name.
+- A group in a **container** folder (one that has sub-folders) or at the **top level** gets **its own workspace**, named after the group.
+
+This lets you group several small groups into one dashboard screen by dropping them in a leaf folder, while keeping larger groups on their own screens. Table and workspace folders are organizational only and have no dashboard side effect.
+
+### Persistence and compatibility
+
+Folders are saved additively in the `.ssproj` file as `groupFolders`, `tableFolders`, and `workspaceFolders` arrays, and each group, table, and workspace carries a `parentFolderId` (omitted when it sits at the top level). Older projects that predate folders load unchanged: with no folder arrays present, every item is treated as top-level. A project that uses folders still opens in older builds, which ignore the unknown keys and show a flat tree.
+
+## Creating a project step by step
+
+### Step 1: create a new project
+
+1. Open the Project Editor.
+2. Click **New** in the toolbar.
+3. Click the project root in the tree to configure it.
+4. Set the **Project Title** (shown in the dashboard header).
+
+### Step 2: configure frame parsing
+
+Select the source in the tree (every project has at least one, named "Device A" by default,
+even single-device ones) to configure how the byte stream is sliced into frames, how each
+frame is decoded, and which parser turns it into values. These settings live on the source
+form; selecting the project root only shows the Project Title field.
+
+#### Detection, decoding, and integrity
+
+These settings run *before* the parser and apply to every parser type (Built-In, Lua, and JavaScript alike):
+
+| Setting | Description | Options |
+|---------|-------------|---------|
+| Frame detection method | How Serial Studio finds frame boundaries in the byte stream. | *End Delimiter Only* (frames end with a known sequence such as `\n`; the most common choice); *Start + End Delimiter* (bounded by a start and an end marker, e.g. `/*` and `*/`); *Start Delimiter Only* (a header begins each frame, and the next header ends the previous one); *No Delimiters* (the whole captured chunk is one frame; use it for fixed-size or length-prefixed protocols). |
+| Start delimiter / end delimiter | The actual delimiter strings. Which ones apply depends on the detection method. | Any string, e.g. `\n`, `/*`, `*/`. |
+| Hex delimiters | Tick when the delimiter strings are written in hex. | e.g. `0A` for newline. |
+| Data conversion (decoder) | How the bytes inside the delimiters are decoded before the parser sees them. | *Plain Text (UTF8)* (default text mode); *Hexadecimal* (each byte pair read as a hex value); *Base64* (Base64-decoded first); *Binary (Direct)* (raw bytes passed straight to the parser as a byte array/table). |
+| Checksum algorithm | Optional integrity check appended to each frame; frames that fail are dropped. | XOR-8, MOD-256, CRC-8, CRC-16, CRC-16-MODBUS, CRC-16-CCITT, Fletcher-16, CRC-32, Adler-32. |
+
+Picking the wrong decoder/detection pair silently mojibakes binary data or never produces a frame. The trap to remember: **Plain Text routes through `QString::fromUtf8`**, so any byte that is not valid UTF-8 (most binary payloads contain `0x00` or values above `0x7F`) is replaced with `U+FFFD` and the original bytes are lost. For anything non-text, pick **Binary (Direct)**.
+
+**Checksum parameters.** The algorithm names differ in polynomial, initial value, and byte
+order; picking the wrong one for a device that expects a specific profile makes every frame
+fail validation silently.
+
+| Algorithm | Width | Polynomial | Init | Reflect in/out | Byte order | Check (`"123456789"`) |
+|-----------|-------|------------|------|-----------------|------------|------------------------|
+| XOR-8 | 8-bit | - | 0x00 | - | single byte | `0x31` |
+| MOD-256 | 8-bit | - (modular sum) | 0x00 | - | single byte | `0xDD` |
+| CRC-8 | 8-bit | 0x31 | 0xFF | no / no | single byte | `0xF7` |
+| CRC-16 | 16-bit | 0x1021 | 0xFFFF | no / no | big-endian | `0x29B1` |
+| CRC-16-MODBUS | 16-bit | 0x8005 (reflected 0xA001) | 0xFFFF | yes / yes | **little-endian** | `0x4B37` |
+| CRC-16-CCITT | 16-bit | 0x1021 | 0x0000 | no / no | big-endian | `0x31C3` |
+| Fletcher-16 | 16-bit | - (modular sum) | 0 | - | big-endian | `0x1EDE` |
+| CRC-32 | 32-bit | 0x04C11DB7 (reflected 0xEDB88320) | 0xFFFFFFFF | yes / yes | big-endian | `0xCBF43926` |
+| Adler-32 | 32-bit | - (modular sum) | 1 | - | big-endian | `0x091E01DE` |
+
+The check column is the checksum value computed over the ASCII string `123456789`, useful to
+confirm a device implementation speaks the same profile. **CRC-16** and **CRC-16-CCITT**
+share the `0x1021` polynomial but not the initial value (`0xFFFF` vs. `0x0000`), so despite
+the similar name they produce different bytes for the same input and are not interchangeable.
+**CRC-16-MODBUS is the one exception to big-endian packing**: Serial Studio writes it
+least-significant-byte first; every other multi-byte checksum in this list is packed
+most-significant-byte first.
+
+Two defaults matter for hand-edited or very old project files: when a project's `sources`
+array is absent entirely (legacy single-source format), the frame detection method defaults
+to **Start + End Delimiter**; when an individual entry inside a `sources` array omits the key,
+it defaults to **End Delimiter Only** instead. New projects saved by the editor always write
+the key explicitly, so the two defaults only surface on hand-crafted or pre-multi-source
+files.
+
+Every saved source also writes both the short JSON alias (`checksum`, `decoder`) and the long
+name (`checksumAlgorithm`, `decoderMethod`); on load the long name wins if both are present.
+The short aliases are legacy, load-only compatibility fields - never target them when
+hand-editing a project file.
+
+#### Parser language
+
+The **parser** turns a decoded frame into an array of values, one per dataset frame index. Pick the language from the Platform dropdown in the parser editor toolbar:
+
+| Language | What you configure | Best for |
+|----------|--------------------|----------|
+| Built-In | No code. Pick a template and fill in its parameter form. The default parser for a new project. | Common wire formats with no setup: delimited/CSV, fixed-width, key-value, NMEA 0183/2000, JSON, XML, YAML, MessagePack, Modbus, UBX, MAVLink, COBS/SLIP, and batched/time-series multi-frame data. |
+| Lua | A `parse(frame)` function (recommended scripting language). | Custom logic the templates do not cover, with the lowest scripting overhead. |
+| JavaScript | A `parse(frame)` function. | Custom logic when you prefer JavaScript or need `JSON.parse`-style ergonomics. |
+
+For Built-In, the parameter form is per template. For example, *Delimited text* exposes a separator, an optional quote character, and trim/skip-empty toggles, while *Modbus frames* exposes a channel count, register offset, and a signed-registers toggle. The full template catalog and its parameters live in [Frame Parser Scripting](JavaScript-API.md).
+
+Writing a Lua or JavaScript `parse()` function is covered in Step 7 below. The Built-In templates need no script: the parameter form *is* the configuration, so you can skip straight to Step 3.
+
+### Step 3: add groups
+
+Groups organize related datasets and determine which group-level widget is used on the dashboard.
+
+1. Click one of the group buttons in the toolbar (**Group** for a plain container, or **Table**, **Multi-Plot**, **Accelerometer**, **Gyroscope**, **GPS Map**, and so on for a pre-configured one).
+2. Select the new group in the tree to configure it.
+3. Set the **Group Title** (for example "Environmental Sensors").
+4. Set the **Composite Widget** (the group's widget-type selector):
+
+| Widget          | Description                        | Dataset requirements |
+|-----------------|------------------------------------|----------------------|
+| Data Grid       | Tabular view of all values         | Any number           |
+| Bar Panel       | One alarm-band-colored bar per dataset | Any number        |
+| Multiple Plot   | Overlaid time-series curves        | One or more          |
+| Accelerometer   | 3D acceleration visualization      | Exactly 3 (X, Y, Z)  |
+| Gyroscope       | 3D orientation visualization       | Exactly 3 (X, Y, Z)  |
+| GPS Map         | Geographic tracking on a map       | 2 or 3 (lat, lon, optional alt) |
+| 3D Plot (Pro)   | 3D scatter/trajectory              | Exactly 3 (X, Y, Z)  |
+| Image View (Pro)| Binary image stream                | None (image data in frame) |
+| Canvas Widget (Pro)| Custom JavaScript-rendered canvas | Any number          |
+| Web View        | Embedded web page                  | Any number           |
+| None            | No group widget. Datasets shown individually | Any number |
+
+### Step 4: add datasets
+
+Datasets map to individual data fields in your device's output.
+
+1. Select a group in the tree.
+2. Click **Dataset** in the toolbar (or one of the dataset widget buttons next to it: **Plot**, **FFT Plot**, **Gauge**, **Level Indicator**, **Compass**, **LED Indicator**).
+3. Configure the dataset properties:
+
+**General**
+
+- **Dataset Title.** Display label (for example "Temperature").
+- **Measurement Unit.** Measurement suffix (for example "deg C", "hPa", "%").
+- **Frame Index.** 1-based position in the parsed data array. If your device sends `23.5,1013,45.2`, then Temperature = 1, Pressure = 2, Humidity = 3.
+- **Widget.** Per-dataset visualization: Bar, Gauge, Compass, Meter, or None. All four render on the dashboard as a two-page swipe view — page 0 is the analog visualization and page 1 is a large monospace digital readout. The active page is saved per widget in the project file.
+- **Minimum Value / Maximum Value.** The dataset's base value range. Both default to 0. Widgets and FFT fall back to this range when their own min/max is left unset.
+
+**Plot Settings**
+
+- **Enable Plot Widget.** Yes/No selector (not a checkbox); **Yes** plots this dataset as a time series.
+
+**FFT (frequency analysis)**
+
+- **Enable FFT Analysis.** Enable frequency-domain analysis.
+- **FFT Window Size.** Window size (64, 128, 256, 512, 1024, and so on).
+- **FFT Window Function.** Window applied before the transform to reduce spectral leakage; affects both the FFT plot and the waterfall. Default is **Blackman-Harris**. Options: Rectangular (None), Bartlett (Triangular), Hann, Hamming, Blackman, Blackman-Harris, Nuttall, Blackman-Nuttall, Flat Top, Welch, Bartlett-Hann, Bohman, Cosine (Sine), Lanczos, Parzen.
+- **FFT Sampling Rate (Hz, required).** Has to match the actual data rate for correct frequency axis labeling.
+- **Minimum Value (optional) / Maximum Value (optional).** Y-axis range for the FFT plot; falls back to the General section's Minimum Value / Maximum Value when left unset.
+
+**Waterfall (Pro)**
+
+- **Enable Waterfall Plot.** Show a scrolling time-frequency plot (spectrogram) for this dataset. Reuses the FFT settings above (samples, sampling rate, range).
+- **Waterfall Y Axis.** Source for the vertical axis. Default is **Time** (older spectra scroll down). Pick another dataset here to drive the Y axis from that dataset's value instead — typically used for order tracking (for example RPM vs. frequency).
+
+**LED**
+
+- **Show in LED Panel.** Show this dataset in the LED panel.
+- **LED On Threshold (required).** Threshold above which the LED lights up. Shown only while the dataset has no alarm bands; once bands are defined, they drive the LED's color, label, and blink state instead.
+
+**Alarm bands**
+
+- **Alarm Bands** (dataset toolbar, next to **Transform**). Opens a dialog to define colored value ranges with severity tiers for Bar, Gauge, Meter, and LED datasets. Each band has a min/max range, a severity (Info / OK / Warning / Critical), an optional color override and label, and a blink toggle for LED panels. Opening the dialog for an LED dataset with no bands pre-fills one band from the **LED On Threshold** so existing setups migrate in place.
+
+**Widget Settings**
+
+- **Minimum Value (optional) / Maximum Value (optional).** Range for Bar, Gauge, and Meter displays; falls back to the General section's Minimum Value / Maximum Value when left unset.
+
+### Step 5: add actions (optional)
+
+Actions place buttons on the dashboard that send commands to the connected device.
+
+1. Click **Action** in the toolbar.
+2. Configure the action:
+
+- **Action Title.** Button label (for example "Reset Device").
+- **Action Icon.** Pick from the built-in icon set.
+- **Send as Binary.** When checked, the payload is entered as hexadecimal bytes instead of text.
+- **Transmit Data.** The string or hex bytes to transmit (for example `RST`).
+- **End-of-Line Sequence.** Append a line ending: New Line (`\n`), Carriage Return (`\r`), CRLF (`\r\n`), or None. Only editable while **Send as Binary** is off; if a sequence was already configured before switching to binary mode, it is still appended as raw bytes after the hex payload.
+- **Auto-Execute on Connect.** Send the command automatically when the device connects.
+- **Timer Mode:**
+
+| Mode               | Behavior |
+|--------------------|----------|
+| Off                | Manual click only (default). |
+| Auto Start         | Timer starts automatically on connect. Command repeats at the configured interval. |
+| Start on Trigger   | Timer starts on the first click. Command repeats until stopped. |
+| Toggle on Trigger  | Each click toggles the repeating timer on or off. |
+| Repeat N Times     | Each click sends the command a fixed number of times (Repeat Count), spaced by the configured interval. |
+
+- **Interval (ms).** Repeat interval in milliseconds (default 100 ms). Disabled when the mode is Off.
+- **Repeat Count.** Number of sends in Repeat N Times mode (default 3).
+
+The full action reference, including multi-source targeting and worked examples, is on the [Actions](Actions.md) page.
+
+### Step 6: add sources (multi-device projects)
+
+Sources define where data comes from. Single-device projects have one implicit source. Multi-device projects use explicit sources.
+
+1. Click **Add Device** in the toolbar (Pro).
+2. Configure:
+   - **Title.** Descriptive label (for example "Arduino Uno").
+   - **Bus Type.** Serial Port, Network Socket, Bluetooth LE, or (Pro) Audio Input, Modbus, CAN Bus, Raw USB, HID Device, Process, MQTT Subscriber.
+   - **Frame Detection / Delimiters.** Same fields described in Step 2, configured independently per source.
+   - **Data Conversion / Checksum.** Same fields described in Step 2, configured independently per source.
+   - **Connection Settings.** Bus-specific parameters (COM port, baud rate, IP address, and so on) saved with the project.
+
+Each source has its own Frame Parser tab for a per-source parser script.
+
+### Step 7: write a frame parser script (optional)
+
+This step applies to the **Lua** and **JavaScript** parsers. If you picked a **Built-In** template in Step 2, the parameter form is your parser (there is no script to write), so skip ahead.
+
+For data that isn't plain CSV and isn't covered by a Built-In template, write a `parse()` function to transform each frame into an array of values. Serial Studio supports Lua (default, recommended) and JavaScript. Pick the language from the Platform dropdown in the parser editor toolbar.
+
+1. Select a source in the tree (or the "Frame Parser" node for single-source projects).
+2. Open the Frame Parser view.
+3. Pick the scripting language from the Platform dropdown.
+4. Write a function:
+
+**Lua (default):**
+
+```lua
+function parse(frame)
+  -- 'frame' is a string (PlainText/Hex/Base64) or byte table (Binary (Direct)).
+  -- Return a table of values matching dataset frame indices.
+  local result = {}
+  for field in frame:gmatch("([^,]+)") do
+    result[#result + 1] = field
+  end
+  return result
+end
+```
+
+**JavaScript:**
+
+```javascript
+function parse(frame) {
+  // 'frame' is a string (PlainText/Hex/Base64) or byte array (Binary (Direct)).
+  // Return an array of values matching dataset frame indices.
+  return frame.split(",");
+}
+```
+
+5. The parser code is stored in the project automatically as you type. Use the **Validate** button to check the script (syntax, and a runtime probe for the first source — see Step 7b), and **Test With Sample Data** to run it against a sample frame.
+
+**Rules:**
+
+- The function has to be named `parse` and has to accept **at least one parameter** (the frame payload). JavaScript rejects the deprecated two-parameter `parse(frame, separator)` form specifically, but declaring extra unused parameters is otherwise allowed; Lua performs no arity check at all.
+- It has to return a table (Lua) or array (JavaScript). Each element maps to a dataset frame index.
+- Global variables declared outside `parse()` persist between calls. Useful for stateful protocols.
+- Use `console.log()` (both languages) or `print()` (Lua shorthand) to print debug messages to the Serial Studio terminal. The full `console` table (`log`, `debug`, `info`, `warn`, `error`) is available in JavaScript and Lua alike; `error` also raises an application notification, and `warn` does too when **Route Warnings to Notifications** is enabled in Settings (off by default).
+
+**Example: binary protocol (Lua).**
+
+```lua
+function parse(frame)
+  -- frame is a byte table in Binary (Direct) mode (1-indexed)
+  local temp     = (frame[1] << 8) | frame[2]
+  local humidity = (frame[3] << 8) | frame[4]
+  return {temp / 10.0, humidity / 10.0}
+end
+```
+
+### Step 7b: test the pipeline with the Test dialog
+
+The **Test With Sample Data** button on the parser toolbar opens the **Test Frame Parser** dialog. It runs the same byte-to-channels pipeline the live dashboard uses, so what you see here is what the dashboard would see for the same input. (The separate **Validate** button in the code-editor toolbar does more than check syntax: it compiles the script and then calls `parse()` with a runtime probe frame — trying `"0"`, a one-byte array, and `""` in turn — to catch errors that only surface when the function runs. The probe only fires for the first source in a multi-source project; additional sources are syntax-checked only.)
+
+The dialog has three sections:
+
+1. **Pipeline configuration.** Detection mode, start / end delimiter, hex-delimiter toggle, decoder method, and checksum algorithm. These are wired to the active source: editing them in the dialog rewrites the project source immediately, and the live frame reader picks up the change. There is no separate "Apply" step.
+2. **Frame data input.** A line edit for the raw stream bytes you want to test. Tick **Hex** to type bytes as space-separated hex pairs (`01 A2 FF 3C`) - the safe way to feed binary protocols. Plain text mode reads the field as UTF-8. Press **Return** in the field, or click **Evaluate** at the bottom of the dialog, to run the pipeline and populate the results below.
+3. **Pipeline results.** A stats line shows `frames extracted | bytes consumed | bytes buffered | dropped`. Below it, a tree expands each extracted frame into its raw bytes (hex), its decoder output (what the parser receives), and the parsed rows with one node per channel.
+
+Reading the tree top-down tells you exactly which stage failed:
+
+- **Zero frames extracted.** The delimiters / detection mode did not match the input. Re-check the start / end fields.
+- **Frames extracted but empty rows.** The parser ran but returned no array - usually a `parse()` that returned `nil`, `undefined`, or a non-array value.
+- **Rows present but the wrong count.** Index mapping in `parse()` is off; compare row indices to the **Frame Index** field on each dataset.
+- **Rows present and correct in the dialog but missing on the dashboard.** A transform on the dataset is rejecting the value (returns `nil` / `NaN`) or a widget min/max is clipping it.
+
+### How the decoder + detection settings reach the parser
+
+The detection mode, delimiters, and decoder you configured in Step 2 run *before* the parser. They decide where each frame starts and stops, and what `parse(frame)` receives: a `QString::fromUtf8` string for Plain Text, a hex or Base64 string, or the raw byte buffer (a 1-indexed table in Lua, a length-keyed object in JavaScript) for Binary (Direct). See the table in Step 2 for the full option list and the UTF-8 trap.
+
+## Frame index mapping
+
+Your device sends a sequence of values. The frame parser (or the default comma splitter) produces an array. Each dataset's Frame Index tells Serial Studio which array position to read:
+
+```
+Device sends:  23.5,1013,45.2
+Parser returns: ["23.5", "1013", "45.2"]
+                  ^        ^       ^
+               Index 1  Index 2  Index 3
+```
+
+- Frame indices are 1-based. Index 1 corresponds to array element 0.
+- Each index should be unique across the whole project.
+- The Project Editor assigns one past the highest index currently in use when you add a dataset; it does not refill a gap left by a deleted dataset.
+
+## Dataset value transforms
+
+Each dataset can optionally define a `transform(value)` function that converts the raw parsed value into an engineering value before it reaches the dashboard. Use transforms for calibration, unit conversion, filtering, and signal conditioning.
+
+To add a transform, select a dataset and click the **Transform** button in the toolbar. That opens a dedicated editor with syntax highlighting, built-in templates, and a live test area.
+
+For the full documentation, see [Dataset Value Transforms](Dataset-Transforms.md).
+
+## Multi-source architecture
+
+When a project has multiple sources, each source represents a separate physical device with its own connection, bus type, frame detection, and parser (Built-In, Lua, or JavaScript).
+
+1. Add one source per device in the tree.
+2. Assign groups to sources via the **Input Device** dropdown in the group or dataset properties.
+3. All devices connect at the same time when you click "Connect" in the main window.
+4. Each device's data routes independently to its assigned groups and datasets.
+
+## Saving and loading
+
+- Click **Save** (Ctrl+S / Cmd+S) to write the project to disk as a `.ssproj` file.
+- You can reopen it later with **Open**, or load it automatically if it's set as the default project.
+- Serial Studio prompts to save unsaved changes when you close the editor or open a different file.
+- Use the **Examples** browser (main toolbar) to open working project files as reference.
+
+### If the project file changes on disk
+
+Serial Studio watches the open project file. The check compares file content rather than timestamps, so the app's own saves never trigger it; only an external change does.
+
+- **Modified by another program** (a text editor, a git checkout, a sync tool): a "Project file changed on disk" prompt asks whether to reload it. When you have unsaved changes, the prompt warns that reloading discards them. Answering **No** keeps the in-memory project and marks it modified, so the next save overwrites the external edit.
+- **Deleted or renamed**: a warning notification posts and the project is marked modified. Save the project to recreate the file at its original path.
+
+Reloading replaces the in-memory project. The **Restore** dialog still lists the snapshots taken before the reload, so an unwanted reload can be undone from [Backups & Recovery](Backup-Recovery.md).
+
+## Common mistakes
+
+### Dataset index mismatch
+
+**Symptom.** Widget shows "0", wrong data, or no data.
+
+**Fix.** Check that each dataset's frame index matches the correct position in the parser's return array. Index 1 = first element, index 2 = second element, and so on.
+
+### Frame parser errors
+
+**Symptom.** Console shows "undefined" or parsing errors.
+
+**Fix:**
+
+1. Check the console for error messages.
+2. Add `console.log()` calls to inspect the raw frame and parsed output.
+3. Make sure the function always returns an array, never a string, object, or undefined.
+4. Use **Validate** to confirm the script is syntax- and runtime-clean after editing the parser code.
+
+### Delimiter mismatch
+
+**Symptom.** Frames aren't detected, or data is garbled.
+
+**Fix:**
+
+1. Open the Console view and inspect raw bytes.
+2. Turn on hex view to spot hidden characters like `\r` or `\0`.
+3. Common choices: `\n` (most serial devices), `\r\n` (Windows-style), or custom markers like `/*` and `*/`.
+
+### Wrong widget for data type
+
+**Symptom.** Widget appears but displays incorrectly.
+
+**Fix:**
+
+- Gauge, Bar, and Meter need bounded numeric values. Set the Minimum Value / Maximum Value in Widget Settings.
+- Accelerometer and Gyroscope groups need exactly 3 datasets.
+- GPS Map needs 2 or 3 datasets (latitude, longitude, optional altitude).
+- Compass expects a value in the 0 to 360 range.
+
+### Missing datasets for group widgets
+
+**Symptom.** Group widget doesn't appear on the dashboard.
+
+**Fix.** Make sure the group has the required number of datasets for its widget type. See the table in Step 3.
+
+## Tips
+
+- Use **Duplicate** (right-click) to quickly create similar groups or datasets.
+- The tree shows frame indices next to dataset names for quick reference.
+- Test your configuration with the Console view before switching to the Dashboard.
+- Record a session to CSV, then use the CSV Player to iterate on your dashboard layout without hardware connected.
+- Use clear dataset titles and units. They show up directly on dashboard widgets.
+- Set appropriate Minimum Value / Maximum Value in Widget Settings for gauges, bars, and meters instead of relying on auto-scale.
+
+## See also
+
+- [Widget Reference](Widget-Reference.md): full guide to all widget types.
+- [Frame Parser Scripting](JavaScript-API.md): full Lua and JavaScript parser reference.
+- [Dataset Value Transforms](Dataset-Transforms.md): per-dataset calibration, filtering, and unit conversion.
+- [Data Flow](Data-Flow.md): how data moves through Serial Studio.
+- [Operation Modes](Operation-Modes.md): Console Only, Quick Plot, and Project File modes.
+- [Troubleshooting](Troubleshooting.md): fixes for common problems.

@@ -1,0 +1,41 @@
+{
+  "_comment": "Project starter templates. Each entry maps an LLM/user-facing id to a JSON project document. project.template.list returns this list; project.template.apply{templateId} loads the body.",
+  "templates": [
+    {
+      "id": "blank",
+      "title": "Blank project",
+      "description": "Empty project with one default UART source. Useful as a starting point when the user wants to build from scratch.",
+      "file": "blank.json"
+    },
+    {
+      "id": "imu_uart",
+      "title": "IMU over UART",
+      "description": "Single UART source with a 9-DOF IMU group: accelerometer (X/Y/Z), gyroscope (X/Y/Z), magnetometer (X/Y/Z). Comma-separated frame parser. Plots + accelerometer 3-axis widget.",
+      "file": "imu_uart.json"
+    },
+    {
+      "id": "gps_uart_nmea",
+      "title": "GPS over UART (NMEA 0183)",
+      "description": "UART source for GPS receivers that output NMEA 0183 sentences. Latitude, longitude, altitude, satellites, HDOP, fix quality.",
+      "file": "gps_uart_nmea.json"
+    },
+    {
+      "id": "scope_multichannel_uart",
+      "title": "Multi-channel scope (UART)",
+      "description": "8 numeric channels over UART, comma-separated. Each rendered as plot + gauge. Suitable for ADC streams, sensor arrays, oscilloscope-like dashboards.",
+      "file": "scope_multichannel_uart.json"
+    },
+    {
+      "id": "telemetry_udp",
+      "title": "Network telemetry (UDP)",
+      "description": "CSV frame parser with 5 generic telemetry channels: timestamp, value1, value2, value3, value4. Configure the UDP listener via io.network.* after applying; edit the parser/datasets as needed.",
+      "file": "telemetry_udp.json"
+    },
+    {
+      "id": "mqtt_subscriber",
+      "title": "MQTT subscriber (Pro)",
+      "description": "MQTT-driven project (subscriber mode). Configure the broker and topic via the mqtt.* commands after applying. Includes a single placeholder group with one numeric dataset.",
+      "file": "mqtt_subscriber.json"
+    }
+  ]
+}

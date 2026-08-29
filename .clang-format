@@ -1,0 +1,218 @@
+# ============================================================================
+# Serial Studio clang-format configuration
+#
+# Philosophy: Simple, readable code over clever code
+# - Max 3 levels of nesting (if/for/while) - enforced by code review
+# - No inline end-of-line comments - use block comments above
+# - Single-statement bodies omit braces - makes nesting visible
+# - Early returns preferred over deep nesting
+#
+# This configuration makes "AI slop code" (deeply nested if/else chains)
+# visually painful, naturally encouraging better code structure.
+# ============================================================================
+
+# Base Style & Language
+BasedOnStyle:                          LLVM
+Language:                              Cpp
+Standard:                              c++20
+
+# Column & Indentation
+# 100 column limit: With 2-space indent and max 3 nesting levels,
+# this leaves ~94 chars at level 3. Hitting the limit at level 4+
+# is a natural signal that code is too deeply nested.
+ColumnLimit:                           100
+IndentWidth:                           2
+TabWidth:                              2
+UseTab:                                Never
+ContinuationIndentWidth:               2
+IndentCaseLabels:                      true
+IndentCaseBlocks:                      false
+IndentPPDirectives:                    AfterHash
+NamespaceIndentation:                  None
+AccessModifierOffset:                  -2
+IndentAccessModifiers:                 false
+IndentWrappedFunctionNames:            false
+LambdaBodyIndentation:                 Signature
+
+# Braces (K&R with function braces on new line)
+RemoveBracesLLVM:                      true
+BreakBeforeBraces:                     Custom
+BraceWrapping:
+  AfterCaseLabel:                      false
+  AfterClass:                          false
+  AfterControlStatement:               Never
+  AfterEnum:                           false
+  AfterFunction:                       true
+  AfterNamespace:                      false
+  AfterObjCDeclaration:                false
+  AfterStruct:                         false
+  AfterUnion:                          false
+  AfterExternBlock:                    false
+  BeforeCatch:                         false
+  BeforeElse:                          false
+  BeforeLambdaBody:                    false
+  BeforeWhile:                         false
+  IndentBraces:                        false
+  SplitEmptyFunction:                  false
+  SplitEmptyRecord:                    false
+  SplitEmptyNamespace:                 false
+
+# Alignment
+# AcrossComments lets `=` alignment survive a one-line `// section` header
+# in the middle of an init-list or assignment block (common in ctors).
+# AlignConsecutiveShortCaseStatements (clang-format 17+) tidies up dense
+# switch tables -- one space before the `:` and the body lines up.
+AlignAfterOpenBracket:                 Align
+AlignArrayOfStructures:                Right
+AlignConsecutiveAssignments:
+  Enabled:                             true
+  AcrossEmptyLines:                    false
+  AcrossComments:                      true
+  AlignCompound:                       true
+  AlignFunctionPointers:               true
+  PadOperators:                        true
+AlignConsecutiveBitFields:             Consecutive
+AlignConsecutiveDeclarations:          None
+AlignConsecutiveMacros:                Consecutive
+AlignConsecutiveShortCaseStatements:
+  Enabled:                             true
+  AcrossEmptyLines:                    false
+  AcrossComments:                      false
+  AlignCaseColons:                     false
+AlignEscapedNewlines:                  Left
+AlignOperands:                         AlignAfterOperator
+AlignTrailingComments:
+  Kind:                                Always
+  OverEmptyLines:                      0
+
+# Pointer & Reference
+# QualifierAlignment: Left normalizes `const T*` over `T const*` so the
+# qualifier always sits on the same side -- removes a class of stylistic
+# drift across files written by different hands (and different LLMs).
+PointerAlignment:                      Left
+ReferenceAlignment:                    Left
+DerivePointerAlignment:                false
+QualifierAlignment:                    Left
+
+# Short Forms
+# These settings prevent AI-generated "slop code" patterns:
+# - Never allows "if (x) return y;" on one line -- forces visibility
+# - Never allows short loops on one line -- forces clarity
+# - RemoveBracesLLVM (above) removes braces from single statements
+# This combination makes deeply nested code painful to read/write,
+# naturally encouraging early returns and reduced complexity
+AllowShortCaseLabelsOnASingleLine:     false
+AllowShortEnumsOnASingleLine:          false
+AllowShortFunctionsOnASingleLine:      Inline
+AllowShortIfStatementsOnASingleLine:   Never
+AllowShortLambdasOnASingleLine:        Inline
+AllowShortLoopsOnASingleLine:          false
+AllowAllArgumentsOnNextLine:           true
+AllowAllParametersOfDeclarationOnNextLine: true
+
+# Breaking
+# BreakAfterAttributes: Leave keeps `[[nodiscard]]` on the same line as the
+# return type when authors put it there, but doesn't fight a deliberate
+# break -- matches the Christmas-tree ordering already used in headers.
+AlwaysBreakAfterReturnType:            None
+AlwaysBreakTemplateDeclarations:       Yes
+BreakAfterAttributes:                  Leave
+BreakBeforeBinaryOperators:            NonAssignment
+BreakBeforeConceptDeclarations:        Always
+BreakBeforeTernaryOperators:           true
+BreakConstructorInitializers:          BeforeComma
+BreakInheritanceList:                  BeforeComma
+BreakStringLiterals:                   false
+RequiresClausePosition:                OwnLine
+RequiresExpressionIndentation:         OuterScope
+IndentRequiresClause:                  true
+
+# Constructor Initializers
+ConstructorInitializerIndentWidth:     2
+PackConstructorInitializers:           NextLine
+
+# Spaces
+SpaceAfterCStyleCast:                  false
+SpaceAfterLogicalNot:                  false
+SpaceAfterTemplateKeyword:             false
+SpaceBeforeAssignmentOperators:        true
+SpaceBeforeCaseColon:                  false
+SpaceBeforeCpp11BracedList:            false
+SpaceBeforeCtorInitializerColon:       true
+SpaceBeforeInheritanceColon:           true
+SpaceBeforeParens:                     ControlStatements
+SpaceBeforeRangeBasedForLoopColon:     true
+SpaceBeforeSquareBrackets:             false
+SpaceInEmptyBlock:                     false
+SpaceInEmptyParentheses:               false
+SpacesBeforeTrailingComments:          2
+SpacesInAngles:                        Never
+SpacesInCStyleCastParentheses:         false
+SpacesInConditionalStatement:          false
+SpacesInContainerLiterals:             false
+SpacesInLineCommentPrefix:
+  Minimum:                             1
+  Maximum:                             -1
+SpacesInParentheses:                   false
+SpacesInSquareBrackets:                false
+
+# Includes & Sorting
+SortIncludes:                          CaseInsensitive
+SortUsingDeclarations:                 true
+IncludeBlocks:                         Regroup
+IncludeCategories:
+  - Regex:                             '^<[^/]*\.h>'
+    Priority:                          1
+  - Regex:                             '^<.*>'
+    Priority:                          2
+  - Regex:                             '.*'
+    Priority:                          3
+
+# Penalties (fine-tune line-break decisions)
+PenaltyBreakAssignment:                2
+PenaltyBreakBeforeFirstCallParameter:  19
+PenaltyBreakComment:                   300
+PenaltyBreakFirstLessLess:             120
+PenaltyBreakString:                    10
+PenaltyBreakTemplateDeclaration:       10
+PenaltyExcessCharacter:                1000000
+PenaltyReturnTypeOnItsOwnLine:         1000
+PenaltyIndentedWhitespace:             0
+
+# Misc
+# RemoveSemicolon strips stray `;` after function bodies (e.g. `void f() {};`).
+# ShortNamespaceLines: 0 means even one-line `namespace X { ... }` gets the
+# canonical `// namespace X` trailing comment from FixNamespaceComments.
+# IntegerLiteralSeparator is deliberately omitted: clang-format 20 rewrites
+# existing `1'000'000` literals into `1000000` even with Decimal: -1, which
+# fights the codebase convention. Defaults preserve literals as-written.
+BinPackArguments:                      false
+BinPackParameters:                     false
+CompactNamespaces:                     false
+Cpp11BracedListStyle:                  true
+EmptyLineAfterAccessModifier:          Never
+EmptyLineBeforeAccessModifier:         Always
+FixNamespaceComments:                  true
+InsertBraces:                          false
+InsertNewlineAtEOF:                    true
+InsertTrailingCommas:                  None
+KeepEmptyLinesAtTheStartOfBlocks:      false
+MaxEmptyLinesToKeep:                   1
+ReflowComments:                        true
+RemoveSemicolon:                       true
+SeparateDefinitionBlocks:              Always
+ShortNamespaceLines:                   0
+
+# Pragmas & Macros
+CommentPragmas:                        "^!|^:"
+ForEachMacros:
+  - foreach
+  - Q_FOREACH
+  - BOOST_FOREACH
+  - forever
+  - Q_FOREVER
+  - QBENCHMARK
+  - QBENCHMARK_ONCE
+StatementMacros:
+  - Q_OBJECT
+  - Q_UNUSED

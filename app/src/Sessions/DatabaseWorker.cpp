@@ -1,0 +1,1143 @@
+/*
+ * Serial Studio
+ * https://serial-studio.com/
+ *
+ * Copyright (C) 2020-2025 Alex Spataru
+ *
+ * This file is licensed under the Serial Studio Commercial License.
+ *
+ * For commercial terms, see LICENSES/LicenseRef-SerialStudio-Commercial.txt.
+ *
+ * SPDX-License-Identifier: LicenseRef-SerialStudio-Commercial
+ */
+
+#ifdef BUILD_COMMERCIAL
+
+#  include "Sessions/DatabaseWorker.h"
+
+#  include <limits>
+#  include <map>
+#  include <QCoreApplication>
+#  include <QDateTime>
+#  include <QFile>
+#  include <QFileInfo>
+#  include <QMap>
+#  include <QSet>
+#  include <QSqlError>
+#  include <QSqlQuery>
+#  include <QStringList>
+#  include <QTextStream>
+#  include <QThread>
+
+#  include "SerialStudio.h"
+#  include "Sessions/BlockReader.h"
+#  include "Sessions/DatabaseManager.h"
+
+//--------------------------------------------------------------------------------------------------
+// Constants
+//--------------------------------------------------------------------------------------------------
+
+// Caps the CSV reorder buffer; a degenerate archive never advances its drain watermark
+static constexpr std::size_t kMaxBufferedInstants = 1 << 16;
+
+//--------------------------------------------------------------------------------------------------
+// Construction & destruction
+//--------------------------------------------------------------------------------------------------
+
+/**
+ * @brief Initializes worker state; the SQL connection is opened lazily.
+ */
+Sessions::DatabaseWorker::DatabaseWorker(QObject* parent)
+  : QObject(parent), m_locked(false), m_cancelRequested(false)
+{}
+
+/**
+ * @brief Closes the SQL connection on the worker thread before destruction.
+ */
+Sessions::DatabaseWorker::~DatabaseWorker()
+{
+  closeDatabase();
+}
+
+//--------------------------------------------------------------------------------------------------
+// Cancellation
+//--------------------------------------------------------------------------------------------------
+
+/**
+ * @brief Sets the atomic cancel flag; long-running loops poll it between rows.
+ */
+void Sessions::DatabaseWorker::requestCancel()
+{
+  m_cancelRequested.store(true, std::memory_order_release);
+}
+
+//--------------------------------------------------------------------------------------------------
+// File operations
+//--------------------------------------------------------------------------------------------------
+
+/**
+ * @brief Opens the SQLite file, runs schema migration, and ships caches back to the manager.
+ */
+void Sessions::DatabaseWorker::openDatabase(const QString& filePath)
+{
+  closeDatabase();
+  m_cancelRequested.store(false, std::memory_order_release);
+
+  if (filePath.isEmpty()) {
+    Q_EMIT openFailed(filePath, tr("Empty file path"));
+    return;
+  }
+
+  m_filePath       = filePath;
+  m_connectionName = QStringLiteral("ss_dbmgr_%1").arg(QDateTime::currentMSecsSinceEpoch());
+
+  m_db = QSqlDatabase::addDatabase("QSQLITE", m_connectionName);
+  m_db.setDatabaseName(filePath);
+
+  if (!m_db.open()) {
+    const QString error = m_db.lastError().text();
+    const QString conn  = m_connectionName;
+    m_db                = QSqlDatabase();
+    if (!conn.isEmpty())
+      QSqlDatabase::removeDatabase(conn);
+
+    m_filePath.clear();
+    m_connectionName.clear();
+    Q_EMIT openFailed(filePath, error);
+    return;
+  }
+
+  QSqlQuery pragma(m_db);
+  pragma.exec("PRAGMA journal_mode=WAL");
+  pragma.exec("PRAGMA busy_timeout=5000");
+
+  ensureSchemaInternal();
+  refreshSessionListInternal();
+  refreshTagListInternal();
+  refreshLockStateInternal();
+
+  Q_EMIT opened(m_filePath, m_sessionList, m_tagList, m_locked, m_passwordHash);
+}
+
+/**
+ * @brief Closes the database, removes the connection, clears caches.
+ */
+void Sessions::DatabaseWorker::closeDatabase()
+{
+  m_cancelRequested.store(true, std::memory_order_release);
+
+  m_sessionList.clear();
+  m_tagList.clear();
+  m_passwordHash.clear();
+  m_locked = false;
+
+  if (qApp) {
+    if (m_db.isOpen()) {
+      QSqlQuery checkpoint(m_db);
+      checkpoint.exec("PRAGMA wal_checkpoint(RESTART)");
+      m_db.close();
+    }
+
+    const QString conn = m_connectionName;
+    m_db               = QSqlDatabase();
+    if (!conn.isEmpty())
+      QSqlDatabase::removeDatabase(conn);
+  }
+
+  m_filePath.clear();
+  m_connectionName.clear();
+  m_cancelRequested.store(false, std::memory_order_release);
+
+  Q_EMIT closed();
+}
+
+/**
+ * @brief Re-runs every internal cache fetch and ships the results back.
+ */
+void Sessions::DatabaseWorker::refreshAll()
+{
+  if (!m_db.isOpen())
+    return;
+
+  refreshSessionListInternal();
+  refreshTagListInternal();
+  refreshLockStateInternal();
+
+  Q_EMIT sessionListRefreshed(m_sessionList);
+  Q_EMIT tagListRefreshed(m_tagList);
+  Q_EMIT lockStateChanged(m_locked, m_passwordHash);
+}
+
+//--------------------------------------------------------------------------------------------------
+// Session mutations
+//--------------------------------------------------------------------------------------------------
+
+/**
+ * @brief Cascades a delete across readings, raw bytes, snapshots, tags, columns, and the row.
+ */
+void Sessions::DatabaseWorker::deleteSession(int sessionId, quint64 token)
+{
+  if (!m_db.isOpen()) {
+    Q_EMIT mutationFinished(token, false, tr("Database not open"));
+    return;
+  }
+
+  if (!m_db.transaction()) {
+    Q_EMIT mutationFinished(token, false, m_db.lastError().text());
+    return;
+  }
+
+  const auto runDelete = [&](const char* sql) -> bool {
+    QSqlQuery q(m_db);
+    q.prepare(QString::fromLatin1(sql));
+    q.bindValue(0, sessionId);
+    if (!q.exec()) [[unlikely]] {
+      qWarning() << "[DatabaseWorker] deleteSession" << sql << "failed:" << q.lastError().text();
+      return false;
+    }
+
+    return true;
+  };
+
+  const char* statements[] = {
+    "DELETE FROM readings WHERE session_id = ?",
+    "DELETE FROM blocks WHERE session_id = ?",
+    "DELETE FROM stream_blocks WHERE session_id = ?",
+    "DELETE FROM raw_bytes WHERE session_id = ?",
+    "DELETE FROM table_snapshots WHERE session_id = ?",
+    "DELETE FROM session_tags WHERE session_id = ?",
+    "DELETE FROM columns WHERE session_id = ?",
+    "DELETE FROM sessions WHERE session_id = ?",
+  };
+
+  for (const char* sql : statements) {
+    if (!runDelete(sql)) {
+      m_db.rollback();
+      Q_EMIT mutationFinished(token, false, m_db.lastError().text());
+      return;
+    }
+  }
+
+  if (!m_db.commit()) {
+    m_db.rollback();
+    Q_EMIT mutationFinished(token, false, m_db.lastError().text());
+    return;
+  }
+
+  refreshSessionListInternal();
+  Q_EMIT sessionListRefreshed(m_sessionList);
+  Q_EMIT mutationFinished(token, true, QString());
+}
+
+/**
+ * @brief Persists the notes string for a session.
+ */
+void Sessions::DatabaseWorker::setSessionNotes(int sessionId, const QString& notes, quint64 token)
+{
+  if (!m_db.isOpen()) {
+    Q_EMIT mutationFinished(token, false, tr("Database not open"));
+    return;
+  }
+
+  QSqlQuery q(m_db);
+  q.prepare("UPDATE sessions SET notes = ? WHERE session_id = ?");
+  q.bindValue(0, notes);
+  q.bindValue(1, sessionId);
+  if (!q.exec()) {
+    Q_EMIT mutationFinished(token, false, q.lastError().text());
+    return;
+  }
+
+  for (auto& v : m_sessionList) {
+    auto m = v.toMap();
+    if (m.value("session_id").toInt() == sessionId) {
+      m["notes"] = notes;
+      v          = m;
+      break;
+    }
+  }
+
+  Q_EMIT sessionListRefreshed(m_sessionList);
+  Q_EMIT notesUpdated(sessionId, notes);
+  Q_EMIT mutationFinished(token, true, QString());
+}
+
+//--------------------------------------------------------------------------------------------------
+// Tag mutations
+//--------------------------------------------------------------------------------------------------
+
+/**
+ * @brief Inserts a tag label, ignoring duplicates by case.
+ */
+void Sessions::DatabaseWorker::addTag(const QString& label, quint64 token)
+{
+  if (!m_db.isOpen() || label.trimmed().isEmpty()) {
+    Q_EMIT mutationFinished(token, false, tr("Database not open or empty label"));
+    return;
+  }
+
+  QSqlQuery q(m_db);
+  q.prepare("INSERT INTO tags (label) VALUES (?) ON CONFLICT(label) DO NOTHING");
+  q.bindValue(0, label.trimmed());
+  if (!q.exec()) {
+    Q_EMIT mutationFinished(token, false, q.lastError().text());
+    return;
+  }
+
+  refreshTagListInternal();
+  Q_EMIT tagListRefreshed(m_tagList);
+  Q_EMIT mutationFinished(token, true, QString());
+}
+
+/**
+ * @brief Inserts a tag if new and links it to a session atomically, avoiding a stale lookup.
+ */
+void Sessions::DatabaseWorker::addTagAndAssign(int sessionId, const QString& label, quint64 token)
+{
+  if (!m_db.isOpen() || label.trimmed().isEmpty()) {
+    Q_EMIT mutationFinished(token, false, tr("Database not open or empty label"));
+    return;
+  }
+
+  if (!m_db.transaction()) {
+    Q_EMIT mutationFinished(token, false, m_db.lastError().text());
+    return;
+  }
+
+  const QString trimmed = label.trimmed();
+  QSqlQuery q(m_db);
+  q.prepare("INSERT INTO tags (label) VALUES (?) ON CONFLICT(label) DO NOTHING");
+  q.bindValue(0, trimmed);
+  if (!q.exec()) {
+    m_db.rollback();
+    Q_EMIT mutationFinished(token, false, q.lastError().text());
+    return;
+  }
+
+  q.prepare("SELECT tag_id FROM tags WHERE label = ? COLLATE NOCASE");
+  q.bindValue(0, trimmed);
+  if (!q.exec() || !q.next()) {
+    m_db.rollback();
+    Q_EMIT mutationFinished(token, false, q.lastError().text());
+    return;
+  }
+
+  const int tagId = q.value(0).toInt();
+  q.prepare("INSERT INTO session_tags (session_id, tag_id) VALUES (?, ?) "
+            "ON CONFLICT(session_id, tag_id) DO NOTHING");
+  q.bindValue(0, sessionId);
+  q.bindValue(1, tagId);
+  if (!q.exec()) {
+    m_db.rollback();
+    Q_EMIT mutationFinished(token, false, q.lastError().text());
+    return;
+  }
+
+  if (!m_db.commit()) {
+    m_db.rollback();
+    Q_EMIT mutationFinished(token, false, m_db.lastError().text());
+    return;
+  }
+
+  refreshTagListInternal();
+  refreshSessionListInternal();
+  Q_EMIT tagListRefreshed(m_tagList);
+  Q_EMIT sessionListRefreshed(m_sessionList);
+  Q_EMIT mutationFinished(token, true, QString());
+}
+
+/**
+ * @brief Removes a tag and its session associations in a single transaction.
+ */
+void Sessions::DatabaseWorker::deleteTag(int tagId, quint64 token)
+{
+  if (!m_db.isOpen()) {
+    Q_EMIT mutationFinished(token, false, tr("Database not open"));
+    return;
+  }
+
+  if (!m_db.transaction()) {
+    Q_EMIT mutationFinished(token, false, m_db.lastError().text());
+    return;
+  }
+
+  QSqlQuery q(m_db);
+  q.prepare("DELETE FROM session_tags WHERE tag_id = ?");
+  q.bindValue(0, tagId);
+  bool ok = q.exec();
+
+  if (ok) {
+    q.prepare("DELETE FROM tags WHERE tag_id = ?");
+    q.bindValue(0, tagId);
+    ok = q.exec();
+  }
+
+  if (!ok) {
+    m_db.rollback();
+    Q_EMIT mutationFinished(token, false, q.lastError().text());
+    return;
+  }
+
+  if (!m_db.commit()) {
+    m_db.rollback();
+    Q_EMIT mutationFinished(token, false, m_db.lastError().text());
+    return;
+  }
+
+  refreshTagListInternal();
+  refreshSessionListInternal();
+  Q_EMIT tagListRefreshed(m_tagList);
+  Q_EMIT sessionListRefreshed(m_sessionList);
+  Q_EMIT mutationFinished(token, true, QString());
+}
+
+/**
+ * @brief Renames an existing tag.
+ */
+void Sessions::DatabaseWorker::renameTag(int tagId, const QString& newLabel, quint64 token)
+{
+  if (!m_db.isOpen() || newLabel.trimmed().isEmpty()) {
+    Q_EMIT mutationFinished(token, false, tr("Invalid label"));
+    return;
+  }
+
+  QSqlQuery q(m_db);
+  q.prepare("UPDATE tags SET label = ? WHERE tag_id = ?");
+  q.bindValue(0, newLabel.trimmed());
+  q.bindValue(1, tagId);
+  if (!q.exec()) {
+    Q_EMIT mutationFinished(token, false, q.lastError().text());
+    return;
+  }
+
+  refreshTagListInternal();
+  refreshSessionListInternal();
+  Q_EMIT tagListRefreshed(m_tagList);
+  Q_EMIT sessionListRefreshed(m_sessionList);
+  Q_EMIT mutationFinished(token, true, QString());
+}
+
+/**
+ * @brief Associates an existing tag with a session.
+ */
+void Sessions::DatabaseWorker::assignTag(int sessionId, int tagId, quint64 token)
+{
+  if (!m_db.isOpen()) {
+    Q_EMIT mutationFinished(token, false, tr("Database not open"));
+    return;
+  }
+
+  QSqlQuery q(m_db);
+  q.prepare("INSERT INTO session_tags (session_id, tag_id) VALUES (?, ?) "
+            "ON CONFLICT(session_id, tag_id) DO NOTHING");
+  q.bindValue(0, sessionId);
+  q.bindValue(1, tagId);
+  if (!q.exec()) {
+    Q_EMIT mutationFinished(token, false, q.lastError().text());
+    return;
+  }
+
+  refreshSessionListInternal();
+  Q_EMIT sessionListRefreshed(m_sessionList);
+  Q_EMIT mutationFinished(token, true, QString());
+}
+
+/**
+ * @brief Removes the association between a session and a tag.
+ */
+void Sessions::DatabaseWorker::unassignTag(int sessionId, int tagId, quint64 token)
+{
+  if (!m_db.isOpen()) {
+    Q_EMIT mutationFinished(token, false, tr("Database not open"));
+    return;
+  }
+
+  QSqlQuery q(m_db);
+  q.prepare("DELETE FROM session_tags WHERE session_id = ? AND tag_id = ?");
+  q.bindValue(0, sessionId);
+  q.bindValue(1, tagId);
+  if (!q.exec()) {
+    Q_EMIT mutationFinished(token, false, q.lastError().text());
+    return;
+  }
+
+  refreshSessionListInternal();
+  Q_EMIT sessionListRefreshed(m_sessionList);
+  Q_EMIT mutationFinished(token, true, QString());
+}
+
+//--------------------------------------------------------------------------------------------------
+// Lock state
+//--------------------------------------------------------------------------------------------------
+
+/**
+ * @brief Writes the lock password hash into project_metadata, or removes it.
+ */
+void Sessions::DatabaseWorker::persistLock(const QString& passwordHash, quint64 token)
+{
+  if (!m_db.isOpen()) {
+    Q_EMIT mutationFinished(token, false, tr("Database not open"));
+    return;
+  }
+
+  QSqlQuery q(m_db);
+  if (passwordHash.isEmpty()) {
+    q.prepare("DELETE FROM project_metadata WHERE key = 'lock_password_hash'");
+    if (!q.exec()) {
+      Q_EMIT mutationFinished(token, false, q.lastError().text());
+      return;
+    }
+  } else {
+    q.prepare("INSERT OR REPLACE INTO project_metadata (key, value) "
+              "VALUES ('lock_password_hash', ?)");
+    q.bindValue(0, passwordHash);
+    if (!q.exec()) {
+      Q_EMIT mutationFinished(token, false, q.lastError().text());
+      return;
+    }
+  }
+
+  m_passwordHash = passwordHash;
+  m_locked       = !passwordHash.isEmpty();
+
+  Q_EMIT lockStateChanged(m_locked, m_passwordHash);
+  Q_EMIT mutationFinished(token, true, QString());
+}
+
+//--------------------------------------------------------------------------------------------------
+// Project metadata
+//--------------------------------------------------------------------------------------------------
+
+/**
+ * @brief Stores the live project JSON snapshot in project_metadata.
+ */
+void Sessions::DatabaseWorker::storeProjectMetadata(const QString& projectJson,
+                                                    const QString& projectTitle,
+                                                    quint64 token)
+{
+  if (!m_db.isOpen()) {
+    Q_EMIT mutationFinished(token, false, tr("Database not open"));
+    return;
+  }
+
+  if (!m_db.transaction()) {
+    Q_EMIT mutationFinished(token, false, m_db.lastError().text());
+    return;
+  }
+
+  const auto now = QDateTime::currentDateTime().toString(Qt::ISODate);
+
+  QSqlQuery q(m_db);
+  bool ok = true;
+
+  q.prepare("INSERT OR REPLACE INTO project_metadata (key, value) VALUES ('project_json', ?)");
+  q.bindValue(0, projectJson);
+  ok = ok && q.exec();
+
+  q.prepare("INSERT OR REPLACE INTO project_metadata (key, value) VALUES ('project_title', ?)");
+  q.bindValue(0, projectTitle);
+  ok = ok && q.exec();
+
+  q.prepare("INSERT OR REPLACE INTO project_metadata (key, value) VALUES ('last_modified_at', ?)");
+  q.bindValue(0, now);
+  ok = ok && q.exec();
+
+  q.prepare("INSERT INTO project_metadata (key, value) VALUES ('created_at', ?) "
+            "ON CONFLICT(key) DO NOTHING");
+  q.bindValue(0, now);
+  ok = ok && q.exec();
+
+  if (!ok) {
+    m_db.rollback();
+    Q_EMIT mutationFinished(token, false, q.lastError().text());
+    return;
+  }
+
+  if (!m_db.commit()) {
+    m_db.rollback();
+    Q_EMIT mutationFinished(token, false, m_db.lastError().text());
+    return;
+  }
+
+  Q_EMIT mutationFinished(token, true, QString());
+}
+
+/**
+ * @brief Reads the global project JSON snapshot back to the manager.
+ */
+void Sessions::DatabaseWorker::fetchGlobalProjectJson()
+{
+  if (!m_db.isOpen()) {
+    Q_EMIT globalProjectJsonReady(QString());
+    return;
+  }
+
+  QSqlQuery q(m_db);
+  q.prepare("SELECT value FROM project_metadata WHERE key = 'project_json'");
+  if (q.exec() && q.next())
+    Q_EMIT globalProjectJsonReady(q.value(0).toString());
+  else
+    Q_EMIT globalProjectJsonReady(QString());
+}
+
+//--------------------------------------------------------------------------------------------------
+// CSV export (streaming on the worker thread)
+//--------------------------------------------------------------------------------------------------
+
+/**
+ * @brief Loads CSV column metadata, populating the uniqueId order and header cells.
+ */
+bool Sessions::DatabaseWorker::loadCsvColumns(int sessionId,
+                                              std::vector<int>& uniqueIds,
+                                              QStringList& headerCells,
+                                              QString& errorOut)
+{
+  QSqlQuery colQ(m_db);
+  colQ.prepare("SELECT unique_id, group_title, title, units, source_title FROM columns "
+               "WHERE session_id = ? ORDER BY column_id ASC");
+  colQ.bindValue(0, sessionId);
+  if (!colQ.exec()) {
+    errorOut = colQ.lastError().text();
+    return false;
+  }
+
+  headerCells.append("Timestamp (s)");
+  while (colQ.next()) {
+    uniqueIds.push_back(colQ.value(0).toInt());
+    const auto group       = colQ.value(1).toString();
+    const auto title       = colQ.value(2).toString();
+    const auto units       = colQ.value(3).toString();
+    const auto sourceTitle = colQ.value(4).toString();
+    auto label             = group + "/" + title;
+    if (!sourceTitle.isEmpty())
+      label = sourceTitle + "/" + label;
+
+    if (!units.isEmpty())
+      label += " (" + units + ")";
+
+    headerCells.append(label);
+  }
+
+  return true;
+}
+
+/**
+ * @brief Iterates the readings result set, writing one CSV row per timestamp into out.
+ */
+bool Sessions::DatabaseWorker::streamCsvRows(QSqlQuery& readQ,
+                                             QFile& file,
+                                             QTextStream& out,
+                                             const std::vector<int>& uniqueIds,
+                                             qint64 totalRows,
+                                             const QString& outputPath)
+{
+  QMap<int, int> uidToCol;
+  for (int i = 0; i < static_cast<int>(uniqueIds.size()); ++i)
+    uidToCol.insert(uniqueIds[static_cast<size_t>(i)], i);
+
+  qint64 currentTs = -1;
+  QStringList row;
+  const int colCount      = static_cast<int>(uniqueIds.size());
+  qint64 processed        = 0;
+  qint64 nextProgressTick = totalRows > 0 ? (totalRows / 100 + 1) : 0;
+
+  auto flushRow = [&]() {
+    if (currentTs < 0 || row.isEmpty())
+      return;
+
+    out << QString::number(currentTs / 1e9, 'f', 9);
+    for (const auto& cell : std::as_const(row))
+      out << ',' << cell;
+
+    out << '\n';
+  };
+
+  auto startRow = [&](qint64 ts) {
+    currentTs = ts;
+    row.clear();
+    row.reserve(colCount);
+    for (int i = 0; i < colCount; ++i)
+      row.append(QString());
+  };
+
+  while (readQ.next()) {
+    if (m_cancelRequested.load(std::memory_order_acquire)) {
+      file.close();
+      file.remove();
+      Q_EMIT csvExportFinished(outputPath, false, tr("Cancelled"));
+      return false;
+    }
+
+    const qint64 ts  = readQ.value(0).toLongLong();
+    const int uid    = readQ.value(1).toInt();
+    const auto colIt = uidToCol.constFind(uid);
+    if (colIt == uidToCol.constEnd())
+      continue;
+
+    if (ts != currentTs) {
+      flushRow();
+      startRow(ts);
+    }
+
+    const bool isNumeric = readQ.value(4).toInt() != 0;
+    const int col        = colIt.value();
+    if (isNumeric)
+      row[col] = QString::number(SerialStudio::toDouble(readQ.value(2)), 'g', 17);
+    else
+      row[col] = readQ.value(3).toString();
+
+    ++processed;
+    if (totalRows > 0 && (processed % nextProgressTick == 0)) {
+      const double pct = static_cast<double>(processed) / static_cast<double>(totalRows);
+      Q_EMIT csvExportProgress(std::clamp(pct, 0.0, 1.0));
+    }
+  }
+
+  flushRow();
+  return true;
+}
+
+/**
+ * @brief Spec-0055 twin of streamCsvRows for block-backed sessions. Blocks are read in t0 order,
+ *        so once every block with t0_ns <= X has been decoded no later row can carry a stamp below
+ *        X: that watermark is what lets the export stay strictly time-ordered while holding only
+ *        the overlap between sources in memory, instead of materialising the whole session.
+ */
+bool Sessions::DatabaseWorker::streamCsvRowsFromBlocks(int sessionId,
+                                                       QFile& file,
+                                                       QTextStream& out,
+                                                       const std::vector<int>& uniqueIds,
+                                                       qint64 totalRows,
+                                                       const QString& outputPath)
+{
+  QMap<int, int> uidToCol;
+  for (int i = 0; i < static_cast<int>(uniqueIds.size()); ++i)
+    uidToCol.insert(uniqueIds[static_cast<size_t>(i)], i);
+
+  QSqlQuery q(m_db);
+  q.setForwardOnly(true);
+  q.prepare(QStringLiteral("SELECT %1 FROM blocks WHERE session_id = ? ORDER BY t0_ns, block_id")
+              .arg(QLatin1String(Sessions::kBlockColumns)));
+  q.bindValue(0, sessionId);
+  if (!q.exec()) {
+    Q_EMIT csvExportFinished(outputPath, false, q.lastError().text());
+    return false;
+  }
+
+  const int colCount        = static_cast<int>(uniqueIds.size());
+  const qint64 progressTick = totalRows > 0 ? (totalRows / 100 + 1) : 0;
+  std::map<qint64, QStringList> buffered;
+  qint64 emitted = 0;
+
+  const auto emitRow = [&](qint64 ts, const QStringList& cells) {
+    out << QString::number(ts / 1e9, 'f', 9);
+    for (const auto& cell : cells)
+      out << ',' << cell;
+
+    out << '\n';
+
+    ++emitted;
+    if (progressTick > 0 && emitted % progressTick == 0) {
+      const double pct = static_cast<double>(emitted) / static_cast<double>(totalRows);
+      Q_EMIT csvExportProgress(std::clamp(pct, 0.0, 1.0));
+    }
+  };
+
+  const auto flushBelow = [&](qint64 watermark) {
+    // code-verify off
+    // Bounded: every pass erases one buffered instant, and the buffer is finite.
+    for (auto it = buffered.begin(); it != buffered.end() && it->first < watermark;)
+      it = (emitRow(it->first, it->second), buffered.erase(it));
+    // code-verify on
+  };
+
+  std::vector<Sessions::ReadingRow> rows;
+  while (q.next()) {
+    if (m_cancelRequested.load(std::memory_order_acquire)) {
+      file.close();
+      file.remove();
+      Q_EMIT csvExportFinished(outputPath, false, tr("Cancelled"));
+      return false;
+    }
+
+    const qint64 blockStart = q.value(1).toLongLong();
+    flushBelow(blockStart);
+
+    if (buffered.size() > kMaxBufferedInstants)
+      flushBelow(buffered.rbegin()->first);
+
+    rows.clear();
+    if (!Sessions::decodeBlockRow(q, rows))
+      continue;
+
+    for (const auto& row : rows) {
+      const auto colIt = uidToCol.constFind(row.uniqueId);
+      if (colIt == uidToCol.constEnd())
+        continue;
+
+      auto& cells = buffered[row.timestampNs];
+      if (cells.isEmpty())
+        cells = QStringList(colCount);
+
+      cells[colIt.value()] =
+        row.isNumeric ? QString::number(row.finalNumeric, 'g', 17) : row.finalString;
+    }
+  }
+
+  flushBelow(std::numeric_limits<qint64>::max());
+  return true;
+}
+
+/**
+ * @brief Streams a session's readings into a CSV file row-by-row, emitting progress.
+ */
+void Sessions::DatabaseWorker::runCsvExport(int sessionId, const QString& outputPath)
+{
+  m_cancelRequested.store(false, std::memory_order_release);
+
+  if (!m_db.isOpen()) {
+    Q_EMIT csvExportFinished(outputPath, false, tr("Database not open"));
+    return;
+  }
+
+  std::vector<int> uniqueIds;
+  QStringList headerCells;
+  QString error;
+  if (!loadCsvColumns(sessionId, uniqueIds, headerCells, error)) {
+    Q_EMIT csvExportFinished(outputPath, false, error);
+    return;
+  }
+
+  const bool usesBlocks = Sessions::sessionUsesBlocks(m_db, sessionId);
+
+  qint64 totalRows = 0;
+  {
+    QSqlQuery cnt(m_db);
+    cnt.prepare(usesBlocks ? "SELECT COALESCE(SUM(frames), 0) FROM blocks WHERE session_id = ?"
+                           : "SELECT COUNT(*) FROM readings WHERE session_id = ?");
+    cnt.bindValue(0, sessionId);
+    if (cnt.exec() && cnt.next())
+      totalRows = cnt.value(0).toLongLong();
+  }
+
+  QSqlQuery readQ(m_db);
+  if (!usesBlocks) {
+    readQ.setForwardOnly(true);
+    readQ.prepare(
+      "SELECT timestamp_ns, unique_id, final_numeric_value, final_string_value, is_numeric "
+      "FROM readings WHERE session_id = ? ORDER BY timestamp_ns, reading_id");
+    readQ.bindValue(0, sessionId);
+    if (!readQ.exec()) {
+      Q_EMIT csvExportFinished(outputPath, false, readQ.lastError().text());
+      return;
+    }
+  }
+
+  QFile file(outputPath);
+  if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+    Q_EMIT csvExportFinished(outputPath, false, file.errorString());
+    return;
+  }
+
+  QTextStream out(&file);
+  out << headerCells.join(',') << '\n';
+
+  const bool ok = usesBlocks
+                  ? streamCsvRowsFromBlocks(sessionId, file, out, uniqueIds, totalRows, outputPath)
+                  : streamCsvRows(readQ, file, out, uniqueIds, totalRows, outputPath);
+  if (!ok)
+    return;
+
+  file.close();
+  Q_EMIT csvExportProgress(1.0);
+  Q_EMIT csvExportFinished(outputPath, true, QString());
+}
+
+//--------------------------------------------------------------------------------------------------
+// Report data load (SQL only; rendering stays on main thread)
+//--------------------------------------------------------------------------------------------------
+
+/**
+ * @brief Builds the report data + chart series bundle, ships it via shared_ptr.
+ */
+void Sessions::DatabaseWorker::runReportDataLoad(int sessionId,
+                                                 bool includeCharts,
+                                                 int chartMaxSamples,
+                                                 const QVariantList& selectedUniqueIds)
+{
+  auto payload       = std::make_shared<ReportPayload>();
+  payload->sessionId = sessionId;
+  payload->ok        = false;
+
+  if (!m_db.isOpen()) {
+    payload->error = tr("Database not open");
+    Q_EMIT reportDataReady(payload);
+    return;
+  }
+
+  QSet<int> selected;
+  selected.reserve(selectedUniqueIds.size());
+  for (const auto& v : selectedUniqueIds)
+    selected.insert(v.toInt());
+
+  payload->data = ReportData::buildFromSession(m_db, sessionId, selected);
+  if (!payload->data.valid) {
+    payload->error = tr("Could not load session data");
+    Q_EMIT reportDataReady(payload);
+    return;
+  }
+
+  if (includeCharts)
+    payload->series = loadChartSeries(m_db, sessionId, chartMaxSamples, selected);
+
+  payload->ok = true;
+  Q_EMIT reportDataReady(payload);
+}
+
+//--------------------------------------------------------------------------------------------------
+// Dataset enumeration for the report selection UI
+//--------------------------------------------------------------------------------------------------
+
+/**
+ * @brief Enumerates a session's recorded datasets and ships them to the GUI thread.
+ */
+void Sessions::DatabaseWorker::runDatasetListLoad(int sessionId)
+{
+  QVariantList datasets;
+  if (!m_db.isOpen()) {
+    Q_EMIT datasetListReady(sessionId, datasets);
+    return;
+  }
+
+  QSqlQuery colQ(m_db);
+  colQ.prepare("SELECT unique_id, group_title, title, units, source_title FROM columns "
+               "WHERE session_id = ? ORDER BY column_id ASC");
+  colQ.bindValue(0, sessionId);
+  if (!colQ.exec()) {
+    Q_EMIT datasetListReady(sessionId, datasets);
+    return;
+  }
+
+  while (colQ.next()) {
+    QVariantMap entry;
+    entry["uniqueId"]    = colQ.value(0).toInt();
+    entry["group"]       = colQ.value(1).toString();
+    entry["title"]       = colQ.value(2).toString();
+    entry["units"]       = colQ.value(3).toString();
+    entry["sourceTitle"] = colQ.value(4).toString();
+    datasets.append(entry);
+  }
+
+  Q_EMIT datasetListReady(sessionId, datasets);
+}
+
+/**
+ * @brief Summarises a session's recorded stream data per dataset (spec 0054): sample count and
+ *        the time span it covers, so a capture can be confirmed in the explorer without
+ *        replaying it. Aggregated in SQL -- no blob is read.
+ */
+void Sessions::DatabaseWorker::runStreamStatsLoad(int sessionId)
+{
+  QVariantList stats;
+  if (!m_db.isOpen()) {
+    Q_EMIT streamStatsReady(sessionId, stats);
+    return;
+  }
+
+  const bool usesBlocks = Sessions::sessionUsesBlocks(m_db, sessionId);
+
+  QSqlQuery q(m_db);
+  if (usesBlocks)
+    q.prepare("SELECT source_id, unique_id, SUM(frames), MIN(t0_ns), MAX(t_end_ns) "
+              "FROM blocks WHERE session_id = ? "
+              "GROUP BY source_id, unique_id ORDER BY source_id ASC, unique_id ASC");
+  else
+    q.prepare("SELECT source_id, unique_id, SUM(frames), MIN(t0_ns), "
+              "       MAX(t0_ns + frames * dt_ns) "
+              "FROM stream_blocks WHERE session_id = ? "
+              "GROUP BY source_id, unique_id ORDER BY source_id ASC, unique_id ASC");
+
+  q.bindValue(0, sessionId);
+  if (!q.exec()) {
+    Q_EMIT streamStatsReady(sessionId, stats);
+    return;
+  }
+
+  while (q.next()) {
+    QVariantMap entry;
+    entry["sourceId"]    = q.value(0).toInt();
+    entry["uniqueId"]    = q.value(1).toInt();
+    entry["sampleCount"] = q.value(2).toLongLong();
+    entry["startNs"]     = q.value(3).toLongLong();
+    entry["endNs"]       = q.value(4).toLongLong();
+    stats.append(entry);
+  }
+
+  Q_EMIT streamStatsReady(sessionId, stats);
+}
+
+//--------------------------------------------------------------------------------------------------
+// Internal cache fetchers
+//--------------------------------------------------------------------------------------------------
+
+/**
+ * @brief Reloads the session list cache from the open database.
+ */
+void Sessions::DatabaseWorker::refreshSessionListInternal()
+{
+  m_sessionList.clear();
+  if (!m_db.isOpen())
+    return;
+
+  QSqlQuery q(m_db);
+  q.prepare("SELECT s.session_id, s.project_title, s.started_at, s.ended_at, s.notes, "
+            "       (SELECT COUNT(DISTINCT timestamp_ns) FROM readings "
+            "        WHERE session_id = s.session_id) "
+            "     + (SELECT COALESCE(SUM(frames), 0) FROM blocks b "
+            "        WHERE b.session_id = s.session_id AND b.unique_id = "
+            "          (SELECT MIN(unique_id) FROM blocks "
+            "           WHERE session_id = s.session_id)), "
+            "       (SELECT COALESCE(SUM(LENGTH(samples)), 0) FROM stream_blocks "
+            "        WHERE session_id = s.session_id) "
+            "     + (SELECT COALESCE(SUM(LENGTH(values_blob) "
+            "                           + COALESCE(LENGTH(raw_values), 0) "
+            "                           + COALESCE(LENGTH(texts), 0) "
+            "                           + COALESCE(LENGTH(raw_texts), 0) "
+            "                           + COALESCE(LENGTH(times), 0)), 0) "
+            "        FROM blocks WHERE session_id = s.session_id) "
+            "     + (SELECT COALESCE(SUM(LENGTH(data)), 0) FROM raw_bytes "
+            "        WHERE session_id = s.session_id) "
+            "     + (SELECT COALESCE(SUM(24 + COALESCE(LENGTH(raw_string_value), 0) "
+            "                           + COALESCE(LENGTH(final_string_value), 0)), 0) "
+            "        FROM readings WHERE session_id = s.session_id) "
+            "FROM sessions s ORDER BY s.started_at DESC");
+  if (!q.exec())
+    return;
+
+  while (q.next()) {
+    if (m_cancelRequested.load(std::memory_order_acquire))
+      return;
+
+    QVariantMap row;
+    const int sessionId   = q.value(0).toInt();
+    row["session_id"]     = sessionId;
+    row["project_title"]  = q.value(1).toString();
+    row["started_at_iso"] = q.value(2).toString();
+    row["ended_at_iso"]   = q.value(3).toString();
+    row["started_at"]     = formatDateForDisplay(q.value(2).toString());
+    row["ended_at"]       = formatDateForDisplay(q.value(3).toString());
+    row["notes"]          = q.value(4).toString();
+    row["frame_count"]    = q.value(5).toInt();
+    row["size_bytes"]     = q.value(6).toLongLong();
+
+    const auto tags = tagsForSession(sessionId);
+    QStringList labels;
+    labels.reserve(tags.size());
+    for (const auto& t : tags)
+      labels.append(t.toMap().value("label").toString());
+
+    row["tags"]       = tags;
+    row["tag_labels"] = labels.join(", ");
+
+    m_sessionList.append(row);
+  }
+}
+
+/**
+ * @brief Reloads the global tag list cache.
+ */
+void Sessions::DatabaseWorker::refreshTagListInternal()
+{
+  m_tagList.clear();
+  if (!m_db.isOpen())
+    return;
+
+  QSqlQuery q(m_db);
+  q.prepare("SELECT tag_id, label FROM tags ORDER BY label COLLATE NOCASE");
+  if (!q.exec())
+    return;
+
+  while (q.next()) {
+    QVariantMap tag;
+    tag["tag_id"] = q.value(0).toInt();
+    tag["label"]  = q.value(1).toString();
+    m_tagList.append(tag);
+  }
+}
+
+/**
+ * @brief Reloads the lock password hash from project_metadata.
+ */
+void Sessions::DatabaseWorker::refreshLockStateInternal()
+{
+  m_passwordHash.clear();
+  m_locked = false;
+
+  if (!m_db.isOpen())
+    return;
+
+  QSqlQuery q(m_db);
+  q.prepare("SELECT value FROM project_metadata WHERE key = 'lock_password_hash'");
+  if (q.exec() && q.next())
+    m_passwordHash = q.value(0).toString();
+
+  m_locked = !m_passwordHash.isEmpty();
+}
+
+/**
+ * @brief Runs the shared CREATE TABLE IF NOT EXISTS block.
+ */
+void Sessions::DatabaseWorker::ensureSchemaInternal()
+{
+  if (!m_db.isOpen())
+    return;
+
+  QSqlQuery q(m_db);
+  Sessions::DatabaseManager::createSchema(q);
+}
+
+/**
+ * @brief Returns the tags assigned to a session as a QVariantList of {tag_id, label} maps.
+ */
+QVariantList Sessions::DatabaseWorker::tagsForSession(int sessionId)
+{
+  QVariantList result;
+  if (!m_db.isOpen())
+    return result;
+
+  QSqlQuery q(m_db);
+  q.prepare("SELECT t.tag_id, t.label FROM tags t "
+            "JOIN session_tags st ON st.tag_id = t.tag_id "
+            "WHERE st.session_id = ? ORDER BY t.label");
+  q.bindValue(0, sessionId);
+  if (!q.exec())
+    return result;
+
+  while (q.next()) {
+    QVariantMap tag;
+    tag["tag_id"] = q.value(0).toInt();
+    tag["label"]  = q.value(1).toString();
+    result.append(tag);
+  }
+
+  return result;
+}
+
+/**
+ * @brief Formats an ISO 8601 date string into a user-friendly display string.
+ */
+QString Sessions::DatabaseWorker::formatDateForDisplay(const QString& isoDate)
+{
+  if (isoDate.isEmpty())
+    return {};
+
+  const auto dt = QDateTime::fromString(isoDate, Qt::ISODate);
+  if (!dt.isValid())
+    return isoDate;
+
+  // code-verify off
+  return dt.toString(QStringLiteral("MMM d, yyyy — h:mm AP"));
+  // code-verify on
+}
+
+#endif  // BUILD_COMMERCIAL

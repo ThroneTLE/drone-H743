@@ -1,0 +1,18 @@
+Copyright (c) 2020–2026 Alex Spataru <https://github.com/alex-spataru>
+
+Serial Studio Proをご利用いただき、オープンソース開発をサポートして
+いただきありがとうございます！お客様のライセンスは有効で、商業および
+専有利用が承認されています。
+
+→ サポート: alex@serial-studio.com
+→ 通話のスケジュール: https://calendly.com/serial-studio
+→ カスタマーポータル: https://store.serial-studio.com/billing
+→ 詳細はこちら: https://serial-studio.com/
+
+Proの機能:
+→ MQTT、XY、3Dビジュアライゼーション
+→ Audio、CAN Bus、Modbus、USB、HID、Process I/Oドライバ
+→ 出力ウィジェット、MDF4エクスポート、XMODEM/YMODEM/ZMODEM転送
+→ ヒストリアン、変数、値変換（JS + Lua）
+→ マルチソースプロジェクトとカスタムワークスペース
+→ 優先サポート

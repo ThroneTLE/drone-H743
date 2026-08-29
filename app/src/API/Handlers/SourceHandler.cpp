@@ -1,0 +1,529 @@
+/*
+ * Serial Studio
+ * https://serial-studio.com/
+ *
+ * Copyright (C) 2020-2025 Alex Spataru
+ *
+ * This file is dual-licensed:
+ *
+ * - Under the GNU GPLv3 (or later) for builds that exclude Pro modules.
+ * - Under the Serial Studio Commercial License for builds that include
+ *   any Pro functionality.
+ *
+ * You must comply with the terms of one of these licenses, depending
+ * on your use case.
+ *
+ * For GPL terms, see <https://www.gnu.org/licenses/gpl-3.0.html>
+ * For commercial terms, see LICENSES/LicenseRef-SerialStudio-Commercial.txt.
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later OR LicenseRef-SerialStudio-Commercial
+ */
+
+#include "API/Handlers/SourceHandler.h"
+
+#include <QJsonArray>
+#include <QMetaObject>
+#include <QStringList>
+
+#include "API/CommandRegistry.h"
+#include "API/EnumLabels.h"
+#include "API/SchemaBuilder.h"
+#include "AppState.h"
+#include "DataModel/Frame.h"
+#include "DataModel/ProjectModel.h"
+#include "IO/ConnectionManager.h"
+#include "SerialStudio.h"
+
+//--------------------------------------------------------------------------------------------------
+// Command registration
+//--------------------------------------------------------------------------------------------------
+
+/**
+ * @brief Registers all project.source.* commands with the CommandRegistry.
+ */
+void API::Handlers::SourceHandler::registerCommands()
+{
+  static auto& registry = CommandRegistry::instance();
+  const auto empty      = emptySchema();
+
+  registry.registerCommand(QStringLiteral("project.source.list"),
+                           QStringLiteral("List all project sources"),
+                           empty,
+                           &sourceList);
+
+  registry.registerCommand(QStringLiteral("project.source.add"),
+                           QStringLiteral("Add a new source (Commercial)"),
+                           empty,
+                           &sourceAdd);
+
+  registry.registerCommand(
+    QStringLiteral("project.source.delete"),
+    QStringLiteral("Delete a source (Commercial; sourceId >= 1)"),
+    makeSchema({
+      {QString(Keys::SourceId), QStringLiteral("integer"), QStringLiteral("Source ID to delete")}
+  }),
+    &sourceDelete);
+
+  registry.registerCommand(
+    QStringLiteral("project.source.update"),
+    QStringLiteral("Patch source fields by id (Commercial). Required: sourceId. Optional "
+                   "fields: title, busType, frameStart, frameEnd, checksumAlgorithm, "
+                   "frameDetection, decoderMethod, hexadecimalDelimiters."),
+    makeSchema(
+      {
+        {QString(Keys::SourceId),
+         QStringLiteral("integer"),
+         QStringLiteral("Source ID to update")}
+  },
+      {{QStringLiteral("title"),
+        QStringLiteral("string"),
+        QStringLiteral("New title for the source")},
+       {QString(Keys::BusType),
+        QStringLiteral("integer"),
+        QStringLiteral("Bus type index (0=UART, 1=Network, 2=BLE, 3=Audio, "
+                       "4=Modbus, 5=CANBus, 6=USB, 7=HID, 8=Process)")},
+       {QString(Keys::FrameStart),
+        QStringLiteral("string"),
+        QStringLiteral("Hex start delimiter for the frame")},
+       {QString(Keys::FrameEnd),
+        QStringLiteral("string"),
+        QStringLiteral("Hex end delimiter for the frame")},
+       {QString(Keys::ChecksumAlgorithm),
+        QStringLiteral("string"),
+        QStringLiteral("Checksum algorithm name (none, crc8, crc16, crc32, ...)")},
+       {QString(Keys::FrameDetection),
+        QStringLiteral("integer"),
+        QStringLiteral("Frame detection enum (0=EndDelimiter, 1=StartAndEndDelimiter, "
+                       "2=NoDelimiters)")},
+       {QString(Keys::DecoderMethod),
+        QStringLiteral("integer"),
+        QStringLiteral("Decoder method enum (0=PlainText, 1=Hex, 2=Base64)")},
+       {QString(Keys::HexadecimalDelimiters),
+        QStringLiteral("boolean"),
+        QStringLiteral("Interpret frameStart/frameEnd as hex byte sequences")}}),
+    &sourceUpdate);
+
+  registerPropertyCommands();
+  registerFrameParserCommands();
+}
+
+/**
+ * @brief Register driver-property and configuration commands.
+ */
+void API::Handlers::SourceHandler::registerPropertyCommands()
+{
+  static auto& registry = CommandRegistry::instance();
+
+  registry.registerCommand(
+    QStringLiteral("project.source.setProperty"),
+    QStringLiteral("Set a driver connection property (params: sourceId, key, value)"),
+    makeSchema({
+      {        QString(Keys::SourceId),QStringLiteral("integer"),QStringLiteral("Source ID")                                                                  },
+      {          QStringLiteral("key"),  QStringLiteral("string"), QStringLiteral("Driver property key")},
+      {QStringLiteral("propertyValue"),
+       QStringLiteral("string"),
+       QStringLiteral("Property value")                                                                 }
+  }),
+    &sourceSetProperty);
+
+  registry.registerCommand(
+    QStringLiteral("project.source.setProperties"),
+    QStringLiteral("Set multiple driver properties at once (params: sourceId, settings)"),
+    makeSchema({
+      {   QString(Keys::SourceId),QStringLiteral("integer"),QStringLiteral("Source ID")                           },
+      {QStringLiteral("settings"),
+       QStringLiteral("object"),
+       QStringLiteral("Driver properties as key/value pairs")}
+  }),
+    &sourceConfigure);
+
+  registry.registerCommand(
+    QStringLiteral("project.source.getConfig"),
+    QStringLiteral("Get full source configuration (params: sourceId)"),
+    makeSchema({
+      {QString(Keys::SourceId), QStringLiteral("integer"), QStringLiteral("Source ID")}
+  }),
+    &sourceGetConfiguration);
+}
+
+/**
+ * @brief Register per-source JavaScript frame parser commands.
+ */
+void API::Handlers::SourceHandler::registerFrameParserCommands()
+{
+  static auto& registry = CommandRegistry::instance();
+
+  registry.registerCommand(
+    QStringLiteral("project.source.setFrameParserCode"),
+    QStringLiteral("Set per-source JS frame parser (params: sourceId, code)"),
+    makeSchema({
+      {QString(Keys::SourceId),QStringLiteral("integer"),QStringLiteral("Source ID")                           },
+      { QStringLiteral("code"),
+       QStringLiteral("string"),
+       QStringLiteral("JavaScript frame parser source code")}
+  }),
+    &sourceSetFrameParserCode);
+
+  registry.registerCommand(
+    QStringLiteral("project.source.getFrameParserCode"),
+    QStringLiteral("Get per-source JS frame parser (params: sourceId)"),
+    makeSchema({
+      {QString(Keys::SourceId), QStringLiteral("integer"), QStringLiteral("Source ID")}
+  }),
+    &sourceGetFrameParserCode);
+}
+
+//--------------------------------------------------------------------------------------------------
+// Command implementations
+//--------------------------------------------------------------------------------------------------
+
+/**
+ * @brief Returns all sources in the current project.
+ */
+API::CommandResponse API::Handlers::SourceHandler::sourceList(const QString& id,
+                                                              const QJsonObject& params)
+{
+  (void)params;
+
+  static auto& projectModel = DataModel::ProjectModel::instance();
+  const auto& sources       = projectModel.sources();
+  QJsonArray arr;
+  for (const auto& src : sources) {
+    QJsonObject obj;
+    obj[Keys::SourceId]                 = src.sourceId;
+    obj[Keys::Title]                    = src.title;
+    obj[Keys::BusType]                  = src.busType;
+    obj[QStringLiteral("busTypeLabel")] = EnumLabels::busTypeLabel(src.busType);
+    obj[QStringLiteral("busTypeSlug")]  = EnumLabels::busTypeSlug(src.busType);
+    obj[Keys::FrameStart]               = src.frameStart;
+    obj[Keys::FrameEnd]                 = src.frameEnd;
+    obj[Keys::ChecksumAlgorithm]        = src.checksumAlgorithm;
+    obj[Keys::FrameDetection]           = src.frameDetection;
+    obj[QStringLiteral("frameDetectionLabel")] =
+      EnumLabels::frameDetectionLabel(src.frameDetection);
+    obj[Keys::DecoderMethod]                  = src.decoderMethod;
+    obj[QStringLiteral("decoderMethodLabel")] = EnumLabels::decoderMethodLabel(src.decoderMethod);
+    obj[Keys::HexadecimalDelimiters]          = src.hexadecimalDelimiters;
+    obj[QStringLiteral("hasFrameParser")] =
+      !src.frameParserCode.isEmpty() || !src.frameParserTemplate.isEmpty();
+    obj[Keys::FrameParserLanguage] = src.frameParserLanguage;
+    obj[Keys::FrameParserTemplate] = src.frameParserTemplate;
+    arr.append(obj);
+  }
+
+  QString summary;
+  if (sources.empty()) {
+    summary = QStringLiteral("No sources are configured.");
+  } else if (sources.size() == 1) {
+    const auto& s = sources.front();
+    summary       = QStringLiteral("One source: \"%1\" via %2, frames %3.")
+                .arg(s.title,
+                     EnumLabels::busTypeLabel(s.busType),
+                     EnumLabels::frameDetectionLabel(s.frameDetection));
+  } else {
+    QStringList names;
+    for (const auto& s : sources)
+      names.append(QStringLiteral("\"%1\" (%2)").arg(s.title, EnumLabels::busTypeSlug(s.busType)));
+
+    summary =
+      QStringLiteral("%1 sources: %2.").arg(sources.size()).arg(names.join(QStringLiteral(", ")));
+  }
+
+  QJsonObject result;
+  result[QStringLiteral("_summary")] = summary;
+  result[Keys::Sources]              = arr;
+  result[QStringLiteral("count")]    = static_cast<int>(sources.size());
+  return CommandResponse::makeSuccess(id, result);
+}
+
+/**
+ * @brief Adds a new source (Commercial only).
+ */
+API::CommandResponse API::Handlers::SourceHandler::sourceAdd(const QString& id,
+                                                             const QJsonObject& params)
+{
+  (void)params;
+
+#ifndef BUILD_COMMERCIAL
+  return CommandResponse::makeError(id,
+                                    QStringLiteral("COMMERCIAL_REQUIRED"),
+                                    QStringLiteral("Multiple data sources require a Pro license"));
+#else
+  static auto& projectModel = DataModel::ProjectModel::instance();
+  const int countBefore     = projectModel.sourceCount();
+  QMetaObject::invokeMethod(&projectModel, "addSource");
+
+  const int countAfter = projectModel.sourceCount();
+  if (countAfter <= countBefore)
+    return CommandResponse::makeError(
+      id, QStringLiteral("OPERATION_FAILED"), QStringLiteral("Failed to add source"));
+
+  QJsonObject result;
+  result[Keys::SourceId] = countAfter - 1;
+  return CommandResponse::makeSuccess(id, result);
+#endif
+}
+
+/**
+ * @brief Deletes a source (Commercial only; sourceId must be >= 1).
+ */
+API::CommandResponse API::Handlers::SourceHandler::sourceDelete(const QString& id,
+                                                                const QJsonObject& params)
+{
+#ifndef BUILD_COMMERCIAL
+  (void)params;
+  return CommandResponse::makeError(id,
+                                    QStringLiteral("COMMERCIAL_REQUIRED"),
+                                    QStringLiteral("Multiple data sources require a Pro license"));
+#else
+  if (!params.contains(Keys::SourceId))
+    return CommandResponse::makeError(
+      id, QStringLiteral("MISSING_PARAM"), QStringLiteral("sourceId is required"));
+
+  const int sourceId = params[Keys::SourceId].toInt(-1);
+  if (sourceId <= 0)
+    return CommandResponse::makeError(
+      id,
+      QStringLiteral("INVALID_PARAM"),
+      QStringLiteral("sourceId must be >= 1 (cannot delete primary source)"));
+
+  static auto& projectModel = DataModel::ProjectModel::instance();
+  QMetaObject::invokeMethod(
+    &projectModel, "deleteSource", Qt::DirectConnection, Q_ARG(int, sourceId));
+
+  return CommandResponse::makeSuccess(id);
+#endif
+}
+
+/**
+ * @brief Updates source fields (Commercial only).
+ */
+API::CommandResponse API::Handlers::SourceHandler::sourceUpdate(const QString& id,
+                                                                const QJsonObject& params)
+{
+#ifndef BUILD_COMMERCIAL
+  (void)params;
+  return CommandResponse::makeError(id,
+                                    QStringLiteral("COMMERCIAL_REQUIRED"),
+                                    QStringLiteral("Multiple data sources require a Pro license"));
+#else
+  if (!params.contains(Keys::SourceId))
+    return CommandResponse::makeError(
+      id, QStringLiteral("MISSING_PARAM"), QStringLiteral("sourceId is required"));
+
+  const int sourceId        = params[Keys::SourceId].toInt(-1);
+  static auto& projectModel = DataModel::ProjectModel::instance();
+  const auto& sources       = projectModel.sources();
+  const int sourceCount     = static_cast<int>(sources.size());
+
+  if (sourceId < 0 || sourceId >= sourceCount)
+    return CommandResponse::makeError(
+      id, QStringLiteral("INVALID_PARAM"), QStringLiteral("Invalid sourceId"));
+
+  DataModel::Source updated = sources[sourceId];
+
+  if (params.contains(Keys::Title))
+    updated.title = params[Keys::Title].toString();
+
+  if (params.contains(Keys::BusType))
+    updated.busType = params[Keys::BusType].toInt(updated.busType);
+
+  if (params.contains(Keys::FrameStart))
+    updated.frameStart = params[Keys::FrameStart].toString();
+
+  if (params.contains(Keys::FrameEnd))
+    updated.frameEnd = params[Keys::FrameEnd].toString();
+
+  if (params.contains(Keys::ChecksumAlgorithm))
+    updated.checksumAlgorithm = params[Keys::ChecksumAlgorithm].toString();
+
+  if (params.contains(Keys::FrameDetection))
+    updated.frameDetection = params[Keys::FrameDetection].toInt(updated.frameDetection);
+
+  if (params.contains(Keys::DecoderMethod))
+    updated.decoderMethod = params[Keys::DecoderMethod].toInt(updated.decoderMethod);
+
+  if (params.contains(Keys::HexadecimalDelimiters))
+    updated.hexadecimalDelimiters = params[Keys::HexadecimalDelimiters].toBool();
+
+  QMetaObject::invokeMethod(&projectModel,
+                            "updateSource",
+                            Qt::DirectConnection,
+                            Q_ARG(int, sourceId),
+                            Q_ARG(DataModel::Source, updated));
+
+  return CommandResponse::makeSuccess(id);
+#endif
+}
+
+/**
+ * @brief Applies multiple driver connection properties to a source in one call.
+ */
+API::CommandResponse API::Handlers::SourceHandler::sourceConfigure(const QString& id,
+                                                                   const QJsonObject& params)
+{
+  if (!params.contains(Keys::SourceId) || !params.contains(QStringLiteral("settings")))
+    return CommandResponse::makeError(
+      id, QStringLiteral("MISSING_PARAM"), QStringLiteral("sourceId and settings are required"));
+
+  const int sourceId    = params[Keys::SourceId].toInt(-1);
+  static auto& model    = DataModel::ProjectModel::instance();
+  const int sourceCount = static_cast<int>(model.sources().size());
+
+  if (sourceId < 0 || sourceId >= sourceCount)
+    return CommandResponse::makeError(
+      id, QStringLiteral("INVALID_PARAM"), QStringLiteral("Invalid sourceId"));
+
+  const QJsonObject settings = params[QStringLiteral("settings")].toObject();
+  static auto& appState      = AppState::instance();
+  const bool usesUiDriver =
+    sourceId == 0 && sourceCount == 1 && appState.operationMode() == SerialStudio::ProjectFile;
+
+  if (usesUiDriver) {
+    static auto& uiDriverConnectionManager = IO::ConnectionManager::instance();
+    for (auto it = settings.constBegin(); it != settings.constEnd(); ++it)
+      uiDriverConnectionManager.setUiDriverProperty(it.key(), it.value().toVariant());
+
+    model.captureSourceSettings(sourceId);
+    return CommandResponse::makeSuccess(id);
+  }
+
+  static auto& connectionManager = IO::ConnectionManager::instance();
+  IO::HAL_Driver* driver         = connectionManager.driverForEditing(sourceId);
+  if (!driver)
+    return CommandResponse::makeError(
+      id, QStringLiteral("OPERATION_FAILED"), QStringLiteral("No driver for source"));
+
+  for (auto it = settings.constBegin(); it != settings.constEnd(); ++it)
+    driver->setDriverProperty(it.key(), it.value().toVariant());
+
+  model.captureSourceSettings(sourceId);
+
+  IO::HAL_Driver* live = connectionManager.driver(sourceId);
+  if (live && live != driver)
+    for (auto it = settings.constBegin(); it != settings.constEnd(); ++it)
+      live->setDriverProperty(it.key(), it.value().toVariant());
+
+  return CommandResponse::makeSuccess(id);
+}
+
+/**
+ * @brief Sets a driver connection property for a source.
+ */
+API::CommandResponse API::Handlers::SourceHandler::sourceSetProperty(const QString& id,
+                                                                     const QJsonObject& params)
+{
+  if (!params.contains(Keys::SourceId) || !params.contains(QStringLiteral("key")))
+    return CommandResponse::makeError(
+      id, QStringLiteral("MISSING_PARAM"), QStringLiteral("sourceId and key are required"));
+
+  const bool hasValue =
+    params.contains(QStringLiteral("propertyValue")) || params.contains(QStringLiteral("value"));
+  if (!hasValue)
+    return CommandResponse::makeError(
+      id, QStringLiteral("MISSING_PARAM"), QStringLiteral("propertyValue is required"));
+
+  const int sourceId = params[Keys::SourceId].toInt(-1);
+  if (sourceId < 0)
+    return CommandResponse::makeError(
+      id, QStringLiteral("INVALID_PARAM"), QStringLiteral("Invalid sourceId"));
+
+  const QString key  = params[QStringLiteral("key")].toString();
+  const QVariant val = params.contains(QStringLiteral("propertyValue"))
+                       ? params[QStringLiteral("propertyValue")].toVariant()
+                       : params[QStringLiteral("value")].toVariant();
+
+  static auto& connectionManager = IO::ConnectionManager::instance();
+  IO::HAL_Driver* driver         = connectionManager.driverForEditing(sourceId);
+  if (!driver)
+    return CommandResponse::makeError(
+      id, QStringLiteral("OPERATION_FAILED"), QStringLiteral("No driver for source"));
+
+  driver->setDriverProperty(key, val);
+  static auto& projectModel = DataModel::ProjectModel::instance();
+  projectModel.captureSourceSettings(sourceId);
+
+  IO::HAL_Driver* live = connectionManager.driver(sourceId);
+  if (live && live != driver)
+    live->setDriverProperty(key, val);
+
+  return CommandResponse::makeSuccess(id);
+}
+
+/**
+ * @brief Returns the full configuration for a source.
+ */
+API::CommandResponse API::Handlers::SourceHandler::sourceGetConfiguration(const QString& id,
+                                                                          const QJsonObject& params)
+{
+  if (!params.contains(Keys::SourceId))
+    return CommandResponse::makeError(
+      id, QStringLiteral("MISSING_PARAM"), QStringLiteral("sourceId is required"));
+
+  const int sourceId        = params[Keys::SourceId].toInt(-1);
+  static auto& projectModel = DataModel::ProjectModel::instance();
+  const auto& sources       = projectModel.sources();
+  const int sourceCount     = static_cast<int>(sources.size());
+
+  if (sourceId < 0 || sourceId >= sourceCount)
+    return CommandResponse::makeError(
+      id, QStringLiteral("INVALID_PARAM"), QStringLiteral("Invalid sourceId"));
+
+  const auto& src = sources[sourceId];
+  QJsonObject obj = DataModel::serialize(src);
+  return CommandResponse::makeSuccess(id, obj);
+}
+
+/**
+ * @brief Sets the per-source JavaScript frame parser code.
+ */
+API::CommandResponse API::Handlers::SourceHandler::sourceSetFrameParserCode(
+  const QString& id, const QJsonObject& params)
+{
+  if (!params.contains(Keys::SourceId) || !params.contains(QStringLiteral("code")))
+    return CommandResponse::makeError(
+      id, QStringLiteral("MISSING_PARAM"), QStringLiteral("sourceId and code are required"));
+
+  const int sourceId = params[Keys::SourceId].toInt(-1);
+  const QString code = params[QStringLiteral("code")].toString();
+
+  static auto& projectModel = DataModel::ProjectModel::instance();
+  const auto& sources       = projectModel.sources();
+  const int sourceCount     = static_cast<int>(sources.size());
+
+  if (sourceId < 0 || sourceId >= sourceCount)
+    return CommandResponse::makeError(
+      id, QStringLiteral("INVALID_PARAM"), QStringLiteral("Invalid sourceId"));
+
+  QMetaObject::invokeMethod(&projectModel,
+                            "updateSourceFrameParser",
+                            Qt::DirectConnection,
+                            Q_ARG(int, sourceId),
+                            Q_ARG(QString, code));
+
+  return CommandResponse::makeSuccess(id);
+}
+
+/**
+ * @brief Returns the per-source JavaScript frame parser code.
+ */
+API::CommandResponse API::Handlers::SourceHandler::sourceGetFrameParserCode(
+  const QString& id, const QJsonObject& params)
+{
+  if (!params.contains(Keys::SourceId))
+    return CommandResponse::makeError(
+      id, QStringLiteral("MISSING_PARAM"), QStringLiteral("sourceId is required"));
+
+  const int sourceId        = params[Keys::SourceId].toInt(-1);
+  static auto& projectModel = DataModel::ProjectModel::instance();
+  const auto& sources       = projectModel.sources();
+  const int sourceCount     = static_cast<int>(sources.size());
+
+  if (sourceId < 0 || sourceId >= sourceCount)
+    return CommandResponse::makeError(
+      id, QStringLiteral("INVALID_PARAM"), QStringLiteral("Invalid sourceId"));
+
+  QJsonObject result;
+  result[QStringLiteral("code")] = sources[sourceId].frameParserCode;
+  return CommandResponse::makeSuccess(id, result);
+}

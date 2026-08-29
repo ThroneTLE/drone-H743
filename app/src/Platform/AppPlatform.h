@@ -1,0 +1,75 @@
+/*
+ * Serial Studio
+ * https://serial-studio.com/
+ *
+ * Copyright (C) 2020-2025 Alex Spataru
+ *
+ * This file is dual-licensed:
+ *
+ * - Under the GNU GPLv3 (or later) for builds that exclude Pro modules.
+ * - Under the Serial Studio Commercial License for builds that include
+ *   any Pro functionality.
+ *
+ * You must comply with the terms of one of these licenses, depending
+ * on your use case.
+ *
+ * For GPL terms, see <https://www.gnu.org/licenses/gpl-3.0.html>
+ * For commercial terms, see LICENSES/LicenseRef-SerialStudio-Commercial.txt.
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later OR LicenseRef-SerialStudio-Commercial
+ */
+
+#pragma once
+
+#include <QEvent>
+#include <QObject>
+#include <QString>
+
+namespace Platform {
+
+/**
+ * @brief Event filter that loads .ssproj files dropped onto the running app.
+ */
+class FileOpenEventFilter : public QObject {
+public:
+  using QObject::QObject;
+
+protected:
+  bool eventFilter(QObject* obj, QEvent* event) override;
+};
+
+/**
+ * @brief Amplifies trackpad pixelDelta wheel events so QML views scroll at usable speed.
+ */
+class TrackpadScrollFilter : public QObject {
+public:
+  explicit TrackpadScrollFilter(QObject* parent = nullptr);
+
+protected:
+  bool eventFilter(QObject* obj, QEvent* event) override;
+
+private:
+  bool m_reentry;
+};
+
+/**
+ * @brief Per-platform startup hooks (console, AUMID, power, file association, FreeType).
+ */
+namespace AppPlatform {
+void prepareEnvironment(int& argc, char**& argv, const QString& shortcutPath);
+void inhibitIdleSleep();
+void registerFileAssociation();
+void releaseAdjustedArgv();
+void installCrashDumpWriter();
+char** injectPlatformArg(int& argc, char** argv, const char* platform);
+QString shortcutIdentityHash(const QString& shortcutPath);
+
+[[nodiscard]] bool lockMemoryResident(const void* ptr, size_t len);
+void unlockMemoryResident(const void* ptr, size_t len);
+
+[[nodiscard]] quint64 peakResidentBytes();
+
+void registerIngestThreadWithMmcss();
+}  // namespace AppPlatform
+
+}  // namespace Platform

@@ -1,0 +1,196 @@
+/*
+ * Serial Studio
+ * https://serial-studio.com/
+ *
+ * Copyright (C) 2020–2025 Alex Spataru
+ *
+ * This file is dual-licensed:
+ *
+ * - Under the GNU GPLv3 (or later) for builds that exclude Pro modules.
+ * - Under the Serial Studio Commercial License for builds that include
+ *   any Pro functionality.
+ *
+ * You must comply with the terms of one of these licenses, depending
+ * on your use case.
+ *
+ * For GPL terms, see <https://www.gnu.org/licenses/gpl-3.0.html>
+ * For commercial terms, see LICENSES/LicenseRef-SerialStudio-Commercial.txt.
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later OR LicenseRef-SerialStudio-Commercial
+ */
+
+#pragma once
+
+#include <QQuickItem>
+#include <QString>
+#include <QVariantList>
+#include <QVector>
+#include <vector>
+
+#include "DSP.h"
+#include "UI/Dashboard.h"
+
+namespace DataModel {
+struct AlarmBand;
+struct Dataset;
+}  // namespace DataModel
+
+namespace Widgets {
+/**
+ * @brief Precomputed render data for a single alarm band on a widget.
+ */
+struct BarBand {
+  double min     = 0;      ///< Raw lower bound
+  double max     = 0;      ///< Raw upper bound
+  double fracMin = 0;      ///< Normalised lower bound (0..1)
+  double fracMax = 0;      ///< Normalised upper bound (0..1)
+  int severity   = 2;      ///< AlarmSeverity enum value (0..3); default Warning
+  bool blink     = false;  ///< Flash the indicator while the band is active
+  QString customColor;
+  QString label;
+};
+
+/**
+ * @brief Data model for a normalized value display (e.g. bar or gauge).
+ */
+class Bar : public QQuickItem {
+  // clang-format off
+  Q_OBJECT
+  Q_PROPERTY(bool alarmsDefined
+             READ alarmsDefined
+             CONSTANT)
+  Q_PROPERTY(bool alarmTriggered
+             READ alarmTriggered
+             NOTIFY updated)
+  Q_PROPERTY(int activeBandSeverity
+             READ activeBandSeverity
+             NOTIFY updated)
+  Q_PROPERTY(QString activeBandLabel
+             READ activeBandLabel
+             NOTIFY updated)
+  Q_PROPERTY(QVariantList alarmBands
+             READ alarmBands
+             CONSTANT)
+  Q_PROPERTY(bool extremesValid
+             READ extremesValid
+             NOTIFY updated)
+  Q_PROPERTY(double minSeen
+             READ minSeen
+             NOTIFY updated)
+  Q_PROPERTY(double maxSeen
+             READ maxSeen
+             NOTIFY updated)
+  Q_PROPERTY(double minSeenFrac
+             READ minSeenFrac
+             NOTIFY updated)
+  Q_PROPERTY(double maxSeenFrac
+             READ maxSeenFrac
+             NOTIFY updated)
+  Q_PROPERTY(double value
+             READ value
+             NOTIFY updated)
+  Q_PROPERTY(double minValue
+             READ minValue
+             CONSTANT)
+  Q_PROPERTY(double maxValue
+             READ maxValue
+             CONSTANT)
+  Q_PROPERTY(double normalizedValue
+             READ normalizedValue
+             NOTIFY updated)
+  Q_PROPERTY(QString title
+             READ title
+             CONSTANT)
+  Q_PROPERTY(QString units
+             READ units
+             CONSTANT)
+  Q_PROPERTY(int displayTickCount
+             READ displayTickCount
+             CONSTANT)
+  Q_PROPERTY(QString displayFormat
+             READ displayFormat
+             CONSTANT)
+  Q_PROPERTY(int decimalPoints
+             READ decimalPoints
+             CONSTANT)
+  // clang-format on
+
+signals:
+  void updated();
+
+public:
+  explicit Bar(const int index             = -1,
+               QQuickItem* parent          = nullptr,
+               bool autoInitFromBarDataset = true);
+
+  [[nodiscard]] bool alarmsDefined() const noexcept;
+  [[nodiscard]] bool alarmTriggered() const noexcept;
+  [[nodiscard]] int activeBandSeverity() const noexcept;
+  [[nodiscard]] const QString& activeBandLabel() const noexcept;
+  [[nodiscard]] const QVariantList& alarmBands() const noexcept;
+  [[nodiscard]] int displayTickCount() const noexcept;
+  [[nodiscard]] const QString& title() const noexcept;
+  [[nodiscard]] const QString& units() const noexcept;
+  [[nodiscard]] const QString& displayFormat() const noexcept;
+  [[nodiscard]] int decimalPoints() const noexcept;
+
+  [[nodiscard]] bool extremesValid() const noexcept;
+  [[nodiscard]] double minSeen() const noexcept;
+  [[nodiscard]] double maxSeen() const noexcept;
+  [[nodiscard]] double minSeenFrac() const noexcept;
+  [[nodiscard]] double maxSeenFrac() const noexcept;
+
+  [[nodiscard]] double value() const noexcept;
+  [[nodiscard]] double minValue() const noexcept;
+  [[nodiscard]] double maxValue() const noexcept;
+  [[nodiscard]] double normalizedValue() const noexcept;
+
+protected:
+  void itemChange(ItemChange change, const ItemChangeData& value) override;
+
+protected slots:
+  virtual void updateData();
+
+private:
+  inline double computeFractional(double value) const
+  {
+    const double min   = qMin(m_minValue, m_maxValue);
+    const double max   = qMax(m_minValue, m_maxValue);
+    const double range = max - min;
+
+    if (DSP::isZero(range))
+      return 0.0;
+
+    const double clamped = qBound(min, value, max);
+    return qBound(0.0, (clamped - min) / range, 1.0);
+  }
+
+protected:
+  void buildBands(const std::vector<DataModel::AlarmBand>& srcBands);
+  void recomputeActiveBand(double value);
+  bool refreshExtremes(const DataModel::Dataset& dataset);
+
+  int m_index;
+  int m_displayTickCount;
+  int m_decimalPoints;
+  QString m_title;
+  QString m_units;
+  QString m_displayFormat;
+
+  double m_value;
+  double m_minValue;
+  double m_maxValue;
+
+  bool m_extremesValid;
+  double m_minSeen;
+  double m_maxSeen;
+
+  QVector<BarBand> m_bands;
+  QVariantList m_bandsAsVariant;
+  QString m_emptyLabel;
+  int m_activeBandIndex;
+  int m_lastBandHint;
+
+  UI::Dashboard& m_dashboard;
+};
+}  // namespace Widgets

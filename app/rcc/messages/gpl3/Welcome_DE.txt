@@ -1,0 +1,22 @@
+Copyright (c) 2020–2026 Alex Spataru <https://github.com/alex-spataru>
+
+Diese Software ist kostenlos und quelloffen unter der GNU GPLv3-Lizenz.
+Sie dürfen sie verwenden, modifizieren und weiterverbreiten, vorausgesetzt,
+dass abgeleitete Werke unter denselben Bedingungen quelloffen bleiben.
+
+→ Lizenz: https://www.gnu.org/licenses/gpl-3.0.html
+→ Quelle:  https://github.com/serial-studio/serial-studio
+
+Gefällt Ihnen dieses Projekt? Erwägen Sie die Unterstützung der Entwicklung
+mit Serial Studio Pro:
+→ https://store.serial-studio.com/
+
+Pro-Funktionen:
+→ MQTT-, XY- und 3D-Visualisierung
+→ Audio-, CAN Bus-, Modbus-, USB-, HID- und Process-I/O-Treiber
+→ Output-Widgets, MDF4-Export und XMODEM/YMODEM/ZMODEM-Übertragung
+→ Historian, Variablen und Werttransformationen (JS + Lua)
+→ Multi-Source-Projekte und benutzerdefinierte Arbeitsbereiche
+→ Kommerzielle Lizenz (keine GPL-Verpflichtungen)
+
+→ Mehr erfahren: https://serial-studio.com/

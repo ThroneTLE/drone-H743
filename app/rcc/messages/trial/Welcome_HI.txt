@@ -1,0 +1,17 @@
+Copyright (c) 2020–2026 Alex Spataru <https://github.com/alex-spataru>
+
+आप Serial Studio Pro का परीक्षण संस्करण उपयोग कर रहे हैं। यह संस्करण
+मूल्यांकन और व्यक्तिगत, गैर-व्यावसायिक उपयोग के लिए पूरी तरह से कार्यात्मक है।
+अपने परीक्षण के बाद जारी रखने के लिए, एक भुगतान योजना में अपग्रेड करें या
+स्वयं GPLv3 स्रोत कोड संकलित करें।
+
+→ समर्थन: alex@serial-studio.com
+→ कॉल शेड्यूल करें: https://calendly.com/serial-studio
+→ अधिक जानें: https://serial-studio.com/
+
+उपलब्ध प्रो विशेषताएँ:
+→ MQTT, XY और 3D विज़ुअलाइज़ेशन
+→ Audio, CAN Bus, Modbus, USB, HID और Process I/O ड्राइवर
+→ आउटपुट विजेट, MDF4 निर्यात और XMODEM/YMODEM/ZMODEM स्थानांतरण
+→ Historian, वेरिएबल और मान रूपांतरण (JS + Lua)
+→ मल्टी-सोर्स प्रोजेक्ट और कस्टम डैशबोर्ड वर्कस्पेस

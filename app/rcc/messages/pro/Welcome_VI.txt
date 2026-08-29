@@ -1,0 +1,18 @@
+Copyright (c) 2020–2026 Alex Spataru <https://github.com/alex-spataru>
+
+Cảm ơn bạn đã sử dụng Serial Studio Pro và hỗ trợ phát triển mã nguồn mở!
+Giấy phép của bạn đang hoạt động và được chấp thuận cho sử dụng thương mại và
+sở hữu độc quyền.
+
+→ Hỗ trợ: alex@serial-studio.com
+→ Lên lịch cuộc gọi: https://calendly.com/serial-studio
+→ Cổng thông tin khách hàng: https://store.serial-studio.com/billing
+→ Tìm hiểu thêm: https://serial-studio.com/
+
+Các tính năng Pro:
+→ Hình ảnh hóa MQTT, XY và 3D
+→ Trình điều khiển Âm thanh, CAN Bus, Modbus, USB, HID và Process I/O
+→ Tiện ích xuất dữ liệu, xuất MDF4 và truyền XMODEM/YMODEM/ZMODEM
+→ Historian, Biến và biến đổi giá trị (JS + Lua)
+→ Dự án đa nguồn và không gian làm việc bảng điều khiển tùy chỉnh
+→ Hỗ trợ ưu tiên

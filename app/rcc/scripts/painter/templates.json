@@ -1,0 +1,185 @@
+[
+  {
+    "file": "default_template",
+    "name": "Default template",
+    "translations": { "en_US": "Default template" },
+    "default": true,
+    "datasets": [
+      { "title": "X", "min": -100, "max": 100 },
+      { "title": "Y", "min": -100, "max": 100 },
+      { "title": "Z", "min": -100, "max": 100 }
+    ]
+  },
+  {
+    "file": "audio_meter",
+    "name": "Audio VU meter",
+    "translations": { "en_US": "Audio VU meter" },
+    "datasets": [
+      { "title": "Channel 1", "units": "dB", "min": -60, "max": 6 },
+      { "title": "Channel 2", "units": "dB", "min": -60, "max": 6 }
+    ]
+  },
+  {
+    "file": "bar_peak_hold",
+    "name": "Bars with peak hold",
+    "translations": { "en_US": "Bars with peak hold" },
+    "datasets": [
+      { "title": "Bar 1", "min": 0, "max": 100 },
+      { "title": "Bar 2", "min": 0, "max": 100 },
+      { "title": "Bar 3", "min": 0, "max": 100 },
+      { "title": "Bar 4", "min": 0, "max": 100 }
+    ]
+  },
+  {
+    "file": "clock_face",
+    "name": "Clock face",
+    "translations": { "en_US": "Clock face" },
+    "datasets": [
+      { "title": "Time of day", "units": "s", "min": 0, "max": 86400 }
+    ]
+  },
+  {
+    "file": "dial_gauge",
+    "name": "Dial gauge",
+    "translations": { "en_US": "Dial gauge" },
+    "datasets": [
+      { "title": "Value", "min": 0, "max": 100 }
+    ]
+  },
+  {
+    "file": "heatmap",
+    "name": "Heatmap",
+    "translations": { "en_US": "Heatmap" },
+    "datasets": [
+      { "title": "Channel 1", "min": 0, "max": 1 },
+      { "title": "Channel 2", "min": 0, "max": 1 },
+      { "title": "Channel 3", "min": 0, "max": 1 },
+      { "title": "Channel 4", "min": 0, "max": 1 },
+      { "title": "Channel 5", "min": 0, "max": 1 },
+      { "title": "Channel 6", "min": 0, "max": 1 },
+      { "title": "Channel 7", "min": 0, "max": 1 },
+      { "title": "Channel 8", "min": 0, "max": 1 }
+    ]
+  },
+  {
+    "file": "horizon",
+    "name": "Artificial horizon",
+    "translations": { "en_US": "Artificial horizon" },
+    "datasets": [
+      { "title": "Pitch", "units": "°", "min": -90, "max": 90 },
+      { "title": "Roll",  "units": "°", "min": -180, "max": 180 }
+    ]
+  },
+  {
+    "file": "led_matrix",
+    "name": "LED matrix",
+    "translations": { "en_US": "LED matrix" },
+    "datasets": [
+      { "title": "Row 1", "min": 0, "max": 100 },
+      { "title": "Row 2", "min": 0, "max": 100 },
+      { "title": "Row 3", "min": 0, "max": 100 },
+      { "title": "Row 4", "min": 0, "max": 100 }
+    ]
+  },
+  {
+    "file": "oscilloscope",
+    "name": "Oscilloscope",
+    "translations": { "en_US": "Oscilloscope" },
+    "datasets": [
+      { "title": "CH1", "min": -10, "max": 10 },
+      { "title": "CH2", "min": -10, "max": 10 }
+    ]
+  },
+  {
+    "file": "polar_plot",
+    "name": "Polar plot",
+    "translations": { "en_US": "Polar plot" },
+    "datasets": [
+      { "title": "Angle 1",     "units": "°", "min": 0, "max": 360 },
+      { "title": "Magnitude 1",                "min": 0, "max": 100 },
+      { "title": "Angle 2",     "units": "°", "min": 0, "max": 360 },
+      { "title": "Magnitude 2",                "min": 0, "max": 100 }
+    ]
+  },
+  {
+    "file": "progress_rings",
+    "name": "Progress rings",
+    "translations": { "en_US": "Progress rings" },
+    "datasets": [
+      { "title": "Progress 1", "min": 0, "max": 100 },
+      { "title": "Progress 2", "min": 0, "max": 100 },
+      { "title": "Progress 3", "min": 0, "max": 100 },
+      { "title": "Progress 4", "min": 0, "max": 100 }
+    ]
+  },
+  {
+    "file": "radar_sweep",
+    "name": "Radar sweep",
+    "translations": { "en_US": "Radar sweep" },
+    "datasets": [
+      { "title": "Azimuth 1", "units": "°", "min": 0, "max": 360 },
+      { "title": "Range 1",                  "min": 0, "max": 100 }
+    ]
+  },
+  {
+    "file": "segment_display",
+    "name": "7-segment display",
+    "translations": { "en_US": "7-segment display" },
+    "datasets": [
+      { "title": "Channel 1", "min": -999, "max": 9999 },
+      { "title": "Channel 2", "min": -999, "max": 9999 }
+    ]
+  },
+  {
+    "file": "sparklines",
+    "name": "Sparkline grid",
+    "translations": { "en_US": "Sparkline grid" },
+    "datasets": [
+      { "title": "Channel 1", "min": 0, "max": 100 },
+      { "title": "Channel 2", "min": 0, "max": 100 },
+      { "title": "Channel 3", "min": 0, "max": 100 },
+      { "title": "Channel 4", "min": 0, "max": 100 }
+    ]
+  },
+  {
+    "file": "status_grid",
+    "name": "Status grid",
+    "translations": { "en_US": "Status grid" },
+    "datasets": [
+      { "title": "Tile 1", "min": 0, "max": 100 },
+      { "title": "Tile 2", "min": 0, "max": 100 },
+      { "title": "Tile 3", "min": 0, "max": 100 },
+      { "title": "Tile 4", "min": 0, "max": 100 }
+    ]
+  },
+  {
+    "file": "strip_chart",
+    "name": "Strip chart",
+    "translations": { "en_US": "Strip chart" },
+    "datasets": [
+      { "title": "Trace 1", "min": 0, "max": 100 },
+      { "title": "Trace 2", "min": 0, "max": 100 },
+      { "title": "Trace 3", "min": 0, "max": 100 }
+    ]
+  },
+  {
+    "file": "vector_field",
+    "name": "Vector field",
+    "translations": { "en_US": "Vector field" },
+    "datasets": [
+      { "title": "Vx 1", "min": -1, "max": 1 },
+      { "title": "Vy 1", "min": -1, "max": 1 },
+      { "title": "Vx 2", "min": -1, "max": 1 },
+      { "title": "Vy 2", "min": -1, "max": 1 }
+    ]
+  },
+  {
+    "file": "xy_scope",
+    "name": "XY scope (Lissajous)",
+    "translations": { "en_US": "XY scope (Lissajous)" },
+    "datasets": [
+      { "title": "X 1", "min": -1, "max": 1 },
+      { "title": "Y 1", "min": -1, "max": 1 }
+    ]
+  }
+]

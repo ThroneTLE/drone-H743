@@ -1,0 +1,445 @@
+/*
+ * Serial Studio - https://serial-studio.com/
+ *
+ * Copyright (C) 2020–2025 Alex Spataru <https://aspatru.com>
+ *
+ * This file is part of the proprietary features of Serial Studio and is
+ * licensed under the Serial Studio Commercial License.
+ *
+ * Redistribution, modification, or use of this file in any form is permitted
+ * only under the terms of a valid Serial Studio Commercial License obtained
+ * from the author.
+ *
+ * This file must not be used or included in builds distributed under the
+ * GNU General Public License (GPL) unless explicitly permitted by a
+ * commercial agreement.
+ *
+ * For details, see:
+ * https://github.com/Serial-Studio/Serial-Studio/blob/master/LICENSE.md
+ *
+ * SPDX-License-Identifier: LicenseRef-SerialStudio-Commercial
+ */
+
+#include "API/Handlers/CANBusHandler.h"
+
+#include "API/CommandRegistry.h"
+#include "API/SchemaBuilder.h"
+#include "IO/ConnectionManager.h"
+
+//--------------------------------------------------------------------------------------------------
+// Command registration
+//--------------------------------------------------------------------------------------------------
+
+/**
+ * @brief Register all CANBus commands with the registry
+ */
+void API::Handlers::CANBusHandler::registerCommands()
+{
+  static auto& registry = CommandRegistry::instance();
+  const auto empty      = emptySchema();
+
+  registry.registerCommand(QStringLiteral("io.canbus.setPluginIndex"),
+                           QStringLiteral("Select CAN plugin by index (params: pluginIndex)"),
+                           makeSchema({
+                             {QStringLiteral("pluginIndex"),
+                              QStringLiteral("integer"),
+                              QStringLiteral("Index of the CAN plugin to select")}
+  }),
+                           &setPluginIndex);
+
+  registry.registerCommand(QStringLiteral("io.canbus.setInterfaceIndex"),
+                           QStringLiteral("Select CAN interface by index (params: interfaceIndex)"),
+                           makeSchema({
+                             {QStringLiteral("interfaceIndex"),
+                              QStringLiteral("integer"),
+                              QStringLiteral("Index of the CAN interface to select")}
+  }),
+                           &setInterfaceIndex);
+
+  registry.registerCommand(QStringLiteral("io.canbus.setBitrate"),
+                           QStringLiteral("Set CAN bitrate (params: bitrate)"),
+                           makeSchema({
+                             {QStringLiteral("bitrate"),
+                              QStringLiteral("integer"),
+                              QStringLiteral("CAN bitrate in bits per second")}
+  }),
+                           &setBitrate);
+
+  registry.registerCommand(QStringLiteral("io.canbus.setCanFd"),
+                           QStringLiteral("Enable/disable CAN FD (params: enabled)"),
+                           makeSchema({
+                             {QStringLiteral("enabled"),
+                              QStringLiteral("boolean"),
+                              QStringLiteral("Enable or disable CAN FD")}
+  }),
+                           &setCanFD);
+
+  registry.registerCommand(QStringLiteral("io.canbus.setDataBitrate"),
+                           QStringLiteral("Set CAN FD data-phase bitrate (params: dataBitrate)"),
+                           makeSchema({
+                             {QStringLiteral("dataBitrate"),
+                              QStringLiteral("integer"),
+                              QStringLiteral("CAN FD data-phase bitrate in bits per second")}
+  }),
+                           &setDataBitrate);
+
+  registry.registerCommand(QStringLiteral("io.canbus.setLoopback"),
+                           QStringLiteral("Enable/disable loopback mode (params: enabled)"),
+                           makeSchema({
+                             {QStringLiteral("enabled"),
+                              QStringLiteral("boolean"),
+                              QStringLiteral("Enable or disable loopback mode")}
+  }),
+                           &setLoopback);
+
+  registry.registerCommand(QStringLiteral("io.canbus.setListenOnly"),
+                           QStringLiteral("Enable/disable listen-only mode (params: enabled)"),
+                           makeSchema({
+                             {QStringLiteral("enabled"),
+                              QStringLiteral("boolean"),
+                              QStringLiteral("Enable or disable listen-only mode")}
+  }),
+                           &setListenOnly);
+
+  registry.registerCommand(QStringLiteral("io.canbus.getConfig"),
+                           QStringLiteral("Get current CAN bus configuration"),
+                           empty,
+                           &getConfiguration);
+
+  registry.registerCommand(QStringLiteral("io.canbus.listPlugins"),
+                           QStringLiteral("Get list of available CAN plugins"),
+                           empty,
+                           &getPluginList);
+
+  registry.registerCommand(QStringLiteral("io.canbus.listInterfaces"),
+                           QStringLiteral("Get list of available CAN interfaces"),
+                           empty,
+                           &getInterfaceList);
+
+  registry.registerCommand(QStringLiteral("io.canbus.listBitrates"),
+                           QStringLiteral("Get list of supported bitrates"),
+                           empty,
+                           &getBitrateList);
+
+  registry.registerCommand(QStringLiteral("io.canbus.getInterfaceError"),
+                           QStringLiteral("Get interface error message if any"),
+                           empty,
+                           &getInterfaceError);
+}
+
+//--------------------------------------------------------------------------------------------------
+// Setters
+//--------------------------------------------------------------------------------------------------
+
+/**
+ * @brief Select CAN plugin by index
+ */
+API::CommandResponse API::Handlers::CANBusHandler::setPluginIndex(const QString& id,
+                                                                  const QJsonObject& params)
+{
+  if (!params.contains(QStringLiteral("pluginIndex"))) {
+    return CommandResponse::makeError(
+      id, ErrorCode::MissingParam, QStringLiteral("Missing required parameter: pluginIndex"));
+  }
+
+  const int pluginIndex          = params.value(QStringLiteral("pluginIndex")).toInt();
+  static auto& connectionManager = IO::ConnectionManager::instance();
+  auto* canbus                   = connectionManager.canBus();
+  const auto& pluginList         = canbus->pluginList();
+
+  if (pluginIndex < 0 || pluginIndex >= pluginList.count()) {
+    return CommandResponse::makeError(id,
+                                      ErrorCode::InvalidParam,
+                                      QStringLiteral("Invalid pluginIndex: %1. Valid range: 0-%2")
+                                        .arg(pluginIndex)
+                                        .arg(pluginList.count() - 1));
+  }
+
+  canbus->setPluginIndex(static_cast<quint8>(pluginIndex));
+
+  QJsonObject result;
+  result[QStringLiteral("pluginIndex")] = pluginIndex;
+  result[QStringLiteral("pluginName")]  = pluginList.at(pluginIndex);
+  return CommandResponse::makeSuccess(id, result);
+}
+
+/**
+ * @brief Select CAN interface by index
+ */
+API::CommandResponse API::Handlers::CANBusHandler::setInterfaceIndex(const QString& id,
+                                                                     const QJsonObject& params)
+{
+  if (!params.contains(QStringLiteral("interfaceIndex"))) {
+    return CommandResponse::makeError(
+      id, ErrorCode::MissingParam, QStringLiteral("Missing required parameter: interfaceIndex"));
+  }
+
+  const int interfaceIndex       = params.value(QStringLiteral("interfaceIndex")).toInt();
+  static auto& connectionManager = IO::ConnectionManager::instance();
+  auto* canbus                   = connectionManager.canBus();
+  const auto& interfaceList      = canbus->interfaceList();
+
+  if (interfaceIndex < 0 || interfaceIndex >= interfaceList.count()) {
+    return CommandResponse::makeError(
+      id,
+      ErrorCode::InvalidParam,
+      QStringLiteral("Invalid interfaceIndex: %1. Valid range: 0-%2")
+        .arg(interfaceIndex)
+        .arg(interfaceList.count() - 1));
+  }
+
+  canbus->setInterfaceIndex(static_cast<quint8>(interfaceIndex));
+
+  QJsonObject result;
+  result[QStringLiteral("interfaceIndex")] = interfaceIndex;
+  result[QStringLiteral("interfaceName")]  = interfaceList.at(interfaceIndex);
+  return CommandResponse::makeSuccess(id, result);
+}
+
+/**
+ * @brief Set CAN bitrate
+ */
+API::CommandResponse API::Handlers::CANBusHandler::setBitrate(const QString& id,
+                                                              const QJsonObject& params)
+{
+  if (!params.contains(QStringLiteral("bitrate"))) {
+    return CommandResponse::makeError(
+      id, ErrorCode::MissingParam, QStringLiteral("Missing required parameter: bitrate"));
+  }
+
+  const int bitrate = params.value(QStringLiteral("bitrate")).toInt();
+
+  if (bitrate <= 0) {
+    return CommandResponse::makeError(
+      id, ErrorCode::InvalidParam, QStringLiteral("bitrate must be positive"));
+  }
+
+  static auto& connectionManager = IO::ConnectionManager::instance();
+  connectionManager.canBus()->setBitrate(static_cast<quint32>(bitrate));
+
+  QJsonObject result;
+  result[QStringLiteral("bitrate")] = bitrate;
+  return CommandResponse::makeSuccess(id, result);
+}
+
+/**
+ * @brief Enable or disable CAN FD
+ */
+API::CommandResponse API::Handlers::CANBusHandler::setCanFD(const QString& id,
+                                                            const QJsonObject& params)
+{
+  if (!params.contains(QStringLiteral("enabled"))) {
+    return CommandResponse::makeError(
+      id, ErrorCode::MissingParam, QStringLiteral("Missing required parameter: enabled"));
+  }
+
+  const bool enabled             = params.value(QStringLiteral("enabled")).toBool();
+  static auto& connectionManager = IO::ConnectionManager::instance();
+  connectionManager.canBus()->setCanFD(enabled);
+
+  QJsonObject result;
+  result[QStringLiteral("enabled")] = enabled;
+  return CommandResponse::makeSuccess(id, result);
+}
+
+/**
+ * @brief Set CAN FD data-phase bitrate
+ */
+API::CommandResponse API::Handlers::CANBusHandler::setDataBitrate(const QString& id,
+                                                                  const QJsonObject& params)
+{
+  if (!params.contains(QStringLiteral("dataBitrate"))) {
+    return CommandResponse::makeError(
+      id, ErrorCode::MissingParam, QStringLiteral("Missing required parameter: dataBitrate"));
+  }
+
+  const int dataBitrate = params.value(QStringLiteral("dataBitrate")).toInt();
+
+  if (dataBitrate <= 0) {
+    return CommandResponse::makeError(
+      id, ErrorCode::InvalidParam, QStringLiteral("dataBitrate must be positive"));
+  }
+
+  static auto& connectionManager = IO::ConnectionManager::instance();
+  connectionManager.canBus()->setDataBitrate(static_cast<quint32>(dataBitrate));
+
+  QJsonObject result;
+  result[QStringLiteral("dataBitrate")] = dataBitrate;
+  return CommandResponse::makeSuccess(id, result);
+}
+
+/**
+ * @brief Enable or disable loopback mode
+ */
+API::CommandResponse API::Handlers::CANBusHandler::setLoopback(const QString& id,
+                                                               const QJsonObject& params)
+{
+  if (!params.contains(QStringLiteral("enabled"))) {
+    return CommandResponse::makeError(
+      id, ErrorCode::MissingParam, QStringLiteral("Missing required parameter: enabled"));
+  }
+
+  const bool enabled             = params.value(QStringLiteral("enabled")).toBool();
+  static auto& connectionManager = IO::ConnectionManager::instance();
+  connectionManager.canBus()->setLoopback(enabled);
+
+  QJsonObject result;
+  result[QStringLiteral("enabled")] = enabled;
+  return CommandResponse::makeSuccess(id, result);
+}
+
+/**
+ * @brief Enable or disable listen-only mode
+ */
+API::CommandResponse API::Handlers::CANBusHandler::setListenOnly(const QString& id,
+                                                                 const QJsonObject& params)
+{
+  if (!params.contains(QStringLiteral("enabled"))) {
+    return CommandResponse::makeError(
+      id, ErrorCode::MissingParam, QStringLiteral("Missing required parameter: enabled"));
+  }
+
+  const bool enabled             = params.value(QStringLiteral("enabled")).toBool();
+  static auto& connectionManager = IO::ConnectionManager::instance();
+  connectionManager.canBus()->setListenOnly(enabled);
+
+  QJsonObject result;
+  result[QStringLiteral("enabled")] = enabled;
+  return CommandResponse::makeSuccess(id, result);
+}
+
+//--------------------------------------------------------------------------------------------------
+// Getters
+//--------------------------------------------------------------------------------------------------
+
+/**
+ * @brief Get current CAN bus configuration
+ */
+API::CommandResponse API::Handlers::CANBusHandler::getConfiguration(const QString& id,
+                                                                    const QJsonObject& params)
+{
+  Q_UNUSED(params)
+
+  static auto& connectionManager = IO::ConnectionManager::instance();
+  auto* canbus                   = connectionManager.canBus();
+
+  QJsonObject result;
+
+  result[QStringLiteral("pluginIndex")] = canbus->pluginIndex();
+  const auto& pluginList                = canbus->pluginList();
+  if (canbus->pluginIndex() < pluginList.count())
+    result[QStringLiteral("pluginName")] = pluginList.at(canbus->pluginIndex());
+
+  result[QStringLiteral("interfaceIndex")] = canbus->interfaceIndex();
+  const auto& interfaceList                = canbus->interfaceList();
+  if (canbus->interfaceIndex() < interfaceList.count())
+    result[QStringLiteral("interfaceName")] = interfaceList.at(canbus->interfaceIndex());
+
+  result[QStringLiteral("bitrate")]     = static_cast<qint64>(canbus->bitrate());
+  result[QStringLiteral("canFD")]       = canbus->canFD();
+  result[QStringLiteral("dataBitrate")] = static_cast<qint64>(canbus->dataBitrate());
+  result[QStringLiteral("loopback")]    = canbus->loopback();
+  result[QStringLiteral("listenOnly")]  = canbus->listenOnly();
+
+  result[QStringLiteral("isOpen")]          = canbus->isOpen();
+  result[QStringLiteral("configurationOk")] = canbus->configurationOk();
+
+  const QString interfaceError = canbus->interfaceError();
+  if (!interfaceError.isEmpty())
+    result[QStringLiteral("interfaceError")] = interfaceError;
+
+  return CommandResponse::makeSuccess(id, result);
+}
+
+/**
+ * @brief Get list of available CAN plugins
+ */
+API::CommandResponse API::Handlers::CANBusHandler::getPluginList(const QString& id,
+                                                                 const QJsonObject& params)
+{
+  Q_UNUSED(params)
+
+  static auto& connectionManager = IO::ConnectionManager::instance();
+  auto* canbus                   = connectionManager.canBus();
+  const auto& pluginList         = canbus->pluginList();
+
+  QJsonArray plugins;
+  for (int i = 0; i < pluginList.count(); ++i) {
+    QJsonObject plugin;
+    plugin[QStringLiteral("index")]       = i;
+    plugin[QStringLiteral("name")]        = pluginList.at(i);
+    plugin[QStringLiteral("displayName")] = canbus->pluginDisplayName(pluginList.at(i));
+    plugins.append(plugin);
+  }
+
+  QJsonObject result;
+  result[QStringLiteral("pluginList")]         = plugins;
+  result[QStringLiteral("currentPluginIndex")] = canbus->pluginIndex();
+  return CommandResponse::makeSuccess(id, result);
+}
+
+/**
+ * @brief Get list of available CAN interfaces
+ */
+API::CommandResponse API::Handlers::CANBusHandler::getInterfaceList(const QString& id,
+                                                                    const QJsonObject& params)
+{
+  Q_UNUSED(params)
+
+  static auto& connectionManager = IO::ConnectionManager::instance();
+  auto* canbus                   = connectionManager.canBus();
+  const auto& interfaceList      = canbus->interfaceList();
+
+  QJsonArray interfaces;
+  for (int i = 0; i < interfaceList.count(); ++i) {
+    QJsonObject interface_obj;
+    interface_obj[QStringLiteral("index")] = i;
+    interface_obj[QStringLiteral("name")]  = interfaceList.at(i);
+    interfaces.append(interface_obj);
+  }
+
+  QJsonObject result;
+  result[QStringLiteral("interfaceList")]         = interfaces;
+  result[QStringLiteral("currentInterfaceIndex")] = canbus->interfaceIndex();
+  return CommandResponse::makeSuccess(id, result);
+}
+
+/**
+ * @brief Get list of supported bitrates
+ */
+API::CommandResponse API::Handlers::CANBusHandler::getBitrateList(const QString& id,
+                                                                  const QJsonObject& params)
+{
+  Q_UNUSED(params)
+
+  static auto& connectionManager = IO::ConnectionManager::instance();
+  const auto& bitrateList        = connectionManager.canBus()->bitrateList();
+
+  QJsonArray bitrates;
+  for (const auto& rate : bitrateList)
+    bitrates.append(rate);
+
+  QJsonObject result;
+  result[QStringLiteral("bitrateList")] = bitrates;
+  result[QStringLiteral("currentBitrate")] =
+    static_cast<qint64>(connectionManager.canBus()->bitrate());
+  return CommandResponse::makeSuccess(id, result);
+}
+
+/**
+ * @brief Get interface error message if any
+ */
+API::CommandResponse API::Handlers::CANBusHandler::getInterfaceError(const QString& id,
+                                                                     const QJsonObject& params)
+{
+  Q_UNUSED(params)
+
+  static auto& connectionManager = IO::ConnectionManager::instance();
+  const QString error            = connectionManager.canBus()->interfaceError();
+
+  QJsonObject result;
+  result[QStringLiteral("hasError")] = !error.isEmpty();
+  result[QStringLiteral("error")]    = error;
+
+  return CommandResponse::makeSuccess(id, result);
+}

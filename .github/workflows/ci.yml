@@ -1,0 +1,3550 @@
+#
+# Serial Studio
+# https://serial-studio.com/
+#
+# Copyright (C) 2020–2025 Alex Spataru
+#
+# This file is dual-licensed:
+#
+# - Under the GNU GPLv3 (or later) for builds that exclude Pro modules.
+# - Under the Serial Studio Commercial License for builds that include
+#   any Pro functionality.
+#
+# You must comply with the terms of one of these licenses, depending
+# on your use case.
+#
+# For GPL terms, see <https://www.gnu.org/licenses/gpl-3.0.html>
+# For commercial terms, see LICENSES/LicenseRef-SerialStudio-Commercial.txt.
+#
+# SPDX-License-Identifier: GPL-3.0-or-later OR LicenseRef-SerialStudio-Commercial
+#
+
+#-------------------------------------------------------------------------------
+# Workflow configuration
+#-------------------------------------------------------------------------------
+
+name: CI
+
+on:
+  push:             
+    paths-ignore:     
+    - '**.md'        
+
+  pull_request:       
+    paths-ignore:   
+    - '**.md'         
+
+#-------------------------------------------------------------------------------
+# Workflow environment
+#-------------------------------------------------------------------------------
+
+env:
+
+  #
+  # Application information
+  #
+  VERSION: "4.0.3"
+  PUBLISHER: "Alex Spataru"
+  UNIXNAME: "serial-studio-pro"
+  EXECUTABLE: "Serial-Studio-Pro"
+  APPLICATION: "Serial Studio Pro"
+  DESCRIPTION: "Multi-purpose serial data visualization & processing program"
+
+  #
+  # Microsoft Store (MSIX) package identity
+  #
+  MSIX_IDENTITY_NAME: "AlexSpataru.SerialStudioPro"
+  MSIX_PUBLISHER: "CN=05B4181B-4085-4067-8FAF-BD59DCB9A376"
+  MSIX_PUBLISHER_DISPLAY: "Alex Spataru"
+
+  #
+  # QML location (for windeployqt/macdeployqt)
+  #
+  QML_DIR: "../../app/qml"
+
+  #
+  # Qt version selection
+  #
+  QT_VERSION_LINUX: 6.11.2
+  QT_VERSION_MACOS: 6.11.2
+  QT_VERSION_WINDOWS: 6.11.2
+  QTFRAMEWORK_BYPASS_LICENSE_CHECK: "true"
+
+  #
+  # gRPC selection
+  #
+  GRPC_VERSION: 1.78.1
+  GRPC_REPO: alex-spataru/gRPC-Builds
+
+  #
+  # Unity build batch size (sources per unity TU). Single source of truth for
+  # every configure site: both PGO stages must see the identical value or the
+  # unity TU layout diverges and profile data is silently dropped.
+  #
+  SS_UNITY_BATCH: 32
+
+  #
+  # Test gating: tagged releases always block on the live pytest suite; this
+  # flag only controls whether continuous (untagged) builds block as well.
+  #
+  REQUIRE_TESTS_TO_PUBLISH: false
+  
+  #
+  # Excluded AppImage libraries
+  #
+  LINUXDEPLOY_EXCLUDED_LIBRARIES: "libmysqlclient.so*;libqsqlmimer.so;libqsqlmysql.so;libqsqlodbc.so;libqsqlpsql.so;libqsqloci.so;libqsqldb2.so;libqsqlibase.so"
+
+
+#-------------------------------------------------------------------------------
+# Workflow jobs
+#-------------------------------------------------------------------------------
+
+jobs:
+
+#-------------------------------------------------------------------------------
+# GNU/Linux build (x86_64)
+#-------------------------------------------------------------------------------
+
+  build-linux:
+    runs-on: ubuntu-24.04
+    name: '🐧 Linux Build (x86_64)'
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+    #
+    # This repo has no submodules; 'submodules: recursive' is a no-op kept for future deps.
+    #
+    - name: '🧰 Checkout'
+      uses: actions/checkout@v5
+      with:
+        submodules: 'recursive'
+
+    #
+    # apt payload for a Qt 6 desktop build: the xcb/xkb platform stack, GStreamer for
+    # QtMultimedia, and the packaging tools (rpm, fakeroot, python3-venv) linuxdeploy shells out to
+    #
+    - name: '⚙️ Install dependencies'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          build-essential \
+          ninja-build \
+          fakeroot \
+          libcups2-dev \
+          libnss3 \
+          libegl1 \
+          libfuse2 \
+          libgl1-mesa-dev \
+          libasound2-dev \
+          libudev-dev \
+          libsecret-1-dev \
+          libzstd-dev \
+          zlib1g-dev \
+          libexpat1-dev \
+          libminizip-dev \
+          libopus-dev \
+          rpm \
+          python3-venv \
+          libxcb1 \
+          libxcb-cursor0 \
+          libxcb-cursor-dev \
+          libxcb-glx0 \
+          libxcb-icccm4 \
+          libxcb-image0 \
+          libxcb-image0-dev \
+          libxcb-keysyms1 \
+          libxcb-randr0 \
+          libxcb-render0 \
+          libxcb-render-util0 \
+          libxcb-shape0 \
+          libxcb-shm0 \
+          libxcb-sync1 \
+          libxcb-util0-dev \
+          libxcb-util1 \
+          libxcb-xfixes0 \
+          libxcb-xinerama0 \
+          libxcb-xkb-dev \
+          libxcb-xtest0 \
+          libxkbcommon-dev \
+          libxkbcommon-x11-0 \
+          libxkbcommon-x11-dev \
+          libpulse-dev \
+          libpipewire-0.3-0 \
+          libgstreamer1.0-0 \
+          libgstreamer-plugins-base1.0-0 \
+          libgstreamer-plugins-bad1.0-0 \
+          libgstreamer-plugins-good1.0-0 \
+          libgstreamer-gl1.0-0 \
+          gstreamer1.0-plugins-base \
+          gstreamer1.0-plugins-good \
+          gstreamer1.0-plugins-bad \
+          gstreamer1.0-plugins-ugly \
+          gstreamer1.0-libav \
+          gstreamer1.0-tools \
+          gstreamer1.0-x \
+          gstreamer1.0-alsa \
+          gstreamer1.0-pulseaudio \
+          gstreamer1.0-gl \
+          
+    #
+    # gRPC arrives as a prebuilt tarball from GRPC_REPO; building it from source would cost more
+    # than the rest of the job put together
+    #
+    - name: '⚙️ Download prebuilt gRPC'
+      run: |
+        gh release download v${{env.GRPC_VERSION}} \
+          -R ${{env.GRPC_REPO}} \
+          -p "grpc-${{env.GRPC_VERSION}}-linux-x86_64.tar.gz"
+        mkdir -p ${{github.workspace}}/grpc-prefix
+        tar -xzf grpc-${{env.GRPC_VERSION}}-linux-x86_64.tar.gz -C ${{github.workspace}}/grpc-prefix
+      env:
+        GH_TOKEN: ${{secrets.GITHUB_TOKEN}}
+
+    #
+    # Restore-only half of the cache pair; the save step below is gated on a miss so a hit never
+    # rewrites the entry
+    #
+    - name: '⚙️ Restore Qt Cache'
+      id: qt_cache
+      uses: actions/cache/restore@v5
+      with:
+        path: |
+          ${{github.workspace}}/Qt-${{env.QT_VERSION_LINUX}}-${{runner.os}}-x64
+          ${{env.USERPROFILE}}/.qt-license
+        key: qt-${{runner.os}}-${{env.QT_VERSION_LINUX}}-x64
+
+    #
+    # Qt comes from the online installer driven by scripts/install-qt.sh, using the account
+    # secrets; only reached when the cache missed
+    #
+    - name: '⚙️ Install Qt (cache miss)'
+      shell: bash
+      if: steps.qt_cache.outputs.cache-hit != 'true'
+      env:
+        QT_VERSION: ${{env.QT_VERSION_LINUX}}
+        QT_ARCH: x64
+        QT_USERNAME: ${{secrets.QT_USERNAME}}
+        QT_PASSWORD: ${{secrets.QT_PASSWORD}}
+        QT_OUTPUT_DIR: ${{github.workspace}}/Qt-${{env.QT_VERSION_LINUX}}-${{runner.os}}-x64
+      run: |
+        chmod +x ./scripts/install-qt.sh
+        ./scripts/install-qt.sh
+
+    #
+    # Writes the entry the restore step looks for, keyed by OS + Qt version + arch
+    #
+    - name: '⚙️ Save Qt Cache'
+      if: steps.qt_cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v5
+      with:
+        path: |
+          ${{github.workspace}}/Qt-${{env.QT_VERSION_LINUX}}-${{runner.os}}-x64
+          ${{env.USERPROFILE}}/.qt-license
+        key: qt-${{runner.os}}-${{env.QT_VERSION_LINUX}}-x64
+
+    #
+    # Publishes bin/, libexec/ and CMAKE_PREFIX_PATH through GITHUB_PATH / GITHUB_ENV so every
+    # later step in the job sees the same Qt
+    #
+    - name: '⚙️ Add Qt to PATH'
+      shell: bash
+      env:
+        QT_VERSION: ${{env.QT_VERSION_LINUX}}
+        QT_OUTPUT_DIR: ${{github.workspace}}/Qt-${{env.QT_VERSION_LINUX}}-${{runner.os}}-x64
+      run: |
+        export QT_BIN_PATH="${QT_OUTPUT_DIR}/${QT_VERSION}/gcc_64/bin"
+        export QT_LIBEXEC_PATH="${QT_OUTPUT_DIR}/${QT_VERSION}/gcc_64/libexec"
+        export CMAKE_PREFIX_PATH="${QT_OUTPUT_DIR}/${QT_VERSION}/gcc_64/lib/cmake"
+
+        echo "$QT_BIN_PATH" >> $GITHUB_PATH
+        echo "$QT_LIBEXEC_PATH" >> $GITHUB_PATH
+        echo "CMAKE_PREFIX_PATH=$CMAKE_PREFIX_PATH" >> $GITHUB_ENV
+
+    #
+    # get-cmake supplies a current CMake independently of whatever the runner image ships
+    #
+    - name: '⚙️ Install CMake'
+      uses: lukka/get-cmake@latest
+      with:
+        useLocalCache: true
+
+    #
+    # Unit tests live inside the build job so the Qt cache has one consumer per arch;
+    # a parallel unit job racing this restore could get denied or evict the entry
+    #
+    - name: '🚧 Configure unit-test tier'
+      run: |
+        cmake -G Ninja -B build/unit-ci \
+          -DCMAKE_BUILD_TYPE=Debug \
+          -DSS_BUILD_TESTS=ON \
+          -DBUILD_GPL3=ON \
+          -DENABLE_GRPC=OFF \
+          -DWITH_WEBENGINE=OFF \
+          -DSS_USE_MIMALLOC=OFF \
+          -DUSE_SYSTEM_ZLIB=ON \
+          -DUSE_SYSTEM_EXPAT=ON
+
+    #
+    # Lean Debug tier: GPL build, no gRPC, no WebEngine, no mimalloc, system zlib and expat;
+    # the application target never builds here
+    #
+    - name: '🚧 Build unit-test tier'
+      run: cmake --build build/unit-ci --target ss_unit_tests
+
+    #
+    # Runs on both arches: DSPSimd.h picks its SIMD lane from the target architecture
+    #
+    - name: '🧪 Run ctest'
+      env:
+        QT_QPA_PLATFORM: offscreen
+      run: ctest --test-dir build/unit-ci --output-on-failure
+
+    #
+    # Stage 1 of the two-stage PGO flow: an instrumented Release build whose only job is to emit
+    # profiles for the training runs below
+    #
+    - name: '🚧 Configure with CMake (PGO generate)'
+      env:
+        ARCGIS_API_KEY: ${{secrets.ARCGIS_API_KEY}}
+        SERIAL_STUDIO_LICENSE_KEY: ${{secrets.SERIAL_STUDIO_LICENSE_KEY}}
+        SERIAL_STUDIO_INSTANCE_ID: ${{secrets.SERIAL_STUDIO_INSTANCE_ID}}
+      run: |
+        cmake -B build -G Ninja \
+          -DPRODUCTION_OPTIMIZATION=ON \
+          -DENABLE_HARDENING=ON \
+          -DENABLE_GRPC=ON \
+          -DENABLE_PGO=ON \
+          -DPGO_STAGE=GENERATE \
+          -DSS_UNITY_BUILD=ON \
+          -DSS_UNITY_BATCH_SIZE=${{ env.SS_UNITY_BATCH }} \
+          -DUSE_SYSTEM_ZLIB=ON \
+          -DUSE_SYSTEM_EXPAT=ON \
+          -DSS_INAPP_TESTS=ON \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DCMAKE_PREFIX_PATH="${{github.workspace}}/grpc-prefix;${CMAKE_PREFIX_PATH}" \
+          -DBUILD_COMMERCIAL=ON \
+          -DBUILD_GPL3=OFF
+
+    #
+    # Builds the instrumented binary the two training runs profile
+    #
+    - name: '🚧 Build application (instrumented)'
+      run: cmake --build build --config Release
+
+    #
+    # Pro widgets are license-gated, so an unactivated training run profiles the wrong code;
+    # failure is tolerated because an unlicensed profile still beats no profile
+    #
+    - name: '🔑 Activate Serial Studio license (Pro hotpath training)'
+      env:
+        QT_QPA_PLATFORM: offscreen
+        LD_LIBRARY_PATH: >-
+          ${{github.workspace}}/Qt-${{env.QT_VERSION_LINUX}}-${{runner.os}}-x64/${{env.QT_VERSION_LINUX}}/gcc_64/lib
+      run: |
+        ./build/app/${{env.UNIXNAME}} --activate "${{secrets.SERIAL_STUDIO_LICENSE_KEY}}" || true
+
+    #
+    # --min-fps 1 turns the benchmark into a profile generator: the real gate runs later, against
+    # the optimized binary
+    #
+    - name: '🏋️ PGO training run (hotpath)'
+      env:
+        QT_QPA_PLATFORM: offscreen
+        LD_LIBRARY_PATH: >-
+          ${{github.workspace}}/Qt-${{env.QT_VERSION_LINUX}}-${{runner.os}}-x64/${{env.QT_VERSION_LINUX}}/gcc_64/lib
+      run: |
+        ./build/app/${{env.UNIXNAME}} --headless --benchmark-hotpath --min-fps 1
+
+    #
+    # Second profile: the big_db_test load exercises the project and dashboard paths that the
+    # hotpath benchmark never reaches
+    #
+    - name: '🏋️ PGO training run (big project)'
+      env:
+        QT_QPA_PLATFORM: offscreen
+        LD_LIBRARY_PATH: >-
+          ${{github.workspace}}/Qt-${{env.QT_VERSION_LINUX}}-${{runner.os}}-x64/${{env.QT_VERSION_LINUX}}/gcc_64/lib
+      run: |
+        bash tests/benchmarks/big_db_test/run_load.sh "./build/app/${{env.UNIXNAME}}" 25
+
+    #
+    # Stage 2: identical flags with PGO_STAGE=USE so the compiler consumes the profiles just
+    # written
+    #
+    - name: '🚧 Reconfigure with CMake (PGO use)'
+      env:
+        ARCGIS_API_KEY: ${{secrets.ARCGIS_API_KEY}}
+        SERIAL_STUDIO_LICENSE_KEY: ${{secrets.SERIAL_STUDIO_LICENSE_KEY}}
+        SERIAL_STUDIO_INSTANCE_ID: ${{secrets.SERIAL_STUDIO_INSTANCE_ID}}
+      run: |
+        cmake -B build -G Ninja \
+          -DPRODUCTION_OPTIMIZATION=ON \
+          -DENABLE_HARDENING=ON \
+          -DENABLE_GRPC=ON \
+          -DENABLE_PGO=ON \
+          -DPGO_STAGE=USE \
+          -DSS_UNITY_BUILD=ON \
+          -DSS_UNITY_BATCH_SIZE=${{ env.SS_UNITY_BATCH }} \
+          -DUSE_SYSTEM_ZLIB=ON \
+          -DUSE_SYSTEM_EXPAT=ON \
+          -DSS_INAPP_TESTS=ON \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DCMAKE_PREFIX_PATH="${{github.workspace}}/grpc-prefix;${CMAKE_PREFIX_PATH}" \
+          -DBUILD_COMMERCIAL=ON \
+          -DBUILD_GPL3=OFF
+
+    #
+    # The binary that ships, and the one every gate below measures
+    #
+    - name: '🚧 Build application (PGO optimized)'
+      run: cmake --build build --config Release
+
+    #
+    # The CI throughput gate: nine tiers scaled off --min-fps, hard failure on any of them
+    #
+    - name: '🚦 Hotpath throughput gate (256 kHz)'
+      env:
+        QT_QPA_PLATFORM: offscreen
+        LD_LIBRARY_PATH: >-
+          ${{github.workspace}}/Qt-${{env.QT_VERSION_LINUX}}-${{runner.os}}-x64/${{env.QT_VERSION_LINUX}}/gcc_64/lib
+      run: |
+        ./build/app/${{env.UNIXNAME}} --headless --benchmark-hotpath --min-fps 256000
+
+    #
+    # Replays the big_db_test load against the optimized binary; catches the teardown crashes the
+    # throughput benchmark never sees
+    #
+    - name: '🩺 Big project verification (optimized)'
+      env:
+        QT_QPA_PLATFORM: offscreen
+        LD_LIBRARY_PATH: >-
+          ${{github.workspace}}/Qt-${{env.QT_VERSION_LINUX}}-${{runner.os}}-x64/${{env.QT_VERSION_LINUX}}/gcc_64/lib
+      run: |
+        bash tests/benchmarks/big_db_test/run_load.sh "./build/app/${{env.UNIXNAME}}" 15
+
+    #
+    # always(): activations are seat-limited, so a failed job still has to release the seat
+    #
+    - name: '🔑 Deactivate Serial Studio license'
+      if: always()
+      env:
+        QT_QPA_PLATFORM: offscreen
+        LD_LIBRARY_PATH: >-
+          ${{github.workspace}}/Qt-${{env.QT_VERSION_LINUX}}-${{runner.os}}-x64/${{env.QT_VERSION_LINUX}}/gcc_64/lib
+      run: |
+        ./build/app/${{env.UNIXNAME}} --deactivate || true
+
+    #
+    # Signing is opt-in on the secrets being present; without them the step exits clean and the
+    # packages ship unsigned
+    #
+    - name: '🔐 Prepare GPG signing (optional)'
+      env:
+        GPG_PRIVATE_KEY: ${{secrets.GPG_PRIVATE_KEY}}
+        GPG_PASSPHRASE: ${{secrets.GPG_PASSPHRASE}}
+        GPG_KEY_ID: ${{secrets.GPG_KEY_ID}}
+      run: |
+        set -euo pipefail
+        if [ -z "${GPG_KEY_ID:-}" ] || [ -z "${GPG_PRIVATE_KEY:-}" ]; then
+          echo "GPG signing secrets not set; packages will be unsigned."
+          exit 0
+        fi
+        mkdir -p ~/.gnupg && chmod 700 ~/.gnupg
+        echo "allow-preset-passphrase" >> ~/.gnupg/gpg-agent.conf
+        printf '%s\n' "$GPG_PRIVATE_KEY" | gpg --batch --import
+        gpg-connect-agent reloadagent /bye
+        if [ -n "${GPG_PASSPHRASE:-}" ]; then
+          for grip in $(gpg --batch --with-colons --with-keygrip \
+              --list-secret-keys "$GPG_KEY_ID" | awk -F: '$1=="grp"{print $10}'); do
+            printf '%s' "$GPG_PASSPHRASE" | \
+              /usr/lib/gnupg/gpg-preset-passphrase --preset "$grip"
+          done
+        fi
+        PASSFILE="$RUNNER_TEMP/gpg-pass"
+        touch "$PASSFILE" && chmod 600 "$PASSFILE"
+        printf '%s' "${GPG_PASSPHRASE:-}" > "$PASSFILE"
+        printf '%%_signature gpg\n' > ~/.rpmmacros
+        printf '%%_gpg_name %s\n' "$GPG_KEY_ID" >> ~/.rpmmacros
+        printf '%%_gpg_sign_cmd_extra_args --batch --pinentry-mode loopback --passphrase-file %s\n' \
+          "$PASSFILE" >> ~/.rpmmacros
+        echo "SS_GPG_SIGN=1" >> "$GITHUB_ENV"
+
+    #
+    # linuxdeploy plus its Qt plugin build the AppDir; the SQL drivers and the TIFF reader are
+    # pruned first so the image carries only what the app loads. linuxdeploy-plugin-qt deploys
+    # ONLY libqxcb by default, so the wayland platform plugin is requested explicitly via
+    # EXTRA_PLATFORM_PLUGINS (a single libqwayland.so since Qt 6.10 merged the generic/egl
+    # pair and moved the client into qtbase) and its shell/decoration/graphics integration
+    # plugin dirs are copied by hand — without them Plasma/GNOME wayland sessions are forced
+    # through XWayland+GLX. Two more things the tool cannot bundle by itself are added afterwards: the
+    # offscreen platform plugin (the integration tests run headless), and Qt WebEngine's NSS
+    # crypto backends, which NSS dlopen()s (softokn/freebl/nssckbi) so an ldd-based bundler
+    # never sees them and leaves a half-bundled NSS that crashes against the host's newer
+    # copies. No AppImage is packed here: the compat conversion below produces the only Linux
+    # AppImage shipped, so this AppDir is purely the input tree for the deb/rpm/compat steps
+    #
+    - name: '📦 Create AppDir'
+      run: |
+        cd "build/app"
+        wget https://github.com/linuxdeploy/linuxdeploy/releases/download/1-alpha-20240109-1/linuxdeploy-x86_64.AppImage
+        wget https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/1-alpha-20250213-1/linuxdeploy-plugin-qt-x86_64.AppImage
+        chmod +x linuxdeploy-x86_64.AppImage
+        chmod +x linuxdeploy-plugin-qt-x86_64.AppImage
+
+        export QML_SOURCES_PATHS="${{env.QML_DIR}}"
+        export EXTRA_PLATFORM_PLUGINS="libqwayland.so"
+
+        QT_PLUGINS_PATH="${{github.workspace}}/Qt-${{env.QT_VERSION_LINUX}}-${{runner.os}}-x64/${{env.QT_VERSION_LINUX}}/gcc_64/plugins"
+        rm -f "$QT_PLUGINS_PATH/imageformats/libqtiff.so"
+        find "$QT_PLUGINS_PATH/sqldrivers" -name 'libqsql*.so' ! -name 'libqsqlite.so' -delete
+
+        ./linuxdeploy-x86_64.AppImage --appdir AppDir -e ${{env.UNIXNAME}} -i ../../app/deploy/linux/${{env.UNIXNAME}}.svg -d ../../app/deploy/linux/${{env.UNIXNAME}}.desktop --plugin qt
+        mkdir -p AppDir/usr/plugins/canbus
+        if [ -d "$QT_PLUGINS_PATH/canbus" ]; then
+          cp -r "$QT_PLUGINS_PATH/canbus/"* AppDir/usr/plugins/canbus/ || echo "Warning: Could not copy canbus plugins"
+        else
+          echo "Warning: Qt canbus plugins not found at $QT_PLUGINS_PATH/canbus"
+        fi
+
+        mkdir -p AppDir/usr/plugins/opcua
+        if [ -d "$QT_PLUGINS_PATH/opcua" ]; then
+          cp -r "$QT_PLUGINS_PATH/opcua/"* AppDir/usr/plugins/opcua/ || echo "Warning: Could not copy opcua plugins"
+        else
+          echo "Warning: Qt opcua plugins not found at $QT_PLUGINS_PATH/opcua"
+        fi
+
+        for d in wayland-decoration-client wayland-graphics-integration-client wayland-shell-integration; do
+          if [ -d "$QT_PLUGINS_PATH/$d" ]; then
+            mkdir -p "AppDir/usr/plugins/$d"
+            cp -r "$QT_PLUGINS_PATH/$d/"* "AppDir/usr/plugins/$d/"
+          fi
+        done
+        if [ ! -f AppDir/usr/plugins/platforms/libqwayland.so ]; then
+          echo "::error::wayland platform plugin missing from AppDir"
+          exit 1
+        fi
+
+        mkdir -p AppDir/usr/plugins/platforms
+        if [ -f "$QT_PLUGINS_PATH/platforms/libqoffscreen.so" ]; then
+          cp "$QT_PLUGINS_PATH/platforms/libqoffscreen.so" AppDir/usr/plugins/platforms/
+        else
+          echo "Warning: offscreen platform plugin not found at $QT_PLUGINS_PATH/platforms"
+        fi
+
+        have_softokn=0
+        for d in /usr/lib/*/nss /usr/lib/*-linux-gnu /usr/lib64; do
+          [ -d "$d" ] || continue
+          for m in libsoftokn3 libfreebl3 libfreeblpriv3 libnssckbi libnssdbm3; do
+            if [ -f "$d/$m.so" ]; then
+              cp -a "$d/$m.so" AppDir/usr/lib/
+              [ "$m" = libsoftokn3 ] && have_softokn=1
+            fi
+          done
+        done
+        if [ "$have_softokn" = 0 ]; then
+          echo "::error::libsoftokn3.so not found; NSS bundle incomplete (WebEngine will crash)"
+          exit 1
+        fi
+
+        rm linuxdeploy-x86_64.AppImage
+        rm linuxdeploy-plugin-qt-x86_64.AppImage
+
+    #
+    # Spec 0065: the glibc-bundled conversion is the ONLY Linux packaging path — every Linux
+    # artifact ships the build host's glibc as a matched set behind an in-process loader
+    # redirect, so one package set runs on everything from Debian 10 / RHEL 8 up. A COPY of
+    # the AppDir is converted with sharun/lib4bin: sharun hands library dirs to the bundled
+    # ld-linux via --library-path instead of exporting LD_LIBRARY_PATH, so QProcess children
+    # keep a clean host environment. The full library closure (executables plus every
+    # dlopened plugin/QML module) is consolidated into usr/shared/lib because moving the
+    # executables breaks their $ORIGIN-relative RUNPATH; usr/lib is dropped only after a
+    # coverage check proves every library it held is present there.
+    #
+    - name: '📦 Create AppImage (glibc-bundled)'
+      env:
+        GPG_KEY_ID: ${{secrets.GPG_KEY_ID}}
+      run: |
+        set -euo pipefail
+        cd build/app
+
+        SHARUN_VERSION=v0.8.1
+        SHARUN_SHA256=f35d4f59f2e0b1a5ec12ef126d78197fd4fd14c6f99b4b16dee6a5ddad6baa93
+        APPIMAGETOOL_VERSION=1.9.1
+        APPIMAGETOOL_SHA256=ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0
+
+        wget -q "https://github.com/VHSgunzo/sharun/releases/download/${SHARUN_VERSION}/sharun-x86_64-aio" -O sharun-aio
+        echo "${SHARUN_SHA256}  sharun-aio" | sha256sum -c -
+        chmod +x sharun-aio
+        wget -q "https://github.com/AppImage/appimagetool/releases/download/${APPIMAGETOOL_VERSION}/appimagetool-x86_64.AppImage" -O appimagetool
+        echo "${APPIMAGETOOL_SHA256}  appimagetool" | sha256sum -c -
+        chmod +x appimagetool
+
+        cp -a AppDir AppDir-compat
+        printf '{"packageType":"appimage","arch":"x86_64"}\n' > AppDir-compat/usr/bin/ss-config.json
+
+        BIN_SRC=$(mktemp -d)
+        mv "AppDir-compat/usr/bin/${{env.UNIXNAME}}" "$BIN_SRC/"
+        WEBPROC_DIR=""
+        WEBPROC=$(find AppDir-compat/usr -type f -name QtWebEngineProcess | head -n1 || true)
+        if [ -n "$WEBPROC" ]; then
+          WEBPROC_DIR=$(dirname "$WEBPROC")
+          mv "$WEBPROC" "$BIN_SRC/"
+        fi
+
+        # usr/lib rides along as explicit input: libraries that are only dlopened (NSS's
+        # libsoftokn3 and friends) are reachable from no executable or plugin, so ldd-driven
+        # dependency walking alone would drop them and their private deps (libsqlite3).
+        DLOPEN_LIBS=$(find AppDir-compat/usr/plugins AppDir-compat/usr/qml AppDir-compat/usr/lib \
+          -type f -name '*.so*' 2>/dev/null || true)
+
+        # Pre-create shared/lib as a real directory: when it is absent and usr/lib exists,
+        # lib4bin symlinks shared/lib -> ../lib, so the whole closure lands in usr/lib and
+        # the coverage checks below then delete the only copy.
+        mkdir -p AppDir-compat/usr/shared/lib
+
+        # lib4bin resolves dependencies with ldd and silently drops unresolved ones; the
+        # executables were moved out of the AppDir, which breaks their $ORIGIN RUNPATH, so
+        # the libraries only they need (Widgets, Bluetooth, Mqtt, mimalloc, ...) vanish from
+        # the closure unless the AppDir library dir is on LD_LIBRARY_PATH for the conversion.
+        # Qt's openssl TLS backend dlopens libssl at runtime (no NEEDED entry), so the ldd
+        # walk never sees it; on OpenSSL 1.1 hosts (Debian 10) the backend then rejects the
+        # host library and every HTTPS request fails. Bundle the build host's OpenSSL 3 pair
+        # explicitly; it is safe because the compat bundle carries the matching glibc.
+        TLS_LIBS=$(find /usr/lib/x86_64-linux-gnu /usr/lib/aarch64-linux-gnu /usr/lib64 \
+          -maxdepth 1 \( -name 'libssl.so.3*' -o -name 'libcrypto.so.3*' \) 2>/dev/null || true)
+        if [ -z "$TLS_LIBS" ]; then
+          echo "::error::libssl.so.3/libcrypto.so.3 not found on build host"
+          exit 1
+        fi
+
+        # The closure carries GLVND's dispatch libs (libGLX/libEGL/libOpenGL) but those
+        # resolve the actual vendor driver by dlopen, and sharun's loader never searches the
+        # host's /usr/lib — with no bundled vendor the GLX/EGL vendor list is empty and Qt
+        # aborts with "Could not initialize GLX" on every desktop host (offscreen smoke runs
+        # never see it). Bundle Mesa's vendor libs and DRI drivers explicitly (dlopen-only:
+        # the ldd walk cannot find them); sharun auto-sets LIBGL_DRIVERS_PATH,
+        # __EGL_VENDOR_LIBRARY_DIRS and GBM_BACKENDS_PATH when the bundled dirs exist.
+        # NVIDIA-driver hosts fall back to bundled Mesa instead of aborting.
+        sudo apt-get install -y -q libgl1-mesa-dri libglx-mesa0 libegl-mesa0 >/dev/null
+        GL_VENDOR_LIBS=$(find /usr/lib/x86_64-linux-gnu /usr/lib/aarch64-linux-gnu /usr/lib64 \
+          -maxdepth 1 \( -name 'libGLX_mesa.so*' -o -name 'libEGL_mesa.so*' \
+          -o -name 'libglapi.so*' -o -name 'libgallium*.so*' -o -name 'libgbm.so*' \) \
+          2>/dev/null || true)
+        if [ -z "$GL_VENDOR_LIBS" ]; then
+          echo "::error::Mesa GLX/EGL vendor libraries not found on build host"
+          exit 1
+        fi
+        DRI_DIR=$(find /usr/lib/x86_64-linux-gnu /usr/lib/aarch64-linux-gnu /usr/lib64 \
+          -maxdepth 1 -type d -name dri 2>/dev/null | head -n1 || true)
+        if [ -z "$DRI_DIR" ] || ! ls "$DRI_DIR"/*.so >/dev/null 2>&1; then
+          echo "::error::Mesa DRI driver directory not found on build host"
+          exit 1
+        fi
+        GBM_DIR=$(find /usr/lib/x86_64-linux-gnu /usr/lib/aarch64-linux-gnu /usr/lib64 \
+          -maxdepth 1 -type d -name gbm 2>/dev/null | head -n1 || true)
+        GBM_LIBS=""
+        [ -n "$GBM_DIR" ] && GBM_LIBS=$(ls "$GBM_DIR"/*.so 2>/dev/null || true)
+
+        # The bundled libasound carries the build host's plugin dir baked in
+        # (/usr/lib/<triplet>/alsa-lib), which does not exist on RHEL-family hosts; their
+        # alsa.conf routes the default PCM through "pulse", so every device probe logs a
+        # missing libasound_module_pcm_pulse.so and falls back to raw hw. Bundle the pulse
+        # plugins and point ALSA_PLUGIN_DIR at them through sharun's .env (PipeWire hosts
+        # reach them via pipewire-pulse).
+        sudo apt-get install -y -q libasound2-plugins >/dev/null
+        ALSA_PLUGIN_SRC=$(find /usr/lib/x86_64-linux-gnu /usr/lib/aarch64-linux-gnu /usr/lib64 \
+          -maxdepth 1 -type d -name alsa-lib 2>/dev/null | head -n1 || true)
+        ALSA_PLUGINS=""
+        [ -n "$ALSA_PLUGIN_SRC" ] && ALSA_PLUGINS=$(ls "$ALSA_PLUGIN_SRC"/libasound_module_*_pulse.so \
+          2>/dev/null || true)
+        if [ -z "$ALSA_PLUGINS" ]; then
+          echo "::error::ALSA pulse plugins not found on build host"
+          exit 1
+        fi
+
+        LD_LIBRARY_PATH="$PWD/AppDir-compat/usr/lib" \
+          ./sharun-aio lib4bin --dst-dir AppDir-compat/usr --with-sharun --hard-links --with-hooks \
+          "$BIN_SRC"/* $DLOPEN_LIBS $TLS_LIBS $GL_VENDOR_LIBS "$DRI_DIR"/*.so $GBM_LIBS \
+          $ALSA_PLUGINS
+
+        mkdir -p AppDir-compat/usr/shared/lib/alsa-lib
+        for f in $ALSA_PLUGINS; do
+          b=$(basename "$f")
+          dst="AppDir-compat/usr/shared/lib/alsa-lib/$b"
+          if [ ! -e "$dst" ]; then
+            src="AppDir-compat/usr/shared/lib/$b"
+            [ -f "$src" ] && ln -f "$src" "$dst"
+          fi
+          if [ ! -e "$dst" ]; then
+            echo "::error::ALSA plugin $b missing from compat closure"
+            exit 1
+          fi
+        done
+        if ! grep -q '^ALSA_PLUGIN_DIR=' AppDir-compat/usr/.env 2>/dev/null; then
+          echo 'ALSA_PLUGIN_DIR=${SHARUN_DIR}/shared/lib/alsa-lib' >> AppDir-compat/usr/.env
+        fi
+
+        if ! find AppDir-compat/usr/shared/lib -name 'libssl.so.3*' | grep -q .; then
+          echo "::error::libssl.so.3 missing from compat bundle; TLS would fail on legacy hosts"
+          exit 1
+        fi
+
+        if [ -L AppDir-compat/usr/shared/lib ]; then
+          echo "::error::usr/shared/lib is a symlink into usr/lib; compat conversion unsafe"
+          exit 1
+        fi
+
+        # Verify (and backfill) the vendor discovery layout sharun keys on: DRI drivers
+        # under shared/lib/dri, GBM backends under shared/lib/gbm, and the GLVND EGL
+        # vendor JSON under usr/share/glvnd with its library_path reduced to a bare
+        # soname so it resolves inside the bundle. lib4bin keys destinations off the
+        # SOURCE dir, so Mesa 25's symlinked per-driver names already land in
+        # shared/lib/dri pointing at the flattened dril/gallium megadriver — the loops
+        # only create the per-name link when lib4bin left the driver flattened in the
+        # closure root (pre-DRIL Mesa), and fail on names resolvable in neither spot.
+        mkdir -p AppDir-compat/usr/shared/lib/dri
+        for f in "$DRI_DIR"/*.so; do
+          b=$(basename "$f")
+          dst="AppDir-compat/usr/shared/lib/dri/$b"
+          if [ ! -e "$dst" ]; then
+            src="AppDir-compat/usr/shared/lib/$b"
+            [ -f "$src" ] || src="AppDir-compat/usr/shared/lib/$(basename "$(readlink -f "$f")")"
+            [ -f "$src" ] && ln -f "$src" "$dst"
+          fi
+          if [ ! -e "$dst" ]; then
+            echo "::error::DRI driver $b missing from compat closure"
+            exit 1
+          fi
+        done
+        if [ -n "$GBM_LIBS" ]; then
+          mkdir -p AppDir-compat/usr/shared/lib/gbm
+          for f in $GBM_LIBS; do
+            b=$(basename "$f")
+            dst="AppDir-compat/usr/shared/lib/gbm/$b"
+            [ -e "$dst" ] && continue
+            src="AppDir-compat/usr/shared/lib/$b"
+            [ -f "$src" ] || src="AppDir-compat/usr/shared/lib/$(basename "$(readlink -f "$f")")"
+            [ -f "$src" ] && ln -f "$src" "$dst"
+          done
+        fi
+        if [ ! -d /usr/share/glvnd/egl_vendor.d ]; then
+          echo "::error::/usr/share/glvnd/egl_vendor.d not found on build host"
+          exit 1
+        fi
+        mkdir -p AppDir-compat/usr/share/glvnd
+        cp -a /usr/share/glvnd/egl_vendor.d AppDir-compat/usr/share/glvnd/
+        sed -i -e 's|/usr/lib.*/||g' AppDir-compat/usr/share/glvnd/egl_vendor.d/*.json
+        grep -rq 'libEGL_mesa' AppDir-compat/usr/share/glvnd/egl_vendor.d
+        for probe in libGLX_mesa.so.0 libEGL_mesa.so.0; do
+          if ! find AppDir-compat/usr/shared/lib -maxdepth 1 -name "$probe*" | grep -q .; then
+            echo "::error::$probe missing from compat bundle; GL would abort on desktop hosts"
+            exit 1
+          fi
+        done
+
+        if [ -n "$WEBPROC_DIR" ] && [ "$WEBPROC_DIR" != "AppDir-compat/usr/bin" ]; then
+          ln -f AppDir-compat/usr/bin/QtWebEngineProcess "$WEBPROC_DIR/QtWebEngineProcess"
+        fi
+
+        for m in libsoftokn3 libfreebl3 libfreeblpriv3 libnssckbi libnssdbm3; do
+          src="AppDir-compat/usr/lib/$m.so"
+          dst="AppDir-compat/usr/shared/lib/$m.so"
+          [ -f "$src" ] || continue
+          [ -e "$dst" ] || mv "$src" "$dst"
+          rm -f "$src"
+        done
+
+        for m in libnss_files.so.2 libnss_dns.so.2 libnss_resolve.so.2; do
+          [ -e "AppDir-compat/usr/shared/lib/$m" ] && continue
+          src=$(find /usr/lib/x86_64-linux-gnu /usr/lib64 -maxdepth 1 -name "$m" 2>/dev/null | head -n1 || true)
+          [ -n "$src" ] && cp -a "$src" AppDir-compat/usr/shared/lib/ || true
+        done
+        for m in libnss_files.so.2 libnss_dns.so.2; do
+          if [ ! -e "AppDir-compat/usr/shared/lib/$m" ]; then
+            echo "::error::$m missing; bundled glibc NSS set incomplete"
+            exit 1
+          fi
+        done
+        if [ ! -d AppDir-compat/usr/shared/lib/gconv ]; then
+          gconv=$(find /usr/lib/x86_64-linux-gnu/gconv /usr/lib64/gconv -maxdepth 0 -type d 2>/dev/null | head -n1 || true)
+          if [ -z "$gconv" ]; then
+            echo "::error::gconv modules not found on build host"
+            exit 1
+          fi
+          cp -a "$gconv" AppDir-compat/usr/shared/lib/gconv
+        fi
+        if ! find AppDir-compat/usr/shared/lib -name 'ld-linux*.so*' | grep -q .; then
+          echo "::error::bundled dynamic loader missing; compat conversion failed"
+          exit 1
+        fi
+
+        missing=0
+        for lib in AppDir-compat/usr/lib/*.so*; do
+          [ -e "$lib" ] || continue
+          stem=$(basename "$lib")
+          stem="${stem%%.so*}"
+          if ! find AppDir-compat/usr/shared/lib -maxdepth 1 -name "${stem}.so*" | grep -q .; then
+            echo "::error::${stem} from usr/lib has no shared/lib counterpart"
+            missing=1
+          fi
+        done
+        [ "$missing" = 0 ] || exit 1
+        rm -rf AppDir-compat/usr/lib
+        rm -rf "$BIN_SRC"
+
+        APPIMAGE="${{env.EXECUTABLE}}-${{env.VERSION}}-Linux-x64.AppImage"
+        if [ "${SS_GPG_SIGN:-0}" = "1" ]; then
+          ARCH=x86_64 ./appimagetool --sign --sign-key "$GPG_KEY_ID" AppDir-compat "$APPIMAGE"
+        else
+          ARCH=x86_64 ./appimagetool AppDir-compat "$APPIMAGE"
+        fi
+        rm sharun-aio appimagetool
+        mv "$APPIMAGE" "../../$APPIMAGE"
+
+    #
+    # linuxdeploy-plugin-native_packages over the converted AppDir. ldnp emits minimal
+    # metadata (no ELF find-requires), which is what keeps the packages installable on
+    # glibc 2.28 hosts; the smoke step below proves that per run instead of trusting it
+    #
+    - name: '📦 Create .deb and .rpm packages (glibc-bundled)'
+      run: |
+        set -euo pipefail
+        python3 -m venv /tmp/ldnp-venv
+        /tmp/ldnp-venv/bin/pip install --upgrade pip
+        /tmp/ldnp-venv/bin/pip install \
+          "git+https://github.com/linuxdeploy/linuxdeploy-plugin-native_packages.git@91638818c35a240d0874b7de9cdab0cb3d3655ea"
+
+        # ldnp writes %files entries unquoted, so rpmbuild splits paths that contain
+        # spaces (the converted AppDir bundles ALSA UCM profiles like
+        # "Google Nexus 7 ALC5642.conf"); quote every entry in the spec template
+        sed -i 's|^{{ file }}$|"{{ file }}"|' \
+          /tmp/ldnp-venv/lib/python3.*/site-packages/ldnp/templates/rpm/spec
+        grep -q '^"{{ file }}"$' /tmp/ldnp-venv/lib/python3.*/site-packages/ldnp/templates/rpm/spec
+
+        export LINUXDEPLOY_OUTPUT_APP_NAME="${{env.UNIXNAME}}"
+        export LINUXDEPLOY_OUTPUT_VERSION="${{env.VERSION}}"
+        export LDNP_META_PACKAGE_NAME="${{env.UNIXNAME}}"
+        export LDNP_META_DESCRIPTION="${{env.DESCRIPTION}}"
+        export LDNP_META_SHORT_DESCRIPTION="${{env.DESCRIPTION}}"
+        export LDNP_META_ARCHITECTURE="amd64"
+        export LDNP_META_BUILD_ARCH="x86_64"
+
+        printf '{"packageType":"deb","arch":"x86_64"}\n' > build/app/AppDir-compat/usr/bin/ss-config.json
+        /tmp/ldnp-venv/bin/linuxdeploy-plugin-native_packages \
+          --appdir build/app/AppDir-compat \
+          --build deb
+
+        printf '{"packageType":"rpm","arch":"x86_64"}\n' > build/app/AppDir-compat/usr/bin/ss-config.json
+        /tmp/ldnp-venv/bin/linuxdeploy-plugin-native_packages \
+          --appdir build/app/AppDir-compat \
+          --build rpm
+
+        mv "${{env.UNIXNAME}}"_*.deb "${{env.EXECUTABLE}}-${{env.VERSION}}-Linux-x64.deb"
+        mv "${{env.UNIXNAME}}"_*.rpm "${{env.EXECUTABLE}}-${{env.VERSION}}-Linux-x64.rpm"
+
+        dpkg-deb --fsys-tarfile "${{env.EXECUTABLE}}-${{env.VERSION}}-Linux-x64.deb" \
+          | tar -xO --wildcards '*/ss-config.json' | grep -q '"packageType":"deb"'
+        rpm2cpio "${{env.EXECUTABLE}}-${{env.VERSION}}-Linux-x64.rpm" \
+          | cpio --quiet -i --to-stdout '*ss-config.json' | grep -q '"packageType":"rpm"'
+
+    #
+    # The glibc-2.28 ground truth: bare rockylinux:8 (AppImage extract + rpm install) and
+    # debian:10 (deb install, EOL archive sources) containers, plus the modern-host check on
+    # the runner itself. A bare container has nothing preinstalled, so an incomplete bundle
+    # or an unsatisfiable dependency set fails here instead of on a user's machine
+    #
+    - name: '🧪 Smoke test packages (glibc 2.28 gate)'
+      run: |
+        set -euo pipefail
+        APPIMAGE="${{env.EXECUTABLE}}-${{env.VERSION}}-Linux-x64.AppImage"
+        DEB="${{env.EXECUTABLE}}-${{env.VERSION}}-Linux-x64.deb"
+        RPM="${{env.EXECUTABLE}}-${{env.VERSION}}-Linux-x64.rpm"
+
+        chmod +x "$APPIMAGE"
+        ./"$APPIMAGE" --appimage-extract >/dev/null
+        grep -q '"packageType":"appimage"' squashfs-root/usr/bin/ss-config.json
+
+        env QT_QPA_PLATFORM=offscreen ./squashfs-root/AppRun --version
+        env QT_QPA_PLATFORM=offscreen ./squashfs-root/AppRun --selftest
+
+        docker run --rm -v "$PWD/squashfs-root:/app:ro" -e QT_QPA_PLATFORM=offscreen -e HOME=/tmp \
+          rockylinux:8 /app/AppRun --version
+        docker run --rm -v "$PWD/squashfs-root:/app:ro" -e QT_QPA_PLATFORM=offscreen -e HOME=/tmp \
+          rockylinux:8 /app/AppRun --selftest
+
+        docker run --rm -v "$PWD:/pkg:ro" -e QT_QPA_PLATFORM=offscreen -e HOME=/tmp rockylinux:8 \
+          bash -ec "dnf install -y -q --nogpgcheck /pkg/$RPM && ${{env.UNIXNAME}} --version"
+
+        docker run --rm -v "$PWD:/pkg:ro" -e QT_QPA_PLATFORM=offscreen -e HOME=/tmp debian:10 \
+          bash -ec "sed -i -e 's|deb.debian.org|archive.debian.org|g' -e '/security.debian.org/d' /etc/apt/sources.list; apt-get update -qq || true; apt-get install -y -q /pkg/$DEB || dpkg -i /pkg/$DEB; ${{env.UNIXNAME}} --version"
+
+        # Windowed gate: every check above runs offscreen, which is how a bundle with no
+        # GLX/EGL vendor libraries once sailed through CI and aborted on real desktops with
+        # "Could not initialize GLX". Xvfb + xcb forces the bundled GLVND stack to resolve a
+        # vendor and create a GL context; the GUI must still be alive when the kill fires.
+        command -v xvfb-run >/dev/null || sudo apt-get install -y -q xvfb
+        set +e
+        timeout -k 10 25 xvfb-run -a -s "-screen 0 1280x800x24" \
+          env QT_QPA_PLATFORM=xcb HOME=/tmp ./squashfs-root/AppRun
+        rc=$?
+        set -e
+        if [ "$rc" != 137 ] && [ "$rc" != 124 ]; then
+          echo "::error::windowed smoke exited early (rc=$rc); compat GL stack is broken"
+          exit 1
+        fi
+
+        rm -rf squashfs-root
+
+    #
+    # Every artifact is verified right after it is signed, so a broken signature fails here
+    # instead of on a user's machine
+    #
+    - name: '✍🏻 Sign Linux artifacts (GPG, optional)'
+      env:
+        GPG_PASSPHRASE: ${{secrets.GPG_PASSPHRASE}}
+        GPG_KEY_ID: ${{secrets.GPG_KEY_ID}}
+      run: |
+        set -euo pipefail
+        if [ "${SS_GPG_SIGN:-0}" != "1" ]; then
+          echo "GPG signing secrets not set; skipping Linux signing."
+          exit 0
+        fi
+        sudo apt-get install -y debsigs
+        APPIMAGE="${{env.EXECUTABLE}}-${{env.VERSION}}-Linux-x64.AppImage"
+        DEB="${{env.EXECUTABLE}}-${{env.VERSION}}-Linux-x64.deb"
+        RPM="${{env.EXECUTABLE}}-${{env.VERSION}}-Linux-x64.rpm"
+        BIN="${{env.EXECUTABLE}}-${{env.VERSION}}-Linux-x64"
+        cp "build/app/${{env.UNIXNAME}}" "$BIN"
+
+        gpg --export --armor "$GPG_KEY_ID" > signing-public-key.asc
+
+        rpm --import signing-public-key.asc
+        rpmsign --addsign "$RPM"
+        rpm -Kv "$RPM"
+        rpm -K "$RPM" | grep -qi 'signatures OK'
+
+        debsigs --sign=origin --default-key="$GPG_KEY_ID" "$DEB"
+        ar t "$DEB" | grep -q '_gpgorigin'
+
+        chmod +x "$APPIMAGE"
+        ./"$APPIMAGE" --appimage-signature | grep -q 'BEGIN PGP SIGNATURE'
+
+        for f in "$APPIMAGE" "$DEB" "$RPM" "$BIN"; do
+          gpg --batch --yes --pinentry-mode loopback \
+            ${GPG_PASSPHRASE:+--passphrase "$GPG_PASSPHRASE"} \
+            --local-user "$GPG_KEY_ID" \
+            --detach-sign --armor --output "$f.asc" "$f"
+          gpg --verify "$f.asc" "$f"
+        done
+
+    #
+    # Release artifact: the Linux AppImage users download — the glibc-bundled build (spec
+    # 0065) runs on everything from Debian 10 / RHEL 8 up, so it is the only one shipped
+    #
+    - name: '📤 Upload artifact: AppImage'
+      uses: actions/upload-artifact@v5
+      with:
+        name: ${{env.EXECUTABLE}}-${{env.VERSION}}-Linux-x64.AppImage
+        path: ${{env.EXECUTABLE}}-${{env.VERSION}}-Linux-x64.AppImage
+
+    #
+    # Release artifact: Debian package
+    #
+    - name: '📤 Upload artifact: .deb (x64)'
+      uses: actions/upload-artifact@v5
+      with:
+        name: ${{env.EXECUTABLE}}-${{env.VERSION}}-Linux-x64.deb
+        path: ${{env.EXECUTABLE}}-${{env.VERSION}}-Linux-x64.deb
+
+    #
+    # Release artifact: RPM package
+    #
+    - name: '📤 Upload artifact: .rpm (x64)'
+      uses: actions/upload-artifact@v5
+      with:
+        name: ${{env.EXECUTABLE}}-${{env.VERSION}}-Linux-x64.rpm
+        path: ${{env.EXECUTABLE}}-${{env.VERSION}}-Linux-x64.rpm
+
+    #
+    # Detached signatures plus the raw binary and the public key, so a user can verify without
+    # trusting the release page; ignored when signing was skipped
+    #
+    - name: '📤 Upload artifact: signatures + signed binary (x64)'
+      uses: actions/upload-artifact@v5
+      with:
+        name: ${{env.EXECUTABLE}}-${{env.VERSION}}-Linux-x64-signed
+        if-no-files-found: ignore
+        path: |
+          ${{env.EXECUTABLE}}-${{env.VERSION}}-Linux-x64.AppImage.asc
+          ${{env.EXECUTABLE}}-${{env.VERSION}}-Linux-x64.deb.asc
+          ${{env.EXECUTABLE}}-${{env.VERSION}}-Linux-x64.rpm.asc
+          ${{env.EXECUTABLE}}-${{env.VERSION}}-Linux-x64
+          ${{env.EXECUTABLE}}-${{env.VERSION}}-Linux-x64.asc
+          signing-public-key.asc
+
+#-------------------------------------------------------------------------------
+# GNU/Linux build (aarch64)
+#-------------------------------------------------------------------------------
+
+  build-linux-arm64:
+    runs-on: ubuntu-24.04-arm
+    name: '🐧 Linux Build (arm64)'
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+    #
+    # This repo has no submodules; 'submodules: recursive' is a no-op kept for future deps.
+    #
+    - name: '🧰 Checkout'
+      uses: actions/checkout@v5
+      with:
+        submodules: 'recursive'
+
+    #
+    # apt payload for a Qt 6 desktop build: the xcb/xkb platform stack, GStreamer for
+    # QtMultimedia, and the packaging tools (rpm, fakeroot, python3-venv) linuxdeploy shells out to
+    #
+    - name: '⚙️ Install dependencies'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          build-essential \
+          ninja-build \
+          fakeroot \
+          libcups2-dev \
+          libnss3 \
+          libegl1 \
+          libfuse2 \
+          libgl1-mesa-dev \
+          libasound2-dev \
+          libudev-dev \
+          libsecret-1-dev \
+          libzstd-dev \
+          zlib1g-dev \
+          libexpat1-dev \
+          libminizip-dev \
+          libopus-dev \
+          rpm \
+          python3-venv \
+          libxcb1 \
+          libxcb-cursor0 \
+          libxcb-cursor-dev \
+          libxcb-glx0 \
+          libxcb-icccm4 \
+          libxcb-image0 \
+          libxcb-image0-dev \
+          libxcb-keysyms1 \
+          libxcb-randr0 \
+          libxcb-render0 \
+          libxcb-render-util0 \
+          libxcb-shape0 \
+          libxcb-shm0 \
+          libxcb-sync1 \
+          libxcb-util0-dev \
+          libxcb-util1 \
+          libxcb-xfixes0 \
+          libxcb-xinerama0 \
+          libxcb-xkb-dev \
+          libxcb-xtest0 \
+          libxkbcommon-dev \
+          libxkbcommon-x11-0 \
+          libxkbcommon-x11-dev \
+          libpulse-dev \
+          libpipewire-0.3-0 \
+          libgstreamer1.0-0 \
+          libgstreamer-plugins-base1.0-0 \
+          libgstreamer-plugins-bad1.0-0 \
+          libgstreamer-plugins-good1.0-0 \
+          libgstreamer-gl1.0-0 \
+          gstreamer1.0-plugins-base \
+          gstreamer1.0-plugins-good \
+          gstreamer1.0-plugins-bad \
+          gstreamer1.0-plugins-ugly \
+          gstreamer1.0-libav \
+          gstreamer1.0-tools \
+          gstreamer1.0-x \
+          gstreamer1.0-alsa \
+          gstreamer1.0-pulseaudio \
+          gstreamer1.0-gl \
+          
+    #
+    # gRPC arrives as a prebuilt tarball from GRPC_REPO; building it from source would cost more
+    # than the rest of the job put together
+    #
+    - name: '⚙️ Download prebuilt gRPC'
+      run: |
+        gh release download v${{env.GRPC_VERSION}} \
+          -R ${{env.GRPC_REPO}} \
+          -p "grpc-${{env.GRPC_VERSION}}-linux-aarch64.tar.gz"
+        mkdir -p ${{github.workspace}}/grpc-prefix
+        tar -xzf grpc-${{env.GRPC_VERSION}}-linux-aarch64.tar.gz -C ${{github.workspace}}/grpc-prefix
+      env:
+        GH_TOKEN: ${{secrets.GITHUB_TOKEN}}
+
+    #
+    # Restore-only half of the cache pair; the save step below is gated on a miss so a hit never
+    # rewrites the entry
+    #
+    - name: '⚙️ Restore Qt Cache'
+      id: qt_cache
+      uses: actions/cache/restore@v5
+      with:
+        path: |
+          ${{github.workspace}}/Qt-${{env.QT_VERSION_LINUX}}-${{runner.os}}-arm64
+        key: qt-${{runner.os}}-${{env.QT_VERSION_LINUX}}-arm64
+
+    #
+    # Qt comes from the online installer driven by scripts/install-qt.sh, using the account
+    # secrets; only reached when the cache missed
+    #
+    - name: '⚙️ Install Qt (cache miss)'
+      shell: bash
+      if: steps.qt_cache.outputs.cache-hit != 'true'
+      env:
+        QT_VERSION: ${{env.QT_VERSION_LINUX}}
+        QT_ARCH: arm64
+        QT_USERNAME: ${{secrets.QT_USERNAME}}
+        QT_PASSWORD: ${{secrets.QT_PASSWORD}}
+        QT_OUTPUT_DIR: ${{github.workspace}}/Qt-${{env.QT_VERSION_LINUX}}-${{runner.os}}-arm64
+      run: |
+        chmod +x ./scripts/install-qt.sh
+        ./scripts/install-qt.sh
+
+    #
+    # Writes the entry the restore step looks for, keyed by OS + Qt version + arch
+    #
+    - name: '⚙️ Save Qt Cache'
+      uses: actions/cache/save@v5
+      if: steps.qt_cache.outputs.cache-hit != 'true'
+      with:
+        path: |
+          ${{github.workspace}}/Qt-${{env.QT_VERSION_LINUX}}-${{runner.os}}-arm64
+        key: qt-${{runner.os}}-${{env.QT_VERSION_LINUX}}-arm64
+
+    #
+    # Publishes bin/, libexec/ and CMAKE_PREFIX_PATH through GITHUB_PATH / GITHUB_ENV so every
+    # later step in the job sees the same Qt
+    #
+    - name: '⚙️ Add Qt to PATH'
+      shell: bash
+      env:
+        QT_VERSION: ${{env.QT_VERSION_LINUX}}
+        QT_OUTPUT_DIR: ${{github.workspace}}/Qt-${{env.QT_VERSION_LINUX}}-${{runner.os}}-arm64
+      run: |
+        export QT_BIN_PATH="${QT_OUTPUT_DIR}/${QT_VERSION}/gcc_arm64/bin"
+        export QT_LIBEXEC_PATH="${QT_OUTPUT_DIR}/${QT_VERSION}/gcc_arm64/libexec"
+        export CMAKE_PREFIX_PATH="${QT_OUTPUT_DIR}/${QT_VERSION}/gcc_arm64/lib/cmake"
+
+        echo "$QT_BIN_PATH" >> $GITHUB_PATH
+        echo "$QT_LIBEXEC_PATH" >> $GITHUB_PATH
+        echo "CMAKE_PREFIX_PATH=$CMAKE_PREFIX_PATH" >> $GITHUB_ENV
+
+    #
+    # get-cmake supplies a current CMake independently of whatever the runner image ships
+    #
+    - name: '⚙️ Install CMake'
+      uses: lukka/get-cmake@latest
+      with:
+        useLocalCache: true
+
+    #
+    # Unit tests live inside the build job so the Qt cache has one consumer per arch;
+    # a parallel unit job racing this restore could get denied or evict the entry
+    #
+    - name: '🚧 Configure unit-test tier'
+      run: |
+        cmake -G Ninja -B build/unit-ci \
+          -DCMAKE_BUILD_TYPE=Debug \
+          -DSS_BUILD_TESTS=ON \
+          -DBUILD_GPL3=ON \
+          -DENABLE_GRPC=OFF \
+          -DWITH_WEBENGINE=OFF \
+          -DSS_USE_MIMALLOC=OFF \
+          -DUSE_SYSTEM_ZLIB=ON \
+          -DUSE_SYSTEM_EXPAT=ON
+
+    #
+    # Lean Debug tier: GPL build, no gRPC, no WebEngine, no mimalloc, system zlib and expat;
+    # the application target never builds here
+    #
+    - name: '🚧 Build unit-test tier'
+      run: cmake --build build/unit-ci --target ss_unit_tests
+
+    #
+    # Runs on both arches: DSPSimd.h picks its SIMD lane from the target architecture
+    #
+    - name: '🧪 Run ctest'
+      env:
+        QT_QPA_PLATFORM: offscreen
+      run: ctest --test-dir build/unit-ci --output-on-failure
+
+    #
+    # Stage 1 of the two-stage PGO flow: an instrumented Release build whose only job is to emit
+    # profiles for the training runs below
+    #
+    - name: '🚧 Configure with CMake (PGO generate)'
+      env:
+        ARCGIS_API_KEY: ${{secrets.ARCGIS_API_KEY}}
+        SERIAL_STUDIO_LICENSE_KEY: ${{secrets.SERIAL_STUDIO_LICENSE_KEY}}
+        SERIAL_STUDIO_INSTANCE_ID: ${{secrets.SERIAL_STUDIO_INSTANCE_ID}}
+      run: |
+        cmake -B build -G Ninja \
+          -DPRODUCTION_OPTIMIZATION=ON \
+          -DENABLE_HARDENING=ON \
+          -DENABLE_GRPC=ON \
+          -DENABLE_PGO=ON \
+          -DPGO_STAGE=GENERATE \
+          -DSS_UNITY_BUILD=ON \
+          -DSS_UNITY_BATCH_SIZE=${{ env.SS_UNITY_BATCH }} \
+          -DUSE_SYSTEM_ZLIB=ON \
+          -DUSE_SYSTEM_EXPAT=ON \
+          -DSS_INAPP_TESTS=ON \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DCMAKE_PREFIX_PATH="${{github.workspace}}/grpc-prefix;${CMAKE_PREFIX_PATH}" \
+          -DBUILD_COMMERCIAL=ON \
+          -DBUILD_GPL3=OFF
+
+    #
+    # Builds the instrumented binary the two training runs profile
+    #
+    - name: '🚧 Build application (instrumented)'
+      run: cmake --build build --config Release
+
+    #
+    # Pro widgets are license-gated, so an unactivated training run profiles the wrong code;
+    # failure is tolerated because an unlicensed profile still beats no profile
+    #
+    - name: '🔑 Activate Serial Studio license (Pro hotpath training)'
+      env:
+        QT_QPA_PLATFORM: offscreen
+        LD_LIBRARY_PATH: >-
+          ${{github.workspace}}/Qt-${{env.QT_VERSION_LINUX}}-${{runner.os}}-arm64/${{env.QT_VERSION_LINUX}}/gcc_arm64/lib
+      run: |
+        ./build/app/${{env.UNIXNAME}} --activate "${{secrets.SERIAL_STUDIO_LICENSE_KEY}}" || true
+
+    #
+    # --min-fps 1 turns the benchmark into a profile generator: the real gate runs later, against
+    # the optimized binary
+    #
+    - name: '🏋️ PGO training run (hotpath)'
+      env:
+        QT_QPA_PLATFORM: offscreen
+        LD_LIBRARY_PATH: >-
+          ${{github.workspace}}/Qt-${{env.QT_VERSION_LINUX}}-${{runner.os}}-arm64/${{env.QT_VERSION_LINUX}}/gcc_arm64/lib
+      run: |
+        ./build/app/${{env.UNIXNAME}} --headless --benchmark-hotpath --min-fps 1
+
+    #
+    # Second profile: the big_db_test load exercises the project and dashboard paths that the
+    # hotpath benchmark never reaches
+    #
+    - name: '🏋️ PGO training run (big project)'
+      env:
+        QT_QPA_PLATFORM: offscreen
+        LD_LIBRARY_PATH: >-
+          ${{github.workspace}}/Qt-${{env.QT_VERSION_LINUX}}-${{runner.os}}-arm64/${{env.QT_VERSION_LINUX}}/gcc_arm64/lib
+      run: |
+        bash tests/benchmarks/big_db_test/run_load.sh "./build/app/${{env.UNIXNAME}}" 25
+
+    #
+    # Stage 2: identical flags with PGO_STAGE=USE so the compiler consumes the profiles just
+    # written
+    #
+    - name: '🚧 Reconfigure with CMake (PGO use)'
+      env:
+        ARCGIS_API_KEY: ${{secrets.ARCGIS_API_KEY}}
+        SERIAL_STUDIO_LICENSE_KEY: ${{secrets.SERIAL_STUDIO_LICENSE_KEY}}
+        SERIAL_STUDIO_INSTANCE_ID: ${{secrets.SERIAL_STUDIO_INSTANCE_ID}}
+      run: |
+        cmake -B build -G Ninja \
+          -DPRODUCTION_OPTIMIZATION=ON \
+          -DENABLE_HARDENING=ON \
+          -DENABLE_GRPC=ON \
+          -DENABLE_PGO=ON \
+          -DPGO_STAGE=USE \
+          -DSS_UNITY_BUILD=ON \
+          -DSS_UNITY_BATCH_SIZE=${{ env.SS_UNITY_BATCH }} \
+          -DUSE_SYSTEM_ZLIB=ON \
+          -DUSE_SYSTEM_EXPAT=ON \
+          -DSS_INAPP_TESTS=ON \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DCMAKE_PREFIX_PATH="${{github.workspace}}/grpc-prefix;${CMAKE_PREFIX_PATH}" \
+          -DBUILD_COMMERCIAL=ON \
+          -DBUILD_GPL3=OFF
+
+    #
+    # The binary that ships, and the one every gate below measures
+    #
+    - name: '🚧 Build application (PGO optimized)'
+      run: cmake --build build --config Release
+
+    #
+    # The CI throughput gate: nine tiers scaled off --min-fps, hard failure on any of them
+    #
+    - name: '🚦 Hotpath throughput gate (256 kHz)'
+      env:
+        QT_QPA_PLATFORM: offscreen
+        LD_LIBRARY_PATH: >-
+          ${{github.workspace}}/Qt-${{env.QT_VERSION_LINUX}}-${{runner.os}}-arm64/${{env.QT_VERSION_LINUX}}/gcc_arm64/lib
+      run: |
+        ./build/app/${{env.UNIXNAME}} --headless --benchmark-hotpath --min-fps 256000
+
+    #
+    # Replays the big_db_test load against the optimized binary; catches the teardown crashes the
+    # throughput benchmark never sees
+    #
+    - name: '🩺 Big project verification (optimized)'
+      env:
+        QT_QPA_PLATFORM: offscreen
+        LD_LIBRARY_PATH: >-
+          ${{github.workspace}}/Qt-${{env.QT_VERSION_LINUX}}-${{runner.os}}-arm64/${{env.QT_VERSION_LINUX}}/gcc_arm64/lib
+      run: |
+        bash tests/benchmarks/big_db_test/run_load.sh "./build/app/${{env.UNIXNAME}}" 15
+
+    #
+    # always(): activations are seat-limited, so a failed job still has to release the seat
+    #
+    - name: '🔑 Deactivate Serial Studio license'
+      if: always()
+      env:
+        QT_QPA_PLATFORM: offscreen
+        LD_LIBRARY_PATH: >-
+          ${{github.workspace}}/Qt-${{env.QT_VERSION_LINUX}}-${{runner.os}}-arm64/${{env.QT_VERSION_LINUX}}/gcc_arm64/lib
+      run: |
+        ./build/app/${{env.UNIXNAME}} --deactivate || true
+
+    #
+    # Signing is opt-in on the secrets being present; without them the step exits clean and the
+    # packages ship unsigned
+    #
+    - name: '🔐 Prepare GPG signing (optional)'
+      env:
+        GPG_PRIVATE_KEY: ${{secrets.GPG_PRIVATE_KEY}}
+        GPG_PASSPHRASE: ${{secrets.GPG_PASSPHRASE}}
+        GPG_KEY_ID: ${{secrets.GPG_KEY_ID}}
+      run: |
+        set -euo pipefail
+        if [ -z "${GPG_KEY_ID:-}" ] || [ -z "${GPG_PRIVATE_KEY:-}" ]; then
+          echo "GPG signing secrets not set; packages will be unsigned."
+          exit 0
+        fi
+        mkdir -p ~/.gnupg && chmod 700 ~/.gnupg
+        echo "allow-preset-passphrase" >> ~/.gnupg/gpg-agent.conf
+        printf '%s\n' "$GPG_PRIVATE_KEY" | gpg --batch --import
+        gpg-connect-agent reloadagent /bye
+        if [ -n "${GPG_PASSPHRASE:-}" ]; then
+          for grip in $(gpg --batch --with-colons --with-keygrip \
+              --list-secret-keys "$GPG_KEY_ID" | awk -F: '$1=="grp"{print $10}'); do
+            printf '%s' "$GPG_PASSPHRASE" | \
+              /usr/lib/gnupg/gpg-preset-passphrase --preset "$grip"
+          done
+        fi
+        PASSFILE="$RUNNER_TEMP/gpg-pass"
+        touch "$PASSFILE" && chmod 600 "$PASSFILE"
+        printf '%s' "${GPG_PASSPHRASE:-}" > "$PASSFILE"
+        printf '%%_signature gpg\n' > ~/.rpmmacros
+        printf '%%_gpg_name %s\n' "$GPG_KEY_ID" >> ~/.rpmmacros
+        printf '%%_gpg_sign_cmd_extra_args --batch --pinentry-mode loopback --passphrase-file %s\n' \
+          "$PASSFILE" >> ~/.rpmmacros
+        echo "SS_GPG_SIGN=1" >> "$GITHUB_ENV"
+
+    #
+    # linuxdeploy plus its Qt plugin build the AppDir; the SQL drivers and the TIFF reader are
+    # pruned first so the image carries only what the app loads. linuxdeploy-plugin-qt deploys
+    # ONLY libqxcb by default, so the wayland platform plugin is requested explicitly via
+    # EXTRA_PLATFORM_PLUGINS (a single libqwayland.so since Qt 6.10 merged the generic/egl
+    # pair and moved the client into qtbase) and its shell/decoration/graphics integration
+    # plugin dirs are copied by hand — without them Plasma/GNOME wayland sessions are forced
+    # through XWayland+GLX. Two more things the tool cannot bundle by itself are added afterwards: the
+    # offscreen platform plugin (the integration tests run headless), and Qt WebEngine's NSS
+    # crypto backends, which NSS dlopen()s (softokn/freebl/nssckbi) so an ldd-based bundler
+    # never sees them and leaves a half-bundled NSS that crashes against the host's newer
+    # copies. No AppImage is packed here: the compat conversion below produces the only Linux
+    # AppImage shipped, so this AppDir is purely the input tree for the deb/rpm/compat steps
+    #
+    - name: '📦 Create AppDir'
+      run: |
+        cd "build/app"
+        wget https://github.com/linuxdeploy/linuxdeploy/releases/download/1-alpha-20240109-1/linuxdeploy-aarch64.AppImage
+        wget https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/1-alpha-20250213-1/linuxdeploy-plugin-qt-aarch64.AppImage
+        chmod +x linuxdeploy-aarch64.AppImage
+        chmod +x linuxdeploy-plugin-qt-aarch64.AppImage
+
+        export QML_SOURCES_PATHS="${{env.QML_DIR}}"
+        export EXTRA_PLATFORM_PLUGINS="libqwayland.so"
+
+        QT_PLUGINS_PATH="${{github.workspace}}/Qt-${{env.QT_VERSION_LINUX}}-${{runner.os}}-arm64/${{env.QT_VERSION_LINUX}}/gcc_arm64/plugins"
+        rm -f "$QT_PLUGINS_PATH/imageformats/libqtiff.so"
+        find "$QT_PLUGINS_PATH/sqldrivers" -name 'libqsql*.so' ! -name 'libqsqlite.so' -delete
+
+        ./linuxdeploy-aarch64.AppImage --appdir AppDir -e ${{env.UNIXNAME}} -i ../../app/deploy/linux/${{env.UNIXNAME}}.svg -d ../../app/deploy/linux/${{env.UNIXNAME}}.desktop --plugin qt
+        mkdir -p AppDir/usr/plugins/canbus
+        if [ -d "$QT_PLUGINS_PATH/canbus" ]; then
+          cp -r "$QT_PLUGINS_PATH/canbus/"* AppDir/usr/plugins/canbus/ || echo "Warning: Could not copy canbus plugins"
+        else
+          echo "Warning: Qt canbus plugins not found at $QT_PLUGINS_PATH/canbus"
+        fi
+
+        mkdir -p AppDir/usr/plugins/opcua
+        if [ -d "$QT_PLUGINS_PATH/opcua" ]; then
+          cp -r "$QT_PLUGINS_PATH/opcua/"* AppDir/usr/plugins/opcua/ || echo "Warning: Could not copy opcua plugins"
+        else
+          echo "Warning: Qt opcua plugins not found at $QT_PLUGINS_PATH/opcua"
+        fi
+
+        for d in wayland-decoration-client wayland-graphics-integration-client wayland-shell-integration; do
+          if [ -d "$QT_PLUGINS_PATH/$d" ]; then
+            mkdir -p "AppDir/usr/plugins/$d"
+            cp -r "$QT_PLUGINS_PATH/$d/"* "AppDir/usr/plugins/$d/"
+          fi
+        done
+        if [ ! -f AppDir/usr/plugins/platforms/libqwayland.so ]; then
+          echo "::error::wayland platform plugin missing from AppDir"
+          exit 1
+        fi
+
+        mkdir -p AppDir/usr/plugins/platforms
+        if [ -f "$QT_PLUGINS_PATH/platforms/libqoffscreen.so" ]; then
+          cp "$QT_PLUGINS_PATH/platforms/libqoffscreen.so" AppDir/usr/plugins/platforms/
+        else
+          echo "Warning: offscreen platform plugin not found at $QT_PLUGINS_PATH/platforms"
+        fi
+
+        have_softokn=0
+        for d in /usr/lib/*/nss /usr/lib/*-linux-gnu /usr/lib64; do
+          [ -d "$d" ] || continue
+          for m in libsoftokn3 libfreebl3 libfreeblpriv3 libnssckbi libnssdbm3; do
+            if [ -f "$d/$m.so" ]; then
+              cp -a "$d/$m.so" AppDir/usr/lib/
+              [ "$m" = libsoftokn3 ] && have_softokn=1
+            fi
+          done
+        done
+        if [ "$have_softokn" = 0 ]; then
+          echo "::error::libsoftokn3.so not found; NSS bundle incomplete (WebEngine will crash)"
+          exit 1
+        fi
+
+        rm linuxdeploy-aarch64.AppImage
+        rm linuxdeploy-plugin-qt-aarch64.AppImage
+
+    #
+    # Spec 0065: the glibc-bundled conversion is the ONLY Linux packaging path — faithful
+    # mirror of the x64 stage (see the x64 job for the full rationale); only arch strings
+    # differ
+    #
+    - name: '📦 Create AppImage (glibc-bundled)'
+      env:
+        GPG_KEY_ID: ${{secrets.GPG_KEY_ID}}
+      run: |
+        set -euo pipefail
+        cd build/app
+
+        SHARUN_VERSION=v0.8.1
+        SHARUN_SHA256=bf3b8cc04e3025ef9dcd2718ee4728ccc68c941dadeeac7fdf778fc2c99d8b31
+        APPIMAGETOOL_VERSION=1.9.1
+        APPIMAGETOOL_SHA256=f0837e7448a0c1e4e650a93bb3e85802546e60654ef287576f46c71c126a9158
+
+        wget -q "https://github.com/VHSgunzo/sharun/releases/download/${SHARUN_VERSION}/sharun-aarch64-aio" -O sharun-aio
+        echo "${SHARUN_SHA256}  sharun-aio" | sha256sum -c -
+        chmod +x sharun-aio
+        wget -q "https://github.com/AppImage/appimagetool/releases/download/${APPIMAGETOOL_VERSION}/appimagetool-aarch64.AppImage" -O appimagetool
+        echo "${APPIMAGETOOL_SHA256}  appimagetool" | sha256sum -c -
+        chmod +x appimagetool
+
+        cp -a AppDir AppDir-compat
+        printf '{"packageType":"appimage","arch":"arm64"}\n' > AppDir-compat/usr/bin/ss-config.json
+
+        BIN_SRC=$(mktemp -d)
+        mv "AppDir-compat/usr/bin/${{env.UNIXNAME}}" "$BIN_SRC/"
+        WEBPROC_DIR=""
+        WEBPROC=$(find AppDir-compat/usr -type f -name QtWebEngineProcess | head -n1 || true)
+        if [ -n "$WEBPROC" ]; then
+          WEBPROC_DIR=$(dirname "$WEBPROC")
+          mv "$WEBPROC" "$BIN_SRC/"
+        fi
+
+        # usr/lib rides along as explicit input: libraries that are only dlopened (NSS's
+        # libsoftokn3 and friends) are reachable from no executable or plugin, so ldd-driven
+        # dependency walking alone would drop them and their private deps (libsqlite3).
+        DLOPEN_LIBS=$(find AppDir-compat/usr/plugins AppDir-compat/usr/qml AppDir-compat/usr/lib \
+          -type f -name '*.so*' 2>/dev/null || true)
+
+        # Pre-create shared/lib as a real directory: when it is absent and usr/lib exists,
+        # lib4bin symlinks shared/lib -> ../lib, so the whole closure lands in usr/lib and
+        # the coverage checks below then delete the only copy.
+        mkdir -p AppDir-compat/usr/shared/lib
+
+        # lib4bin resolves dependencies with ldd and silently drops unresolved ones; the
+        # executables were moved out of the AppDir, which breaks their $ORIGIN RUNPATH, so
+        # the libraries only they need (Widgets, Bluetooth, Mqtt, mimalloc, ...) vanish from
+        # the closure unless the AppDir library dir is on LD_LIBRARY_PATH for the conversion.
+        # Qt's openssl TLS backend dlopens libssl at runtime (no NEEDED entry), so the ldd
+        # walk never sees it; on OpenSSL 1.1 hosts (Debian 10) the backend then rejects the
+        # host library and every HTTPS request fails. Bundle the build host's OpenSSL 3 pair
+        # explicitly; it is safe because the compat bundle carries the matching glibc.
+        TLS_LIBS=$(find /usr/lib/x86_64-linux-gnu /usr/lib/aarch64-linux-gnu /usr/lib64 \
+          -maxdepth 1 \( -name 'libssl.so.3*' -o -name 'libcrypto.so.3*' \) 2>/dev/null || true)
+        if [ -z "$TLS_LIBS" ]; then
+          echo "::error::libssl.so.3/libcrypto.so.3 not found on build host"
+          exit 1
+        fi
+
+        # GLVND dispatch is bundled but resolves vendors by dlopen, invisible to the host's
+        # /usr/lib under sharun — bundle Mesa vendors + DRI drivers or GL aborts on desktop
+        # hosts (see the x64 stage for the full rationale)
+        sudo apt-get install -y -q libgl1-mesa-dri libglx-mesa0 libegl-mesa0 >/dev/null
+        GL_VENDOR_LIBS=$(find /usr/lib/x86_64-linux-gnu /usr/lib/aarch64-linux-gnu /usr/lib64 \
+          -maxdepth 1 \( -name 'libGLX_mesa.so*' -o -name 'libEGL_mesa.so*' \
+          -o -name 'libglapi.so*' -o -name 'libgallium*.so*' -o -name 'libgbm.so*' \) \
+          2>/dev/null || true)
+        if [ -z "$GL_VENDOR_LIBS" ]; then
+          echo "::error::Mesa GLX/EGL vendor libraries not found on build host"
+          exit 1
+        fi
+        DRI_DIR=$(find /usr/lib/x86_64-linux-gnu /usr/lib/aarch64-linux-gnu /usr/lib64 \
+          -maxdepth 1 -type d -name dri 2>/dev/null | head -n1 || true)
+        if [ -z "$DRI_DIR" ] || ! ls "$DRI_DIR"/*.so >/dev/null 2>&1; then
+          echo "::error::Mesa DRI driver directory not found on build host"
+          exit 1
+        fi
+        GBM_DIR=$(find /usr/lib/x86_64-linux-gnu /usr/lib/aarch64-linux-gnu /usr/lib64 \
+          -maxdepth 1 -type d -name gbm 2>/dev/null | head -n1 || true)
+        GBM_LIBS=""
+        [ -n "$GBM_DIR" ] && GBM_LIBS=$(ls "$GBM_DIR"/*.so 2>/dev/null || true)
+
+        # The bundled libasound carries the build host's plugin dir baked in
+        # (/usr/lib/<triplet>/alsa-lib), which does not exist on RHEL-family hosts; their
+        # alsa.conf routes the default PCM through "pulse", so every device probe logs a
+        # missing libasound_module_pcm_pulse.so and falls back to raw hw. Bundle the pulse
+        # plugins and point ALSA_PLUGIN_DIR at them through sharun's .env (PipeWire hosts
+        # reach them via pipewire-pulse).
+        sudo apt-get install -y -q libasound2-plugins >/dev/null
+        ALSA_PLUGIN_SRC=$(find /usr/lib/x86_64-linux-gnu /usr/lib/aarch64-linux-gnu /usr/lib64 \
+          -maxdepth 1 -type d -name alsa-lib 2>/dev/null | head -n1 || true)
+        ALSA_PLUGINS=""
+        [ -n "$ALSA_PLUGIN_SRC" ] && ALSA_PLUGINS=$(ls "$ALSA_PLUGIN_SRC"/libasound_module_*_pulse.so \
+          2>/dev/null || true)
+        if [ -z "$ALSA_PLUGINS" ]; then
+          echo "::error::ALSA pulse plugins not found on build host"
+          exit 1
+        fi
+
+        LD_LIBRARY_PATH="$PWD/AppDir-compat/usr/lib" \
+          ./sharun-aio lib4bin --dst-dir AppDir-compat/usr --with-sharun --hard-links --with-hooks \
+          "$BIN_SRC"/* $DLOPEN_LIBS $TLS_LIBS $GL_VENDOR_LIBS "$DRI_DIR"/*.so $GBM_LIBS \
+          $ALSA_PLUGINS
+
+        mkdir -p AppDir-compat/usr/shared/lib/alsa-lib
+        for f in $ALSA_PLUGINS; do
+          b=$(basename "$f")
+          dst="AppDir-compat/usr/shared/lib/alsa-lib/$b"
+          if [ ! -e "$dst" ]; then
+            src="AppDir-compat/usr/shared/lib/$b"
+            [ -f "$src" ] && ln -f "$src" "$dst"
+          fi
+          if [ ! -e "$dst" ]; then
+            echo "::error::ALSA plugin $b missing from compat closure"
+            exit 1
+          fi
+        done
+        if ! grep -q '^ALSA_PLUGIN_DIR=' AppDir-compat/usr/.env 2>/dev/null; then
+          echo 'ALSA_PLUGIN_DIR=${SHARUN_DIR}/shared/lib/alsa-lib' >> AppDir-compat/usr/.env
+        fi
+
+        if ! find AppDir-compat/usr/shared/lib -name 'libssl.so.3*' | grep -q .; then
+          echo "::error::libssl.so.3 missing from compat bundle; TLS would fail on legacy hosts"
+          exit 1
+        fi
+
+        if [ -L AppDir-compat/usr/shared/lib ]; then
+          echo "::error::usr/shared/lib is a symlink into usr/lib; compat conversion unsafe"
+          exit 1
+        fi
+
+        mkdir -p AppDir-compat/usr/shared/lib/dri
+        for f in "$DRI_DIR"/*.so; do
+          b=$(basename "$f")
+          dst="AppDir-compat/usr/shared/lib/dri/$b"
+          if [ ! -e "$dst" ]; then
+            src="AppDir-compat/usr/shared/lib/$b"
+            [ -f "$src" ] || src="AppDir-compat/usr/shared/lib/$(basename "$(readlink -f "$f")")"
+            [ -f "$src" ] && ln -f "$src" "$dst"
+          fi
+          if [ ! -e "$dst" ]; then
+            echo "::error::DRI driver $b missing from compat closure"
+            exit 1
+          fi
+        done
+        if [ -n "$GBM_LIBS" ]; then
+          mkdir -p AppDir-compat/usr/shared/lib/gbm
+          for f in $GBM_LIBS; do
+            b=$(basename "$f")
+            dst="AppDir-compat/usr/shared/lib/gbm/$b"
+            [ -e "$dst" ] && continue
+            src="AppDir-compat/usr/shared/lib/$b"
+            [ -f "$src" ] || src="AppDir-compat/usr/shared/lib/$(basename "$(readlink -f "$f")")"
+            [ -f "$src" ] && ln -f "$src" "$dst"
+          done
+        fi
+        if [ ! -d /usr/share/glvnd/egl_vendor.d ]; then
+          echo "::error::/usr/share/glvnd/egl_vendor.d not found on build host"
+          exit 1
+        fi
+        mkdir -p AppDir-compat/usr/share/glvnd
+        cp -a /usr/share/glvnd/egl_vendor.d AppDir-compat/usr/share/glvnd/
+        sed -i -e 's|/usr/lib.*/||g' AppDir-compat/usr/share/glvnd/egl_vendor.d/*.json
+        grep -rq 'libEGL_mesa' AppDir-compat/usr/share/glvnd/egl_vendor.d
+        for probe in libGLX_mesa.so.0 libEGL_mesa.so.0; do
+          if ! find AppDir-compat/usr/shared/lib -maxdepth 1 -name "$probe*" | grep -q .; then
+            echo "::error::$probe missing from compat bundle; GL would abort on desktop hosts"
+            exit 1
+          fi
+        done
+
+        if [ -n "$WEBPROC_DIR" ] && [ "$WEBPROC_DIR" != "AppDir-compat/usr/bin" ]; then
+          ln -f AppDir-compat/usr/bin/QtWebEngineProcess "$WEBPROC_DIR/QtWebEngineProcess"
+        fi
+
+        for m in libsoftokn3 libfreebl3 libfreeblpriv3 libnssckbi libnssdbm3; do
+          src="AppDir-compat/usr/lib/$m.so"
+          dst="AppDir-compat/usr/shared/lib/$m.so"
+          [ -f "$src" ] || continue
+          [ -e "$dst" ] || mv "$src" "$dst"
+          rm -f "$src"
+        done
+
+        for m in libnss_files.so.2 libnss_dns.so.2 libnss_resolve.so.2; do
+          [ -e "AppDir-compat/usr/shared/lib/$m" ] && continue
+          src=$(find /usr/lib/aarch64-linux-gnu /usr/lib64 -maxdepth 1 -name "$m" 2>/dev/null | head -n1 || true)
+          [ -n "$src" ] && cp -a "$src" AppDir-compat/usr/shared/lib/ || true
+        done
+        for m in libnss_files.so.2 libnss_dns.so.2; do
+          if [ ! -e "AppDir-compat/usr/shared/lib/$m" ]; then
+            echo "::error::$m missing; bundled glibc NSS set incomplete"
+            exit 1
+          fi
+        done
+        if [ ! -d AppDir-compat/usr/shared/lib/gconv ]; then
+          gconv=$(find /usr/lib/aarch64-linux-gnu/gconv /usr/lib64/gconv -maxdepth 0 -type d 2>/dev/null | head -n1 || true)
+          if [ -z "$gconv" ]; then
+            echo "::error::gconv modules not found on build host"
+            exit 1
+          fi
+          cp -a "$gconv" AppDir-compat/usr/shared/lib/gconv
+        fi
+        if ! find AppDir-compat/usr/shared/lib -name 'ld-linux*.so*' | grep -q .; then
+          echo "::error::bundled dynamic loader missing; compat conversion failed"
+          exit 1
+        fi
+
+        missing=0
+        for lib in AppDir-compat/usr/lib/*.so*; do
+          [ -e "$lib" ] || continue
+          stem=$(basename "$lib")
+          stem="${stem%%.so*}"
+          if ! find AppDir-compat/usr/shared/lib -maxdepth 1 -name "${stem}.so*" | grep -q .; then
+            echo "::error::${stem} from usr/lib has no shared/lib counterpart"
+            missing=1
+          fi
+        done
+        [ "$missing" = 0 ] || exit 1
+        rm -rf AppDir-compat/usr/lib
+        rm -rf "$BIN_SRC"
+
+        APPIMAGE="${{env.EXECUTABLE}}-${{env.VERSION}}-Linux-arm64.AppImage"
+        if [ "${SS_GPG_SIGN:-0}" = "1" ]; then
+          ARCH=aarch64 ./appimagetool --sign --sign-key "$GPG_KEY_ID" AppDir-compat "$APPIMAGE"
+        else
+          ARCH=aarch64 ./appimagetool AppDir-compat "$APPIMAGE"
+        fi
+        rm sharun-aio appimagetool
+        mv "$APPIMAGE" "../../$APPIMAGE"
+
+    #
+    # ldnp over the converted AppDir — mirror of the x64 packaging step
+    #
+    - name: '📦 Create .deb and .rpm packages (glibc-bundled)'
+      run: |
+        set -euo pipefail
+        python3 -m venv /tmp/ldnp-venv
+        /tmp/ldnp-venv/bin/pip install --upgrade pip
+        /tmp/ldnp-venv/bin/pip install \
+          "git+https://github.com/linuxdeploy/linuxdeploy-plugin-native_packages.git@91638818c35a240d0874b7de9cdab0cb3d3655ea"
+
+        # ldnp writes %files entries unquoted, so rpmbuild splits paths that contain
+        # spaces (the converted AppDir bundles ALSA UCM profiles like
+        # "Google Nexus 7 ALC5642.conf"); quote every entry in the spec template
+        sed -i 's|^{{ file }}$|"{{ file }}"|' \
+          /tmp/ldnp-venv/lib/python3.*/site-packages/ldnp/templates/rpm/spec
+        grep -q '^"{{ file }}"$' /tmp/ldnp-venv/lib/python3.*/site-packages/ldnp/templates/rpm/spec
+
+        export LINUXDEPLOY_OUTPUT_APP_NAME="${{env.UNIXNAME}}"
+        export LINUXDEPLOY_OUTPUT_VERSION="${{env.VERSION}}"
+        export LDNP_META_PACKAGE_NAME="${{env.UNIXNAME}}"
+        export LDNP_META_DESCRIPTION="${{env.DESCRIPTION}}"
+        export LDNP_META_SHORT_DESCRIPTION="${{env.DESCRIPTION}}"
+        export LDNP_META_ARCHITECTURE="arm64"
+        export LDNP_META_BUILD_ARCH="aarch64"
+
+        printf '{"packageType":"deb","arch":"arm64"}\n' > build/app/AppDir-compat/usr/bin/ss-config.json
+        /tmp/ldnp-venv/bin/linuxdeploy-plugin-native_packages \
+          --appdir build/app/AppDir-compat \
+          --build deb
+
+        printf '{"packageType":"rpm","arch":"arm64"}\n' > build/app/AppDir-compat/usr/bin/ss-config.json
+        /tmp/ldnp-venv/bin/linuxdeploy-plugin-native_packages \
+          --appdir build/app/AppDir-compat \
+          --build rpm
+
+        mv "${{env.UNIXNAME}}"_*.deb "${{env.EXECUTABLE}}-${{env.VERSION}}-Linux-arm64.deb"
+        mv "${{env.UNIXNAME}}"_*.rpm "${{env.EXECUTABLE}}-${{env.VERSION}}-Linux-arm64.rpm"
+
+        dpkg-deb --fsys-tarfile "${{env.EXECUTABLE}}-${{env.VERSION}}-Linux-arm64.deb" \
+          | tar -xO --wildcards '*/ss-config.json' | grep -q '"packageType":"deb"'
+        rpm2cpio "${{env.EXECUTABLE}}-${{env.VERSION}}-Linux-arm64.rpm" \
+          | cpio --quiet -i --to-stdout '*ss-config.json' | grep -q '"packageType":"rpm"'
+
+    #
+    # The glibc-2.28 ground truth on arm64 — mirror of the x64 smoke gate
+    #
+    - name: '🧪 Smoke test packages (glibc 2.28 gate)'
+      run: |
+        set -euo pipefail
+        APPIMAGE="${{env.EXECUTABLE}}-${{env.VERSION}}-Linux-arm64.AppImage"
+        DEB="${{env.EXECUTABLE}}-${{env.VERSION}}-Linux-arm64.deb"
+        RPM="${{env.EXECUTABLE}}-${{env.VERSION}}-Linux-arm64.rpm"
+
+        chmod +x "$APPIMAGE"
+        ./"$APPIMAGE" --appimage-extract >/dev/null
+        grep -q '"packageType":"appimage"' squashfs-root/usr/bin/ss-config.json
+
+        env QT_QPA_PLATFORM=offscreen ./squashfs-root/AppRun --version
+        env QT_QPA_PLATFORM=offscreen ./squashfs-root/AppRun --selftest
+
+        docker run --rm -v "$PWD/squashfs-root:/app:ro" -e QT_QPA_PLATFORM=offscreen -e HOME=/tmp \
+          rockylinux:8 /app/AppRun --version
+        docker run --rm -v "$PWD/squashfs-root:/app:ro" -e QT_QPA_PLATFORM=offscreen -e HOME=/tmp \
+          rockylinux:8 /app/AppRun --selftest
+
+        docker run --rm -v "$PWD:/pkg:ro" -e QT_QPA_PLATFORM=offscreen -e HOME=/tmp rockylinux:8 \
+          bash -ec "dnf install -y -q --nogpgcheck /pkg/$RPM && ${{env.UNIXNAME}} --version"
+
+        docker run --rm -v "$PWD:/pkg:ro" -e QT_QPA_PLATFORM=offscreen -e HOME=/tmp debian:10 \
+          bash -ec "sed -i -e 's|deb.debian.org|archive.debian.org|g' -e '/security.debian.org/d' /etc/apt/sources.list; apt-get update -qq || true; apt-get install -y -q /pkg/$DEB || dpkg -i /pkg/$DEB; ${{env.UNIXNAME}} --version"
+
+        # Windowed gate — mirror of the x64 stage: offscreen checks cannot see a missing
+        # GLX/EGL vendor; Xvfb + xcb must keep the GUI alive until the kill fires
+        command -v xvfb-run >/dev/null || sudo apt-get install -y -q xvfb
+        set +e
+        timeout -k 10 25 xvfb-run -a -s "-screen 0 1280x800x24" \
+          env QT_QPA_PLATFORM=xcb HOME=/tmp ./squashfs-root/AppRun
+        rc=$?
+        set -e
+        if [ "$rc" != 137 ] && [ "$rc" != 124 ]; then
+          echo "::error::windowed smoke exited early (rc=$rc); compat GL stack is broken"
+          exit 1
+        fi
+
+        rm -rf squashfs-root
+
+    #
+    # Every artifact is verified right after it is signed, so a broken signature fails here
+    # instead of on a user's machine
+    #
+    - name: '✍🏻 Sign Linux artifacts (GPG, optional)'
+      env:
+        GPG_PASSPHRASE: ${{secrets.GPG_PASSPHRASE}}
+        GPG_KEY_ID: ${{secrets.GPG_KEY_ID}}
+      run: |
+        set -euo pipefail
+        if [ "${SS_GPG_SIGN:-0}" != "1" ]; then
+          echo "GPG signing secrets not set; skipping Linux signing."
+          exit 0
+        fi
+        sudo apt-get install -y debsigs
+        APPIMAGE="${{env.EXECUTABLE}}-${{env.VERSION}}-Linux-arm64.AppImage"
+        DEB="${{env.EXECUTABLE}}-${{env.VERSION}}-Linux-arm64.deb"
+        RPM="${{env.EXECUTABLE}}-${{env.VERSION}}-Linux-arm64.rpm"
+        BIN="${{env.EXECUTABLE}}-${{env.VERSION}}-Linux-arm64"
+        cp "build/app/${{env.UNIXNAME}}" "$BIN"
+
+        gpg --export --armor "$GPG_KEY_ID" > signing-public-key.asc
+
+        rpm --import signing-public-key.asc
+        rpmsign --addsign "$RPM"
+        rpm -Kv "$RPM"
+        rpm -K "$RPM" | grep -qi 'signatures OK'
+
+        debsigs --sign=origin --default-key="$GPG_KEY_ID" "$DEB"
+        ar t "$DEB" | grep -q '_gpgorigin'
+
+        chmod +x "$APPIMAGE"
+        ./"$APPIMAGE" --appimage-signature | grep -q 'BEGIN PGP SIGNATURE'
+
+        for f in "$APPIMAGE" "$DEB" "$RPM" "$BIN"; do
+          gpg --batch --yes --pinentry-mode loopback \
+            ${GPG_PASSPHRASE:+--passphrase "$GPG_PASSPHRASE"} \
+            --local-user "$GPG_KEY_ID" \
+            --detach-sign --armor --output "$f.asc" "$f"
+          gpg --verify "$f.asc" "$f"
+        done
+
+    #
+    # Release artifact: the Linux AppImage users download — the glibc-bundled build (spec
+    # 0065) runs on everything from Debian 10 / RHEL 8 up, so it is the only one shipped
+    #
+    - name: '📤 Upload artifact: AppImage'
+      uses: actions/upload-artifact@v5
+      with:
+        name: ${{env.EXECUTABLE}}-${{env.VERSION}}-Linux-arm64.AppImage
+        path: ${{env.EXECUTABLE}}-${{env.VERSION}}-Linux-arm64.AppImage
+
+    #
+    # Release artifact: Debian package
+    #
+    - name: '📤 Upload artifact: .deb (arm64)'
+      uses: actions/upload-artifact@v5
+      with:
+        name: ${{env.EXECUTABLE}}-${{env.VERSION}}-Linux-arm64.deb
+        path: ${{env.EXECUTABLE}}-${{env.VERSION}}-Linux-arm64.deb
+
+    #
+    # Release artifact: RPM package
+    #
+    - name: '📤 Upload artifact: .rpm (arm64)'
+      uses: actions/upload-artifact@v5
+      with:
+        name: ${{env.EXECUTABLE}}-${{env.VERSION}}-Linux-arm64.rpm
+        path: ${{env.EXECUTABLE}}-${{env.VERSION}}-Linux-arm64.rpm
+
+    #
+    # Detached signatures plus the raw binary and the public key, so a user can verify without
+    # trusting the release page; ignored when signing was skipped
+    #
+    - name: '📤 Upload artifact: signatures + signed binary (arm64)'
+      uses: actions/upload-artifact@v5
+      with:
+        name: ${{env.EXECUTABLE}}-${{env.VERSION}}-Linux-arm64-signed
+        if-no-files-found: ignore
+        path: |
+          ${{env.EXECUTABLE}}-${{env.VERSION}}-Linux-arm64.AppImage.asc
+          ${{env.EXECUTABLE}}-${{env.VERSION}}-Linux-arm64.deb.asc
+          ${{env.EXECUTABLE}}-${{env.VERSION}}-Linux-arm64.rpm.asc
+          ${{env.EXECUTABLE}}-${{env.VERSION}}-Linux-arm64
+          ${{env.EXECUTABLE}}-${{env.VERSION}}-Linux-arm64.asc
+          signing-public-key.asc
+
+#-------------------------------------------------------------------------------
+# macOS arm64 slice
+#-------------------------------------------------------------------------------
+
+  build-macos-arm64:
+    runs-on: macos-latest
+    name: '🍎 macOS Build (arm64)'
+    permissions:
+      contents: read
+    steps:
+    #
+    # This repo has no submodules; 'submodules: recursive' is a no-op kept for future deps.
+    #
+    - name: '🧰 Checkout'
+      uses: actions/checkout@v5
+      with:
+        submodules: 'recursive'
+
+    #
+    # One universal tarball feeds both macOS slices, so the arm64 and x86_64 jobs stay in sync
+    #
+    - name: '⚙️ Download prebuilt gRPC (universal)'
+      run: |
+        gh release download v${{env.GRPC_VERSION}} \
+          -R ${{env.GRPC_REPO}} \
+          -p "grpc-${{env.GRPC_VERSION}}-macos-universal.tar.gz"
+        mkdir -p ${{github.workspace}}/grpc-prefix
+        tar -xzf grpc-${{env.GRPC_VERSION}}-macos-universal.tar.gz -C ${{github.workspace}}/grpc-prefix
+      env:
+        GH_TOKEN: ${{secrets.GITHUB_TOKEN}}
+
+    #
+    # Restore-only half of the cache pair; the save step below is gated on a miss so a hit never
+    # rewrites the entry
+    #
+    - name: '⚙️ Restore Qt Cache'
+      id: qt_cache
+      uses: actions/cache/restore@v5
+      with:
+        path: |
+          ${{github.workspace}}/Qt-${{env.QT_VERSION_MACOS}}-${{runner.os}}-x64
+          ${{env.USERPROFILE}}/.qt-license
+        key: qt-${{runner.os}}-${{env.QT_VERSION_MACOS}}-arm64
+
+    #
+    # Qt comes from the online installer driven by scripts/install-qt.sh, using the account
+    # secrets; only reached when the cache missed
+    #
+    - name: '⚙️ Install Qt (cache miss)'
+      shell: bash
+      if: steps.qt_cache.outputs.cache-hit != 'true'
+      env:
+        QT_VERSION: ${{env.QT_VERSION_MACOS}}
+        QT_ARCH: x64
+        QT_USERNAME: ${{secrets.QT_USERNAME}}
+        QT_PASSWORD: ${{secrets.QT_PASSWORD}}
+        QT_OUTPUT_DIR: ${{github.workspace}}/Qt-${{env.QT_VERSION_MACOS}}-${{runner.os}}-x64
+      run: |
+        chmod +x ./scripts/install-qt.sh
+        ./scripts/install-qt.sh
+
+    #
+    # Writes the entry the restore step looks for, keyed by OS + Qt version + arch
+    #
+    - name: '⚙️ Save Qt Cache'
+      if: steps.qt_cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v5
+      with:
+        path: |
+          ${{github.workspace}}/Qt-${{env.QT_VERSION_MACOS}}-${{runner.os}}-x64
+          ${{env.USERPROFILE}}/.qt-license
+        key: qt-${{runner.os}}-${{env.QT_VERSION_MACOS}}-arm64
+
+    #
+    # Publishes bin/, libexec/ and CMAKE_PREFIX_PATH through GITHUB_PATH / GITHUB_ENV so every
+    # later step in the job sees the same Qt
+    #
+    - name: '⚙️ Add Qt to PATH'
+      shell: bash
+      env:
+        QT_VERSION: ${{env.QT_VERSION_MACOS}}
+        QT_OUTPUT_DIR: ${{github.workspace}}/Qt-${{env.QT_VERSION_MACOS}}-${{runner.os}}-x64
+      run: |
+        export QT_BIN_PATH="${QT_OUTPUT_DIR}/${QT_VERSION}/macos/bin"
+        export QT_LIBEXEC_PATH="${QT_OUTPUT_DIR}/${QT_VERSION}/macos/libexec"
+        export CMAKE_PREFIX_PATH="${QT_OUTPUT_DIR}/${QT_VERSION}/macos/lib/cmake"
+
+        echo "$QT_BIN_PATH" >> $GITHUB_PATH
+        echo "$QT_LIBEXEC_PATH" >> $GITHUB_PATH
+        echo "CMAKE_PREFIX_PATH=$CMAKE_PREFIX_PATH" >> $GITHUB_ENV
+
+    #
+    # get-cmake supplies a current CMake independently of whatever the runner image ships
+    #
+    - name: '⚙️ Install CMake'
+      uses: lukka/get-cmake@latest
+      with:
+        useLocalCache: true
+
+    #
+    # Stage 1 of the two-stage PGO flow, pinned to arm64: this job builds only the native slice
+    #
+    - name: '🚧 Configure with CMake (PGO generate, arm64)'
+      env:
+        ARCGIS_API_KEY: ${{secrets.ARCGIS_API_KEY}}
+        SERIAL_STUDIO_LICENSE_KEY: ${{secrets.SERIAL_STUDIO_LICENSE_KEY}}
+        SERIAL_STUDIO_INSTANCE_ID: ${{secrets.SERIAL_STUDIO_INSTANCE_ID}}
+      run: |
+        cmake -B build -G Ninja \
+          -DPRODUCTION_OPTIMIZATION=ON \
+          -DENABLE_HARDENING=ON \
+          -DENABLE_GRPC=ON \
+          -DENABLE_PGO=ON \
+          -DPGO_STAGE=GENERATE \
+          -DSS_UNITY_BUILD=ON \
+          -DSS_UNITY_BATCH_SIZE=${{ env.SS_UNITY_BATCH }} \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DCMAKE_OSX_DEPLOYMENT_TARGET=14.0 \
+          -DCMAKE_OSX_ARCHITECTURES="arm64" \
+          -DCMAKE_PREFIX_PATH="${{github.workspace}}/grpc-prefix;${CMAKE_PREFIX_PATH}" \
+          -DBUILD_COMMERCIAL=ON \
+          -DBUILD_GPL3=OFF
+
+    #
+    # Builds the instrumented arm64 binary the training runs profile
+    #
+    - name: '🚧 Build application (instrumented, arm64)'
+      run: cmake --build build --config Release
+
+    #
+    # Pro widgets are license-gated, so an unactivated training run profiles the wrong code;
+    # failure is tolerated because an unlicensed profile still beats no profile
+    #
+    - name: '🔑 Activate Serial Studio license (Pro hotpath training)'
+      env:
+        QT_QPA_PLATFORM: offscreen
+        DYLD_FRAMEWORK_PATH: ${{github.workspace}}/Qt-${{env.QT_VERSION_MACOS}}-${{runner.os}}-x64/${{env.QT_VERSION_MACOS}}/macos/lib
+      run: |
+        ./build/app/${{env.EXECUTABLE}}.app/Contents/MacOS/${{env.EXECUTABLE}} --activate "${{secrets.SERIAL_STUDIO_LICENSE_KEY}}" || true
+
+    #
+    # --min-fps 1 turns the benchmark into a profile generator: the real gate runs later, against
+    # the optimized binary
+    #
+    - name: '🏋️ PGO training run (hotpath)'
+      env:
+        QT_QPA_PLATFORM: offscreen
+        DYLD_FRAMEWORK_PATH: ${{github.workspace}}/Qt-${{env.QT_VERSION_MACOS}}-${{runner.os}}-x64/${{env.QT_VERSION_MACOS}}/macos/lib
+      run: |
+        ./build/app/${{env.EXECUTABLE}}.app/Contents/MacOS/${{env.EXECUTABLE}} --headless --benchmark-hotpath --min-fps 1
+
+    #
+    # Second profile: the big_db_test load exercises the project and dashboard paths that the
+    # hotpath benchmark never reaches
+    #
+    - name: '🏋️ PGO training run (big project)'
+      env:
+        QT_QPA_PLATFORM: offscreen
+        DYLD_FRAMEWORK_PATH: ${{github.workspace}}/Qt-${{env.QT_VERSION_MACOS}}-${{runner.os}}-x64/${{env.QT_VERSION_MACOS}}/macos/lib
+      run: |
+        bash tests/benchmarks/big_db_test/run_load.sh "./build/app/${{env.EXECUTABLE}}.app/Contents/MacOS/${{env.EXECUTABLE}}" 25
+
+    #
+    # Stage 2: LLVM_PROFDATA comes from xcrun so the merge tool matches the toolchain that wrote
+    # the raw profiles
+    #
+    - name: '🚧 Reconfigure with CMake (PGO use, arm64)'
+      env:
+        ARCGIS_API_KEY: ${{secrets.ARCGIS_API_KEY}}
+        SERIAL_STUDIO_LICENSE_KEY: ${{secrets.SERIAL_STUDIO_LICENSE_KEY}}
+        SERIAL_STUDIO_INSTANCE_ID: ${{secrets.SERIAL_STUDIO_INSTANCE_ID}}
+      run: |
+        cmake -B build -G Ninja \
+          -DPRODUCTION_OPTIMIZATION=ON \
+          -DENABLE_HARDENING=ON \
+          -DENABLE_GRPC=ON \
+          -DENABLE_PGO=ON \
+          -DPGO_STAGE=USE \
+          -DSS_UNITY_BUILD=ON \
+          -DSS_UNITY_BATCH_SIZE=${{ env.SS_UNITY_BATCH }} \
+          -DLLVM_PROFDATA=$(xcrun -f llvm-profdata) \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DCMAKE_OSX_DEPLOYMENT_TARGET=14.0 \
+          -DCMAKE_OSX_ARCHITECTURES="arm64" \
+          -DCMAKE_PREFIX_PATH="${{github.workspace}}/grpc-prefix;${CMAKE_PREFIX_PATH}" \
+          -DBUILD_COMMERCIAL=ON \
+          -DBUILD_GPL3=OFF
+
+    #
+    # The arm64 half of the universal binary the merge job assembles
+    #
+    - name: '🚧 Build application (PGO optimized, arm64)'
+      run: cmake --build build --config Release
+
+    #
+    # The CI throughput gate: nine tiers scaled off --min-fps, hard failure on any of them
+    #
+    - name: '🚦 Hotpath throughput gate (256 kHz)'
+      env:
+        QT_QPA_PLATFORM: offscreen
+        DYLD_FRAMEWORK_PATH: ${{github.workspace}}/Qt-${{env.QT_VERSION_MACOS}}-${{runner.os}}-x64/${{env.QT_VERSION_MACOS}}/macos/lib
+      run: |
+        ./build/app/${{env.EXECUTABLE}}.app/Contents/MacOS/${{env.EXECUTABLE}} --headless --benchmark-hotpath --min-fps 256000
+
+    #
+    # Replays the big_db_test load against the optimized binary; catches the teardown crashes the
+    # throughput benchmark never sees
+    #
+    - name: '🩺 Big project verification (optimized)'
+      env:
+        QT_QPA_PLATFORM: offscreen
+        DYLD_FRAMEWORK_PATH: ${{github.workspace}}/Qt-${{env.QT_VERSION_MACOS}}-${{runner.os}}-x64/${{env.QT_VERSION_MACOS}}/macos/lib
+      run: |
+        bash tests/benchmarks/big_db_test/run_load.sh "./build/app/${{env.EXECUTABLE}}.app/Contents/MacOS/${{env.EXECUTABLE}}" 15
+
+    #
+    # always(): activations are seat-limited, so a failed job still has to release the seat
+    #
+    - name: '🔑 Deactivate Serial Studio license'
+      if: always()
+      env:
+        QT_QPA_PLATFORM: offscreen
+        DYLD_FRAMEWORK_PATH: ${{github.workspace}}/Qt-${{env.QT_VERSION_MACOS}}-${{runner.os}}-x64/${{env.QT_VERSION_MACOS}}/macos/lib
+      run: |
+        ./build/app/${{env.EXECUTABLE}}.app/Contents/MacOS/${{env.EXECUTABLE}} --deactivate || true
+
+    #
+    # cpack builds the DMG from the deployed bundle
+    #
+    - name: '📦 Package application'
+      run: |
+        cd build
+        cpack --verbose
+
+    #
+    # The merge job needs a bundle, not a disk image, so the .app is pulled back out of the DMG
+    #
+    - name: '💿 Mount DMG and copy application'
+      run: |
+        VOLUME=$(yes | hdiutil attach ./build/*.dmg -nobrowse | grep "Volumes" | awk '{print $3}')
+        cp -a "$VOLUME/${{env.EXECUTABLE}}.app" "${{env.APPLICATION}}.app"
+        hdiutil detach "$VOLUME"
+
+    #
+    # The deploy tools bundle only the native platform plugin; the integration tests run with
+    # QT_QPA_PLATFORM=offscreen
+    #
+    - name: '🧩 Bundle offscreen platform plugin (headless CI tests)'
+      run: |
+        QT_PLUGINS_PATH="${{github.workspace}}/Qt-${{env.QT_VERSION_MACOS}}-${{runner.os}}-x64/${{env.QT_VERSION_MACOS}}/macos/plugins"
+        DEST="${{env.APPLICATION}}.app/Contents/PlugIns/platforms"
+        mkdir -p "$DEST"
+        if [ -f "$QT_PLUGINS_PATH/platforms/libqoffscreen.dylib" ]; then
+          cp "$QT_PLUGINS_PATH/platforms/libqoffscreen.dylib" "$DEST/"
+        else
+          echo "Warning: offscreen platform plugin not found at $QT_PLUGINS_PATH/platforms"
+        fi
+
+    #
+    # COPYFILE_DISABLE=1 keeps AppleDouble ._ files out of the tarball, so the bundle survives the
+    # round trip through the artifact store intact
+    #
+    - name: '🗜 Archive deployed .app'
+      run: |
+        COPYFILE_DISABLE=1 tar -czf macos-arm64-app.tar.gz "${{env.APPLICATION}}.app"
+
+    #
+    # retention-days: 1 marks this as an intermediate for the universal merge job, not a release
+    # artifact
+    #
+    - name: '📤 Upload artifact: arm64 deployed .app'
+      uses: actions/upload-artifact@v5
+      with:
+        name: macos-arm64-app
+        path: macos-arm64-app.tar.gz
+        retention-days: 1
+
+#-------------------------------------------------------------------------------
+# macOS x86_64
+#-------------------------------------------------------------------------------
+
+  build-macos-intel:
+    runs-on: macos-latest
+    name: '🍎 macOS Build (x86_64, Rosetta)'
+    permissions:
+      contents: read
+    steps:
+    #
+    # This repo has no submodules; 'submodules: recursive' is a no-op kept for future deps.
+    #
+    - name: '🧰 Checkout'
+      uses: actions/checkout@v5
+      with:
+        submodules: 'recursive'
+
+    #
+    # One universal tarball feeds both macOS slices, so the arm64 and x86_64 jobs stay in sync
+    #
+    - name: '⚙️ Download prebuilt gRPC (universal)'
+      run: |
+        gh release download v${{env.GRPC_VERSION}} \
+          -R ${{env.GRPC_REPO}} \
+          -p "grpc-${{env.GRPC_VERSION}}-macos-universal.tar.gz"
+        mkdir -p ${{github.workspace}}/grpc-prefix
+        tar -xzf grpc-${{env.GRPC_VERSION}}-macos-universal.tar.gz -C ${{github.workspace}}/grpc-prefix
+      env:
+        GH_TOKEN: ${{secrets.GITHUB_TOKEN}}
+
+    #
+    # Restore-only half of the cache pair; the save step below is gated on a miss so a hit never
+    # rewrites the entry
+    #
+    - name: '⚙️ Restore Qt Cache'
+      id: qt_cache
+      uses: actions/cache/restore@v5
+      with:
+        path: |
+          ${{github.workspace}}/Qt-${{env.QT_VERSION_MACOS}}-${{runner.os}}-x64
+          ${{env.USERPROFILE}}/.qt-license
+        key: qt-${{runner.os}}-${{env.QT_VERSION_MACOS}}-x86_64
+
+    #
+    # Qt comes from the online installer driven by scripts/install-qt.sh, using the account
+    # secrets; only reached when the cache missed
+    #
+    - name: '⚙️ Install Qt (cache miss)'
+      shell: bash
+      if: steps.qt_cache.outputs.cache-hit != 'true'
+      env:
+        QT_VERSION: ${{env.QT_VERSION_MACOS}}
+        QT_ARCH: x64
+        QT_USERNAME: ${{secrets.QT_USERNAME}}
+        QT_PASSWORD: ${{secrets.QT_PASSWORD}}
+        QT_OUTPUT_DIR: ${{github.workspace}}/Qt-${{env.QT_VERSION_MACOS}}-${{runner.os}}-x64
+      run: |
+        chmod +x ./scripts/install-qt.sh
+        ./scripts/install-qt.sh
+
+    #
+    # Writes the entry the restore step looks for, keyed by OS + Qt version + arch
+    #
+    - name: '⚙️ Save Qt Cache'
+      if: steps.qt_cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v5
+      with:
+        path: |
+          ${{github.workspace}}/Qt-${{env.QT_VERSION_MACOS}}-${{runner.os}}-x64
+          ${{env.USERPROFILE}}/.qt-license
+        key: qt-${{runner.os}}-${{env.QT_VERSION_MACOS}}-x86_64
+
+    #
+    # Publishes bin/, libexec/ and CMAKE_PREFIX_PATH through GITHUB_PATH / GITHUB_ENV so every
+    # later step in the job sees the same Qt
+    #
+    - name: '⚙️ Add Qt to PATH'
+      shell: bash
+      env:
+        QT_VERSION: ${{env.QT_VERSION_MACOS}}
+        QT_OUTPUT_DIR: ${{github.workspace}}/Qt-${{env.QT_VERSION_MACOS}}-${{runner.os}}-x64
+      run: |
+        export QT_BIN_PATH="${QT_OUTPUT_DIR}/${QT_VERSION}/macos/bin"
+        export QT_LIBEXEC_PATH="${QT_OUTPUT_DIR}/${QT_VERSION}/macos/libexec"
+        export CMAKE_PREFIX_PATH="${QT_OUTPUT_DIR}/${QT_VERSION}/macos/lib/cmake"
+
+        echo "$QT_BIN_PATH" >> $GITHUB_PATH
+        echo "$QT_LIBEXEC_PATH" >> $GITHUB_PATH
+        echo "CMAKE_PREFIX_PATH=$CMAKE_PREFIX_PATH" >> $GITHUB_ENV
+
+    #
+    # get-cmake supplies a current CMake independently of whatever the runner image ships
+    #
+    - name: '⚙️ Install CMake'
+      uses: lukka/get-cmake@latest
+      with:
+        useLocalCache: true
+
+    #
+    # The x86_64 slice is cross-built and smoke-benchmarked under Rosetta on an arm64 runner
+    #
+    - name: '⚙️ Ensure Rosetta 2'
+      run: softwareupdate --install-rosetta --agree-to-license
+
+    #
+    # No PGO here: this job only supplies the x86_64 half of the universal binary, and a Rosetta
+    # profile would describe the emulator rather than the target
+    #
+    - name: '🚧 Configure with CMake (production, x86_64)'
+      env:
+        ARCGIS_API_KEY: ${{secrets.ARCGIS_API_KEY}}
+        SERIAL_STUDIO_LICENSE_KEY: ${{secrets.SERIAL_STUDIO_LICENSE_KEY}}
+        SERIAL_STUDIO_INSTANCE_ID: ${{secrets.SERIAL_STUDIO_INSTANCE_ID}}
+      run: |
+        cmake -B build -G Ninja \
+          -DPRODUCTION_OPTIMIZATION=ON \
+          -DENABLE_HARDENING=ON \
+          -DENABLE_GRPC=ON \
+          -DSS_UNITY_BUILD=ON \
+          -DSS_UNITY_BATCH_SIZE=${{ env.SS_UNITY_BATCH }} \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DCMAKE_OSX_DEPLOYMENT_TARGET=14.0 \
+          -DCMAKE_OSX_ARCHITECTURES="x86_64" \
+          -DCMAKE_PREFIX_PATH="${{github.workspace}}/grpc-prefix;${CMAKE_PREFIX_PATH}" \
+          -DBUILD_COMMERCIAL=ON \
+          -DBUILD_GPL3=OFF
+
+    #
+    # Builds the x86_64 slice
+    #
+    - name: '🚧 Build application (x86_64)'
+      run: cmake --build build --config Release
+
+    #
+    # continue-on-error: throughput under Rosetta says nothing about native x86_64 hardware, so
+    # the number is recorded but never gates
+    #
+    - name: '🚦 Hotpath throughput (x86_64 / Rosetta, informational)'
+      continue-on-error: true
+      env:
+        QT_QPA_PLATFORM: offscreen
+        DYLD_FRAMEWORK_PATH: ${{github.workspace}}/Qt-${{env.QT_VERSION_MACOS}}-${{runner.os}}-x64/${{env.QT_VERSION_MACOS}}/macos/lib
+      run: |
+        arch -x86_64 ./build/app/${{env.EXECUTABLE}}.app/Contents/MacOS/${{env.EXECUTABLE}} --headless --benchmark-hotpath --min-fps 256000
+
+    #
+    # Lifts the slice out of the bundle; the upload itself is the next step
+    #
+    - name: '📤 Upload artifact: x86_64 executable'
+      run: cp "build/app/${{env.EXECUTABLE}}.app/Contents/MacOS/${{env.EXECUTABLE}}" "${{env.EXECUTABLE}}-x86_64"
+
+    #
+    # retention-days: 1, an intermediate consumed by the universal merge job
+    #
+    - name: '📤 Upload artifact: x86_64 slice'
+      uses: actions/upload-artifact@v5
+      with:
+        name: macos-intel-exe
+        path: ${{env.EXECUTABLE}}-x86_64
+        retention-days: 1
+
+#-------------------------------------------------------------------------------
+# macOS universal merge + sign + notarize.
+#-------------------------------------------------------------------------------
+
+  build-macos:
+    runs-on: macos-latest
+    name: '🍎 macOS Build (universal)'
+    needs:
+      - build-macos-arm64
+      - build-macos-intel
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+    #
+    # No submodules: this job merges, signs and notarizes prebuilt artifacts and never compiles
+    #
+    - name: '🧰 Checkout'
+      uses: actions/checkout@v5
+
+    #
+    # create-dmg is an npm package
+    #
+    - name: '⚙️ Install Node'
+      uses: actions/setup-node@v6
+      with:
+        node-version: 22
+
+    #
+    # The deployed arm64 bundle produced by build-macos-arm64
+    #
+    - name: '📥 Download arm64 deployed .app'
+      uses: actions/download-artifact@v5
+      with:
+        name: macos-arm64-app
+        path: .
+
+    #
+    # The bare x86_64 executable produced by build-macos-intel
+    #
+    - name: '📥 Download x86_64 slice'
+      uses: actions/download-artifact@v5
+      with:
+        name: macos-intel-exe
+        path: ./intel-slice
+
+    #
+    # Unpacks the bundle the lipo step edits in place
+    #
+    - name: '🗜 Unpack deployed .app'
+      run: tar -xzf macos-arm64-app.tar.gz
+
+    #
+    # lipo fuses the two slices into the bundle's existing executable; the greps assert both
+    # architectures survived the merge
+    #
+    - name: '🔗 Lipo arm64 + x86_64 into a universal binary'
+      run: |
+        APP_EXE="${{env.APPLICATION}}.app/Contents/MacOS/${{env.EXECUTABLE}}"
+        X64_EXE="intel-slice/${{env.EXECUTABLE}}-x86_64"
+        lipo -create "$APP_EXE" "$X64_EXE" -output "$APP_EXE.universal"
+        mv "$APP_EXE.universal" "$APP_EXE"
+        chmod +x "$APP_EXE"
+        lipo -info "$APP_EXE"
+        lipo -info "$APP_EXE" | grep -q "arm64" && lipo -info "$APP_EXE" | grep -q "x86_64"
+
+    #
+    # The stamp goes in before codesign: any edit to the bundle afterwards invalidates the
+    # signature
+    #
+    - name: '📝 Stamp packaging metadata (before codesign)'
+      run: |
+        printf '{"packageType":"dmg","arch":"universal"}\n' \
+          > "${{env.APPLICATION}}.app/Contents/Resources/ss-config.json"
+
+    #
+    # Loads the Developer ID identity from the p12 secret into the runner keychain
+    #
+    - name: '🪪 Import Certificates'
+      uses: apple-actions/import-codesign-certs@v6
+      with:
+        p12-file-base64: ${{secrets.APPLE_CERTIFICATES_P12}}
+        p12-password: ${{secrets.APPLE_CERTIFICATES_P12_PASSWORD}}
+
+    #
+    # --options runtime is what notarization requires; the entitlements are the ones shipped in
+    # app/deploy/macOS
+    #
+    - name: '✍🏻 Sign Application with Entitlements'
+      run: |
+        codesign --force --deep --options runtime \
+          --entitlements "${GITHUB_WORKSPACE}/app/deploy/macOS/Serial-Studio.entitlements" \
+          --sign "${{secrets.APPLE_APPID_TEAM_ID}}" \
+          "${{env.APPLICATION}}.app"
+
+    #
+    # create-dmg builds the release image; LICENSE.md is removed first so it is not folded into
+    # the DMG layout
+    #
+    - name: '💽 Create nice DMG'
+      run: |
+        npm install --global create-dmg
+        rm LICENSE.md
+        create-dmg "${{env.APPLICATION}}.app" --dmg-title="${{env.APPLICATION}}"
+        mv "${{env.APPLICATION}} ${{env.VERSION}}.dmg" "${{env.EXECUTABLE}}-${{env.VERSION}}-macOS.dmg"
+
+    #
+    # --wait blocks on Apple's verdict, so a rejected build fails the job here
+    #
+    - name: '📋 Notarize'
+      shell: bash
+      env:
+        PRODUCT_PATH: ${{env.EXECUTABLE}}-${{env.VERSION}}-macOS.dmg
+        APPLE_ID: ${{secrets.APPLE_NOTARIZATION_USERNAME}}
+        APP_PASSWORD: ${{secrets.APPLE_NOTARIZATION_PASSWORD}}
+        TEAM_ID: ${{secrets.APPLE_NOTARIZATION_TEAMID}}
+      run: |
+        echo "Submitting $PRODUCT_PATH for notarization..."
+        xcrun notarytool submit "$PRODUCT_PATH" \
+          --apple-id "$APPLE_ID" \
+          --password "$APP_PASSWORD" \
+          --team-id "$TEAM_ID" \
+          --wait \
+          --output-format json
+
+    #
+    # Stapling the ticket lets Gatekeeper clear the DMG on a machine that is offline
+    #
+    - name: '📌 Staple'
+      shell: bash
+      run: |
+        PRODUCT="${{env.EXECUTABLE}}-${{env.VERSION}}-macOS.dmg"
+        echo "Stapling $PRODUCT..."
+        xcrun stapler staple "$PRODUCT"
+
+    #
+    # Release artifact: the signed, notarized, stapled universal DMG
+    #
+    - name: '📤 Upload artifact: DMG'
+      uses: actions/upload-artifact@v5
+      with:
+        name: ${{env.EXECUTABLE}}-${{env.VERSION}}-macOS.dmg
+        path: ${{env.EXECUTABLE}}-${{env.VERSION}}-macOS.dmg
+
+#-------------------------------------------------------------------------------
+# Windows build (MSVC 2022 x86_64)
+#-------------------------------------------------------------------------------
+
+  build-windows:
+    runs-on: windows-latest
+    name: '🧊 Windows Build (x86_64)'
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+    #
+    # core.autocrlf=input keeps the checkout LF-only, which is what code-verify and clang-format
+    # assume
+    #
+    - run: git config --global core.autocrlf input
+    #
+    # This repo has no submodules; 'submodules: recursive' is a no-op kept for future deps.
+    #
+    - name: '🧰 Checkout'
+      uses: actions/checkout@v5
+      with:
+        submodules: 'recursive'
+
+    #
+    # Restore-only half of the cache pair; the save step below is gated on a miss so a hit never
+    # rewrites the entry
+    #
+    - name: '⚙️ Restore Qt Cache'
+      id: qt_cache
+      uses: actions/cache/restore@v5
+      with:
+        path: |
+          ${{github.workspace}}/Qt-${{env.QT_VERSION_WINDOWS}}-${{runner.os}}-x64
+          ${{env.USERPROFILE}}/.qt-license
+        key: qt-${{runner.os}}-${{env.QT_VERSION_WINDOWS}}-x64-msvc2022_64
+
+    #
+    # Qt comes from the online installer driven by scripts/install-qt.sh, using the account
+    # secrets; only reached when the cache missed
+    #
+    - name: '⚙️ Install Qt (cache miss)'
+      shell: pwsh
+      if: steps.qt_cache.outputs.cache-hit != 'true'
+      env:
+        QT_VERSION: ${{env.QT_VERSION_WINDOWS}}
+        QT_ARCH: x64
+        QT_USERNAME: ${{secrets.QT_USERNAME}}
+        QT_PASSWORD: ${{secrets.QT_PASSWORD}}
+        QT_OUTPUT_DIR: ${{github.workspace}}/Qt-${{env.QT_VERSION_WINDOWS}}-${{runner.os}}-x64
+      run: |
+        ./scripts/install-qt.ps1
+
+    #
+    # Writes the entry the restore step looks for, keyed by OS + Qt version + arch
+    #
+    - name: '⚙️ Save Qt Cache'
+      if: steps.qt_cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v5
+      with:
+        path: |
+          ${{github.workspace}}/Qt-${{env.QT_VERSION_WINDOWS}}-${{runner.os}}-x64
+          ${{env.USERPROFILE}}/.qt-license
+        key: qt-${{runner.os}}-${{env.QT_VERSION_WINDOWS}}-x64-msvc2022_64
+
+    #
+    # Publishes bin/, libexec/ and CMAKE_PREFIX_PATH through GITHUB_PATH / GITHUB_ENV so every
+    # later step in the job sees the same Qt
+    #
+    - name: '⚙️ Add Qt to PATH'
+      shell: pwsh
+      env:
+        QT_VERSION: ${{env.QT_VERSION_WINDOWS}}
+        QT_OUTPUT_DIR: ${{github.workspace}}/Qt-${{env.QT_VERSION_WINDOWS}}-${{runner.os}}-x64
+      run: |
+        $QT_BIN_PATH = "$env:QT_OUTPUT_DIR\$env:QT_VERSION\msvc2022_64\bin"
+        $QT_LIBEXEC_PATH = "$env:QT_OUTPUT_DIR\$env:QT_VERSION\msvc2022_64\libexec"
+        $CMAKE_PREFIX_PATH = "$env:QT_OUTPUT_DIR\$env:QT_VERSION\msvc2022_64\lib\cmake"
+
+        Write-Output "$QT_BIN_PATH" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+        Write-Output "$QT_LIBEXEC_PATH" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+        Write-Output "CMAKE_PREFIX_PATH=$CMAKE_PREFIX_PATH" >> $env:GITHUB_ENV
+
+    #
+    # get-cmake supplies a current CMake; both of its caches are off on this image
+    #
+    - name: '⚙️ Install CMake'
+      uses: lukka/get-cmake@latest
+      with:
+        useLocalCache: false
+        useCloudCache: false
+
+    #
+    # Sets the x64 MSVC environment that the Ninja generator and clang-cl inherit
+    #
+    - name: '🛠 Setup MSVC Development Environment'
+      uses: TheMrMilchmann/setup-msvc-dev@v4
+      with:
+        arch: x64
+
+    #
+    # The VS-bundled clang-cl is used in preference to any LLVM on PATH, and the step throws
+    # rather than silently falling back
+    #
+    - name: '🛠 Use Microsoft (VS-bundled) clang-cl'
+      run: |
+        $clangDir = Join-Path $env:VCINSTALLDIR 'Tools\Llvm\x64\bin'
+        if (-not (Test-Path (Join-Path $clangDir 'clang-cl.exe'))) { throw "VS clang-cl not found at $clangDir" }
+        Add-Content -Path $env:GITHUB_PATH -Value $clangDir
+        & (Join-Path $clangDir 'clang-cl.exe') --version
+
+    #
+    # gRPC arrives as a prebuilt tarball from GRPC_REPO; building it from source would cost more
+    # than the rest of the job put together
+    #
+    - name: '⚙️ Download prebuilt gRPC'
+      run: |
+        gh release download v${{env.GRPC_VERSION}} `
+          -R ${{env.GRPC_REPO}} `
+          -p "grpc-${{env.GRPC_VERSION}}-windows-x86_64.zip"
+        mkdir "${{github.workspace}}\grpc-prefix"
+        7z x grpc-${{env.GRPC_VERSION}}-windows-x86_64.zip -o"${{github.workspace}}\grpc-prefix"
+      env:
+        GH_TOKEN: ${{secrets.GITHUB_TOKEN}}
+
+    #
+    # Stage 1 of the two-stage PGO flow: an instrumented Release build whose only job is to emit
+    # profiles for the training runs below
+    #
+    - name: '🚧 Configure with CMake (PGO generate)'
+      env:
+        ARCGIS_API_KEY: ${{secrets.ARCGIS_API_KEY}}
+        SERIAL_STUDIO_LICENSE_KEY: ${{secrets.SERIAL_STUDIO_LICENSE_KEY}}
+        SERIAL_STUDIO_INSTANCE_ID: ${{secrets.SERIAL_STUDIO_INSTANCE_ID}}
+      run: |
+        cmake -B build -G Ninja `
+          -DCMAKE_CXX_COMPILER=clang-cl `
+          -DCMAKE_C_COMPILER=clang-cl `
+          -DCMAKE_PREFIX_PATH="${{github.workspace}}/grpc-prefix" `
+          -DPRODUCTION_OPTIMIZATION=ON `
+          -DENABLE_HARDENING=ON `
+          -DENABLE_GRPC=ON `
+          -DENABLE_PGO=ON `
+          -DPGO_STAGE=GENERATE `
+          -DSS_UNITY_BUILD=ON `
+          -DSS_UNITY_BATCH_SIZE=${{ env.SS_UNITY_BATCH }} `
+          -DCMAKE_BUILD_TYPE=Release `
+          -DBUILD_COMMERCIAL=ON `
+          -DBUILD_GPL3=OFF
+
+    #
+    # Builds the instrumented binary the two training runs profile
+    #
+    - name: '🚧 Build application (instrumented)'
+      run: cmake --build build --config Release
+
+    #
+    # Pro widgets are license-gated, so an unactivated training run profiles the wrong code;
+    # wrapped in try/catch and exit 0 because an unlicensed profile still beats no profile
+    #
+    - name: '🔑 Activate Serial Studio license (Pro hotpath training)'
+      run: |
+        try {
+          $p = Start-Process -FilePath "build/app/${{env.EXECUTABLE}}.exe" `
+            -ArgumentList '--activate',"${{secrets.SERIAL_STUDIO_LICENSE_KEY}}" `
+            -WorkingDirectory $PWD -PassThru -NoNewWindow
+          if (-not $p.WaitForExit(120000)) { $p.Kill() }
+          if ($p.ExitCode -ne 0) { Write-Host "Activation failed (exit $($p.ExitCode)); training without Pro widgets" }
+        } catch {
+          Write-Host "License activation error: $_"
+        }
+        exit 0
+
+    #
+    # --min-fps 1 turns the benchmark into a profile generator: the real gate runs later, against
+    # the optimized binary
+    #
+    - name: '🏋️ PGO training run (hotpath)'
+      run: |
+        $p = Start-Process -FilePath "build/app/${{env.EXECUTABLE}}.exe" `
+          -ArgumentList '--headless','--benchmark-hotpath','--min-fps','1' `
+          -WorkingDirectory $PWD -PassThru -NoNewWindow
+        if (-not $p.WaitForExit(300000)) { $p.Kill(); throw 'benchmark timed out (no PGO profile)' }
+
+    #
+    # continue-on-error: the second profile is a bonus, and this load is the flakiest step in the
+    # job on Windows
+    #
+    - name: '🏋️ PGO training run (big project)'
+      continue-on-error: true
+      run: |
+        ./tests/benchmarks/big_db_test/run_load.ps1 -App "build/app/${{env.EXECUTABLE}}.exe" -Seconds 25
+
+    #
+    # Stage 2: identical flags with PGO_STAGE=USE so the compiler consumes the profiles just
+    # written
+    #
+    - name: '🚧 Reconfigure with CMake (PGO use)'
+      env:
+        ARCGIS_API_KEY: ${{secrets.ARCGIS_API_KEY}}
+        SERIAL_STUDIO_LICENSE_KEY: ${{secrets.SERIAL_STUDIO_LICENSE_KEY}}
+        SERIAL_STUDIO_INSTANCE_ID: ${{secrets.SERIAL_STUDIO_INSTANCE_ID}}
+      run: |
+        cmake -B build -G Ninja `
+          -DCMAKE_CXX_COMPILER=clang-cl `
+          -DCMAKE_C_COMPILER=clang-cl `
+          -DCMAKE_PREFIX_PATH="${{github.workspace}}/grpc-prefix" `
+          -DPRODUCTION_OPTIMIZATION=ON `
+          -DENABLE_HARDENING=ON `
+          -DENABLE_GRPC=ON `
+          -DENABLE_PGO=ON `
+          -DPGO_STAGE=USE `
+          -DSS_UNITY_BUILD=ON `
+          -DSS_UNITY_BATCH_SIZE=${{ env.SS_UNITY_BATCH }} `
+          -DSS_PACKAGE_TYPE=msi `
+          -DCMAKE_BUILD_TYPE=Release `
+          -DBUILD_COMMERCIAL=ON `
+          -DBUILD_GPL3=OFF
+
+    #
+    # The binary that ships, and the one every gate below measures
+    #
+    - name: '🚧 Build application (PGO optimized)'
+      run: cmake --build build --config Release
+
+    #
+    # The throughput gate reads HOTPATH_PASS out of benchmark.txt: Start-Process loses the child's
+    # exit code, so the verdict travels through the file
+    #
+    - name: '🚦 Hotpath throughput gate (256 kHz)'
+      run: |
+        $p = Start-Process -FilePath "build/app/${{env.EXECUTABLE}}.exe" `
+          -ArgumentList '--headless','--benchmark-hotpath','--min-fps','256000','--benchmark-output','benchmark.txt' `
+          -WorkingDirectory $PWD -PassThru -NoNewWindow
+        if (-not $p.WaitForExit(300000)) { $p.Kill(); throw 'benchmark timed out' }
+        if (Select-String -Path benchmark.txt -Pattern 'HOTPATH_PASS=1' -Quiet) { exit 0 } else { exit 1 }
+
+    #
+    # continue-on-error, like the training load it mirrors
+    #
+    - name: '🩺 Big project verification (optimized)'
+      continue-on-error: true
+      run: |
+        ./tests/benchmarks/big_db_test/run_load.ps1 -App "build/app/${{env.EXECUTABLE}}.exe" -Seconds 15
+
+    #
+    # Dumps written by the big_db_test harness itself; always() because the interesting case is
+    # the run that failed
+    #
+    - name: '📦 Upload big_db_test crash dumps'
+      if: always()
+      uses: actions/upload-artifact@v5
+      with:
+        name: windows-big-db-test-dumps
+        path: tests/benchmarks/big_db_test/dumps/
+        if-no-files-found: ignore
+
+    #
+    # always(): activations are seat-limited, so a failed job still has to release the seat
+    #
+    - name: '🔑 Deactivate Serial Studio license'
+      if: always()
+      run: |
+        try {
+          $p = Start-Process -FilePath "build/app/${{env.EXECUTABLE}}.exe" `
+            -ArgumentList '--deactivate' `
+            -WorkingDirectory $PWD -PassThru -NoNewWindow
+          if (-not $p.WaitForExit(120000)) { $p.Kill() }
+        } catch {
+          Write-Host "License deactivation error: $_"
+        }
+        exit 0
+
+    #
+    # msbuild is what the WiX toolchain shells out to
+    #
+    - name: '⚙️ Add msbuild to PATH'
+      uses: microsoft/setup-msbuild@v3
+
+    #
+    # WiX is the CPack backend for the MSI
+    #
+    - name: '⚙️ Install WiX'
+      run: dotnet tool install --global wix
+
+    #
+    # cpack drives WiX; the installer is renamed to the release naming scheme
+    #
+    - name: '📦 Create MSI installer'
+      run: |
+        cd build
+        cpack --verbose
+        mv *.msi ${{env.EXECUTABLE}}-${{env.VERSION}}-Windows.msi
+        mv ${{env.EXECUTABLE}}-${{env.VERSION}}-Windows.msi ../
+
+    #
+    # The same build packaged as a plain archive, the base of the portable ZIP
+    #
+    - name: '📦 Create portable TGZ'
+      run: |
+        cd build
+        cpack -G TGZ
+        mv *.tar.gz ${{env.EXECUTABLE}}-${{env.VERSION}}-Windows.tgz
+
+    #
+    # Unpacks the TGZ so the portable ZIP can be assembled with a launcher and a license beside it
+    #
+    - name: '📦 Extract TGZ contents'
+      shell: bash
+      run: |
+        cd build
+        7z x ${{env.EXECUTABLE}}-${{env.VERSION}}-Windows.tgz
+        7z x ${{env.EXECUTABLE}}-${{env.VERSION}}-Windows.tar
+        DIRNAME=$(tar -tf ${{env.EXECUTABLE}}-${{env.VERSION}}-Windows.tar 2>/dev/null | head -1 | cut -f1 -d"/" || true)
+        echo $DIRNAME > dirname.txt
+        cp ../app/deploy/windows/license.rtf ./License.rtf
+
+    #
+    # The deploy tools bundle only the native platform plugin; the integration tests run with
+    # QT_QPA_PLATFORM=offscreen
+    #
+    - name: '🧩 Bundle offscreen platform plugin (headless CI tests)'
+      shell: bash
+      run: |
+        cd build
+        DIRNAME=$(cat dirname.txt)
+        QT_PLUGINS_PATH="${{github.workspace}}/Qt-${{env.QT_VERSION_WINDOWS}}-${{runner.os}}-x64/${{env.QT_VERSION_WINDOWS}}/msvc2022_64/plugins"
+        DEST="$DIRNAME/plugins/platforms"
+        mkdir -p "$DEST"
+        if [ -f "$QT_PLUGINS_PATH/platforms/qoffscreen.dll" ]; then
+          cp "$QT_PLUGINS_PATH/platforms/qoffscreen.dll" "$DEST/"
+        else
+          echo "Warning: offscreen platform plugin not found at $QT_PLUGINS_PATH/platforms"
+        fi
+
+    #
+    # Portable entry point: a .bat next to the extracted tree, so users do not have to dig into
+    # bin\ for the executable
+    #
+    - name: '📝 Create Windows batch launcher'
+      shell: bash
+      run: |
+        cd build
+        DIRNAME=$(cat dirname.txt)
+        echo "@echo off" > "${{env.APPLICATION}}.bat"
+        echo "start \"\" \"%~dp0${DIRNAME}\\bin\\${{env.EXECUTABLE}}.exe\"" >> "${{env.APPLICATION}}.bat"
+
+    #
+    # Stamps ss-config.json as portable and reads it straight back out of the archive as a check
+    #
+    - name: '📦 Add files to ZIP'
+      shell: bash
+      run: |
+        cd build
+        DIRNAME=$(cat dirname.txt)
+        printf '{"packageType":"portable","arch":"x86_64"}\n' > "$DIRNAME/bin/ss-config.json"
+        7z a ${{env.EXECUTABLE}}-${{env.VERSION}}-Windows-Portable.zip "${{env.APPLICATION}}.bat" License.rtf $DIRNAME/*
+        7z e -so ${{env.EXECUTABLE}}-${{env.VERSION}}-Windows-Portable.zip "$DIRNAME/bin/ss-config.json" | grep -q '"packageType":"portable"'
+        mv ${{env.EXECUTABLE}}-${{env.VERSION}}-Windows-Portable.zip ..
+
+    #
+    # Store package: the logo variants are rendered from PackageIcon.png onto transparent square
+    # canvases, so no plate bleeds behind the icon. The taskbar and the Start "all apps" list read
+    # the target-size variants, and they are shipped in their unplated form so Windows draws the
+    # bare icon instead of stamping it on the accent-colour plate. resources.pri is what makes
+    # those qualified variants resolve at runtime; without the index Windows only sees the neutral
+    # logo and plates it. The manifest is generated inline, and makepri/makeappx are located in the
+    # installed Windows SDK rather than assumed on PATH
+    #
+    - name: '📦 Create MSIX package (Microsoft Store)'
+      run: |
+        $dirname = (Get-Content build/dirname.txt -TotalCount 1).Trim()
+        $staging = "build/msix"
+        New-Item -ItemType Directory -Force "$staging/Assets" | Out-Null
+        Copy-Item -Recurse -Force "build/$dirname/*" $staging
+        Set-Content -Path "$staging/bin/ss-config.json" `
+          -Value '{"packageType":"msix","arch":"x86_64"}' -Encoding utf8 -NoNewline
+
+        Add-Type -AssemblyName System.Drawing
+        $icon = [System.Drawing.Image]::FromFile("$PWD/app/deploy/PackageIcon.png")
+
+        function Save-Logo($size, $name) {
+          $bmp = New-Object System.Drawing.Bitmap($size, $size)
+          $gfx = [System.Drawing.Graphics]::FromImage($bmp)
+          $gfx.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+          $gfx.SmoothingMode     = [System.Drawing.Drawing2D.SmoothingMode]::HighQuality
+          $gfx.DrawImage($icon, 0, 0, $size, $size)
+          $bmp.Save("$PWD/$staging/Assets/$name", [System.Drawing.Imaging.ImageFormat]::Png)
+          $gfx.Dispose()
+          $bmp.Dispose()
+        }
+
+        Save-Logo 50  'StoreLogo.png'
+        Save-Logo 150 'Square150x150Logo.png'
+        Save-Logo 44  'Square44x44Logo.png'
+
+        foreach ($s in 16, 24, 32, 48, 256) {
+          Save-Logo $s "Square44x44Logo.targetsize-$s.png"
+          Save-Logo $s "Square44x44Logo.targetsize-${s}_altform-unplated.png"
+        }
+        $icon.Dispose()
+
+        $description = $env:DESCRIPTION -replace '&', '&amp;'
+        $manifest = @"
+        <?xml version="1.0" encoding="utf-8"?>
+        <Package
+          xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+          xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+          xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities">
+          <Identity Name="$($env:MSIX_IDENTITY_NAME)"
+                    Publisher="$($env:MSIX_PUBLISHER)"
+                    Version="$($env:VERSION).0"
+                    ProcessorArchitecture="x64" />
+          <Properties>
+            <DisplayName>$($env:APPLICATION)</DisplayName>
+            <PublisherDisplayName>$($env:MSIX_PUBLISHER_DISPLAY)</PublisherDisplayName>
+            <Logo>Assets\StoreLogo.png</Logo>
+          </Properties>
+          <Dependencies>
+            <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxVersionTested="10.0.26100.0" />
+          </Dependencies>
+          <Resources>
+            <Resource Language="en-US" />
+          </Resources>
+          <Applications>
+            <Application Id="SerialStudioPro"
+                         Executable="bin\$($env:EXECUTABLE).exe"
+                         EntryPoint="Windows.FullTrustApplication">
+              <uap:VisualElements DisplayName="$($env:APPLICATION)"
+                                  Description="$description"
+                                  BackgroundColor="transparent"
+                                  Square150x150Logo="Assets\Square150x150Logo.png"
+                                  Square44x44Logo="Assets\Square44x44Logo.png" />
+            </Application>
+          </Applications>
+          <Capabilities>
+            <rescap:Capability Name="runFullTrust" />
+          </Capabilities>
+        </Package>
+        "@
+        Set-Content -Path "$staging/AppxManifest.xml" -Value $manifest -Encoding utf8
+
+        $makepri = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\10.*\x64\makepri.exe" -ErrorAction SilentlyContinue |
+          Sort-Object FullName -Descending | Select-Object -First 1
+        if (-not $makepri) { throw 'makepri.exe not found in any installed Windows SDK' }
+        & $makepri.FullName createconfig /cf "build/priconfig.xml" /dq en-US /o
+        if ($LASTEXITCODE -ne 0) { throw "makepri createconfig failed with exit code $LASTEXITCODE" }
+        & $makepri.FullName new /pr "$staging" /mn "$staging/AppxManifest.xml" /cf "build/priconfig.xml" /of "$staging/resources.pri" /o
+        if ($LASTEXITCODE -ne 0) { throw "makepri new failed with exit code $LASTEXITCODE" }
+        Remove-Item "build/priconfig.xml" -Force
+
+        $makeappx = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\10.*\x64\makeappx.exe" -ErrorAction SilentlyContinue |
+          Sort-Object FullName -Descending | Select-Object -First 1
+        if (-not $makeappx) { throw 'makeappx.exe not found in any installed Windows SDK' }
+        & $makeappx.FullName pack /d $staging /p "${{env.EXECUTABLE}}-${{env.VERSION}}-Windows.msix" /o
+        if ($LASTEXITCODE -ne 0) { throw "makeappx failed with exit code $LASTEXITCODE" }
+        $stamp = & 7z e -so "${{env.EXECUTABLE}}-${{env.VERSION}}-Windows.msix" "bin/ss-config.json"
+        if ($stamp -notmatch '"packageType":"msix"') { throw 'MSIX ss-config.json stamp mismatch' }
+
+    #
+    # Release artifact: the MSI installer
+    #
+    - name: '📤 Upload artifact: MSI installer'
+      uses: actions/upload-artifact@v5
+      with:
+        name: ${{env.EXECUTABLE}}-${{env.VERSION}}-Windows.msi
+        path: ${{env.EXECUTABLE}}-${{env.VERSION}}-Windows.msi
+
+    #
+    # Release artifact: the portable ZIP
+    #
+    - name: '📤 Upload artifact: Portable ZIP'
+      uses: actions/upload-artifact@v5
+      with:
+       name: ${{env.EXECUTABLE}}-${{env.VERSION}}-Windows-Portable
+       path: ${{env.EXECUTABLE}}-${{env.VERSION}}-Windows-Portable.zip
+
+    #
+    # Release artifact: the MSIX package uploaded to the Microsoft Store
+    #
+    - name: '📤 Upload artifact: MSIX package (Store upload)'
+      uses: actions/upload-artifact@v5
+      with:
+        name: ${{env.EXECUTABLE}}-${{env.VERSION}}-Windows.msix
+        path: ${{env.EXECUTABLE}}-${{env.VERSION}}-Windows.msix
+
+#-------------------------------------------------------------------------------
+# Create release
+#-------------------------------------------------------------------------------
+
+  upload:
+    name: '🗂 Publish (continuous)'
+    needs:
+      - build-macos
+      - build-linux
+      - build-windows
+      - build-linux-arm64
+
+    permissions:
+      contents: write
+
+    runs-on: ubuntu-latest
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/') && github.ref_name || 'continuous' }}
+
+    steps:
+      #
+      # No submodules: this job only needs the workflow checkout to run gh
+      #
+      - name: '🧰 Checkout'
+        uses: actions/checkout@v5
+
+      #
+      # merge-multiple flattens every build job's artifact into one ./artifacts directory
+      #
+      - name: '📥 Download artifacts'
+        uses: actions/download-artifact@v5
+        with:
+          path: ./artifacts
+          merge-multiple: true
+
+      #
+      # The continuous release is recreated from scratch on every run; deleting the tag with it
+      # keeps the release page from accumulating stale assets
+      #
+      - name: '🗑️ Delete previous release and tag if exists'
+        run: |
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" &>/dev/null; then
+            echo "Release '$RELEASE_TAG' exists. Deleting..."
+            gh release delete "$RELEASE_TAG" --cleanup-tag --yes --repo "$GITHUB_REPOSITORY" || echo "Failed to delete release. Ignoring."
+          else
+            echo "No release named '$RELEASE_TAG' found. Skipping delete."
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      #
+      # prerelease + allowUpdates: 'continuous' is a moving target, while a pushed tag publishes
+      # under its own name
+      #
+      - name: '🚀 Create Release'
+        uses: ncipollo/release-action@v1
+        with:
+          tag: ${{ env.RELEASE_TAG }}
+          commit: ${{ github.sha }}
+          prerelease: true
+          allowUpdates: true
+          replacesArtifacts: true
+          name: 'Continuous Build'
+          artifacts: |
+            artifacts/*.AppImage
+            artifacts/*.deb
+            artifacts/*.rpm
+            artifacts/*.dmg
+            artifacts/*.msi
+            artifacts/*.zip
+
+#-------------------------------------------------------------------------------
+# Static analysis (fail-fast, no build)
+#-------------------------------------------------------------------------------
+
+  lint:
+    runs-on: ubuntu-24.04
+    name: '🔬 Lint'
+    steps:
+    #
+    # No submodules: the linters only read first-party sources and scripts
+    #
+    - name: '🧰 Checkout'
+      uses: actions/checkout@v5
+
+    #
+    # 3.11 with pip caching: every gate in this job is a Python script
+    #
+    - name: '🐍 Set up Python'
+      uses: actions/setup-python@v6
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+
+    #
+    # tests/requirements.txt is the single dependency manifest for the repo's Python tooling
+    #
+    - name: '🐍 Install Python dependencies'
+      run: pip install -r tests/requirements.txt
+
+    #
+    # The repo is REUSE-compliant (REUSE.toml + LICENSES/); a file without an SPDX header fails
+    # here
+    #
+    - name: '⚖️ Verify REUSE licensing compliance'
+      run: |
+        pip install reuse
+        reuse lint
+
+    #
+    # scripts/code-verify.py is the style contract: errors block the job, advisories do not
+    #
+    - name: '🔬 Verify code conventions'
+      run: python3 scripts/code-verify.py --check
+
+    #
+    # Growth ratchets. Each has a checked-in baseline and fails only on an increase, so the
+    # existing debt does not block CI while new debt does. Until 2026-08-25 the singleton census
+    # ran only inside sanitize-commit.py, which made it a gate somebody had to remember to run
+    #
+    - name: '🔒 Ratchet global state (spec 0039)'
+      run: python3 scripts/code-verify.py --singleton-census --check
+
+    - name: '🔒 Ratchet translation-unit size'
+      run: python3 scripts/code-verify.py --tu-census --check
+
+    #
+    # The AI-facing docs are the tier that rots silently; this checks their paths, symbols and
+    # pinned constants against the tree
+    #
+    - name: '🔬 Verify AI documentation claims'
+      run: python3 scripts/claim-verify.py --quiet
+
+    #
+    # Markdown AI-narration scan over the user-facing docs
+    #
+    - name: '🔬 Verify documentation conventions'
+      run: python3 scripts/documentation-verify.py --quiet
+
+    #
+    # The .code-report cleanup checklist, uploaded even on success so the baseline debt stays
+    # visible
+    #
+    - name: '📤 Upload code-verify report'
+      if: always()
+      uses: actions/upload-artifact@v5
+      with:
+        name: code-verify-report
+        path: |
+          .code-report
+          .doc-report
+          .claim-report
+        if-no-files-found: ignore
+
+    #
+    # Spec 0037: every drift gate the repo owns has a caller. The snapshot projection is --strict
+    # here (locally it warns, because only a build can refresh api-schema.json); its failure
+    # message names the ordered fix
+    #
+    - name: '🧬 Verify generated API surfaces'
+      run: |
+        python3 scripts/registry-verify.py
+        python3 scripts/generate-command-strings.py --check
+        python3 scripts/generate-property-registry.py --check
+        python3 scripts/generate-property-registry.py --check-snapshot --strict
+        python3 scripts/generate-sdk.py --check
+
+#-------------------------------------------------------------------------------
+# Integration tests
+#-------------------------------------------------------------------------------
+
+  test:
+    name: '🧪 Test (${{ matrix.label }})'
+    needs: [upload]
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: Linux
+            os: linux
+            runs-on: ubuntu-24.04
+            asset: Linux-x64.AppImage
+            broker: true
+            opcua_sim: true
+            marker_expr: "not destructive and not dos and not audio"
+            timeout_method: signal
+          - label: Linux-arm64
+            os: linux
+            runs-on: ubuntu-24.04-arm
+            asset: Linux-arm64.AppImage
+            broker: true
+            opcua_sim: true
+            marker_expr: "not destructive and not dos and not audio"
+            timeout_method: signal
+          - label: macOS
+            os: macos
+            runs-on: macos-latest
+            asset: macOS.dmg
+            broker: true
+            opcua_sim: true
+            marker_expr: "not destructive and not dos and not audio"
+            timeout_method: signal
+          - label: Windows
+            os: windows
+            runs-on: windows-latest
+            asset: Windows-Portable
+            broker: false
+            opcua_sim: false
+            marker_expr: "not destructive and not dos and not audio and not requires_broker and not requires_opcua_sim"
+            timeout_method: thread
+    runs-on: ${{ matrix.runs-on }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+    #
+    # No submodules: this job runs the pytest suite against a downloaded binary
+    #
+    - name: '🧰 Checkout'
+      uses: actions/checkout@v5
+
+    #
+    # Derives the asset name and release tag that the download step below resolves against
+    #
+    - name: '🧮 Resolve artifact name'
+      run: |
+        echo "ARTIFACT=${{env.EXECUTABLE}}-${{env.VERSION}}-${{matrix.asset}}" >> "$GITHUB_ENV"
+        echo "RELEASE_TAG=${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/') && github.ref_name || 'continuous' }}" >> "$GITHUB_ENV"
+
+    #
+    # 3.11 with pip caching: every gate in this job is a Python script
+    #
+    - name: '🐍 Set up Python'
+      uses: actions/setup-python@v6
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+
+    #
+    # tests/requirements.txt is the single dependency manifest for the repo's Python tooling
+    #
+    - name: '🐍 Install Python dependencies'
+      run: pip install -r tests/requirements.txt
+
+    #
+    # The suite runs against the published artifact rather than a local build, so packaging bugs
+    # are in scope
+    #
+    - name: '📥 Download released binary'
+      env:
+        GH_TOKEN: ${{secrets.GITHUB_TOKEN}}
+      run: |
+        case "${{matrix.os}}" in
+          windows) PATTERN="${ARTIFACT}.zip" ;;
+          *)       PATTERN="$ARTIFACT" ;;
+        esac
+        gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
+          --pattern "$PATTERN" --clobber
+
+    #
+    # Extracting the AppImage beats running it (no FUSE needed); the apt payload is the runtime
+    # the tests exercise: audio, fonts and the broker client
+    #
+    - name: '📦 Prepare binary (Linux AppImage)'
+      if: matrix.os == 'linux'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libegl1 libgl1 libopengl0 libasound2-dev fontconfig \
+          mosquitto mosquitto-clients alsa-utils
+        chmod +x "$ARTIFACT"
+        ./"$ARTIFACT" --appimage-extract >/dev/null
+        echo "SS_RUN=$PWD/squashfs-root/AppRun" >> "$GITHUB_ENV"
+
+    #
+    # Mounts the DMG, copies the bundle out, and exports SS_RUN
+    #
+    - name: '📦 Prepare binary (macOS .app)'
+      if: matrix.os == 'macos'
+      run: |
+        hdiutil attach "$ARTIFACT" -nobrowse -mountpoint /tmp/ssdmg
+        cp -R "/tmp/ssdmg/${{env.APPLICATION}}.app" .
+        hdiutil detach /tmp/ssdmg
+        echo "SS_RUN=$PWD/${{env.APPLICATION}}.app/Contents/MacOS/${{env.EXECUTABLE}}" >> "$GITHUB_ENV"
+
+    #
+    # Unzips the portable build and locates the executable inside it
+    #
+    - name: '📦 Prepare binary (Windows portable)'
+      if: matrix.os == 'windows'
+      run: |
+        7z x "${ARTIFACT}.zip" -oapp_win >/dev/null
+        EXE=$(find app_win -name "${{env.EXECUTABLE}}.exe" | head -1)
+        echo "SS_RUN=$PWD/$EXE" >> "$GITHUB_ENV"
+
+    #
+    # Local broker on 127.0.0.1:1883 for the MQTT tests; the Windows leg has no broker and drops
+    # the requires_broker marker instead
+    #
+    - name: '🦟 Start Mosquitto (Linux)'
+      if: matrix.os == 'linux'
+      run: |
+        sudo systemctl stop mosquitto || true
+        printf 'listener 1883 127.0.0.1\nallow_anonymous true\npersistence false\n' > /tmp/mosq.conf
+        mosquitto -d -c /tmp/mosq.conf
+        for i in $(seq 1 15); do (echo > /dev/tcp/127.0.0.1/1883) >/dev/null 2>&1 && break; sleep 1; done
+
+    #
+    # Same broker, installed through Homebrew
+    #
+    - name: '🦟 Start Mosquitto (macOS)'
+      if: matrix.os == 'macos'
+      run: |
+        brew install mosquitto
+        printf 'listener 1883 127.0.0.1\nallow_anonymous true\npersistence false\n' > /tmp/mosq.conf
+        "$(brew --prefix mosquitto)/sbin/mosquitto" -d -c /tmp/mosq.conf
+        for i in $(seq 1 15); do (echo > /dev/tcp/127.0.0.1/1883) >/dev/null 2>&1 && break; sleep 1; done
+
+    #
+    # The OPC UA bottling-line simulator on 127.0.0.1:4840 for the spec-0066 driver tests; the
+    # Windows leg runs no simulator and drops the requires_opcua_sim marker instead
+    #
+    - name: '🏭 Start OPC UA simulator'
+      if: matrix.opcua_sim
+      run: |
+        nohup python "examples/OPC UA PLC Simulator/opcua_plc_simulator.py" --port 4840 --rate 20 \
+          > /tmp/opcua-sim.log 2>&1 &
+        for i in $(seq 1 30); do (echo > /dev/tcp/127.0.0.1/4840) >/dev/null 2>&1 && break; sleep 1; done
+        (echo > /dev/tcp/127.0.0.1/4840) >/dev/null 2>&1 || { cat /tmp/opcua-sim.log; exit 1; }
+
+    #
+    # snd-aloop gives the audio driver a capture device; every command is tolerant because the
+    # audio leg is non-blocking anyway
+    #
+    - name: '🎙 Set up ALSA loopback (Linux)'
+      if: matrix.os == 'linux'
+      run: |
+        sudo apt-get install -y "linux-modules-extra-$(uname -r)" || true
+        sudo modprobe snd-aloop || true
+        aplay -l || true
+
+    #
+    # Per-OS core-dump and WER configuration, applied before the app starts so a mid-suite crash
+    # leaves something to read
+    #
+    - name: '🧯 Enable crash capture'
+      continue-on-error: true
+      run: |
+        case "${{ matrix.os }}" in
+          linux)
+            mkdir -p "$GITHUB_WORKSPACE/cores"
+            chmod 777 "$GITHUB_WORKSPACE/cores"
+            echo "$GITHUB_WORKSPACE/cores/core.%e.%p.%t" | sudo tee /proc/sys/kernel/core_pattern >/dev/null
+            sudo systemctl stop apport.service 2>/dev/null || true
+            ;;
+          macos)
+            mkdir -p "$HOME/Library/Logs/DiagnosticReports"
+            sudo sysctl -w kern.coredump=1 >/dev/null 2>&1 || true
+            sudo chmod 1777 /cores 2>/dev/null || true
+            ;;
+          windows)
+            mkdir -p "$GITHUB_WORKSPACE/crash-dumps"
+            DUMP_DIR="$(cygpath -w "$GITHUB_WORKSPACE/crash-dumps")"
+            KEY='HKLM\SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps'
+            reg add "$KEY" //v DumpFolder //t REG_EXPAND_SZ //d "$DUMP_DIR" //f
+            reg add "$KEY" //v DumpType   //t REG_DWORD      //d 2          //f
+            reg add "$KEY" //v DumpCount  //t REG_DWORD      //d 10         //f
+            ;;
+        esac
+
+    #
+    # The --selftest tier runs inside CLI::process(), before the composition root exists
+    #
+    - name: '🔏 Offline license self-test'
+      env:
+        QT_QPA_PLATFORM: offscreen
+      run: '"$SS_RUN" --selftest-offline-license'
+
+    #
+    # Pro surfaces are license-gated; without activation most of the suite would skip
+    #
+    - name: '🔑 Activate Serial Studio license'
+      env:
+        QT_QPA_PLATFORM: offscreen
+      run: '"$SS_RUN" --activate "${{secrets.SERIAL_STUDIO_LICENSE_KEY}}"'
+
+    #
+    # Starts the app with the API server on 7777, waits for the port, and redirects its output to
+    # ss_output.log so the assert-scan step below has something to read. The API path policy
+    # defaults to home + temp, but the repo corpus the round-trip baseline tests open lives in the
+    # workspace (outside home on the Windows runners), so all three roots are allowed explicitly;
+    # pytest's tmp_path follows TMPDIR, which on the macOS runners is a private /var/folders tree
+    # under neither home nor /tmp, and without it every tmp_path project file is rejected as
+    # "filePath is not allowed". SS_ASSERT_NONFATAL is a no-op on the released (Release) binaries,
+    # where soft asserts are always nonfatal; it keeps a locally-substituted Debug binary from
+    # aborting mid-suite
+    #
+    - name: '🚀 Start Serial Studio (headless)'
+      env:
+        QT_QPA_PLATFORM: offscreen
+        SERIAL_STUDIO_API_AUTO_CONSENT: '1'
+        SS_ASSERT_NONFATAL: '1'
+      run: |
+        if [ "${{ matrix.os }}" = "windows" ]; then
+          export SERIAL_STUDIO_API_ALLOWED_PATHS="$(cygpath -w "$GITHUB_WORKSPACE");$USERPROFILE;$(cygpath -w "$RUNNER_TEMP")"
+        else
+          ulimit -c unlimited
+          export SERIAL_STUDIO_API_ALLOWED_PATHS="$GITHUB_WORKSPACE:$HOME:/tmp:$RUNNER_TEMP:${TMPDIR:-/tmp}"
+        fi
+
+        "$SS_RUN" --headless --api-server > ss_output.log 2>&1 &
+        echo $! > ss_pid.txt
+        for i in $(seq 1 30); do
+          (echo > /dev/tcp/127.0.0.1/7777) >/dev/null 2>&1 && { echo "API server ready ($i)"; break; }
+          sleep 1
+        done
+
+    #
+    # Publishing blocks on this suite for tagged builds; continuous builds only report
+    # (REQUIRE_TESTS_TO_PUBLISH). timeout-method=signal (POSIX) fails only the hung test and keeps
+    # the suite and its junit XML alive, where the ini default (thread) kills the whole pytest
+    # process; Windows has no SIGALRM, so it stays on thread, and timeout-minutes is what bounds a
+    # fully wedged app now that a hang no longer fast-fails the run
+    #
+    - name: '🧪 Run tests'
+      id: run_tests
+      continue-on-error: ${{ env.REQUIRE_TESTS_TO_PUBLISH != 'true' && !startsWith(github.ref, 'refs/tags/') }}
+      timeout-minutes: 60
+      env:
+        PYTHONIOENCODING: utf-8
+        PYTHONUTF8: '1'
+      run: |
+        pytest tests/ \
+          --deselect tests/integration/test_licensing.py::test_rapid_status_queries_no_crash \
+          -m "${{ matrix.marker_expr }}" \
+          --timeout-method=${{ matrix.timeout_method }} \
+          -q --tb=line --timeout=60 --junit-xml=test-results.xml
+
+    #
+    # Only on a test failure: distinguishes a hang from a crash, and for a hang takes the dump
+    # Windows never writes on its own (nothing crashed, so WER produces nothing). comsvcs.dll's
+    # MiniDump entry point ships with Windows, so no extra tooling is installed for it
+    #
+    - name: '🔬 Capture hung app (Windows)'
+      if: always() && matrix.os == 'windows' && steps.run_tests.outcome == 'failure'
+      continue-on-error: true
+      run: |
+        mkdir -p crash-reports
+        PID="$(cat ss_pid.txt 2>/dev/null)"
+        if [ -z "$PID" ]; then
+          echo 'no ss_pid.txt; nothing to dump' | tee crash-reports/hang-liveness.txt
+          exit 0
+        fi
+        if kill -0 "$PID" 2>/dev/null; then
+          echo "Serial Studio (pid $PID) still ALIVE after test failure -> HANG; dumping" \
+            | tee crash-reports/hang-liveness.txt
+          WIN_PID="$(powershell -NoProfile -Command "(Get-Process -Id $PID -ErrorAction SilentlyContinue).Id")"
+          DUMP="$(cygpath -w "$PWD/crash-reports/hang-full.dmp")"
+          powershell -NoProfile -Command \
+            "rundll32.exe C:\\Windows\\System32\\comsvcs.dll, MiniDump ${WIN_PID:-$PID} '$DUMP' full" \
+            || echo 'MiniDump failed' | tee -a crash-reports/hang-liveness.txt
+        else
+          echo "Serial Studio (pid $PID) GONE after test failure -> crashed/exited, not a hang" \
+            | tee crash-reports/hang-liveness.txt
+        fi
+        echo '--- captured ---'
+        ls -la crash-reports || true
+
+    #
+    # macOS counterpart: sample and spindump both capture a live process, so a hang leaves a
+    # thread state behind
+    #
+    - name: '🔬 Capture hung app (macOS)'
+      if: always() && matrix.os == 'macos' && steps.run_tests.outcome == 'failure'
+      continue-on-error: true
+      run: |
+        mkdir -p crash-reports
+        PID="$(cat ss_pid.txt 2>/dev/null)"
+        if [ -z "$PID" ]; then
+          echo 'no ss_pid.txt; nothing to sample' | tee crash-reports/hang-liveness.txt
+          exit 0
+        fi
+        if kill -0 "$PID" 2>/dev/null; then
+          echo "Serial Studio (pid $PID) still ALIVE after test failure -> HANG; sampling threads" \
+            | tee crash-reports/hang-liveness.txt
+          sample "$PID" 10 -mayDie -file crash-reports/hang-sample.txt || true
+          sudo spindump "$PID" 10 -file crash-reports/hang-spindump.txt >/dev/null 2>&1 || true
+        else
+          echo "Serial Studio (pid $PID) GONE after test failure -> crashed/exited, not a hang" \
+            | tee crash-reports/hang-liveness.txt
+        fi
+        echo '--- captured ---'
+        ls -la crash-reports || true
+
+    #
+    # A mid-suite death turns every later test into a connection error, which reads like hundreds
+    # of unrelated failures; say so explicitly and show the app's last words, since a clean exit
+    # leaves no crash dump behind
+    #
+    - name: '🩺 Report app liveness after tests'
+      if: always()
+      continue-on-error: true
+      run: |
+        PID="$(cat ss_pid.txt 2>/dev/null)"
+        if [ -n "$PID" ] && kill -0 "$PID" 2>/dev/null; then
+          echo "Serial Studio (pid $PID) still running after the suite."
+        else
+          echo "::warning title=App exited early::Serial Studio (pid ${PID:-unknown}) was gone when the suite ended"
+          echo '--- tail of ss_output.log ---'
+          tail -n 60 ss_output.log 2>/dev/null || echo '(no ss_output.log)'
+        fi
+
+    #
+    # The audio marker is excluded from the main run: loopback hardware is not guaranteed on a
+    # runner, so this leg reports and never blocks
+    #
+    - name: '🎙 Run audio loopback tests (Linux, non-blocking)'
+      if: matrix.os == 'linux'
+      continue-on-error: true
+      env:
+        QT_QPA_PLATFORM: offscreen
+        SS_AUDIO_LOOPBACK_PLAYBACK: plughw:Loopback,1,0
+        SS_AUDIO_CAPTURE_MATCH: loopback
+      run: |
+        pytest tests/integration/test_audio_loopback.py \
+          -m audio -q --tb=line --timeout=120 --junit-xml=audio-test-results.xml
+
+    #
+    # always(): the seat has to come back even when the suite failed
+    #
+    - name: '🔑 Deactivate Serial Studio license'
+      if: always()
+      env:
+        QT_QPA_PLATFORM: offscreen
+      run: '"$SS_RUN" --deactivate || true'
+
+    #
+    # always(): the app is a background process and would otherwise outlive the job
+    #
+    - name: '🛑 Stop Serial Studio'
+      if: always()
+      run: '[ -f ss_pid.txt ] && kill $(cat ss_pid.txt) || true'
+
+    #
+    # SS_ASSERT reports once per source site through the serialstudio.assert category; surface
+    # every site the suite tripped as a workflow annotation (non-blocking) so regressions are
+    # visible without digging into artifacts
+    #
+    - name: '🔎 Scan app output for soft asserts'
+      if: always()
+      continue-on-error: true
+      run: |
+        sleep 2
+        if [ ! -f ss_output.log ]; then
+          echo 'no ss_output.log; nothing to scan'
+          exit 0
+        fi
+        if grep -F 'assertion failed:' ss_output.log > asserts.txt; then
+          COUNT=$(wc -l < asserts.txt | tr -d ' ')
+          echo "::warning title=SS_ASSERT (${{ matrix.label }})::$COUNT soft-assert site(s) tripped; full app output in pytest-results-${{ matrix.label }} artifact"
+          while IFS= read -r line; do
+            echo "::warning title=SS_ASSERT::${line}"
+          done < asserts.txt
+        else
+          echo 'No soft asserts in app output.'
+        fi
+
+    #
+    # Collects whatever the crash-capture step arranged for, per OS
+    #
+    - name: '🩹 Collect crash reports'
+      if: always()
+      run: |
+        set +e
+        mkdir -p crash-reports
+        case "${{ matrix.os }}" in
+          linux)
+            cp -v cores/core.* crash-reports/ 2>/dev/null
+            if ls cores/core.* >/dev/null 2>&1; then
+              BIN=$(find "$PWD/squashfs-root" -type f \( -name "$UNIXNAME" -o -name "$EXECUTABLE" \) 2>/dev/null | head -1)
+              [ -z "$BIN" ] && BIN="$SS_RUN"
+              cp -v "$BIN" crash-reports/ 2>/dev/null
+              command -v gdb >/dev/null 2>&1 || sudo apt-get install -y gdb >/dev/null 2>&1
+              for c in cores/core.*; do
+                gdb -batch -ex "thread apply all bt full" "$BIN" "$c" \
+                  > "crash-reports/$(basename "$c").backtrace.txt" 2>&1 || true
+              done
+            fi
+            ;;
+          macos)
+            for i in $(seq 1 8); do
+              ls "$HOME/Library/Logs/DiagnosticReports/${EXECUTABLE}"*.ips >/dev/null 2>&1 && break
+              sleep 1
+            done
+            cp -v "$HOME/Library/Logs/DiagnosticReports/${EXECUTABLE}"*.ips   crash-reports/ 2>/dev/null
+            cp -v "$HOME/Library/Logs/DiagnosticReports/${EXECUTABLE}"*.crash crash-reports/ 2>/dev/null
+            sudo cp -v "/Library/Logs/DiagnosticReports/${EXECUTABLE}"*.ips    crash-reports/ 2>/dev/null
+            cp -v /cores/core.* crash-reports/ 2>/dev/null
+            ;;
+          windows)
+            cp -v crash-dumps/*.dmp crash-reports/ 2>/dev/null
+            ;;
+        esac
+        echo '--- crash-reports ---'
+        ls -la crash-reports 2>/dev/null || true
+
+    #
+    # Guarded on matrix.broker so the Windows leg does not try to kill a broker it never started
+    #
+    - name: '🦟 Stop Mosquitto'
+      if: always() && matrix.broker
+      run: pkill -f "mosquitto -d -c /tmp/mosq.conf" || true
+
+    - name: '🏭 Stop OPC UA simulator'
+      if: always() && matrix.opcua_sim
+      run: pkill -f "opcua_plc_simulator.py" || true
+
+    #
+    # junit XML plus the app's own output, which the assert scan reads from
+    #
+    - name: '📤 Upload test results'
+      if: always()
+      uses: actions/upload-artifact@v5
+      with:
+        name: pytest-results-${{ matrix.label }}
+        path: |
+          test-results.xml
+          audio-test-results.xml
+          ss_output.log
+          tests/**/*.log
+
+    #
+    # Ignored when clean: an empty crash-reports directory is the expected outcome
+    #
+    - name: '📤 Upload crash reports'
+      if: always()
+      uses: actions/upload-artifact@v5
+      with:
+        name: crash-reports-${{ matrix.label }}
+        path: crash-reports/**
+        if-no-files-found: ignore

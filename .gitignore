@@ -1,0 +1,111 @@
+# macOS system files
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+.apdisk
+
+# AI stuff — ignore every .claude except shared, committed config: repo skills,
+# the project settings (deny rules + hooks), and the hook scripts they invoke.
+# settings.local.json stays personal (machine-local) and ignored.
+.claude/
+!/.claude/
+/.claude/*
+!/.claude/skills/
+!/.claude/settings.json
+!/.claude/hooks/
+.code-report
+.doc-report
+.claim-report
+/TODO.md
+/findings.md
+
+# General caches
+.cache
+CMakeSettings.json
+
+# Python caches
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# CMake
+CMakeUserPresets.json
+
+# Build outputs
+/build*/
+*/build*/
+cmake-build-*/
+
+# Generated license guards (regenerated per build)
+LicenseGuards.generated.h
+
+# Binary builds
+udp_function_generator
+udp_function_generator.exe
+
+# Qt artifacts
+*.autosave
+*.user
+*.pro.user
+*.qmake.stash
+*.moc
+moc_*.cpp
+qrc_*.cpp
+ui_*.h
+*.qmlls.ini
+
+# IDE configs
+# VS Code
+.vscode/
+*.code-workspace
+
+# Qt Creator
+*.pro.user.*
+*.creator.*
+*.creator
+
+# CLion
+.idea/
+.idea_modules/
+cmake-build-*/
+
+# Xcode
+*.xcworkspace/
+*.xcuserstate
+*.xcuserdatad/
+*.xcodeproj/*
+!*.xcodeproj/project.pbxproj
+!*.xcodeproj/xcshareddata/
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+
+# KDevelop
+*.kdev*
+
+# Other
+*.layout
+
+# VS
+*.vs/
+
+# out 
+out/
+
+# Example-script private virtualenvs (created by the dependency bootstrap)
+examples/**/.venv/
+
+# OPC UA simulator self-signed material (regenerated on each secure run)
+server_cert*.der
+server_key*.pem

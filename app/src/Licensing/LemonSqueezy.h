@@ -1,0 +1,167 @@
+/*
+ * Serial Studio - https://serial-studio.com/
+ *
+ * Copyright (C) 2020–2025 Alex Spataru <https://aspatru.com>
+ *
+ * This file is part of the proprietary feature set of Serial Studio
+ * and is licensed under the Serial Studio Commercial License.
+ *
+ * Redistribution, modification, or use of this file in any form
+ * is permitted only under the terms of a valid commercial license
+ * obtained from the author.
+ *
+ * This file may NOT be used in any build distributed under the
+ * GNU General Public License (GPL) unless explicitly authorized
+ * by a separate commercial agreement.
+ *
+ * For license terms, see:
+ * https://github.com/Serial-Studio/Serial-Studio/blob/master/LICENSE.md
+ *
+ * SPDX-License-Identifier: LicenseRef-SerialStudio-Commercial
+ */
+
+#pragma once
+
+#include <QDateTime>
+#include <QJsonObject>
+#include <QNetworkAccessManager>
+#include <QObject>
+#include <QSettings>
+#include <QString>
+
+#include "Licensing/SimpleCrypt.h"
+
+namespace Licensing {
+/**
+ * @brief Handles software activation, validation, and deactivation using the
+ *        Lemon Squeezy API.
+ */
+class LemonSqueezy : public QObject {
+  // clang-format off
+  Q_OBJECT
+  Q_PROPERTY(bool busy
+             READ busy
+             NOTIFY busyChanged)
+  Q_PROPERTY(int seatLimit
+             READ seatLimit
+             NOTIFY licenseDataChanged)
+  Q_PROPERTY(int seatUsage
+             READ seatUsage
+             NOTIFY licenseDataChanged)
+  Q_PROPERTY(bool isActivated
+             READ isActivated
+             NOTIFY licenseDataChanged)
+  Q_PROPERTY(bool isOnlineActivated
+             READ isOnlineActivated
+             NOTIFY licenseDataChanged)
+  Q_PROPERTY(QString appName
+             READ appName
+             NOTIFY licenseDataChanged)
+  Q_PROPERTY(QString license
+             READ license
+             WRITE setLicense
+             NOTIFY licenseChanged)
+  Q_PROPERTY(bool canActivate
+             READ canActivate
+             NOTIFY licenseChanged)
+  Q_PROPERTY(QString instanceId
+             READ instanceId
+             NOTIFY licenseDataChanged)
+  Q_PROPERTY(QString customerName
+             READ customerName
+             NOTIFY licenseDataChanged)
+  Q_PROPERTY(QString customerEmail
+             READ customerEmail
+             NOTIFY licenseDataChanged)
+  Q_PROPERTY(QString variantName
+             READ variantName
+             NOTIFY licenseDataChanged)
+  Q_PROPERTY(QString instanceName
+             READ instanceName
+             NOTIFY licenseDataChanged)
+  // clang-format on
+
+signals:
+  void busyChanged();
+  void licenseChanged();
+  void activatedChanged();
+  void licenseDataChanged();
+
+private:
+  explicit LemonSqueezy();
+  LemonSqueezy(LemonSqueezy&&)                 = delete;
+  LemonSqueezy(const LemonSqueezy&)            = delete;
+  LemonSqueezy& operator=(LemonSqueezy&&)      = delete;
+  LemonSqueezy& operator=(const LemonSqueezy&) = delete;
+
+public:
+  [[nodiscard]] static LemonSqueezy& instance();
+
+  [[nodiscard]] bool busy() const;
+  [[nodiscard]] int seatLimit() const;
+  [[nodiscard]] int seatUsage() const;
+  [[nodiscard]] bool isActivated() const;
+  [[nodiscard]] bool isOnlineActivated() const noexcept;
+  [[nodiscard]] bool canActivate() const;
+  [[nodiscard]] const QString& appName() const;
+  [[nodiscard]] const QString& license() const;
+  [[nodiscard]] const QString& instanceId() const;
+  [[nodiscard]] const QString& variantName() const;
+  [[nodiscard]] const QString& instanceName() const;
+  [[nodiscard]] const QString& customerName() const;
+  [[nodiscard]] const QString& customerEmail() const;
+  [[nodiscard]] const QJsonObject& licensingData() const;
+
+public slots:
+  void buy();
+  void activate();
+  void validate();
+  void deactivate();
+  void revalidateCachedLicense();
+  void openCustomerPortal();
+  void setLicense(const QString& license);
+  void notifyEntitlementMaybeChanged();
+
+private slots:
+  void readSettings();
+  void writeSettings();
+  void clearLicenseCache(const bool clearLicense = false, const bool persist = true);
+
+private:
+  void readActivationResponse(const QByteArray& data);
+  void readDeactivationResponse(const QByteArray& data);
+  void readValidationResponse(const QByteArray& data, const bool cachedResponse);
+
+  [[nodiscard]] bool liveVerdict(const bool cachedResponse) const;
+  void handleEmptyValidationResponse(const bool cachedResponse);
+  [[nodiscard]] bool checkValidationRules(const QJsonObject& json, const bool cachedResponse);
+  void updateAppNameFromVariant(const QString& variantName);
+  void applyValidatedLicense(const QJsonObject& json, const bool cachedResponse);
+  [[nodiscard]] bool checkActivationRules(const QJsonObject& json);
+  [[nodiscard]] QDateTime monotonicNow();
+
+private:
+  bool m_busy;
+  int m_seatLimit;
+  int m_seatUsage;
+  bool m_activated;
+  QString m_appName;
+  QString m_license;
+  QString m_instanceId;
+  QString m_variantName;
+  QString m_instanceName;
+  QString m_customerName;
+  QString m_customerEmail;
+  bool m_silentValidation;
+  bool m_revalidatingCache;
+  bool m_lastNotifiedEntitled;
+  QDateTime m_activationDate;
+
+  int m_gracePeriod;
+
+  QSettings m_settings;
+  SimpleCrypt m_simpleCrypt;
+  QJsonObject m_licensingData;
+  QNetworkAccessManager m_manager;
+};
+}  // namespace Licensing

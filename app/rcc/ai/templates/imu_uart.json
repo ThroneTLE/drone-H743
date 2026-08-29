@@ -1,0 +1,39 @@
+{
+  "title": "IMU over UART",
+  "actions": [],
+  "frameStart": "$",
+  "frameEnd": ";",
+  "frameDetection": 1,
+  "decoder": 0,
+  "checksum": "",
+  "frameParser": "/**\n * IMU template parser. Expects: ax,ay,az,gx,gy,gz,mx,my,mz\n * Replace this with your device's framing if different.\n */\nfunction parse(frame) {\n    return frame.split(',');\n}\n",
+  "groups": [
+    {
+      "title": "Accelerometer",
+      "widget": "accelerometer",
+      "datasets": [
+        { "title": "X", "units": "m/s²", "index": 1, "graph": true, "min": -20, "max": 20, "widget": "x" },
+        { "title": "Y", "units": "m/s²", "index": 2, "graph": true, "min": -20, "max": 20, "widget": "y" },
+        { "title": "Z", "units": "m/s²", "index": 3, "graph": true, "min": -20, "max": 20, "widget": "z" }
+      ]
+    },
+    {
+      "title": "Gyroscope",
+      "widget": "gyro",
+      "datasets": [
+        { "title": "X", "units": "°/s", "index": 4, "graph": true, "min": -2000, "max": 2000, "widget": "x" },
+        { "title": "Y", "units": "°/s", "index": 5, "graph": true, "min": -2000, "max": 2000, "widget": "y" },
+        { "title": "Z", "units": "°/s", "index": 6, "graph": true, "min": -2000, "max": 2000, "widget": "z" }
+      ]
+    },
+    {
+      "title": "Magnetometer",
+      "widget": "",
+      "datasets": [
+        { "title": "Mag X", "units": "µT", "index": 7, "graph": true },
+        { "title": "Mag Y", "units": "µT", "index": 8, "graph": true },
+        { "title": "Mag Z", "units": "µT", "index": 9, "graph": true }
+      ]
+    }
+  ]
+}

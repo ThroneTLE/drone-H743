@@ -1,0 +1,541 @@
+{
+  "context": "app",
+  "window": "main",
+  "commands": [
+    {
+      "id": "app.projectEditor",
+      "title": "Project Editor",
+      "icon": "commands/project-setup",
+      "tooltip": "Open the Project Editor to create or modify your JSON layout",
+      "kind": "action",
+      "contexts": [
+        "app",
+        "dashboard"
+      ],
+      "category": "project"
+    },
+    {
+      "id": "project.open",
+      "title": "Open Project",
+      "icon": "commands/open-project",
+      "tooltip": "Open an existing JSON project",
+      "kind": "action",
+      "contexts": [
+        "app"
+      ],
+      "category": "file"
+    },
+    {
+      "id": "csv.open",
+      "title": "Open CSV",
+      "icon": "commands/csv",
+      "tooltip": "Play a CSV file as if it were live sensor data",
+      "kind": "action",
+      "contexts": [
+        "app"
+      ],
+      "shortcut": "StandardKey.Open",
+      "shortcutWindows": [
+        "main"
+      ],
+      "category": "file"
+    },
+    {
+      "id": "mdf4.open",
+      "title": "Open MDF4",
+      "icon": "commands/mf4",
+      "tooltip": "Play an MDF4 file as if it were live sensor data (Pro)",
+      "kind": "action",
+      "contexts": [
+        "app"
+      ],
+      "category": "file"
+    },
+    {
+      "id": "app.deploy",
+      "title": "Deploy Operator App",
+      "icon": "commands/deploy",
+      "tooltip": "Build an operator app for the current project",
+      "kind": "action",
+      "contexts": [
+        "app",
+        "dashboard"
+      ],
+      "category": "tools"
+    },
+    {
+      "id": "app.extensions",
+      "title": "Extensions",
+      "icon": "commands/extensions",
+      "tooltip": "Browse and install extensions",
+      "kind": "action",
+      "contexts": [
+        "app",
+        "dashboard"
+      ],
+      "category": "tools"
+    },
+    {
+      "id": "app.examples",
+      "title": "Examples",
+      "icon": "commands/examples",
+      "tooltip": "Browse example projects",
+      "kind": "action",
+      "contexts": [
+        "app",
+        "dashboard"
+      ],
+      "category": "help"
+    },
+    {
+      "id": "app.about",
+      "title": "About",
+      "icon": "commands/about",
+      "tooltip": "Show application info and license details",
+      "kind": "action",
+      "contexts": [
+        "app",
+        "dashboard"
+      ],
+      "category": "help"
+    },
+    {
+      "id": "app.deepwiki",
+      "title": "AI Wiki & Chat",
+      "icon": "commands/deepwiki",
+      "tooltip": "View detailed documentation and ask questions on DeepWiki",
+      "kind": "action",
+      "contexts": [
+        "app",
+        "dashboard"
+      ],
+      "category": "help"
+    },
+    {
+      "id": "app.sessions",
+      "title": "Historian",
+      "icon": "commands/sessions",
+      "tooltip": "Browse, replay, and export recorded sessions",
+      "kind": "action",
+      "contexts": [
+        "app",
+        "dashboard"
+      ],
+      "pro": true,
+      "order": 10,
+      "category": "tools"
+    },
+    {
+      "id": "app.fileTransmission",
+      "title": "File Transmission",
+      "icon": "commands/file-transmission",
+      "kind": "action",
+      "contexts": [
+        "app",
+        "dashboard"
+      ],
+      "pro": true,
+      "order": 11,
+      "category": "tools"
+    },
+    {
+      "id": "app.ai",
+      "title": "AI Assistant",
+      "icon": "commands/ai",
+      "kind": "action",
+      "contexts": [
+        "app",
+        "dashboard",
+        "editor"
+      ],
+      "pro": true,
+      "order": 12,
+      "category": "tools"
+    },
+    {
+      "id": "app.preferences",
+      "title": "Preferences",
+      "icon": "commands/settings",
+      "tooltip": "Open application settings and preferences",
+      "kind": "action",
+      "contexts": [
+        "app",
+        "dashboard",
+        "editor"
+      ],
+      "shortcut": "StandardKey.Preferences",
+      "shortcutWindows": [
+        "main"
+      ],
+      "order": 8,
+      "category": "tools"
+    },
+    {
+      "id": "app.problems",
+      "title": "Problem Center",
+      "icon": "notifications/warning",
+      "tooltip": "Review project, link, and script diagnostics",
+      "kind": "action",
+      "contexts": [
+        "app",
+        "dashboard",
+        "editor"
+      ],
+      "order": 10,
+      "category": "tools"
+    },
+    {
+      "id": "app.connectionDiagnostics",
+      "title": "Connection Diagnostics",
+      "icon": "commands/diagnostics",
+      "tooltip": "Check device permissions, adapters, and host reachability",
+      "kind": "action",
+      "contexts": [
+        "app",
+        "dashboard",
+        "editor"
+      ],
+      "order": 11,
+      "category": "tools"
+    },
+    {
+      "id": "app.remoteAttach",
+      "title": "Remote Dashboard",
+      "icon": "commands/remote-attach",
+      "tooltip": "Watch another Serial Studio instance's dashboard over the network",
+      "kind": "action",
+      "contexts": [
+        "app",
+        "dashboard"
+      ],
+      "order": 12,
+      "category": "tools"
+    },
+    {
+      "id": "app.macros",
+      "title": "Macros",
+      "icon": "commands/macro",
+      "tooltip": "Run API commands and script macros interactively",
+      "kind": "action",
+      "contexts": [
+        "app",
+        "dashboard"
+      ],
+      "order": 13,
+      "category": "tools"
+    },
+    {
+      "id": "app.helpCenter",
+      "title": "Help Center",
+      "icon": "commands/help",
+      "tooltip": "Browse documentation, FAQ, and wiki",
+      "kind": "action",
+      "contexts": [
+        "app",
+        "dashboard",
+        "editor"
+      ],
+      "order": 9,
+      "category": "help"
+    },
+    {
+      "id": "app.fullScreen",
+      "title": "Full Screen",
+      "icon": "commands/full-screen",
+      "kind": "toggle",
+      "contexts": [
+        "dashboard"
+      ],
+      "order": 2,
+      "category": "view"
+    },
+    {
+      "id": "window.external",
+      "title": "Add External Window",
+      "icon": "commands/external-window",
+      "kind": "action",
+      "contexts": [
+        "dashboard"
+      ],
+      "order": 3,
+      "category": "view"
+    },
+    {
+      "id": "app.quit",
+      "title": "Quit",
+      "icon": "commands/quit",
+      "kind": "action",
+      "contexts": [],
+      "shortcut": "StandardKey.Quit",
+      "shortcutWindows": [
+        "main",
+        "editor"
+      ]
+    },
+    {
+      "id": "license.activate",
+      "title": "License Management",
+      "icon": "commands/activate",
+      "tooltip": "Manage your Serial Studio Pro license",
+      "kind": "action",
+      "contexts": [
+        "app",
+        "dashboard"
+      ],
+      "pro": true,
+      "category": "license"
+    },
+    {
+      "id": "io.toggleConnection",
+      "title": "Connect",
+      "titleChecked": "Disconnect",
+      "icon": "commands/disconnect",
+      "iconChecked": "commands/connect",
+      "tooltip": "Connect or disconnect from the configured device",
+      "kind": "toggle",
+      "contexts": [
+        "app"
+      ],
+      "category": "connection"
+    },
+    {
+      "id": "palette.open",
+      "title": "Command Palette",
+      "icon": "commands/command-palette",
+      "tooltip": "Search and run any Serial Studio command",
+      "kind": "action",
+      "contexts": [],
+      "shortcut": "Ctrl+K",
+      "shortcutWindows": [
+        "main",
+        "editor"
+      ]
+    },
+    {
+      "id": "dashboard.startMenu",
+      "title": "Start Menu",
+      "icon": "commands/tools",
+      "kind": "action",
+      "contexts": [],
+      "shortcut": "Ctrl+M",
+      "shortcutContext": "application",
+      "shortcutWindows": [
+        "main"
+      ]
+    },
+    {
+      "id": "dashboard.focusSearch",
+      "title": "Search",
+      "icon": "commands/workspaces",
+      "kind": "action",
+      "contexts": [],
+      "shortcut": "Ctrl+F",
+      "shortcutWindows": [
+        "main"
+      ]
+    },
+    {
+      "id": "workspace.next",
+      "title": "Next Workspace",
+      "kind": "action",
+      "contexts": [],
+      "shortcut": "PgDown",
+      "shortcutWindows": [
+        "main"
+      ]
+    },
+    {
+      "id": "workspace.previous",
+      "title": "Previous Workspace",
+      "kind": "action",
+      "contexts": [],
+      "shortcut": "PgUp",
+      "shortcutWindows": [
+        "main"
+      ]
+    },
+    {
+      "id": "window.closeActive",
+      "title": "Close Window",
+      "kind": "action",
+      "contexts": [],
+      "shortcut": "Ctrl+Shift+W",
+      "shortcutWindows": [
+        "main"
+      ]
+    },
+    {
+      "id": "window.minimizeActive",
+      "title": "Minimize Window",
+      "kind": "action",
+      "contexts": [],
+      "shortcut": "Ctrl+Shift+M",
+      "shortcutWindows": [
+        "main"
+      ]
+    },
+    {
+      "id": "window.clearActive",
+      "title": "Clear Window",
+      "kind": "action",
+      "contexts": [],
+      "shortcut": "Ctrl+Home",
+      "shortcutWindows": [
+        "main"
+      ]
+    },
+    {
+      "id": "driver.uart",
+      "title": "UART",
+      "icon": "devices/uart",
+      "tooltip": "Select Serial port (UART) communication",
+      "kind": "toggle",
+      "contexts": [
+        "app"
+      ],
+      "category": "connection"
+    },
+    {
+      "id": "driver.audio",
+      "title": "Audio",
+      "icon": "devices/audio",
+      "tooltip": "Select audio input device (Pro)",
+      "kind": "toggle",
+      "contexts": [
+        "app"
+      ],
+      "pro": true,
+      "category": "connection"
+    },
+    {
+      "id": "driver.usb",
+      "title": "USB",
+      "icon": "devices/usb",
+      "tooltip": "Select raw USB communication (Pro)",
+      "kind": "toggle",
+      "contexts": [
+        "app"
+      ],
+      "pro": true,
+      "category": "connection"
+    },
+    {
+      "id": "driver.network",
+      "title": "Network",
+      "icon": "devices/network",
+      "tooltip": "Select TCP/UDP network communication",
+      "kind": "toggle",
+      "contexts": [
+        "app"
+      ],
+      "category": "connection"
+    },
+    {
+      "id": "driver.modbus",
+      "title": "Modbus",
+      "icon": "devices/modbus",
+      "tooltip": "Select MODBUS communication (Pro)",
+      "kind": "toggle",
+      "contexts": [
+        "app"
+      ],
+      "pro": true,
+      "category": "connection"
+    },
+    {
+      "id": "driver.hid",
+      "title": "HID",
+      "icon": "devices/hid",
+      "tooltip": "Select HID device communication (Pro)",
+      "kind": "toggle",
+      "contexts": [
+        "app"
+      ],
+      "pro": true,
+      "category": "connection"
+    },
+    {
+      "id": "driver.bluetooth",
+      "title": "Bluetooth",
+      "icon": "devices/bluetooth",
+      "tooltip": "Select Bluetooth Low Energy communication",
+      "kind": "toggle",
+      "contexts": [
+        "app"
+      ],
+      "category": "connection"
+    },
+    {
+      "id": "driver.canbus",
+      "title": "CAN Bus",
+      "icon": "devices/canbus",
+      "tooltip": "Select CAN Bus communication (Pro)",
+      "kind": "toggle",
+      "contexts": [
+        "app"
+      ],
+      "pro": true,
+      "category": "connection"
+    },
+    {
+      "id": "driver.process",
+      "title": "Process",
+      "icon": "devices/process",
+      "tooltip": "Select process pipe communication (Pro)",
+      "kind": "toggle",
+      "contexts": [
+        "app"
+      ],
+      "pro": true,
+      "category": "connection"
+    },
+    {
+      "id": "driver.opcua",
+      "title": "OPC UA",
+      "icon": "devices/opcua",
+      "tooltip": "Select OPC UA communication (Pro)",
+      "kind": "toggle",
+      "contexts": [
+        "app"
+      ],
+      "pro": true,
+      "category": "connection"
+    },
+    {
+      "id": "mode.quickPlot",
+      "title": "Quick Plot Mode",
+      "icon": "widgets/plot",
+      "tooltip": "Switch to Quick Plot mode (comma-separated values)",
+      "kind": "toggle",
+      "category": "mode",
+      "contexts": [
+        "app",
+        "dashboard"
+      ]
+    },
+    {
+      "id": "mode.consoleOnly",
+      "title": "Console Only Mode",
+      "icon": "widgets/terminal",
+      "tooltip": "Switch to Console Only mode (no parsing)",
+      "kind": "toggle",
+      "category": "mode",
+      "contexts": [
+        "app",
+        "dashboard"
+      ]
+    },
+    {
+      "id": "mode.projectFile",
+      "title": "Project File Mode",
+      "icon": "commands/project-setup",
+      "tooltip": "Switch to Project File mode (parse via a project)",
+      "kind": "toggle",
+      "category": "mode",
+      "contexts": [
+        "app",
+        "dashboard"
+      ]
+    }
+  ]
+}

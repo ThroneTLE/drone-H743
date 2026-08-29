@@ -1,0 +1,81 @@
+/*
+ * Serial Studio
+ * https://serial-studio.com/
+ *
+ * Copyright (C) 2020–2025 Alex Spataru
+ *
+ * This file is dual-licensed:
+ *
+ * - Under the GNU GPLv3 (or later) for builds that exclude Pro modules.
+ * - Under the Serial Studio Commercial License for builds that include
+ *   any Pro functionality.
+ *
+ * You must comply with the terms of one of these licenses, depending
+ * on your use case.
+ *
+ * For GPL terms, see <https://www.gnu.org/licenses/gpl-3.0.html>
+ * For commercial terms, see LICENSES/LicenseRef-SerialStudio-Commercial.txt.
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later OR LicenseRef-SerialStudio-Commercial
+ */
+
+#pragma once
+
+#include <QObject>
+#include <QSettings>
+
+namespace Misc {
+/**
+ * @brief Manages the application's workspace directory for user data and
+ *        generated files.
+ */
+class WorkspaceManager : public QObject {
+  // clang-format off
+  Q_OBJECT
+  Q_PROPERTY(QString path
+             READ path
+             NOTIFY pathChanged)
+  Q_PROPERTY(QString shortPath
+             READ shortPath
+             NOTIFY pathChanged)
+  // clang-format on
+
+signals:
+  void pathChanged();
+
+private:
+  explicit WorkspaceManager();
+  WorkspaceManager(WorkspaceManager&&)                 = delete;
+  WorkspaceManager(const WorkspaceManager&)            = delete;
+  WorkspaceManager& operator=(WorkspaceManager&&)      = delete;
+  WorkspaceManager& operator=(const WorkspaceManager&) = delete;
+
+public:
+  [[nodiscard]] static WorkspaceManager& instance();
+
+  [[nodiscard]] QString path() const noexcept;
+  [[nodiscard]] QString shortPath() const;
+
+  [[nodiscard]] QString path(const QString& subdirectory) const;
+
+  [[nodiscard]] static QString sanitizeName(const QString& name);
+
+  [[nodiscard]] QString remapLegacyPath(const QString& path) const;
+
+  void setTemporaryPath(const QString& path);
+  void clearTemporaryPath();
+
+public slots:
+  void reset();
+  void selectPath();
+
+private:
+  void migrateLegacyProjectsFolder();
+
+private:
+  bool m_temporaryActive;
+  QString m_path;
+  QString m_savedPath;
+  QSettings m_settings;
+};
+}  // namespace Misc

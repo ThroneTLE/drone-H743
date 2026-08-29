@@ -1,0 +1,18 @@
+Copyright (c) 2020–2026 Alex Spataru <https://github.com/alex-spataru>
+
+Serial Studio Pro'yu kullandığınız ve açık kaynak geliştirmeyi desteklediğiniz
+için teşekkür ederiz! Lisansınız aktif ve ticari ve özel kullanım için
+onaylanmıştır.
+
+→ Destek: alex@serial-studio.com
+→ Çağrı planlayın: https://calendly.com/serial-studio
+→ Müşteri portalı: https://store.serial-studio.com/billing
+→ Daha fazla bilgi edinin: https://serial-studio.com/
+
+Pro özellikler:
+→ MQTT, XY ve 3D görselleştirme
+→ Audio, CAN Bus, Modbus, USB, HID ve Process I/O sürücüleri
+→ Çıkış widget'ları, MDF4 dışa aktarma ve XMODEM/YMODEM/ZMODEM aktarımları
+→ Historian, Değişkenler ve değer dönüşümleri (JS + Lua)
+→ Çok kaynaklı projeler ve özel çalışma alanları
+→ Öncelikli destek

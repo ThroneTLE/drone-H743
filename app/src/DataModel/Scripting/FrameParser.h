@@ -1,0 +1,152 @@
+/*
+ * Serial Studio
+ * https://serial-studio.com/
+ *
+ * Copyright (C) 2020–2025 Alex Spataru
+ *
+ * This file is dual-licensed:
+ *
+ * - Under the GNU GPLv3 (or later) for builds that exclude Pro modules.
+ * - Under the Serial Studio Commercial License for builds that include
+ *   any Pro functionality.
+ *
+ * You must comply with the terms of one of these licenses, depending
+ * on your use case.
+ *
+ * For GPL terms, see <https://www.gnu.org/licenses/gpl-3.0.html>
+ * For commercial terms, see LICENSES/LicenseRef-SerialStudio-Commercial.txt.
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later OR LicenseRef-SerialStudio-Commercial
+ */
+
+#pragma once
+
+#include <map>
+#include <memory>
+#include <QJsonObject>
+#include <QObject>
+#include <QStringList>
+#include <unordered_map>
+
+#include "DataModel/Scripting/IScriptEngine.h"
+#include "ThirdParty/readerwriterqueue.h"
+
+class SessionContext;
+
+namespace DataModel {
+
+struct Source;
+
+/**
+ * @brief Runtime health of one source's parser engine, polled once per second by the problem
+ *        center. Never read on the frame path.
+ */
+struct ScriptStat {
+  int sourceId;
+  int language;
+  bool disabled;
+  int consecutiveTimeouts;
+  quint64 errorCount;
+  QString lastError;
+};
+
+/**
+ * @brief Per-source script engine manager driving the frame parser pipeline.
+ */
+class FrameParser : public QObject {
+  Q_OBJECT
+
+signals:
+  void modifiedChanged();
+  void templateNamesChanged();
+
+private:
+  friend class ::SessionContext;
+  explicit FrameParser();
+  FrameParser(FrameParser&&)                 = delete;
+  FrameParser(const FrameParser&)            = delete;
+  FrameParser& operator=(FrameParser&&)      = delete;
+  FrameParser& operator=(const FrameParser&) = delete;
+
+public:
+  [[nodiscard]] static FrameParser& instance();
+
+  [[nodiscard]] static QString defaultTemplateCode(int language = 0);
+  [[nodiscard]] static bool nativeEquivalentForFile(const QString& file,
+                                                    QString& templateId,
+                                                    QJsonObject& params);
+  [[nodiscard]] static QString fileForNativeTemplate(const QString& templateId,
+                                                     const QJsonObject& params);
+
+  [[nodiscard]] QString templateCode(int sourceId = 0) const;
+  [[nodiscard]] const QStringList& templateNames() const;
+  [[nodiscard]] const QStringList& templateNames(int language) const;
+  [[nodiscard]] const QStringList& templateFiles() const;
+
+  [[nodiscard]] QList<QStringList> parseMultiFrame(const QString& frame, int sourceId);
+  [[nodiscard]] QList<QStringList> parseMultiFrame(const QByteArray& frame, int sourceId);
+  [[nodiscard]] QList<QStringList> parseMultiFrameUtf8(const QByteArray& frame, int sourceId);
+  [[nodiscard]] qsizetype parseSpansUtf8(const QByteArray& frame,
+                                         int sourceId,
+                                         QByteArrayView* out,
+                                         qsizetype maxSpans);
+
+  [[nodiscard]] bool hasTableApiEngines() const noexcept;
+  [[nodiscard]] int engineEpoch() const noexcept;
+  [[nodiscard]] QList<ScriptStat> scriptStats();
+
+  [[nodiscard]] bool loadScript(int sourceId, const QString& script, bool showMessageBoxes = true);
+
+  [[nodiscard]] int detectTemplate(const QString& code) const;
+
+  void releaseEngines();
+  void setSuppressMessageBoxes(bool suppress);
+  void setSourceCode(int sourceId, const QString& code);
+  void clearSourceEngine(int sourceId);
+
+public slots:
+  void prepareShutdown();
+  void readCode();
+  void reloadSourceCode(int sourceId);
+  void clearContext();
+  void collectGarbage();
+  void loadTemplateNames();
+  void setupExternalConnections();
+  void setTemplateIdx(int sourceId, int idx);
+  void loadDefaultTemplate(int sourceId, bool guiTrigger = false);
+
+private:
+  void refreshEngineCaches() noexcept;
+  void refreshSourceLanguages() const;
+  void publishScriptStats();
+  [[nodiscard]] QList<ScriptStat> guiScriptStats();
+  void setNativeTemplateIdx(int sourceId, int idx);
+  [[nodiscard]] IScriptEngine& engineForSource(int sourceId);
+  [[nodiscard]] int languageForSource(int sourceId) const;
+  [[nodiscard]] int detectNativeTemplate(const QString& code) const;
+  [[nodiscard]] QString scriptForSource(const Source& src) const;
+
+private:
+  using ScriptStatsPtr = std::shared_ptr<const QList<ScriptStat>>;
+
+  static constexpr size_t kStatsMirrorSlots = 4;
+
+  bool m_hasLuaEngine;
+  bool m_suppressMessageBoxes;
+  mutable bool m_languagesDirty;
+  int m_engineEpoch;
+  IScriptEngine* m_engine0Cache;
+
+  ScriptStatsPtr m_guiScriptStats;
+  moodycamel::ReaderWriterQueue<ScriptStatsPtr> m_statsMirrorRing;
+
+  QString m_defaultTemplateFile;
+  QStringList m_templateFiles;
+  QStringList m_templateNames;
+  QStringList m_nativeTemplateNames;
+
+  mutable std::unordered_map<int, int> m_sourceLanguages;
+  std::map<int, std::unique_ptr<IScriptEngine>> m_engines;
+};
+
+}  // namespace DataModel

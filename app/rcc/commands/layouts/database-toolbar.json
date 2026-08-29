@@ -1,0 +1,25 @@
+{
+  "surface": "database-toolbar",
+  "sections": [
+    {
+      "type": "section",
+      "items": [
+        { "type": "command", "id": "db.open" },
+        { "type": "command", "id": "db.close" }
+      ]
+    },
+    {
+      "type": "section",
+      "items": [
+        { "type": "command", "id": "db.lock" }
+      ]
+    },
+    {
+      "type": "section",
+      "showSeparator": false,
+      "items": [
+        { "type": "command", "id": "db.help" }
+      ]
+    }
+  ]
+}

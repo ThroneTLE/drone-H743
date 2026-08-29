@@ -1,0 +1,11 @@
+{
+  "title": "Untitled Project",
+  "actions": [],
+  "groups": [],
+  "frameStart": "$",
+  "frameEnd": "\\n",
+  "frameDetection": 1,
+  "decoder": 0,
+  "frameParser": "function parse(frame) {\n    return frame.split(',');\n}\n",
+  "checksum": ""
+}

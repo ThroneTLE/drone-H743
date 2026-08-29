@@ -1,0 +1,64 @@
+/*
+ * Serial Studio
+ * https://serial-studio.com/
+ *
+ * Copyright (C) 2020–2025 Alex Spataru
+ *
+ * This file is dual-licensed:
+ *
+ * - Under the GNU GPLv3 (or later) for builds that exclude Pro modules.
+ * - Under the Serial Studio Commercial License for builds that include
+ *   any Pro functionality.
+ *
+ * You must comply with the terms of one of these licenses, depending
+ * on your use case.
+ *
+ * For GPL terms, see <https://www.gnu.org/licenses/gpl-3.0.html>
+ * For commercial terms, see LICENSES/LicenseRef-SerialStudio-Commercial.txt.
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later OR LicenseRef-SerialStudio-Commercial
+ */
+
+#pragma once
+
+#include "API/CommandProtocol.h"
+
+namespace API {
+namespace Handlers {
+/**
+ * @brief Registers API commands for Console::Handler operations.
+ */
+class ConsoleHandler {
+public:
+  static void registerCommands();
+
+private:
+  static void registerDisplayCommands();
+  static void registerFontAndChecksumCommands();
+  static void registerIoAndExportCommands();
+
+  static CommandResponse setEcho(const QString& id, const QJsonObject& params);
+  static CommandResponse setShowTimestamp(const QString& id, const QJsonObject& params);
+  static CommandResponse setCollapseDuplicates(const QString& id, const QJsonObject& params);
+  static CommandResponse setSearchCaseSensitive(const QString& id, const QJsonObject& params);
+  static CommandResponse setDisplayMode(const QString& id, const QJsonObject& params);
+  static CommandResponse setDataMode(const QString& id, const QJsonObject& params);
+  static CommandResponse setLineEnding(const QString& id, const QJsonObject& params);
+  static CommandResponse setFontFamily(const QString& id, const QJsonObject& params);
+  static CommandResponse setFontSize(const QString& id, const QJsonObject& params);
+  static CommandResponse setChecksumMethod(const QString& id, const QJsonObject& params);
+  static CommandResponse setVt100Emulation(const QString& id, const QJsonObject& params);
+  static CommandResponse setAnsiColorsEnabled(const QString& id, const QJsonObject& params);
+  static CommandResponse setEncoding(const QString& id, const QJsonObject& params);
+
+  static CommandResponse clear(const QString& id, const QJsonObject& params);
+  static CommandResponse send(const QString& id, const QJsonObject& params);
+
+  static CommandResponse exportSetEnabled(const QString& id, const QJsonObject& params);
+  static CommandResponse exportClose(const QString& id, const QJsonObject& params);
+  static CommandResponse exportGetStatus(const QString& id, const QJsonObject& params);
+  static CommandResponse getConfiguration(const QString& id, const QJsonObject& params);
+};
+
+}  // namespace Handlers
+}  // namespace API

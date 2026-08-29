@@ -1,0 +1,94 @@
+# Session Reports (Pro)
+
+Serial Studio Pro can export any recorded session as a **self-contained HTML report** or a **PDF**. The report includes a cover page, session metadata, per-parameter summary statistics, and one interactive Chart.js plot per numeric dataset. It's a share-ready artifact for teammates, customers, or a lab notebook, generated from the same SQLite database used by the [Historian](Session-Database.md).
+
+## Generating a report
+
+1. Open the **Historian** from the **Historian** button on the toolbar.
+2. Select a recorded session.
+3. Click **Generate Report** in the session detail pane.
+4. Configure branding, page, and section options in the dialog (see [Options](#options)).
+5. Click **Export PDF** (or **Export HTML** on builds without the embedded browser engine).
+6. Confirm or change the destination in the **Save PDF Report** (or **Save HTML Report**) dialog.
+
+A progress dialog appears while charts render and (for PDF) the page is rasterized. The output format depends on the build: builds with the embedded browser engine produce a PDF, and builds without it produce a self-contained HTML file. The Save dialog is pre-filled with a suggested path:
+
+```
+<Workspace>/Reports/<Project Title>/
+```
+
+The workspace root is the **Workspace Folder** set in Settings → General. Project titles are sanitized so the suggested filename is always safe.
+
+## What's in the report
+
+The report has four sections, each independently toggleable:
+
+| Section | Contents |
+|---|---|
+| **Cover page** | Logo, company name, document title, project name, session ID, duration, sample count, parameter count, start/end timestamps, author, generation date |
+| **Test information** | Project title, session ID, start/end times, duration, sample count, parameter count, tags (as chips), and session notes |
+| **Measurement summary** | Per-parameter table with sample count, min, max, mean, and standard deviation. Non-numeric datasets show `—` for numeric columns |
+| **Parameter trends** | One Chart.js line chart per numeric dataset, stacked one per row (each chart starts its own page when printed). A screen-only overlay chart (hidden on print) plots all parameters on shared axes for shape comparison |
+
+## Options
+
+All options are persisted between runs, so you only configure them once per project.
+
+### Branding tab
+
+- **Company name**, **document title**, **author name**
+- **Logo**: PNG, JPG, or SVG. Embedded inline so the HTML stays self-contained.
+
+### Page tab
+
+- **Page size**: A0–A6, B4, B5, Letter, Legal, Executive, Tabloid, or Ledger. Reports always print in landscape orientation.
+- **Line width**: 0.5 – 3.0 pt (default 1.4)
+- **Line style**: solid, dashed, or dotted
+
+### Sections tab
+
+Toggle each of the four sections on or off independently. An extra **Annotate min, max, and mean values on plots** checkbox overlays those statistics on each chart. Turning off **Parameter trends** produces a text-only summary report that renders instantly and prints to a few pages.
+
+### Datasets tab
+
+Pick which datasets feed the **Measurement summary** and **Parameter trends** sections. A search box filters the list, **Expand All** and **Collapse All** toggle group visibility, and each group, folder, or individual dataset has its own checkbox. At least one dataset must stay selected to enable export.
+
+## HTML vs PDF
+
+Both formats ship the same content, rendered from the same template.
+
+| | **HTML** | **PDF** |
+|---|---|---|
+| Single file | Yes | Yes |
+| Self-contained | Yes (Chart.js, CSS, JS, and logo are inlined) | N/A (rasterized) |
+| Interactive charts | Yes (hover, tooltip, overlay toggle) | No (charts are rendered as images) |
+| File size | Larger (embeds Chart.js + raw data) | Smaller, fixed per page count |
+| Best for | Internal review, web sharing, debugging | Customer deliverables, regulatory submissions, printing |
+
+Which format you get is determined by the build: builds that include the embedded browser engine export a PDF, while builds without it export the self-contained HTML.
+
+## How charts are rendered
+
+Charts use **Chart.js 4.x**, bundled inside Serial Studio. No network access is required, since the full library, stylesheet, and client runtime are embedded in the HTML at render time.
+
+### Downsampling
+
+Long sessions are downsampled to a maximum of **10,000 points per chart** using first/min/max/last bucket decimation across 2,500 equal-count buckets. This preserves the signal envelope (peaks and valleys survive) while keeping charts responsive even for sessions with millions of samples.
+
+If you need the full-resolution data, export the session to **CSV** from the Historian instead.
+
+### Numeric formatting
+
+Tick labels use scientific notation for values with magnitude below 10⁻³ or at or above 10⁶. Otherwise they display with three decimal places. Colors rotate through a muted HSL palette (base hue 210°, stepped by 48° per parameter) tuned for print legibility.
+
+## Performance notes
+
+- HTML export is near-instant for any session size: the template inlines the data as JSON and all rendering happens in the browser when the file is opened.
+- PDF export is slower. Serial Studio loads the HTML in an off-screen browser, waits for Chart.js to finish rendering, then rasterizes the page. Expect a few seconds for sessions with many datasets.
+- The report is independent of the live project: it pulls session data directly from the SQLite database, so you can regenerate reports from archived sessions long after the original project has changed.
+
+## See also
+
+- [Historian](Session-Database.md): where sessions are recorded and browsed.
+- [CSV Export & Playback](CSV-Export-Playback.md): for full-resolution tabular exports.
+- [Pro vs Free Features](Pro-vs-Free.md): full list of Pro-only features.

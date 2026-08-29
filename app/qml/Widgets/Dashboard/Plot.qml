@@ -1,0 +1,703 @@
+/*
+ * Serial Studio
+ * https://serial-studio.com/
+ *
+ * Copyright (C) 2020–2025 Alex Spataru
+ *
+ * This file is dual-licensed:
+ *
+ * - Under the GNU GPLv3 (or later) for builds that exclude Pro modules.
+ * - Under the Serial Studio Commercial License for builds that include
+ *   any Pro functionality.
+ *
+ * You must comply with the terms of one of these licenses, depending
+ * on your use case.
+ *
+ * For GPL terms, see <https://www.gnu.org/licenses/gpl-3.0.html>
+ * For commercial terms, see LICENSES/LicenseRef-SerialStudio-Commercial.txt.
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later OR LicenseRef-SerialStudio-Commercial
+ */
+
+import QtQuick
+import QtGraphs
+import QtQuick.Layouts
+import QtQuick.Controls
+
+import SerialStudio
+
+import "../"
+import "../../Dialogs" as Dialogs
+
+Item {
+  id: root
+
+  clip: true
+
+  //
+  // Widget data inputs
+  //
+  required property color color
+  required property var windowRoot
+  required property PlotModel model
+  required property string widgetId
+
+  //
+  // Window flags
+  //
+  readonly property bool hasToolbar: toolbar.shown
+
+  //
+  // Custom properties
+  //
+  property bool showAreaUnderPlot: true
+  property int interpolationMode: SerialStudio.InterpolationLinear
+
+  //
+  // Bipolarity keys off the real samples, not the axis range; the anchor clamps at the
+  // zero line so the fill only reaches a range edge on the signal's own side of zero.
+  //
+  readonly property bool bipolarRange: root.model && root.model.dataBipolar
+  readonly property bool areaFillVisible: root.showAreaUnderPlot
+       && !(root.model && root.model.xyPlot)
+       && !(root.model && root.model.dataFlatZero)
+       && root.interpolationMode !== SerialStudio.InterpolationNone
+       && root.interpolationMode !== SerialStudio.InterpolationStem
+  readonly property real areaFillBaseline: {
+    if (!root.model)
+      return 0
+
+    if (root.model.logY)
+      return root.model.minY
+
+    if (root.bipolarRange)
+      return 0
+
+    return root.model.dataMaxY <= 0 ? Math.min(root.model.maxY, 0)
+                                    : Math.max(root.model.minY, 0)
+  }
+
+  //
+  // User-controlled visibility preferences (persisted, ANDed with size thresholds)
+  //
+  property bool userShowXLabel: true
+  property bool userShowYLabel: true
+
+  //
+  // Sweep/trigger mode is a time-axis-only Pro feature
+  //
+  readonly property bool sweepAllowed: root.model && root.model.timeAxis && Cpp_CommercialBuild
+                                       && (Cpp_Licensing_LemonSqueezy.isActivated
+                                           || Cpp_Licensing_Trial.trialEnabled)
+
+  //
+  // Suppresses the sweepChanged auto-save while restore assigns persisted values
+  //
+  property bool restoringSweep: false
+
+  //
+  // Cleared first during teardown so the UI-timer Connection detaches before the
+  // dynamically-created widget's context is invalidated (singleton keeps firing)
+  //
+  property bool alive: true
+  Component.onDestruction: root.alive = false
+
+  PlotCommon {
+    id: plotCommon
+  }
+
+  //
+  // Sync model width/height with widget, then restore persisted settings
+  //
+  Component.onCompleted: {
+    plotCommon.setDownsampleFactor(plot, model)
+
+    const s = Cpp_JSON_ProjectModel.widgetSettings(widgetId)
+
+    if (s["interpolationMode"] !== undefined)
+      root.interpolationMode = plotCommon.normalizeInterpolationMode(s["interpolationMode"])
+    else if (s["interpolate"] !== undefined)
+      root.interpolationMode = s["interpolate"]
+        ? SerialStudio.InterpolationLinear
+        : SerialStudio.InterpolationNone
+
+    if (root.model)
+      root.model.interpolationMode = root.interpolationMode
+
+    if (s["showAreaUnderPlot"] !== undefined)
+      root.showAreaUnderPlot = s["showAreaUnderPlot"]
+
+    if (!plotCommon.canShowAreaUnderPlot(root.interpolationMode))
+      root.showAreaUnderPlot = false
+
+    if (s["userShowXLabel"] !== undefined)
+      root.userShowXLabel = s["userShowXLabel"]
+
+    if (s["userShowYLabel"] !== undefined)
+      root.userShowYLabel = s["userShowYLabel"]
+
+    root.restoringSweep = true
+
+    if (s["sweepMode"] !== undefined)
+      root.model.sweepMode = s["sweepMode"]
+
+    if (s["triggerEdge"] !== undefined)
+      root.model.triggerEdge = s["triggerEdge"]
+
+    if (s["triggerLevel"] !== undefined)
+      root.model.triggerLevel = s["triggerLevel"]
+
+    if (s["holdoff"] !== undefined)
+      root.model.holdoff = s["holdoff"]
+
+    if (s["sweepTimebase"] !== undefined)
+      root.model.sweepTimebase = s["sweepTimebase"]
+
+    if (root.sweepAllowed && s["sweepEnabled"] !== undefined)
+      root.model.sweepEnabled = s["sweepEnabled"]
+
+    if (s["sweepRetention"] !== undefined)
+      root.model.sweepRetention = s["sweepRetention"]
+
+    root.restoringSweep = false
+
+    plot.restoreRuler(s)
+    root.restoreViewState()
+  }
+
+  //
+  // Persist the X-axis ruler (markers, zero point, hover marker) with the widget settings
+  //
+  function saveRulerSettings() {
+    Cpp_JSON_ProjectModel.saveWidgetSetting(widgetId, "xMarkers", plot.xMarkers)
+    Cpp_JSON_ProjectModel.saveWidgetSetting(widgetId, "xZero", plot.xZero)
+    Cpp_JSON_ProjectModel.saveWidgetSetting(widgetId, "xZeroSet", plot.xZeroSet)
+    Cpp_JSON_ProjectModel.saveWidgetSetting(widgetId, "hoverMarker", plot.hoverMarkerEnabled)
+  }
+
+  //
+  // Session view state (spec 0062): cursors, zoom/pan, crosshair mode and pause travel with a
+  // recording through Cpp_UI_Dashboard, never through the project document
+  //
+  function saveViewState() {
+    const d = Cpp_UI_Dashboard
+    d.saveWidgetViewState(widgetId, "cursorAX", plot.cursorAX)
+    d.saveWidgetViewState(widgetId, "cursorAY", plot.cursorAY)
+    d.saveWidgetViewState(widgetId, "cursorBX", plot.cursorBX)
+    d.saveWidgetViewState(widgetId, "cursorBY", plot.cursorBY)
+    d.saveWidgetViewState(widgetId, "cursorAVisible", plot.cursorAVisible)
+    d.saveWidgetViewState(widgetId, "cursorBVisible", plot.cursorBVisible)
+    d.saveWidgetViewState(widgetId, "showCrosshairs", plot.showCrosshairs)
+    d.saveWidgetViewState(widgetId, "xZoom", plot.xAxis.zoom)
+    d.saveWidgetViewState(widgetId, "xPan", plot.xAxis.pan)
+    d.saveWidgetViewState(widgetId, "yZoom", plot.yAxis.zoom)
+    d.saveWidgetViewState(widgetId, "yPan", plot.yAxis.pan)
+    d.saveWidgetViewState(widgetId, "paused", !root.model.running)
+  }
+
+  function restoreViewState() {
+    const v = Cpp_UI_Dashboard.widgetViewState(widgetId)
+    if (v["showCrosshairs"] !== undefined)
+      plot.showCrosshairs = v["showCrosshairs"] === true
+
+    if (isFinite(v["xZoom"]) && v["xZoom"] >= 1)
+      plot.xAxis.zoom = v["xZoom"]
+
+    if (isFinite(v["xPan"]))
+      plot.xAxis.pan = v["xPan"]
+
+    if (isFinite(v["yZoom"]) && v["yZoom"] >= 1)
+      plot.yAxis.zoom = v["yZoom"]
+
+    if (isFinite(v["yPan"]))
+      plot.yAxis.pan = v["yPan"]
+
+    if (v["cursorAVisible"] === true && isFinite(v["cursorAX"]) && isFinite(v["cursorAY"]))
+      plot.setCursorA(v["cursorAX"], v["cursorAY"])
+
+    if (v["cursorBVisible"] === true && isFinite(v["cursorBX"]) && isFinite(v["cursorBY"]))
+      plot.setCursorB(v["cursorBX"], v["cursorBY"])
+
+    if (v["paused"] === true && root.model)
+      root.model.running = false
+  }
+
+  Timer {
+    id: _viewStateTimer
+
+    interval: 500
+    repeat: false
+    onTriggered: root.saveViewState()
+  }
+
+  //
+  // Persist trigger settings whenever they change
+  //
+  function saveSweepSettings() {
+    if (root.restoringSweep)
+      return
+
+    Cpp_JSON_ProjectModel.saveWidgetSetting(widgetId, "sweepMode", root.model.sweepMode)
+    Cpp_JSON_ProjectModel.saveWidgetSetting(widgetId, "triggerEdge", root.model.triggerEdge)
+    Cpp_JSON_ProjectModel.saveWidgetSetting(widgetId, "triggerLevel", root.model.triggerLevel)
+    Cpp_JSON_ProjectModel.saveWidgetSetting(widgetId, "holdoff", root.model.holdoff)
+    Cpp_JSON_ProjectModel.saveWidgetSetting(widgetId, "sweepTimebase", root.model.sweepTimebase)
+    Cpp_JSON_ProjectModel.saveWidgetSetting(widgetId, "sweepEnabled", root.model.sweepEnabled)
+  }
+
+  //
+  // Persist how many past sweeps the plot keeps drawn (spec 0061)
+  //
+  function saveSegmentSettings() {
+    if (root.restoringSweep)
+      return
+
+    Cpp_JSON_ProjectModel.saveWidgetSetting(widgetId, "sweepRetention", root.model.sweepRetention)
+  }
+
+  //
+  // Reset trigger/sweep settings to defaults when sweep mode is toggled
+  //
+  function resetSweepSettings() {
+    if (!root.model)
+      return
+
+    root.model.sweepMode = SerialStudio.SweepAuto
+    root.model.triggerEdge = SerialStudio.TriggerRising
+    root.model.triggerLevel = 0
+    root.model.holdoff = 0
+    root.model.sweepTimebase = 0
+  }
+
+  Connections {
+    target: root.model
+
+    function onSweepChanged() {
+      root.saveSweepSettings()
+    }
+
+    function onSweepSegmentsChanged() {
+      root.saveSegmentSettings()
+    }
+
+    function onRunningChanged() {
+      _viewStateTimer.restart()
+    }
+  }
+
+  //
+  // Enable/disable features depending on window size, ANDed with user preferences
+  //
+  onWidthChanged: updateWidgetOptions()
+  onHeightChanged: updateWidgetOptions()
+  onInterpolationModeChanged: {
+    scatterSeries.clear()
+    upperSeries.clear()
+  }
+  function updateWidgetOptions() {
+    plot.yLabelVisible = root.userShowYLabel && (root.width >= 196)
+    plot.xLabelVisible = root.userShowXLabel && (root.height >= (196 * 2/3))
+  }
+
+  //
+  // Axis range configuration dialog
+  //
+  Dialogs.AxisRangeDialog {
+    id: axisRangeDialog
+  }
+
+  //
+  // Trigger configuration dialog
+  //
+  Dialogs.TriggerDialog {
+    id: triggerDialog
+  }
+
+  //
+  // Re-downsamples the visible window and redraws the active series; zoom/pan call it
+  // via Qt.callLater because draw() emits rangeChanged (binding loop if synchronous)
+  //
+  function redrawCurves() {
+    if (!root.visible || !root.model
+        || typeof plotCommon.setDownsampleFactor !== "function")
+      return
+
+    plotCommon.setDownsampleFactor(plot, model)
+    if (root.interpolationMode === SerialStudio.InterpolationNone)
+      root.model.draw(scatterSeries)
+    else
+      root.model.draw(upperSeries)
+  }
+
+  //
+  // Guards the plotCommon call so geometry signals firing during teardown (anchors
+  // detaching) don't dereference the child QtObject after its context is invalid
+  //
+  function setDownsample() {
+    if (root.model && typeof plotCommon.setDownsampleFactor === "function")
+      plotCommon.setDownsampleFactor(plot, model)
+  }
+
+  //
+  // Update curve at the UI refresh rate (60 Hz default, Settings-configurable)
+  //
+  Connections {
+    enabled: root.alive
+    target: Cpp_Misc_TimerEvents
+
+    function onUiTimeout() {
+      root.redrawCurves()
+    }
+  }
+
+  //
+  // Add toolbar
+  //
+  WidgetToolbar {
+    id: toolbar
+
+    windowRoot: root.windowRoot
+
+    anchors {
+      leftMargin: 8
+      top: parent.top
+      left: parent.left
+      right: parent.right
+    }
+
+    DashboardToolButton {
+      onClicked: {
+        root.interpolationMode = plotCommon.nextInterpolationMode(root.interpolationMode)
+        if (root.model)
+          root.model.interpolationMode = root.interpolationMode
+
+        if (!plotCommon.canShowAreaUnderPlot(root.interpolationMode))
+          root.showAreaUnderPlot = false
+
+        Cpp_JSON_ProjectModel.saveWidgetSetting(widgetId,
+                                                "interpolationMode",
+                                                root.interpolationMode)
+        Cpp_JSON_ProjectModel.saveWidgetSetting(widgetId, "showAreaUnderPlot", root.showAreaUnderPlot)
+      }
+      checked: root.interpolationMode !== SerialStudio.InterpolationNone
+      ToolTip.text: qsTr("Interpolation: %1").arg(plotCommon.modeLabel(root.interpolationMode))
+      icon.source: root.interpolationMode === SerialStudio.InterpolationNone
+             ? Cpp_Misc_IconRegistry.icon("commands", "interpolate-off", 16)
+             : Cpp_Misc_IconRegistry.icon("commands", "interpolate-on", 16)
+    }
+
+    DashboardToolButton {
+      onClicked: {
+        root.showAreaUnderPlot = !root.showAreaUnderPlot
+        Cpp_JSON_ProjectModel.saveWidgetSetting(widgetId, "showAreaUnderPlot", root.showAreaUnderPlot)
+      }
+      opacity: enabled ? 1 : 0.5
+      checked: root.showAreaUnderPlot
+      ToolTip.text: qsTr("Show Area Under Plot")
+      visible: !(root.model && root.model.xyPlot)
+      icon.source: Cpp_Misc_IconRegistry.icon("commands", "area", 16)
+      enabled: plotCommon.canShowAreaUnderPlot(root.interpolationMode)
+    }
+
+    Rectangle {
+      implicitWidth: 1
+      implicitHeight: 24
+      color: Cpp_ThemeManager.colors["widget_border"]
+    }
+
+    DashboardToolButton {
+      onClicked: {
+        root.userShowXLabel = !root.userShowXLabel
+        root.updateWidgetOptions()
+        Cpp_JSON_ProjectModel.saveWidgetSetting(widgetId, "userShowXLabel", root.userShowXLabel)
+      }
+      checked: root.userShowXLabel
+      ToolTip.text: qsTr("Show X Axis Label")
+      icon.source: Cpp_Misc_IconRegistry.icon("commands", "x", 16)
+    }
+
+    DashboardToolButton {
+      onClicked: {
+        root.userShowYLabel = !root.userShowYLabel
+        root.updateWidgetOptions()
+        Cpp_JSON_ProjectModel.saveWidgetSetting(widgetId, "userShowYLabel", root.userShowYLabel)
+      }
+      checked: root.userShowYLabel
+      ToolTip.text: qsTr("Show Y Axis Label")
+      icon.source: Cpp_Misc_IconRegistry.icon("commands", "y", 16)
+    }
+
+    Rectangle {
+      implicitWidth: 1
+      implicitHeight: 24
+      color: Cpp_ThemeManager.colors["widget_border"]
+    }
+
+    DashboardToolButton {
+      checked: plot.showCrosshairs
+      ToolTip.text: qsTr("Show Crosshair")
+      onClicked: plot.showCrosshairs = !plot.showCrosshairs
+      icon.source: Cpp_Misc_IconRegistry.icon("commands", "crosshair", 16)
+    }
+
+    Rectangle {
+      visible: root.sweepAllowed
+      implicitWidth: 1
+      implicitHeight: 24
+      color: Cpp_ThemeManager.colors["widget_border"]
+    }
+
+    DashboardToolButton {
+      visible: root.sweepAllowed
+      checked: root.model.sweepEnabled
+      ToolTip.text: qsTr("Sweep / Trigger Mode")
+      icon.source: Cpp_Misc_IconRegistry.icon("commands", "sweep", 16)
+      onClicked: {
+        root.model.sweepEnabled = !root.model.sweepEnabled
+        root.resetSweepSettings()
+      }
+    }
+
+    DashboardToolButton {
+      visible: root.sweepAllowed
+      opacity: enabled ? 1 : 0.5
+      enabled: root.model.sweepEnabled
+      ToolTip.text: qsTr("Trigger Settings")
+      icon.source: Cpp_Misc_IconRegistry.icon("commands", "trigger", 16)
+      onClicked: triggerDialog.openDialog(root.model, false)
+    }
+
+    //
+    // Sweep retention (spec 0061): how many past sweeps stay drawn, dimmed by age, under the
+    // live trace; the count walks a doubling ladder and the model clamps it to the memory budget
+    //
+    Rectangle {
+      radius: 6
+      border.width: 1
+      implicitHeight: 24
+      implicitWidth: _retentionRow.implicitWidth + 10
+      color: Cpp_ThemeManager.colors["widget_base"]
+      border.color: Cpp_ThemeManager.colors["widget_border"]
+      visible: root.sweepAllowed && root.model.sweepEnabled
+
+      RowLayout {
+        id: _retentionRow
+
+        spacing: 2
+        anchors.centerIn: parent
+
+        DashboardToolButton {
+          text: "\u2039"
+          Layout.preferredWidth: 20
+          Layout.preferredHeight: 20
+          enabled: root.model.sweepRetention > 0
+          ToolTip.text: qsTr("Keep fewer past sweeps")
+          onClicked: root.model.sweepRetention = plotCommon.stepRetention(
+                       root.model.sweepRetention, -1)
+        }
+
+        Label {
+          Layout.minimumWidth: 20
+          text: root.model.sweepSegmentCapacity
+          horizontalAlignment: Text.AlignHCenter
+          font: Cpp_Misc_CommonFonts.monoFont
+          color: Cpp_ThemeManager.colors["widget_text"]
+        }
+
+        DashboardToolButton {
+          text: "\u203a"
+          Layout.preferredWidth: 20
+          Layout.preferredHeight: 20
+          enabled: root.model.sweepRetention < 64
+          ToolTip.text: qsTr("Keep more past sweeps")
+          onClicked: root.model.sweepRetention = plotCommon.stepRetention(
+                       root.model.sweepRetention, 1)
+        }
+      }
+    }
+
+    Rectangle {
+      visible: root.sweepAllowed
+      implicitWidth: 1
+      implicitHeight: 24
+      color: Cpp_ThemeManager.colors["widget_border"]
+    }
+
+    DashboardToolButton {
+      onClicked: {
+        plot.xAxis.pan = 0
+        plot.yAxis.pan = 0
+        plot.xAxis.zoom = 1
+        plot.yAxis.zoom = 1
+        plot.xMin = Qt.binding(function() { return root.model.minX })
+        plot.xMax = Qt.binding(function() { return root.model.maxX })
+        plot.yMin = Qt.binding(function() { return root.model.minY })
+        plot.yMax = Qt.binding(function() { return root.model.maxY })
+      }
+      opacity: enabled ? 1 : 0.5
+      ToolTip.text: qsTr("Reset View")
+      enabled: plot.xAxis.zoom !== 1 || plot.yAxis.zoom !== 1
+      icon.source: Cpp_Misc_IconRegistry.icon("commands", "return", 16)
+    }
+
+    DashboardToolButton {
+      ToolTip.text: qsTr("Axis Range Settings")
+      icon.source: Cpp_Misc_IconRegistry.icon("commands", "settings", 16)
+      onClicked: axisRangeDialog.openDialog(plot, root.model)
+    }
+
+    Rectangle {
+      implicitWidth: 1
+      implicitHeight: 24
+      color: Cpp_ThemeManager.colors["widget_border"]
+    }
+
+    DashboardToolButton {
+      checked: !model.running
+      ToolTip.text: model.running ? qsTr("Pause") : qsTr("Resume")
+      icon.source: model.running?
+                     Cpp_Misc_IconRegistry.icon("commands", "pause", 16) :
+                     Cpp_Misc_IconRegistry.icon("commands", "resume", 16)
+      onClicked: model.running = !model.running
+    }
+
+    Item {
+      Layout.fillWidth: true
+    }
+  }
+
+  //
+  // Plot widget
+  //
+  PlotWidget {
+    id: plot
+
+    anchors {
+      margins: 8
+      left: parent.left
+      right: parent.right
+      top: toolbar.bottom
+      bottom: parent.bottom
+    }
+
+    xMin: root.model.minX
+    xMax: root.model.maxX
+    yMin: root.model.minY
+    yMax: root.model.maxY
+    logX: root.model.logX
+    logY: root.model.logY
+    curveColors: [root.color]
+    xLabel: root.model.xLabel
+    yLabel: root.model.yLabel
+    timeAxis: root.model.timeAxis
+    sweepMode: root.model.sweepEnabled
+    triggerEditing: triggerDialog.visible
+    triggerLevel: root.model.logY
+                  ? Math.log10(Math.max(root.model.triggerLevel, 1e-12))
+                  : root.model.triggerLevel
+    mouseAreaEnabled: windowRoot.focused
+    xAxis.tickInterval: plot.xTickInterval
+    yAxis.tickInterval: plot.yTickInterval
+
+    areaFillColor: root.color
+    areaFillBaseline: root.areaFillBaseline
+    areaFillSource: root.areaFillVisible ? upperSeries : null
+
+    onRulerChanged: root.saveRulerSettings()
+    onCursorAXChanged: _viewStateTimer.restart()
+    onCursorAYChanged: _viewStateTimer.restart()
+    onCursorBXChanged: _viewStateTimer.restart()
+    onCursorBYChanged: _viewStateTimer.restart()
+    onCursorAVisibleChanged: _viewStateTimer.restart()
+    onCursorBVisibleChanged: _viewStateTimer.restart()
+    onShowCrosshairsChanged: _viewStateTimer.restart()
+    xAxis.onPanChanged: _viewStateTimer.restart()
+    yAxis.onPanChanged: _viewStateTimer.restart()
+    xAxis.onZoomChanged: _viewStateTimer.restart()
+    yAxis.onZoomChanged: _viewStateTimer.restart()
+    onZoomChanged: Qt.callLater(root.redrawCurves)
+    onXVisibleMinChanged: Qt.callLater(root.redrawCurves)
+    onWidthChanged: root.setDownsample()
+    onHeightChanged: root.setDownsample()
+    onTriggerLevelChangeRequested: (level) => {
+      if (root.model)
+        root.model.triggerLevel = root.model.logY ? Math.pow(10, level) : level
+    }
+
+    Connections {
+      target: root.windowRoot
+      function onFocusedChanged() {
+        plot.mouseAreaEnabled = root.windowRoot.focused
+      }
+    }
+
+    Component.onCompleted: graph.addSeries(scatterSeries)
+
+    ScatterSeries {
+      id: scatterSeries
+
+      visible: root.interpolationMode === SerialStudio.InterpolationNone
+      pointDelegate: Rectangle {
+        width: 2
+        height: 2
+        radius: 1
+        color: root.color
+      }
+    }
+
+    //
+    // Data carrier only (never added to the graph): the model draws into it and
+    // the GPU PlotCurve below renders it
+    //
+    LineSeries {
+      id: upperSeries
+    }
+
+    PlotCurve {
+      lineWidth: 2
+      color: root.color
+      source: upperSeries
+      anchors.fill: parent
+      xMin: plot.xVisibleMin
+      xMax: plot.xVisibleMax
+      yMin: plot.yVisibleMin
+      yMax: plot.yVisibleMax
+      parent: plot.curveLayer
+      visible: root.interpolationMode !== SerialStudio.InterpolationNone
+    }
+
+    //
+    // Retained sweep segments (spec 0061): age-dimmed overlay traces under the live curve
+    //
+    Repeater {
+      model: root.model.sweepEnabled ? root.model.sweepSegmentCount : 0
+
+      delegate: PlotCurve {
+        id: _segmentCurve
+
+        required property int index
+
+        lineWidth: 1
+        color: root.color
+        anchors.fill: parent
+        xMin: plot.xVisibleMin
+        xMax: plot.xVisibleMax
+        yMin: plot.yVisibleMin
+        yMax: plot.yVisibleMax
+        parent: plot.curveLayer
+        source: LineSeries {}
+        opacity: 0.12 + 0.5 * (1 - index / Math.max(1, root.model.sweepSegmentCount))
+
+        Connections {
+          enabled: root.alive
+          target: Cpp_Misc_TimerEvents
+
+          function onUiTimeout() {
+            if (root.visible && root.model)
+              root.model.drawSegment(_segmentCurve.source, _segmentCurve.index)
+          }
+        }
+      }
+    }
+  }
+}

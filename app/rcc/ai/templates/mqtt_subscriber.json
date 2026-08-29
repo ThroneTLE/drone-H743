@@ -1,0 +1,19 @@
+{
+  "title": "MQTT subscriber",
+  "actions": [],
+  "frameStart": "",
+  "frameEnd": "",
+  "frameDetection": 2,
+  "decoder": 0,
+  "checksum": "",
+  "frameParser": "/**\n * Each MQTT payload is a complete frame; tweak split character if your\n * publisher uses something other than commas.\n */\nfunction parse(frame) {\n    return frame.split(',');\n}\n",
+  "groups": [
+    {
+      "title": "Telemetry",
+      "widget": "",
+      "datasets": [
+        { "title": "Value", "index": 1, "graph": true, "min": 0, "max": 100 }
+      ]
+    }
+  ]
+}

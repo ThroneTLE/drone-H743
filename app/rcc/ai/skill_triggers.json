@@ -1,0 +1,153 @@
+{
+  "schema": 1,
+  "comment": "Curated trigger phrases for deterministic skill routing (spec 0008). Matched case-insensitively against the user's message; the longest matched phrase wins and at most one skill is injected per message. Err toward misses: a miss is status quo (the model can still call meta.loadSkill), a false hit costs tokens on small models.",
+  "skills": {
+    "tool_discovery": [
+      "what can you do",
+      "what commands",
+      "list commands",
+      "available tools",
+      "which tools"
+    ],
+    "behavioral": [
+      "undo",
+      "roll back",
+      "rollback",
+      "revert",
+      "restore a checkpoint",
+      "restore the project",
+      "go back to before"
+    ],
+    "project_basics": [
+      "new project",
+      "create a project",
+      "set up a project",
+      "add a group",
+      "add a source",
+      "add a dataset",
+      "add datasets",
+      "rename the group",
+      "delete the group"
+    ],
+    "frame_parsers": [
+      "frame parser",
+      "parse frames",
+      "parse the data",
+      "parse my data",
+      "frame format",
+      "csv frames",
+      "delimiter",
+      "binary frames",
+      "frame start",
+      "frame end",
+      "start sequence",
+      "end sequence",
+      "frame detection",
+      "nmea",
+      "mavlink"
+    ],
+    "transforms": [
+      "transform",
+      "convert units",
+      "scale the value",
+      "calibrate",
+      "calibration",
+      "moving average",
+      "smooth the",
+      "virtual dataset",
+      "computed dataset",
+      "derived value",
+      "data table",
+      "shared table",
+      "constants table"
+    ],
+    "painter": [
+      "painter",
+      "custom widget",
+      "custom drawing",
+      "draw a custom",
+      "canvas widget",
+      "canvas"
+    ],
+    "output_widgets": [
+      "output widget",
+      "add a button",
+      "add a slider",
+      "add a toggle",
+      "add a knob",
+      "output panel",
+      "transmit function"
+    ],
+    "mqtt": [
+      "mqtt",
+      "broker",
+      "publish to",
+      "subscribe to"
+    ],
+    "can_modbus": [
+      "can bus",
+      "canbus",
+      "modbus",
+      "dbc file",
+      "j1939",
+      "obd",
+      "slcan"
+    ],
+    "filesystem": [
+      "read the file",
+      "open the file",
+      "list files",
+      "search my files",
+      "workspace folder",
+      "log file",
+      "the csv file"
+    ],
+    "dashboard_layout": [
+      "dashboard",
+      "workspace",
+      "add a plot",
+      "add a gauge",
+      "add a compass",
+      "add an fft",
+      "add a led",
+      "pin a widget",
+      "layout"
+    ],
+    "debugging": [
+      "not working",
+      "no data",
+      "doesn't show",
+      "does not show",
+      "nothing happens",
+      "empty dashboard",
+      "troubleshoot",
+      "debug"
+    ],
+    "api_semantics": [
+      "uniqueid",
+      "unique id",
+      "dataset id",
+      "which id",
+      "execution order",
+      "processing order"
+    ],
+    "control_script": [
+      "control script",
+      "setup()",
+      "loop()",
+      "keep-alive",
+      "keepalive",
+      "handshake",
+      "poll the device",
+      "wake up the device",
+      "automate the device"
+    ],
+    "workspace_design": [
+      "executive dashboard",
+      "overview dashboard",
+      "summary view",
+      "design the dashboard",
+      "organize the workspaces"
+    ]
+  }
+}

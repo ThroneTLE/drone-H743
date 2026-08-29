@@ -1,0 +1,39 @@
+"""
+Serial Studio Test Utilities
+
+Shared utilities for integration testing.
+
+Copyright (C) 2020-2025 Alex Spataru
+SPDX-License-Identifier: GPL-3.0-or-later OR LicenseRef-SerialStudio-Commercial
+"""
+
+from .api_client import SerialStudioClient, APIError
+from .device_simulator import DeviceSimulator
+from .data_generator import DataGenerator, ChecksumType
+from .validators import validate_csv_export, validate_frame_structure
+from .session_diag import session_diagnostics
+from .virtual_serial import VirtualSerialPort, DualSerialPorts, PTY_AVAILABLE
+from .audio_tools import (
+    generate_chirp_wav,
+    read_wav_mono,
+    align_and_score,
+    analyze_cadence,
+)
+
+__all__ = [
+    "SerialStudioClient",
+    "APIError",
+    "DeviceSimulator",
+    "DataGenerator",
+    "ChecksumType",
+    "validate_csv_export",
+    "validate_frame_structure",
+    "session_diagnostics",
+    "VirtualSerialPort",
+    "DualSerialPorts",
+    "PTY_AVAILABLE",
+    "generate_chirp_wav",
+    "read_wav_mono",
+    "align_and_score",
+    "analyze_cadence",
+]

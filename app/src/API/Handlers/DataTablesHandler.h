@@ -1,0 +1,60 @@
+/*
+ * Serial Studio
+ * https://serial-studio.com/
+ *
+ * Copyright (C) 2020–2025 Alex Spataru
+ *
+ * This file is dual-licensed:
+ *
+ * - Under the GNU GPLv3 (or later) for builds that exclude Pro modules.
+ * - Under the Serial Studio Commercial License for builds that include
+ *   any Pro functionality.
+ *
+ * You must comply with the terms of one of these licenses, depending
+ * on your use case.
+ *
+ * For GPL terms, see <https://www.gnu.org/licenses/gpl-3.0.html>
+ * For commercial terms, see LICENSES/LicenseRef-SerialStudio-Commercial.txt.
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later OR LicenseRef-SerialStudio-Commercial
+ */
+
+#pragma once
+
+#include "API/CommandProtocol.h"
+
+namespace API {
+namespace Handlers {
+
+/**
+ * @brief Registers API commands for project user-defined data tables.
+ */
+class DataTablesHandler {
+public:
+  static void registerCommands();
+
+private:
+  static void registerTableQueryCommands();
+  static void registerTableMutationCommands();
+  static void registerRegisterCommands();
+
+  static CommandResponse tablesList(const QString& id, const QJsonObject& params);
+  static CommandResponse tableGet(const QString& id, const QJsonObject& params);
+  static CommandResponse tableAdd(const QString& id, const QJsonObject& params);
+  static CommandResponse tableDelete(const QString& id, const QJsonObject& params);
+  static CommandResponse tableRename(const QString& id, const QJsonObject& params);
+
+  static CommandResponse registerAdd(const QString& id, const QJsonObject& params);
+  static CommandResponse registerDelete(const QString& id, const QJsonObject& params);
+  static CommandResponse registerUpdate(const QString& id, const QJsonObject& params);
+
+  static CommandResponse valueGet(const QString& id, const QJsonObject& params);
+  static CommandResponse valueSet(const QString& id, const QJsonObject& params);
+
+  static CommandResponse valueHandle(const QString& id, const QJsonObject& params);
+  static CommandResponse valueGetH(const QString& id, const QJsonObject& params);
+  static CommandResponse valueSetH(const QString& id, const QJsonObject& params);
+};
+
+}  // namespace Handlers
+}  // namespace API
