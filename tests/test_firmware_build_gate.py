@@ -185,9 +185,81 @@ def test_flash_button_is_disabled_while_building() -> None:
     assert "self.firmware_building" in refresh
 
 
-def test_polling_keeps_running_during_the_build_so_the_gate_stays_fresh() -> None:
-    """安全门要求 1.5s 内的新鲜快照；编译期间必须继续轮询，否则编译完就过期。"""
+def test_polling_keeps_running_during_the_build_so_the_advisory_stays_fresh() -> None:
+    """飞控状态行靠 IMU 轮询刷新；编译期间必须继续轮询，否则一编译完就显示未知。"""
     poll = function_body(SOURCE, "    def _imu_poll_tick(")
     keepalive = function_body(SOURCE, "    def _link_keepalive_suppressed_reason(")
     assert "firmware_building" not in poll
     assert "firmware_building" not in keepalive
+
+
+# --------------------------------------------------------------------------
+# 安全判定归属：飞控自己拒绝，主机不做第二道闸门
+# --------------------------------------------------------------------------
+
+def test_target_enforces_arm_and_throttle_refusal_itself() -> None:
+    """固件侧存在等价拒绝，主机才有资格放行。这几条消失就必须重新加回主机闸门。"""
+    boot = (ROOT / "App" / "Src" / "app_control.c").read_text(encoding="utf-8")
+    for reason in (
+        "APP_BOOT_REQUEST_ARMED",
+        "APP_BOOT_REQUEST_ESC_HIGH",
+        "APP_BOOT_REQUEST_NO_VALID_SNAPSHOT",
+        "APP_BOOT_REQUEST_SNAPSHOT_STALE",
+    ):
+        assert reason in boot
+    # 拒绝原因必须回给上位机，否则用户只会看到"没反应"。
+    assert 'state=refused reason=%s' in boot
+
+
+def test_host_flash_path_does_not_gate_on_the_snapshot() -> None:
+    for name in (
+        "    def _firmware_start_update(self)",
+        "    def _firmware_start_update_after_build(",
+        "    def _firmware_send_boot_after_baseline(",
+    ):
+        body = function_body(SOURCE, name)
+        assert "_firmware_link_gate()" in body
+        assert "_validation_live_safety_gate()" not in body
+
+
+def test_flash_button_enablement_ignores_the_snapshot() -> None:
+    refresh = function_body(SOURCE, "    def _firmware_refresh_safety(")
+    enable = refresh[refresh.index("firmware_start_button.configure"):]
+    # 只允许链路状态和"正在忙"参与按钮使能。
+    assert "state=tk.NORMAL if ok and not busy else tk.DISABLED" in enable
+    assert "level" not in enable
+
+
+def test_target_refusal_is_shown_verbatim() -> None:
+    handler = function_body(SOURCE, "    def _firmware_handle_boot_line(")
+    assert "showerror" in handler
+    assert "飞控拒绝升级" in handler
+
+
+def test_v1_and_v2a_keep_the_full_snapshot_gate() -> None:
+    """这两个流程会真的驱动舵机，且没有目标侧拒绝，必须保留主机闸门。"""
+    for name in ("    def _v2_start(", "    def _v1_refresh_controls("):
+        assert "_validation_live_safety_gate()" in function_body(SOURCE, name)
+    gate = function_body(SOURCE, "    def _validation_live_safety_gate(")
+    assert 'if level != "ok":' in gate
+
+
+def test_the_firmware_page_has_no_manual_safety_step() -> None:
+    """用户不该为了烧录去点一个"读取安全快照"按钮。"""
+    assert "_firmware_request_snapshot" not in SOURCE
+    assert "立即读取安全快照" not in SOURCE
+    assert "实时安全门" not in SOURCE
+    build = function_body(SOURCE, "    def _build_firmware_update_page(")
+    assert '"2 · 进入 DFU 并烧录"' in build
+    assert '"3 · ' not in build
+
+
+def test_unknown_usb_identity_is_confirmed_at_click_time() -> None:
+    """未知身份是主机独有的风险，但用一次性弹窗确认，不用常驻勾选框。"""
+    confirm = function_body(SOURCE, "    def _firmware_confirm_unknown_identity(")
+    assert "askyesno" in confirm
+    assert 'policy != "unknown"' in confirm
+    # 换了口子必须重新确认，否则确认过一次就等于永久放行任何未知设备。
+    assert "firmware_unknown_usb_confirmed_port" in confirm
+    start = function_body(SOURCE, "    def _firmware_start_update(self)")
+    assert "_firmware_confirm_unknown_identity()" in start

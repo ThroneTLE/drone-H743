@@ -30,6 +30,7 @@ def poll_subject(
     firmware_update_running: bool = False,
     validation_poll_requested: bool = False,
     imu_poll_enabled: bool = False,
+    drift_recording: bool = False,
 ) -> SimpleNamespace:
     sent: list[tuple[int, str]] = []
     subject = SimpleNamespace(
@@ -40,12 +41,16 @@ def poll_subject(
         firmware_tab="firmware",
         v1_tab="v1",
         validation_tab="validation",
+        rc_tab="rc",
+        rc_last_poll=0.0,
         _imu_dirty=False,
         _last_imu_draw_ns=0,
         validation_active_stage=None,
         validation_latest_host_time=0.0,
         _last_validation_readiness_ns=0,
         validation_poll_requested=validation_poll_requested,
+        # 静止漂移录制期间必须继续取样，哪怕用户切走了页签。
+        drift_recording=drift_recording,
         imu_poll_enabled=SimpleNamespace(get=lambda: imu_poll_enabled),
         firmware_update_pending=firmware_update_pending,
         firmware_update_running=firmware_update_running,
@@ -63,6 +68,7 @@ def poll_subject(
     )
     subject.after = lambda *_a, **_k: None
     subject._imu_poll_tick = lambda: None  # 供末尾的 after() 重排引用
+    subject._rc_render = lambda: None
     return subject
 
 
@@ -103,8 +109,17 @@ def test_unrelated_tab_does_not_poll() -> None:
 
 def test_readiness_copy_promises_the_automatic_poll() -> None:
     """UI 文案承诺自动轮询；轮询条件必须真的覆盖 V0 页，否则文案在说谎。"""
-    assert "V0会自动轮询IMU" in SOURCE
+    assert "坐标系校准页会自动轮询 IMU" in SOURCE
     start = SOURCE.index("def _imu_poll_tick(self)")
     end = SOURCE.index("\n    def ", start + 1)
     body = SOURCE[start:end]
     assert "validation_tab_visible" in body
+
+
+def test_a_stationary_drift_recording_keeps_polling_from_any_tab() -> None:
+    """录 30~60 秒的过程中用户很可能去看别的页；切走就停采会毁掉这次录制。"""
+    subject = poll_subject(visible_tab="overview", drift_recording=True)
+
+    panel.DronePanel._imu_poll_tick(subject)
+
+    assert any(command == "IMU?" for _function, command in subject.sent)

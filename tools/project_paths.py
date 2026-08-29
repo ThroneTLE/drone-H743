@@ -32,6 +32,8 @@ PRESSURE_CALIBRATION_DIR = CALIBRATION_ROOT / "pressure"
 AIRFRAME_CALIBRATION_DIR = CALIBRATION_ROOT / "airframe"
 IMU_METROLOGY_CALIBRATION_DIR = CALIBRATION_ROOT / "imu_metrology"
 FLIGHT_ACCEPTANCE_CALIBRATION_DIR = CALIBRATION_ROOT / "flight_acceptance_v2"
+SERVO_MECHANICAL_CALIBRATION_DIR = CALIBRATION_ROOT / "servo_mechanical"
+FLOW_RANGE_CALIBRATION_DIR = CALIBRATION_ROOT / "flow_range"
 
 TELEMETRY_DIR = DATA_ROOT / "telemetry"
 ANALYSIS_ROOT = DATA_ROOT / "analysis"
@@ -39,6 +41,10 @@ FLIGHT_LOG_ANALYSIS_DIR = ANALYSIS_ROOT / "flight_logs"
 RERUN_REPLAY_DIR = FLIGHT_LOG_ANALYSIS_DIR / "rerun_replay"
 LOG_DIR = DATA_ROOT / "logs"
 FIRMWARE_UPDATE_DIR = DATA_ROOT / "firmware_updates"
+
+# 地面站的界面状态（上次连接的通道/串口/波特率）。不是测量数据，但和 data/ 下别的
+# 东西一样属于"本机产物、不进版本库"。
+PANEL_STATE_PATH = DATA_ROOT / "panel_state.json"
 
 DATE_DIRECTORY_RE = re.compile(r"^20\d{2}-\d{2}-\d{2}$")
 DATE_TOKEN_RE = re.compile(

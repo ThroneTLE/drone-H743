@@ -182,7 +182,7 @@ def test_v1_capture_suppresses_the_keepalive() -> None:
     subject = keepalive_subject(
         serial=serial, last_board_rx=_monotonic() - 30.0, v1_alive=True)
 
-    assert subject._link_keepalive_suppressed_reason() == "V1 正在独占 USB CDC"
+    assert subject._link_keepalive_suppressed_reason() == "IMU 校准正在独占 USB CDC"
     panel.DronePanel._maybe_send_link_keepalive(subject)
     assert serial.frames == []
 

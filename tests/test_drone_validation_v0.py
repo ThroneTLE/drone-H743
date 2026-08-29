@@ -222,7 +222,8 @@ def test_validation_page_limits_target_writes_to_the_guarded_orientation_flow() 
     assert "B · 清空旧样本并重采 6 步" in body
     assert "C · 复验通过后写入 Flash" in body
     assert "PROTO_REQ_IMU_FRAME" in body
-    assert "01 · 坐标 V0" in SOURCE
+    assert 'self.notebook.add(calibration, text="校准")' in SOURCE
+    assert 'self.calibration_notebook.add(validation_scroll, text="坐标系与极性")' in SOURCE
     assert "AIRFRAME_CALIBRATION_DIR" in SOURCE
     for forbidden in ("PROTO_REQ_SAVE", "PROTO_REQ_LOAD", "PROTO_REQ_DEFAULTS", "PROTO_REQ_PARAM_SET", "PROTO_REQ_PID_SET", "PROTO_REQ_SERVO_MOVE"):
         assert forbidden not in body
@@ -278,39 +279,93 @@ def test_ui_hot_paths_are_bounded_and_render_is_throttled() -> None:
     assert "self.notebook.select() == str(self.ident_tab)" in ident
 
 
-def test_firmware_update_requires_fresh_disarmed_low_output_snapshot() -> None:
-    values = complete_snapshot()
-    safe, reason = panel.firmware_update_snapshot_gate(
-        values,
-        connected=True,
-        serial_transport_selected=True,
-        sample_age_s=0.2,
+def test_firmware_update_only_hard_blocks_on_the_link() -> None:
+    """解锁/油门由固件的 BOOT 处理器判定，主机只管命令送不送得出去。"""
+    ok, reason = panel.firmware_update_link_gate(
+        connected=True, serial_transport_selected=True
     )
-    assert safe
-    assert "armed=0" in reason
+    assert ok
+    assert "USB CDC" in reason
 
-    for update, expected in (
-        ({"armed": "1"}, "armed=1"),
-        ({"m1": "1200"}, "m1=1200"),
-        ({"source": "legacy"}, "stabilizer snapshot"),
-    ):
-        unsafe = values | update
-        allowed, message = panel.firmware_update_snapshot_gate(
-            unsafe,
-            connected=True,
-            serial_transport_selected=True,
-            sample_age_s=0.2,
-        )
-        assert not allowed
-        assert expected in message
-    stale, message = panel.firmware_update_snapshot_gate(
-        values,
-        connected=True,
-        serial_transport_selected=True,
-        sample_age_s=2.0,
+    blocked, message = panel.firmware_update_link_gate(
+        connected=False, serial_transport_selected=True
     )
-    assert not stale
-    assert "过期" in message
+    assert not blocked
+    assert "未连接" in message
+
+    wrong_transport, message = panel.firmware_update_link_gate(
+        connected=True, serial_transport_selected=False
+    )
+    assert not wrong_transport
+    assert "serial" in message
+
+
+def test_snapshot_advisory_describes_but_never_blocks() -> None:
+    values = complete_snapshot()
+    level, text = panel.firmware_update_snapshot_advisory(values, sample_age_s=0.2)
+    assert level == "ok"
+    assert "armed=0" in text
+
+    for update, expected in (({"armed": "1"}, "armed=1"), ({"m1": "1200"}, "m1=1200")):
+        level, text = panel.firmware_update_snapshot_advisory(
+            values | update, sample_age_s=0.2
+        )
+        assert level == "warn"
+        assert expected in text
+
+    # 没有快照不是拒绝理由——旧固件、遥测缺一行都会走到这里。
+    for missing, age in (
+        ({}, 0.2),
+        (values, 2.0),
+        (values, float("inf")),
+        (values | {"source": "legacy"}, 0.2),
+    ):
+        level, _text = panel.firmware_update_snapshot_advisory(missing, sample_age_s=age)
+        assert level == "unknown"
+
+
+# --------------------------------------------------------------------------
+# 目标重启后序号基线必须失效
+#
+# 2026-08-29 实测：飞控烧录后重启，seqlock 序号从 ~2049958 回到 ~11350。单调守卫
+# 把之后的每一帧都当成重放丢弃，validation_latest_host_time 永远停在 0，升级页显示
+# "安全快照已过期（inf）"，断开重连也救不回来——只能重启上位机。
+# --------------------------------------------------------------------------
+
+def restart_subject(previous_ms: int | None) -> SimpleNamespace:
+    return SimpleNamespace(validation_latest_timestamp_ms=previous_ms)
+
+
+def test_target_reboot_is_detected_from_the_board_uptime() -> None:
+    detect = panel.DronePanel._validation_target_restarted
+    assert detect(restart_subject(2_049_958), 11_350) is True
+    assert detect(restart_subject(1000), 1001) is False
+    assert detect(restart_subject(1000), 1000) is False
+    # 第一帧没有基线，不能误判成重启。
+    assert detect(restart_subject(None), 5) is False
+
+
+def test_reboot_clears_the_sequence_baseline_before_the_monotonic_guard() -> None:
+    body = function_body(SOURCE, "    def _validation_accept_imu_values(")
+    reset = body.index("self.validation_latest_sequence = None")
+    guard = body.index("sequence <= self.validation_latest_sequence")
+    assert body.index("_validation_target_restarted(timestamp_ms)") < reset < guard
+    assert "self.validation_latest_timestamp_ms = timestamp_ms" in body
+
+
+def test_reconnect_paths_drop_the_sequence_baseline() -> None:
+    """烧完必然重启；重连后不清基线，升级页会一直停在"状态未知"。"""
+    for name in ("    def _stop(", "    def _firmware_auto_reconnect("):
+        body = function_body(SOURCE, name)
+        assert "self.validation_latest_sequence = None" in body
+        assert "self.validation_latest_timestamp_ms = None" in body
+
+
+def test_stale_snapshot_never_reaches_the_user_as_infs() -> None:
+    _level, text = panel.firmware_update_snapshot_advisory(
+        complete_snapshot(), sample_age_s=float("inf")
+    )
+    assert "inf" not in text
 
 
 def test_firmware_usb_identity_policy_allows_only_application_cdc_by_default() -> None:
@@ -498,9 +553,9 @@ def test_panel_visual_hierarchy_uses_semantic_styles_and_guidance() -> None:
     ):
         assert style in SOURCE
     assert 'style.theme_use("clam")' in configure
-    assert "01  /  建立唯一坐标与极性" in validation
-    assert "02  /  修正传感器连续误差" in v1
-    assert "03  /  验证控制链与执行方向" in v2
+    assert "IMU FRAME  /  建立唯一坐标与极性" in validation
+    assert "IMU CALIBRATION  /  修正传感器连续误差" in v1
+    assert "GROUND ACCEPTANCE  /  验证控制链与执行方向" in v2
     assert "安全升级与自动重连" in firmware
     assert 'style="Warning.TButton"' in firmware
 
@@ -609,7 +664,7 @@ def test_stepper_tracks_the_phase_text() -> None:
     assert step_for("阶段 1/3 · 已发现 FLU 映射候选，尚未应用") == 0
     assert step_for("阶段 2/3 · 正在验证 RAM 中的 FLU 映射") == 1
     assert step_for("阶段 3/3 · RAM 映射下的 6 步复验已经 PASS") == 2
-    assert step_for("V0 已完成 · FLU 映射已写入参数 Flash") == 3
+    assert step_for("坐标系校准已完成 · FLU 映射已写入参数 Flash") == 3
 
 
 def test_workflow_pages_are_scrollable_and_default_to_compact_dpi() -> None:
@@ -617,7 +672,11 @@ def test_workflow_pages_are_scrollable_and_default_to_compact_dpi() -> None:
     build = function_body(SOURCE, "    def _build_ui(")
     assert "VerticalScrolledFrame" in SOURCE
     assert "_configure_compact_scaling" in init
-    for page in ("validation_scroll", "metrology_scroll", "acceptance_v2_scroll", "firmware_scroll"):
+    for page in (
+        "validation_scroll", "metrology_scroll", "mechanical_scroll",
+        "flow_range_scroll", "acceptance_v2_scroll", "vibration_scroll",
+        "firmware_scroll",
+    ):
         assert page in build
 
 
@@ -737,7 +796,7 @@ def test_v1_page_relinquishes_usb_and_exposes_guarded_apply_commit() -> None:
     start = function_body(SOURCE, "    def _v1_start_capture(")
     worker = function_body(SOURCE, "    def _v1_capture_worker(")
     drain = function_body(SOURCE, "    def _v1_drain_events(")
-    assert "IMU 传感器计量 V1" in SOURCE
+    assert "IMU 零偏、比例与正交性校准" in SOURCE
     assert "应用基础/完整候选到 RAM" in page
     assert "确认后写入参数 Flash" in page
     assert "_v1_apply_candidate" in page
@@ -778,7 +837,15 @@ def test_panel_builds_the_reordered_v0_layout_without_connecting(
     try:
         app.update_idletasks()
         labels = [app.notebook.tab(tab_id, "text") for tab_id in app.notebook.tabs()]
-        assert labels[:7] == ["总览", "01 · 坐标 V0", "02 · IMU V1", "03 · 链路 V2A", "维护 · 固件升级", "IMU 监视（旧链）", "气压计"]
+        assert labels[:4] == ["总览", "校准", "维护 · 固件升级", "IMU 监视（旧链）"]
+        calibration_labels = [
+            app.calibration_notebook.tab(tab_id, "text")
+            for tab_id in app.calibration_notebook.tabs()
+        ]
+        assert calibration_labels == [
+            "坐标系与极性", "IMU 零偏与比例", "遥控器", "舵机机械中心与行程",
+            "光流与测距", "无桨控制链验收", "振动检测与滤波",
+        ]
         assert "诊断 / 命令" in labels
         assert app.firmware_image_var.get().endswith("build\\Debug\\drone-H743.elf")
         assert str(app.firmware_start_button["state"]) == "disabled"

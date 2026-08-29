@@ -25,6 +25,8 @@ Readers search category roots recursively. Files with no trustworthy date token 
 | `calibration/airframe/YYYY-MM-DD/` | Read-only airframe sensor-validation sessions and reports | Ground-station V0 validation page |
 | `calibration/imu_metrology/YYYY-MM-DD/<session>/` | V1 IMUCAP raw CSV/meta, resumable manifests and evidence-only candidates | Ground-station V1 metrology page |
 | `calibration/flight_acceptance_v2/YYYY-MM-DD/<session>/` | V2A snapshots, physical confirmations, and strict reports | Ground-station V2A page and offline acceptance engine |
+| `calibration/servo_mechanical/YYYY-MM-DD/` | 舵机机械中心、方向与安全行程的人工确认记录 | Ground-station 舵机机械校准页 |
+| `calibration/flow_range/YYYY-MM-DD/` | 光流/组合测距坐标、比例、零偏与旋转补偿的地面采样证据 | Ground-station 光流/测距校准页 |
 | `telemetry/YYYY-MM-DD/` | Ad-hoc barometer/GPS exports | Ground-station panel |
 | `analysis/.../YYYY-MM-DD/` | Derived reports and Rerun artifacts | Offline analysis tools |
 | `logs/.../YYYY-MM-DD/` | Miscellaneous local runtime logs | Manual diagnostics |

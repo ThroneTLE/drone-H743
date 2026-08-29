@@ -13,6 +13,7 @@ import socket
 import statistics
 import sys
 import threading
+import traceback
 import time
 import tkinter as tk
 from abc import ABC, abstractmethod
@@ -57,7 +58,11 @@ try:
         ATTITUDE_IDENT_DIR,
         FIRMWARE_UPDATE_DIR,
         FLIGHT_ACCEPTANCE_CALIBRATION_DIR,
+        FLOW_RANGE_CALIBRATION_DIR,
+        LOG_DIR,
+        PANEL_STATE_PATH,
         PROJECT_ROOT,
+        SERVO_MECHANICAL_CALIBRATION_DIR,
         TELEMETRY_DIR,
         dated_directory,
         ensure_directory,
@@ -99,7 +104,11 @@ except ImportError:  # Allows running as: python tools/drone_tcp_panel.py
             ATTITUDE_IDENT_DIR,
             FIRMWARE_UPDATE_DIR,
             FLIGHT_ACCEPTANCE_CALIBRATION_DIR,
+            FLOW_RANGE_CALIBRATION_DIR,
+            LOG_DIR,
+            PANEL_STATE_PATH,
             PROJECT_ROOT,
+            SERVO_MECHANICAL_CALIBRATION_DIR,
             TELEMETRY_DIR,
             dated_directory,
             ensure_directory,
@@ -140,71 +149,144 @@ except ImportError:  # Allows running as: python tools/drone_tcp_panel.py
             ATTITUDE_IDENT_DIR,
             FIRMWARE_UPDATE_DIR,
             FLIGHT_ACCEPTANCE_CALIBRATION_DIR,
+            FLOW_RANGE_CALIBRATION_DIR,
+            LOG_DIR,
+            PANEL_STATE_PATH,
             PROJECT_ROOT,
+            SERVO_MECHANICAL_CALIBRATION_DIR,
             TELEMETRY_DIR,
             dated_directory,
             ensure_directory,
         )
 
 try:
-    from .imu_metrology import MetrologyStage, MetrologyStatus
+    from .ground_calibration import (
+        FlowRangeSample,
+        GroundCalibrationError,
+        analyze_flow_axis,
+        analyze_flow_zero,
+        analyze_rotation_compensation,
+        fit_range_two_point,
+        validate_servo_geometry,
+    )
+    from .imu_metrology import DEFAULT_THRESHOLDS, MetrologyStage, MetrologyStatus
     from .imucal_protocol import (
         EncodedV1Candidate,
         commit_candidate as imucal_commit_candidate,
         load_and_encode_v1_candidate,
+        parse_imucal_line,
         revert_candidate as imucal_revert_candidate,
         upload_and_apply as imucal_upload_and_apply,
         write_transaction_record as write_imucal_transaction_record,
     )
     from .imu_vibration_capture import CaptureLink
+    from . import stationary_drift as drift
     from .v1_metrology_session import (
         CAPTURE_PLANS,
+        DISCARDED_DIRNAME,
         V1Session,
+        RETIRED_STAGE_LABELS,
         analyze_session,
+        context_conflicts as v1_context_conflicts,
+        discard_capture as discard_v1_capture,
         latest_session_manifest,
         load_session as load_v1_session,
         load_session_samples as load_v1_session_samples,
+        minimum_samples as v1_minimum_samples,
         new_session as new_v1_session,
         persist_capture as persist_v1_capture,
+        probe_capture as probe_v1_capture,
     )
 except ImportError:
     try:
-        from tools.imu_metrology import MetrologyStage, MetrologyStatus
+        from tools.ground_calibration import (
+            FlowRangeSample,
+            GroundCalibrationError,
+            analyze_flow_axis,
+            analyze_flow_zero,
+            analyze_rotation_compensation,
+            fit_range_two_point,
+            validate_servo_geometry,
+        )
+        from tools.imu_metrology import DEFAULT_THRESHOLDS, MetrologyStage, MetrologyStatus
         from tools.imucal_protocol import (
             EncodedV1Candidate,
             commit_candidate as imucal_commit_candidate,
             load_and_encode_v1_candidate,
+            parse_imucal_line,
             revert_candidate as imucal_revert_candidate,
             upload_and_apply as imucal_upload_and_apply,
             write_transaction_record as write_imucal_transaction_record,
         )
         from tools.imu_vibration_capture import CaptureLink
+        from tools import stationary_drift as drift
         from tools.v1_metrology_session import (
-            CAPTURE_PLANS, V1Session, analyze_session, latest_session_manifest,
+            CAPTURE_PLANS, DISCARDED_DIRNAME, RETIRED_STAGE_LABELS, V1Session, analyze_session,
+            context_conflicts as v1_context_conflicts,
+            discard_capture as discard_v1_capture,
+            latest_session_manifest,
             load_session as load_v1_session,
             load_session_samples as load_v1_session_samples,
+            minimum_samples as v1_minimum_samples,
             new_session as new_v1_session,
             persist_capture as persist_v1_capture,
+            probe_capture as probe_v1_capture,
         )
     except ImportError:
-        from imu_metrology import MetrologyStage, MetrologyStatus
+        from ground_calibration import (
+            FlowRangeSample,
+            GroundCalibrationError,
+            analyze_flow_axis,
+            analyze_flow_zero,
+            analyze_rotation_compensation,
+            fit_range_two_point,
+            validate_servo_geometry,
+        )
+        from imu_metrology import DEFAULT_THRESHOLDS, MetrologyStage, MetrologyStatus
         from imucal_protocol import (
             EncodedV1Candidate,
             commit_candidate as imucal_commit_candidate,
             load_and_encode_v1_candidate,
+            parse_imucal_line,
             revert_candidate as imucal_revert_candidate,
             upload_and_apply as imucal_upload_and_apply,
             write_transaction_record as write_imucal_transaction_record,
         )
         from imu_vibration_capture import CaptureLink
+        import stationary_drift as drift
         from v1_metrology_session import (
-            CAPTURE_PLANS, V1Session, analyze_session, latest_session_manifest,
+            CAPTURE_PLANS, DISCARDED_DIRNAME, RETIRED_STAGE_LABELS, V1Session, analyze_session,
+            context_conflicts as v1_context_conflicts,
+            discard_capture as discard_v1_capture,
+            latest_session_manifest,
             load_session as load_v1_session,
             load_session_samples as load_v1_session_samples,
+            minimum_samples as v1_minimum_samples,
             new_session as new_v1_session,
             persist_capture as persist_v1_capture,
+            probe_capture as probe_v1_capture,
         )
 
+
+# 采集窗口是固件缓冲区定死的 6144 样本（≈6.1s @1kHz），不能加长；只能先给准备时间。
+V1_CAPTURE_PREP_SECONDS = 5
+# 单面残差的两档，与 fit_accelerometer 同源：超 warn 值得重采，超 fail 才是硬伤。
+V1_FACE_RESIDUAL_WARN_G = DEFAULT_THRESHOLDS.accel_corrected_rms_max_g
+V1_FACE_RESIDUAL_FAIL_G = DEFAULT_THRESHOLDS.accel_corrected_rms_fail_g
+V1_STAGE_LABELS = {
+    "accel_pos_x": "+X 机头朝上", "accel_neg_x": "-X 机头朝下",
+    "accel_pos_y": "+Y 左侧朝上", "accel_neg_y": "-Y 右侧朝上",
+    "accel_pos_z": "+Z 水平", "accel_neg_z": "-Z 倒置",
+}
+
+FLOW_CALIBRATION_STAGES = {
+    "static_zero": "静止零偏与噪声",
+    "forward_x": "沿机头方向移动（+X）",
+    "left_y": "向机体左侧移动（+Y）",
+    "range_near": "组合测距近距离",
+    "range_far": "组合测距远距离",
+    "yaw_rotation": "原地偏航旋转补偿",
+}
 
 DEFAULT_HOST = "0.0.0.0"
 DEFAULT_PORT = 6666
@@ -216,6 +298,7 @@ MAX_GPS_TRACK_POINTS = 5000
 MAX_IDENT_SAMPLES = 5000
 BARO_STREAM_PERIOD_MS = 50
 IMU_POLL_PERIOD_MS = 100
+RC_POLL_PERIOD_MS = 50
 IMU_RENDER_PERIOD_MS = 50
 RX_DRAIN_BATCH_SIZE = 200
 RX_DRAIN_IDLE_MS = 100
@@ -251,6 +334,8 @@ VALIDATION_ALLOWED_COMMANDS = frozenset(
         "PID?",
         "AIRFRAME?",
         "BARO?",
+        "FLOW?",
+        "RANGE?",
         "GPS?",
         "MAG?",
         "RTOS?",
@@ -262,6 +347,7 @@ VALIDATION_ALLOWED_COMMANDS = frozenset(
         "IMUCAP STOP",
         "IMUCAP DUMP",
         "IMUCAP CANCEL",
+        "SERVOCAL?",
     }
 )
 CMD_REPLY_TIMEOUT_MS = 2500
@@ -350,6 +436,9 @@ PROTO_REQ_IDENT = 0x101D
 PROTO_REQ_IMU_FRAME = 0x101E
 PROTO_REQ_IMU_CAL = 0x1020
 PROTO_REQ_ACCEPTANCE = 0x1021
+PROTO_REQ_RC = 0x1022
+PROTO_REQ_RCMAP = 0x1023
+PROTO_REQ_SERVO_CAL = 0x1024
 PROTO_MSG_CMD_LINE = 0x2000
 PROTO_MSG_TEXT_LINE = 0x2001
 PROTO_MSG_CMD_RX = 0x2100
@@ -388,6 +477,9 @@ PROTO_MSG_MAG_RECORD = 0x221C
 PROTO_MSG_RTOS_RECORD = 0x221D
 PROTO_MSG_FLASH_BENCH = 0x221E
 PROTO_MSG_AIRFRAME_RECORD = 0x221F
+PROTO_MSG_RC_LIVE = 0x2223
+PROTO_MSG_RC_MAP = 0x2224
+PROTO_MSG_SERVO_CAL = 0x2225
 
 try:
     from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
@@ -417,6 +509,8 @@ MODULES = [
     ("FLASH", "GD25Q32 Flash", "STATUS?"),
     ("SPL06", "SPL06 气压计", "STATUS?"),
     ("ICM42688", "ICM42688 IMU", "STATUS?"),
+    ("FLOW", "光流 / 组合测距", "FLOW?"),
+    ("RANGE", "独立测距（诊断）", "RANGE?"),
     ("GPS", "M9N GPS", "GPS?"),
     ("MAG", "I2C1 Magnetometer", "MAG?"),
     ("UART1", "USART1 链路", "STATUS?"),
@@ -430,6 +524,10 @@ MODULE_ALIASES = {
     "BARO": "SPL06",
     "ICM42688": "ICM42688",
     "IMU": "ICM42688",
+    "FLOW": "FLOW",
+    "OPTICAL_FLOW": "FLOW",
+    "RANGE": "RANGE",
+    "RANGEFINDER": "RANGE",
     "GPS": "GPS",
     "GPS_USART2": "GPS",
     "M9N": "GPS",
@@ -477,37 +575,368 @@ def safe_int(value: str | None, default: int = 0) -> int:
         return default
 
 
-def firmware_update_snapshot_gate(
-    values: dict[str, str],
+def safe_float(value: str | None, default: float = 0.0) -> float:
+    if value is None:
+        return default
+    try:
+        parsed = float(value)
+    except ValueError:
+        return default
+    return parsed if math.isfinite(parsed) else default
+
+
+# ---------------------------------------------------------------------------
+# 遥控通道映射（对应固件 App/Src/app_rc_config.c）
+# ---------------------------------------------------------------------------
+
+RC_CHANNEL_COUNT = 16
+RC_FUNCTIONS: tuple[tuple[str, str], ...] = (
+    ("roll", "左右 · 横滚"),
+    ("pitch", "前后 · 俯仰"),
+    ("throttle", "油门 · 升降"),
+    ("yaw", "转向 · 偏航"),
+    ("arm", "解锁开关"),
+    ("mode", "姿态调试开关"),
+)
+RC_US_MIN = 800
+RC_US_MAX = 2200
+RC_MIN_SPAN_US = 200
+RC_LIVE_FRESH_S = 1.5
+# 自动识别的判据：一个通道要被认成"用户正在拨的那个"，必须动得比其余所有通道
+# 都明显得多。否则手一抖、或者两根杆同时动，就会绑错功能。
+RC_DETECT_MIN_TRAVEL_US = 250
+RC_DETECT_DOMINANCE = 2.5
+
+
+def rc_channel_travel(samples: list[list[int]]) -> list[int]:
+    """每个通道在采样窗口内的行程（max-min）。"""
+    if not samples:
+        return [0] * RC_CHANNEL_COUNT
+    travel = []
+    for index in range(RC_CHANNEL_COUNT):
+        values = [row[index] for row in samples if index < len(row)]
+        travel.append(max(values) - min(values) if values else 0)
+    return travel
+
+
+def rc_detect_channel(samples: list[list[int]]) -> tuple[int | None, str]:
+    """从采样窗口里挑出用户正在拨动的那一路。
+
+    返回 (channel_index 或 None, 说明)。判据故意保守：宁可让用户多拨一次，
+    也不要在两路都动时静默绑错——绑错油门/解锁是会伤人的。
+    """
+    travel = rc_channel_travel(samples)
+    ranked = sorted(range(RC_CHANNEL_COUNT), key=lambda i: travel[i], reverse=True)
+    best = ranked[0]
+    if travel[best] < RC_DETECT_MIN_TRAVEL_US:
+        return None, f"没有检测到明显动作（最大行程 {travel[best]} µs）；请把杆打到底再回中"
+    runner_up = travel[ranked[1]]
+    if runner_up > 0 and travel[best] < runner_up * RC_DETECT_DOMINANCE:
+        return None, (
+            f"CH{best + 1} 与 CH{ranked[1] + 1} 同时在动"
+            f"（{travel[best]} / {runner_up} µs）；请只拨动一路"
+        )
+    return best, f"CH{best + 1}  行程 {travel[best]} µs"
+
+
+def rc_map_is_valid(
+    functions: dict[str, dict[str, int]],
+) -> tuple[bool, str]:
+    """和固件 APP_RcConfig_Validate 同一套判据，让界面提前拦住写不进去的组合。"""
+    used: dict[int, str] = {}
+    for name, entry in functions.items():
+        channel = entry.get("channel", -1)
+        if channel < 0:
+            continue
+        if channel >= RC_CHANNEL_COUNT:
+            return False, f"{name}: 通道号 {channel} 越界"
+        if channel in used:
+            return False, f"CH{channel + 1} 同时绑给了 {used[channel]} 和 {name}"
+        used[channel] = name
+        low, mid, high = entry["min"], entry["mid"], entry["max"]
+        if low < RC_US_MIN or high > RC_US_MAX:
+            return False, f"{name}: 端点超出 {RC_US_MIN}~{RC_US_MAX} µs"
+        if high - low < RC_MIN_SPAN_US:
+            return False, f"{name}: 行程只有 {high - low} µs，至少要 {RC_MIN_SPAN_US}"
+        if not (low < mid < high):
+            return False, f"{name}: 中位 {mid} 不在 {low}~{high} 之间"
+    if not used:
+        return False, "没有任何功能绑定了通道"
+    return True, "映射合法"
+
+
+# --- 引导式校准（PX4 风格）-------------------------------------------------
+#
+# 一次走完三件事：哪一路对应哪个功能、方向正不正、行程两端在哪。分开做的话用户要
+# 先猜通道号、再单独跑一次行程，而且没有任何东西能证明"我推的是油门"这件事。
+#
+# 每步只认一路：要求主导通道的偏移量超过阈值，且明显大于第二名。摇杆同轴串扰
+# （推油门带动偏航几十 µs）会被这条挡掉；两根杆真的一起动时宁可让用户重做。
+
+RC_WIZARD_MIN_DEVIATION_US = 200
+RC_WIZARD_DOMINANCE = 2.5
+RC_WIZARD_HOLD_TOLERANCE_US = 40
+RC_WIZARD_HOLD_FRAMES = 8
+
+# 不自回中的通道：油门杆松手停在哪就是哪，开关只有两个位置。这一条同时决定两件事：
+#
+#   1. 中位怎么取——"开始那一刻的读数"对它们不是中位，必须取实测行程的中点。油门尤其
+#      不能弄错：本机油门是双用的，throttle_01 走 min..max 管直通油门，而 norm 是绕中位
+#      算的、喂给定高速率（50% 行程 = 保持当前高度）。中位若被定在行程底部，稍微推一点
+#      油门就等于满爬升率。
+#   2. 每一步拿什么当参考——自回中的杆比"固定中位"，因为松手一定回得去；不自回中的
+#      比"上一步结束时的位置"，因为它们根本回不去中位，用固定中位判会永远等不到动作。
+RC_WIZARD_NON_CENTERING = ("throttle", "arm", "mode")
+# 自回中的杆：中位应当落在行程中段。落在两端 20% 以内说明"回中"那一刻手还压着杆，
+# 这种读数不能当 subtrim 用。
+RC_WIZARD_CENTER_MARGIN = 0.2
+
+#
+# 提示语按"动作"写，不按"术语"写：用户此刻还不知道哪根杆是横滚，只知道自己想让飞机
+# 往哪走。反过来正是这些动作定义了映射。
+RC_WIZARD_STEPS: tuple[tuple[str, int, str], ...] = (
+    ("throttle", +1, "把油门推到最高，保持不动"),
+    ("throttle", -1, "把油门拉到最低，保持不动"),
+    ("pitch", +1, "把控制「前后」的杆向前推到底，保持不动"),
+    ("pitch", -1, "把控制「前后」的杆向后拉到底，保持不动"),
+    ("roll", +1, "把控制「左右」的杆向右推到底，保持不动"),
+    ("roll", -1, "把控制「左右」的杆向左推到底，保持不动"),
+    ("yaw", +1, "把控制「转向」的杆向右转到底，保持不动"),
+    ("yaw", -1, "把控制「转向」的杆向左转到底，保持不动"),
+    ("arm", +1, "把解锁开关拨到「解锁」一侧，保持不动"),
+    ("arm", -1, "把解锁开关拨回「上锁」一侧，保持不动"),
+    ("mode", +1, "把姿态调试开关拨到高位，保持不动"),
+    ("mode", -1, "把姿态调试开关拨回低位，保持不动"),
+)
+
+
+def rc_wizard_dominant(center: list[int], frame: list[int]) -> tuple[int | None, int]:
+    """这一帧里偏离中位最远的那一路，以及它的带符号偏移量。"""
+    # 两边都要够长：参考基准来自"开闸那一刻"的快照，若那一帧是残缺的（串口把一行
+    # 截断过），后面按固定 16 路索引就会 IndexError，而这条路径每帧都跑。
+    if len(center) < RC_CHANNEL_COUNT or len(frame) < RC_CHANNEL_COUNT:
+        return None, 0
+    deviations = [frame[i] - center[i] for i in range(RC_CHANNEL_COUNT)]
+    ranked = sorted(range(RC_CHANNEL_COUNT), key=lambda i: abs(deviations[i]), reverse=True)
+    best = ranked[0]
+    if abs(deviations[best]) < RC_WIZARD_MIN_DEVIATION_US:
+        return None, deviations[best]
+    runner_up = abs(deviations[ranked[1]])
+    if runner_up > 0 and abs(deviations[best]) < runner_up * RC_WIZARD_DOMINANCE:
+        return None, deviations[best]
+    return best, deviations[best]
+
+
+def rc_wizard_step_ready(
+    reference: list[int],
+    window: list[list[int]],
+    opposite_of: int = 0,
+) -> tuple[int | None, int, str]:
+    """窗口里是否已经稳定停在某一路的极限位置。
+
+    返回 (channel 或 None, 带符号偏移量, 说明)。要求整个窗口都指向同一路且抖动
+    很小——没有这个"保持"条件，用户从一端扫到另一端的途中就会被误判成到位。
+
+    `opposite_of` 非零时，还要求这次的偏移方向与它相反：一对步骤（推到底 / 拉到底）
+    必须真的往两个方向走过，否则判不出正反。
+    """
+    if len(window) < RC_WIZARD_HOLD_FRAMES:
+        return None, 0, "等待动作…"
+    recent = window[-RC_WIZARD_HOLD_FRAMES:]
+    picks = [rc_wizard_dominant(reference, frame) for frame in recent]
+    channels = {channel for channel, _dev in picks}
+    if len(channels) != 1 or None in channels:
+        return None, 0, "等待动作…"
+    channel = picks[-1][0]
+    assert channel is not None
+    values = [frame[channel] for frame in recent]
+    if max(values) - min(values) > RC_WIZARD_HOLD_TOLERANCE_US:
+        return None, picks[-1][1], f"CH{channel + 1} 还在动，请保持不动"
+    deviation = picks[-1][1]
+    if opposite_of != 0 and (deviation * opposite_of) > 0:
+        return None, deviation, f"CH{channel + 1} 还在同一侧，请往相反方向推到底"
+    return channel, deviation, f"CH{channel + 1}  {deviation:+d} µs"
+
+
+def rc_wizard_window_stable(window: list[list[int]]) -> bool:
+    """最近这段时间所有通道都没在动。"""
+    if len(window) < RC_WIZARD_HOLD_FRAMES:
+        return False
+    recent = window[-RC_WIZARD_HOLD_FRAMES:]
+    for index in range(RC_CHANNEL_COUNT):
+        values = [frame[index] for frame in recent if index < len(frame)]
+        if not values or (max(values) - min(values)) > RC_WIZARD_HOLD_TOLERANCE_US:
+            return False
+    return True
+
+
+def rc_wizard_gate_open(
+    window: list[list[int]],
+    center: list[int],
+    release_channel: int | None,
+) -> tuple[bool, str]:
+    """上一步采完之后，什么时候才允许开始判定下一步。
+
+    没有这道闸，用户推到底不动手，下一步会立刻在同一个位置上再采一次——12 步会在
+    几秒内自己跑完，而且每一步记的都是同一个读数。
+
+    `release_channel` 是上一步用掉的自回中通道，必须先松回中位；不自回中的通道
+    （油门、开关）没有中位可回，只要求读数稳定下来。
+    """
+    if not rc_wizard_window_stable(window):
+        return False, "等待动作稳定…"
+    if release_channel is None:
+        return True, ""
+    last = window[-1]
+    if release_channel >= min(len(last), len(center)):
+        return True, ""
+    if abs(last[release_channel] - center[release_channel]) >= RC_WIZARD_MIN_DEVIATION_US:
+        return False, f"请先松开 CH{release_channel + 1}，让它回到中位"
+    return True, ""
+
+
+def rc_wizard_build_map(
+    center: list[int],
+    travel_min: list[int],
+    travel_max: list[int],
+    results: dict[tuple[str, int], tuple[int, int]],
+    previous: dict[str, dict[str, int]],
+) -> tuple[dict[str, dict[str, int]], list[str]]:
+    """把引导采到的结果拼成一份映射。
+
+    `results` 的键是 (功能, 方向)，值是 (通道, 带符号偏移量)。端点取整个引导过程中
+    该通道的实测最小/最大值，而不只是两个步骤的瞬时值——用户在中途扫过的更极端位置
+    同样是真实行程。
+    """
+    functions = {name: dict(previous.get(name, {})) for name, _label in RC_FUNCTIONS}
+    warnings: list[str] = []
+
+    for name, _label in RC_FUNCTIONS:
+        high = results.get((name, +1))
+        low = results.get((name, -1))
+        if high is None or low is None:
+            warnings.append(f"{name}: 两个方向没有都采到，保留原设置")
+            continue
+        if high[0] != low[0]:
+            warnings.append(
+                f"{name}: 两次动作落在不同通道（CH{high[0] + 1} / CH{low[0] + 1}），保留原设置"
+            )
+            continue
+        channel = high[0]
+        if high[1] * low[1] >= 0:
+            warnings.append(f"{name}: 两次动作方向相同，无法判断正反，保留原设置")
+            continue
+        low_us = travel_min[channel]
+        high_us = travel_max[channel]
+        if high_us - low_us < RC_MIN_SPAN_US:
+            warnings.append(f"{name}: CH{channel + 1} 行程只有 {high_us - low_us} µs，保留原设置")
+            continue
+        # 用户被要求"推到最高/最右"时通道值反而变小 → 这一路是反的。
+        reversed_flag = 1 if high[1] < 0 else 0
+        span = high_us - low_us
+        mid = low_us + span // 2
+        if name not in RC_WIZARD_NON_CENTERING and center:
+            measured = center[channel]
+            margin = int(span * RC_WIZARD_CENTER_MARGIN)
+            if (low_us + margin) <= measured <= (high_us - margin):
+                # 自回中的杆保留实测中位，这就是 subtrim：发射机上的微调偏移会被吃掉。
+                mid = measured
+            else:
+                warnings.append(
+                    f"{name}: 回中时 CH{channel + 1} 停在 {measured} µs，不在行程中段，"
+                    f"按行程中点 {mid} 取中位"
+                )
+        functions[name] = {
+            "channel": channel,
+            "reversed": reversed_flag,
+            "min": low_us,
+            "mid": mid,
+            "max": high_us,
+        }
+
+    assigned: dict[int, str] = {}
+    for name, entry in functions.items():
+        channel = entry.get("channel", -1)
+        if channel < 0:
+            continue
+        if channel in assigned:
+            warnings.append(
+                f"CH{channel + 1} 同时被 {assigned[channel]} 和 {name} 认领，请重做这两步"
+            )
+        else:
+            assigned[channel] = name
+    return functions, warnings
+
+
+def rc_normalize(entry: dict[str, int], channel_us: int, deadband_us: int) -> float:
+    """复刻固件 APP_RcConfig_Normalize，用于本地预览摇杆位置。"""
+    if entry.get("channel", -1) < 0:
+        return 0.0
+    centered = channel_us - entry["mid"]
+    if -deadband_us < centered < deadband_us:
+        return 0.0
+    if centered > 0:
+        span = entry["max"] - entry["mid"]
+        centered = min(centered, span)
+    else:
+        span = entry["mid"] - entry["min"]
+        centered = max(centered, -span)
+    if span <= 0:
+        return 0.0
+    value = centered / span
+    if entry.get("reversed"):
+        value = -value
+    return max(-1.0, min(1.0, value))
+
+
+def firmware_update_link_gate(
     *,
     connected: bool,
     serial_transport_selected: bool,
-    sample_age_s: float,
 ) -> tuple[bool, str]:
-    """Require a fresh disarmed, low-output snapshot before entering ROM DFU."""
+    """Block only on facts the target cannot possibly check for us.
+
+    解锁/油门/快照新鲜度由固件的 BOOT 处理器自己判定（APP_BOOT_REQUEST_ARMED、
+    ESC_HIGH、NO_VALID_SNAPSHOT、SNAPSHOT_STALE，并在调度时再查一次），拒绝原因
+    会原样回给上位机。主机再复制一份这套判断，只会在遥测缺一行时把烧录永久卡死，
+    却一点安全性都不增加——所以主机这一侧只保留"命令根本发不出去"的情形。
+    """
 
     if not serial_transport_selected:
-        return False, "请选择顶部 serial 通道；ROM DFU V0 只从 USB CDC 发起"
+        return False, "请选择顶部 serial 通道；ROM DFU 只从 USB CDC 发起"
     if not connected:
         return False, "USB CDC 尚未连接"
-    if (
-        values.get("valid") != "1"
-        or values.get("source") != "stabilizer_snapshot"
-    ):
-        return False, "尚无有效 stabilizer snapshot"
-    if sample_age_s < 0.0 or sample_age_s > VALIDATION_SAMPLE_FRESH_S:
-        return False, f"安全快照已过期（{sample_age_s:.1f}s）"
+    return True, "USB CDC 已连接"
+
+
+def firmware_update_snapshot_advisory(
+    values: dict[str, str],
+    *,
+    sample_age_s: float,
+) -> tuple[str, str]:
+    """Describe the last snapshot for the operator; never gate on it.
+
+    返回 (level, text)，level ∈ {"ok", "warn", "unknown"}。"unknown" 表示主机手上
+    没有可信快照——这不是拒绝理由，固件会在收到 BOOT 时自己判断。
+    """
+
+    if values.get("valid") != "1" or values.get("source") != "stabilizer_snapshot":
+        return "unknown", "飞控状态未知（等待遥测；固件会在收到 BOOT 时自行判定）"
+    if sample_age_s < 0.0 or sample_age_s == float("inf"):
+        return "unknown", "飞控状态未知（尚未收到快照）"
+    if sample_age_s > VALIDATION_SAMPLE_FRESH_S:
+        return "unknown", f"飞控状态已过期（{sample_age_s:.1f}s 前）"
     try:
         armed = int(values["armed"], 0)
         motor_1 = int(values["m1"], 0)
         motor_2 = int(values["m2"], 0)
     except (KeyError, TypeError, ValueError):
-        return False, "安全快照缺少 armed/m1/m2"
+        return "unknown", "快照缺少 armed/m1/m2"
     if armed != 0:
-        return False, f"飞控仍处于 armed={armed}，禁止进入 DFU"
+        return "warn", f"飞控仍处于 armed={armed}，固件会拒绝进入 DFU"
     if motor_1 > VALIDATION_MOTOR_SAFE_MAX_US or motor_2 > VALIDATION_MOTOR_SAFE_MAX_US:
-        return False, f"电机输出不安全：m1={motor_1} m2={motor_2}"
-    return True, f"USB CDC ✓  snapshot ✓  armed=0  m1={motor_1} m2={motor_2}"
+        return "warn", f"电机输出不安全：m1={motor_1} m2={motor_2}"
+    return "ok", f"已解锁保护 armed=0 · m1={motor_1} m2={motor_2}"
 
 
 def v0_workflow_guidance(
@@ -523,8 +952,8 @@ def v0_workflow_guidance(
 
     if candidate_committed:
         return (
-            "V0 已完成 · FLU 映射已写入参数 Flash",
-            "当前 V0 结果已经持久化。下一步进入 02 · IMU V1；这仍不代表允许自由飞行。",
+            "坐标系校准已完成 · FLU 映射已写入参数 Flash",
+            "当前坐标映射已经持久化。下一步进入“IMU 零偏与比例”；这仍不代表允许自由飞行。",
         )
     if candidate_verified:
         return (
@@ -653,6 +1082,57 @@ def serial_port_identity(port: object) -> dict[str, object]:
         "location": str(getattr(port, "location", "") or ""),
         "serial_number": str(getattr(port, "serial_number", "") or ""),
     }
+
+
+def serial_port_fingerprint(identity: dict[str, object] | None) -> str:
+    """A key that survives Windows renumbering a COM port.
+
+    USB 串口的 COM 号是系统分配的，同一块飞控今天是 COM31、明天可能是 COM30
+    （本机就出现过 COM30/31/32 三个 0483:5740 的历史记录）。真正稳定的是 USB
+    序列号；没有序列号时退到 VID:PID + 物理位置。
+    """
+    if not identity:
+        return ""
+    serial_number = str(identity.get("serial_number") or "").strip()
+    vid = identity.get("vid")
+    pid = identity.get("pid")
+    if isinstance(vid, int) and isinstance(pid, int):
+        prefix = f"{vid:04X}:{pid:04X}"
+    else:
+        prefix = "----:----"
+    if serial_number:
+        return f"{prefix}/{serial_number}"
+    location = str(identity.get("location") or "").strip()
+    if location:
+        return f"{prefix}@{location}"
+    return ""
+
+
+def match_remembered_serial_port(
+    remembered_device: str,
+    remembered_fingerprint: str,
+    identities: dict[str, dict[str, object]],
+) -> tuple[str | None, str]:
+    """Find last session's flight controller among the currently present ports.
+
+    优先按 USB 指纹认板子，其次才认 COM 号。反过来做会在系统重新分配 COM 号之后
+    连到另一台设备上——那可能是 ST-Link 或者别人的串口。
+    """
+    if remembered_fingerprint:
+        for device, identity in identities.items():
+            if serial_port_fingerprint(identity) == remembered_fingerprint:
+                if device.casefold() == remembered_device.casefold():
+                    return device, f"按 USB 序列号匹配到 {device}"
+                return device, f"按 USB 序列号匹配到 {device}（上次是 {remembered_device}）"
+    if not remembered_device:
+        return None, "没有上次连接记录"
+    for device in identities:
+        if device.casefold() == remembered_device.casefold():
+            if remembered_fingerprint:
+                # 指纹对不上却占着同一个 COM 号：多半换了设备，交给用户自己选。
+                return None, f"{remembered_device} 存在，但 USB 身份和上次不一致"
+            return device, f"按串口号匹配到 {device}"
+    return None, f"上次用的 {remembered_device} 现在不在"
 
 
 def select_reenumerated_application_port(
@@ -1631,6 +2111,7 @@ class DronePanel(tk.Tk):
         self.validation_latest_values: dict[str, str] = {}
         self.validation_latest_host_time = 0.0
         self.validation_latest_sequence: int | None = None
+        self.validation_latest_timestamp_ms: int | None = None
         self.validation_latest_transport_generation: int | None = None
         self.validation_stage_last_sequence: int | None = None
         self.validation_report_paths: tuple[Path, Path, Path] | None = None
@@ -1688,6 +2169,11 @@ class DronePanel(tk.Tk):
         self._serial_port_identity: dict[str, dict[str, object]] = {}
         self.serial_port_var = tk.StringVar(value=self._default_serial_port())
         self.serial_baud_var = tk.IntVar(value=115200)
+        self._panel_state = self._load_panel_state()
+        self.auto_connect_var = tk.BooleanVar(
+            value=bool(self._panel_state.get("auto_connect", True))
+        )
+        self.autoconnect_var = tk.StringVar(value="上次连接：读取中…")
         self.ident_axis_var = tk.StringVar(value="roll")
         self.ident_mode_var = tk.StringVar(value="STEP")
         self.ident_pulse_var = tk.IntVar(value=20)
@@ -1774,11 +2260,49 @@ class DronePanel(tk.Tk):
         )
         self.firmware_cli_var = tk.StringVar(value=default_cubeprogrammer)
         self.firmware_status_var = tk.StringVar(
-            value="待机：连接飞控 USB CDC，安全快照通过后即可一键升级"
+            value="待机：连接飞控 USB CDC 即可一键升级"
         )
-        self.firmware_safety_var = tk.StringVar(value="安全门：等待 USB CDC 与实时快照")
+        self.firmware_safety_var = tk.StringVar(value="链路：· 等待 USB CDC    飞控：· 状态未知")
         self.firmware_image_info_var = tk.StringVar(value="固件镜像：尚未验证")
+        # --- 04 · 遥控 RC ---
+        self.rc_link_var = tk.StringVar(value="遥控：等待飞控上报")
+        self.rc_status_var = tk.StringVar(value="待机：连接飞控后点「从飞控读取」拉取当前映射")
+        self.rc_detect_var = tk.StringVar(value="")
+        self.rc_deadband_var = tk.StringVar(value="20")
+        self.rc_channels: list[int] = [0] * RC_CHANNEL_COUNT
+        self.rc_live_time = 0.0
+        self.rc_last_poll = 0.0
+        self.rc_map_generation: int | None = None
+        self.rc_link_values: dict[str, str] = {}
+        self.rc_map_values: dict[str, dict[str, int]] = {}
+        self.rc_map_state = ""
+        self.rc_detect_function: str | None = None
+        self.rc_detect_samples: list[list[int]] = []
+        self.rc_detect_deadline = 0.0
+        self.rc_sweep_active = False
+        self.rc_sweep_min: list[int] = []
+        self.rc_sweep_max: list[int] = []
+        self.rc_center: list[int] = []
+        self.rc_wizard_step_var = tk.StringVar(value="")
+        self.rc_wizard_prompt_var = tk.StringVar(
+            value="点「开始引导校准」；开始前让会自动回中的杆松手，油门放哪都行"
+        )
+        self.rc_wizard_detect_var = tk.StringVar(value="")
+        self.rc_wizard_result_var = tk.StringVar(value="")
+        self.rc_wizard_progress_var = tk.DoubleVar(value=0.0)
+        self.rc_wizard_active = False
+        self.rc_wizard_index = 0
+        self.rc_wizard_center: list[int] = []
+        self.rc_wizard_min: list[int] = []
+        self.rc_wizard_max: list[int] = []
+        self.rc_wizard_window: list[list[int]] = []
+        self.rc_wizard_results: dict[tuple[str, int], tuple[int, int]] = {}
+        self.rc_wizard_armed = False
+        self.rc_wizard_baseline: list[int] = []
+        self.rc_wizard_release_channel: int | None = None
+        self._rc_wizard_last_detail = ""
         self.firmware_unknown_usb_override_var = tk.BooleanVar(value=False)
+        self.firmware_unknown_usb_confirmed_port = ""
         self.firmware_progress_var = tk.DoubleVar(value=0.0)
         self.firmware_update_pending = False
         self.firmware_update_running = False
@@ -1808,20 +2332,79 @@ class DronePanel(tk.Tk):
         self.v1_event_queue: "queue.Queue[tuple[str, object]]" = queue.Queue()
         self.v1_stage_by_label = {plan.label: plan for plan in CAPTURE_PLANS}
         self.v1_stage_var = tk.StringVar(value=CAPTURE_PLANS[0].label)
-        self.v1_temperature_platform_var = tk.StringVar(value="room")
-        self.v1_status_var = tk.StringVar(value="尚未开始：连接飞控并通过安全门，然后新建 V1 会话")
-        self.v1_counts_var = tk.StringVar(value="尚无 V1 会话")
-        self.v1_analysis_var = tk.StringVar(value="accel=NOT_RUN · gyro static=NOT_RUN · gyro +360=NOT_RUN · temperature=NOT_RUN")
+        self.v1_status_var = tk.StringVar(value="尚未开始：连接飞控并通过安全门，然后新建 IMU 校准会话")
+        self.v1_counts_var = tk.StringVar(value="尚无 IMU 校准会话")
+        self.v1_analysis_var = tk.StringVar(value="六面 accel=NOT_RUN · 陀螺静止=NOT_RUN")
         self.v1_analysis_summary = None
         self.v1_encoded_candidate: EncodedV1Candidate | None = None
         self.v1_candidate_applied = False
+        # 表格行 -> 计划/记录；体检结果按 (文件名, mtime) 缓存，避免每次渲染重读上万行 CSV。
+        self.v1_row_plan: dict[str, object] = {}
+        self.v1_row_record: dict[str, object] = {}
+        self.v1_probe_cache: dict[tuple[str, int], object] = {}
+        # 静止漂移自检：录制期间只往 buffer 里塞，分析全在停止之后做。
+        self.drift_recording = False
+        self.imu_calibration_generation = 0
+        self.imu_calibration_firmware_crc32 = ""
+        self._drift_pending_motion: dict[str, object] | None = None
+        self.drift_samples: list[object] = []
+        self.drift_deadline = 0.0
+        self.drift_last_sequence = -1
+        self.drift_report = None
+        self.drift_baseline = None
+        self.drift_baseline_path: Path | None = None
+        self.drift_duration_var = tk.StringVar(value="60")
+        self.drift_status_var = tk.StringVar(
+            value="未开始：把飞机放在不会晃的桌面上，点开始后 30~60 秒内别碰它")
+        self.drift_result_var = tk.StringVar(value="尚无录制结果")
+        self.drift_compare_var = tk.StringVar(value="")
         self.v2_lease_id = 0
         self.v2_active = False
-        self.v2_status_var = tk.StringVar(value="V2A 未启动：要求 V0 已保存、V1 室温基础参数有效、拆桨")
-        self.v2_live_var = tk.StringVar(value="尚无 V2A 安全快照")
+        self.v2_status_var = tk.StringVar(value="无桨验收未启动：要求坐标、IMU、舵机机械参数均已写入并拆桨")
+        self.v2_live_var = tk.StringVar(value="尚无无桨控制链安全快照")
         self.v2_stage_var = tk.StringVar(value="rc_center")
         self.v2_tick_count = 0
         self.v2_session_dir: Path | None = None
+
+        # 舵机机械校准只保存地面证据。目标端中心/方向/行程参数尚未参数化，
+        # 所以这里不会把输入值伪装成已经写入固件的校准结果。
+        self.mechanical_rows: list[dict[str, tk.Variable]] = []
+        self.mechanical_status_var = tk.StringVar(
+            value="未开始：当前飞控仍使用 1500 µs 硬编码中心；本页先完成机械测量与证据记录"
+        )
+        self.mechanical_last_report_var = tk.StringVar(value="尚未保存机械校准证据")
+        self.mechanical_target_var = tk.StringVar(value="飞控参数：尚未读取")
+        self.mechanical_target_records: dict[str, dict[str, str]] = {}
+        self.mechanical_target_applied = False
+        self.mechanical_target_commit_pending = False
+        self.mechanical_commit_connection_generation: int | None = None
+        self.mechanical_reboot_check_pending = False
+        self.mechanical_reboot_verified = False
+        self.mechanical_last_poll = 0.0
+
+        # 光流/组合测距地面采样。不同步骤的原始样本分开保存，只有具备完整证据的
+        # 项目才计算诊断值；旋转补偿若缺目标端补偿后速度则明确保持未验收。
+        first_flow_stage = next(iter(FLOW_CALIBRATION_STAGES))
+        self.flow_cal_stage_var = tk.StringVar(value=FLOW_CALIBRATION_STAGES[first_flow_stage])
+        self.flow_cal_stage_by_label = {
+            label: key for key, label in FLOW_CALIBRATION_STAGES.items()
+        }
+        self.flow_cal_reference_distance_var = tk.StringVar(value="0.50")
+        self.flow_cal_near_height_var = tk.StringVar(value="0.30")
+        self.flow_cal_far_height_var = tk.StringVar(value="1.00")
+        self.flow_cal_status_var = tk.StringVar(value="未开始：先读取一次，确认光流质量和组合测距有效")
+        self.flow_cal_live_var = tk.StringVar(value="FLOW / RANGE 尚无回包")
+        self.flow_cal_result_var = tk.StringVar(value="尚无分析结果")
+        self.flow_cal_collecting = False
+        self.flow_cal_last_poll = 0.0
+        self.flow_cal_active_stage: str | None = None
+        self.flow_cal_last_target_sample_ms = -1
+        self.flow_cal_samples: dict[str, list[FlowRangeSample]] = {
+            stage: [] for stage in FLOW_CALIBRATION_STAGES
+        }
+        self.flow_diag_values: dict[str, str] = {}
+        self.flow_latest_gyro_z_dps: float | None = None
+        self.flow_cal_results: dict[str, dict[str, object]] = {}
 
         self.module_state: dict[str, dict[str, tk.StringVar]] = {}
         self.baro_vars: dict[str, tk.StringVar] = {}
@@ -1853,10 +2436,38 @@ class DronePanel(tk.Tk):
         self.after(100, self._imu_poll_tick)
         self.after(100, self._firmware_drain_events)
         self.after(100, self._v1_drain_events)
+        self.after(500, self._drift_tick)
         self.after(250, self._v2_tick)
         self.after_idle(self._validation_load_latest_artifact)
         self.after_idle(self._v1_load_latest_session)
+        self.after_idle(self._restore_last_connection)
         self.protocol("WM_DELETE_WINDOW", self._on_close)
+        # Tk 默认把回调异常打到 stderr；从资源管理器启动时没有 stderr，界面就"突然
+        # 没了"。这里改成落盘 + 弹窗，并且让窗口活下来，不丢失已经做完的校准步骤。
+        sys.excepthook = self._report_uncaught_exception
+
+    def report_callback_exception(self, exc_type, exc_value, exc_tb) -> None:
+        summary = record_panel_crash(exc_type, exc_value, exc_tb)
+        self._crash_count = getattr(self, "_crash_count", 0) + 1
+        try:
+            self.autoconnect_var.set(
+                f"发生内部错误（第 {self._crash_count} 次），详情见 {PANEL_CRASH_LOG}"
+            )
+        except tk.TclError:
+            pass
+        # 同一个错误往往每帧都触发，只在第一次弹窗，之后靠状态栏和日志。
+        if self._crash_count == 1:
+            try:
+                messagebox.showerror(
+                    "面板内部错误",
+                    f"操作没有完成，但窗口已保留。\n\n{summary}\n\n"
+                    f"完整堆栈：{PANEL_CRASH_LOG}",
+                )
+            except tk.TclError:
+                pass
+
+    def _report_uncaught_exception(self, exc_type, exc_value, exc_tb) -> None:
+        record_panel_crash(exc_type, exc_value, exc_tb)
 
     def _configure_compact_scaling(self) -> None:
         """按真实 DPI 设置点→像素换算，让文字在高分屏上原生清晰。
@@ -2132,6 +2743,106 @@ class DronePanel(tk.Tk):
             return f"{p.device} - {p.description}"
         return p.device
 
+    # ------------------------------------------------------------------
+    # 上次连接记录
+    # ------------------------------------------------------------------
+
+    def _load_panel_state(self) -> dict[str, object]:
+        try:
+            raw = PANEL_STATE_PATH.read_text(encoding="utf-8")
+        except (OSError, ValueError):
+            return {}
+        try:
+            state = json.loads(raw)
+        except json.JSONDecodeError:
+            return {}
+        return state if isinstance(state, dict) else {}
+
+    def _save_panel_state(self) -> None:
+        """记下这次连的是什么，供下次启动自动重连。写失败不能影响正在跑的连接。"""
+        state = dict(self._panel_state)
+        state["transport"] = self.transport_var.get()
+        state["auto_connect"] = bool(self.auto_connect_var.get())
+        if self.transport is self.serial_transport:
+            device = self.serial_transport.active_port or ""
+            if device:
+                state["serial_port"] = device
+                state["serial_fingerprint"] = serial_port_fingerprint(
+                    self._serial_port_identity.get(device)
+                )
+                try:
+                    state["serial_baud"] = int(self.serial_baud_var.get())
+                except (tk.TclError, ValueError):
+                    pass
+        elif self.transport is self.tcp_transport:
+            state["tcp_host"] = self.host_var.get()
+            state["tcp_port"] = self.port_var.get()
+        self._panel_state = state
+        try:
+            ensure_directory(PANEL_STATE_PATH.parent)
+            PANEL_STATE_PATH.write_text(
+                json.dumps(state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+            )
+        except OSError:
+            pass
+
+    def _restore_last_connection(self) -> None:
+        """启动时按上次的记录自动连回去。"""
+        state = self._panel_state
+        if not state:
+            self.autoconnect_var.set("上次连接：无记录")
+            return
+        transport = str(state.get("transport") or "")
+        if transport in {"serial", "tcp", "udp"}:
+            self.transport_var.set(transport)
+        baud = state.get("serial_baud")
+        if isinstance(baud, int):
+            self.serial_baud_var.set(baud)
+        if transport != "serial":
+            self.autoconnect_var.set(f"上次连接：{transport or '未知'} 通道")
+            if self.auto_connect_var.get() and transport == "tcp":
+                self.autoconnect_var.set("上次连接：tcp，正在监听")
+                self.after(300, self._start)
+            return
+
+        names = self._refresh_serial_ports()
+        if hasattr(self, "_serial_port_combo"):
+            self._serial_port_combo["values"] = names
+        device, reason = match_remembered_serial_port(
+            str(state.get("serial_port") or ""),
+            str(state.get("serial_fingerprint") or ""),
+            self._serial_port_identity,
+        )
+        if device is None:
+            self.autoconnect_var.set(f"上次连接：{reason}")
+            return
+        label = next(
+            (name for name, mapped in self._serial_port_map.items()
+             if str(mapped).casefold() == device.casefold()),
+            None,
+        )
+        if label is None:
+            self.autoconnect_var.set(f"上次连接：{reason}，但下拉列表里没有它")
+            return
+        self.serial_port_var.set(label)
+        if not self.auto_connect_var.get():
+            self.autoconnect_var.set(f"上次连接：{reason}（自动连接已关闭）")
+            return
+        self.autoconnect_var.set(f"上次连接：{reason}，正在连接…")
+        # 延后一拍再连：让主窗口先画出来，否则连接失败的弹窗会挡在空白窗口上。
+        self.after(300, self._auto_connect_now)
+
+    def _auto_connect_now(self) -> None:
+        if self._transport_connected():
+            return
+        self._start()
+        if self._transport_connected():
+            self.autoconnect_var.set(
+                f"上次连接：已自动重连 {self.serial_transport.active_port or ''}"
+            )
+        else:
+            self.autoconnect_var.set("上次连接：自动连接失败，请手动选择串口")
+
     def _refresh_serial_ports(self) -> list[str]:
         if not HAS_PYSERIAL or serial is None:
             return []
@@ -2214,13 +2925,25 @@ class DronePanel(tk.Tk):
         body.add(self.notebook, weight=6)
 
         overview = ttk.Frame(self.notebook, padding=14, style="Page.TFrame")
-        validation_scroll = VerticalScrolledFrame(self.notebook)
-        metrology_scroll = VerticalScrolledFrame(self.notebook)
-        acceptance_v2_scroll = VerticalScrolledFrame(self.notebook)
+        calibration = ttk.Frame(self.notebook, padding=8, style="Page.TFrame")
+        self.calibration_notebook = ttk.Notebook(calibration)
+        self.calibration_notebook.pack(fill=tk.BOTH, expand=True)
+
+        validation_scroll = VerticalScrolledFrame(self.calibration_notebook)
+        metrology_scroll = VerticalScrolledFrame(self.calibration_notebook)
+        rc_scroll = VerticalScrolledFrame(self.calibration_notebook)
+        mechanical_scroll = VerticalScrolledFrame(self.calibration_notebook)
+        flow_range_scroll = VerticalScrolledFrame(self.calibration_notebook)
+        acceptance_v2_scroll = VerticalScrolledFrame(self.calibration_notebook)
+        vibration_scroll = VerticalScrolledFrame(self.calibration_notebook)
         firmware_scroll = VerticalScrolledFrame(self.notebook)
         validation = validation_scroll.content
         metrology = metrology_scroll.content
+        rc = rc_scroll.content
+        mechanical = mechanical_scroll.content
+        flow_range = flow_range_scroll.content
         acceptance_v2 = acceptance_v2_scroll.content
+        vibration = vibration_scroll.content
         firmware = firmware_scroll.content
         baro = ttk.Frame(self.notebook, padding=14, style="Page.TFrame")
         imu = ttk.Frame(self.notebook, padding=14, style="Page.TFrame")
@@ -2231,22 +2954,32 @@ class DronePanel(tk.Tk):
         commands = ttk.Frame(self.notebook, padding=14, style="Page.TFrame")
         self.baro_tab = baro
         self.imu_tab = imu
+        self.calibration_group_tab = calibration
         self.validation_tab = validation_scroll
         self.v1_tab = metrology_scroll
+        self.rc_tab = rc_scroll
+        self.mechanical_tab = mechanical_scroll
+        self.flow_range_tab = flow_range_scroll
         self.v2_tab = acceptance_v2_scroll
+        self.vibration_tab = vibration_scroll
         self.firmware_tab = firmware_scroll
         self.gps_tab = gps
         self.ident_tab = ident
 
         self.notebook.add(overview, text="总览")
-        self.notebook.add(validation_scroll, text="01 · 坐标 V0")
-        self.notebook.add(metrology_scroll, text="02 · IMU V1")
-        self.notebook.add(acceptance_v2_scroll, text="03 · 链路 V2A")
+        self.notebook.add(calibration, text="校准")
+        self.calibration_notebook.add(validation_scroll, text="坐标系与极性")
+        self.calibration_notebook.add(metrology_scroll, text="IMU 零偏与比例")
+        self.calibration_notebook.add(rc_scroll, text="遥控器")
+        self.calibration_notebook.add(mechanical_scroll, text="舵机机械中心与行程")
+        self.calibration_notebook.add(flow_range_scroll, text="光流与测距")
+        self.calibration_notebook.add(acceptance_v2_scroll, text="无桨控制链验收")
+        self.calibration_notebook.add(vibration_scroll, text="振动检测与滤波")
         self.notebook.add(firmware_scroll, text="维护 · 固件升级")
         self.notebook.add(imu, text="IMU 监视（旧链）")
         self.notebook.add(baro, text="气压计")
         self.notebook.add(gps, text="GPS / 磁力计")
-        self.notebook.add(servos, text="舵机")
+        self.notebook.add(servos, text="维护 · 舵机调试")
         self.notebook.add(params, text="参数 / PID")
         self.notebook.add(ident, text="系统辨识")
         self.notebook.add(commands, text="诊断 / 命令")
@@ -2254,7 +2987,11 @@ class DronePanel(tk.Tk):
         self._build_overview_page(overview)
         self._build_validation_page(validation)
         self._build_v1_page(metrology)
+        self._build_rc_page(rc)
+        self._build_mechanical_calibration_page(mechanical)
+        self._build_flow_range_calibration_page(flow_range)
         self._build_v2_page(acceptance_v2)
+        self._build_vibration_filter_page(vibration)
         self._build_firmware_update_page(firmware)
         self._build_baro_page(baro)
         self._build_imu_page(imu)
@@ -2344,10 +3081,22 @@ class DronePanel(tk.Tk):
             variable=self.show_log_var,
             command=self._toggle_log_area,
         ).pack(side=tk.LEFT, padx=(10, 2))
+        ttk.Checkbutton(
+            utility,
+            text="启动自动重连",
+            variable=self.auto_connect_var,
+            command=self._save_panel_state,
+        ).pack(side=tk.LEFT, padx=(10, 2))
         ttk.Label(utility, text="链路").pack(side=tk.LEFT, padx=(18, 4))
         self.link_status_label = ttk.Label(
             utility, textvariable=self.link_var, style="Fail.TLabel")
         self.link_status_label.pack(side=tk.LEFT)
+
+        autoconnect = ttk.Frame(parent)
+        autoconnect.pack(fill=tk.X, pady=(4, 0))
+        ttk.Label(
+            autoconnect, textvariable=self.autoconnect_var, style="Muted.TLabel",
+        ).pack(side=tk.LEFT)
 
         self.transport_var.trace_add("write", self._on_transport_mode_change)
 
@@ -2564,7 +3313,7 @@ class DronePanel(tk.Tk):
         for index in range(1, len(self.VALIDATION_STEPS) + 1):
             if text.startswith(f"阶段 {index}/{len(self.VALIDATION_STEPS)}"):
                 return index - 1
-        return len(self.VALIDATION_STEPS) if text.startswith("V0 已完成") else 0
+        return len(self.VALIDATION_STEPS) if text.startswith("坐标系校准已完成") else 0
 
     def _validation_refresh_stepper(self) -> None:
         current = self._validation_current_step()
@@ -2621,10 +3370,10 @@ class DronePanel(tk.Tk):
             variable.set(value)
 
     def _build_validation_page(self, parent: ttk.Frame) -> None:
-        ttk.Label(parent, text="01  /  建立唯一坐标与极性", style="Eyebrow.TLabel").pack(anchor=tk.W)
+        ttk.Label(parent, text="IMU FRAME  /  建立唯一坐标与极性", style="Eyebrow.TLabel").pack(anchor=tk.W)
         header = ttk.Frame(parent)
         header.pack(fill=tk.X)
-        ttk.Label(header, text="飞行器传感器验收 V0", style="PageTitle.TLabel").pack(side=tk.LEFT)
+        ttk.Label(header, text="IMU 坐标系与极性校准", style="PageTitle.TLabel").pack(side=tk.LEFT)
         self.validation_status_label = ttk.Label(
             header,
             textvariable=self.validation_session_var,
@@ -2949,29 +3698,29 @@ class DronePanel(tk.Tk):
         self._validation_refresh_readiness()
 
     def _build_v1_page(self, parent: ttk.Frame) -> None:
-        ttk.Label(parent, text="02  /  修正传感器连续误差", style="Eyebrow.TLabel").pack(anchor=tk.W)
-        ttk.Label(parent, text="IMU 传感器计量 V1", style="PageTitle.TLabel").pack(anchor=tk.W)
+        ttk.Label(parent, text="IMU CALIBRATION  /  修正传感器连续误差", style="Eyebrow.TLabel").pack(anchor=tk.W)
+        ttk.Label(parent, text="IMU 零偏、比例与正交性校准", style="PageTitle.TLabel").pack(anchor=tk.W)
         ttk.Label(
             parent,
-            text=("IMUCAP v4 采集：六面各 2000、陀螺静止 4500、精确 +360° X/Y/Z 最多 6000、"
-                  "带标签温度平台。六面+静态通过可应用室温基础参数；精密转台+多温点通过后升级为完整参数。"),
+            text=("IMUCAP v4 采集：六面各 2000 样本、陀螺静止 4500 样本，共 7 步。"
+                  "六面解出 3x3 校正矩阵与零偏，静止段解出陀螺零偏；两组都通过即可应用室温基础参数。"
+                  "手转 +360° 与温度平台已从流程移除：前者 6.1s 窗口内手转精度反而不如不标，"
+                  "后者需要温箱凑齐 3 个温点。"),
             style="Muted.TLabel", wraplength=1120,
         ).pack(fill=tk.X, pady=(4, 10))
         ttk.Frame(parent, height=1, style="Rule.TFrame").pack(fill=tk.X, pady=(0, 8))
-        safety = ttk.LabelFrame(parent, text="复用 V0/USB 安全门", padding=8)
+        safety = ttk.LabelFrame(parent, text="复用坐标系校准 / USB 安全门", padding=8)
         safety.pack(fill=tk.X)
         ttk.Checkbutton(safety, text="已拆除全部桨叶", variable=self.validation_props_removed_var, command=self._v1_refresh_controls).pack(side=tk.LEFT)
         ttk.Checkbutton(safety, text="电调动力已断开或机体已可靠固定", variable=self.validation_power_safe_var, command=self._v1_refresh_controls).pack(side=tk.LEFT, padx=(14, 0))
         ttk.Checkbutton(safety, text="未知 USB 身份人工确认", variable=self.firmware_unknown_usb_override_var, command=self._v1_refresh_controls).pack(side=tk.LEFT, padx=(14, 0))
 
         controls = ttk.Frame(parent); controls.pack(fill=tk.X, pady=(8, 0))
-        ttk.Button(controls, text="新建 V1 会话", command=self._v1_new_session,
+        ttk.Button(controls, text="新建 IMU 校准会话", command=self._v1_new_session,
                    style="Primary.TButton").pack(side=tk.LEFT)
         ttk.Label(controls, text="步骤").pack(side=tk.LEFT, padx=(14, 4))
         self.v1_stage_combo = ttk.Combobox(controls, textvariable=self.v1_stage_var, values=tuple(self.v1_stage_by_label), state="readonly", width=27)
         self.v1_stage_combo.pack(side=tk.LEFT)
-        ttk.Label(controls, text="温度平台标签").pack(side=tk.LEFT, padx=(12, 4))
-        ttk.Entry(controls, textvariable=self.v1_temperature_platform_var, width=14).pack(side=tk.LEFT)
         capture_actions = ttk.Frame(parent); capture_actions.pack(fill=tk.X, pady=(7, 0))
         self.v1_start_button = ttk.Button(capture_actions, text="开始采集", command=self._v1_start_capture,
                                           state=tk.DISABLED, style="Primary.TButton")
@@ -2984,8 +3733,9 @@ class DronePanel(tk.Tk):
         self.v1_analyze_button.pack(side=tk.LEFT, padx=(6, 0))
         ttk.Label(
             capture_actions,
-            text="采集完成会自动导出并保存；分析不会直接改飞机参数。",
-            style="Muted.TLabel",
+            text=(f"点开始后有 {V1_CAPTURE_PREP_SECONDS} 秒准备时间（按“完成本步”可立即开录），"
+                  "录制期间机体必须绝对静止；分析不会直接改飞机参数。"),
+            style="Muted.TLabel", wraplength=760,
         ).pack(side=tk.LEFT, padx=(16, 0))
 
         ttk.Label(parent, textvariable=self.v1_status_var, style="Guide.TLabel", wraplength=1120).pack(fill=tk.X, pady=(8, 6))
@@ -2993,11 +3743,72 @@ class DronePanel(tk.Tk):
         ttk.Label(parent, textvariable=self.v1_analysis_var, wraplength=1120).pack(fill=tk.X, pady=(4, 8))
         self.v1_progress = ttk.Progressbar(parent, mode="determinate", maximum=100.0)
         self.v1_progress.pack(fill=tk.X)
-        table = ttk.LabelFrame(parent, text="本会话原始证据", padding=8); table.pack(fill=tk.BOTH, expand=True, pady=(8, 0))
-        self.v1_capture_tree = ttk.Treeview(table, columns=("stage", "platform", "samples", "file"), show="headings", height=10)
-        for name, label, width in (("stage", "步骤", 220), ("platform", "温度平台", 130), ("samples", "样本", 90), ("file", "CSV", 520)):
-            self.v1_capture_tree.heading(name, text=label); self.v1_capture_tree.column(name, width=width, anchor=tk.W)
+        table = ttk.LabelFrame(parent, text="本会话步骤与证据", padding=8); table.pack(fill=tk.BOTH, expand=True, pady=(8, 0))
+        self.v1_capture_tree = ttk.Treeview(
+            table, columns=("platform", "samples", "rate", "quality", "verdict", "file"),
+            show="tree headings", height=12, selectmode="browse")
+        self.v1_capture_tree.heading("#0", text="步骤")
+        self.v1_capture_tree.column("#0", width=200, anchor=tk.W)
+        for name, label, width, anchor in (
+            ("platform", "温度平台", 80, tk.CENTER),
+            ("samples", "样本", 110, tk.CENTER),
+            ("rate", "采样率", 80, tk.CENTER),
+            ("quality", "采集质量", 260, tk.W),
+            ("verdict", "分析结论", 210, tk.W),
+            ("file", "CSV", 230, tk.W),
+        ):
+            self.v1_capture_tree.heading(name, text=label)
+            self.v1_capture_tree.column(name, width=width, anchor=anchor)
+        for tag, color in (
+            ("pass", UI_PALETTE["green"]), ("fail", UI_PALETTE["red"]),
+            ("warn", UI_PALETTE["amber"]), ("muted", UI_PALETTE["muted"]),
+        ):
+            self.v1_capture_tree.tag_configure(tag, foreground=color)
+        self.v1_capture_tree.bind("<<TreeviewSelect>>", self._v1_on_row_selected)
         self.v1_capture_tree.pack(fill=tk.BOTH, expand=True)
+        row_actions = ttk.Frame(table); row_actions.pack(fill=tk.X, pady=(7, 0))
+        self.v1_discard_button = ttk.Button(
+            row_actions, text="删除选中采集", command=self._v1_discard_selected,
+            state=tk.DISABLED, style="Danger.TButton")
+        self.v1_discard_button.pack(side=tk.LEFT)
+        ttk.Label(
+            row_actions,
+            text=("选中一行即切到该步骤，点“开始采集”会自动替换旧数据；"
+                  "删除只是把 CSV 移到 discarded/ 子目录，不会真的销毁。"),
+            style="Muted.TLabel", wraplength=880,
+        ).pack(side=tk.LEFT, padx=(12, 0))
+        drift_box = ttk.LabelFrame(parent, text="静止漂移自检（应用前后各做一次，对比收益）", padding=8)
+        drift_box.pack(fill=tk.X, pady=(8, 0))
+        ttk.Label(
+            drift_box,
+            text=("飞机放在不会晃的桌面上别碰，录 30~60 秒。不动 = 真实角速度为 0、真实比力为 1g，"
+                  "所以不需要转台，读数偏多少就是误差多少。"),
+            style="Muted.TLabel", wraplength=1100,
+        ).pack(fill=tk.X, pady=(0, 6))
+        drift_actions = ttk.Frame(drift_box); drift_actions.pack(fill=tk.X)
+        self.drift_start_button = ttk.Button(
+            drift_actions, text="开始静止录制", command=self._drift_start, style="Primary.TButton")
+        self.drift_start_button.pack(side=tk.LEFT)
+        self.drift_stop_button = ttk.Button(
+            drift_actions, text="提前结束", command=self._drift_stop,
+            state=tk.DISABLED, style="Warning.TButton")
+        self.drift_stop_button.pack(side=tk.LEFT, padx=(6, 0))
+        ttk.Label(drift_actions, text="时长(秒)").pack(side=tk.LEFT, padx=(14, 4))
+        ttk.Spinbox(drift_actions, from_=30, to=300, increment=10, width=6,
+                    textvariable=self.drift_duration_var).pack(side=tk.LEFT)
+        self.drift_baseline_button = ttk.Button(
+            drift_actions, text="设为对照组", command=self._drift_set_baseline,
+            state=tk.DISABLED, style="Secondary.TButton")
+        self.drift_baseline_button.pack(side=tk.LEFT, padx=(14, 0))
+        ttk.Button(drift_actions, text="载入上一次录制", command=self._drift_load_previous,
+                   style="Secondary.TButton").pack(side=tk.LEFT, padx=(6, 0))
+        ttk.Label(drift_box, textvariable=self.drift_status_var,
+                  style="Guide.TLabel", wraplength=1100).pack(fill=tk.X, pady=(7, 0))
+        ttk.Label(drift_box, textvariable=self.drift_result_var,
+                  font=("Consolas", 9), wraplength=1100, justify=tk.LEFT).pack(fill=tk.X, pady=(4, 0))
+        ttk.Label(drift_box, textvariable=self.drift_compare_var,
+                  wraplength=1100, justify=tk.LEFT).pack(fill=tk.X, pady=(4, 0))
+
         pending = ttk.Frame(parent); pending.pack(fill=tk.X, pady=(8, 0))
         self.v1_apply_button = ttk.Button(
             pending, text="应用基础/完整候选到 RAM",
@@ -3012,15 +3823,659 @@ class DronePanel(tk.Tk):
             command=self._v1_commit_candidate, state=tk.DISABLED, style="Warning.TButton")
         self.v1_commit_button.pack(side=tk.LEFT, padx=(8, 0))
         ttk.Button(
-            pending, text="读取飞机 V1 状态",
+            pending, text="读取飞机 IMU 校准状态",
             command=lambda: self._send_proto(PROTO_REQ_IMU_CAL, "IMUCAL?"),
             style="Secondary.TButton",
         ).pack(side=tk.LEFT, padx=(16, 0))
         self._v1_refresh_controls()
 
+    def _build_mechanical_calibration_page(self, parent: ttk.Frame) -> None:
+        ttk.Label(parent, text="ACTUATOR GEOMETRY  /  拆桨地面校准", style="Eyebrow.TLabel").pack(anchor=tk.W)
+        ttk.Label(parent, text="舵机机械中心、方向与安全行程", style="PageTitle.TLabel").pack(anchor=tk.W)
+        ttk.Label(
+            parent,
+            text=(
+                "本页用于逐路小步移动、记录真正的机械中立位、脉宽方向和不干涉行程。"
+                "确认后可先应用到 RAM 做 A/B 验证，再写入 FCAL 双槽参数 Flash；"
+                "预览和写入期间飞控保持硬解锁锁定，重启后必须回读一致才算闭环。"
+            ),
+            style="Muted.TLabel", wraplength=1120,
+        ).pack(fill=tk.X, pady=(4, 10))
+        ttk.Frame(parent, height=1, style="Rule.TFrame").pack(fill=tk.X, pady=(0, 8))
+
+        safety = ttk.LabelFrame(parent, text="动作安全门", padding=8)
+        safety.pack(fill=tk.X)
+        ttk.Checkbutton(
+            safety, text="已拆除全部桨叶",
+            variable=self.validation_props_removed_var,
+        ).pack(side=tk.LEFT)
+        ttk.Checkbutton(
+            safety, text="电机不会启动，机体已固定；仅给舵机保留必要电源",
+            variable=self.validation_power_safe_var,
+        ).pack(side=tk.LEFT, padx=(16, 0))
+        ttk.Button(
+            safety, text="读取实时安全快照",
+            command=lambda: self._send_proto(PROTO_REQ_IMU, "IMU?"),
+            style="Secondary.TButton",
+        ).pack(side=tk.RIGHT)
+
+        table = ttk.LabelFrame(parent, text="两路机械记录", padding=8)
+        table.pack(fill=tk.X, pady=(8, 0))
+        headings = ("通道", "中心 µs", "最小 µs", "最大 µs", "增大脉宽对应", "动作")
+        for column, label in enumerate(headings):
+            ttk.Label(table, text=label, style="Muted.TLabel").grid(
+                row=0, column=column, sticky=tk.W, padx=4, pady=(0, 5)
+            )
+
+        for index, (axis, title) in enumerate((
+            ("alpha", "Alpha · 左右倾转机构"),
+            ("beta", "Beta · 前后倾转机构"),
+        )):
+            row = index * 2 + 1
+            values: dict[str, tk.Variable] = {
+                "axis": tk.StringVar(value=axis),
+                "center": tk.IntVar(value=1500),
+                "minimum": tk.IntVar(value=1000),
+                "maximum": tk.IntVar(value=2000),
+                "polarity": tk.StringVar(value="未确认"),
+                "center_confirmed": tk.BooleanVar(value=False),
+                "direction_confirmed": tk.BooleanVar(value=False),
+                "travel_confirmed": tk.BooleanVar(value=False),
+            }
+            self.mechanical_rows.append(values)
+            ttk.Label(table, text=title).grid(row=row, column=0, sticky=tk.W, padx=4, pady=4)
+            ttk.Spinbox(table, from_=500, to=2500, increment=1, width=8,
+                        textvariable=values["center"]).grid(row=row, column=1, padx=4)
+            ttk.Spinbox(table, from_=500, to=2500, increment=1, width=8,
+                        textvariable=values["minimum"]).grid(row=row, column=2, padx=4)
+            ttk.Spinbox(table, from_=500, to=2500, increment=1, width=8,
+                        textvariable=values["maximum"]).grid(row=row, column=3, padx=4)
+            ttk.Combobox(
+                table, textvariable=values["polarity"], state="readonly", width=18,
+                values=("未确认", "机构标记正向", "机构标记反向"),
+            ).grid(row=row, column=4, sticky=tk.W, padx=4)
+            actions = ttk.Frame(table)
+            actions.grid(row=row, column=5, sticky=tk.W, padx=4)
+            for label, target in (
+                ("中心", "center"), ("-50", "negative"), ("+50", "positive"),
+                ("最小", "minimum"), ("最大", "maximum"),
+            ):
+                ttk.Button(
+                    actions, text=label,
+                    command=lambda i=index, t=target: self._mechanical_move(i, t),
+                    style="Secondary.TButton" if target == "center" else "Warning.TButton",
+                ).pack(side=tk.LEFT, padx=2)
+
+            confirms = ttk.Frame(table)
+            confirms.grid(row=row + 1, column=0, columnspan=6, sticky=tk.W, padx=4, pady=(0, 7))
+            ttk.Checkbutton(
+                confirms, text="机械中立位已对正", variable=values["center_confirmed"]
+            ).pack(side=tk.LEFT)
+            ttk.Checkbutton(
+                confirms, text="±50 µs 方向已按机体标记确认", variable=values["direction_confirmed"]
+            ).pack(side=tk.LEFT, padx=(14, 0))
+            ttk.Checkbutton(
+                confirms, text="最小/最大位无干涉、无堵转", variable=values["travel_confirmed"]
+            ).pack(side=tk.LEFT, padx=(14, 0))
+
+        target = ttk.LabelFrame(parent, text="应用、撤销与持久化", padding=8)
+        target.pack(fill=tk.X, pady=(10, 0))
+        target_actions = ttk.Frame(target)
+        target_actions.pack(fill=tk.X)
+        ttk.Button(
+            target_actions, text="读取飞控机械参数",
+            command=self._mechanical_read_target,
+            style="Secondary.TButton",
+        ).pack(side=tk.LEFT)
+        self.mechanical_apply_button = ttk.Button(
+            target_actions, text="应用到 RAM",
+            command=self._mechanical_apply_target,
+            style="Warning.TButton",
+        )
+        self.mechanical_apply_button.pack(side=tk.LEFT, padx=(8, 0))
+        self.mechanical_revert_button = ttk.Button(
+            target_actions, text="撤销 RAM 预览",
+            command=self._mechanical_revert_target,
+            state=tk.DISABLED, style="Danger.TButton",
+        )
+        self.mechanical_revert_button.pack(side=tk.LEFT, padx=(8, 0))
+        self.mechanical_commit_button = ttk.Button(
+            target_actions, text="写入参数 Flash",
+            command=self._mechanical_commit_target,
+            state=tk.DISABLED, style="Warning.TButton",
+        )
+        self.mechanical_commit_button.pack(side=tk.LEFT, padx=(8, 0))
+        ttk.Button(
+            target_actions, text="重启后核对",
+            command=lambda: self._mechanical_read_target(reboot_check=True),
+            style="Secondary.TButton",
+        ).pack(side=tk.LEFT, padx=(16, 0))
+        ttk.Label(
+            target, textvariable=self.mechanical_target_var,
+            style="Guide.TLabel", wraplength=1080,
+        ).pack(fill=tk.X, pady=(7, 0))
+
+        footer = ttk.Frame(parent)
+        footer.pack(fill=tk.X, pady=(8, 0))
+        ttk.Button(
+            footer, text="保存机械校准证据", command=self._mechanical_save_evidence,
+            style="Primary.TButton",
+        ).pack(side=tk.LEFT)
+        ttk.Label(
+            footer, text="只有 persisted 回读与本页数值完全一致，报告才记录 target_parameters_written=true。",
+            style="Muted.TLabel",
+        ).pack(side=tk.LEFT, padx=(16, 0))
+        ttk.Label(
+            parent, textvariable=self.mechanical_status_var,
+            style="Guide.TLabel", wraplength=1120,
+        ).pack(fill=tk.X, pady=(8, 0))
+        ttk.Label(
+            parent, textvariable=self.mechanical_last_report_var,
+            style="Muted.TLabel", wraplength=1120,
+        ).pack(fill=tk.X, pady=(4, 0))
+
+    def _mechanical_row_values(self, index: int) -> tuple[int, int, int]:
+        row = self.mechanical_rows[index]
+        center = int(row["center"].get())
+        minimum = int(row["minimum"].get())
+        maximum = int(row["maximum"].get())
+        validate_servo_geometry(center, minimum, maximum)
+        return center, minimum, maximum
+
+    def _mechanical_local_target(self, *, require_confirmations: bool) -> dict[str, int]:
+        result: dict[str, int] = {}
+        prefixes = ("alpha", "beta")
+        for index, row in enumerate(self.mechanical_rows):
+            center, minimum, maximum = self._mechanical_row_values(index)
+            polarity = str(row["polarity"].get())
+            if polarity == "未确认":
+                raise GroundCalibrationError(f"{prefixes[index]} 方向尚未确认")
+            if require_confirmations and not all(bool(row[name].get()) for name in (
+                "center_confirmed", "direction_confirmed", "travel_confirmed"
+            )):
+                raise GroundCalibrationError(f"{prefixes[index]} 的中心、方向或行程确认不完整")
+            result[f"{prefixes[index]}_center"] = center
+            result[f"{prefixes[index]}_min"] = minimum
+            result[f"{prefixes[index]}_max"] = maximum
+            result[f"{prefixes[index]}_sign"] = (
+                1 if polarity == "机构标记正向" else -1
+            )
+        return result
+
+    def _mechanical_target_matches_local(self, scope: str) -> bool:
+        record = self.mechanical_target_records.get(scope)
+        if not record or record.get("valid") != "1":
+            return False
+        try:
+            local = self._mechanical_local_target(require_confirmations=False)
+        except (GroundCalibrationError, ValueError, tk.TclError):
+            return False
+        return all(safe_int(record.get(name), 0) == value for name, value in local.items())
+
+    def _mechanical_read_target(self, *, reboot_check: bool = False) -> None:
+        if reboot_check:
+            current_generation = self.serial_transport.connection_generation
+            if (
+                self.mechanical_commit_connection_generation is not None
+                and current_generation <= self.mechanical_commit_connection_generation
+            ):
+                messagebox.showwarning(
+                    "尚未检测到重启重连",
+                    "写入后请让飞控重启并重新连接，再执行重启后核对。",
+                )
+                return
+            self.mechanical_reboot_check_pending = True
+        self._send_proto(PROTO_REQ_SERVO_CAL, "SERVOCAL?", "SERVOCAL?")
+        self.mechanical_target_var.set("正在读取飞控 active / persisted 机械参数…")
+
+    def _mechanical_apply_target(self) -> None:
+        if not self.validation_props_removed_var.get() or not self.validation_power_safe_var.get():
+            messagebox.showwarning("舵机机械校准安全门", "必须拆桨、固定机体，并确认电机不会启动。")
+            return
+        gate_ok, reason = self._validation_live_safety_gate()
+        if not gate_ok:
+            messagebox.showwarning("舵机机械校准安全门", reason)
+            return
+        try:
+            values = self._mechanical_local_target(require_confirmations=True)
+        except (GroundCalibrationError, ValueError, tk.TclError) as exc:
+            messagebox.showwarning("机械校准证据不完整", str(exc))
+            return
+        command = (
+            "SERVOCAL APPLY "
+            f"ac={values['alpha_center']} an={values['alpha_min']} ax={values['alpha_max']} as={values['alpha_sign']} "
+            f"bc={values['beta_center']} bn={values['beta_min']} bx={values['beta_max']} bs={values['beta_sign']}"
+        )
+        self._send_proto(PROTO_REQ_SERVO_CAL, command, command)
+        self.mechanical_target_var.set("已请求应用到 RAM；等待飞控回报 applied=1 和硬解锁锁定")
+
+    def _mechanical_revert_target(self) -> None:
+        self._send_proto(PROTO_REQ_SERVO_CAL, "SERVOCAL REVERT", "SERVOCAL REVERT")
+        self.mechanical_target_var.set("正在撤销 RAM 机械参数预览…")
+
+    def _mechanical_commit_target(self) -> None:
+        if not messagebox.askyesno(
+            "写入舵机机械参数",
+            "确认 RAM 预览下中心、方向和端点都正确吗？\n\n"
+            "写入后仍需重启并点击“重启后核对”。",
+        ):
+            return
+        self._send_proto(PROTO_REQ_SERVO_CAL, "SERVOCAL COMMIT", "SERVOCAL COMMIT")
+        self.mechanical_commit_connection_generation = (
+            self.serial_transport.connection_generation
+        )
+        self.mechanical_reboot_verified = False
+        self.mechanical_target_var.set("已请求写入参数 Flash；等待 dirty=0 后再重启核对")
+
+    def _mechanical_handle_target_line(self, line: str) -> None:
+        values = parse_kv(line)
+        scope = values.get("scope")
+        if scope in {"active", "persisted"}:
+            self.mechanical_target_records[scope] = dict(values)
+        event = values.get("event")
+        if event:
+            self.mechanical_target_applied = values.get("applied") == "1"
+            self.mechanical_target_commit_pending = values.get("commit_pending") == "1"
+            if event in {"applied", "status", "commit_queued"}:
+                pass
+            elif event in {"reverted", "committed"}:
+                self.mechanical_target_applied = False
+            elif "rejected" in event or event == "commit_failed":
+                self.mechanical_status_var.set(
+                    f"飞控拒绝机械参数操作：event={event} reason={values.get('reason', '-')}"
+                )
+
+        persisted_match = self._mechanical_target_matches_local("persisted")
+        active_match = self._mechanical_target_matches_local("active")
+        if persisted_match and self.mechanical_reboot_check_pending:
+            self.mechanical_reboot_verified = True
+            self.mechanical_reboot_check_pending = False
+        state = (
+            f"active={'匹配' if active_match else '未匹配'} · "
+            f"persisted={'匹配' if persisted_match else '未匹配'} · "
+            f"RAM预览={'是' if self.mechanical_target_applied else '否'} · "
+            f"Flash写入中={'是' if self.mechanical_target_commit_pending else '否'} · "
+            f"重启复验={'PASS' if self.mechanical_reboot_verified else '未完成'}"
+        )
+        self.mechanical_target_var.set(state)
+        if hasattr(self, "mechanical_revert_button"):
+            self.mechanical_apply_button.configure(
+                state=(tk.DISABLED if self.mechanical_target_applied or
+                       self.mechanical_target_commit_pending else tk.NORMAL)
+            )
+            self.mechanical_revert_button.configure(
+                state=tk.NORMAL if self.mechanical_target_applied else tk.DISABLED
+            )
+            self.mechanical_commit_button.configure(
+                state=(tk.NORMAL if self.mechanical_target_applied and active_match and
+                       not self.mechanical_target_commit_pending else tk.DISABLED)
+            )
+        self.last_reply_rx = time.monotonic()
+
+    def _mechanical_move(self, index: int, target_name: str) -> None:
+        if not self.validation_props_removed_var.get() or not self.validation_power_safe_var.get():
+            messagebox.showwarning("舵机机械校准安全门", "必须拆桨、固定机体，并确认电机不会启动。")
+            return
+        gate_ok, reason = self._validation_live_safety_gate()
+        if not gate_ok:
+            messagebox.showwarning("舵机机械校准安全门", reason)
+            return
+        try:
+            center, minimum, maximum = self._mechanical_row_values(index)
+        except (GroundCalibrationError, ValueError, tk.TclError) as exc:
+            messagebox.showerror("舵机机械参数无效", str(exc))
+            return
+        target = {
+            "center": center,
+            "negative": max(minimum, center - 50),
+            "positive": min(maximum, center + 50),
+            "minimum": minimum,
+            "maximum": maximum,
+        }.get(target_name)
+        if target is None:
+            return
+        payload = f"SERVO MOVE {index} {target} 800"
+        self._send_proto(PROTO_REQ_SERVO_MOVE, payload, payload)
+        axis = str(self.mechanical_rows[index]["axis"].get()).upper()
+        self.mechanical_status_var.set(
+            f"已命令 {axis} 舵机缓慢移动到 {target} µs；目视检查机构，异常立即断开舵机电源"
+        )
+
+    def _mechanical_save_evidence(self) -> None:
+        axes: list[dict[str, object]] = []
+        try:
+            for index, row in enumerate(self.mechanical_rows):
+                center, minimum, maximum = self._mechanical_row_values(index)
+                polarity = str(row["polarity"].get())
+                confirmations = {
+                    "center": bool(row["center_confirmed"].get()),
+                    "direction": bool(row["direction_confirmed"].get()),
+                    "travel": bool(row["travel_confirmed"].get()),
+                }
+                if polarity == "未确认" or not all(confirmations.values()):
+                    raise GroundCalibrationError(
+                        f"第 {index + 1} 路尚未完成中心、方向、行程三项人工确认"
+                    )
+                axes.append({
+                    "axis": str(row["axis"].get()),
+                    "servo_index": index,
+                    "center_us": center,
+                    "minimum_us": minimum,
+                    "maximum_us": maximum,
+                    "positive_pulse_direction": polarity,
+                    "physical_confirmations": confirmations,
+                })
+        except (GroundCalibrationError, ValueError, tk.TclError) as exc:
+            messagebox.showwarning("机械校准证据不完整", str(exc))
+            return
+
+        stamp = datetime.now().astimezone()
+        path = ensure_directory(dated_directory(SERVO_MECHANICAL_CALIBRATION_DIR, stamp)) / (
+            "servo_mechanical_" + stamp.strftime("%Y%m%d_%H%M%S") + ".json"
+        )
+        persisted_match = self._mechanical_target_matches_local("persisted")
+        report = {
+            "format": "drone-h743-servo-mechanical-evidence",
+            "schema": 1,
+            "created_at": stamp.isoformat(),
+            "body_frame": "FLU",
+            "props_removed_confirmed": bool(self.validation_props_removed_var.get()),
+            "motor_safe_confirmed": bool(self.validation_power_safe_var.get()),
+            "axes": axes,
+            "target_parameters_written": persisted_match,
+            "target_persisted_readback": self.mechanical_target_records.get("persisted"),
+            "reboot_verification_passed": self.mechanical_reboot_verified,
+            "flight_release": False,
+            "status": (
+                "PERSISTED_REBOOT_VERIFIED" if self.mechanical_reboot_verified else
+                ("PERSISTED_READBACK_MATCH" if persisted_match else "EVIDENCE_ONLY")
+            ),
+        }
+        try:
+            path.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        except OSError as exc:
+            messagebox.showerror("机械校准证据保存失败", str(exc))
+            return
+        self.mechanical_last_report_var.set(f"机械测量证据已保存：{path}")
+        self.mechanical_status_var.set(
+            "机械参数与重启后 Flash 回读均已闭环" if self.mechanical_reboot_verified else
+            "机械测量已记录；还需完成 Flash 回读及重启复验"
+        )
+
+    def _build_flow_range_calibration_page(self, parent: ttk.Frame) -> None:
+        ttk.Label(parent, text="FLOW / RANGE  /  只读地面采样", style="Eyebrow.TLabel").pack(anchor=tk.W)
+        ttk.Label(parent, text="光流与组合测距坐标、比例和零偏", style="PageTitle.TLabel").pack(anchor=tk.W)
+        ttk.Label(
+            parent,
+            text=(
+                "依次做静止、机头方向 +X、机体左侧 +Y、近/远两点测距和原地偏航。"
+                "飞行高度当前来自光流模块内的组合测距，独立 RANGE? 只作旁路诊断。"
+                "分析结果先保存为证据，不会直接改飞控参数。"
+            ),
+            style="Muted.TLabel", wraplength=1120,
+        ).pack(fill=tk.X, pady=(4, 10))
+        ttk.Frame(parent, height=1, style="Rule.TFrame").pack(fill=tk.X, pady=(0, 8))
+
+        live = ttk.LabelFrame(parent, text="实时诊断", padding=8)
+        live.pack(fill=tk.X)
+        actions = ttk.Frame(live)
+        actions.pack(fill=tk.X)
+        ttk.Button(
+            actions, text="读取 FLOW / RANGE", command=self._flow_range_request_once,
+            style="Secondary.TButton",
+        ).pack(side=tk.LEFT)
+        ttk.Label(
+            actions,
+            text="要求纹理清晰、光照稳定；组合测距质量不足时不要拟合比例。",
+            style="Muted.TLabel",
+        ).pack(side=tk.LEFT, padx=(14, 0))
+        ttk.Label(
+            live, textvariable=self.flow_cal_live_var, font=("Consolas", 9),
+            wraplength=1080, justify=tk.LEFT,
+        ).pack(fill=tk.X, pady=(7, 0))
+
+        capture = ttk.LabelFrame(parent, text="分步骤采样", padding=8)
+        capture.pack(fill=tk.X, pady=(8, 0))
+        row = ttk.Frame(capture)
+        row.pack(fill=tk.X)
+        ttk.Label(row, text="当前步骤").pack(side=tk.LEFT)
+        self.flow_cal_stage_combo = ttk.Combobox(
+            row, textvariable=self.flow_cal_stage_var,
+            values=tuple(self.flow_cal_stage_by_label), state="readonly", width=30,
+        )
+        self.flow_cal_stage_combo.pack(side=tk.LEFT, padx=(5, 12))
+        ttk.Label(row, text="水平参考位移 m").pack(side=tk.LEFT)
+        ttk.Entry(row, textvariable=self.flow_cal_reference_distance_var, width=7).pack(side=tk.LEFT, padx=(4, 12))
+        ttk.Label(row, text="近点 m").pack(side=tk.LEFT)
+        ttk.Entry(row, textvariable=self.flow_cal_near_height_var, width=7).pack(side=tk.LEFT, padx=(4, 10))
+        ttk.Label(row, text="远点 m").pack(side=tk.LEFT)
+        ttk.Entry(row, textvariable=self.flow_cal_far_height_var, width=7).pack(side=tk.LEFT, padx=(4, 12))
+        self.flow_cal_start_button = ttk.Button(
+            row, text="开始本步采样", command=self._flow_cal_start,
+            style="Primary.TButton",
+        )
+        self.flow_cal_start_button.pack(side=tk.LEFT)
+        self.flow_cal_stop_button = ttk.Button(
+            row, text="停止并分析", command=self._flow_cal_stop,
+            state=tk.DISABLED, style="Warning.TButton",
+        )
+        self.flow_cal_stop_button.pack(side=tk.LEFT, padx=(6, 0))
+        ttk.Label(
+            capture, textvariable=self.flow_cal_status_var,
+            style="Guide.TLabel", wraplength=1080,
+        ).pack(fill=tk.X, pady=(7, 0))
+
+        evidence = ttk.LabelFrame(parent, text="证据与结论", padding=8)
+        evidence.pack(fill=tk.BOTH, expand=True, pady=(8, 0))
+        self.flow_cal_tree = ttk.Treeview(
+            evidence, columns=("samples", "result"), show="tree headings", height=7,
+        )
+        self.flow_cal_tree.heading("#0", text="检查项目")
+        self.flow_cal_tree.column("#0", width=260, anchor=tk.W)
+        self.flow_cal_tree.heading("samples", text="样本")
+        self.flow_cal_tree.column("samples", width=90, anchor=tk.CENTER)
+        self.flow_cal_tree.heading("result", text="结论")
+        self.flow_cal_tree.column("result", width=700, anchor=tk.W)
+        for stage, label in FLOW_CALIBRATION_STAGES.items():
+            self.flow_cal_tree.insert("", tk.END, iid=stage, text=label, values=(0, "未采样"))
+        self.flow_cal_tree.pack(fill=tk.BOTH, expand=True)
+        ttk.Label(
+            evidence, textvariable=self.flow_cal_result_var,
+            font=("Consolas", 9), wraplength=1080, justify=tk.LEFT,
+        ).pack(fill=tk.X, pady=(7, 0))
+        save_row = ttk.Frame(evidence)
+        save_row.pack(fill=tk.X, pady=(7, 0))
+        ttk.Button(
+            save_row, text="保存光流 / 测距证据", command=self._flow_cal_save_report,
+            style="Primary.TButton",
+        ).pack(side=tk.LEFT)
+        ttk.Label(
+            save_row,
+            text="旋转补偿验收使用目标端同一样本的补偿前/后 FLU 速度：偏航均值 ≥15 dps 且残余 ≤0.08 m/s 才 PASS。",
+            style="Muted.TLabel",
+        ).pack(side=tk.LEFT, padx=(16, 0))
+
+    def _flow_range_request_once(self) -> None:
+        self._send("FLOW?")
+        self._send("RANGE?")
+        self._send_proto(PROTO_REQ_IMU, "IMU?")
+
+    def _flow_cal_start(self) -> None:
+        if not self._transport_connected():
+            messagebox.showwarning("光流 / 测距校准", "请先连接飞控。")
+            return
+        stage = self.flow_cal_stage_by_label.get(self.flow_cal_stage_var.get())
+        if stage is None:
+            return
+        self.flow_cal_samples[stage] = []
+        self.flow_cal_results.pop(stage, None)
+        self.flow_cal_active_stage = stage
+        self.flow_cal_last_target_sample_ms = -1
+        self.flow_cal_collecting = True
+        self.flow_cal_start_button.configure(state=tk.DISABLED)
+        self.flow_cal_stop_button.configure(state=tk.NORMAL)
+        self.flow_cal_status_var.set(
+            f"正在采集“{FLOW_CALIBRATION_STAGES[stage]}”：按页面提示完成动作后点击停止并分析"
+        )
+
+    def _flow_cal_stop(self) -> None:
+        if not self.flow_cal_collecting or self.flow_cal_active_stage is None:
+            return
+        stage = self.flow_cal_active_stage
+        self.flow_cal_collecting = False
+        self.flow_cal_active_stage = None
+        self.flow_cal_start_button.configure(state=tk.NORMAL)
+        self.flow_cal_stop_button.configure(state=tk.DISABLED)
+        try:
+            result = self._flow_cal_analyze_stage(stage)
+        except (GroundCalibrationError, ValueError) as exc:
+            self.flow_cal_status_var.set(f"本步证据不足：{exc}")
+            self._flow_cal_refresh_tree(stage, f"证据不足：{exc}")
+            return
+        self.flow_cal_results[stage] = result
+        rendered = json.dumps(result, ensure_ascii=False, sort_keys=True)
+        self.flow_cal_result_var.set(rendered)
+        self.flow_cal_status_var.set(f"“{FLOW_CALIBRATION_STAGES[stage]}”分析完成；结果尚未写入飞控")
+        self._flow_cal_refresh_tree(stage, self._flow_cal_result_summary(stage, result))
+
+    def _flow_cal_analyze_stage(self, stage: str) -> dict[str, object]:
+        samples = self.flow_cal_samples[stage]
+        if stage == "static_zero":
+            return dict(analyze_flow_zero(samples))
+        if stage in {"forward_x", "left_y"}:
+            return dict(analyze_flow_axis(
+                samples,
+                expected_axis="x" if stage == "forward_x" else "y",
+                reference_distance_m=safe_float(self.flow_cal_reference_distance_var.get(), -1.0),
+            ))
+        if stage == "yaw_rotation":
+            return dict(analyze_rotation_compensation(samples))
+        if stage in {"range_near", "range_far"}:
+            heights = [sample.height_raw_m for sample in samples if sample.height_raw_m is not None]
+            if len(heights) < 5:
+                raise GroundCalibrationError("至少需要 5 个有效组合测距样本")
+            result: dict[str, object] = {
+                "sample_count": len(heights),
+                "measured_mean_m": statistics.fmean(heights),
+                "measured_std_m": statistics.pstdev(heights),
+            }
+            near = self.flow_cal_samples["range_near"]
+            far = self.flow_cal_samples["range_far"]
+            if len(near) >= 5 and len(far) >= 5:
+                result["two_point_fit"] = fit_range_two_point(
+                    near, far,
+                    near_reference_m=safe_float(self.flow_cal_near_height_var.get(), -1.0),
+                    far_reference_m=safe_float(self.flow_cal_far_height_var.get(), -1.0),
+                )
+            else:
+                result["two_point_fit"] = "等待近、远两组都采集完成"
+            return result
+        raise GroundCalibrationError(f"未知步骤 {stage}")
+
+    def _flow_cal_result_summary(self, stage: str, result: dict[str, object]) -> str:
+        if stage == "static_zero":
+            return f"零偏 vx={float(result['vx_mean_m_s']):+.3f} vy={float(result['vy_mean_m_s']):+.3f} m/s"
+        if stage in {"forward_x", "left_y"}:
+            sign = "正确" if result.get("positive_sign_ok") else "错误"
+            scale = result.get("diagnostic_scale")
+            scale_text = "-" if scale is None else f"{float(scale):.4f}"
+            return f"正向符号={sign} 主轴/串轴={float(result['axis_dominance_ratio']):.2f} 诊断比例={scale_text}"
+        if stage == "yaw_rotation":
+            return str(result.get("reason", "未形成结论"))
+        fit = result.get("two_point_fit")
+        if isinstance(fit, dict):
+            return f"两点拟合 scale={float(fit['range_scale']):.5f} offset={float(fit['range_offset_m']):+.4f} m"
+        return f"均值={float(result['measured_mean_m']):.4f} m；{fit}"
+
+    def _flow_cal_refresh_tree(self, stage: str, result: str) -> None:
+        if hasattr(self, "flow_cal_tree"):
+            self.flow_cal_tree.item(
+                stage,
+                values=(len(self.flow_cal_samples[stage]), result),
+            )
+
+    def _flow_cal_save_report(self) -> None:
+        if not self.flow_cal_results:
+            messagebox.showwarning("光流 / 测距校准", "至少先完成一个采样步骤。")
+            return
+        stamp = datetime.now().astimezone()
+        path = ensure_directory(dated_directory(FLOW_RANGE_CALIBRATION_DIR, stamp)) / (
+            "flow_range_" + stamp.strftime("%Y%m%d_%H%M%S") + ".json"
+        )
+        sample_payload = {
+            stage: [
+                {
+                    "host_time_s": sample.host_time_s,
+                    "vx_m_s": sample.vx_m_s,
+                    "vy_m_s": sample.vy_m_s,
+                    "height_raw_m": sample.height_raw_m,
+                    "height_m": sample.height_m,
+                    "gyro_z_dps": sample.gyro_z_dps,
+                    "vx_compensated_m_s": sample.vx_compensated_m_s,
+                    "vy_compensated_m_s": sample.vy_compensated_m_s,
+                    "quality": sample.quality,
+                    "frame_contract": sample.frame_contract,
+                    "orientation_code": sample.orientation_code,
+                }
+                for sample in samples
+            ]
+            for stage, samples in self.flow_cal_samples.items() if samples
+        }
+        report = {
+            "format": "drone-h743-flow-range-ground-evidence",
+            "schema": 1,
+            "created_at": stamp.isoformat(),
+            "body_frame": "FLU",
+            "stages": self.flow_cal_results,
+            "samples": sample_payload,
+            "target_parameters_written": False,
+            "rotation_compensation_accepted": bool(
+                self.flow_cal_results.get("yaw_rotation", {}).get("passed", False)
+            ),
+            "flight_release": False,
+        }
+        try:
+            path.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        except OSError as exc:
+            messagebox.showerror("光流 / 测距证据保存失败", str(exc))
+            return
+        self.flow_cal_status_var.set(f"地面采样证据已保存：{path}")
+
+    def _build_vibration_filter_page(self, parent: ttk.Frame) -> None:
+        ttk.Label(parent, text="VIBRATION / FILTER  /  预留页面", style="Eyebrow.TLabel").pack(anchor=tk.W)
+        ttk.Label(parent, text="振动检测与 IMU 滤波", style="PageTitle.TLabel").pack(anchor=tk.W)
+        ttk.Label(
+            parent,
+            text=(
+                "按当前阶段要求，本页只建立入口，不启动带桨叶旋转、不发电机命令、也不重新拟合滤波器。"
+                "以后接入时仍复用已有全速 IMU 采集和频谱报告链路。"
+            ),
+            style="Muted.TLabel", wraplength=1120,
+        ).pack(fill=tk.X, pady=(4, 10))
+        ttk.Frame(parent, height=1, style="Rule.TFrame").pack(fill=tk.X, pady=(0, 8))
+        current = ttk.LabelFrame(parent, text="当前固件滤波基线（保持不变）", padding=10)
+        current.pack(fill=tk.X)
+        for label, value in (
+            ("采样率", "1000 Hz"),
+            ("陀螺仪", "二阶 Butterworth 低通 · 80 Hz"),
+            ("加速度计", "二阶 Butterworth 低通 · 40 Hz"),
+            ("设计依据", "沿用此前实机采集；已测桨频约 56–180 Hz"),
+        ):
+            row = ttk.Frame(current)
+            row.pack(fill=tk.X, pady=3)
+            ttk.Label(row, text=label, width=14, style="Muted.TLabel").pack(side=tk.LEFT)
+            ttk.Label(row, text=value).pack(side=tk.LEFT)
+        pending = ttk.LabelFrame(parent, text="页面状态", padding=10)
+        pending.pack(fill=tk.X, pady=(10, 0))
+        ttk.Label(
+            pending,
+            text="未实现 · 不提供开始采集按钮 · 不执行带桨动力测试 · 不改当前滤波参数",
+            style="Warn.TLabel",
+        ).pack(anchor=tk.W)
+
     def _build_v2_page(self, parent: ttk.Frame) -> None:
-        ttk.Label(parent, text="03  /  验证控制链与执行方向", style="Eyebrow.TLabel").pack(anchor=tk.W)
-        ttk.Label(parent, text="控制链路安全验收 V2A", style="PageTitle.TLabel").pack(anchor=tk.W)
+        ttk.Label(parent, text="GROUND ACCEPTANCE  /  验证控制链与执行方向", style="Eyebrow.TLabel").pack(anchor=tk.W)
+        ttk.Label(parent, text="无桨控制链安全验收", style="PageTitle.TLabel").pack(anchor=tk.W)
         ttk.Label(
             parent,
             text=("这是拆桨地面模式：500 ms 租约，USB/链路停止续租即自动退出；进入模式后电机硬锁且 ESC CCR=0。"
@@ -3032,7 +4487,7 @@ class DronePanel(tk.Tk):
         ttk.Checkbutton(safety, text="已拆除全部桨叶", variable=self.validation_props_removed_var).pack(side=tk.LEFT)
         ttk.Checkbutton(safety, text="动力已隔离或机体已可靠固定", variable=self.validation_power_safe_var).pack(side=tk.LEFT, padx=(16, 0))
         controls = ttk.Frame(parent); controls.pack(fill=tk.X, pady=(10, 0))
-        ttk.Button(controls, text="启动 V2A 安全模式", command=self._v2_start,
+        ttk.Button(controls, text="启动无桨安全模式", command=self._v2_start,
                    style="Warning.TButton").pack(side=tk.LEFT)
         ttk.Label(controls, text="步骤").pack(side=tk.LEFT, padx=(16, 4))
         stages = (
@@ -3046,7 +4501,7 @@ class DronePanel(tk.Tk):
                      state="readonly", width=31).pack(side=tk.LEFT)
         ttk.Button(controls, text="切换并观察步骤", command=self._v2_set_stage,
                    style="Primary.TButton").pack(side=tk.LEFT, padx=(8, 0))
-        ttk.Button(controls, text="停止 V2A", command=self._v2_stop,
+        ttk.Button(controls, text="停止无桨验收", command=self._v2_stop,
                    style="Danger.TButton").pack(side=tk.LEFT, padx=(16, 0))
         ttk.Button(controls, text="读取快照", command=lambda: self._send_proto(
             PROTO_REQ_ACCEPTANCE, "ACCEPT?", "ACCEPT?"),
@@ -3059,17 +4514,17 @@ class DronePanel(tk.Tk):
         ttk.Label(
             parent,
             text=("舵机步骤会命令中心值 ±50 µs，但电机始终禁用。请按机体标记目视确认机械方向；"
-                  "电机旋向和偏航反扭矩属于带动力测试，本 V2A 明确不执行。"),
+                  "电机旋向、偏航反扭矩和任何带桨叶旋转项目当前明确不执行。"),
             style="Muted.TLabel", wraplength=1120,
         ).pack(fill=tk.X, pady=(10, 0))
 
     def _v2_start(self) -> None:
-        gate_ok, reason = self._firmware_snapshot_gate()
+        gate_ok, reason = self._validation_live_safety_gate()
         if not gate_ok or not self.validation_props_removed_var.get() or not self.validation_power_safe_var.get():
-            messagebox.showwarning("V2A 安全门未通过", reason if not gate_ok else "必须拆桨并隔离动力")
+            messagebox.showwarning("无桨控制链安全门未通过", reason if not gate_ok else "必须拆桨并隔离动力")
             return
         if not self.transport.send_line("ACCEPT V2 START props=1"):
-            messagebox.showerror("V2A", "命令发送失败")
+            messagebox.showerror("无桨控制链验收", "命令发送失败")
             return
         stamp = datetime.now()
         self.v2_session_dir = ensure_directory(
@@ -3087,7 +4542,7 @@ class DronePanel(tk.Tk):
 
     def _v2_set_stage(self) -> None:
         if not self.v2_active or self.v2_lease_id == 0:
-            messagebox.showwarning("V2A", "请先启动安全模式")
+            messagebox.showwarning("无桨控制链验收", "请先启动安全模式")
             return
         self.transport.send_line(
             f"ACCEPT V2 STAGE name={self.v2_stage_var.get()} lease={self.v2_lease_id}")
@@ -3096,7 +4551,7 @@ class DronePanel(tk.Tk):
         if self.v2_lease_id:
             self.transport.send_line(f"ACCEPT V2 STOP lease={self.v2_lease_id}")
         self.v2_active = False; self.v2_lease_id = 0
-        self.v2_status_var.set("V2A 已停止；目标端保持 ESC 禁用")
+        self.v2_status_var.set("无桨控制链验收已停止；目标端保持 ESC 禁用")
 
     def _v2_tick(self) -> None:
         if self.v2_active and self.v2_lease_id:
@@ -3118,24 +4573,24 @@ class DronePanel(tk.Tk):
                     "a", encoding="utf-8") as stream:
                     stream.write(f"{datetime.now().astimezone().isoformat()} {line}\n")
             except OSError as exc:
-                self.v2_status_var.set(f"V2A 日志写入失败：{exc}")
+                self.v2_status_var.set(f"无桨验收日志写入失败：{exc}")
         values = parse_kv(line)
         if values.get("event") == "started":
             lease = safe_int(values.get("lease", "0"), 0)
             if lease > 0 and values.get("esc") == "0,0":
                 self.v2_lease_id = lease; self.v2_active = True
                 self.v2_status_var.set(
-                    f"V2A 已启动：lease={lease}，ESC CCR=0；自动续租；证据={self.v2_session_dir}")
+                    f"无桨验收已启动：lease={lease}，ESC CCR=0；自动续租；证据={self.v2_session_dir}")
         elif values.get("event") == "stopped":
             self.v2_active = False; self.v2_lease_id = 0
-            self.v2_status_var.set("V2A 已停止")
+            self.v2_status_var.set("无桨控制链验收已停止")
         elif "active" in values:
             if values.get("active") != "1" and self.v2_active:
                 self.v2_active = False; self.v2_lease_id = 0
-                self.v2_status_var.set("V2A 租约已失效，目标端已自动退出")
+                self.v2_status_var.set("无桨验收租约已失效，目标端已自动退出")
             else:
                 self.v2_status_var.set(
-                    f"V2A active={values.get('active')} stage={values.get('stage')} "
+                    f"无桨验收 active={values.get('active')} stage={values.get('stage')} "
                     f"lease={values.get('lease')} sample={values.get('sample')} seq={values.get('seq')}")
         if line.startswith(("ACCEPT context", "ACCEPT motion", "ACCEPT control", "ACCEPT servo")):
             self.v2_live_var.set(line)
@@ -3144,18 +4599,24 @@ class DronePanel(tk.Tk):
         return self.v1_stage_by_label[self.v1_stage_var.get()]
 
     def _v1_refresh_controls(self) -> None:
-        if not hasattr(self, "v1_start_button"):
+        # 用整页最后建出来的控件做守卫，页面半成品时不会被定时器提前调进来。
+        if not hasattr(self, "v1_discard_button"):
             return
-        gate_ok, _reason = self._firmware_snapshot_gate()
+        gate_ok, _reason = self._validation_live_safety_gate()
         safe = gate_ok and self.validation_props_removed_var.get() and self.validation_power_safe_var.get()
         busy = self.v1_worker is not None and self.v1_worker.is_alive()
         self.v1_start_button.configure(state=tk.NORMAL if safe and self.v1_session is not None and not busy else tk.DISABLED)
         self.v1_finish_button.configure(state=tk.NORMAL if busy else tk.DISABLED)
         self.v1_analyze_button.configure(state=tk.NORMAL if self.v1_session is not None and bool(self.v1_session.captures) and not busy else tk.DISABLED)
+        selected = self.v1_row_record.get(self.v1_capture_tree.focus())
+        self.v1_discard_button.configure(state=tk.NORMAL if selected is not None and not busy else tk.DISABLED)
+        # WARN = 六面摆得不够一致（折合几度），数据本身没问题。拿它去标仍然远好于
+        # 不标，代价已经写在结论里，收不收由人决定 —— PX4 连这道检查都没有。
+        usable = {MetrologyStatus.PASS, MetrologyStatus.WARN}
         candidate_pass = bool(
             self.v1_analysis_summary is not None
-            and self.v1_analysis_summary.accelerometer_status is MetrologyStatus.PASS
-            and self.v1_analysis_summary.gyro_static_status is MetrologyStatus.PASS
+            and self.v1_analysis_summary.accelerometer_status in usable
+            and self.v1_analysis_summary.gyro_static_status in usable
         )
         self.v1_apply_button.configure(
             state=tk.NORMAL if safe and candidate_pass and not busy and not self.v1_candidate_applied else tk.DISABLED)
@@ -3171,7 +4632,8 @@ class DronePanel(tk.Tk):
         self.v1_analysis_summary = None
         self.v1_encoded_candidate = None
         self.v1_candidate_applied = False
-        self.v1_status_var.set("V1 会话已建立：选择姿态步骤，然后开始采集")
+        self.v1_probe_cache.clear()
+        self.v1_status_var.set("IMU 校准会话已建立：选择姿态步骤，然后开始采集")
         self._v1_render_session()
 
     def _v1_load_latest_session(self) -> None:
@@ -3180,42 +4642,324 @@ class DronePanel(tk.Tk):
             return
         try:
             self.v1_session = load_v1_session(path); self.v1_manifest_path = path
-            self.v1_status_var.set("已恢复最近一次 V1 会话：可继续未完成的采集步骤")
+            self.v1_probe_cache.clear()
+            self.v1_status_var.set("已恢复最近一次 IMU 校准会话：可继续未完成的采集步骤")
             self._v1_render_session()
         except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
-            self.v1_status_var.set(f"V1 会话恢复失败：{exc}")
+            self.v1_status_var.set(f"IMU 校准会话恢复失败：{exc}")
+
+    # ---- 静止漂移自检 -------------------------------------------------
+
+    def _drift_start(self) -> None:
+        if self.drift_recording:
+            return
+        if not self._transport_connected():
+            messagebox.showwarning("静止漂移自检", "先连接飞控")
+            return
+        try:
+            seconds = max(float(self.drift_duration_var.get()), drift.MIN_DURATION_S)
+        except ValueError:
+            seconds = drift.RECOMMENDED_DURATION_S
+        self.drift_samples = []
+        self.drift_last_sequence = -1
+        self.drift_recording = True
+        self.drift_deadline = time.monotonic() + seconds
+        self.drift_report = None
+        self.drift_compare_var.set("")
+        self.drift_result_var.set("")
+        self.drift_start_button.configure(state=tk.DISABLED)
+        self.drift_stop_button.configure(state=tk.NORMAL)
+        self.drift_baseline_button.configure(state=tk.DISABLED)
+        self.drift_status_var.set(f"录制中：剩余 {seconds:.0f} 秒，别碰飞机也别碰桌子")
+
+    def _drift_stop(self) -> None:
+        if not self.drift_recording:
+            return
+        self.drift_recording = False
+        self.drift_start_button.configure(state=tk.NORMAL)
+        self.drift_stop_button.configure(state=tk.DISABLED)
+        context = {
+            "cal_generation": self.imu_calibration_generation,
+            "firmware_crc32": self.imu_calibration_firmware_crc32,
+            "sample_source": "IMU telemetry stream",
+        }
+        report = drift.analyze_drift(self.drift_samples, context=context)
+        self.drift_report = report
+        self.drift_result_var.set(
+            drift.summarise(report) + "\n" + "\n".join("· " + item for item in report.findings))
+        try:
+            path = drift.write_report(report)
+            self.drift_status_var.set(f"录制结束，已存档：{path}")
+        except OSError as exc:
+            self.drift_status_var.set(f"录制结束，但存档失败：{exc}")
+        self.drift_baseline_button.configure(state=tk.NORMAL)
+        self._drift_render_comparison()
+
+    def _drift_set_baseline(self) -> None:
+        if self.drift_report is None:
+            return
+        self.drift_baseline = self.drift_report
+        self.drift_compare_var.set(
+            "已把这次结果设为对照组。现在去应用/写入标定，再录一次就能看到差值。")
+
+    def _drift_load_previous(self) -> None:
+        recent = drift.recent_reports(limit=2)
+        if not recent:
+            self.drift_compare_var.set("还没有历史录制可以对比。")
+            return
+        # 最近一条通常就是刚存的这次，所以对照组取次新的那条。
+        index = 1 if (len(recent) > 1 and self.drift_report is not None) else 0
+        self.drift_baseline_path, self.drift_baseline = recent[index]
+        self._drift_render_comparison()
+
+    def _drift_render_comparison(self) -> None:
+        if self.drift_baseline is None or self.drift_report is None:
+            return
+        lines = drift.compare(self.drift_baseline, self.drift_report)
+        header = "A/B 对比（对照组 → 本次）"
+        if self.drift_baseline_path is not None:
+            header += f"，对照组来自 {self.drift_baseline_path.name}"
+        self.drift_compare_var.set(header + "\n" + "\n".join("  " + item for item in lines))
+
+    def _drift_accept_sample(self, values: dict[str, str]) -> None:
+        """从 IMU 遥测流里取一帧。
+
+        飞控一次回两行、同一个 seq：先是带 ts_ms/temp_cdeg 的那行，随后才是带
+        ax/gx/roll 的读数行。所以先缓存表头行，等读数行到了再合成一帧；seq 对不上
+        就丢弃，宁可少一帧也不要把两次快照拼在一起。
+        """
+        if not self.drift_recording:
+            return
+        sequence = safe_int(values.get("seq"), -1)
+        if sequence < 0:
+            return
+        if "ts_ms" in values:
+            self._drift_pending_motion = {
+                "seq": sequence,
+                "timestamp_s": safe_int(values.get("ts_ms"), 0) / 1000.0,
+                "temperature_c": safe_int(values.get("temp_cdeg"), 2500) / 100.0,
+            }
+            return
+        if "gx" not in values:
+            return
+        header = self._drift_pending_motion
+        if header is None or header["seq"] != sequence or sequence == self.drift_last_sequence:
+            return
+        self._drift_pending_motion = None
+        self.drift_last_sequence = sequence
+        self.drift_samples.append(drift.DriftSample(
+            timestamp_s=header["timestamp_s"],
+            gyro_dps=tuple(safe_int(values.get(k), 0) / 1000.0 for k in ("gx", "gy", "gz")),
+            accel_g=tuple(safe_int(values.get(k), 0) / 1000.0 for k in ("ax", "ay", "az")),
+            attitude_deg=tuple(safe_int(values.get(k), 0) / 100.0 for k in ("roll", "pitch", "yaw")),
+            temperature_c=header["temperature_c"],
+            sequence=sequence,
+        ))
+
+    def _drift_tick(self) -> None:
+        if self.drift_recording:
+            remaining = self.drift_deadline - time.monotonic()
+            if remaining <= 0.0:
+                self._drift_stop()
+            else:
+                self.drift_status_var.set(
+                    f"录制中：剩余 {remaining:.0f} 秒，已采 {len(self.drift_samples)} 帧"
+                    "，别碰飞机也别碰桌子")
+        self.after(500, self._drift_tick)
+
+    def _v1_probe(self, record):
+        """带 mtime 缓存的单条体检：同一份 CSV 只读一次。"""
+        assert self.v1_manifest_path is not None
+        path = self.v1_manifest_path.parent / record.csv_path
+        try:
+            key = (record.csv_path, path.stat().st_mtime_ns)
+        except OSError:
+            key = (record.csv_path, -1)
+        if key not in self.v1_probe_cache:
+            self.v1_probe_cache[key] = probe_v1_capture(self.v1_manifest_path, record)
+        return self.v1_probe_cache[key]
+
+    @staticmethod
+    def _v1_describe_analysis(summary) -> str:
+        """只报流程里真有的两组，并把 findings 原样带出来。
+
+        原来只显示 accel=FAIL，用户看不到"为什么 FAIL"，只能六面全部重采。
+        """
+        parts = [f"六面 accel={summary.accelerometer_status.value}",
+                 f"陀螺静止={summary.gyro_static_status.value}"]
+        for label, status in (("手动 +360°", summary.gyro_rotation_status),
+                              ("温度平台", summary.temperature_status)):
+            if status is not MetrologyStatus.NOT_RUN:
+                parts.append(f"{label}（已移除，仅存档）={status.value}")
+        text = " · ".join(parts)
+        if summary.findings:
+            text += "\n原因：" + "；".join(summary.findings)
+        worst = sorted(summary.face_residuals.items(), key=lambda item: -item[1][0])[:2]
+        if worst and worst[0][1][0] > V1_FACE_RESIDUAL_WARN_G:
+            names = "、".join(
+                f"{V1_STAGE_LABELS.get(stage, stage)} 残差 {rms:.3f}g/倾角 {tilt:.1f}°"
+                for stage, (rms, tilt) in worst)
+            blocking = worst[0][1][0] > V1_FACE_RESIDUAL_FAIL_G
+            lead = "必须重采" if blocking else "想更准就重采"
+            text += (f"\n{lead}：{names}。"
+                     "3x3 能吸收一对正负面的平均倾角（单面歪多少无所谓），但吸收不了同一对"
+                     "内部的差值。让这一对靠同一个基准面（书立/纸盒角）翻转 180° 各采一次，"
+                     "差值自然接近 0。")
+        text += f"\ncandidate={summary.candidate_path}"
+        return text
+
+    def _v1_stage_verdict(self, plan):
+        """把整组分析结论落回它所属的每一步 —— 六面是一起判的，不存在单面结论。"""
+        summary = self.v1_analysis_summary
+        if summary is None or plan is None:
+            return None
+        if plan.stage is MetrologyStage.GYRO_STATIC:
+            return summary.gyro_static_status
+        if plan.stage is MetrologyStage.TEMPERATURE_STATIC:
+            return summary.temperature_status
+        if plan.stage.value.startswith("gyro_pos_360"):
+            return summary.gyro_rotation_status
+        return summary.accelerometer_status
+
+    def _v1_session_rows(self):
+        """固定按 CAPTURE_PLANS 顺序展开；未采集的步骤也占一行，进度一眼可见。"""
+        records = list(self.v1_session.captures) if self.v1_session is not None else []
+        rows = []
+        for plan in CAPTURE_PLANS:
+            matching = [record for record in records if record.stage == plan.stage.value]
+            if matching:
+                rows.extend((plan, record) for record in matching)
+            else:
+                rows.append((plan, None))
+        known = {plan.stage.value for plan in CAPTURE_PLANS}
+        rows.extend((None, record) for record in records if record.stage not in known)
+        return rows
 
     def _v1_render_session(self) -> None:
         if self.v1_session is None:
             return
-        for item in self.v1_capture_tree.get_children(): self.v1_capture_tree.delete(item)
-        for index, record in enumerate(self.v1_session.captures):
-            self.v1_capture_tree.insert("", tk.END, iid=f"v1-{index}", values=(record.stage, record.temperature_platform or "-", record.sample_count, record.csv_path))
-        self.v1_counts_var.set(f"session={self.v1_session.session_id} · captures={len(self.v1_session.captures)} · manifest={self.v1_manifest_path}")
+        for item in self.v1_capture_tree.get_children():
+            self.v1_capture_tree.delete(item)
+        self.v1_row_plan.clear(); self.v1_row_record.clear()
+        conflicts = v1_context_conflicts(self.v1_session, self.v1_manifest_path)
+        seen_stage: set[tuple[str, str | None]] = set()
+        captured = blocking = 0
+        for index, (plan, record) in enumerate(self._v1_session_rows()):
+            iid = f"v1-{index}"
+            if plan is not None:
+                label = plan.label
+            else:
+                stage = MetrologyStage(record.stage)
+                label = "已移除：" + RETIRED_STAGE_LABELS.get(stage, record.stage)
+            if record is None:
+                self.v1_capture_tree.insert(
+                    "", tk.END, iid=iid, text=label,
+                    values=("-", f"0 / {v1_minimum_samples(plan.stage)}", "-", "未采集", "-", "-"),
+                    tags=("muted",))
+                self.v1_row_plan[iid] = plan
+                continue
+            health = self._v1_probe(record)
+            key = (record.stage, record.temperature_platform)
+            duplicate = key in seen_stage
+            seen_stage.add(key)
+            verdict = self._v1_stage_verdict(plan)
+            verdict_text = verdict.value if verdict is not None else "-"
+            measured = (self.v1_analysis_summary.face_residuals.get(record.stage)
+                        if self.v1_analysis_summary is not None else None)
+            if measured is not None:
+                rms, tilt = measured
+                verdict_text = f"{verdict_text} 残差{rms:.3f}g 倾角{tilt:.1f}°"
+            detail = health.detail
+            tag = {"ok": "pass", "short": "warn", "angle": "warn",
+                   "rate": "fail", "unreadable": "fail"}[health.level]
+            if duplicate:
+                # 老会话里可能有同一步骤的两份数据；重复的必然进不了分析，直接标红提示删除。
+                tag, detail = "fail", "同一步骤重复采集，请删除其中一条"
+            elif record.csv_path in conflicts:
+                # 换过固件或标定代次的那几条会让整份候选被拒，必须在点分析之前看见。
+                tag, detail = "fail", conflicts[record.csv_path]
+            if tag == "fail":
+                blocking += 1
+            elif health.level == "ok":
+                captured += 1
+            # 采集本身没毛病、是这一面摆歪了：采集质量列保持"可用"，由分析结论列点名。
+            # 只有超过 FAIL 档才标红，超过 PASS 档标黄 —— 徒手摆六面本来就到不了 PASS 档。
+            if tag != "fail" and measured is not None:
+                if measured[0] > V1_FACE_RESIDUAL_FAIL_G:
+                    tag = "fail"
+                elif measured[0] > V1_FACE_RESIDUAL_WARN_G and tag == "pass":
+                    tag = "warn"
+            self.v1_capture_tree.insert(
+                "", tk.END, iid=iid, text=label,
+                values=(
+                    record.temperature_platform or "-",
+                    f"{health.sample_count} / {health.required_samples}",
+                    f"{health.rate_hz:.0f} Hz" if health.rate_hz > 0.0 else "-",
+                    detail,
+                    verdict_text,
+                    record.csv_path,
+                ),
+                tags=(tag,))
+            self.v1_row_plan[iid] = plan
+            self.v1_row_record[iid] = record
+        blocker = f" · {blocking} 条必须删除重采" if blocking else ""
+        self.v1_counts_var.set(
+            f"session={self.v1_session.session_id} · 可用证据 {captured}/{len(CAPTURE_PLANS)} 步"
+            f"{blocker} · manifest={self.v1_manifest_path}")
         self._v1_refresh_controls()
+
+    def _v1_on_row_selected(self, _event=None) -> None:
+        iid = self.v1_capture_tree.focus()
+        plan = self.v1_row_plan.get(iid)
+        if plan is not None:
+            self.v1_stage_var.set(plan.label)
+            record = self.v1_row_record.get(iid)
+        self._v1_refresh_controls()
+
+    def _v1_discard_selected(self) -> None:
+        iid = self.v1_capture_tree.focus()
+        record = self.v1_row_record.get(iid)
+        if record is None or self.v1_session is None or self.v1_manifest_path is None:
+            return
+        if not messagebox.askyesno(
+            "删除采集",
+            f"删除 {record.stage}（{record.sample_count} 样本）？\n"
+            f"原始 CSV 会移到 {DISCARDED_DIRNAME}/ 子目录，可手工找回。",
+        ):
+            return
+        try:
+            self.v1_session, removed = discard_v1_capture(
+                self.v1_session, self.v1_manifest_path, csv_path=record.csv_path)
+        except (OSError, ValueError) as exc:
+            messagebox.showerror("IMU 校准", f"删除失败：{exc}")
+            return
+        # 证据变了，之前那份分析结论就不再对应当前会话，必须作废。
+        self.v1_analysis_summary = None
+        self.v1_encoded_candidate = None
+        self.v1_analysis_var.set("证据已变更：请重新执行“分析并保存候选”")
+        self.v1_status_var.set(f"已删除 {removed.stage}：原始 CSV 移入 {DISCARDED_DIRNAME}/，可重新采集本步")
+        self._v1_render_session()
 
     def _v1_start_capture(self) -> None:
         if self.v1_session is None or self.v1_manifest_path is None:
             self._v1_new_session()
-        gate_ok, reason = self._firmware_snapshot_gate()
+        gate_ok, reason = self._validation_live_safety_gate()
         if not gate_ok or not self.validation_props_removed_var.get() or not self.validation_power_safe_var.get():
-            messagebox.showwarning("V1 安全门未通过", reason if not gate_ok else "必须拆桨并隔离动力")
+            messagebox.showwarning("IMU 校准安全门未通过", reason if not gate_ok else "必须拆桨并隔离动力")
             return
         port = self.serial_transport.active_port
         if not port:
-            messagebox.showwarning("V1 USB CDC", "没有当前 active USB CDC")
+            messagebox.showwarning("IMU 校准 USB CDC", "没有当前 active USB CDC")
             return
         plan = self._v1_selected_plan()
-        platform = self.v1_temperature_platform_var.get().strip() if plan.temperature_platform_required else None
-        if plan.temperature_platform_required and not platform:
-            messagebox.showwarning("温度平台", "请输入明确的平台标签，例如 room/cold/warm")
-            return
+        # 温度平台步骤已从 CAPTURE_PLANS 移除，采集流程里不再有需要标签的步骤。
+        platform = None
         self.v1_finish_event = threading.Event(); self.v1_cancel_event = threading.Event(); self.v1_progress.configure(value=0)
         baud = int(self.serial_baud_var.get())
         self.serial_transport.stop(); self._refresh_serial_selection_lock()
         self._serial_port_combo.configure(state=tk.DISABLED)
         self._serial_refresh_button.configure(state=tk.DISABLED)
-        self.v1_status_var.set(f"V1 采集中：{plan.label}；USB CDC 已由面板安全让渡给 IMUCAP")
+        self.v1_status_var.set(f"IMU 校准采集中：{plan.label}；USB CDC 已由面板安全让渡给 IMUCAP")
         self.v1_worker = threading.Thread(target=self._v1_capture_worker, args=(port, baud, plan, platform), daemon=True)
         self.v1_worker.start(); self._v1_refresh_controls()
 
@@ -3226,6 +4970,18 @@ class DronePanel(tk.Tk):
         link = None
         try:
             time.sleep(0.25); link = CaptureLink(port, baud=baud, timeout=0.25)
+            # 采集窗口只有 requested_samples/1kHz 秒，按下按钮就开录的话，手还没扶稳
+            # 窗口已经用掉一截。先给一段准备倒计时，"完成本步"可以提前开始。
+            window_s = plan.requested_samples / 1000.0
+            hint = f"，全程保持静止（{window_s:.1f}s）"
+            for remaining in range(V1_CAPTURE_PREP_SECONDS, 0, -1):
+                if self.v1_cancel_event.is_set():
+                    raise RuntimeError("V1 capture cancelled")
+                self.v1_event_queue.put((
+                    "status", f"{plan.label}：{remaining} 秒后开始录制{hint}"))
+                if self.v1_finish_event.wait(1.0):
+                    self.v1_finish_event.clear()
+                    break
             link.send(f"IMUCAP START {plan.requested_samples}")
             deadline = time.monotonic() + 2.0
             started = False
@@ -3236,9 +4992,14 @@ class DronePanel(tk.Tk):
                     break
             if not started:
                 raise RuntimeError("IMUCAP START did not return an explicit ok")
-            self.v1_event_queue.put(("status", f"IMUCAP recording {plan.label}"))
             capture_deadline = time.monotonic() + plan.maximum_samples / 1000.0 + 0.75
             while time.monotonic() < capture_deadline and not self.v1_finish_event.is_set() and not self.v1_cancel_event.is_set():
+                remaining = capture_deadline - time.monotonic()
+                # 录制中必须有秒数在跳，否则 6 秒的窗口在体感上就是"愣一下就结束了"。
+                self.v1_event_queue.put((
+                    "progress",
+                    (f"● 正在录制 {plan.label}：剩余 {max(remaining, 0.0):.1f}s{hint}",
+                     1.0 - max(remaining, 0.0) / (plan.maximum_samples / 1000.0 + 0.75))))
                 self.v1_cancel_event.wait(0.1)
             if self.v1_cancel_event.is_set(): raise RuntimeError("V1 capture cancelled")
             link.send("IMUCAP STOP")
@@ -3255,10 +5016,13 @@ class DronePanel(tk.Tk):
             link.send("IMUCAP DUMP")
             samples, header = link.read_blocks(timeout_s=45.0, verbose=False, progress=lambda text, fraction: self.v1_event_queue.put(("progress", (text, fraction))))
             assert self.v1_session is not None and self.v1_manifest_path is not None
+            replaced = any(
+                item.stage == plan.stage.value and item.temperature_platform == platform
+                for item in self.v1_session.captures)
             updated, record = persist_v1_capture(self.v1_session, self.v1_manifest_path, stage=plan.stage, samples=samples, header=header, temperature_platform=platform)
-            self.v1_event_queue.put(("capture", (updated, record)))
+            self.v1_event_queue.put(("capture", (updated, record, replaced)))
         except Exception as exc:
-            self.v1_event_queue.put(("error", f"V1 采集失败：{exc}"))
+            self.v1_event_queue.put(("error", f"IMU 校准采集失败：{exc}"))
         finally:
             if link is not None:
                 try: link.close()
@@ -3267,24 +5031,24 @@ class DronePanel(tk.Tk):
 
     def _v1_start_analysis(self) -> None:
         if self.v1_session is None or self.v1_manifest_path is None: return
-        self.v1_status_var.set("正在离线分析 V1 原始证据…")
+        self.v1_status_var.set("正在离线分析 IMU 原始校准证据…")
         self.v1_worker = threading.Thread(target=self._v1_analysis_worker, args=(self.v1_session, self.v1_manifest_path), daemon=True)
         self.v1_worker.start(); self._v1_refresh_controls()
 
     def _v1_analysis_worker(self, session: V1Session, manifest: Path) -> None:
         try: self.v1_event_queue.put(("analysis", analyze_session(session, manifest)))
-        except Exception as exc: self.v1_event_queue.put(("error", f"V1 分析失败：{exc}"))
+        except Exception as exc: self.v1_event_queue.put(("error", f"IMU 校准分析失败：{exc}"))
 
     def _v1_begin_target_action(self, action: str) -> None:
         if self.v1_session is None or self.v1_manifest_path is None:
             return
-        gate_ok, reason = self._firmware_snapshot_gate()
+        gate_ok, reason = self._validation_live_safety_gate()
         if not gate_ok or not self.validation_props_removed_var.get() or not self.validation_power_safe_var.get():
-            messagebox.showwarning("V1 安全门未通过", reason if not gate_ok else "必须拆桨并隔离动力")
+            messagebox.showwarning("IMU 校准安全门未通过", reason if not gate_ok else "必须拆桨并隔离动力")
             return
         port = self.serial_transport.active_port
         if not port:
-            messagebox.showwarning("V1 USB CDC", "没有当前 active USB CDC")
+            messagebox.showwarning("IMU 校准 USB CDC", "没有当前 active USB CDC")
             return
         try:
             if action == "apply":
@@ -3294,11 +5058,22 @@ class DronePanel(tk.Tk):
                 encoded = load_and_encode_v1_candidate(
                     self.v1_analysis_summary.candidate_path, samples)
             else:
-                if not self.v1_candidate_applied or self.v1_encoded_candidate is None:
-                    raise ValueError("当前软件没有可确认的 RAM 候选")
+                if not self.v1_candidate_applied:
+                    raise ValueError("飞控 RAM 里没有候选；先点“读取飞机 IMU 校准状态”确认")
                 encoded = self.v1_encoded_candidate
+                if encoded is None:
+                    # 候选是上一次面板会话（或别的进程）应用的：从同一份候选文件重新
+                    # 编码，撤销/写盘就不必先拔电重来。编码里带完整重放校验，
+                    # 对不上号会在这里报错，不会拿错的东西去写 Flash。
+                    if self.v1_analysis_summary is None:
+                        raise ValueError(
+                            "飞控 RAM 里有候选，但本次会话没有对应的分析结果；"
+                            "请先“分析并保存候选”，或直接“撤销 RAM 候选”")
+                    samples = load_v1_session_samples(self.v1_session, self.v1_manifest_path)
+                    encoded = load_and_encode_v1_candidate(
+                        self.v1_analysis_summary.candidate_path, samples)
         except (OSError, ValueError, TypeError) as exc:
-            messagebox.showerror("V1 候选不允许应用", str(exc))
+            messagebox.showerror("IMU 校准候选不允许应用", str(exc))
             return
         if action == "commit" and not messagebox.askyesno(
             "写入参数 Flash",
@@ -3319,6 +5094,27 @@ class DronePanel(tk.Tk):
             target=self._v1_target_worker,
             args=(port, baud, action, encoded), daemon=True)
         self.v1_worker.start(); self._v1_refresh_controls()
+
+    def _v1_sync_target_state(self, line: str) -> None:
+        """从飞控的 IMUCAL 回包同步"RAM 里有没有候选"。
+
+        原来这个状态只存在面板内存里：面板一重启（或候选是别的进程应用的），
+        撤销/写 Flash 两个按钮就永远是灰的，飞控里挂着候选却谁也动不了它，
+        只能拔电。飞控自己知道答案，问它就是了。
+        """
+        values = parse_imucal_line(line)
+        if "candidate" not in values or "applied" not in values:
+            return
+        applied = values.get("applied") == "1" or values.get("candidate") == "1"
+        if applied == self.v1_candidate_applied:
+            return
+        self.v1_candidate_applied = applied
+        if applied:
+            self.v1_status_var.set(
+                "飞控 RAM 里已有候选（电机保持锁定）：可直接“撤销”或“确认后写入参数 Flash”")
+        else:
+            self.v1_encoded_candidate = None
+        self._v1_refresh_controls()
 
     def _v1_apply_candidate(self) -> None:
         self._v1_begin_target_action("apply")
@@ -3349,7 +5145,7 @@ class DronePanel(tk.Tk):
                 encoded=encoded, result=result)
             self.v1_event_queue.put(("target", (action, encoded, record_path)))
         except Exception as exc:
-            self.v1_event_queue.put(("error", f"V1 {action} 失败：{exc}"))
+            self.v1_event_queue.put(("error", f"IMU 校准 {action} 失败：{exc}"))
         finally:
             if link is not None:
                 try: link.close()
@@ -3364,9 +5160,26 @@ class DronePanel(tk.Tk):
                 elif kind == "progress":
                     text_value, fraction = payload; self.v1_status_var.set(str(text_value)); self.v1_progress.configure(value=float(fraction) * 100.0)
                 elif kind == "capture":
-                    self.v1_session, _record = payload; self.v1_progress.configure(value=100.0); self.v1_status_var.set("本步原始证据已保存：可继续下一步或执行离线分析"); self._v1_render_session()
+                    self.v1_session, record, replaced = payload
+                    self.v1_progress.configure(value=100.0)
+                    # 新证据进来，旧分析结论立刻作废，避免拿过期结论去 apply。
+                    self.v1_analysis_summary = None
+                    self.v1_encoded_candidate = None
+                    self.v1_analysis_var.set("证据已变更：请重新执行“分析并保存候选”")
+                    self.v1_status_var.set(
+                        f"{record.stage} 已保存 {record.sample_count} 样本"
+                        + ("，并替换了同步骤的旧数据（移入 discarded/）" if replaced else "")
+                        + "：可继续下一步或执行离线分析")
+                    self._v1_render_session()
                 elif kind == "analysis":
-                    summary = payload; self.v1_analysis_summary = summary; self.v1_encoded_candidate = None; self.v1_candidate_applied = False; self.v1_status_var.set(summary.status_line); self.v1_analysis_var.set(f"accel={summary.accelerometer_status.value} · gyro static={summary.gyro_static_status.value} · gyro +360={summary.gyro_rotation_status.value} · temperature={summary.temperature_status.value} · overall={summary.overall_status.value} · candidate={summary.candidate_path}")
+                    summary = payload
+                    self.v1_analysis_summary = summary
+                    self.v1_encoded_candidate = None
+                    self.v1_candidate_applied = False
+                    self.v1_status_var.set(summary.status_line)
+                    self.v1_analysis_var.set(self._v1_describe_analysis(summary))
+                    # 结论出来了必须重绘，否则"分析结论"那一列永远停在 "-"。
+                    self._v1_render_session()
                 elif kind == "target":
                     action, encoded, record_path = payload
                     if action == "apply":
@@ -3377,8 +5190,8 @@ class DronePanel(tk.Tk):
                         self.v1_status_var.set(f"RAM 候选已撤销，已恢复 Flash 确认参数。记录：{record_path}")
                     else:
                         self.v1_encoded_candidate = None; self.v1_candidate_applied = False
-                        self.v1_status_var.set(f"V1 参数已写入并由 dirty=0 确认。记录：{record_path}")
-                elif kind == "error": self.v1_status_var.set(str(payload)); messagebox.showerror("V1", str(payload))
+                        self.v1_status_var.set(f"IMU 参数已写入并由 dirty=0 确认。记录：{record_path}")
+                elif kind == "error": self.v1_status_var.set(str(payload)); messagebox.showerror("IMU 校准", str(payload))
                 elif kind == "reconnect":
                     port, baud = payload
                     if self.transport is self.serial_transport:
@@ -3386,6 +5199,788 @@ class DronePanel(tk.Tk):
                 if kind in {"capture", "analysis", "target", "error"}: self.v1_worker = None
         except queue.Empty: pass
         self._v1_refresh_controls(); self.after(100, self._v1_drain_events)
+
+    # ------------------------------------------------------------------
+    # 04 · 遥控 RC
+    # ------------------------------------------------------------------
+
+    def _build_rc_page(self, parent: ttk.Frame) -> None:
+        header = ttk.Frame(parent)
+        header.pack(fill=tk.X)
+        ttk.Label(header, text="遥控通道标定", style="PageTitle.TLabel").pack(side=tk.LEFT)
+        ttk.Label(header, textvariable=self.rc_link_var, style="Muted.TLabel").pack(side=tk.RIGHT)
+        ttk.Label(
+            parent,
+            text=(
+                "把通道号、正反向和端点行程从固件里挪出来：先看实时通道确认接收机在收，"
+                "再用「自动识别」把每个功能绑到对应的那一路，最后走一次端点标定并写入 Flash。"
+                "所有写操作都要求飞控处于上锁状态。"
+            ),
+            wraplength=1120,
+            style="Muted.TLabel",
+        ).pack(fill=tk.X, pady=(4, 10))
+        ttk.Frame(parent, height=1, style="Rule.TFrame").pack(fill=tk.X, pady=(0, 8))
+
+        live = ttk.LabelFrame(parent, text="1 · 实时通道", padding=10)
+        live.pack(fill=tk.X)
+        bars = ttk.Frame(live)
+        bars.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        bars.columnconfigure(1, weight=1)
+        self.rc_channel_bars = []
+        self.rc_channel_labels = []
+        for index in range(RC_CHANNEL_COUNT):
+            row = index % 8
+            column = (index // 8) * 3
+            ttk.Label(bars, text=f"CH{index + 1}", width=5, style="Muted.TLabel").grid(
+                row=row, column=column, sticky=tk.W, padx=(0 if column == 0 else 16, 4), pady=1
+            )
+            bar = ttk.Progressbar(bars, maximum=1000.0, length=170)
+            bar.grid(row=row, column=column + 1, sticky=tk.EW, pady=1)
+            value = tk.StringVar(value="----")
+            ttk.Label(bars, textvariable=value, width=6, style="Mono.TLabel").grid(
+                row=row, column=column + 2, sticky=tk.W, padx=(6, 0), pady=1
+            )
+            self.rc_channel_bars.append(bar)
+            self.rc_channel_labels.append(value)
+        bars.columnconfigure(1, weight=1)
+        bars.columnconfigure(4, weight=1)
+
+        sticks = ttk.Frame(live)
+        sticks.pack(side=tk.RIGHT, padx=(18, 0))
+        self.rc_stick_canvas = tk.Canvas(
+            sticks, width=250, height=126, highlightthickness=0,
+            background=UI_PALETTE["console"],
+        )
+        self.rc_stick_canvas.pack()
+        ttk.Label(
+            sticks, text="左：油门 / 转向     右：前后 / 左右",
+            style="Muted.TLabel",
+        ).pack(pady=(4, 0))
+
+        wizard = ttk.LabelFrame(parent, text="2 · 引导校准（推荐）", padding=10)
+        wizard.pack(fill=tk.X, pady=(9, 0))
+        ttk.Label(
+            wizard,
+            text=(
+                "按提示依次把每根杆和开关推到两端。一次走完就能定出「哪一路是哪个功能」、"
+                "「方向正不正」和「行程两端在哪」三件事——不用先知道通道号。"
+                "自动回中的杆保留实测中位（吃掉发射机微调）；油门和开关不自回中，"
+                "中位按实测行程中点推算，不看开始时停在哪。"
+            ),
+            style="Muted.TLabel", wraplength=1080,
+        ).pack(fill=tk.X)
+        prompt = ttk.Frame(wizard)
+        prompt.pack(fill=tk.X, pady=(8, 0))
+        ttk.Label(prompt, textvariable=self.rc_wizard_step_var, width=10,
+                  style="Muted.TLabel").pack(side=tk.LEFT)
+        ttk.Label(prompt, textvariable=self.rc_wizard_prompt_var,
+                  style="SectionTitle.TLabel", wraplength=680).pack(side=tk.LEFT)
+        ttk.Label(prompt, textvariable=self.rc_wizard_detect_var,
+                  style="Mono.TLabel").pack(side=tk.RIGHT)
+        self.rc_wizard_progress = ttk.Progressbar(
+            wizard, mode="determinate", maximum=float(len(RC_WIZARD_STEPS)),
+            variable=self.rc_wizard_progress_var,
+        )
+        self.rc_wizard_progress.pack(fill=tk.X, pady=(8, 0))
+        wizard_buttons = ttk.Frame(wizard)
+        wizard_buttons.pack(fill=tk.X, pady=(8, 0))
+        self.rc_wizard_start_button = ttk.Button(
+            wizard_buttons, text="开始引导校准", style="Primary.TButton",
+            command=self._rc_wizard_start,
+        )
+        self.rc_wizard_start_button.pack(side=tk.LEFT)
+        self.rc_wizard_back_button = ttk.Button(
+            wizard_buttons, text="上一步", style="Secondary.TButton",
+            command=self._rc_wizard_back, state=tk.DISABLED,
+        )
+        self.rc_wizard_back_button.pack(side=tk.LEFT, padx=(8, 0))
+        self.rc_wizard_skip_button = ttk.Button(
+            wizard_buttons, text="跳过这步", style="Secondary.TButton",
+            command=self._rc_wizard_skip, state=tk.DISABLED,
+        )
+        self.rc_wizard_skip_button.pack(side=tk.LEFT, padx=(8, 0))
+        self.rc_wizard_cancel_button = ttk.Button(
+            wizard_buttons, text="取消", style="Danger.TButton",
+            command=self._rc_wizard_cancel, state=tk.DISABLED,
+        )
+        self.rc_wizard_cancel_button.pack(side=tk.LEFT, padx=(8, 0))
+        ttk.Label(wizard, textvariable=self.rc_wizard_result_var,
+                  style="Guide.TLabel", wraplength=1080).pack(fill=tk.X, pady=(8, 0))
+
+        mapping = ttk.LabelFrame(parent, text="3 · 功能绑定（引导结果，可手工微调）", padding=10)
+        mapping.pack(fill=tk.X, pady=(9, 0))
+        grid = ttk.Frame(mapping)
+        grid.pack(fill=tk.X)
+        headers = ("功能", "通道", "反向", "最小", "中位", "最大", "实时", "")
+        for column, title in enumerate(headers):
+            ttk.Label(grid, text=title, style="Muted.TLabel").grid(
+                row=0, column=column, sticky=tk.W, padx=(0, 10), pady=(0, 4)
+            )
+        self.rc_rows = {}
+        for row, (name, label) in enumerate(RC_FUNCTIONS, start=1):
+            entry: dict[str, tk.Variable] = {}
+            ttk.Label(grid, text=label).grid(row=row, column=0, sticky=tk.W, padx=(0, 10), pady=2)
+            entry["channel"] = tk.StringVar(value="-")
+            ttk.Combobox(
+                grid, textvariable=entry["channel"], width=6, state="readonly",
+                values=["-"] + [f"CH{i + 1}" for i in range(RC_CHANNEL_COUNT)],
+            ).grid(row=row, column=1, sticky=tk.W, padx=(0, 10), pady=2)
+            entry["reversed"] = tk.BooleanVar(value=False)
+            ttk.Checkbutton(grid, variable=entry["reversed"]).grid(
+                row=row, column=2, sticky=tk.W, padx=(0, 10), pady=2
+            )
+            for column, key in ((3, "min"), (4, "mid"), (5, "max")):
+                entry[key] = tk.StringVar(value="----")
+                ttk.Entry(grid, textvariable=entry[key], width=7).grid(
+                    row=row, column=column, sticky=tk.W, padx=(0, 10), pady=2
+                )
+            entry["live"] = tk.StringVar(value="----")
+            ttk.Label(grid, textvariable=entry["live"], width=12, style="Mono.TLabel").grid(
+                row=row, column=6, sticky=tk.W, padx=(0, 10), pady=2
+            )
+            ttk.Button(
+                grid, text="自动识别", style="Secondary.TButton",
+                command=lambda func=name: self._rc_start_detect(func),
+            ).grid(row=row, column=7, sticky=tk.W, pady=2)
+            self.rc_rows[name] = entry
+
+        deadband = ttk.Frame(mapping)
+        deadband.pack(fill=tk.X, pady=(8, 0))
+        ttk.Label(deadband, text="摇杆死区 µs").pack(side=tk.LEFT, padx=(0, 6))
+        ttk.Entry(deadband, textvariable=self.rc_deadband_var, width=7).pack(side=tk.LEFT)
+        ttk.Label(
+            deadband, textvariable=self.rc_detect_var, style="Guide.TLabel", wraplength=760,
+        ).pack(side=tk.LEFT, padx=(18, 0), fill=tk.X, expand=True)
+
+        cal = ttk.LabelFrame(parent, text="4 · 手工端点标定与写入", padding=10)
+        cal.pack(fill=tk.X, pady=(9, 0))
+        buttons = ttk.Frame(cal)
+        buttons.pack(fill=tk.X)
+        self.rc_center_button = ttk.Button(
+            buttons, text="① 记录中位（松杆）", style="Secondary.TButton",
+            command=self._rc_capture_center,
+        )
+        self.rc_center_button.pack(side=tk.LEFT)
+        self.rc_sweep_button = ttk.Button(
+            buttons, text="② 开始记录行程", style="Secondary.TButton",
+            command=self._rc_toggle_sweep,
+        )
+        self.rc_sweep_button.pack(side=tk.LEFT, padx=(8, 0))
+        ttk.Button(
+            buttons, text="从飞控读取", style="Secondary.TButton",
+            command=self._rc_request_map,
+        ).pack(side=tk.LEFT, padx=(18, 0))
+        ttk.Button(
+            buttons, text="应用到飞控 RAM", style="Secondary.TButton",
+            command=self._rc_apply_ram,
+        ).pack(side=tk.LEFT, padx=(8, 0))
+        self.rc_commit_button = ttk.Button(
+            buttons, text="③ 写入 Flash", style="Warning.TButton",
+            command=self._rc_commit,
+        )
+        self.rc_commit_button.pack(side=tk.LEFT, padx=(8, 0))
+        ttk.Button(
+            buttons, text="恢复出厂映射", style="Danger.TButton",
+            command=self._rc_reset_defaults,
+        ).pack(side=tk.RIGHT)
+        ttk.Label(
+            cal, textvariable=self.rc_status_var, style="Guide.TLabel", wraplength=1080,
+        ).pack(fill=tk.X, pady=(9, 0))
+        ttk.Label(
+            cal,
+            text=(
+                "走完上面的引导校准后这里通常不用碰。要单独补一路时：①松杆记录中位，"
+                "②开始记录行程、把要补的那一路推到两端、再点一次停止。"
+                "中位必须在最小和最大之间，行程至少 200 µs，否则飞控会拒绝写入。"
+            ),
+            style="Muted.TLabel", wraplength=1080,
+        ).pack(fill=tk.X, pady=(6, 0))
+
+        self._rc_refresh_controls()
+        self._rc_wizard_refresh()
+
+    # --- RC：状态读写 -------------------------------------------------
+
+    def _rc_row_entry(self, name: str) -> dict[str, int]:
+        """把界面上一行读成固件那套整数字段；无法解析时回落到默认值。"""
+        row = self.rc_rows[name]
+        label = row["channel"].get()
+        channel = int(label[2:]) - 1 if label.startswith("CH") else -1
+
+        def number(key: str, fallback: int) -> int:
+            try:
+                return int(float(row[key].get()))
+            except (TypeError, ValueError):
+                return fallback
+
+        return {
+            "channel": channel,
+            "reversed": 1 if row["reversed"].get() else 0,
+            "min": number("min", 1000),
+            "mid": number("mid", 1500),
+            "max": number("max", 2000),
+        }
+
+    def _rc_collect_map(self) -> dict[str, dict[str, int]]:
+        return {name: self._rc_row_entry(name) for name, _label in RC_FUNCTIONS}
+
+    def _rc_set_row(self, name: str, entry: dict[str, int]) -> None:
+        row = self.rc_rows[name]
+        channel = entry.get("channel", -1)
+        row["channel"].set(f"CH{channel + 1}" if channel >= 0 else "-")
+        row["reversed"].set(bool(entry.get("reversed")))
+        for key in ("min", "mid", "max"):
+            row[key].set(str(entry.get(key, 0)))
+
+    def _rc_deadband(self) -> int:
+        try:
+            return max(0, min(200, int(float(self.rc_deadband_var.get()))))
+        except (TypeError, ValueError):
+            return 20
+
+    def _rc_handle_live_line(self, line: str) -> None:
+        values = parse_kv(line)
+        if "us" in values:
+            try:
+                channels = [int(part) for part in values["us"].split(",")]
+            except ValueError:
+                return
+            if len(channels) == RC_CHANNEL_COUNT:
+                self.rc_channels = channels
+                self.rc_live_time = time.monotonic()
+                self._rc_accumulate(channels)
+            return
+        if "fresh" in values:
+            self.rc_link_values = values
+
+    def _rc_handle_map_line(self, line: str) -> None:
+        values = parse_kv(line)
+        if "func" in values:
+            channel = safe_int(values.get("ch"), -1)
+            self.rc_map_values[values["func"]] = {
+                "channel": channel,
+                "reversed": safe_int(values.get("rev"), 0),
+                "min": safe_int(values.get("min"), 1000),
+                "mid": safe_int(values.get("mid"), 1500),
+                "max": safe_int(values.get("max"), 2000),
+            }
+            if values["func"] in self.rc_rows:
+                self._rc_set_row(values["func"], self.rc_map_values[values["func"]])
+            return
+        if "state" in values:
+            self.rc_map_state = values["state"]
+            self.rc_deadband_var.set(values.get("deadband_us", "20"))
+            self.rc_status_var.set(self._rc_state_text(values))
+            self._rc_refresh_controls()
+
+    _RC_STATE_TEXT = {
+        "status": "已读取飞控当前映射",
+        "applied_ram": "已应用到飞控 RAM（尚未写 Flash，断电即失效）",
+        "reset_ram": "已恢复出厂映射到 RAM（尚未写 Flash）",
+        "committed": "已写入 Flash，重启后仍然生效",
+        "rejected": "飞控拒绝：映射非法（通道冲突 / 行程不足 / 中位越界）",
+        "armed_blocked": "飞控处于解锁状态，拒绝改遥控映射；请先上锁",
+        "commit_failed": "写 Flash 失败，映射仍只在 RAM 中",
+        "invalid_usage": "命令格式错误",
+        "bad_function": "飞控不认识这个功能名",
+    }
+
+    def _rc_state_text(self, values: dict[str, str]) -> str:
+        state = values.get("state", "")
+        text = self._RC_STATE_TEXT.get(state, f"飞控返回 state={state}")
+        dirty = safe_int(values.get("dirty"), 0)
+        valid = safe_int(values.get("valid"), 1)
+        suffix = []
+        if dirty:
+            suffix.append("RAM 与 Flash 不一致")
+        if not valid:
+            suffix.append("当前映射非法")
+        suffix.append(f"generation={values.get('generation', '-')}")
+        return text + "  ·  " + " · ".join(suffix)
+
+    # --- RC：自动识别与端点标定 ---------------------------------------
+
+    def _rc_accumulate(self, channels: list[int]) -> None:
+        self._rc_wizard_feed(channels)
+        if self.rc_detect_function is not None:
+            self.rc_detect_samples.append(list(channels))
+            if time.monotonic() >= self.rc_detect_deadline:
+                self._rc_finish_detect()
+        if self.rc_sweep_active:
+            if not self.rc_sweep_min:
+                self.rc_sweep_min = list(channels)
+                self.rc_sweep_max = list(channels)
+            else:
+                for index, value in enumerate(channels):
+                    self.rc_sweep_min[index] = min(self.rc_sweep_min[index], value)
+                    self.rc_sweep_max[index] = max(self.rc_sweep_max[index], value)
+
+    # --- RC：引导校准 --------------------------------------------------
+
+    def _rc_wizard_start(self) -> None:
+        if not self._rc_live_ok():
+            messagebox.showwarning(
+                "没有遥控数据",
+                "飞控还没有收到遥控帧。请先给发射机上电并确认接收机已对码，"
+                "「实时通道」里能看到数字跳动之后再开始。",
+            )
+            return
+        if not messagebox.askyesno(
+            "开始引导校准",
+            "开始前请确认：\n\n"
+            "  · 螺旋桨已经拆下\n"
+            "  · 飞控处于上锁状态\n"
+            "  · 会自动回中的杆（横滚 / 俯仰 / 偏航）松手\n"
+            "  · 油门和开关放哪都行——它们的中位由实测行程推算，不看现在的位置\n\n"
+            "接下来会逐步提示你把每根杆和开关推到两端。确定开始吗？",
+        ):
+            return
+        self.rc_wizard_active = True
+        self.rc_wizard_index = 0
+        self.rc_wizard_results = {}
+        self.rc_wizard_window = []
+        self.rc_wizard_armed = False
+        self.rc_wizard_release_channel = None
+        self.rc_wizard_baseline = list(self.rc_channels)
+        # 中位取"开始那一刻"的位置，所以上面的对话框特意要求先回中。
+        self.rc_wizard_center = list(self.rc_channels)
+        self.rc_wizard_min = list(self.rc_channels)
+        self.rc_wizard_max = list(self.rc_channels)
+        self.rc_wizard_result_var.set("")
+        self._rc_wizard_last_detail = ""
+        self._rc_wizard_trace("start", f"center={self.rc_wizard_center}")
+        self._rc_wizard_refresh()
+
+    def _rc_wizard_cancel(self) -> None:
+        self._rc_wizard_trace("cancel")
+        self.rc_wizard_active = False
+        self.rc_wizard_window = []
+        self.rc_wizard_detect_var.set("")
+        self.rc_wizard_prompt_var.set("已取消；映射未改动")
+        self.rc_wizard_step_var.set("")
+        self.rc_wizard_progress_var.set(0.0)
+        self._rc_wizard_refresh()
+
+    def _rc_wizard_skip(self) -> None:
+        if not self.rc_wizard_active:
+            return
+        self._rc_wizard_advance()
+
+    def _rc_wizard_back(self) -> None:
+        if not self.rc_wizard_active or self.rc_wizard_index == 0:
+            return
+        self.rc_wizard_index -= 1
+        function, direction, _prompt = RC_WIZARD_STEPS[self.rc_wizard_index]
+        self.rc_wizard_results.pop((function, direction), None)
+        self.rc_wizard_window = []
+        self.rc_wizard_armed = False
+        self.rc_wizard_release_channel = None
+        self._rc_wizard_refresh()
+
+    def _rc_wizard_advance(self, *, release_channel: int | None = None) -> None:
+        previous = RC_WIZARD_STEPS[self.rc_wizard_index][0]
+        self.rc_wizard_index += 1
+        self.rc_wizard_window = []
+        # 每进一步都必须重新过闸：先等读数稳定（必要时先松杆回中），再开始判定。
+        # 少了这一步，用户推到底不松手就会被连续判成 12 步全部完成。
+        self.rc_wizard_armed = False
+        if (
+            release_channel is not None
+            and self.rc_wizard_index < len(RC_WIZARD_STEPS)
+            and RC_WIZARD_STEPS[self.rc_wizard_index][0] == previous
+        ):
+            # 同一个功能的两步是同一根杆（前推 → 后拉），中间不必回中：用户本来就
+            # 是一路扫过去的，硬要求回中只是多余的摩擦。换功能时才需要松手。
+            release_channel = None
+        self.rc_wizard_release_channel = release_channel
+        if self.rc_wizard_index >= len(RC_WIZARD_STEPS):
+            self._rc_wizard_finish()
+        else:
+            self._rc_wizard_refresh()
+
+    def _rc_wizard_reference(self) -> list[int]:
+        """判定的参考是"本步开闸那一刻的静止状态"，不是固定中位。
+
+        用固定中位会被停在一边的通道永久压住：油门推到顶不回中，对中位就是个恒定
+        450µs 的偏移，之后每一步都会和它打平、判不出主导通道。开闸时全场已经静止，
+        以那一刻为零点，任何偏移就一定是用户刚做的新动作。
+        """
+        return self.rc_wizard_baseline or self.rc_wizard_center
+
+    def _rc_wizard_trace(self, event: str, detail: str = "") -> None:
+        """引导校准的状态变化落盘，供事后排查"卡住/闪退/绑错"。
+
+        只记状态跳变，不记每一帧：一次完整校准也就几十行。
+        """
+        step = "done"
+        if self.rc_wizard_active and self.rc_wizard_index < len(RC_WIZARD_STEPS):
+            function, direction, _prompt = RC_WIZARD_STEPS[self.rc_wizard_index]
+            step = f"{self.rc_wizard_index + 1}/{len(RC_WIZARD_STEPS)} {function}{direction:+d}"
+        append_log(
+            RC_WIZARD_TRACE_LOG,
+            f"{event} step={step} armed={int(self.rc_wizard_armed)} "
+            f"release={self.rc_wizard_release_channel} "
+            f"us={','.join(str(v) for v in self.rc_channels)}"
+            + (f" | {detail}" if detail else ""),
+        )
+
+    def _rc_wizard_feed(self, channels: list[int]) -> None:
+        """每一帧遥控数据都喂进来：更新实测行程，并判断当前步骤是否已到位。"""
+        if not self.rc_wizard_active:
+            return
+        for index, value in enumerate(channels):
+            self.rc_wizard_min[index] = min(self.rc_wizard_min[index], value)
+            self.rc_wizard_max[index] = max(self.rc_wizard_max[index], value)
+        self.rc_wizard_window.append(list(channels))
+        if len(self.rc_wizard_window) > 4 * RC_WIZARD_HOLD_FRAMES:
+            del self.rc_wizard_window[0]
+
+        if not self.rc_wizard_armed:
+            open_gate, detail = rc_wizard_gate_open(
+                self.rc_wizard_window,
+                self.rc_wizard_center,
+                self.rc_wizard_release_channel,
+            )
+            self.rc_wizard_detect_var.set(detail)
+            if not open_gate:
+                if detail != self._rc_wizard_last_detail:
+                    self._rc_wizard_last_detail = detail
+                    self._rc_wizard_trace("gate_wait", detail)
+                return
+            # 闸开的这一刻就是本步的起点：不自回中的通道以它为参考。
+            self.rc_wizard_baseline = list(channels)
+            self.rc_wizard_armed = True
+            self.rc_wizard_window = []
+            self._rc_wizard_last_detail = ""
+            self._rc_wizard_trace("gate_open")
+            return
+
+        function, direction, _prompt = RC_WIZARD_STEPS[self.rc_wizard_index]
+        opposite_of = 0
+        if direction < 0:
+            # 一对步骤必须真的往两个方向走过，否则判不出正反。这条同时挡住"推同一
+            # 边两次"——每次都从静止零点起算，同向就是没换方向。
+            paired = self.rc_wizard_results.get((function, +1))
+            if paired is not None:
+                opposite_of = paired[1]
+        channel, deviation, detail = rc_wizard_step_ready(
+            self._rc_wizard_reference(), self.rc_wizard_window, opposite_of
+        )
+        self.rc_wizard_detect_var.set(detail)
+        if channel is None:
+            if detail != self._rc_wizard_last_detail:
+                self._rc_wizard_last_detail = detail
+                self._rc_wizard_trace("waiting", detail)
+            return
+        self.rc_wizard_results[(function, direction)] = (channel, deviation)
+        self._rc_wizard_trace("captured", f"ch={channel} dev={deviation:+d}")
+        self._rc_wizard_last_detail = ""
+        release = None if function in RC_WIZARD_NON_CENTERING else channel
+        self._rc_wizard_advance(release_channel=release)
+
+    def _rc_wizard_finish(self) -> None:
+        self._rc_wizard_trace("finish", f"results={self.rc_wizard_results}")
+        self.rc_wizard_active = False
+        functions, warnings = rc_wizard_build_map(
+            self.rc_wizard_center,
+            self.rc_wizard_min,
+            self.rc_wizard_max,
+            self.rc_wizard_results,
+            self._rc_collect_map(),
+        )
+        for name, entry in functions.items():
+            self._rc_set_row(name, entry)
+        self.rc_wizard_prompt_var.set("引导校准完成")
+        self.rc_wizard_detect_var.set("")
+        self.rc_wizard_step_var.set("")
+        self.rc_wizard_progress_var.set(float(len(RC_WIZARD_STEPS)))
+        ok, reason = rc_map_is_valid(functions)
+        lines = [
+            f"{label}: CH{entry['channel'] + 1 if entry['channel'] >= 0 else '-'}"
+            f"{'（反向）' if entry.get('reversed') else ''} "
+            f"{entry['min']}~{entry['max']}"
+            for (name, label), entry in zip(RC_FUNCTIONS, functions.values())
+        ]
+        summary = "结果：" + "；".join(lines)
+        if warnings:
+            summary += "\n注意：" + "；".join(warnings)
+        if not ok:
+            summary += f"\n映射仍不合法：{reason}"
+        else:
+            # 立刻下发到飞控 RAM。不下发的话，上面的摇杆十字按新映射画、飞控却还按旧的
+            # 飞，用户"看着方向是对的"其实什么都没验证到。Flash 仍然要单独确认。
+            self._rc_send_map(commit=False)
+            summary += (
+                "\n已应用到飞控 RAM。下一步：推杆确认第 1 节的摇杆十字方向正确，"
+                "再点「③ 写入 Flash」持久化。"
+            )
+        self.rc_wizard_result_var.set(summary)
+        self._rc_wizard_refresh()
+
+    def _rc_wizard_refresh(self) -> None:
+        if not hasattr(self, "rc_wizard_start_button"):
+            return
+        active = self.rc_wizard_active
+        self.rc_wizard_start_button.configure(state=tk.DISABLED if active else tk.NORMAL)
+        self.rc_wizard_back_button.configure(
+            state=tk.NORMAL if active and self.rc_wizard_index > 0 else tk.DISABLED
+        )
+        self.rc_wizard_skip_button.configure(state=tk.NORMAL if active else tk.DISABLED)
+        self.rc_wizard_cancel_button.configure(state=tk.NORMAL if active else tk.DISABLED)
+        if active:
+            function, direction, prompt = RC_WIZARD_STEPS[self.rc_wizard_index]
+            self.rc_wizard_step_var.set(
+                f"{self.rc_wizard_index + 1}/{len(RC_WIZARD_STEPS)}"
+            )
+            self.rc_wizard_prompt_var.set(prompt)
+            self.rc_wizard_progress_var.set(float(self.rc_wizard_index))
+
+    def _rc_start_detect(self, function: str) -> None:
+        if not self._rc_live_ok():
+            messagebox.showwarning("没有遥控数据", "飞控还没有收到遥控帧，请先开机并确认接收机已对码。")
+            return
+        self.rc_detect_function = function
+        self.rc_detect_samples = []
+        self.rc_detect_deadline = time.monotonic() + 4.0
+        self.rc_detect_var.set(f"正在识别「{function}」：把要绑定的那一路拨到底再回中（4 秒）…")
+
+    def _rc_finish_detect(self) -> None:
+        function = self.rc_detect_function
+        samples = self.rc_detect_samples
+        self.rc_detect_function = None
+        self.rc_detect_samples = []
+        if function is None:
+            return
+        channel, detail = rc_detect_channel(samples)
+        if channel is None:
+            self.rc_detect_var.set(f"「{function}」识别失败：{detail}")
+            return
+        self.rc_rows[function]["channel"].set(f"CH{channel + 1}")
+        self.rc_detect_var.set(f"「{function}」→ {detail}")
+
+    def _rc_capture_center(self) -> None:
+        if not self._rc_live_ok():
+            messagebox.showwarning("没有遥控数据", "飞控还没有收到遥控帧，无法记录中位。")
+            return
+        self.rc_center = list(self.rc_channels)
+        for name, _label in RC_FUNCTIONS:
+            entry = self._rc_row_entry(name)
+            if 0 <= entry["channel"] < RC_CHANNEL_COUNT:
+                self.rc_rows[name]["mid"].set(str(self.rc_center[entry["channel"]]))
+        self.rc_status_var.set("已记录中位；接下来点②并把每根杆和开关都打到两端各走一圈")
+
+    def _rc_toggle_sweep(self) -> None:
+        if self.rc_sweep_active:
+            self.rc_sweep_active = False
+            self._rc_apply_sweep()
+            self._rc_refresh_controls()
+            return
+        if not self._rc_live_ok():
+            messagebox.showwarning("没有遥控数据", "飞控还没有收到遥控帧，无法记录行程。")
+            return
+        self.rc_sweep_active = True
+        self.rc_sweep_min = []
+        self.rc_sweep_max = []
+        self.rc_status_var.set("正在记录行程：把每根杆和开关都推到两端，完成后再点一次停止")
+        self._rc_refresh_controls()
+
+    def _rc_apply_sweep(self) -> None:
+        if not self.rc_sweep_min:
+            self.rc_status_var.set("没有采到任何行程样本")
+            return
+        applied = 0
+        skipped: list[str] = []
+        for name, _label in RC_FUNCTIONS:
+            entry = self._rc_row_entry(name)
+            channel = entry["channel"]
+            if not (0 <= channel < RC_CHANNEL_COUNT):
+                continue
+            low = self.rc_sweep_min[channel]
+            high = self.rc_sweep_max[channel]
+            # 行程不足的通道保留旧端点：把 1490~1510 这种没拨到的开关写进去，
+            # 会让归一化增益放大 50 倍，比"没标定"危险得多。
+            if high - low < RC_MIN_SPAN_US:
+                skipped.append(f"{name}(CH{channel + 1} 只动了 {high - low}µs)")
+                continue
+            self.rc_rows[name]["min"].set(str(low))
+            self.rc_rows[name]["max"].set(str(high))
+            mid = int(self.rc_rows[name]["mid"].get() or 0)
+            if not (low < mid < high):
+                self.rc_rows[name]["mid"].set(str((low + high) // 2))
+            applied += 1
+        text = f"行程标定完成：{applied} 个功能已更新端点"
+        if skipped:
+            text += "；未更新（行程不足）：" + "、".join(skipped)
+        self.rc_status_var.set(text)
+
+    # --- RC：与飞控通信 -----------------------------------------------
+
+    def _rc_live_ok(self) -> bool:
+        return (
+            self.rc_live_time > 0.0
+            and (time.monotonic() - self.rc_live_time) <= RC_LIVE_FRESH_S
+            and safe_int(self.rc_link_values.get("fresh"), 0) != 0
+        )
+
+    def _rc_request_map(self) -> None:
+        if not self._transport_connected():
+            messagebox.showwarning("未连接", "请先连接飞控。")
+            return
+        self.rc_map_values.clear()
+        self._send_proto_once(PROTO_REQ_RCMAP, "RCMAP?")
+
+    def _rc_send_map(self, *, commit: bool) -> None:
+        if not self._transport_connected():
+            messagebox.showwarning("未连接", "请先连接飞控。")
+            return
+        if safe_int(self.rc_link_values.get("armed"), 0) != 0:
+            messagebox.showwarning("飞控已解锁", "改遥控映射前必须先上锁。")
+            return
+        functions = self._rc_collect_map()
+        ok, reason = rc_map_is_valid(functions)
+        if not ok:
+            messagebox.showerror("映射非法", reason)
+            self.rc_status_var.set(f"未发送：{reason}")
+            return
+        self.transport.send_line(f"RCMAP DEADBAND {self._rc_deadband()}")
+        for name, entry in functions.items():
+            self.transport.send_line(
+                f"RCMAP SET {name} {entry['channel']} {entry['reversed']} "
+                f"{entry['min']} {entry['mid']} {entry['max']}"
+            )
+        self.transport.send_line("RCMAP CALIBRATED 1")
+        if commit:
+            self.transport.send_line("RCMAP COMMIT")
+        self.rc_status_var.set(
+            "已发送映射，等待飞控确认…" if commit else "已应用到 RAM，等待飞控确认…"
+        )
+
+    def _rc_apply_ram(self) -> None:
+        self._rc_send_map(commit=False)
+
+    def _rc_commit(self) -> None:
+        functions = self._rc_collect_map()
+        ok, reason = rc_map_is_valid(functions)
+        if not ok:
+            messagebox.showerror("映射非法", reason)
+            return
+        summary = "\n".join(
+            f"  {label}: CH{entry['channel'] + 1 if entry['channel'] >= 0 else '-'}"
+            f"{' 反向' if entry['reversed'] else ''}  "
+            f"{entry['min']}/{entry['mid']}/{entry['max']}"
+            for (name, label), entry in zip(RC_FUNCTIONS, functions.values())
+        )
+        if not messagebox.askyesno(
+            "写入遥控映射到 Flash",
+            f"以下映射将写入飞控参数 Flash，重启后生效：\n\n{summary}\n\n确定继续吗？",
+        ):
+            return
+        self._rc_send_map(commit=True)
+
+    def _rc_reset_defaults(self) -> None:
+        if not self._transport_connected():
+            messagebox.showwarning("未连接", "请先连接飞控。")
+            return
+        if not messagebox.askyesno(
+            "恢复出厂映射",
+            "将把遥控映射恢复为 CH1~CH6 / 1000-1500-2000 并写入 Flash。确定吗？",
+        ):
+            return
+        self.transport.send_line("RCMAP RESET")
+        self.transport.send_line("RCMAP COMMIT")
+        self.rc_status_var.set("已请求恢复出厂映射…")
+
+    # --- RC：渲染 ------------------------------------------------------
+
+    def _rc_refresh_controls(self) -> None:
+        if not hasattr(self, "rc_sweep_button"):
+            return
+        self.rc_sweep_button.configure(
+            text="② 停止记录行程" if self.rc_sweep_active else "② 开始记录行程"
+        )
+
+    def _rc_render(self) -> None:
+        if not hasattr(self, "rc_channel_bars"):
+            return
+        live = self._rc_live_ok()
+        for index, bar in enumerate(self.rc_channel_bars):
+            value = self.rc_channels[index] if index < len(self.rc_channels) else 0
+            bar["value"] = max(0, min(1000, value - 1000))
+            self.rc_channel_labels[index].set(str(value) if live else "----")
+
+        deadband = self._rc_deadband()
+        for name, _label in RC_FUNCTIONS:
+            entry = self._rc_row_entry(name)
+            channel = entry["channel"]
+            if not live or not (0 <= channel < RC_CHANNEL_COUNT):
+                self.rc_rows[name]["live"].set("----")
+                continue
+            raw = self.rc_channels[channel]
+            self.rc_rows[name]["live"].set(
+                f"{raw}  {rc_normalize(entry, raw, deadband):+.2f}"
+            )
+
+        if live:
+            fresh = self.rc_link_values
+            self.rc_link_var.set(
+                f"遥控：✓ 在线  LQ={fresh.get('lq', '-')}  RSSI={fresh.get('rssi', '-')}  "
+                f"帧率={safe_int(fresh.get('fps_x10'), 0) / 10:.1f} Hz  "
+                f"armed={fresh.get('armed', '-')}"
+            )
+        else:
+            self.rc_link_var.set("遥控：✗ 未收到遥控帧（发射机是否开机 / 接收机是否对码）")
+        self._rc_draw_sticks(live, deadband)
+
+    def _rc_draw_sticks(self, live: bool, deadband: int) -> None:
+        canvas = self.rc_stick_canvas
+        canvas.delete("all")
+        pairs = (
+            (60, "yaw", "throttle", True),
+            (190, "roll", "pitch", False),
+        )
+        for center_x, x_func, y_func, throttle_axis in pairs:
+            center_y = 63
+            half = 52
+            canvas.create_rectangle(
+                center_x - half, center_y - half, center_x + half, center_y + half,
+                outline=UI_PALETTE["border_strong"], width=1,
+            )
+            canvas.create_line(center_x - half, center_y, center_x + half, center_y,
+                               fill=UI_PALETTE["border_strong"])
+            canvas.create_line(center_x, center_y - half, center_x, center_y + half,
+                               fill=UI_PALETTE["border_strong"])
+            if not live:
+                continue
+            x_entry = self._rc_row_entry(x_func)
+            y_entry = self._rc_row_entry(y_func)
+            x_norm = self._rc_axis_value(x_entry, deadband)
+            if throttle_axis:
+                # 油门画成 0..1 的绝对行程，回中不代表零输出。
+                y_norm = -(self._rc_throttle_value(y_entry) * 2.0 - 1.0)
+            else:
+                y_norm = -self._rc_axis_value(y_entry, deadband)
+            px = center_x + x_norm * half
+            py = center_y + y_norm * half
+            canvas.create_oval(px - 6, py - 6, px + 6, py + 6,
+                               fill=UI_PALETTE["accent"], outline="")
+
+    def _rc_axis_value(self, entry: dict[str, int], deadband: int) -> float:
+        channel = entry["channel"]
+        if not (0 <= channel < RC_CHANNEL_COUNT):
+            return 0.0
+        return rc_normalize(entry, self.rc_channels[channel], deadband)
+
+    def _rc_throttle_value(self, entry: dict[str, int]) -> float:
+        channel = entry["channel"]
+        if not (0 <= channel < RC_CHANNEL_COUNT):
+            return 0.0
+        span = entry["max"] - entry["min"]
+        if span <= 0:
+            return 0.0
+        value = (self.rc_channels[channel] - entry["min"]) / span
+        if entry["reversed"]:
+            value = 1.0 - value
+        return max(0.0, min(1.0, value))
 
     def _build_firmware_update_page(self, parent: ttk.Frame) -> None:
         ttk.Label(parent, text="维护工具  /  安全升级与自动重连", style="Eyebrow.TLabel").pack(anchor=tk.W)
@@ -3451,27 +6046,7 @@ class DronePanel(tk.Tk):
             wraplength=1000,
         ).grid(row=4, column=0, columnspan=3, sticky=tk.W, pady=(5, 0))
 
-        safety = ttk.LabelFrame(parent, text="2 · 实时安全门", padding=10)
-        safety.pack(fill=tk.X, pady=(9, 0))
-        ttk.Label(
-            safety,
-            textvariable=self.firmware_safety_var,
-            style="SectionTitle.TLabel",
-        ).pack(side=tk.LEFT)
-        ttk.Button(
-            safety,
-            text="立即读取安全快照",
-            command=self._firmware_request_snapshot,
-            style="Primary.TButton",
-        ).pack(side=tk.RIGHT)
-        ttk.Checkbutton(
-            safety,
-            text="我确认当前未知 USB 串口就是飞控 application CDC",
-            variable=self.firmware_unknown_usb_override_var,
-            command=self._firmware_refresh_safety,
-        ).pack(side=tk.RIGHT, padx=(0, 12))
-
-        action = ttk.LabelFrame(parent, text="3 · 进入 DFU 并烧录", padding=10)
+        action = ttk.LabelFrame(parent, text="2 · 进入 DFU 并烧录", padding=10)
         action.pack(fill=tk.X, pady=(9, 0))
         controls = ttk.Frame(action)
         controls.pack(fill=tk.X)
@@ -3497,6 +6072,15 @@ class DronePanel(tk.Tk):
             command=self._firmware_open_log_dir,
             style="Secondary.TButton",
         ).pack(side=tk.LEFT, padx=(18, 0))
+        # 解锁/油门由固件的 BOOT 处理器判定并回拒绝原因，这里只是把已知状态摆出来，
+        # 不再充当第二道闸门。
+        self.firmware_safety_label = ttk.Label(
+            action,
+            textvariable=self.firmware_safety_var,
+            wraplength=1080,
+            style="Muted.TLabel",
+        )
+        self.firmware_safety_label.pack(fill=tk.X, pady=(8, 0))
         ttk.Label(
             action,
             textvariable=self.firmware_status_var,
@@ -3603,47 +6187,71 @@ class DronePanel(tk.Tk):
         self.firmware_cli_var.set(str(cli))
         self.firmware_status_var.set(f"已找到 CubeProgrammer：{cli}")
 
-    def _firmware_request_snapshot(self) -> None:
-        if self.transport is not self.serial_transport or not self._transport_connected():
-            messagebox.showwarning("USB CDC 未连接", "请在顶部选择 serial、选中飞控 USB CDC 并启动连接。")
-            self._firmware_refresh_safety()
-            return
-        self._send_proto_once(PROTO_REQ_IMU, "IMU?")
-        self.firmware_status_var.set("正在读取实时安全快照…")
-
-    def _firmware_snapshot_gate(self) -> tuple[bool, str]:
-        age_s = (
-            time.monotonic() - self.validation_latest_host_time
-            if self.validation_latest_host_time > 0.0
-            else float("inf")
-        )
-        safe, reason = firmware_update_snapshot_gate(
-            self.validation_latest_values,
+    def _firmware_link_gate(self) -> tuple[bool, str]:
+        """能不能把 BOOT 命令送到正确的目标——只判断这个。"""
+        ok, reason = firmware_update_link_gate(
             connected=self._transport_connected(),
             serial_transport_selected=self.transport is self.serial_transport,
-            sample_age_s=age_s,
         )
-        if not safe:
-            return safe, reason
+        if not ok:
+            return ok, reason
         selected_display = self.serial_port_var.get().strip()
         selected_port = self._serial_port_map.get(selected_display, selected_display)
         active_port = self.serial_transport.active_port
         if not active_port or selected_port.casefold() != active_port.casefold():
             return False, f"连接端口与下拉选择不一致：active={active_port or '-'} selected={selected_port or '-'}"
-        if self.validation_latest_transport_generation != self.serial_transport.connection_generation:
-            return False, "安全快照不属于当前 USB CDC 连接，请重新读取"
         identity = self._serial_port_identity.get(active_port)
         policy, identity_reason = serial_device_identity_policy(identity)
         if policy == "rejected":
+            # 刷错设备是固件无从知晓的风险，这一条必须留在主机侧。
             return False, identity_reason
-        if policy == "unknown" and not self.firmware_unknown_usb_override_var.get():
-            return False, identity_reason + "；必须在升级页人工确认未知 USB 身份"
-        suffix = "（未知身份已人工确认）" if policy == "unknown" else ""
-        return True, reason + f" · {identity_reason}{suffix}"
+        return True, f"{active_port} · {identity_reason}"
+
+    def _firmware_safety_advisory(self) -> tuple[str, str]:
+        age_s = (
+            time.monotonic() - self.validation_latest_host_time
+            if self.validation_latest_host_time > 0.0
+            else float("inf")
+        )
+        if (
+            self.transport is self.serial_transport
+            and self.validation_latest_host_time > 0.0
+            and self.validation_latest_transport_generation
+            != self.serial_transport.connection_generation
+        ):
+            return "unknown", "飞控状态未知（快照来自上一次连接）"
+        return firmware_update_snapshot_advisory(
+            self.validation_latest_values,
+            sample_age_s=age_s,
+        )
+
+    def _validation_live_safety_gate(self) -> tuple[bool, str]:
+        """V1/V2A 会真正驱动舵机，主机这一侧必须自己确认飞控 disarmed。
+
+        这里和固件升级不同：固件升级有 BOOT 处理器兜底，而 ACCEPT/V1 命令没有等价
+        的目标侧拒绝，所以必须要求一份新鲜快照。
+        """
+        ok, reason = self._firmware_link_gate()
+        if not ok:
+            return ok, reason
+        level, advisory = self._firmware_safety_advisory()
+        if level != "ok":
+            return False, advisory
+        return True, f"{reason} · {advisory}"
 
     def _firmware_refresh_safety(self) -> None:
-        safe, reason = self._firmware_snapshot_gate()
-        self.firmware_safety_var.set(("安全门：✓ " if safe else "安全门：✗ ") + reason)
+        ok, reason = self._firmware_link_gate()
+        level, advisory = self._firmware_safety_advisory()
+        mark = {"ok": "✓", "warn": "!", "unknown": "·"}[level]
+        self.firmware_safety_var.set(
+            ("链路：✓ " if ok else "链路：✗ ") + reason + f"    飞控：{mark} {advisory}"
+        )
+        label = getattr(self, "firmware_safety_label", None)
+        if label is not None:
+            label.configure(
+                style="Fail.TLabel" if not ok else
+                ("Warn.TLabel" if level == "warn" else "Muted.TLabel")
+            )
         busy = (
             self.firmware_update_pending
             or self.firmware_update_running
@@ -3651,7 +6259,7 @@ class DronePanel(tk.Tk):
         )
         if hasattr(self, "firmware_start_button"):
             self.firmware_start_button.configure(
-                state=tk.NORMAL if safe and not busy else tk.DISABLED
+                state=tk.NORMAL if ok and not busy else tk.DISABLED
             )
             self.firmware_cancel_button.configure(
                 state=tk.NORMAL if busy and not self.firmware_programming else tk.DISABLED
@@ -3708,10 +6316,12 @@ class DronePanel(tk.Tk):
             return
         if self.firmware_building:
             return
-        safe, reason = self._firmware_snapshot_gate()
-        if not safe:
-            messagebox.showwarning("固件升级安全门未通过", reason)
+        ok, reason = self._firmware_link_gate()
+        if not ok:
+            messagebox.showwarning("无法向飞控发送 BOOT", reason)
             self._firmware_refresh_safety()
+            return
+        if not self._firmware_confirm_unknown_identity():
             return
         if self.firmware_rebuild_var.get():
             # 先编译再烧：编译产物就是烧录对象，从源头杜绝"刷了旧固件"。
@@ -3741,13 +6351,42 @@ class DronePanel(tk.Tk):
             return
         self.firmware_event_queue.put(("build_ok", attempt, str(elf)))
 
+    def _firmware_confirm_unknown_identity(self) -> bool:
+        """未知 USB 身份：一次性确认，不再让用户长期挂着一个勾选框。"""
+        active_port = self.serial_transport.active_port or ""
+        identity = self._serial_port_identity.get(active_port)
+        policy, identity_reason = serial_device_identity_policy(identity)
+        if policy != "unknown":
+            self.firmware_unknown_usb_override_var.set(False)
+            self.firmware_unknown_usb_confirmed_port = ""
+            return True
+        if (
+            self.firmware_unknown_usb_override_var.get()
+            and self.firmware_unknown_usb_confirmed_port.casefold() == active_port.casefold()
+        ):
+            return True
+        confirmed = messagebox.askyesno(
+            "无法确认这是飞控",
+            f"{identity_reason}\n\n端口：{active_port or '-'}\n\n"
+            "继续会把固件写入这个设备。确认它就是飞控的 application CDC 吗？",
+        )
+        self.firmware_unknown_usb_override_var.set(confirmed)
+        self.firmware_unknown_usb_confirmed_port = active_port if confirmed else ""
+        return confirmed
+
     def _firmware_start_update_after_build(self) -> None:
         if self.firmware_update_pending or self.firmware_update_running:
             return
-        safe, reason = self._firmware_snapshot_gate()
-        if not safe:
-            messagebox.showwarning("固件升级安全门未通过", reason)
+        ok, reason = self._firmware_link_gate()
+        if not ok:
+            messagebox.showwarning("无法向飞控发送 BOOT", reason)
             self._firmware_refresh_safety()
+            return
+        level, advisory = self._firmware_safety_advisory()
+        if level == "warn" and not messagebox.askyesno(
+            "飞控状态不安全",
+            f"{advisory}\n\n固件预计会拒绝这次 BOOT。仍要发送吗？",
+        ):
             return
         try:
             image_info = validate_firmware_image(self.firmware_image_var.get().strip())
@@ -3857,14 +6496,16 @@ class DronePanel(tk.Tk):
             or self.firmware_cancel_event.is_set()
         ):
             return
-        safe, reason = self._firmware_snapshot_gate()
-        if not safe:
+        ok, reason = self._firmware_link_gate()
+        if not ok:
             self.firmware_update_pending = False
-            self._firmware_record_log(attempt, f"REFUSED: safety snapshot changed: {reason}")
-            self.firmware_status_var.set(f"发送 BOOT 前安全门失效：{reason}")
+            self._firmware_record_log(attempt, f"REFUSED: link lost before BOOT: {reason}")
+            self.firmware_status_var.set(f"发送 BOOT 前链路失效：{reason}")
             self._firmware_refresh_safety()
-            messagebox.showerror("固件升级安全门失效", reason)
+            messagebox.showerror("无法向飞控发送 BOOT", reason)
             return
+        level, advisory = self._firmware_safety_advisory()
+        self._firmware_record_log(attempt, f"host_advisory level={level} detail={advisory}")
         self.firmware_status_var.set("基线无 DFU；已授权命令，等待飞控确认进入 DFU…")
         self._firmware_record_log(attempt, f"tx={FIRMWARE_BOOT_COMMAND}")
         if not self._firmware_send_boot_command():
@@ -4055,6 +6696,10 @@ class DronePanel(tk.Tk):
             )
             return False
         self.structured_protocol_supported = None
+        # 刚烧完的飞控一定是重启过的：seqlock 序号回到很小的值。不清基线的话，
+        # 后续每一帧快照都会被单调守卫丢弃，升级页会一直停在"状态未知"。
+        self.validation_latest_sequence = None
+        self.validation_latest_timestamp_ms = None
         self._firmware_record_log(
             self.firmware_attempt_id,
             f"auto_reconnect success port={port} baud={self.firmware_reconnect_baud}",
@@ -4356,7 +7001,7 @@ class DronePanel(tk.Tk):
         elif not self.validation_session_active:
             next_action = "下一步：恢复已有历史，或勾选两项安全确认后点击“新建验收”"
         elif not connected:
-            next_action = "下一步：点击顶部“启动连接”，V0会自动轮询IMU"
+            next_action = "下一步：点击顶部“启动连接”，坐标系校准页会自动轮询 IMU"
         elif not snapshot_ok:
             if fresh:
                 next_action = "当前固件快照格式不兼容；请烧录最新固件后重新连接"
@@ -5091,6 +7736,10 @@ class DronePanel(tk.Tk):
         }
 
     def _validation_autosave_session(self, *, force: bool = False) -> Path | None:
+        if self.validation_loaded_history:
+            # 只读浏览历史验收时绝不回写磁盘（历史证据不可变）。
+            # “新建独立验收”/“继续历史会话”都会显式清除该标志后才允许保存。
+            return None
         has_state = (
             any(self.validation_samples.values())
             or bool(self.validation_unsupported_stages)
@@ -5141,6 +7790,10 @@ class DronePanel(tk.Tk):
         return output
 
     def _validation_autosave_workflow(self) -> Path | None:
+        if self.validation_loaded_history:
+            # 同上：workflow 载荷含实时目标状态快照；在只读浏览的历史工作区里
+            # 回写会用可能为空的实时状态覆盖归档快照，属证据破坏。
+            return None
         if (
             not self.validation_verification_mode
             or self.validation_session_path is None
@@ -5601,7 +8254,7 @@ class DronePanel(tk.Tk):
         if not values or (time.monotonic() - self.validation_latest_host_time) > VALIDATION_SAMPLE_FRESH_S:
             return False, "没有新鲜的完整目标快照"
         if values.get("source") != "stabilizer_snapshot" or values.get("valid") != "1":
-            return False, "固件不支持 V0 snapshot provenance；请重新编译并烧写本次固件"
+            return False, "固件不支持坐标系校准快照来源标识；请重新编译并烧写本次固件"
         if safe_int(values.get("contract"), -1) != 1:
             return False, f"FLU contract version 不支持：{values.get('contract', '-')}"
         frame = values.get("frame", "")
@@ -5809,6 +8462,11 @@ class DronePanel(tk.Tk):
             return "wait", f"{text} · 本次上电曾降级，建议重新采集", True
         return "ok", text, True
 
+    def _validation_target_restarted(self, timestamp_ms: int) -> bool:
+        """ts_ms 是飞控上电以来的毫秒数，一次上电内严格单调；倒退即重启。"""
+        previous = self.validation_latest_timestamp_ms
+        return previous is not None and timestamp_ms < previous
+
     def _validation_accept_imu_values(self, values: dict[str, str]) -> None:
         sequence = safe_int(values.get("seq"), -1)
         if sequence < 0:
@@ -5851,6 +8509,13 @@ class DronePanel(tk.Tk):
                 self.validation_source_var.set(f"数据源：UNSUPPORTED · {parse_error}")
             return
         timestamp_ms = int(merged["ts_ms"], 0)
+        if self._validation_target_restarted(timestamp_ms):
+            # 目标重启后 seqlock 序号从头开始。不重置基线的话，每一帧都会被下面的
+            # 单调守卫当成重放丢掉，validation_latest_host_time 永远停在 0，界面显示
+            # "快照已过期（inf）"且断开重连都救不回来——只能重启上位机。
+            # 判据用板子自己的 ts_ms 倒退，一次上电内它严格单调，比猜序号阈值可靠。
+            self.validation_latest_sequence = None
+        self.validation_latest_timestamp_ms = timestamp_ms
         if self.validation_latest_sequence is not None and sequence <= self.validation_latest_sequence:
             return
         self.validation_latest_sequence = sequence
@@ -5927,7 +8592,7 @@ class DronePanel(tk.Tk):
         ttk.Button(top, text="请求 IMU", command=lambda: self._send_proto(PROTO_REQ_IMU, "IMU?")).pack(side=tk.LEFT)
         ttk.Checkbutton(top, text=f"备用轮询 {IMU_POLL_PERIOD_MS} ms", variable=self.imu_poll_enabled).pack(side=tk.LEFT, padx=(10, 0))
         ttk.Button(top, text="仅显示归零", command=self._reset_imu_attitude).pack(side=tk.LEFT, padx=8)
-        ttk.Label(top, text="不参与 V0 验收", style="Muted.TLabel").pack(side=tk.LEFT)
+        ttk.Label(top, text="不参与坐标系校准", style="Muted.TLabel").pack(side=tk.LEFT)
 
         body = ttk.PanedWindow(parent, orient=tk.HORIZONTAL)
         body.pack(fill=tk.BOTH, expand=True, pady=(10, 0))
@@ -6375,7 +9040,7 @@ class DronePanel(tk.Tk):
 
     def _start(self) -> None:
         if self.v1_worker is not None and self.v1_worker.is_alive():
-            messagebox.showwarning("V1 正在占用 USB CDC", "请先完成当前 V1 采集，再启动面板连接。")
+            messagebox.showwarning("IMU 校准正在占用 USB CDC", "请先完成当前 IMU 采集，再启动面板连接。")
             return
         self._stop()
         self.transport = self._current_transport()
@@ -6417,6 +9082,9 @@ class DronePanel(tk.Tk):
         port_name = self._serial_port_map.get(port_display, port_display)
         self.transport.start(port_name, baud)
         self._refresh_serial_selection_lock()
+        if self.serial_transport.is_connected:
+            # 只记成功连上的那一次；连失败还记下来会让下次启动一直去撞同一个坏口。
+            self._save_panel_state()
 
     def _stop(self) -> None:
         if self.v1_worker is not None and self.v1_worker.is_alive():
@@ -6433,6 +9101,19 @@ class DronePanel(tk.Tk):
         self.validation_latest_host_time = 0.0
         self.validation_latest_values.clear()
         self.validation_latest_transport_generation = None
+        # 断开后重连的可能是刚重启过的飞控，序号基线必须一起丢掉。
+        self.validation_latest_sequence = None
+        self.validation_latest_timestamp_ms = None
+        # 重连后重新拉一次遥控映射：接的可能已经是另一台飞控。
+        self.rc_map_generation = None
+        self.rc_live_time = 0.0
+        self.mechanical_target_records.clear()
+        self.mechanical_target_applied = False
+        self.mechanical_target_commit_pending = False
+        self.mechanical_reboot_check_pending = False
+        self.mechanical_reboot_verified = False
+        self.mechanical_last_poll = 0.0
+        self.mechanical_target_var.set("飞控参数：连接已停止，等待重新读取")
         self.validation_poll_requested = False
         if self.validation_session_active:
             if self.validation_active_stage is not None:
@@ -6478,7 +9159,7 @@ class DronePanel(tk.Tk):
             return False
         self._append(f"[V0 READ-ONLY] blocked command: {payload}")
         self._validation_set_status(ValidationStatus.FAIL, f"只读门阻止命令：{payload}")
-        messagebox.showwarning("V0 只读门", f"验收会话期间禁止执行：{payload}")
+        messagebox.showwarning("坐标系校准只读门", f"验收会话期间禁止执行：{payload}")
         return False
 
     def _send(self, line: str) -> None:
@@ -6488,7 +9169,7 @@ class DronePanel(tk.Tk):
         self._append(f"> {line}")
         if not self.transport.send_line(line):
             self._append("[上位机] 发送失败")
-        elif line in {"PING", "STATUS?", "CONFIG?", "PARAM?", "PID?", "BARO?", "GPS?", "MAG?", "AIRFRAME?"}:
+        elif line in {"PING", "STATUS?", "CONFIG?", "PARAM?", "PID?", "BARO?", "FLOW?", "RANGE?", "GPS?", "MAG?", "AIRFRAME?"}:
             sent_at = time.monotonic()
             self.after(CMD_REPLY_TIMEOUT_MS, lambda sent=line, start=sent_at: self._warn_if_no_reply(sent, start))
 
@@ -6867,6 +9548,12 @@ class DronePanel(tk.Tk):
         if self.selected_module == "ICM42688":
             self._send_proto(PROTO_REQ_IMU, "IMU?")
             return
+        if self.selected_module == "FLOW":
+            self._send("FLOW?")
+            return
+        if self.selected_module == "RANGE":
+            self._send("RANGE?")
+            return
         if self.selected_module == "GPS":
             self._send_proto(PROTO_REQ_GPS, "GPS?")
             return
@@ -6950,6 +9637,10 @@ class DronePanel(tk.Tk):
             self.last_board_rx = time.monotonic()
             self.link_var.set("STM32 已就绪")
             self._handle_ready_line(line)
+        elif line.startswith("IMUCAL "):
+            self._v1_sync_target_state(line)
+        elif line.startswith("SERVOCAL "):
+            self._mechanical_handle_target_line(line)
         elif line.startswith("HW "):
             self._update_hardware_line(line)
         elif line.startswith("STATUS "):
@@ -6968,6 +9659,14 @@ class DronePanel(tk.Tk):
             self._update_flash_line(line)
         elif line.startswith("BARO ") or line.startswith("SPL06 "):
             self._update_baro_line(line)
+        elif line.startswith("FLOW "):
+            self._update_flow_line(line)
+        elif line.startswith("RANGE "):
+            self._update_range_line(line)
+        elif line.startswith("RCMAP "):
+            self._rc_handle_map_line(line)
+        elif line.startswith("RC "):
+            self._rc_handle_live_line(line)
         elif line.startswith("BOOT "):
             self._firmware_handle_boot_line(line)
         elif line.startswith("IMUFRAME "):
@@ -7043,11 +9742,127 @@ class DronePanel(tk.Tk):
             if "cfg_valid" in values:
                 self._set_param("config.valid", values["cfg_valid"], "FLASH", dirty=False)
 
+    def _update_flow_line(self, line: str) -> None:
+        values = parse_kv(line)
+        self.flow_diag_values.update(values)
+        ok = self.flow_diag_values.get("ok") == "1"
+        valid = self.flow_diag_values.get("valid", "0") not in {"0", "-"}
+        quality = safe_int(self.flow_diag_values.get("quality"), 0)
+        min_quality = safe_int(self.flow_diag_values.get("min_q"), 80)
+        velocity_valid = self.flow_diag_values.get("vel_valid") == "1"
+        height_valid = self.flow_diag_values.get("height_valid") == "1"
+        self._update_module(
+            "FLOW",
+            state="正常" if ok and valid else ("等待有效数据" if ok else "异常"),
+            stage="ready" if ok and valid else "data",
+            value=(
+                f"q={quality}/{min_quality} vel={int(velocity_valid)} height={int(height_valid)} "
+                f"vx={self.flow_diag_values.get('vx_mm_s', '-')} vy={self.flow_diag_values.get('vy_mm_s', '-')} mm/s"
+            ),
+            code=(
+                f"frames={self.flow_diag_values.get('frames', '-')} "
+                f"cksum={self.flow_diag_values.get('cksum', '-')} err={self.flow_diag_values.get('frame_err', '-')}"
+            ),
+            hint="质量不足时先改善纹理/光照；校准页可做坐标和比例采样",
+            line=line,
+        )
+        self.flow_cal_live_var.set(
+            "FLOW "
+            f"valid={self.flow_diag_values.get('valid', '-')} "
+            f"q={quality}/{min_quality} "
+            f"raw_v=({self.flow_diag_values.get('flow_vx', '-')},{self.flow_diag_values.get('flow_vy', '-')}) "
+            f"v=({self.flow_diag_values.get('vx_mm_s', '-')},{self.flow_diag_values.get('vy_mm_s', '-')})mm/s "
+            f"comp_flu=({self.flow_diag_values.get('corr_vx_mm_s', '-')},{self.flow_diag_values.get('corr_vy_mm_s', '-')})mm/s "
+            f"orientation={self.flow_diag_values.get('orientation', '-')} "
+            f"height_raw={self.flow_diag_values.get('height_raw_mm', '-')}mm "
+            f"height={self.flow_diag_values.get('height_mm', '-')}mm "
+            f"RANGE={getattr(self, 'range_diag_summary', '尚无回包')}"
+        )
+        self.last_reply_rx = time.monotonic()
+
+        if not self.flow_cal_collecting or self.flow_cal_active_stage is None:
+            return
+        if "corr_vx_mm_s" not in values or "corr_vy_mm_s" not in values:
+            return
+        target_sample_ms = safe_int(values.get("sample_ms"), -1)
+        orientation_code = safe_int(self.flow_diag_values.get("orientation"), 255)
+        frame_contract = safe_int(self.flow_diag_values.get("contract"), 0)
+        if (
+            self.flow_diag_values.get("export") != "canonical_flu"
+            or frame_contract != 1
+            or not (0 <= orientation_code < 24)
+        ):
+            self.flow_cal_status_var.set(
+                "目标尚未提供带有效 FLU 方向来源的补偿后速度；请先完成坐标系校准并更新固件"
+            )
+            return
+        if target_sample_ms < 0 or target_sample_ms == self.flow_cal_last_target_sample_ms:
+            return
+        self.flow_cal_last_target_sample_ms = target_sample_ms
+        now = time.monotonic()
+        samples = self.flow_cal_samples[self.flow_cal_active_stage]
+        if samples and now <= samples[-1].host_time_s:
+            now = samples[-1].host_time_s + 1.0e-6
+        raw_height = (
+            safe_int(self.flow_diag_values.get("height_raw_mm"), 0) * 0.001
+            if "height_raw_mm" in self.flow_diag_values else None
+        )
+        filtered_height = (
+            safe_int(self.flow_diag_values.get("height_mm"), 0) * 0.001
+            if "height_mm" in self.flow_diag_values else None
+        )
+        samples.append(FlowRangeSample(
+            host_time_s=now,
+            vx_m_s=safe_int(values.get("sensor_vx_mm_s"), 0) * 0.001,
+            vy_m_s=safe_int(values.get("sensor_vy_mm_s"), 0) * 0.001,
+            height_raw_m=raw_height,
+            height_m=filtered_height,
+            gyro_z_dps=self.flow_latest_gyro_z_dps,
+            vx_compensated_m_s=safe_int(values.get("corr_vx_mm_s"), 0) * 0.001,
+            vy_compensated_m_s=safe_int(values.get("corr_vy_mm_s"), 0) * 0.001,
+            quality=quality,
+            frame_contract=frame_contract,
+            orientation_code=orientation_code,
+        ))
+        self.flow_cal_status_var.set(
+            f"正在采集“{FLOW_CALIBRATION_STAGES[self.flow_cal_active_stage]}”：{len(samples)} 个样本"
+        )
+        self._flow_cal_refresh_tree(self.flow_cal_active_stage, "采集中")
+
+    def _update_range_line(self, line: str) -> None:
+        values = parse_kv(line)
+        ok = values.get("ok") == "1"
+        strength = safe_int(values.get("strength"), 0)
+        minimum = safe_int(values.get("min_strength"), 80)
+        self.range_diag_summary = (
+            f"ok={int(ok)} raw={values.get('raw_mm', '-')}mm "
+            f"strength={strength}/{minimum} age={values.get('age_ms', '-')}ms"
+        )
+        self._update_module(
+            "RANGE",
+            state="正常" if ok else "等待有效数据",
+            stage="ready" if ok else "data",
+            value=f"raw={values.get('raw_mm', '-')} mm strength={strength}/{minimum}",
+            code=f"frames={values.get('frames', '-')} cksum={values.get('cksum', '-')} err={values.get('frame_err', '-')}",
+            hint="当前飞行高度不用此独立测距；这里只做旁路健康诊断",
+            line=line,
+        )
+        self.last_reply_rx = time.monotonic()
+
     def _update_imu_line(self, line: str) -> None:
         values = parse_kv(line)
+        if "gz_dps" in values:
+            self.flow_latest_gyro_z_dps = safe_float(values.get("gz_dps"))
+        elif "gz_mdps" in values:
+            self.flow_latest_gyro_z_dps = safe_float(values.get("gz_mdps")) * 0.001
         if "rate_hz" in values and "level" in values:
             self._validation_accept_imu_health(values)
             return
+        if "cal_generation" in values:
+            self.imu_calibration_generation = safe_int(values.get("cal_generation"), 0)
+            self.imu_calibration_firmware_crc32 = values.get("firmware_crc32", "")
+            return
+        self._drift_accept_sample(values)
         self._validation_accept_imu_values(values)
         has_sample = any(key in values for key in ("ax", "ax_mg", "gx", "gx_mdps"))
         if has_sample:
@@ -7580,10 +10395,27 @@ class DronePanel(tk.Tk):
             if self.imu_vars["age"].get() != age_text:
                 self.imu_vars["age"].set(age_text)
         now_ns = time.monotonic_ns()
-        imu_tab_visible = self.notebook.select() == str(self.imu_tab)
-        firmware_tab_visible = self.notebook.select() == str(self.firmware_tab)
-        v1_tab_visible = self.notebook.select() == str(self.v1_tab)
-        validation_tab_visible = self.notebook.select() == str(self.validation_tab)
+        outer_selection = self.notebook.select()
+        imu_tab_visible = outer_selection == str(self.imu_tab)
+        firmware_tab_visible = outer_selection == str(self.firmware_tab)
+        calibration_group_tab = getattr(self, "calibration_group_tab", None)
+        if calibration_group_tab is not None and hasattr(self, "calibration_notebook"):
+            calibration_visible = outer_selection == str(calibration_group_tab)
+            calibration_selection = self.calibration_notebook.select() if calibration_visible else ""
+            v1_tab_visible = calibration_visible and calibration_selection == str(self.v1_tab)
+            validation_tab_visible = calibration_visible and calibration_selection == str(self.validation_tab)
+            rc_tab_visible = calibration_visible and calibration_selection == str(self.rc_tab)
+            mechanical_tab_visible = calibration_visible and calibration_selection == str(self.mechanical_tab)
+            flow_range_tab_visible = calibration_visible and calibration_selection == str(self.flow_range_tab)
+            v2_tab_visible = calibration_visible and calibration_selection == str(self.v2_tab)
+        else:
+            # 保留纯逻辑测试/旧嵌入者的扁平 Notebook 兼容；真实界面走上面的二级“校准”。
+            v1_tab_visible = outer_selection == str(self.v1_tab)
+            validation_tab_visible = outer_selection == str(self.validation_tab)
+            rc_tab_visible = outer_selection == str(self.rc_tab)
+            mechanical_tab_visible = False
+            flow_range_tab_visible = False
+            v2_tab_visible = outer_selection == str(getattr(self, "v2_tab", ""))
         if (
             self._imu_dirty
             and imu_tab_visible
@@ -7607,12 +10439,15 @@ class DronePanel(tk.Tk):
             self._firmware_refresh_safety()
         v1_busy = self.v1_worker is not None and self.v1_worker.is_alive()
         firmware_busy = self.firmware_update_pending or self.firmware_update_running
-        poll_requested = self.validation_poll_requested or (
+        poll_requested = self.drift_recording or self.validation_poll_requested or (
             self.imu_poll_enabled.get() and imu_tab_visible
         ) or (
             firmware_tab_visible and not firmware_busy
         ) or (
             v1_tab_visible and not v1_busy
+        ) or (
+            (mechanical_tab_visible or flow_range_tab_visible or v2_tab_visible)
+            and not firmware_busy and not v1_busy
         ) or (
             # V0 页的四项准备清单（连接/快照/零偏/安全输出）和 A/B/C 按钮全部
             # 由 _validation_refresh_readiness 依据实时快照解锁。页面一打开就必须
@@ -7623,6 +10458,37 @@ class DronePanel(tk.Tk):
             if now - self.imu_last_poll >= IMU_POLL_PERIOD_MS / 1000.0:
                 self.imu_last_poll = now
                 self._send_proto_silent(PROTO_REQ_IMU, "IMU?")
+        if mechanical_tab_visible and self._transport_connected():
+            if now - self.mechanical_last_poll >= 1.0:
+                self.mechanical_last_poll = now
+                self._send_proto_silent(PROTO_REQ_SERVO_CAL, "SERVOCAL?")
+        if getattr(self, "flow_cal_collecting", False):
+            if not self._transport_connected():
+                self.flow_cal_collecting = False
+                self.flow_cal_active_stage = None
+                self.flow_cal_status_var.set("连接已断开，采样已停止；本步证据未分析")
+                self.flow_cal_start_button.configure(state=tk.NORMAL)
+                self.flow_cal_stop_button.configure(state=tk.DISABLED)
+            elif now - self.flow_cal_last_poll >= 0.20:
+                self.flow_cal_last_poll = now
+                if self._validation_command_allowed("FLOW?"):
+                    self.transport.send_line("FLOW?")
+                if self._validation_command_allowed("RANGE?"):
+                    self.transport.send_line("RANGE?")
+                self._send_proto_silent(PROTO_REQ_IMU, "IMU?")
+        # RC 页要看摇杆实时位置，10Hz 的 IMU 轮询节奏不够跟手；这里单独按 20Hz 拉。
+        # 自动识别和行程标定都靠这条流采样，降频会直接让标定采不到端点。
+        if rc_tab_visible and self._transport_connected():
+            # 页面一打开就把飞控里的映射拉回来。不自动拉的话表格是空的，用户得先
+            # 猜到要点"从飞控读取"——和 V0 页那个"等一个永远不会亮的 ✓"是同一类坑。
+            if self.rc_map_generation != self.serial_transport.connection_generation:
+                self.rc_map_generation = self.serial_transport.connection_generation
+                self._send_proto_silent(PROTO_REQ_RCMAP, "RCMAP?")
+            if now - self.rc_last_poll >= RC_POLL_PERIOD_MS / 1000.0:
+                self.rc_last_poll = now
+                self._send_proto_silent(PROTO_REQ_RC, "RC?")
+        if rc_tab_visible:
+            self._rc_render()
         self.after(50, self._imu_poll_tick)
 
     def _refresh_baro_samples(self) -> None:
@@ -8436,7 +11302,7 @@ class DronePanel(tk.Tk):
         ) or getattr(self, "firmware_programming", False):
             return "固件升级进行中"
         if self.v1_worker is not None and self.v1_worker.is_alive():
-            return "V1 正在独占 USB CDC"
+            return "IMU 校准正在独占 USB CDC"
         return None
 
     def _send_keepalive_probe(self) -> bool:
@@ -8547,9 +11413,41 @@ class DronePanel(tk.Tk):
         self.destroy()
 
 
+PANEL_CRASH_LOG = LOG_DIR / "panel_crash.log"
+RC_WIZARD_TRACE_LOG = LOG_DIR / "rc_wizard.log"
+
+
+def append_log(path: Path, text: str) -> None:
+    """尽力写日志。日志本身失败绝不能再把程序带下去。"""
+    try:
+        ensure_directory(path.parent)
+        stamp = datetime.now().astimezone().isoformat(timespec="milliseconds")
+        with path.open("a", encoding="utf-8", newline="\n") as stream:
+            stream.write(f"[{stamp}] {text.rstrip()}\n")
+    except OSError:
+        pass
+
+
+def record_panel_crash(exc_type, exc_value, exc_tb) -> str:
+    """把异常写进日志并返回摘要。
+
+    在这之前，回调里的异常只会打到 stderr——从资源管理器或 IDE 启动时根本没有
+    stderr，用户看到的就是"窗口突然没了"，而且校准做到一半的进度全丢，没有任何
+    可查的线索。
+    """
+    text = "".join(traceback.format_exception(exc_type, exc_value, exc_tb))
+    append_log(PANEL_CRASH_LOG, "PANEL EXCEPTION\n" + text)
+    lines = [line for line in text.strip().splitlines() if line.strip()]
+    return "\n".join(lines[-4:]) if lines else repr(exc_value)
+
+
 def main() -> None:
     app = DronePanel()
-    app.mainloop()
+    try:
+        app.mainloop()
+    except Exception:  # noqa: BLE001 - 顶层兜底：宁可留下日志也不要静默消失
+        record_panel_crash(*sys.exc_info())
+        raise
 
 
 if __name__ == "__main__":
