@@ -310,14 +310,63 @@ def test_accel_hard_gates_reject_bad_geometry_or_bias(
     assert any(reason in finding for finding in result.findings)
 
 
-def test_accel_hard_gate_rejects_large_corrected_max_error() -> None:
+def tilt_one_face(samples, stage, degrees_: float, axis: str = "x"):
+    """把整面样本绕一个轴倾斜 —— 模拟"这一面摆得跟对面不一样"。"""
+    radians_ = math.radians(degrees_)
+    result = []
+    for item in samples:
+        if item.stage is not stage:
+            result.append(item)
+            continue
+        vector = np.asarray(item.accel_g, dtype=float)
+        cos, sin = math.cos(radians_), math.sin(radians_)
+        if axis == "x":
+            turned = np.array([vector[0] * cos - vector[1] * sin,
+                               vector[0] * sin + vector[1] * cos, vector[2]])
+        else:
+            turned = np.array([vector[0], vector[1] * cos - vector[2] * sin,
+                               vector[1] * sin + vector[2] * cos])
+        result.append(replace(item, accel_x_g=turned[0], accel_y_g=turned[1], accel_z_g=turned[2]))
+    return result
+
+
+def test_a_hand_placed_six_face_set_is_usable_instead_of_rejected() -> None:
+    """徒手摆六面达不到 0.025 g；差一点只该 WARN，不该整份拒收。
+
+    残差衡量的是"这一对正负面摆得一致不一致"，不是数据坏没坏 —— 坏数据由 std、
+    奇异值、对角/非对角那几道门先拦。10° 的对内差折合约 1.7° 水平误差，远小于
+    "不标定"的代价；PX4 连这道检查都没有。
+    """
+    tilted = tilt_one_face(accel_samples(), MetrologyStage.ACCEL_NEG_Y, 10.0)
+
+    result = fit_accelerometer(tilted)
+
+    assert result.status is MetrologyStatus.WARN
+    assert 0.025 < result.corrected_rms_g <= 0.075
+    assert any("一致性折合约" in finding for finding in result.findings)
+
+
+def test_accel_hard_gate_still_rejects_a_wildly_inconsistent_face() -> None:
+    tilted = tilt_one_face(accel_samples(), MetrologyStage.ACCEL_NEG_Y, 25.0)
+
+    result = fit_accelerometer(tilted)
+
+    assert result.status is MetrologyStatus.FAIL
+    assert result.corrected_rms_g > 0.075
+    assert any("摆放差异过大" in finding for finding in result.findings)
+
+
+def test_a_single_outlier_sample_is_still_caught_by_the_max_error_gate() -> None:
+    """RMS 会被 9000 个样本摊平，单点野值只有最大误差这道门拦得住。"""
     samples = accel_samples()
     bad = samples[-1]
-    samples[-1] = replace(bad, accel_x_g=bad.accel_x_g + 0.10)
+    samples[-1] = replace(bad, accel_x_g=bad.accel_x_g + 0.40)
+
     result = fit_accelerometer(samples)
+
     assert result.status is MetrologyStatus.FAIL
-    assert result.corrected_max_error_g is not None
-    assert result.corrected_max_error_g > 0.05
+    assert result.corrected_rms_g < 0.025
+    assert any("最大误差" in finding for finding in result.findings)
 
 
 def test_stationary_gyro_reports_bias_noise_and_sample_gate() -> None:
@@ -605,7 +654,7 @@ def test_room_temperature_application_replays_only_base_evidence() -> None:
         data_source="room-temperature-v1-incomplete",
         created_at="2026-08-28T12:00:00+08:00",
     )
-    with pytest.raises(ValueError, match="stationary gyro"):
+    with pytest.raises(ValueError, match="陀螺静止证据为 NOT_RUN"):
         validate_room_temperature_candidate_for_application(
             incomplete, missing_gyro)
 
@@ -671,14 +720,15 @@ def test_contract_and_capture_bindings_are_exact_and_uniform() -> None:
 
     rows = accel_samples(count=1)
     rows[-1] = replace(rows[-1], session_id="v1-session-other")
-    with pytest.raises(ValueError, match="firmware/session/capture source"):
+    # 报错必须点名分叉的那一项，否则用户不知道该重采哪一步。
+    with pytest.raises(ValueError, match=r"mix capture context: session_id=.*v1-session-other"):
         fit_accelerometer(rows)
 
 
 def test_mixed_target_state_is_rejected_instead_of_silently_merged() -> None:
     rows = accel_samples(count=1)
     rows[-1] = replace(rows[-1], calibration_generation=8)
-    with pytest.raises(ValueError, match="mix frame/contract/orientation"):
+    with pytest.raises(ValueError, match=r"mix capture context: calibration_generation=7/8"):
         fit_accelerometer(rows)
 
 
@@ -688,3 +738,58 @@ def test_module_import_survives_without_numpy_but_analysis_is_explicit(
     monkeypatch.setattr(metrology, "_np", None)
     with pytest.raises(metrology.NumpyRequiredError, match="pip install numpy"):
         fit_accelerometer([])
+
+
+def room_temperature_evidence(*, tilt_deg: float = 0.0):
+    """六面 + 陀螺静止的可应用证据；tilt_deg 制造一对正负面的摆放不一致。"""
+    samples = accel_samples()
+    if tilt_deg:
+        samples = tilt_one_face(samples, MetrologyStage.ACCEL_NEG_Y, tilt_deg)
+    samples = samples + gyro_static_samples()
+    candidate = metrology.build_metrology_candidate(samples, data_source="test")
+    return candidate, samples
+
+
+def test_a_hand_placed_candidate_can_still_be_applied_to_the_aircraft() -> None:
+    """WARN 不是"坏数据"，是"摆得不够一致"。拒掉它等于逼人做不到的事。
+
+    2026-08-29 实况：六面 WARN（折合 1.5°），上位机按钮亮了，最后一道写机门却
+    仍然抛 "six-face accelerometer evidence must PASS"。
+    """
+    candidate, samples = room_temperature_evidence(tilt_deg=10.0)
+    assert candidate.accelerometer.status is MetrologyStatus.WARN
+
+    accepted = metrology.validate_room_temperature_candidate_for_application(
+        candidate, samples)
+
+    assert accepted is candidate
+
+
+def test_a_clean_candidate_is_still_accepted() -> None:
+    candidate, samples = room_temperature_evidence()
+    assert candidate.accelerometer.status is MetrologyStatus.PASS
+
+    assert metrology.validate_room_temperature_candidate_for_application(
+        candidate, samples) is candidate
+
+
+def test_a_failed_six_face_fit_is_still_refused_and_says_why() -> None:
+    candidate, samples = room_temperature_evidence(tilt_deg=25.0)
+    assert candidate.accelerometer.status is MetrologyStatus.FAIL
+
+    with pytest.raises(ValueError) as failure:
+        metrology.validate_room_temperature_candidate_for_application(candidate, samples)
+
+    message = str(failure.value)
+    assert "六面加速度计" in message and "FAIL" in message
+    assert "摆放差异过大" in message, "只说 must PASS，用户不知道该改什么"
+
+
+def test_v0_imported_evidence_is_still_refused_even_though_warn_is_allowed() -> None:
+    """V0 导入会把 PASS 压成 WARN —— 放行 WARN 之后这条必须仍然单独拦住。"""
+    samples = accel_samples(method=CaptureMethod.V0_IMPORTED) + gyro_static_samples()
+    candidate = metrology.build_metrology_candidate(samples, data_source="test")
+    assert candidate.accelerometer.status is MetrologyStatus.WARN
+
+    with pytest.raises(ValueError, match="V0-imported"):
+        metrology.validate_room_temperature_candidate_for_application(candidate, samples)

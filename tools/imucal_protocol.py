@@ -233,19 +233,72 @@ def _verify_target_context(link: Any, encoded: EncodedV1Candidate,
         if event_values and generation_values and identity_values:
             break
     if not event_values or not generation_values or not identity_values:
-        raise ImuCalProtocolError("target IMUCAL context reply is incomplete")
-    if any(event_values.get(name) != "0" for name in
-           ("candidate", "applied", "commit_pending", "dirty")):
-        raise ImuCalProtocolError("target already has a candidate or dirty parameter state")
+        # 原来只说 "incomplete"，把收到的行全扔了 —— 分不清是飞控只回了
+        # `valid=0 unavailable`（快照/固件身份读不出来），还是根本没回。
+        missing = [
+            name for name, present in (
+                ("event/candidate 行", bool(event_values)),
+                ("generations 行", bool(generation_values)),
+                ("identity/firmware_crc32 行", bool(identity_values)),
+            ) if not present
+        ]
+        imucal_lines = [line for line in transcript if line.startswith("IMUCAL ")]
+        if not transcript:
+            # 一行都没有 = 链路层就没通，跟 IMUCAL 协议无关，别让人去查标定。
+            raise ImuCalProtocolError(
+                "飞控在 3 秒内一个字节都没回：这不是标定协议的问题，是串口链路不通。"
+                "确认 USB CDC 还在（设备管理器里 0483:5740）、固件没有死机；"
+                "最快的办法是拔插一次 USB 重新上电，再重试。"
+            )
+        if any("valid=0" in line for line in imucal_lines):
+            raise ImuCalProtocolError(
+                "飞控回了 IMUCAL valid=0：标定快照或固件身份读不出来，"
+                "先执行一次 STATUS? / 重新上电，确认 IMU 采样链正常后再应用。"
+                f"实际收到：{' | '.join(imucal_lines) or '（无 IMUCAL 行）'}"
+            )
+        raise ImuCalProtocolError(
+            f"飞控的 IMUCAL? 回包不完整，缺少：{'、'.join(missing)}。"
+            f"共收到 {len(transcript)} 行，其中 IMUCAL 行 {len(imucal_lines)} 条："
+            f"{' | '.join(imucal_lines) or '（无）'}"
+        )
+    busy = {name: event_values.get(name) for name in
+            ("candidate", "applied", "commit_pending", "dirty")
+            if event_values.get(name) != "0"}
+    if busy:
+        # 只说"已有候选或脏状态"，用户不知道该 REVERT 还是该 COMMIT。
+        hint = ("先点“撤销 RAM 候选”再重试"
+                if busy.keys() & {"candidate", "applied"}
+                else "参数区有未落盘的改动，先完成或撤销那次写入")
+        detail = "、".join(f"{name}={value}" for name, value in busy.items())
+        raise ImuCalProtocolError(
+            f"飞控当前不是干净状态（{detail}），不能上传新候选。{hint}。")
     target_crc = int(identity_values.get("firmware_crc32", "0"), 0)
     if target_crc != encoded.firmware_crc32:
         raise ImuCalProtocolError(
-            f"firmware CRC mismatch target={target_crc:08x} evidence={encoded.firmware_crc32:08x}"
+            f"固件不是同一份：飞控 crc32={target_crc:08x}，证据采于 crc32="
+            f"{encoded.firmware_crc32:08x}。采样链和滤波系数可能已经变了，"
+            "六面证据必须在当前固件下重新采集。"
         )
-    if int(generation_values.get("persisted", "-1"), 0) != encoded.base_generation:
-        raise ImuCalProtocolError("target persisted generation does not match capture evidence")
-    if int(generation_values.get("persisted_orientation", "-1"), 0) != encoded.orientation_code:
-        raise ImuCalProtocolError("target orientation does not match capture evidence")
+    target_generation = int(generation_values.get("persisted", "-1"), 0)
+    if target_generation != encoded.base_generation:
+        # 这个代次是标定快照的 seqlock 计数，APPLY / REVERT / COMMIT 都会 +1。
+        # 所以"应用一次再撤销"就会让同一批证据对不上号 —— 不是证据坏了，是计数走了。
+        raise ImuCalProtocolError(
+            f"标定代次对不上：飞控当前 persisted={target_generation}，"
+            f"证据采集于代次 {encoded.base_generation}。"
+            + ("这批证据是在上电后未做过任何标定动作时采的；本次上电已经执行过 "
+               "APPLY/REVERT，代次已经往前走了。断电重新插拔 USB 后代次归位，"
+               "再点一次“应用”即可（一次上电只应用一次）。"
+               if target_generation > encoded.base_generation else
+               "飞控代次比证据还旧，说明证据不是这台飞机/这次上电采的，请重新采集。")
+        )
+    target_orientation = int(generation_values.get("persisted_orientation", "-1"), 0)
+    if target_orientation != encoded.orientation_code:
+        raise ImuCalProtocolError(
+            f"安装朝向对不上：飞控 persisted_orientation={target_orientation}，"
+            f"证据 orientation_code={encoded.orientation_code}。"
+            "六面证据必须在当前朝向下重新采集。"
+        )
 
 
 def upload_and_apply(link: Any, encoded: EncodedV1Candidate) -> ImuCalTransactionResult:

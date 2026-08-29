@@ -146,6 +146,29 @@ GYRO_ROTATION_STAGES = (
     MetrologyStage.GYRO_POS_360_Y,
     MetrologyStage.GYRO_POS_360_Z,
 )
+# 手转 360° 的采集窗口里，动手之前和收手之后必然有静止段。把它们一起积分，只会把
+# bias 残差乘上静止时长塞进角度里；判定该只看真正在转的那一段。
+GYRO_ROTATION_MOTION_FLOOR_DPS = 5.0
+GYRO_ROTATION_MOTION_FRACTION = 0.10
+
+
+def gyro_rotation_motion_window(rates: Any, axis: int) -> tuple[int, int]:
+    """返回主轴真正在转的连续区间 ``[start, stop)``；无法判定时返回整段。
+
+    阈值取"主轴峰值的 10%"与 5 dps 中的较大者：慢转也能框住，静止噪声框不住。
+    只裁首尾，不剔中间停顿 —— 转到一半停一下仍是同一次转动，剔掉会把角度算少。
+    """
+
+    np = _require_numpy()
+    values = np.abs(np.asarray(rates, dtype=float)[:, axis])
+    if values.size == 0:
+        return 0, 0
+    threshold = max(GYRO_ROTATION_MOTION_FLOOR_DPS,
+                    float(np.max(values)) * GYRO_ROTATION_MOTION_FRACTION)
+    moving = np.nonzero(values >= threshold)[0]
+    if moving.size < 2:
+        return 0, int(values.size)
+    return int(moving[0]), int(moving[-1]) + 1
 
 
 @dataclass(frozen=True)
@@ -166,8 +189,21 @@ class MetrologyThresholds:
     accel_diagonal_min: float = 0.75
     accel_off_diagonal_max: float = 0.20
     accel_bias_norm_max_g: float = 0.20
+    # 残差衡量的是"六面之间摆得一致不一致"，不是数据坏没坏 —— 坏数据由 std、
+    # 奇异值、对角/非对角那几道门先拦掉。
+    #
+    # 原来 0.025 g 单档硬拒，等价于要求同一对正负面的倾角差 ≤6°，而这个不一致
+    # 换算成飞行代价只有约 1° 的水平误差 —— PX4 干脆没有这道检查（它的 3x3 只用
+    # 三个正面求逆，负面只贡献零偏，天然没有残差可判）。徒手摆六面达不到 ≤6°，
+    # 拿 1° 的代价去拦人不合理。
+    #
+    # 现在分两档：PASS 线保持 0.025 g（≈1.4°，摆得好就该给 PASS），超过 0.075 g
+    # （≈4.3°，实测折合约 3° 水平误差）才 FAIL，中间给 WARN 并把折合角度报出来，
+    # 让人自己决定收不收。
     accel_corrected_rms_max_g: float = 0.025
     accel_corrected_max_error_g: float = 0.05
+    accel_corrected_rms_fail_g: float = 0.075
+    accel_corrected_max_error_fail_g: float = 0.11
     gyro_static_min_samples: int = 4000
     gyro_static_min_duration_s: float = 3.0
     gyro_static_std_pass_dps: float = 0.50
@@ -580,9 +616,18 @@ def _uniform_context(
         for sample in samples
     }
     if len(contexts) != 1:
+        # 只说"混了上下文"等于什么都没说：把真正分叉的那一项和它的取值点出来，
+        # 用户才知道该重采哪几步。
+        names = ("frame_id", "frame_contract_version", "orientation_code",
+                 "calibration_generation", "firmware_hash", "session_id", "capture_source")
+        divergent = []
+        for index, name in enumerate(names):
+            values = sorted({str(context[index]) for context in contexts})
+            if len(values) > 1:
+                divergent.append(f"{name}={'/'.join(values)}")
         raise ValueError(
-            "samples mix frame/contract/orientation/calibration generation/"
-            "firmware/session/capture source"
+            "samples mix capture context: " + "; ".join(divergent)
+            + "。同一份候选必须来自同一台飞机的同一次固件与同一代标定，请重采分叉的步骤。"
         )
     context = next(iter(contexts))
     if context[0] != CANONICAL_FRAME_ID:
@@ -787,17 +832,30 @@ def fit_accelerometer(
         failures.append(
             f"|bias|={bias_norm:.6f} g，超过 {thresholds.accel_bias_norm_max_g:.2f} g"
         )
-    if rms > thresholds.accel_corrected_rms_max_g:
+    # 残差单独一档：只说明六面摆得一致不一致，折合角度报出来让人判断。
+    inconsistency: list[str] = []
+    if rms > thresholds.accel_corrected_rms_fail_g:
         failures.append(
-            f"校正后 RMS={rms:.6f} g，超过 {thresholds.accel_corrected_rms_max_g:.3f} g"
+            f"校正后 RMS={rms:.4f} g（折合约 {math.degrees(math.asin(min(1.0, rms))):.1f}°），"
+            f"超过 {thresholds.accel_corrected_rms_fail_g:.3f} g；六面摆放差异过大"
         )
-    if maximum > thresholds.accel_corrected_max_error_g:
+    elif rms > thresholds.accel_corrected_rms_max_g:
+        inconsistency.append(
+            f"六面一致性折合约 {math.degrees(math.asin(min(1.0, rms))):.1f}°"
+            f"（RMS={rms:.4f} g，理想 ≤{thresholds.accel_corrected_rms_max_g:.3f} g）；"
+            "可用，但同一对正负面用同一个支撑重采会更准"
+        )
+    if maximum > thresholds.accel_corrected_max_error_fail_g:
         failures.append(
-            f"校正后最大误差={maximum:.6f} g，超过 {thresholds.accel_corrected_max_error_g:.2f} g"
+            f"校正后最大误差={maximum:.4f} g，超过 {thresholds.accel_corrected_max_error_fail_g:.2f} g"
         )
     if failures:
         status = MetrologyStatus.FAIL
         findings.extend(failures)
+    elif inconsistency:
+        if status is MetrologyStatus.PASS:
+            status = MetrologyStatus.WARN
+        findings.extend(inconsistency)
     status = _cap_v0_pass(status, relevant, findings)
     return AccelerometerCalibrationResult(
         status=status,
@@ -813,6 +871,46 @@ def fit_accelerometer(
         corrected_max_error_g=maximum,
         findings=tuple(findings),
     )
+
+
+def accelerometer_face_residuals(
+    samples: Sequence[MetrologySample],
+    result: AccelerometerCalibrationResult,
+) -> dict[str, tuple[float, float]]:
+    """逐面返回 (校正后 RMS 残差 g, 相对理想轴的倾角 °)。
+
+    六面是一起拟合的，整体 FAIL 时不指出是哪一面摆歪了，用户只能六面全重来。
+
+    3x3 拟合能吸收一对正负面的"平均倾角"（当成传感器装歪），但吸收不了同一对
+    内部的不对称：+Y 歪 2°、-Y 歪 10°，任何矩阵都没法同时满足两边，差值的一半
+    会变成两面都甩不掉的残差。所以残差高说明的是"这一对摆得不一致"。
+    """
+
+    if result.correction_matrix is None or result.bias_g is None:
+        return {}
+    try:
+        np = _require_numpy()
+    except Exception:
+        return {}
+    correction = np.asarray(result.correction_matrix, dtype=float)
+    bias = np.asarray(result.bias_g, dtype=float)
+    residuals: dict[str, tuple[float, float]] = {}
+    for stage in ACCEL_FACE_STAGES:
+        rows = [sample for sample in samples if sample.stage is stage]
+        if not rows:
+            continue
+        expected = np.asarray(STAGE_DEFINITIONS[stage].expected_specific_force_g, dtype=float)
+        observed = np.asarray([sample.accel_g for sample in rows], dtype=float)
+        corrected = (correction @ (observed - bias).T).T
+        errors = np.linalg.norm(corrected - expected, axis=1)
+        rms = float(math.sqrt(float(np.mean(errors ** 2))))
+        # 倾角只看原始读数：这是用户真正控制得了的量。
+        mean = np.mean(observed - bias, axis=0)
+        norm = float(np.linalg.norm(mean))
+        cosine = float(np.dot(mean, expected)) / norm if norm > 0.0 else 0.0
+        tilt = math.degrees(math.acos(max(-1.0, min(1.0, cosine))))
+        residuals[stage.value] = (rms, tilt)
+    return residuals
 
 
 def analyze_stationary_gyro(
@@ -956,8 +1054,16 @@ def analyze_gyro_rotations(
         duration = float(times[-1] - times[0]) if monotonic else 0.0
         if monotonic:
             rates = np.asarray([sample.gyro_dps for sample in rows], dtype=float) - bias
-            integrated = np.trapz(rates, times, axis=0)
             axis = _rotation_axis(stage)
+            start, stop = gyro_rotation_motion_window(rates, axis)
+            if stop - start < 2:
+                start, stop = 0, len(rows)
+            if stop - start < len(rows):
+                findings.append(
+                    f"{stage.value} 已截取运动段 {times[stop - 1] - times[start]:.2f}s / "
+                    f"{stop - start} 样本（采集共 {duration:.2f}s / {len(rows)} 样本）。"
+                )
+            integrated = np.trapz(rates[start:stop], times[start:stop], axis=0)
             main = float(integrated[axis])
             off = max(abs(float(integrated[index])) for index in range(3) if index != axis)
             # Never place Infinity in evidence: a zero main-axis integral is a
@@ -2087,14 +2193,23 @@ def validate_room_temperature_candidate_for_application(
     )
     if candidate_to_dict(candidate) != candidate_to_dict(rebuilt):
         raise ValueError("candidate does not exactly match replayed raw evidence")
-    if rebuilt.accelerometer.status is not MetrologyStatus.PASS:
-        raise ValueError("six-face accelerometer evidence must PASS")
-    if rebuilt.gyro_static.status is not MetrologyStatus.PASS:
-        raise ValueError("stationary gyro evidence must PASS")
+    # V0 导入的样本会把 PASS 压成 WARN，必须先单独拒掉，否则下面放行 WARN 时会漏过去。
     if any(
         sample.capture_method is CaptureMethod.V0_IMPORTED for sample in sample_list
     ):
         raise ValueError("V0-imported evidence is never application-eligible for V1")
+    # WARN 放行：加速度计的 WARN 只表示六面摆放一致性在 0.025~0.075 g（折合 1.4~4.3°），
+    # 陀螺的 WARN 只表示静止段噪声偏大（4500 样本下零偏标准误 <0.03 dps）。两者都远好于
+    # 不标定，PX4 在这两处根本没有对应的拒收条件。真正的问题（矩阵非正交、刻度错、单点
+    # 野值、样本不足）在上面已经判成 FAIL/INCOMPLETE。
+    applicable = {MetrologyStatus.PASS, MetrologyStatus.WARN}
+    for label, section in (("六面加速度计", rebuilt.accelerometer),
+                           ("陀螺静止", rebuilt.gyro_static)):
+        if section.status not in applicable:
+            detail = "；".join(section.findings) or "无附加说明"
+            raise ValueError(
+                f"{label}证据为 {section.status.value}，不可应用到飞机。原因：{detail}"
+            )
     return candidate
 
 
