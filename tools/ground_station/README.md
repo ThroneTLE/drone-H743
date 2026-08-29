@@ -1,207 +1,337 @@
-# drone-H743 专属上位机与飞控自检架构规划
+# drone-H743 专属上位机与飞控自检架构
 
-> **定位**：面向 `drone-H743` 飞控与测控系统的跨平台、高颜值、多协议可视化调试地面站与自检工作台（基于 [Serial-Studio](https://github.com/Serial-Studio/Serial-Studio) 二次开发）。
+> **定位**：面向 `drone-H743` 飞控的跨平台可视化调试地面站与自检工作台，基于
+> [Serial-Studio](https://github.com/Serial-Studio/Serial-Studio) 做特异性扩展。
 
 ---
 
-## 🏛️ 一、核心工程架构思想
+## 0. 先读这一节：当前真实状态
 
-### 1. 系统边界与控制权原则
-* **上位机定位**：负责**状态展示、参数配置、任务编排发起与结果呈现**。上位机原则上不直接运行高危的延时控制逻辑（如在脚本中通过 `sleep(5)` 分步控制电机或舵机）。
-* **固件端定位**：负责**物理执行器的闭环安全、状态互锁、过程看门狗与异常急停**。任何涉及物理执行器持续运转或改变飞控基准的操作，其安全生命周期必须闭环在固件端。
+这份文档前半部分曾经把"设想"和"已完成"混在一起写，误导过人。现在分清楚：
 
-```text
-[ 上位机 (Serial-Studio / UI) ]
-   │
-   ├─ 1. Query / Command (查询状态 / 原子指令)
-   ├─ 2. Action: Start / Cancel (发起任务 / 取消任务)
-   └─ 3. Action: Status Poll / Event Stream (监听进度与结果展示)
-   │
-[ 通信链路 (USB CDC / Wi-Fi UDP / UART) ]
-   │
-[ 飞控端 (STM32H743 FreeRTOS) ]
-   ├─ 状态互锁校验 (Armed 状态禁止任何自检 Action)
-   ├─ 硬件级时间看门狗 (通信中断自动超时复位)
-   └─ 任务状态机闭环 (IDLE -> RUNNING -> COMPLETED / FAILED / CANCELLED)
+| 部分 | 状态 |
+|:--|:--|
+| 固件遥测通道 schema（`TELEM?`） | ✅ **已实现**，有契约测试 |
+| 固件 Action 安全状态机（`app_action.c`） | ✅ **已实现并验证**，但**尚未接入命令层**（没有任何命令能启动它） |
+| `Drone-H743-GCS.ssproj` | ⚠️ **仿真器演示壳**，见下 |
+| 控制脚本 / 自动建表 | ❌ 未做 |
+| 交互控件（PID 调参台等） | ❌ 未做，但路线已探明并有原型包 |
+| 自检向导 / 日志回放 | ❌ 未做 |
+
+### `Drone-H743-GCS.ssproj` 是对着仿真器做的，不是对着固件
+
+它连的是 `drone_simulator.py`（TCP `127.0.0.1:6666`、`/*$...*/` 包裹的 CSV），
+而固件实际发的是 **VOFA JustFloat 二进制**（float32 LE + 尾 `00 00 80 7F`）加裸文本行。
+
+顶部 9 个按钮里，**只有 `PING` 和 `STATUS?` 是固件真实存在的命令**。其余 7 个接上真机
+一律返回 `ERR unknown cmd`：
+
+| 按钮 | 固件真实情况 |
+|:--|:--|
+| `ARM` / `DISARM` | 顶层不存在，只有 `IDENT ARM` / `MOTOR ARM` 这类**子命令** |
+| `CALIB IMU` | 实际是 `IMUCAL BEGIN/DATA/END/APPLY/REVERT/COMMIT` 六步流程 |
+| `CALIB BARO` | 不存在 |
+| `SERVO TEST` | 有 `SERVO`，但没有 `TEST` 子命令 |
+| `CONFIG SAVE` | 实际是 `SAVE` |
+| `REBOOT` | 全仓库搜不到 |
+
+UI 布局和控件选型是实打实的成果，别推倒；但要清楚它离真机还隔着一整个协议适配层。
+
+---
+
+## 1. 核心工程思想：上位机不持有危险动作的时间轴
+
+判据很简单：**上位机进程被 `kill -9`，物理世界会不会停在危险态？**
+
+```python
+# 反模式：时间轴在上位机手里
+send("SERVO 1 500"); time.sleep(2); send("SERVO 1 1500")
+# 这两行之间进程被杀 / USB 被拔 / 用户 Ctrl+C
+# -> 舵机永远停在 500，堵转发热，固件一无所知
 ```
 
----
+会 → 这个动作必须是 Action，它的时间轴、超时、急停必须闭环在**固件端**。
 
-## 🧩 二、API 分类与生命周期契约规范
-
-根据行为语义与风险等级，飞控端接口严格划分为四类：
-
-### 1. Query（查询类 API）
-* **特征**：只读、无副作用、无时间跨度、幂等。
-* **调用条件**：随时可调，不影响飞控运行。
-* **典型接口**：
-  * `SYS:STATE?`：查询系统主状态（`DISARMED` / `ARMED` / `IN_FLIGHT` / `ERROR`）。
-  * `SENS:IMU?`：读取当前 IMU 原始样本与 Fusion 姿态角。
-  * `SYS:BATT?`：读取电池电压、电流与剩余电量。
-
-### 2. Command（基础原子指令）
-* **特征**：瞬时完成、原子操作、无持续性物理危险。
-* **典型接口**：
-  * `CMD:BEEP [freq_hz] [duration_ms]`：蜂鸣器提示音。
-  * `CMD:LED_SET [id] [color_rgb]`：状态指示灯配置。
-  * `CMD:PARAM_SET [key] [val]`：修改内存参数（非持久化）。
-
-### 3. Action（任务 API / 复合多步骤任务）
-* **特征**：**跨越时间、多步骤、中途意外停止会导致危险、独占硬件执行器**。
-* **生命周期状态机**：
-  $$\text{IDLE} \xrightarrow{\text{START}} \text{RUNNING} \xrightarrow{\text{DONE}} \text{COMPLETED} \quad \Big/ \quad \xrightarrow{\text{ERR/TIMEOUT}} \text{FAILED} \quad \Big/ \quad \xrightarrow{\text{CANCEL}} \text{CANCELLED}$$
-* **统一任务契约字段**：
-  * `action_id`：任务唯一标识。
-  * `state`：当前状态（`IDLE / RUNNING / COMPLETED / FAILED / CANCELLED`）。
-  * `progress_percent`：进度百分比（$0 \sim 100\%$）。
-  * `timeout_ms`：固件端强制硬件看门狗时间（超时无条件复位硬件）。
-  * `error_code`：失败原因（$0$: 正常, 负数: 错误码）。
-  * `hard_reset_fn`：任务中止或超时时的安全复位回调（如电机断能、舵机回中）。
-
-### 4. Stream & Telemetry（连续流与遥测）
-* **特征**：持续周期推送、可适度丢包、带时间戳。
-* **典型协议**：
-  * **VOFA+ JustFloat**：高频 28 通道 32 位浮点流（小端 IEEE 754 + `0x00, 0x00, 0x80, 0x7F` 尾帧）。
-  * **VOFA+ FireWater**：文本逗号分隔流（`ch1:1.23,ch2:4.56\n`），便于简易 `printf`。
-  * **Compact Telemetry**：定长紧凑二进制遥测包。
-
----
-
-## 🛠️ 三、典型自检与校准 Action 模型
-
-### 任务 1：IMU 静态零偏自检与校准 (`ACT:IMU_CALIB`)
-* **解决的问题**：在地面静止状态下采集若干组陀螺仪/加速度计样本，计算零偏方差。
-* **前置互锁**：系统必须处于 `DISARMED` 且机身静止。
-* **运行机制**：采样 1000 组数据，固件内部检测振动方差。若检测到机身晃动，立即终止并返回 `ERR_IMU_VIBRATION`；若平稳收敛，计算均值并返回 `COMPLETED`。
-* **数据持久化**：校准完成后不直接刷写 Flash，需由上位机下发独立的 `FLASH:SAVE` 确认指令。
-
-### 任务 2：舵机全行程自检与回中响应 (`ACT:SERVO_SWEEP`)
-* **解决的问题**：测试共轴双桨倾转舵机行程是否卡死、反馈是否正常。
-* **安全约束**：固件内置硬看门狗（如限时 4000ms）。
-* **异常处理**：上位机如果在第 2 秒断线，飞控在 4000ms 超时后**无条件驱动舵机回中位并释放 PWM 输出**，禁止舵机堵转卡在极限位。
-
-### 任务 3：电机受控点动安全测试 (`ACT:MOTOR_SPIN`)
-* **解决的问题**：装机排查电机转向、电调通信及桨叶平衡。
-* **安全约束**：
-  * 最大油门输出硬限幅（如最大允许 $15\%$）。
-  * 最大运转时间硬限幅（如单次点动最长允许 $2000\text{ ms}$）。
-  * 急停打断：收到任何非法指令或取消指令，立即关闭 PWM。
-
-### 任务 4：气压计 / ToF / 光流传感器健康度自检 (`ACT:SENSOR_HEALTH`)
-* **解决的问题**：检查各 I2C/SPI/UART 外设通信连通性与底噪数据合理性。
-* **输出结果**：各项传感器连通状态、采样率统计、丢包率与自检通过标志。
-
----
-
-## 🛡️ 四、安全互锁与异常处理矩阵
-
-| 场景 / 异常 | 风险描述 | 固件端处理策略 (Firmware Action) | 上位机表现 (UI/SDK) |
-| :--- | :--- | :--- | :--- |
-| **已解锁状态触发自检** | 飞行中误触导致执行器失控或传感器归零 | 互锁拦截：直接返回 `ERR_STATE_ARMED`，拒绝启动任何 Action | 按钮置灰，弹出危险拦截提示 |
-| **通信中断 / 上位机崩溃** | 舵机扫频或电机测试中途断线 | Action 内部定时器超时，触发 `hard_reset_fn`，电机停机、舵机回中 | UI 显示 Disconnected 并超时判定任务失效 |
-| **校准中机体晃动** | 产生严重错误的姿态基准导致翻机 | 固件方差超标拦截，标记 `ACT_FAILED`，不应用该组零偏 | 提示“校准失败：机身晃动，请保持静止后重试” |
-| **紧急中止 (Abort/E-Stop)** | 现场出现险情需要立即停止所有动作 | 立即终止当前 Action，强制所有执行器进入安全断能态 | 提供显著的红色急停 (E-Stop) 按钮 |
-
----
-
-## 🖥️ 五、上位机 (Serial-Studio 二次开发) 规划
-
-### 1. 软件架构设计
 ```text
-[ Qt Quick / QML 用户界面层 ]
-   ├── 3D 姿态与航向仪表盘 (OpenGL / 3D Model)
-   ├── 实时多通道曲线绘图 (QCustomPlot / OpenGL)
-   ├── 飞控自检与校准向导面板 (Action Orchestration)
-   └── PID 在线调参台与参数管理器 (PID Tuner)
-         │
-[ 统一 Device SDK / 协议分发层 ]
-   ├── Action Manager (任务发起、状态轮询、超时看门狗、进度事件)
-   ├── Protocol Engine (JustFloat / FireWater / ASCII Command / Telemetry)
-   └── Flash Parameter Cache (参数读取/差异比对/一键写入)
-         │
-[ 传输层 (SerialPort / Network Socket / UDP) ]
+[ 上位机 ]  查询状态 / 原子指令 / 发起任务 / 监听进度
+     |
+[ USB CDC | Wi-Fi | UART ]
+     |
+[ STM32H743 FreeRTOS ]  状态互锁 / 硬件超时 / 任务状态机闭环
 ```
 
-### 2. 核心功能页面规划
-1. **飞控仪表与 3D 姿态监控面板**：
-   - 导入四旋翼/共轴双桨 3D 机架模型（`models/drone_frame.glb`），实时绑定 Fusion 姿态角。
-   - 姿态地平仪、升降速度计、高度曲线、电机 PWM 条形图。
-2. **一键自检与校准向导 (Self-Test Wizard)**：
-   - 组合调用固件端 Action：IMU 静态校准 $\to$ 舵机全行程测试 $\to$ 传感器健康度扫描。
-   - 输出完整的自检健康度报告（Pass/Fail 矩阵）。
-3. **PID 在线调参面板 (PID Tuner)**：
-   - 姿态角环、角速度环 PID 参数滑动条实时发送与生效。
-   - 支持读取飞控当前参数、比对差异、一键烧录到飞控 Flash（`FLASH:SAVE`）。
-4. **飞行日志回放与波形分析 (Log Player)**：
-   - 对接 `data/flight_logs/`，载入离线日志实现时间轴拖拽播放与特征分析。
+### API 四分类
+
+| 类别 | 判据 | 现有例子 |
+|:--|:--|:--|
+| **Query** | 只读、幂等、随时可调 | `STATUS?` `IMU?` `PID?` `TELEM?` |
+| **Command** | 瞬时、原子、无持续危险 | `PARAM k=v` `SAVE` |
+| **Action** | 跨时间、独占执行器、中断有危险 | 见第 3 节 |
+| **Stream** | 周期推送、可丢包 | VOFA JustFloat |
+
+这个分级的实际作用：**Command 可以无脑重发，Action 绝对不能。** 网络抖动时重发 `SAVE`
+无所谓，重发 `MOTOR_SPIN START` 就是灾难 —— 所以 Action 必须带 `action_id` 做幂等。
 
 ---
 
-## 🧪 六、验收测试标准 (Given / When / Then)
+## 2. 遥测通道 schema（已实现）
 
-* **[TEST-01] 互锁保护测试**：
-  * *Given*: 飞控处于解锁状态（`ARMED`）。
-  * *When*: 上位机发送 `ACT:IMU_CALIB:START`。
-  * *Then*: 固件在 5ms 内返回错误码 `ERR_NOT_PERMITTED_IN_ARMED`，执行器与传感器基准不发生任何变化。
-* **[TEST-02] 断线看门狗测试**：
-  * *Given*: 启动舵机自检任务（持续时间 4 秒）。
-  * *When*: 运行至第 1.5 秒时拔掉 USB 数据线。
-  * *Then*: 飞控在 4 秒硬件超时到达时刻，自动驱动舵机回归中位并释放 PWM 输出。
-* **[TEST-03] 取消操作测试**：
-  * *Given*: 任务处于 `RUNNING` 状态。
-  * *When*: 上位机发送 `ACT:CANCEL`。
-  * *Then*: 固件在 10ms 内停止动作，进入 `CANCELLED` 状态并执行安全复位。
+### 为什么需要它
 
----
+改造前，"第 N 个 float 是什么"这个映射同时存在于三处：`freertos.c` 的填充代码、
+`VOFA_task` 上方的注释、以及 `.ssproj`。没有任何机制保证一致，而且**已经漂移过**
+——旧注释漏了 `[22] vel_z_kd`。插入一个通道会让上位机所有曲线静默错位，不报错，
+只是数值"有点怪"。
 
-## 🚀 五、快速上手与使用指南
+### 现在的做法
 
-我们已将原 `tools/drone_tcp_panel.py` 的核心监控、控制指令、校准流程与数据显示完整迁移至专用地面站项目：[`tools/ground_station/Drone-H743-GCS.ssproj`](file:///d:/stm32hal/drone-H743/tools/ground_station/Drone-H743-GCS.ssproj)。
+唯一事实源是 [`App/Inc/app_telemetry.h`](../../App/Inc/app_telemetry.h) 的
+`APP_TELEM_CH_*` 枚举 + [`App/Src/app_telemetry.c`](../../App/Src/app_telemetry.c)
+的元数据表。`freertos.c` 用枚举名下标，帧长与周期从表推导。
 
-### 1. 一键启动方式
+```text
+< TELEM?
+> TELEM ver=1 n=28 rate=40 page=6 hash=01297B96
 
-| 启动脚本 | 说明 | 适用场景 |
-| :--- | :--- | :--- |
-| **`run_sim.bat`** | **一键启动地面站 + 50Hz 高保真飞行仿真器** | 无需连接飞控硬件，立即查看全部 3D 姿态、航向罗盘、高度计、GPS 地图、频谱及双向指令交互 |
-| **`run_gcs.bat`** | **直接启动专用地面站** | 连接真实 STM32H743 飞控（USB 串口 / Wi-Fi TCP / UDP）进行实机调试 |
+< TELEM CH from=0
+> TELEM CH idx=0 name=roll unit=deg min=-180.000 max=180.000 grp=attitude
+> ... (至多 6 条)
+> TELEM PAGE from=0 count=6 next=6      # next=-1 表示到表尾
+```
 
-### 2. 专用地面站内置监控面板与功能
+上位机连上后拉取，用 `ensureDashboard()` 自动建表；缓存 `hash → 已建好的仪表盘`，
+重连时 hash 未变就跳过重建。
 
-1. **✈️ 3D姿态与角速度 (Attitude & Gyro)**：
-   - 3D 姿态球/人工地平仪（Roll 横滚、Pitch 俯仰、Yaw 偏航）。
-   - 3 轴角速度实时动态曲线。
-2. **📈 3轴加速度与振动频谱 (Accelerometer & FFT)**：
-   - $Ax, Ay, Az$ 3 轴加速度波形与实时快速傅里叶变换（FFT）振动频谱分析。
-3. **⛰️ 气压高度与升降速率 (Barometer & Variometer)**：
-   - SPL06 相对高度曲线、大气压强仪表盘、垂直升降速率计。
-4. **🛰️ GPS 导航地图与电子罗盘 (GPS Map & Compass)**：
-   - 经纬度航迹地图跟踪、地速表盘、卫星颗数、3D Fix 状态指示灯、磁航向罗盘。
-5. **⚡ 电源与系统健康监视 (Power & System Health)**：
-   - 动力电池电压（3S/4S 电平监控与低压告警）、总电流、已消耗电量、CPU 占用率、加解锁（Armed）安全指示。
-6. **🎛️ 共轴双电机与4舵面输出 (Coaxial Motors & Servos)**：
-   - 上/下双电机实时油门开度百分比、4 舵机实时舵偏角反馈柱状图。
-7. **🎛️ 顶部一键交互动作栏 (Actions Toolbar)**：
-   - `🔔 PING`：链路心跳检测
-   - `🛡️ STATUS?`：查询主状态
-   - `🔒 ARM`：解锁电机
-   - `⛔ DISARM`：紧急停机加锁
-   - `🧭 CALIB IMU`：零偏校准 IMU
-   - `⛰️ CALIB BARO`：校准气压基准
-   - `🧪 SERVO TEST`：舵机行程扫频自检
-   - `💾 CONFIG SAVE`：持久化配置写入 Flash
-   - `🔄 REBOOT`：远程软重启飞控
+**两个设计要点，改动前请先理解：**
+
+- **分页不是为了好看。** `uartTxQueue` 深度 32 且**满时丢弃最旧的一条**
+  （见 `APP_Control_QueueText`），28 条通道一次推进队列在慢链路上会静默丢掉开头几条，
+  而 schema 丢一条就会让上位机建错表。单次回包压到 7 条，且天然可重试。
+- **通道表只可追加。** `tests/test_telemetry_schema_contract.py` 抄下了改造前的
+  28 通道顺序做前缀断言。既有解码器（`vofa_serial_capture.py`、`drone_tcp_panel.py`）
+  和所有历史飞行日志都按位置索引，重排或中间插入会让它们全部错位。
 
 ---
 
-## 📦 七、仓库与环境配置
+## 3. Action 安全契约（已实现，未接线）
 
-* **上游仓库**：[Serial-Studio/Serial-Studio](https://github.com/Serial-Studio/Serial-Studio) (MIT License)
-* **本工程 Fork 仓库**：[ThroneTLE/Serial-Studio](https://github.com/ThroneTLE/Serial-Studio)
-* **子模块路径**：`tools/上位机/Serial-Studio/`
-* **推荐编译环境**：Qt 6.5+ (MSVC 2019/2022 64-bit 或 MinGW 64-bit), CMake 3.20+, Ninja
+[`App/Src/app_action.c`](../../App/Src/app_action.c) 已实现并通过 26 项验收，
+但**还没有任何命令能启动它** —— 接线需要在 `app_control.c` 加命令解析，并提供
+具体任务的 `begin/step/safe_reset` 回调。
 
-```powershell
-# 子模块初始化与更新命令
-cd d:\stm32hal\drone-H743
+### 为什么它不碰 HAL / RTOS / printf
+
+因为它的正确性**无法在真机上验证**。恰恰是超时、断线、急停这些路径最难在实机可靠
+复现，而本项目当前无法实机烧录。所以：
+
+- 时间靠**参数注入**（每个入口收 `now_ms`），模块内不调 `HAL_GetTick`
+- 执行器靠**回调注入**（`APP_ActionDescriptor`）
+- 零 RTOS 调用、零 printf
+
+代价是调用方要传时间；收益是"第 1.5 秒拔掉 USB，第 4 秒舵机必须回中"变成了确定性
+单元测试。**接线时请勿在模块内部引入时钟或阻塞调用**，`tests/test_action_contract.py`
+里有源码守卫会直接报错。
+
+### 锁死的不变量
+
+| | 内容 | 为什么重要 |
+|:--|:--|:--|
+| I1 | 离开 RUNNING 必定且**恰好一次**调用 `safe_reset` | 这是断线/超时路径上唯一的保护，没有第二道防线 |
+| I2 | 终态后继续 Tick 不再复位 | |
+| I3 | 互锁拒绝的 START 不调 `begin` 也不调 `safe_reset` | 多余的复位本身就是一次意外的执行器动作 |
+| I4 | 同一 `action_id` 重复 START 幂等 | 链路抖动时重发 START 是常态，重启一次舵机扫频就是事故 |
+| I5 | 时间比较走无符号差值 | `HAL_GetTick` 在 2^32 ms 回绕，写成 `now > start + timeout` 会漏判超时，意味着舵机永远不回中 |
+
+另外：心跳丢失（可配，如 500ms）早于硬超时（如 4000ms）中止；**携带错误 `action_id`
+的陈旧心跳不能续命**（否则上个任务残留的心跳会悄悄关掉新任务的断线保护）；上位机请求
+的超时会被钳到描述符上限（不能让上位机说服固件放弃自己的安全限制）。
+
+### 接线时的一条硬约束
+
+`APP_Action_Tick()` 必须由一个**不会被通信阻塞**的固定周期任务调用。如果挂在处理
+上位机命令的任务上，那个任务因 UART/Flash 阻塞时看门狗会跟着一起死，断线保护就是假的。
+
+### 待实现的具体任务
+
+| 任务 | 要点 |
+|:--|:--|
+| `SERVO_SWEEP` | 全行程扫频；硬看门狗超时无条件回中并释放 PWM |
+| `MOTOR_SPIN` | 油门硬限幅（如 15%）、单次时长硬限幅（如 2000ms）、任何异常立即关 PWM |
+| `SENSOR_HEALTH` | I2C/SPI/UART 连通性与底噪合理性 |
+
+固件里已有的 `IMUCAL` / `ACCEPT` / `IDENT` / `FLOG` 是同类多步骤任务，且 `IMUCAL`
+已具备两段提交（`APPLY` 生效不落盘 / `COMMIT` 写 Flash）、CRC 校验、
+`SetImuCalibrationCandidateArmLock` 硬互锁。**后续应把它们归一化到同一套 Action 外壳，
+而不是再造一套**，否则上位机要写两遍状态跟踪。
+
+---
+
+## 4. 安全互锁矩阵
+
+| 场景 | 风险 | 固件处理 | 上位机表现 |
+|:--|:--|:--|:--|
+| 已解锁时触发自检 | 飞行中误触导致执行器失控或基准归零 | 互锁拦截，返回 `ERR_ARMED`，不启动也不复位 | 按钮置灰 + 危险提示 |
+| 通信中断 / 上位机崩溃 | 舵机扫频中途断线 | 心跳丢失先中止；硬超时兜底；`safe_reset` | 显示 Disconnected |
+| 校准中机体晃动 | 错误姿态基准导致翻机 | 方差超标拦截，不应用零偏 | "请保持静止后重试" |
+| 紧急中止 | 现场险情 | 立即终止并断能 | 显著的红色急停按钮 |
+
+---
+
+## 5. Serial-Studio 能力探底（**最重要的一节，能省下几周**）
+
+结论基于 Serial-Studio 源码、内置扩展包，以及用构建好的二进制
+`--dump-api-schema` 实跑导出的 [`ss-api-schema-gpl3.json`](ss-api-schema-gpl3.json)
+（GPL3 构建实际注册的 256 条命令）交叉验证。
+
+### 5.1 不要 fork。交互式 UI 用 widget extension
+
+**这是最关键的一条。** 早期计划是"全量 fork 改造"，探底后证明**没有必要**：
+
+- 扩展包 = `info.json` + **一个 QML 文件**，装到工作区目录，不进应用包
+- `scope` 支持 `"dataset"` 和 **`"group"`**（整块面板）
+- 官方文档原文：**"Widget extensions are not a Pro feature: they load in GPL builds
+  and in commercial builds alike"**
+- 内置的 `compass` / `datagrid` 就是用这套机制做的（见 `app/rcc/extensions/widget/`）
+- 信任模型原文：**"no sandbox, no capability boundary"**，与主程序同权限
+
+**写设备的通路**（结构上闭合，不是猜的）：
+
+```
+ModuleManager::registerQmlTypes():
+  qmlRegisterType<API::TerminalBridge>("SerialStudio", 1, 0, "ApiTerminalBridge")   <- 无条件
+  qmlRegisterType<Widgets::ExtensionData>("SerialStudio", 1, 0, "ExtensionDataModel")
+  #ifdef BUILD_COMMERCIAL      <- 商业块在这两行之后才开始
+```
+
+扩展**必须** `import SerialStudio` 才能拿到 `ExtensionDataModel`（四个必填属性之一），
+而 `ApiTerminalBridge` 就在同一个模块、同一次注册调用里，且在商业门控之上。
+`TerminalBridge::run("scope.verb {json}")` 走 `CommandHandler` 的 Trusted origin，
+可执行**任意 API 命令**。
+
+原型包见 [`extensions/org.drone-h743.control-panel/`](extensions/org.drone-h743.control-panel/)。
+安装：整个目录复制到 `~/Documents/Serial Studio/Extensions/widget/`，重启，
+在工程编辑器里给某个 group 选该控件。
+
+> **仍待人工确认**：首次运行的信任对话框、写设备是否弹确认框
+> （`io.writeData` 文档称 "in-process scripts are not prompted"，未实测）。
+
+### 5.2 Canvas / Painter 是死路，别规划它
+
+`app/src/UI/Widgets/Painter.cpp` 的头是
+`SPDX-License-Identifier: LicenseRef-SerialStudio-Commercial` —— **纯商业授权，不是双授权**，
+整个文件被 `#ifdef BUILD_COMMERCIAL` 包住。且 `CMakeLists.txt` 强制 `BUILD_GPL3=ON` 时
+`BUILD_COMMERCIAL=OFF`；反过来开商业构建会在 configure 阶段拿 license key 去
+Lemon Squeezy 验证，验不过 `FATAL_ERROR`。
+
+它有全套鼠标事件和 `deviceWrite`，看起来非常适合做 PID 滑条 —— **但在 GPL3 构建里不存在**，
+而且改 ifdef 属于授权问题不是技术问题。用 5.1 的扩展机制代替。
+
+### 5.3 控制脚本能做 Action Manager，不需要 C++
+
+项目自带 `setup()` / `loop()` 控制脚本，跑在独立工作线程：
+
+| 能力 | 说明 |
+|:--|:--|
+| `io.writeData()` / `console.send()` | 下发命令（文本协议用后者，会附加行结束符） |
+| `io.getLatestFrame()` / `newFrame()` | 读回包，带 `ageMs`（超时判据用它，别拿 `timestampMs` 跟 `Date.now()` 比） |
+| `delay(ms)` | 节拍，且**暂停 2000ms 运行时看门狗** |
+| `ensureDashboard(spec)` | 声明式建组/建通道，幂等且 memoized —— `TELEM?` 自动建表就用它 |
+| `tableGet/tableSet` + `refreshDashboard()` | 共享变量与渲染 |
+
+**生命周期陷阱**：每次连接都是**全新引擎**，顶层变量全部重置、`setup()` 重跑。
+不要设计任何跨连接存活的状态。
+
+### 5.4 GPL3 构建缺失的能力
+
+用实跑导出的 schema 与完整 SDK 符号表做差集得出：
+
+| 缺失 | 影响 |
+|:--|:--|
+| `notifications.*`（全部 8 条） | 通知中心不可用 → 告警改用 LED 控件或扩展包自绘 |
+| `sessions.*` | 会话录制/回放不可用 → 用 `csvPlayer.*`（GPL3 里有）或已有 Python 工具 |
+| `mdf4Export/Player`、`project.mqtt.*`、`project.painter` | Pro |
+| `io.modbus/canbus/opcua/audio/hid/usb/process` | Pro 驱动（本项目用 TCP/串口，不受影响） |
+
+### 5.5 Action 的 txData 没有占位符替换
+
+`DataModel::get_tx_bytes()` 只做转义序列解析，**没有任何变量替换机制**。所以顶部
+工具栏的 Action 按钮只能发固定字符串 —— **PID 滑条这类"运行时决定数值"的交互
+无法用 Action 实现**，必须走 5.1 的扩展控件。
+
+### 5.6 子模块需要 Qt 6.7 / MinGW 移植补丁
+
+上游针对 Qt 6.8+ 与 MSVC。子模块提交 `4bbf511` 带着一批 `#if QT_VERSION >= 6.8.0`
+门控、LuaJIT 在 MinGW 下的 VM 目标格式修正等，**没有它们编译不出来**。
+该提交尚未推送到 origin，换机器需先取得。它同时含一批往硬编码绝对路径写日志的
+临时调试插桩，去除方式记在其提交信息里。
+
+---
+
+## 6. 已知未解决问题
+
+### 6.1 文本回包与二进制遥测混在一条链路上
+
+`APP_VOFA_SendFloats` 发的是裸浮点 + 4 字节尾，`APP_Control_QueueText` 发的是裸 ASCII 行，
+**没有类型标记**。float 的字节里完全可能出现 `\n` 或可打印字符，解析器无法可靠区分。
+
+**连接时取 schema 不受影响** —— `vofaStreamActive` 默认为 `0`，要发 `Sensor_Data:1`
+才开流，所以时序天然干净：
+
+```
+连接 -> TELEM? / TELEM CH（流还没开，纯文本无歧义）
+     -> ensureDashboard 建表
+     -> Sensor_Data:1 开流
+```
+
+但流跑起来之后任何命令回包仍会混在浮点里。**Action 状态轮询必然要在流开着时发命令，
+所以这是接线 Action 之前必须先解决的**。三个选项：
+
+1. 取数据前先 `Sensor_Data:0` 停流 —— 最省事，但停流是异步的，有竞态
+2. **给遥测帧加一个与文本不可能冲突的头**（如 `0xAA 0x55 <len16> <payload> <crc16>`），
+   解析器先找魔数，找不到按行当文本 —— 改动集中，推荐
+3. 全部走统一封包（`app_proto.h` 里那个被注释掉的 `APP_ProtoFrame`）—— 最干净但要
+   重写所有现有 Python 工具
+
+### 6.2 命令契约尚未整理
+
+`app_control.c` 有 **51 条顶层命令、56 条子命令、274 个回包发射点**。
+建议**不要**追求一次做全 —— 上位机真正要用的约 10~15 条，按需增量整理即可。
+
+### 6.3 无实机验证
+
+Action 的超时/断线/急停已有 host 确定性测试，但从未在真硬件上跑过。
+`feat/hil-simulink-validation` 分支上有一套 host 编译的 SIL（`gcc` 直接编译
+`drv_coax_ctrl.c` + Simulink codegen），**不需要真机**，但它只复现 `DRV_COAX_CTRL_Run()`，
+**不含 RTOS 侧、执行器时序、命令层** —— 覆盖不到 Action。不建议合并那个分支
+（提交含 3660 文件 / 71 万行，绝大部分是采集数据），要用就 cherry-pick 或只借模式。
+
+---
+
+## 7. 建议的推进顺序
+
+1. **Phase 1 只读打通（零风险）** —— ssproj 换真数据源 + JustFloat 二进制 frameParser；
+   控制脚本做 `连接 → TELEM? → ensureDashboard → Sensor_Data:1`；删掉 7 个假按钮。
+   验收：连真机看到姿态曲线，且固件加通道时上位机自动跟随。
+2. **Phase 2 交互控件（扩展包，零 C++）** —— 只放安全命令（`PARAM`/`PID`/`SAVE`/查询类），
+   不碰执行器。验收：滑条改增益，飞控回显跟随。
+3. **Phase 3 Action 接线** —— 先解 6.1 分帧；先做一个真正危险的任务
+   （`SERVO_SWEEP` 或 `MOTOR_SPIN`）。
+4. **Phase 4** —— `IMUCAL`/`ACCEPT`/`IDENT` 归一化；自检向导；日志回放。
+
+---
+
+## 8. 仓库与环境
+
+- 上游：[Serial-Studio/Serial-Studio](https://github.com/Serial-Studio/Serial-Studio)（GPLv3 / 商业双授权）
+- 本工程 fork：[ThroneTLE/Serial-Studio](https://github.com/ThroneTLE/Serial-Studio)
+- 子模块路径：`tools/ground_station/Serial-Studio`
+- 环境：Qt 6.7.2 MinGW 64-bit、CMake 3.20+、Ninja
+
+```bash
 git submodule update --init --recursive
 ```
+
+| 脚本 | 说明 |
+|:--|:--|
+| `run_gcs.bat` | 启动地面站（可带 `.ssproj` 参数） |
+| `run_sim.bat` | 启动仿真器 + 地面站。**注意**：`controlScriptCode` 里拉起的是 `python3`，Windows 上会返回 `exited with code 9009`（找不到命令），需改成 `python` 或绝对路径 |

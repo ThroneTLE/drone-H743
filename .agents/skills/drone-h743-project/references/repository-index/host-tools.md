@@ -4,7 +4,7 @@
 
 Read this shard only when the task uses serial/TCP diagnostics, log analysis, identification, capture, calibration, or desktop UIs.
 
-Source snapshot: `7e065c2e409a`; aggregate snapshot: `e3b0c44298fc`. Covered files: 52.
+Source snapshot: `fb7d593da3ab`; aggregate snapshot: `e3b0c44298fc`. Covered files: 52.
 
 | File/module or scope | Content outline | Key entry points / size |
 |---|---|---|
@@ -34,7 +34,7 @@ Source snapshot: `7e065c2e409a`; aggregate snapshot: `e3b0c44298fc`. Covered fil
 | `tools/ground_station/drone_simulator.py` | Drone-H743 High-Fidelity Flight Telemetry Simulator & Test Server for Serial-Studio. Simulates: - 3D Attitude (Roll, Pi… | `DroneSimulator` |
 | `tools/ground_station/extensions/org.drone-h743.control-panel/ControlPanel.qml` | Host-side utility for ControlPanel | — |
 | `tools/ground_station/extensions/org.drone-h743.control-panel/info.json` | Host-side utility for info | — |
-| `tools/ground_station/README.md` | drone-H743 专属上位机与飞控自检架构规划 | `🏛️ 一、核心工程架构思想`, `1. 系统边界与控制权原则`, `🧩 二、API 分类与生命周期契约规范`, `1. Query（查询类 API）`, `2. Command（基础原子指令）`, `3. Action（任务 API / 复合多步骤任务）` (+16) |
+| `tools/ground_station/README.md` | drone-H743 专属上位机与飞控自检架构 | `0. 先读这一节：当前真实状态`, ``Drone-H743-GCS.ssproj` 是对着仿真器做的，不是对着固件`, `1. 核心工程思想：上位机不持有危险动作的时间轴`, `反模式：时间轴在上位机手里`, `这两行之间进程被杀 / USB 被拔 / 用户 Ctrl+C`, `> 舵机永远停在 500，堵转发热，固件一无所知` (+23) |
 | `tools/ground_station/run_gcs.bat` | Host-side utility for run gcs | — |
 | `tools/ground_station/run_sim.bat` | Host-side utility for run sim | — |
 | `tools/ground_station/ss-api-schema-gpl3.json` | Host-side utility for ss api schema gpl3 | — |
