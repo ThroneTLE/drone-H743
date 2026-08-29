@@ -14,7 +14,8 @@ def read(path: str) -> str:
 
 def test_waveform_ui_helpers_do_not_start_tk(tmp_path: Path) -> None:
     first = tmp_path / "flightlog_old.csv"
-    second = tmp_path / "flightlog_new.csv"
+    second = tmp_path / "2026-07-25" / "flightlog_new.csv"
+    second.parent.mkdir()
     first.write_text("timestamp_us,roll_deg\n0,0\n", encoding="utf-8")
     second.write_text("timestamp_us,pitch_deg\n0,0\n", encoding="utf-8")
 

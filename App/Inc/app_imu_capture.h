@@ -36,6 +36,7 @@ extern "C" {
 /* Packed: this struct goes on the wire verbatim, so no implicit tail padding. */
 typedef struct __attribute__((packed)) {
     uint32_t timestamp_us;   /* truncated microsecond stamp; deltas are exact  */
+    int16_t  temperature_raw;/* ICM-42688 raw temperature ADC value           */
     int16_t  accel[3];       /* sensor-frame LSB, before axis align and LPF    */
     int16_t  gyro[3];
     /* Filtered/aligned values, so the LPF's real effect is measurable. */
@@ -75,7 +76,22 @@ typedef struct __attribute__((packed)) {
  * 7-bit status text, so binary blocks are unambiguous.
  */
 #define APP_IMU_CAPTURE_MAGIC        0xA5C3494DUL /* 'M','I',0xC3,0xA5 */
-#define APP_IMU_CAPTURE_VERSION      3U
+#define APP_IMU_CAPTURE_VERSION_V3       3U
+#define APP_IMU_CAPTURE_V3_SAMPLE_SIZE   46U
+#define APP_IMU_CAPTURE_V3_HEADER_SIZE   40U
+/* Alias spelling retained for host decoders which name size before version. */
+#define APP_IMU_CAPTURE_SAMPLE_SIZE_V3   APP_IMU_CAPTURE_V3_SAMPLE_SIZE
+#define APP_IMU_CAPTURE_HEADER_SIZE_V3   APP_IMU_CAPTURE_V3_HEADER_SIZE
+
+/*
+ * V3 remains a decoder-only compatibility format. Firmware emits V4, whose
+ * sample is 48 B (raw temperature added) and header is 56 B (frame,
+ * calibration, and linked-firmware provenance added). Never infer a V3 field
+ * from a V4 byte offset.
+ */
+#define APP_IMU_CAPTURE_VERSION          4U
+#define APP_IMU_CAPTURE_V4_SAMPLE_SIZE   48U
+#define APP_IMU_CAPTURE_V4_HEADER_SIZE   56U
 /*
  * 6144 samples = 6.14 s at 1 kHz. At 48 B/sample that is 288 KB, held in the
  * 512 KB AXI SRAM via .ram_d1_noinit (CPU-only, no DMA reachability needed);
@@ -91,6 +107,7 @@ typedef enum {
     APP_IMU_CAPTURE_RECORDING = 1,
     APP_IMU_CAPTURE_FULL = 2,
     APP_IMU_CAPTURE_EXPORTING = 3,
+    APP_IMU_CAPTURE_DRAINING = 4,
 } APP_IMU_CaptureState;
 
 typedef enum {
@@ -115,6 +132,20 @@ typedef struct {
     uint16_t gyro_range_dps;
 } APP_IMU_CaptureStatus;
 
+/*
+ * Schema-v4 base-frame ABI. Value 1 has one exact compound meaning:
+ *   - sample accel[]/gyro[] are raw ICM-42688 chip axes;
+ *   - sample accel_filt[]/gyro_filt[] are legacy_intermediate_v1 axes.
+ * To reconstruct canonical FLU, a host applies the project's fixed
+ * chip->legacy map to raw vectors, then applies orientation_code; filtered
+ * vectors already start at legacy and therefore only need orientation_code.
+ * V1 correction follows that V0 rotation. This enum must never be relabelled
+ * as though the stored filtered fields were already FLU.
+ */
+typedef enum {
+    APP_IMU_CAPTURE_BASE_RAW_ICM42688_FILTERED_LEGACY_V1 = 1U,
+} APP_IMU_CaptureBaseFrame;
+
 /* Wire header prefixed to every exported block. */
 typedef struct __attribute__((packed)) {
     uint32_t magic;
@@ -129,11 +160,19 @@ typedef struct __attribute__((packed)) {
     uint16_t gyro_aaf_hz;
     uint16_t accel_range_g;
     uint16_t gyro_range_dps;
+    uint16_t frame_contract;
+    uint8_t orientation_code;
+    uint8_t calibration_valid_mask;
+    uint32_t calibration_generation;
+    uint8_t base_frame;
+    uint8_t reserved[3];
+    uint32_t firmware_image_crc32;
     uint32_t flags;
     uint32_t payload_crc32;
 } APP_IMU_CaptureBlockHeader;
 
 #define APP_IMU_CAPTURE_FLAG_LAST 0x00000001UL
+#define APP_IMU_CAPTURE_FLAG_INVALID_PROVENANCE 0x00000002UL
 
 void APP_IMU_Capture_Init(void);
 
@@ -158,11 +197,13 @@ void APP_IMU_Capture_AnnotateFiltered(const float accel_g[3],
                                       uint8_t gyro_bias_ready);
 
 /*
- * Annotates the most recent sample with estimator output, servo commands and
- * fusion health. Called from StabilizerTask, which runs one frame behind the
- * sensor task, so this lands on the sample it actually corresponds to.
+ * Annotates the sample with the exact timestamp emitted by SensorTask.  The
+ * timestamp is required because StabilizerTask may be one or more frames
+ * behind; guessing `write_index - 1` can silently attach control state to the
+ * wrong raw sample. A sample becomes exportable only after both annotations.
  */
-void APP_IMU_Capture_AnnotateControl(float roll_deg,
+void APP_IMU_Capture_AnnotateControl(uint32_t timestamp_us,
+                                     float roll_deg,
                                      float pitch_deg,
                                      float yaw_deg,
                                      uint16_t servo_alpha_us,

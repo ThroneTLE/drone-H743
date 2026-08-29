@@ -14,8 +14,16 @@ import time
 
 from saleae import automation
 
+try:
+    from .project_paths import SALEAE_SPI_CAPTURE_DIR, dated_directory
+except ImportError:  # Allows running as: python tools/saleae_imu_spi_capture.py
+    try:
+        from tools.project_paths import SALEAE_SPI_CAPTURE_DIR, dated_directory
+    except ImportError:
+        from project_paths import SALEAE_SPI_CAPTURE_DIR, dated_directory
 
-DEFAULT_OUT_DIR = Path(__file__).resolve().parent / "data" / "spi_captures"
+
+DEFAULT_OUT_DIR = dated_directory(SALEAE_SPI_CAPTURE_DIR)
 
 
 def parse_args() -> argparse.Namespace:

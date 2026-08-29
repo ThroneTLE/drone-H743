@@ -21,15 +21,22 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import glob
 import sys
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
-ROOT = Path(__file__).resolve().parents[1]
-DATA_DIR = ROOT / "tools" / "data" / "imu_vibration"
+try:
+    from .project_paths import IMU_VIBRATION_CAPTURE_DIR, dated_directory
+except ImportError:  # Allows running as: python tools/imu_filter_report.py
+    try:
+        from tools.project_paths import IMU_VIBRATION_CAPTURE_DIR, dated_directory
+    except ImportError:
+        from project_paths import IMU_VIBRATION_CAPTURE_DIR, dated_directory
+
+DATA_DIR = IMU_VIBRATION_CAPTURE_DIR
+DEFAULT_REPORT_PATH = dated_directory(DATA_DIR) / "filter_design_report.png"
 
 ACCEL_LSB_PER_G = 2048.0     # +-16 g
 GYRO_LSB_PER_DPS = 32.8      # +-1000 dps
@@ -340,14 +347,13 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("captures", nargs="*", type=Path,
-                        help="capture CSVs (default: all in tools/data/imu_vibration)")
+                        help="capture CSVs (default: all in data/captures/imu_vibration)")
     parser.add_argument("--out", type=Path,
-                        default=DATA_DIR / "filter_design_report.png")
+                        default=DEFAULT_REPORT_PATH)
     parser.add_argument("--no-show", action="store_true")
     args = parser.parse_args(argv)
 
-    paths = args.captures or [Path(p) for p in
-                              sorted(glob.glob(str(DATA_DIR / "imu_vib_*.csv")))]
+    paths = args.captures or sorted(DATA_DIR.rglob("imu_vib_*.csv"))
     paths = [p for p in paths if "_analysis" not in p.name]
     if not paths:
         print(f"no captures found in {DATA_DIR}", file=sys.stderr)

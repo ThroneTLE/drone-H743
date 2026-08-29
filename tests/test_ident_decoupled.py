@@ -23,14 +23,14 @@ def load_panel_module():
 
 def test_ident_control_payload_and_decoupled_servo_takeover() -> None:
     app_aiwb2 = read("App/Src/app_aiwb2.c")
-    freertos = read("Core/Src/freertos.c")
+    freertos = read("Core/Src/freertos.c") + read("App/Src/app_stabilizer.c")
     ident = read("App/Src/app_ident.c")
 
     assert 'strcmp(line, "IDENT?") == 0' in app_aiwb2
     assert 'aiwb2_starts_with(line, "IDENT ")' in app_aiwb2
     assert "ident_running = APP_Ident_IsRunning();" in freertos
     assert "APP_Ident_GetServoTargets(&ident_alpha_us, &ident_beta_us);" in freertos
-    assert "DRV_COAX_CTRL_Run(&attitude, &reference, &ctrl_out);" in freertos
+    assert "DRV_COAX_CTRL_Run(&frame->attitude, &frame->reference, &frame->ctrl_out);" in freertos
     assert "BSP_PWM_SetEscPulse" not in ident
     assert "DRV_Motor" not in ident
     assert "if (ident_ctx.axis == APP_IDENT_AXIS_ROLL) {\n        alpha += offset;" in ident
@@ -54,15 +54,15 @@ def test_ident_commands_exist_and_are_text_based() -> None:
 
 
 def test_closed_loop_attitude_ident_injects_reference_accel_and_logs_it() -> None:
-    freertos = read("Core/Src/freertos.c")
+    freertos = read("Core/Src/freertos.c") + read("App/Src/app_stabilizer.c")
     ident = read("App/Src/app_ident.c")
     flog_h = read("App/Inc/app_flight_log.h")
     receiver = read("tools/flight_log_receive.py")
 
-    assert "APP_IdentAtt_Update(now);" in freertos
-    assert "APP_IdentAtt_Apply(&reference.ax_m_s2" in freertos
+    assert "APP_IdentAtt_Update(frame->now_ms);" in freertos
+    assert "APP_IdentAtt_Apply(&frame->reference.ax_m_s2" in freertos
     assert "APP_IdentAtt_Observe(&ident_att_obs);" in freertos
-    assert "flog_snapshot.ident_att = ident_att_log;" in freertos
+    assert "flog_snapshot.ident_att = frame->ident_att_log;" in freertos
     assert "APP_IDENT_ATT_PENDING_STABLE_MS" in ident
     assert "IDENT att armed" in ident
     assert "wait_rc_arm" in ident
@@ -77,7 +77,7 @@ def test_closed_loop_attitude_ident_injects_reference_accel_and_logs_it() -> Non
 
 def test_attitude_ident_safe_start_accepts_unsettled_controller_quality() -> None:
     ident = read("App/Src/app_ident.c")
-    freertos = read("Core/Src/freertos.c")
+    freertos = read("Core/Src/freertos.c") + read("App/Src/app_stabilizer.c")
 
     assert "#define APP_IDENT_ATT_ATTITUDE_LIMIT_DEG  20.0f" in ident
     assert "#define APP_IDENT_ATT_GYRO_LIMIT_DPS      150.0f" in ident
@@ -92,7 +92,7 @@ def test_attitude_ident_safe_start_accepts_unsettled_controller_quality() -> Non
     assert "tilt_out_rad" not in ready_block
     assert "protection_flags" not in ready_block
 
-    assert "ident_att_obs.control_valid =\n            ((rc_use_stabilized_motor_mix != 0U) &&\n             (imu_control_valid != 0U) &&\n             (ident_running == 0U)) ? 1U : 0U;" in freertos
+    assert "ident_att_obs.control_valid =\n      ((frame->rc_use_stabilized_motor_mix != 0U) &&\n       (frame->imu_control_valid != 0U) &&\n       (frame->ident_running == 0U)) ? 1U : 0U;" in freertos
     observe_block = ident.split("void APP_IdentAtt_Observe", 1)[1].split(
         "void APP_Ident_Update", 1
     )[0]

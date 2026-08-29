@@ -1,0 +1,545 @@
+{
+  "created_at": "2026-08-28T17:33:17.682053+08:00",
+  "firmware_hash": "unknown",
+  "data_source": "stabilizer_snapshot_10hz_legacy_intermediate",
+  "status": "FAIL",
+  "six_face": {
+    "status": "FAIL",
+    "capture_quality_status": "WARN",
+    "canonical_match_status": "FAIL",
+    "sample_count": 364,
+    "stages": {
+      "level": {
+        "stage": "level",
+        "label_zh": "静止水平",
+        "prompt_zh": "拆除桨叶，将飞机水平放稳并保持静止。",
+        "status": "PASS",
+        "capture_quality_status": "PASS",
+        "canonical_match_status": "PASS",
+        "sample_count": 68,
+        "valid_sample_count": 68,
+        "invalid_sample_count": 0,
+        "accel_mean_g": [
+          0.006,
+          -0.005985294117647059,
+          0.9910588235294117
+        ],
+        "accel_std_g": [
+          0.0009074852129730301,
+          0.0001203728348804772,
+          0.00023529411764705902
+        ],
+        "gyro_mean_dps": [
+          -0.001838235294117647,
+          0.0041617647058823535,
+          0.0017647058823529412
+        ],
+        "gyro_std_dps": [
+          0.011959011239521,
+          0.022593342521583164,
+          0.013215540814932316
+        ],
+        "attitude_mean_deg": [
+          0.0014705882352941176,
+          -0.008382352941176471,
+          0.30808823529411766
+        ],
+        "attitude_std_deg": [
+          0.003541645464350675,
+          0.006989549787244791,
+          0.012157949824893873
+        ],
+        "accel_norm_mean_g": 0.9910954815937768,
+        "accel_norm_std_g": 0.000234921112352328,
+        "dominant_axis": "z",
+        "dominant_sign": 1,
+        "dominant_value_g": 0.9910588235294117,
+        "expected_axis": "z",
+        "expected_sign": 1,
+        "canonical_alignment_g": 0.9910588235294117,
+        "max_cross_axis_g": 0.006,
+        "findings": []
+      },
+      "nose_up": {
+        "stage": "nose_up",
+        "label_zh": "机头朝上",
+        "prompt_zh": "使机头竖直朝上，放稳并保持静止。",
+        "status": "FAIL",
+        "capture_quality_status": "PASS",
+        "canonical_match_status": "FAIL",
+        "sample_count": 57,
+        "valid_sample_count": 57,
+        "invalid_sample_count": 0,
+        "accel_mean_g": [
+          -0.990859649122807,
+          -0.09596491228070175,
+          0.0032280701754385964
+        ],
+        "accel_std_g": [
+          0.001083182388802326,
+          0.0006744695714646001,
+          0.00041958809624917186
+        ],
+        "gyro_mean_dps": [
+          0.190859649122807,
+          -0.11207017543859649,
+          -0.054157894736842106
+        ],
+        "gyro_std_dps": [
+          0.015731785453695194,
+          0.03247609628317084,
+          0.07324096003703676
+        ],
+        "attitude_mean_deg": [
+          84.77684210526316,
+          84.59982456140352,
+          38.02175438596492
+        ],
+        "attitude_std_deg": [
+          0.13621651875427176,
+          0.3599195389034293,
+          0.22132870535494623
+        ],
+        "accel_norm_mean_g": 0.9955014418990522,
+        "accel_norm_std_g": 0.0011011404276122497,
+        "dominant_axis": "x",
+        "dominant_sign": -1,
+        "dominant_value_g": -0.990859649122807,
+        "expected_axis": "x",
+        "expected_sign": 1,
+        "canonical_alignment_g": -0.990859649122807,
+        "max_cross_axis_g": 0.09596491228070175,
+        "findings": [
+          "观测主轴为 -1x，FLU 期望为 +1x。"
+        ]
+      },
+      "nose_down": {
+        "stage": "nose_down",
+        "label_zh": "机头朝下",
+        "prompt_zh": "使机头竖直朝下，放稳并保持静止。",
+        "status": "FAIL",
+        "capture_quality_status": "PASS",
+        "canonical_match_status": "FAIL",
+        "sample_count": 54,
+        "valid_sample_count": 54,
+        "invalid_sample_count": 0,
+        "accel_mean_g": [
+          0.981462962962963,
+          -0.11864814814814816,
+          -0.021722222222222223
+        ],
+        "accel_std_g": [
+          0.0009371541428800005,
+          0.0006710248493330899,
+          0.0006781419786518715
+        ],
+        "gyro_mean_dps": [
+          -0.24472222222222223,
+          0.21787037037037038,
+          0.040796296296296296
+        ],
+        "gyro_std_dps": [
+          0.026823439629925297,
+          0.03321704509808197,
+          0.055510552760390165
+        ],
+        "attitude_mean_deg": [
+          96.62907407407408,
+          -83.61333333333333,
+          34.13166666666667
+        ],
+        "attitude_std_deg": [
+          0.5535952141950824,
+          0.6128530728395581,
+          0.1718822809905623
+        ],
+        "accel_norm_mean_g": 0.9888476688926522,
+        "accel_norm_std_g": 0.0009283316442987706,
+        "dominant_axis": "x",
+        "dominant_sign": 1,
+        "dominant_value_g": 0.981462962962963,
+        "expected_axis": "x",
+        "expected_sign": -1,
+        "canonical_alignment_g": -0.981462962962963,
+        "max_cross_axis_g": 0.11864814814814816,
+        "findings": [
+          "观测主轴为 +1x，FLU 期望为 -1x。"
+        ]
+      },
+      "left_side_up": {
+        "stage": "left_side_up",
+        "label_zh": "左侧朝上",
+        "prompt_zh": "使飞机左侧竖直朝上，放稳并保持静止。",
+        "status": "FAIL",
+        "capture_quality_status": "PASS",
+        "canonical_match_status": "FAIL",
+        "sample_count": 59,
+        "valid_sample_count": 59,
+        "invalid_sample_count": 0,
+        "accel_mean_g": [
+          -0.0714406779661017,
+          -0.9938305084745763,
+          -0.038254237288135595
+        ],
+        "accel_std_g": [
+          0.0009070568244243811,
+          0.0003751854851047233,
+          0.000472756802745131
+        ],
+        "gyro_mean_dps": [
+          0.0014067796610169494,
+          -0.00027118644067796604,
+          -0.02827118644067797
+        ],
+        "gyro_std_dps": [
+          0.018520825332186172,
+          0.026627900818167943,
+          0.026902731578577085
+        ],
+        "attitude_mean_deg": [
+          11.725254237288135,
+          -58.52898305084746,
+          118.01864406779661
+        ],
+        "attitude_std_deg": [
+          62.76917832001039,
+          19.310948918123024,
+          59.63622131789289
+        ],
+        "accel_norm_mean_g": 0.9971295207872611,
+        "accel_norm_std_g": 0.00037749619932891064,
+        "dominant_axis": "y",
+        "dominant_sign": -1,
+        "dominant_value_g": -0.9938305084745763,
+        "expected_axis": "y",
+        "expected_sign": 1,
+        "canonical_alignment_g": -0.9938305084745763,
+        "max_cross_axis_g": 0.0714406779661017,
+        "findings": [
+          "观测主轴为 -1y，FLU 期望为 +1y。"
+        ]
+      },
+      "right_side_up": {
+        "stage": "right_side_up",
+        "label_zh": "右侧朝上",
+        "prompt_zh": "使飞机右侧竖直朝上，放稳并保持静止。",
+        "status": "FAIL",
+        "capture_quality_status": "PASS",
+        "canonical_match_status": "FAIL",
+        "sample_count": 62,
+        "valid_sample_count": 62,
+        "invalid_sample_count": 0,
+        "accel_mean_g": [
+          0.004709677419354839,
+          0.9995,
+          -0.05519354838709677
+        ],
+        "accel_std_g": [
+          0.0028589818669058687,
+          0.0005000000000000004,
+          0.0006681391992647742
+        ],
+        "gyro_mean_dps": [
+          -0.01064516129032258,
+          0.05443548387096774,
+          -0.020903225806451615
+        ],
+        "gyro_std_dps": [
+          0.058891671127586386,
+          0.22874712203144568,
+          0.13107074052530657
+        ],
+        "attitude_mean_deg": [
+          -93.6841935483871,
+          0.30435483870967744,
+          -168.01612903225808
+        ],
+        "attitude_std_deg": [
+          0.1306873687296261,
+          0.2954254502749133,
+          0.09590578102777264
+        ],
+        "accel_norm_mean_g": 1.0010381498868879,
+        "accel_norm_std_g": 0.0005015010416112368,
+        "dominant_axis": "y",
+        "dominant_sign": 1,
+        "dominant_value_g": 0.9995,
+        "expected_axis": "y",
+        "expected_sign": -1,
+        "canonical_alignment_g": -0.9995,
+        "max_cross_axis_g": 0.05519354838709677,
+        "findings": [
+          "观测主轴为 +1y，FLU 期望为 -1y。"
+        ]
+      },
+      "inverted": {
+        "stage": "inverted",
+        "label_zh": "倒置",
+        "prompt_zh": "使飞机完全倒置，放稳并保持静止。",
+        "status": "WARN",
+        "capture_quality_status": "WARN",
+        "canonical_match_status": "PASS",
+        "sample_count": 64,
+        "valid_sample_count": 64,
+        "invalid_sample_count": 0,
+        "accel_mean_g": [
+          -0.047203125,
+          0.017937500000000002,
+          -1.0037031250000001
+        ],
+        "accel_std_g": [
+          0.004497150790709046,
+          0.0004635124054434787,
+          0.00045688098491286985
+        ],
+        "gyro_mean_dps": [
+          -0.033515625,
+          0.0026406249999999967,
+          0.023703125000000005
+        ],
+        "gyro_std_dps": [
+          0.02161162316577297,
+          0.5217717522773817,
+          0.8169327672704985
+        ],
+        "attitude_mean_deg": [
+          -179.2409375,
+          2.988125,
+          -134.48546875
+        ],
+        "attitude_std_deg": [
+          0.011140964668734637,
+          0.14390616517369922,
+          0.13338067803635403
+        ],
+        "accel_norm_mean_g": 1.0049827207702318,
+        "accel_norm_std_g": 0.0004805759693708699,
+        "dominant_axis": "z",
+        "dominant_sign": -1,
+        "dominant_value_g": -1.0037031250000001,
+        "expected_axis": "z",
+        "expected_sign": -1,
+        "canonical_alignment_g": 1.0037031250000001,
+        "max_cross_axis_g": 0.047203125,
+        "findings": [
+          "静止噪声高于 PASS 阈值。"
+        ]
+      }
+    },
+    "candidate": {
+      "status": "PASS",
+      "complete": true,
+      "recommendation_only": true,
+      "applied": false,
+      "matrix_flu_from_observed": [
+        [
+          -1,
+          0,
+          0
+        ],
+        [
+          0,
+          -1,
+          0
+        ],
+        [
+          0,
+          0,
+          1
+        ]
+      ],
+      "axis_mapping": {
+        "flu_x": "-observed_x",
+        "flu_y": "-observed_y",
+        "flu_z": "+observed_z"
+      },
+      "determinant": 1,
+      "proper_rotation": true,
+      "confidence": 0.9925320085570319,
+      "findings": [
+        "候选矩阵仅供人工审查；V0 不应用配置，也不写入飞控。"
+      ]
+    },
+    "findings": [
+      "至少一个静置方向与 canonical FLU 不匹配。",
+      "已生成只读 signed permutation 候选，等待人工审查。"
+    ]
+  },
+  "rotations": {
+    "status": "FAIL",
+    "sample_count": 167,
+    "stages": {
+      "positive_roll": {
+        "stage": "positive_roll",
+        "label_zh": "+roll 手动旋转",
+        "prompt_zh": "手持飞机缓慢做正 roll：让右翼向下运动。",
+        "status": "FAIL",
+        "sample_count": 56,
+        "valid_sample_count": 56,
+        "invalid_sample_count": 0,
+        "duration_s": 6.339999999999975,
+        "target_axis": "x",
+        "expected_direction": "positive",
+        "integrated_angle_deg": [
+          -94.26765999999829,
+          -1.1707399999993577,
+          -0.21448999999778964
+        ],
+        "peak_abs_dps": [
+          54.039,
+          32.786,
+          18.397000000000002
+        ],
+        "target_positive_peak_dps": 46.608000000000004,
+        "target_negative_peak_dps": -54.039,
+        "dominant_axis": "x",
+        "dominant_sign": -1,
+        "axis_dominance_ratio": 80.51972256867451,
+        "gyro_direction_matches_flu": false,
+        "attitude_delta_deg": [
+          95.16999999999999,
+          2.0900000000000603,
+          0.35000000000002274
+        ],
+        "attitude_direction_matches_flu": true,
+        "timestamps_monotonic": true,
+        "findings": [
+          "正 x 动作得到负向陀螺积分，方向与 canonical FLU 相反。"
+        ]
+      },
+      "positive_pitch": {
+        "stage": "positive_pitch",
+        "label_zh": "+pitch 手动旋转",
+        "prompt_zh": "手持飞机缓慢做正 pitch：让机头向下运动。",
+        "status": "FAIL",
+        "sample_count": 58,
+        "valid_sample_count": 58,
+        "invalid_sample_count": 0,
+        "duration_s": 6.579999999999984,
+        "target_axis": "y",
+        "expected_direction": "positive",
+        "integrated_angle_deg": [
+          -7.301180000000467,
+          -77.19689000000068,
+          12.920639999999219
+        ],
+        "peak_abs_dps": [
+          12.985,
+          49.353,
+          17.47
+        ],
+        "target_positive_peak_dps": 11.763,
+        "target_negative_peak_dps": -49.353,
+        "dominant_axis": "y",
+        "dominant_sign": -1,
+        "axis_dominance_ratio": 5.9746955259186345,
+        "gyro_direction_matches_flu": false,
+        "attitude_delta_deg": [
+          19.60999999999993,
+          -77.22000000000011,
+          1.919999999999959
+        ],
+        "attitude_direction_matches_flu": false,
+        "timestamps_monotonic": true,
+        "findings": [
+          "正 y 动作得到负向陀螺积分，方向与 canonical FLU 相反。",
+          "可选姿态输出的变化方向与同轴陀螺/FLU 期望相反。"
+        ]
+      },
+      "positive_yaw": {
+        "stage": "positive_yaw",
+        "label_zh": "+yaw 手动旋转",
+        "prompt_zh": "手持飞机缓慢做正 yaw：让机头向左转动。",
+        "status": "PASS",
+        "sample_count": 53,
+        "valid_sample_count": 53,
+        "invalid_sample_count": 0,
+        "duration_s": 5.900000000000034,
+        "target_axis": "z",
+        "expected_direction": "positive",
+        "integrated_angle_deg": [
+          0.5734199999986465,
+          19.366910000000267,
+          107.16487000000184
+        ],
+        "peak_abs_dps": [
+          23.275000000000002,
+          45.643,
+          89.923
+        ],
+        "target_positive_peak_dps": 89.923,
+        "target_negative_peak_dps": -36.887,
+        "dominant_axis": "z",
+        "dominant_sign": 1,
+        "axis_dominance_ratio": 5.5334005269813495,
+        "gyro_direction_matches_flu": true,
+        "attitude_delta_deg": [
+          4.150000000000034,
+          22.499999999999915,
+          107.23999999999995
+        ],
+        "attitude_direction_matches_flu": true,
+        "timestamps_monotonic": true,
+        "findings": []
+      }
+    },
+    "findings": [
+      "按 canonical FLU 判定：+roll→gyro_x>0，+pitch→gyro_y>0，+yaw→gyro_z>0。"
+    ]
+  },
+  "thresholds": {
+    "static_min_samples": 20,
+    "static_recommended_samples": 50,
+    "invalid_fraction_warn": 0.01,
+    "invalid_fraction_fail": 0.1,
+    "accel_norm_error_pass_g": 0.08,
+    "accel_norm_error_warn_g": 0.15,
+    "accel_std_pass_g": 0.03,
+    "accel_std_warn_g": 0.08,
+    "gyro_bias_pass_dps": 1.0,
+    "gyro_bias_warn_dps": 3.0,
+    "gyro_std_pass_dps": 0.5,
+    "gyro_std_warn_dps": 1.5,
+    "canonical_axis_error_pass_g": 0.12,
+    "canonical_axis_error_warn_g": 0.25,
+    "canonical_cross_axis_pass_g": 0.12,
+    "canonical_cross_axis_warn_g": 0.25,
+    "candidate_confidence_pass": 0.9,
+    "candidate_confidence_warn": 0.75,
+    "rotation_min_samples": 5,
+    "rotation_recommended_samples": 20,
+    "rotation_min_duration_s": 0.2,
+    "rotation_angle_pass_deg": 20.0,
+    "rotation_angle_warn_deg": 8.0,
+    "rotation_peak_pass_dps": 10.0,
+    "rotation_peak_warn_dps": 5.0,
+    "rotation_dominance_pass": 1.5,
+    "rotation_dominance_warn": 1.0,
+    "attitude_direction_min_deg": 5.0
+  },
+  "format": "drone-h743-flight-validation-evidence-v1",
+  "evidence_type": "validation_evidence",
+  "evidence_only": true,
+  "frame_contract_version": 1,
+  "frame_id": "FLU",
+  "input_frame": "legacy_or_unverified",
+  "input_units": {
+    "timestamp": "s",
+    "accelerometer": "g",
+    "gyroscope": "deg/s",
+    "attitude_optional": "deg"
+  },
+  "threshold_version": 1,
+  "runtime_migration_complete": false,
+  "automatic_calibration_performed": false,
+  "parameter_changes_applied": false,
+  "parameters_written": false,
+  "flash_writes": 0,
+  "firmware_written": false,
+  "flight_release": false,
+  "notes": [
+    "结果仅是 validation evidence，不代表自动校准完成。",
+    "当前运行数据按 legacy_or_unverified 处理，不宣称 FLU 运行迁移完成。",
+    "候选 signed permutation 只供人工审查，不会由本模块应用。"
+  ]
+}

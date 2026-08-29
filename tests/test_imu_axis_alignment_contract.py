@@ -1,3 +1,10 @@
+"""Legacy IMU intermediate-axis adapter checks.
+
+The canonical body-frame contract is Driver/Inc/drv_frame_contract.h.  These
+checks preserve the current pre-migration adapter as evidence; they do not
+define a second body frame.
+"""
+
 from pathlib import Path
 
 
@@ -8,7 +15,7 @@ def read(path: str) -> str:
     return (ROOT / path).read_text(encoding="utf-8")
 
 
-def test_imu_mount_axis_alignment_is_documented() -> None:
+def test_legacy_imu_mount_axis_adapter_is_documented() -> None:
     source = read("App/Src/app_sensor.c")
     header = read("App/Inc/app_sensor.h")
 
@@ -21,7 +28,7 @@ def test_imu_mount_axis_alignment_is_documented() -> None:
     assert "姿态最终正负号以实机补偿后的输出为准" in header
 
 
-def test_imu_axes_are_rotated_to_calibrated_intermediate_frame() -> None:
+def test_imu_axes_are_rotated_to_legacy_intermediate_frame() -> None:
     source = read("App/Src/app_sensor.c")
 
     assert "body X = -imu Z" in source
@@ -32,23 +39,23 @@ def test_imu_axes_are_rotated_to_calibrated_intermediate_frame() -> None:
     assert "out[2] =  in[1];" in source
 
 
-def test_imu_axis_alignment_is_right_handed_and_forward_positive() -> None:
-    body_x_in_imu = (0.0, 0.0, -1.0)
-    body_y_in_imu = (-1.0, 0.0, 0.0)
-    body_z_in_imu = (0.0, 1.0, 0.0)
+def test_legacy_intermediate_alignment_is_right_handed_and_forward_positive() -> None:
+    intermediate_x_in_imu = (0.0, 0.0, -1.0)
+    intermediate_y_in_imu = (-1.0, 0.0, 0.0)
+    intermediate_z_in_imu = (0.0, 1.0, 0.0)
 
     cross_xy = (
-        body_x_in_imu[1] * body_y_in_imu[2] -
-        body_x_in_imu[2] * body_y_in_imu[1],
-        body_x_in_imu[2] * body_y_in_imu[0] -
-        body_x_in_imu[0] * body_y_in_imu[2],
-        body_x_in_imu[0] * body_y_in_imu[1] -
-        body_x_in_imu[1] * body_y_in_imu[0],
+        intermediate_x_in_imu[1] * intermediate_y_in_imu[2] -
+        intermediate_x_in_imu[2] * intermediate_y_in_imu[1],
+        intermediate_x_in_imu[2] * intermediate_y_in_imu[0] -
+        intermediate_x_in_imu[0] * intermediate_y_in_imu[2],
+        intermediate_x_in_imu[0] * intermediate_y_in_imu[1] -
+        intermediate_x_in_imu[1] * intermediate_y_in_imu[0],
     )
 
-    assert cross_xy == body_z_in_imu
+    assert cross_xy == intermediate_z_in_imu
 
     imu_forward_accel = (0.0, 0.0, -1.0)
-    body_forward_accel = -imu_forward_accel[2]
+    intermediate_forward_accel = -imu_forward_accel[2]
 
-    assert body_forward_accel > 0.0
+    assert intermediate_forward_accel > 0.0

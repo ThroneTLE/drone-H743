@@ -1,0 +1,42 @@
+{
+  "id": "org.drone-h743.control-panel",
+  "type": "widget",
+  "title": "H743 Control Panel",
+  "description": "Proof-of-concept interactive control panel for the drone-H743 flight controller: command buttons and a live parameter slider that write to the device through the in-process API bridge.",
+  "author": "drone-H743",
+  "version": "0.1.0",
+  "license": "MIT",
+  "category": "Instruments",
+  "files": ["info.json", "ControlPanel.qml"],
+  "widget": {
+    "apiVersion": "1.0",
+    "hostCompat": ">=1.0 <2.0",
+    "scope": "group",
+    "qml": "ControlPanel.qml",
+    "icon": "widgets/datagrid",
+    "readsStringValues": false,
+    "accepts": {
+      "datasets": { "min": 0, "max": 64 },
+      "value": "any"
+    },
+    "defaultSize": { "width": 520, "height": 420 },
+    "config": [
+      {
+        "id": "paramName",
+        "type": "string",
+        "label": "Parameter to tune",
+        "description": "Firmware parameter name sent by the slider, e.g. coax.roll_angle_kp",
+        "default": "coax.roll_angle_kp"
+      },
+      {
+        "id": "paramMax",
+        "type": "double",
+        "label": "Slider upper bound",
+        "default": 10.0,
+        "min": 0.1,
+        "max": 1000.0
+      }
+    ],
+    "experimental": true
+  }
+}

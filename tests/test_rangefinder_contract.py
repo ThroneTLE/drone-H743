@@ -105,24 +105,24 @@ def test_uart8_rangefinder_is_wired_through_project_layers() -> None:
 def test_rangefinder_no_longer_feeds_flow_or_altitude_control() -> None:
     rangefinder = read("App/Src/app_rangefinder.c")
     flow = read("App/Src/app_optical_flow.c")
-    freertos = read("Core/Src/freertos.c")
+    freertos = read("Core/Src/freertos.c") + read("App/Src/app_stabilizer.c")
 
     assert "APP_OpticalFlow_UpdateHeightFromRange" not in rangefinder
     assert "APP_OpticalFlow_UpdateHeightFromRange" not in flow
     assert "APP_Rangefinder_GetHeightSample" not in freertos
-    assert "APP_OpticalFlow_GetHeightSample(&range_height_m," in freertos
+    assert "APP_OpticalFlow_GetHeightSample(&frame->range_height_m," in freertos
     assert "raw_height_m = (float)frame->distance_mm * 0.001f;" in flow
     assert "flow_ctx.height_valid = 1U;" in flow
-    assert "relative_height_m = range_height_m - height_origin_m;" in freertos
-    assert "attitude.z_m = -relative_height_m;" in freertos
-    assert "attitude.vz_m_s = -range_velocity_m_s;" in freertos
-    assert "stabilizer_clamp_f32(position_ref_z_m," in freertos
+    assert "frame->relative_height_m = frame->range_height_m - ctx->height_origin_m;" in freertos
+    assert "frame->attitude.z_m = -frame->relative_height_m;" in freertos
+    assert "frame->attitude.vz_m_s = -frame->range_velocity_m_s;" in freertos
+    assert "stabilizer_clamp_f32(ctx->position_ref_z_m," in freertos
     assert "STABILIZER_Z_POS_ERR_MAX_M" in freertos
-    assert "height_ref_m = relative_height_m;" in freertos
-    assert "height_ref_m +=\n                stabilizer_rc_throttle_height_rate_m_s(" in freertos
-    assert "position_ref_z_m = -height_ref_m;" in freertos
+    assert "ctx->height_ref_m = frame->relative_height_m;" in freertos
+    assert "ctx->height_ref_m +=\n          stabilizer_rc_throttle_height_rate_m_s(" in freertos
+    assert "ctx->position_ref_z_m = -ctx->height_ref_m;" in freertos
     assert "STABILIZER_ALT_HOLD_CORRECTION_LIMIT_US" not in freertos
-    assert "vofa_debug.altitude_correction_us = 0.0f;" in freertos
+    assert "ctx->vofa_debug.altitude_correction_us = 0.0f;" in freertos
     assert "range_height_valid" in freertos
 
 
@@ -148,16 +148,16 @@ def test_rangefinder_filters_weak_samples_without_step_change_gating() -> None:
 def test_vofa_channel_three_reports_combo_flow_height() -> None:
     freertos = read("Core/Src/freertos.c")
 
-    assert "#define VOFA_DATA_SIZE 28U" in freertos
+    assert "#define VOFA_DATA_SIZE                 ((uint8_t)APP_TELEM_CH_COUNT)" in freertos
     assert "APP_OpticalFlow_GetStatus(&flow_status);" in freertos
-    assert "vofa_data[3] = (flow_status.height_valid != 0U) ?" in freertos
+    assert "vofa_data[APP_TELEM_CH_FLOW_HEIGHT] = (flow_status.height_valid != 0U) ?" in freertos
     assert "flow_status.height_m : 0.0f;" in freertos
     assert "APP_Rangefinder_GetStatus(&range_status);" not in freertos
 
 
 def test_vofa_compact_frame_keeps_dashboard_velocity_channels() -> None:
-    freertos = read("Core/Src/freertos.c")
+    freertos = read("Core/Src/freertos.c") + read("App/Src/app_stabilizer.c")
 
-    assert "#define VOFA_DATA_SIZE 28U" in freertos
-    assert "vofa_data[5] = vofa_debug.vel_est_m_s[0];" in freertos
-    assert "vofa_data[6] = vofa_debug.vel_est_m_s[1];" in freertos
+    assert "#define VOFA_DATA_SIZE                 ((uint8_t)APP_TELEM_CH_COUNT)" in freertos
+    assert "vofa_data[APP_TELEM_CH_VEL_EST_X] = vofa_debug.vel_est_m_s[0];" in freertos
+    assert "vofa_data[APP_TELEM_CH_VEL_EST_Y] = vofa_debug.vel_est_m_s[1];" in freertos

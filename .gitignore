@@ -44,10 +44,20 @@ CMakeUserPresets.json
 
 # Temporary analysis scripts and data
 .tmp/
-log/
 dis.txt
 flightlog_*.csv
 flightlog_*.json
 
-tools/data/flight_logs/
-debug_flog_exports/
+# Canonical runtime-generated project data. Curated captures and identification
+# datasets elsewhere under data/ remain visible to Git.
+data/flight_logs/
+data/analysis/
+data/logs/
+data/telemetry/
+data/firmware_updates/
+data/calibration/imu_metrology/
+
+# Serial Studio ground-station debug artifacts. The GUI writes these on every
+# launch; gcs_trace.txt in particular accumulates crash dumps.
+tools/ground_station/*.log.err
+tools/ground_station/gcs_trace.txt

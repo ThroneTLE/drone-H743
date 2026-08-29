@@ -19,9 +19,17 @@ from datetime import datetime
 from pathlib import Path
 from typing import Iterable
 
+try:
+    from .project_paths import IMU_ATTITUDE_CAPTURE_DIR, dated_directory
+except ImportError:  # Allows running as: python tools/vofa_serial_capture.py
+    try:
+        from tools.project_paths import IMU_ATTITUDE_CAPTURE_DIR, dated_directory
+    except ImportError:
+        from project_paths import IMU_ATTITUDE_CAPTURE_DIR, dated_directory
+
 
 VOFA_TAIL = b"\x00\x00\x80\x7f"
-DEFAULT_OUT_DIR = Path(__file__).resolve().parent / "data" / "imu_attitude_data"
+DEFAULT_OUT_DIR = dated_directory(IMU_ATTITUDE_CAPTURE_DIR)
 VOFA_FLOAT_COUNT = 28
 VOFA_PAYLOAD_BYTES = VOFA_FLOAT_COUNT * 4
 VOFA_FRAME_BYTES = VOFA_PAYLOAD_BYTES + len(VOFA_TAIL)
@@ -121,7 +129,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--out-dir",
         default=DEFAULT_OUT_DIR,
-        help="output directory, default tools/data/imu_attitude_data",
+        help="output directory, default data/captures/imu_attitude/YYYY-MM-DD",
     )
     parser.add_argument(
         "--prefix",

@@ -77,7 +77,7 @@ For offline viewing and comparison of saved AUTO files:
 
 ```powershell
 python tools\thrust_ident_auto_viewer.py
-python tools\thrust_ident_auto_viewer.py tools\thrust_ident_auto_20260723_171830.csv tools\thrust_ident_auto_20260723_165915.csv
+python tools\thrust_ident_auto_viewer.py data\identification\thrust\2026-07-23\thrust_ident_auto_20260723_171830.csv data\identification\thrust\2026-07-23\thrust_ident_auto_20260723_165915.csv
 ```
 
 The viewer can import one or more `thrust_ident_auto_*.csv` files, align M1/M2/Dual points, subtract each stage's `0%` baseline by default, show the loss-coefficient table, plot thrust curves, plot dual-prop loss coefficient, and export the aligned table or PNG plot. Clear `0% baseline` in the viewer when you need to inspect raw transmitter offsets.

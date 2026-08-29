@@ -1,0 +1,12 @@
+[mcp_servers.h743-openocd]
+command = "node"
+args = ["out/mcp/standalone.js"]
+
+[mcp_servers.h743-openocd.env]
+PROBE_TYPE = "openocd"
+OPENOCD_BINARY = "D:/Program Files/OpenOCD-20240916-0.12.0/bin/openocd.exe"
+OPENOCD_INTERFACE = "D:/Program Files/OpenOCD-20240916-0.12.0/share/openocd/scripts/interface/stlink.cfg"
+OPENOCD_TARGET = "D:/Program Files/OpenOCD-20240916-0.12.0/share/openocd/scripts/target/stm32h7x.cfg"
+OPENOCD_GDB_PORT = "3333"
+OPENOCD_TELNET_PORT = "4444"
+GDB_PATH = "E:/ST/STM32CubeCLT_1.18.0/GNU-tools-for-STM32/bin/arm-none-eabi-gdb.exe"

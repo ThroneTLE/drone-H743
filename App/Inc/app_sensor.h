@@ -131,7 +131,7 @@ void APP_IMU_ConvertBaro(const int32_t pressure_raw,
 /* ════════════════════════════════════════════════════════════════════════ */
 /*  低通滤波器 (二阶 Butterworth biquad)                                   */
 /*                                                                        */
-/*  为什么用二阶：实测 tools/data/imu_vibration/ 的四档定速扫描显示，共轴  */
+/*  为什么用二阶：实测 data/captures/imu_vibration/ 的四档定速扫描显示，共轴  */
 /*  桨叶通过频率随油门从 56Hz 线性升到 180Hz（r=0.996，确认是真实振动而非  */
 /*  混叠）。原来的一阶 IIR 在 180Hz 只有 -8.9dB，即 36% 的振动直接穿过；   */
 /*  实测甚至出现正增益（相位滞后使输出 RMS 大于输入）。                     */
@@ -192,13 +192,36 @@ float APP_SensorRateMeter_Update(APP_Sensor_RateMeter *meter,
                                   uint32_t sample_count);
 
 /* ════════════════════════════════════════════════════════════════════════ */
-/*  采集轴对齐（IMU 芯片轴 → 本机已标定的中间轴）                           */
+/*  采集轴对齐                                                             */
 /*                                                                        */
-/*  姿态最终正负号以实机补偿后的输出为准，在 Fusion 输入边界完成。            */
-/*  当前契约：gyro=[-X,+Y,+Z]，specific force=[-X,+Y,-Z]。                   */
+/*  APP_Sensor_AlignToAirframe() 只执行固定的 IMU 芯片轴 → legacy 中间轴    */
+/*  安装映射。APP_Sensor_ApplyFrameCorrection() 再把 V0 候选作为             */
+/*  R_FLU<-legacy_intermediate_v1 同时应用到一个样本的 accel 与 gyro。       */
+/*  姿态最终正负号以实机补偿后的输出为准。                                  */
+/*                                                                        */
+/*  descriptor 按 FLU 输出 X/Y/Z 顺序描述 legacy 输入轴，例如               */
+/*  "-x,-y,+z"。只接受 24 个 det=+1 的 signed permutation；镜像拒绝。      */
+/*  legacy sentinel 表示候选尚未应用，也是 Param 服务完成启动加载前的默认。 */
 /* ════════════════════════════════════════════════════════════════════════ */
 
+#define APP_SENSOR_FLU_ORIENTATION_COUNT 24U
+#define APP_SENSOR_FLU_ORIENTATION_LEGACY 255U
+
 void APP_Sensor_AlignToAirframe(const float in[3], float out[3]);
+
+/*
+ * Snapshot the active orientation once, apply it to both vector groups, and
+ * return the exact code used. The temperature field is intentionally untouched.
+ */
+uint8_t APP_Sensor_ApplyFrameCorrection(DRV_IMU_ScaledData *imu);
+
+/* Runtime-only selection. Persistence/Flash ownership lives elsewhere. */
+uint8_t APP_Sensor_SetFluOrientation(const char *descriptor);
+uint8_t APP_Sensor_SetFluOrientationCode(uint8_t code);
+uint8_t APP_Sensor_GetFluOrientation(void);
+uint8_t APP_Sensor_IsFluOrientationActive(void);
+const char *APP_Sensor_GetFluOrientationDescriptorForCode(uint8_t code);
+const char *APP_Sensor_GetFluOrientationDescriptor(void);
 
 /* Read the latest PC0 DRDY edge timestamp from the ISR seqlock. */
 uint8_t APP_IMU_ReadDataReadyTimestamp(uint64_t *timestamp_us);

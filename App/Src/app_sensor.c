@@ -41,10 +41,10 @@ static APP_IMU_DataReadyTimestampLatch app_imu_drdy_timestamp;
 /*  (±4G)，一旦 BSP 改量程，姿态就会整体错一个倍数且不报错。                */
 /*  当前 BSP 配置为 ±16G / ±1000dps —— 见 BSP_IMU_Init() 中关于振动削顶     */
 /*  的说明。                                                               */
-/*    温度: 128 LSB/°C，偏移 +25°C                                         */
+/*    温度: 132.48 LSB/°C，偏移 +25°C（ICM-42688 数据手册标度）             */
 /* ════════════════════════════════════════════════════════════════════════ */
 
-#define APP_IMU_TEMP_LSB_PER_C    128.0f
+#define APP_IMU_TEMP_LSB_PER_C    132.48f
 #define APP_IMU_TEMP_OFFSET_C     25.0f
 
 void APP_IMU_RawToScaled(const DRV_IMU_RawData *raw,
@@ -349,16 +349,175 @@ float APP_SensorRateMeter_Update(APP_Sensor_RateMeter *meter,
 /*    body Y = -imu X                                                       */
 /*    body Z =  imu Y                                                       */
 /*                                                                        */
-/*  这里的采集轴变换必须同时用于加速度和陀螺仪；Fusion 边界再转换到上述       */
-/*  已由实机确认的姿态/比力契约。                                             */
+/*  APP_Sensor_AlignToAirframe() 保持为本机标定中间轴固定映射。V0 候选由     */
+/*  APP_Sensor_ApplyFrameCorrection() 在完整 IMU 样本上一次性应用，避免       */
+/*  accel/gyro 两次调用之间切换方向码而造成同帧坐标不一致。                  */
 /* ════════════════════════════════════════════════════════════════════════ */
+
+typedef struct {
+    const char *descriptor;
+    int8_t output_axis[3];
+} APP_Sensor_FluOrientation;
+
+/*
+ * output_axis encodes R_FLU<-legacy_intermediate_v1 as signed 1-based axes:
+ * +/-1 = +/-legacy X, +/-2 = +/-legacy Y, +/-3 = +/-legacy Z.
+ * The 0..23 table order is a persistent Flash ABI used by the IMUFRAME Param
+ * blob.  Never reorder existing entries.  Descriptors are the human/protocol
+ * representation of those stable codes.
+ */
+static const APP_Sensor_FluOrientation
+app_sensor_flu_orientations[APP_SENSOR_FLU_ORIENTATION_COUNT] = {
+    { "+x,+y,+z", { +1, +2, +3 } },
+    { "+x,-y,-z", { +1, -2, -3 } },
+    { "-x,+y,-z", { -1, +2, -3 } },
+    { "-x,-y,+z", { -1, -2, +3 } },
+    { "+x,+z,-y", { +1, +3, -2 } },
+    { "+x,-z,+y", { +1, -3, +2 } },
+    { "-x,+z,+y", { -1, +3, +2 } },
+    { "-x,-z,-y", { -1, -3, -2 } },
+    { "+y,+x,-z", { +2, +1, -3 } },
+    { "+y,-x,+z", { +2, -1, +3 } },
+    { "-y,+x,+z", { -2, +1, +3 } },
+    { "-y,-x,-z", { -2, -1, -3 } },
+    { "+y,+z,+x", { +2, +3, +1 } },
+    { "+y,-z,-x", { +2, -3, -1 } },
+    { "-y,+z,-x", { -2, +3, -1 } },
+    { "-y,-z,+x", { -2, -3, +1 } },
+    { "+z,+x,+y", { +3, +1, +2 } },
+    { "+z,-x,-y", { +3, -1, -2 } },
+    { "-z,+x,-y", { -3, +1, -2 } },
+    { "-z,-x,+y", { -3, -1, +2 } },
+    { "+z,+y,-x", { +3, +2, -1 } },
+    { "+z,-y,+x", { +3, -2, +1 } },
+    { "-z,+y,+x", { -3, +2, +1 } },
+    { "-z,-y,-x", { -3, -2, -1 } },
+};
+
+/* Cortex-M7 byte loads/stores are atomic; publish only this one-byte state. */
+static volatile uint8_t app_sensor_flu_orientation =
+    APP_SENSOR_FLU_ORIENTATION_LEGACY;
+
+static float APP_Sensor_SelectSignedAxis(const float vector[3],
+                                         int8_t signed_axis)
+{
+    uint8_t axis = (uint8_t)((signed_axis < 0) ? -signed_axis : signed_axis);
+    float value = vector[axis - 1U];
+    return (signed_axis < 0) ? -value : value;
+}
+
+uint8_t APP_Sensor_SetFluOrientationCode(uint8_t code)
+{
+    if ((code >= APP_SENSOR_FLU_ORIENTATION_COUNT) &&
+        (code != APP_SENSOR_FLU_ORIENTATION_LEGACY)) {
+        return 0U;
+    }
+    app_sensor_flu_orientation = code;
+    return 1U;
+}
+
+uint8_t APP_Sensor_SetFluOrientation(const char *descriptor)
+{
+    uint8_t orientation;
+
+    if (descriptor == NULL) {
+        return 0U;
+    }
+    if (strcmp(descriptor, "legacy") == 0) {
+        return APP_Sensor_SetFluOrientationCode(
+            APP_SENSOR_FLU_ORIENTATION_LEGACY);
+    }
+    for (orientation = 0U;
+         orientation < APP_SENSOR_FLU_ORIENTATION_COUNT;
+         ++orientation) {
+        if (strcmp(descriptor,
+                   app_sensor_flu_orientations[orientation].descriptor) == 0) {
+            return APP_Sensor_SetFluOrientationCode(orientation);
+        }
+    }
+    return 0U;
+}
+
+uint8_t APP_Sensor_GetFluOrientation(void)
+{
+    return app_sensor_flu_orientation;
+}
+
+uint8_t APP_Sensor_IsFluOrientationActive(void)
+{
+    return (app_sensor_flu_orientation < APP_SENSOR_FLU_ORIENTATION_COUNT)
+               ? 1U
+               : 0U;
+}
+
+const char *APP_Sensor_GetFluOrientationDescriptorForCode(uint8_t code)
+{
+    if (code < APP_SENSOR_FLU_ORIENTATION_COUNT) {
+        return app_sensor_flu_orientations[code].descriptor;
+    }
+    if (code == APP_SENSOR_FLU_ORIENTATION_LEGACY) {
+        return "legacy";
+    }
+    return "invalid";
+}
+
+const char *APP_Sensor_GetFluOrientationDescriptor(void)
+{
+    return APP_Sensor_GetFluOrientationDescriptorForCode(
+        app_sensor_flu_orientation);
+}
 
 void APP_Sensor_AlignToAirframe(const float in[3], float out[3])
 {
     if ((in == NULL) || (out == NULL)) return;
+
+    /* Keep this fixed chip -> legacy_intermediate_v1 mapping intact. */
     out[0] = -in[2];
     out[1] = -in[0];
     out[2] =  in[1];
+}
+
+static void APP_Sensor_ApplyOrientation(const float in[3],
+                                        float out[3],
+                                        uint8_t orientation)
+{
+    const int8_t *axis =
+        app_sensor_flu_orientations[orientation].output_axis;
+    out[0] = APP_Sensor_SelectSignedAxis(in, axis[0]);
+    out[1] = APP_Sensor_SelectSignedAxis(in, axis[1]);
+    out[2] = APP_Sensor_SelectSignedAxis(in, axis[2]);
+}
+
+uint8_t APP_Sensor_ApplyFrameCorrection(DRV_IMU_ScaledData *imu)
+{
+    uint8_t orientation = app_sensor_flu_orientation;
+    float accel_in[3];
+    float gyro_in[3];
+    float accel_out[3];
+    float gyro_out[3];
+
+    if (imu == NULL) {
+        return APP_SENSOR_FLU_ORIENTATION_LEGACY;
+    }
+    if (orientation >= APP_SENSOR_FLU_ORIENTATION_COUNT) {
+        return orientation;
+    }
+
+    accel_in[0] = imu->accel_x_g;
+    accel_in[1] = imu->accel_y_g;
+    accel_in[2] = imu->accel_z_g;
+    gyro_in[0] = imu->gyro_x_dps;
+    gyro_in[1] = imu->gyro_y_dps;
+    gyro_in[2] = imu->gyro_z_dps;
+    APP_Sensor_ApplyOrientation(accel_in, accel_out, orientation);
+    APP_Sensor_ApplyOrientation(gyro_in, gyro_out, orientation);
+    imu->accel_x_g = accel_out[0];
+    imu->accel_y_g = accel_out[1];
+    imu->accel_z_g = accel_out[2];
+    imu->gyro_x_dps = gyro_out[0];
+    imu->gyro_y_dps = gyro_out[1];
+    imu->gyro_z_dps = gyro_out[2];
+    return orientation;
 }
 
 uint8_t APP_IMU_ReadDataReadyTimestamp(uint64_t *timestamp_us)

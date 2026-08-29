@@ -52,7 +52,7 @@ def test_generated_controller_is_not_built_or_called() -> None:
 def test_bus_servos_are_180_degree_centered_and_limited_to_90_degrees() -> None:
     header = read("Driver/Inc/drv_coax_ctrl.h")
     source = read("Driver/Src/drv_coax_ctrl.c")
-    freertos = read("Core/Src/freertos.c")
+    freertos = read("Core/Src/freertos.c") + read("App/Src/app_stabilizer.c")
 
     assert "#define DRV_COAX_CTRL_SERVO_ALPHA_CENTER_US 1500U" in header
     assert "#define DRV_COAX_CTRL_SERVO_BETA_CENTER_US  1500U" in header
@@ -81,10 +81,10 @@ def test_bus_servos_are_180_degree_centered_and_limited_to_90_degrees() -> None:
     assert "DRV_COAX_CTRL_SERVO_ALPHA_MAX_US" in source
     assert "DRV_COAX_CTRL_SERVO_BETA_MIN_US" in source
     assert "DRV_COAX_CTRL_SERVO_BETA_MAX_US" in source
-    assert "DRV_COAX_CTRL_BodyTiltRadToServoPulses(body_x_tilt_rad," in freertos
-    assert "body_y_tilt_rad," in freertos
-    assert "moves[0].pulse_us = DRV_COAX_CTRL_SERVO_ALPHA_CENTER_US;" in freertos
-    assert "moves[1].pulse_us = DRV_COAX_CTRL_SERVO_BETA_CENTER_US;" in freertos
+    # BodyTiltRadToServoPulses was only called from dead debug functions.
+    assert "DRV_COAX_CTRL_BodyTiltRadToServoPulses(body_x_tilt_rad," not in freertos
+    assert "frame->moves[0].pulse_us = DRV_COAX_CTRL_SERVO_ALPHA_CENTER_US;" in freertos
+    assert "frame->moves[1].pulse_us = DRV_COAX_CTRL_SERVO_BETA_CENTER_US;" in freertos
 
 
 def test_manual_and_ident_servo_limits_follow_each_calibrated_center() -> None:
@@ -145,7 +145,7 @@ def test_mbd_controller_gains_are_runtime_coax_params() -> None:
 def test_controller_limit_params_are_removed_except_tilt_angle() -> None:
     header = read("Driver/Inc/drv_coax_ctrl.h")
     wrapper = read("Driver/Src/drv_coax_ctrl.c")
-    freertos = read("Core/Src/freertos.c")
+    freertos = read("Core/Src/freertos.c") + read("App/Src/app_stabilizer.c")
     app_control = read("App/Src/app_control.c")
     capture = read("tools/vofa_serial_capture.py")
     flight_log = read("tools/flight_log_receive.py")
@@ -172,7 +172,7 @@ def test_controller_limit_params_are_removed_except_tilt_angle() -> None:
 def test_controller_wrapper_exposes_velocity_first_vector_control_inputs() -> None:
     header = read("Driver/Inc/drv_coax_ctrl.h")
     wrapper = read("Driver/Src/drv_coax_ctrl.c")
-    freertos = read("Core/Src/freertos.c")
+    freertos = read("Core/Src/freertos.c") + read("App/Src/app_stabilizer.c")
 
     assert "float vx_m_s;" in header
     assert "float ax_m_s2;" in header
@@ -199,41 +199,41 @@ def test_controller_wrapper_exposes_velocity_first_vector_control_inputs() -> No
     assert "debug->force_cmd_n[1]" in wrapper
     assert "STABILIZER_XY_VEL_REF_MAX_M_S" in freertos
     assert (
-        "reference.vx_m_s =\n"
-        "              stabilizer_rc_normalized(ch[STABILIZER_RC_CH_PITCH])"
+        "frame->reference.vx_m_s =\n"
+        "        stabilizer_rc_normalized(frame->ch[STABILIZER_RC_CH_PITCH]) *"
         in freertos
     )
     assert "static float stabilizer_rc_throttle_height_rate_m_s(uint16_t ch_us)" in freertos
     assert "return stabilizer_rc_normalized(ch_us) * STABILIZER_Z_REF_RATE_MAX_M_S;" in freertos
     assert "stabilizer_rc_throttle_thrust_bias_m_s2" not in freertos
     assert "STABILIZER_Z_THRUST_BIAS_MAX_M_S2" not in freertos
-    assert "reference.ax_m_s2 =" in freertos
-    assert "reference.az_m_s2 = 0.0f;" in freertos
-    assert "height_ref_m +=\n                stabilizer_rc_throttle_height_rate_m_s(" in freertos
+    assert "frame->reference.ax_m_s2 =" in freertos
+    assert "frame->reference.az_m_s2 = 0.0f;" in freertos
+    assert "ctx->height_ref_m +=\n          stabilizer_rc_throttle_height_rate_m_s(" in freertos
     assert "StabilizerVelocityPidState" not in freertos
     assert "stabilizer_velocity_pid_step" not in freertos
-    assert "reference.dt_sec = ctrl_dt_sec;" in freertos
+    assert "frame->reference.dt_sec = frame->ctrl_dt_sec;" in freertos
     assert "velocity_loop_enabled = (vel_loop_enable >= 0.5f) ? 1U : 0U;" in freertos
-    assert "reference.horizontal_velocity_valid = velocity_loop_enabled;" in freertos
-    assert "position_state_x_m +\n                                     velocity_control_x_m_s * ctrl_dt_sec" in freertos
-    assert "position_ref_x_m += reference.vx_m_s * ctrl_dt_sec;" in freertos
-    assert "reference.x_m = position_ref_x_m;" in freertos
-    assert "reference.y_m = position_ref_y_m;" in freertos
+    assert "frame->reference.horizontal_velocity_valid = velocity_loop_enabled;" in freertos
+    assert "ctx->position_state_x_m +\n                               velocity_control_x_m_s * frame->ctrl_dt_sec" in freertos
+    assert "ctx->position_ref_x_m += frame->reference.vx_m_s * frame->ctrl_dt_sec;" in freertos
+    assert "frame->reference.x_m = ctx->position_ref_x_m;" in freertos
+    assert "frame->reference.y_m = ctx->position_ref_y_m;" in freertos
     assert "#define STABILIZER_VELOCITY_MEAS_Y_SIGN (1.0f)" in freertos
     assert "stabilizer_velocity_estimator_control_ok(&vel_estimator, now)" not in freertos
-    assert "attitude.vx_m_s = velocity_control_x_m_s;" in freertos
-    assert "attitude.vy_m_s = velocity_control_y_m_s;" in freertos
-    assert "relative_height_m = range_height_m - height_origin_m;" in freertos
-    assert "attitude.z_m = -relative_height_m;" in freertos
-    assert "attitude.vz_m_s = -range_velocity_m_s;" in freertos
-    assert "stabilizer_clamp_f32(position_ref_z_m," in freertos
+    assert "frame->attitude.vx_m_s = velocity_control_x_m_s;" in freertos
+    assert "frame->attitude.vy_m_s = velocity_control_y_m_s;" in freertos
+    assert "frame->relative_height_m = frame->range_height_m - ctx->height_origin_m;" in freertos
+    assert "frame->attitude.z_m = -frame->relative_height_m;" in freertos
+    assert "frame->attitude.vz_m_s = -frame->range_velocity_m_s;" in freertos
+    assert "stabilizer_clamp_f32(ctx->position_ref_z_m," in freertos
     assert "STABILIZER_Z_POS_ERR_MAX_M" in freertos
-    assert "reference.vz_m_s = 0.0f;" in freertos
-    assert "reference.yaw_rate_rad_s = yaw_rate_ref_rad_s;" in freertos
-    assert "reference.yaw_accel_rad_s2 = 0.0f;" in freertos
+    assert "frame->reference.vz_m_s = 0.0f;" in freertos
+    assert "frame->reference.yaw_rate_rad_s = yaw_rate_ref_rad_s;" in freertos
+    assert "frame->reference.yaw_accel_rad_s2 = 0.0f;" in freertos
     assert "velocity_state_x_m_s : 0.0f;" not in freertos
     assert "velocity_ref_x_m_s" not in freertos
-    assert "memset(&reference, 0, sizeof(reference));" in freertos
+    assert "memset(&frame->reference, 0, sizeof(frame->reference));" in freertos
 
 
 def test_velocity_damping_has_independent_acceleration_limit() -> None:
@@ -408,32 +408,32 @@ def test_balance_controller_has_no_horizontal_velocity_integral_but_keeps_z_inte
     assert "coax_ctrl_state.velocity_integral_m[0] = 0.0f;" in protected
     assert "coax_ctrl_state.velocity_integral_m," not in protected
     assert "horizontal_scale" in protected
-    assert "DRV_COAX_CTRL_ResetState();" in read("Core/Src/freertos.c")
+    assert "DRV_COAX_CTRL_ResetState();" in read("Core/Src/freertos.c") + read("App/Src/app_stabilizer.c")
 
 
 def test_vofa_exports_compact_slider_parameter_feedback() -> None:
     freertos = read("Core/Src/freertos.c")
 
-    assert "#define VOFA_DATA_SIZE 28U" in freertos
-    assert '(void)DRV_COAX_CTRL_GetParam("coax.roll_rate_kd", &vofa_data[7]);' in freertos
-    assert "vofa_data[7] = -vofa_data[7];" not in freertos
-    assert "vofa_data[8] = -vofa_data[8];" not in freertos
-    assert "vofa_data[9] = -vofa_data[9];" in freertos
-    assert "vofa_data[10] = -vofa_data[10];" in freertos
-    assert '(void)DRV_COAX_CTRL_GetParam("coax.pos_x_kp", &vofa_data[11]);' in freertos
-    assert '(void)DRV_COAX_CTRL_GetParam("coax.pos_y_kp", &vofa_data[12]);' in freertos
-    assert '(void)DRV_COAX_CTRL_GetParam("coax.vel_x_kd", &vofa_data[13]);' in freertos
-    assert '(void)DRV_COAX_CTRL_GetParam("coax.vel_y_kd", &vofa_data[14]);' in freertos
-    assert "vofa_data[15] = vofa_debug.pos_est_m[0];" in freertos
-    assert "vofa_data[16] = vofa_debug.pos_est_m[1];" in freertos
-    assert '(void)DRV_COAX_CTRL_GetParam("coax.vel_loop_enable", &vofa_data[17]);' in freertos
-    assert '(void)DRV_COAX_CTRL_GetParam("coax.roll_angle_kp", &vofa_data[18]);' in freertos
-    assert '(void)DRV_COAX_CTRL_GetParam("coax.pitch_angle_kp", &vofa_data[19]);' in freertos
-    assert '(void)DRV_COAX_CTRL_GetParam("coax.pos_z_kp", &vofa_data[20]);' in freertos
-    assert '(void)DRV_COAX_CTRL_GetParam("coax.pos_z_ki", &vofa_data[21]);' in freertos
-    assert '(void)DRV_COAX_CTRL_GetParam("coax.vel_z_kd", &vofa_data[22]);' in freertos
-    assert "vofa_data[18] = -vofa_data[18];" in freertos
-    assert "vofa_data[19] = -vofa_data[19];" in freertos
+    assert "#define VOFA_DATA_SIZE                 ((uint8_t)APP_TELEM_CH_COUNT)" in freertos
+    assert '(void)DRV_COAX_CTRL_GetParam("coax.roll_rate_kd", &vofa_data[APP_TELEM_CH_ROLL_RATE_KD]);' in freertos
+    assert "vofa_data[APP_TELEM_CH_ROLL_RATE_KD] = -vofa_data[APP_TELEM_CH_ROLL_RATE_KD];" not in freertos
+    assert "vofa_data[APP_TELEM_CH_PITCH_RATE_KD] = -vofa_data[APP_TELEM_CH_PITCH_RATE_KD];" not in freertos
+    assert "vofa_data[APP_TELEM_CH_YAW_ANGLE_KP] = -vofa_data[APP_TELEM_CH_YAW_ANGLE_KP];" in freertos
+    assert "vofa_data[APP_TELEM_CH_YAW_RATE_KD] = -vofa_data[APP_TELEM_CH_YAW_RATE_KD];" in freertos
+    assert '(void)DRV_COAX_CTRL_GetParam("coax.pos_x_kp", &vofa_data[APP_TELEM_CH_POS_X_KP]);' in freertos
+    assert '(void)DRV_COAX_CTRL_GetParam("coax.pos_y_kp", &vofa_data[APP_TELEM_CH_POS_Y_KP]);' in freertos
+    assert '(void)DRV_COAX_CTRL_GetParam("coax.vel_x_kd", &vofa_data[APP_TELEM_CH_VEL_X_KD]);' in freertos
+    assert '(void)DRV_COAX_CTRL_GetParam("coax.vel_y_kd", &vofa_data[APP_TELEM_CH_VEL_Y_KD]);' in freertos
+    assert "vofa_data[APP_TELEM_CH_POS_EST_X] = vofa_debug.pos_est_m[0];" in freertos
+    assert "vofa_data[APP_TELEM_CH_POS_EST_Y] = vofa_debug.pos_est_m[1];" in freertos
+    assert '(void)DRV_COAX_CTRL_GetParam("coax.vel_loop_enable", &vofa_data[APP_TELEM_CH_VEL_LOOP_ENABLE]);' in freertos
+    assert '(void)DRV_COAX_CTRL_GetParam("coax.roll_angle_kp", &vofa_data[APP_TELEM_CH_ROLL_ANGLE_KP]);' in freertos
+    assert '(void)DRV_COAX_CTRL_GetParam("coax.pitch_angle_kp", &vofa_data[APP_TELEM_CH_PITCH_ANGLE_KP]);' in freertos
+    assert '(void)DRV_COAX_CTRL_GetParam("coax.pos_z_kp", &vofa_data[APP_TELEM_CH_POS_Z_KP]);' in freertos
+    assert '(void)DRV_COAX_CTRL_GetParam("coax.pos_z_ki", &vofa_data[APP_TELEM_CH_POS_Z_KI]);' in freertos
+    assert '(void)DRV_COAX_CTRL_GetParam("coax.vel_z_kd", &vofa_data[APP_TELEM_CH_VEL_Z_KD]);' in freertos
+    assert "vofa_data[APP_TELEM_CH_ROLL_ANGLE_KP] = -vofa_data[APP_TELEM_CH_ROLL_ANGLE_KP];" in freertos
+    assert "vofa_data[APP_TELEM_CH_PITCH_ANGLE_KP] = -vofa_data[APP_TELEM_CH_PITCH_ANGLE_KP];" in freertos
     assert '"coax.motor_single_max_thrust_n"' not in freertos
     assert '"coax.yaw_torque_upper_m_per_n"' not in freertos
     assert '"coax.yaw_torque_lower_m_per_n"' not in freertos

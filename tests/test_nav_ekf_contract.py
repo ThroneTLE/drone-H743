@@ -10,7 +10,7 @@ def read(path: str) -> str:
 
 def test_quality_adaptive_flow_ekf_is_enabled_in_stabilizer() -> None:
     cmake = read("CMakeLists.txt")
-    freertos = read("Core/Src/freertos.c")
+    freertos = read("Core/Src/freertos.c") + read("App/Src/app_stabilizer.c")
     control = read("App/Src/app_control.c")
 
     assert "Driver/Src/drv_nav_ekf.c" in cmake
@@ -61,7 +61,7 @@ def test_nav_ekf_exposes_industry_consistency_metrics() -> None:
 
 
 def test_velocity_control_uses_flow_ekf_with_limited_compensated_imu_bridge() -> None:
-    freertos = read("Core/Src/freertos.c")
+    freertos = read("Core/Src/freertos.c") + read("App/Src/app_stabilizer.c")
 
     assert "#define STABILIZER_NAV_EKF_CONTROL_TIMEOUT_MS 150U" in freertos
     assert "#define STABILIZER_NAV_EKF_IMU_BRIDGE_TIMEOUT_MS 80U" in freertos
@@ -101,7 +101,7 @@ def test_velocity_control_uses_flow_ekf_with_limited_compensated_imu_bridge() ->
     assert "reference.horizontal_velocity_valid = velocity_loop_enabled;" in freertos
     assert "attitude.vx_m_s = velocity_control_x_m_s;" in freertos
     assert "attitude.vy_m_s = velocity_control_y_m_s;" in freertos
-    assert "STABILIZER_VELOCITY_MEAS_Y_SIGN * velocity_state_y_m_s" in freertos
+    assert "STABILIZER_VELOCITY_MEAS_Y_SIGN * ctx->velocity_state_y_m_s" in freertos
     assert "stabilizer_compensate_flow_rotation(" in freertos
     assert "-STABILIZER_FLOW_ROT_COMP_GAIN * height_m * gyro_y_rad_s;" in freertos
     assert "body_vx_m_s += debug->optical_rot_comp_m_s[0] +" in freertos

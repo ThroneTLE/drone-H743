@@ -15,7 +15,8 @@ def read(path: str) -> str:
 def test_ui_helpers_are_importable_without_starting_tk() -> None:
     assert ui.format_cell(None) == ""
     assert ui.format_cell(1.23456, 2) == "1.23"
-    assert ui.default_report_dir(Path("flightlog_demo.csv")) == Path(".tmp") / "sysid_flightlog_demo"
+    report_dir = ui.default_report_dir(Path("flightlog_20260725_demo.csv"))
+    assert report_dir == ui.FLIGHT_LOG_ANALYSIS_DIR / "2026-07-25" / "sysid_flightlog_20260725_demo"
     assert ui.translate_severity("bad") == "严重"
 
 

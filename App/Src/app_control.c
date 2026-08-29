@@ -1,8 +1,12 @@
 #include "app_control.h"
 
 #include "app_aiwb2.h"
+#include "app_acceptance.h"
 #include "app_baro.h"
+#include "app_boot.h"
 #include "app_flash.h"
+#include "app_firmware_identity.h"
+#include "app_flight_calibration.h"
 #include "app_flight_log.h"
 #include "app_imu_capture.h"
 #include "app_diag.h"
@@ -13,12 +17,14 @@
 #include "app_servo_feedback.h"
 #include "app_servo_feedback_bench.h"
 #include "app_sensor.h"
+#include "app_stabilizer.h"
 #include "app_mag.h"
 #include "app_maint_uart.h"
 #include "app_messages.h"
 #include "app_nav_estimator.h"
 #include "app_proto.h"
 #include "app_tasks.h"
+#include "app_telemetry.h"
 #include "app_uart.h"
 #include "app_usb_cdc.h"
 #include "bsp_bus_servo.h"
@@ -31,7 +37,10 @@
 #include "bsp_uart.h"
 #include "drv_airframe_model.h"
 #include "drv_coax_ctrl.h"
+#include "drv_frame_contract.h"
 #include "drv_motor.h"
+#include "svc_param.h"
+#include "svc_timestamp.h"
 
 #include "FreeRTOS.h"
 #include "main.h"
@@ -76,6 +85,8 @@
 #define APP_CONTROL_TILT_LIMIT_LEGACY_25_RAD 0.43633231f
 #define APP_CONTROL_TILT_LIMIT_LEGACY_EPS_RAD 0.001f
 #define APP_CONTROL_FLOW_RAW_MAX_BYTES 32U
+#define APP_CONTROL_IMUCAL_SNAPSHOT_MAX_AGE_US 100000ULL
+#define APP_CONTROL_IMUCAL_ESC_SAFE_MAX_US 1100U
 
 typedef struct {
     float pos_x_kp;
@@ -154,6 +165,27 @@ static uint8_t control_maint_output_active;
 static uint8_t control_dwt_ready;
 static uint8_t control_flash_autosave_pending;
 static uint32_t control_flash_autosave_deadline_ms;
+static uint8_t control_imuframe_confirmed_code;
+static uint8_t control_imuframe_pending_code;
+static uint8_t control_imuframe_pending_valid;
+static uint8_t control_imuframe_generation_valid;
+static uint8_t control_imuframe_last_dirty;
+static uint8_t control_imuframe_boot_selection_pending;
+static uint32_t control_imuframe_param_generation;
+static uint32_t control_imuframe_last_request;
+static APP_FlightCalibrationUpload control_imucal_upload;
+static APP_FlightCalibration control_imucal_confirmed;
+static APP_FlightCalibration control_imucal_preview;
+static APP_FlightCalibration control_imucal_pending_record;
+static uint32_t control_imucal_confirmed_generation;
+static uint32_t control_imucal_preview_generation;
+static uint32_t control_imucal_apply_sequence;
+static uint32_t control_imucal_last_request;
+static uint8_t control_imucal_confirmed_valid;
+static uint8_t control_imucal_applied;
+static uint8_t control_imucal_commit_pending;
+static const char *control_imucal_last_event;
+static const char *control_imucal_last_reason;
 static uint8_t ident_active;
 static uint8_t ident_motor;
 static uint32_t ident_min_percent;
@@ -174,11 +206,15 @@ static uint8_t app_control_handle_pid_slider_line(const char *line);
 static void app_control_report_wifi(void);
 void APP_Control_QueueText(const char *format, ...);
 static void app_control_queue_proto_text(uint16_t function, const char *format, ...);
+static uint8_t app_control_send_boot_scheduled(void);
 static void app_control_handle_flight_log(char **tokens, uint32_t count);
 static void app_control_handle_imu_capture(char **tokens, uint32_t count);
 static void app_control_dispatch_tokens(char **tokens, uint32_t count, uint8_t emit_ack);
 static uint32_t app_control_tokenize(char *buffer, char **tokens, uint32_t max_tokens);
 static uint8_t app_control_parse_u32(const char *text, uint32_t *value);
+static const char *app_control_token_value(char **tokens,
+                                           uint32_t count,
+                                           const char *key);
 static void app_control_handle_wifi(char **tokens, uint32_t count);
 static void app_control_handle_motor(char **tokens, uint32_t count);
 static void app_control_handle_ident(char **tokens, uint32_t count);
@@ -190,6 +226,16 @@ static void app_control_tick_common(uint8_t emit_heartbeat);
 static void app_control_report_rtos(void);
 static void app_control_handle_flash(char **tokens, uint32_t count);
 static void app_control_handle_flow(char **tokens, uint32_t count);
+static void app_control_handle_boot(char **tokens, uint32_t count);
+static void app_control_service_boot(void);
+static void app_control_handle_acceptance(char **tokens, uint32_t count);
+static void app_control_report_acceptance(void);
+static void app_control_handle_imuframe(char **tokens, uint32_t count);
+static void app_control_imuframe_sync_param(void);
+static void app_control_report_imuframe(const char *event, uint32_t request_id);
+static void app_control_report_imucal(void);
+static void app_control_handle_imucal(char **tokens, uint32_t count);
+static void app_control_service_imucal(void);
 static void app_control_req_m9n(uint32_t id, const char *op);
 static void app_control_req_mag(uint32_t id, const char *op);
 static const char *app_control_age_text(uint32_t age_ms, char *buffer, uint16_t size);
@@ -389,6 +435,18 @@ static void app_control_queue_proto_text(uint16_t function, const char *format, 
         tx_message.length = (uint16_t)written;
     }
 
+    /*
+     * Mirror structured text to USB CDC so the V0 validation page can use the
+     * virtual COM port instead of the slower USART1/WiFi path.  IMUCAP export
+     * owns the CDC byte stream while active; injecting text there would corrupt
+     * its binary framing, so USB mirroring is deliberately suspended.
+     */
+    if (APP_IMU_Capture_IsExportActive() == 0U) {
+        (void)APP_USB_CDC_Write((const uint8_t *)tx_message.text,
+                                tx_message.length,
+                                2U);
+    }
+
     if (control_maint_output_active == 0U) {
         if (osMessageQueuePut(uartTxQueueHandle, &tx_message, 0U, 0U) != osOK) {
             (void)osMessageQueueGet(uartTxQueueHandle, &dropped, 0U, 0U);
@@ -416,6 +474,1201 @@ static uint32_t app_control_tokenize(char *buffer, char **tokens, uint32_t max_t
     }
 
     return count;
+}
+
+static void app_control_imucal_clear_candidate(void)
+{
+    APP_FlightCalibration_UploadReset(&control_imucal_upload);
+    memset(&control_imucal_preview, 0, sizeof(control_imucal_preview));
+    memset(&control_imucal_pending_record, 0,
+           sizeof(control_imucal_pending_record));
+    control_imucal_preview_generation = 0U;
+    control_imucal_apply_sequence = 0U;
+    control_imucal_applied = 0U;
+    control_imucal_commit_pending = 0U;
+    APP_Stabilizer_SetImuCalibrationCandidateArmLock(0U);
+}
+
+static void app_control_imucal_set_event(const char *event,
+                                         const char *reason)
+{
+    control_imucal_last_event = (event != NULL) ? event : "status";
+    control_imucal_last_reason = (reason != NULL) ? reason : "none";
+}
+
+/*
+ * Observe the service generation both during boot and at runtime.  Only the
+ * first confirmed generation selects the active sensor transform.  A dirty
+ * service blob is only pending: it must not replace the last Flash-confirmed
+ * code until the background save has completed and dirty returns to zero.
+ * Later confirmed changes update the persisted view but never overwrite a
+ * temporary APPLY; active changes exclusively through IMUFRAME commands.
+ */
+static void app_control_imuframe_sync_param(void)
+{
+    APP_FlightCalibration calibration;
+    APP_FlightCalibrationSnapshot active_snapshot;
+    uint8_t blob[sizeof(APP_FlightCalibration)];
+    APP_FlightCalibrationDecodeStatus decode_status;
+    SVC_ParamStatus status;
+    uint32_t generation;
+    uint32_t size = 0U;
+    uint8_t dirty;
+    uint8_t orientation_code;
+
+    if (SVC_Param_IsReady() == 0U) {
+        return;
+    }
+
+    generation = SVC_Param_GetGeneration();
+    dirty = SVC_Param_IsDirty();
+    if ((control_imuframe_generation_valid != 0U) &&
+        (generation == control_imuframe_param_generation) &&
+        !((control_imuframe_last_dirty != 0U) && (dirty == 0U))) {
+        return;
+    }
+
+    APP_FlightCalibration_Defaults(&calibration);
+    memset(blob, 0, sizeof(blob));
+    status = SVC_Param_GetBlob(blob, sizeof(blob), &size);
+    decode_status = (status == SVC_PARAM_STATUS_OK) ?
+        APP_FlightCalibration_Decode(blob, size, &calibration) :
+        APP_FLIGHT_CAL_DECODE_INVALID;
+    if (decode_status == APP_FLIGHT_CAL_DECODE_INVALID) {
+        /* Invalid/no record is a safe, explicit no-calibration snapshot. */
+        APP_FlightCalibration_Defaults(&calibration);
+    }
+    orientation_code = calibration.orientation_code;
+
+    control_imuframe_param_generation = generation;
+    control_imuframe_generation_valid = 1U;
+    control_imuframe_last_dirty = dirty;
+
+    if (dirty != 0U) {
+        return;
+    }
+
+    /* This is the Flash-confirmed publication point; RAM preview is separate. */
+    if (APP_FlightCalibration_PublishConfirmed(&calibration) == 0U) {
+        return;
+    }
+
+    control_imucal_confirmed = calibration;
+    control_imucal_confirmed_valid = 1U;
+    if (APP_FlightCalibration_ReadActive(&active_snapshot) != 0U) {
+        control_imucal_confirmed_generation = active_snapshot.generation;
+    }
+
+    if (control_imucal_commit_pending != 0U) {
+        if (memcmp(&calibration,
+                   &control_imucal_pending_record,
+                   sizeof(calibration)) == 0) {
+            app_control_imucal_set_event("committed", "none");
+        } else {
+            app_control_imucal_set_event("commit_failed", "record_mismatch");
+        }
+        app_control_imucal_clear_candidate();
+    } else if (control_imucal_applied != 0U) {
+        /* A separately confirmed Param change invalidates the RAM preview. */
+        app_control_imucal_set_event("reverted", "persisted_changed");
+        app_control_imucal_clear_candidate();
+    }
+
+    control_imuframe_confirmed_code = orientation_code;
+    control_imuframe_pending_code = orientation_code;
+    control_imuframe_pending_valid = 0U;
+
+    if (control_imuframe_boot_selection_pending != 0U) {
+        (void)APP_Sensor_SetFluOrientationCode(orientation_code);
+        control_imuframe_boot_selection_pending = 0U;
+    }
+}
+
+static void app_control_report_imucal(void)
+{
+    APP_FlightCalibrationSnapshot snapshot;
+    APP_FirmwareIdentity firmware_identity;
+    DRV_IMU_Calibration imu_calibration;
+    const APP_FlightCalibrationV1Candidate *candidate =
+        &control_imucal_upload.candidate;
+    uint8_t active_orientation = APP_Sensor_GetFluOrientation();
+    uint8_t effective_mask;
+    uint8_t candidate_ready =
+        (control_imucal_upload.state == APP_FLIGHT_CAL_UPLOAD_READY) ? 1U : 0U;
+
+    if ((APP_FlightCalibration_ReadActive(&snapshot) == 0U) ||
+        (APP_FirmwareIdentity_Get(&firmware_identity) == 0U)) {
+        app_control_queue_proto_text(
+            APP_PROTO_MSG_IMU_CAL,
+            "IMUCAL valid=0 source=active_snapshot unavailable\r\n");
+        return;
+    }
+    effective_mask = APP_FlightCalibration_BuildImuCalibration(
+        &snapshot.calibration, active_orientation, &imu_calibration);
+    app_control_queue_proto_text(
+        APP_PROTO_MSG_IMU_CAL,
+        "IMUCAL event=%s reason=%s transfer=%s received=%lu expected=%lu "
+        "candidate=%u applied=%u commit_pending=%u dirty=%u arm_lock=%u "
+        "request=%lu\r\n",
+        (control_imucal_last_event != NULL) ?
+            control_imucal_last_event : "status",
+        (control_imucal_last_reason != NULL) ?
+            control_imucal_last_reason : "none",
+        APP_FlightCalibration_UploadStateText(control_imucal_upload.state),
+        (unsigned long)control_imucal_upload.received_size,
+        (unsigned long)control_imucal_upload.expected_size,
+        (unsigned int)candidate_ready,
+        (unsigned int)control_imucal_applied,
+        (unsigned int)control_imucal_commit_pending,
+        (unsigned int)SVC_Param_IsDirty(),
+        (unsigned int)APP_Stabilizer_IsImuCalibrationCandidateArmLocked(),
+        (unsigned long)control_imucal_last_request);
+    app_control_queue_proto_text(
+        APP_PROTO_MSG_IMU_CAL,
+        "IMUCAL generations active=%lu persisted=%lu record=%lu base=%lu "
+        "active_mask=0x%02X persisted_mask=0x%02X candidate_mask=0x%02X "
+        "active_orientation=%u persisted_orientation=%u candidate_orientation=%u\r\n",
+        (unsigned long)snapshot.generation,
+        (unsigned long)control_imucal_confirmed_generation,
+        (unsigned long)((control_imucal_confirmed_valid != 0U) ?
+            control_imucal_confirmed.calibration_generation : 0U),
+        (unsigned long)((candidate_ready != 0U) ?
+            candidate->base_generation : 0U),
+        (unsigned int)snapshot.calibration.valid_mask,
+        (unsigned int)((control_imucal_confirmed_valid != 0U) ?
+            control_imucal_confirmed.valid_mask : 0U),
+        (unsigned int)((candidate_ready != 0U) ? candidate->valid_mask : 0U),
+        (unsigned int)active_orientation,
+        (unsigned int)((control_imucal_confirmed_valid != 0U) ?
+            control_imucal_confirmed.orientation_code :
+            APP_SENSOR_FLU_ORIENTATION_LEGACY),
+        (unsigned int)((candidate_ready != 0U) ?
+            candidate->orientation_code : APP_SENSOR_FLU_ORIENTATION_LEGACY));
+    app_control_queue_proto_text(
+        APP_PROTO_MSG_IMU_CAL,
+        "IMUCAL valid=1 source=active_snapshot schema=%u contract=%u "
+        "cal_generation=%lu record_generation=%lu valid_mask=0x%02X "
+        "effective_mask=0x%02X orientation=%u active_orientation=%u "
+        "dirty=%u\r\n",
+        (unsigned int)snapshot.calibration.schema,
+        (unsigned int)snapshot.calibration.frame_contract,
+        (unsigned long)snapshot.generation,
+        (unsigned long)snapshot.calibration.calibration_generation,
+        (unsigned int)snapshot.calibration.valid_mask,
+        (unsigned int)effective_mask,
+        (unsigned int)snapshot.calibration.orientation_code,
+        (unsigned int)active_orientation,
+        (unsigned int)SVC_Param_IsDirty());
+    app_control_queue_proto_text(
+        APP_PROTO_MSG_IMU_CAL,
+        "IMUCAL identity firmware_crc32=0x%08lX image_bytes=%lu\r\n",
+        (unsigned long)firmware_identity.image_crc32,
+        (unsigned long)firmware_identity.image_size);
+    app_control_queue_proto_text(
+        APP_PROTO_MSG_IMU_CAL,
+        "IMUCAL accel bias_ug=%ld,%ld,%ld "
+        "matrix_ppm=%ld,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%ld\r\n",
+        (long)(snapshot.calibration.accel_bias[0] * 1000000.0f),
+        (long)(snapshot.calibration.accel_bias[1] * 1000000.0f),
+        (long)(snapshot.calibration.accel_bias[2] * 1000000.0f),
+        (long)(snapshot.calibration.accel_correction[0][0] * 1000000.0f),
+        (long)(snapshot.calibration.accel_correction[0][1] * 1000000.0f),
+        (long)(snapshot.calibration.accel_correction[0][2] * 1000000.0f),
+        (long)(snapshot.calibration.accel_correction[1][0] * 1000000.0f),
+        (long)(snapshot.calibration.accel_correction[1][1] * 1000000.0f),
+        (long)(snapshot.calibration.accel_correction[1][2] * 1000000.0f),
+        (long)(snapshot.calibration.accel_correction[2][0] * 1000000.0f),
+        (long)(snapshot.calibration.accel_correction[2][1] * 1000000.0f),
+        (long)(snapshot.calibration.accel_correction[2][2] * 1000000.0f));
+    app_control_queue_proto_text(
+        APP_PROTO_MSG_IMU_CAL,
+        "IMUCAL gyro residual_bias_mdps=%ld,%ld,%ld "
+        "temp_slope_udps_per_c=%ld,%ld,%ld reference_temp_cdeg=%ld\r\n",
+        (long)(snapshot.calibration.gyro_bias_ref[0] * 1000.0f),
+        (long)(snapshot.calibration.gyro_bias_ref[1] * 1000.0f),
+        (long)(snapshot.calibration.gyro_bias_ref[2] * 1000.0f),
+        (long)(snapshot.calibration.gyro_temp_slope[0] * 1000000.0f),
+        (long)(snapshot.calibration.gyro_temp_slope[1] * 1000000.0f),
+        (long)(snapshot.calibration.gyro_temp_slope[2] * 1000000.0f),
+        (long)(snapshot.calibration.reference_temp_c * 100.0f));
+}
+
+static uint8_t app_control_parse_hex_u32(const char *text, uint32_t *value)
+{
+    char *end_ptr;
+    unsigned long parsed;
+    size_t digits;
+
+    if ((text == NULL) || (value == NULL) || (*text == '\0')) {
+        return 0U;
+    }
+    if ((text[0] == '0') && ((text[1] == 'x') || (text[1] == 'X'))) {
+        text += 2;
+    }
+    digits = strlen(text);
+    if ((digits == 0U) || (digits > 8U)) {
+        return 0U;
+    }
+    parsed = strtoul(text, &end_ptr, 16);
+    if ((end_ptr == text) || (*end_ptr != '\0')) {
+        return 0U;
+    }
+    *value = (uint32_t)parsed;
+    return 1U;
+}
+
+static const char *app_control_imucal_candidate_context_error(void)
+{
+    const APP_FlightCalibrationV1Candidate *candidate =
+        &control_imucal_upload.candidate;
+
+    if (SVC_Param_IsDirty() != 0U) {
+        return "param_dirty";
+    }
+    if ((control_imucal_confirmed_valid == 0U) ||
+        (control_imucal_upload.state != APP_FLIGHT_CAL_UPLOAD_READY)) {
+        return "candidate_not_ready";
+    }
+    if (candidate->base_generation != control_imucal_confirmed_generation) {
+        return "base_generation_mismatch";
+    }
+    if (((control_imucal_confirmed.valid_mask &
+          APP_FLIGHT_CAL_VALID_ORIENTATION) == 0U) ||
+        (candidate->orientation_code !=
+         control_imucal_confirmed.orientation_code) ||
+        (candidate->orientation_code != APP_Sensor_GetFluOrientation())) {
+        return "orientation_mismatch";
+    }
+    return NULL;
+}
+
+static const char *app_control_imucal_safety(
+    StabilizerValidationImuSnapshot *snapshot,
+    uint8_t require_sequence_progress)
+{
+    uint64_t now_us;
+
+    memset(snapshot, 0, sizeof(*snapshot));
+    if (APP_Stabilizer_ReadValidationImuSnapshot(snapshot) == 0U) {
+        return "snapshot_invalid";
+    }
+    now_us = SVC_Timestamp_Us();
+    if ((snapshot->timestamp_us == 0ULL) ||
+        (now_us < snapshot->timestamp_us) ||
+        ((now_us - snapshot->timestamp_us) >
+         APP_CONTROL_IMUCAL_SNAPSHOT_MAX_AGE_US)) {
+        return "snapshot_stale";
+    }
+    if (snapshot->armed != 0U) {
+        return "armed";
+    }
+    if ((snapshot->esc_pulse_us[0] > APP_CONTROL_IMUCAL_ESC_SAFE_MAX_US) ||
+        (snapshot->esc_pulse_us[1] > APP_CONTROL_IMUCAL_ESC_SAFE_MAX_US)) {
+        return "esc_high";
+    }
+    if ((require_sequence_progress != 0U) &&
+        (APP_Boot_HasSequenceAdvanced(snapshot->sequence,
+                                      control_imucal_apply_sequence) == 0U)) {
+        return "sequence_stalled";
+    }
+    return NULL;
+}
+
+static void app_control_imucal_transfer_result(
+    const char *event,
+    APP_FlightCalibrationTransferStatus status)
+{
+    const char *reason = APP_FlightCalibration_TransferStatusText(status);
+
+    app_control_imucal_set_event(event,
+        (status == APP_FLIGHT_CAL_TRANSFER_OK) ? "none" : reason);
+    if ((status != APP_FLIGHT_CAL_TRANSFER_OK) &&
+        (control_imucal_applied == 0U) &&
+        (control_imucal_commit_pending == 0U) &&
+        (control_imucal_upload.state == APP_FLIGHT_CAL_UPLOAD_EMPTY)) {
+        APP_Stabilizer_SetImuCalibrationCandidateArmLock(0U);
+    }
+    app_control_report_imucal();
+}
+
+static void app_control_handle_imucal(char **tokens, uint32_t count)
+{
+    APP_FlightCalibrationTransferStatus transfer_status;
+    StabilizerValidationImuSnapshot safety_snapshot;
+    APP_FlightCalibrationSnapshot active_snapshot;
+    APP_FlightCalibration current_record;
+    APP_FlightCalibrationDecodeStatus decode_status;
+    uint8_t blob[sizeof(APP_FlightCalibration)];
+    uint8_t encoded[sizeof(APP_FlightCalibration)];
+    uint32_t blob_size = 0U;
+    uint32_t encoded_size;
+    uint32_t size;
+    uint32_t crc32;
+    uint32_t offset;
+    const char *size_text;
+    const char *crc_text;
+    const char *offset_text;
+    const char *hex_text;
+    const char *context_error;
+    const char *safety_error;
+    SVC_ParamStatus param_status;
+    uint32_t now_ms = HAL_GetTick();
+
+    if ((tokens == NULL) || (count == 0U)) {
+        return;
+    }
+    app_control_imuframe_sync_param();
+
+    if (strcmp(tokens[0], "IMUCAL?") == 0) {
+        if (count != 1U) {
+            APP_Control_QueueText("ERR usage IMUCAL?\r\n");
+            return;
+        }
+        app_control_imucal_set_event("status", "none");
+        app_control_report_imucal();
+        return;
+    }
+    if ((count < 2U) || (strcmp(tokens[0], "IMUCAL") != 0)) {
+        APP_Control_QueueText(
+            "ERR usage IMUCAL BEGIN|DATA|END|APPLY|REVERT|COMMIT\r\n");
+        return;
+    }
+
+    if (strcmp(tokens[1], "BEGIN") == 0) {
+        size_text = app_control_token_value(tokens, count, "size");
+        crc_text = app_control_token_value(tokens, count, "crc");
+        if ((count != 4U) || (size_text == NULL) || (crc_text == NULL) ||
+            (app_control_parse_u32(size_text, &size) == 0U) ||
+            (app_control_parse_hex_u32(crc_text, &crc32) == 0U)) {
+            APP_Control_QueueText(
+                "ERR usage IMUCAL BEGIN size=<n> crc=<8hex>\r\n");
+            return;
+        }
+        if ((control_imucal_applied != 0U) ||
+            (control_imucal_commit_pending != 0U)) {
+            app_control_imucal_set_event("begin_rejected", "candidate_applied");
+            app_control_report_imucal();
+            return;
+        }
+        if (SVC_Param_IsDirty() != 0U) {
+            app_control_imucal_set_event("begin_rejected", "param_dirty");
+            app_control_report_imucal();
+            return;
+        }
+        /* Publish the hard arm lock before the candidate state becomes live. */
+        APP_Stabilizer_SetImuCalibrationCandidateArmLock(1U);
+        transfer_status = APP_FlightCalibration_UploadBegin(
+            &control_imucal_upload, size, crc32, now_ms);
+        app_control_imucal_transfer_result("begin", transfer_status);
+        return;
+    }
+
+    if (strcmp(tokens[1], "DATA") == 0) {
+        offset_text = app_control_token_value(tokens, count, "offset");
+        hex_text = app_control_token_value(tokens, count, "hex");
+        if ((count != 4U) || (offset_text == NULL) || (hex_text == NULL) ||
+            (app_control_parse_u32(offset_text, &offset) == 0U)) {
+            APP_Control_QueueText(
+                "ERR usage IMUCAL DATA offset=<n> hex=<max64hex>\r\n");
+            return;
+        }
+        if (SVC_Param_IsDirty() != 0U) {
+            APP_FlightCalibration_UploadReset(&control_imucal_upload);
+            APP_Stabilizer_SetImuCalibrationCandidateArmLock(0U);
+            app_control_imucal_set_event("data_rejected", "param_dirty");
+            app_control_report_imucal();
+            return;
+        }
+        transfer_status = APP_FlightCalibration_UploadDataHex(
+            &control_imucal_upload, offset, hex_text, now_ms);
+        app_control_imucal_transfer_result("data", transfer_status);
+        return;
+    }
+
+    if (strcmp(tokens[1], "END") == 0) {
+        if (count != 2U) {
+            APP_Control_QueueText("ERR usage IMUCAL END\r\n");
+            return;
+        }
+        transfer_status = APP_FlightCalibration_UploadEnd(
+            &control_imucal_upload, now_ms);
+        if (transfer_status != APP_FLIGHT_CAL_TRANSFER_OK) {
+            app_control_imucal_transfer_result("end", transfer_status);
+            return;
+        }
+        context_error = app_control_imucal_candidate_context_error();
+        if (context_error != NULL) {
+            APP_FlightCalibration_UploadReset(&control_imucal_upload);
+            APP_Stabilizer_SetImuCalibrationCandidateArmLock(0U);
+            app_control_imucal_set_event("end_rejected", context_error);
+            app_control_report_imucal();
+            return;
+        }
+        app_control_imucal_set_event("ready", "none");
+        app_control_report_imucal();
+        return;
+    }
+
+    if (strcmp(tokens[1], "APPLY") == 0) {
+        /*
+         * This command is transport plus target-side safety only. Host code
+         * must already have accepted validate_candidate_for_application(); a
+         * successful APPLY is never evidence that V1 metrology passed.
+         */
+        if (count != 2U) {
+            APP_Control_QueueText("ERR usage IMUCAL APPLY\r\n");
+            return;
+        }
+        if ((control_imucal_applied != 0U) ||
+            (control_imucal_commit_pending != 0U)) {
+            app_control_imucal_set_event("apply_rejected", "bad_state");
+            app_control_report_imucal();
+            return;
+        }
+        context_error = app_control_imucal_candidate_context_error();
+        if (context_error != NULL) {
+            app_control_imucal_set_event("apply_rejected", context_error);
+            app_control_report_imucal();
+            return;
+        }
+        safety_error = app_control_imucal_safety(&safety_snapshot, 0U);
+        if (safety_error != NULL) {
+            app_control_imucal_set_event("apply_rejected", safety_error);
+            app_control_report_imucal();
+            return;
+        }
+        if (APP_FlightCalibration_MergeV1Candidate(
+                &control_imucal_confirmed,
+                &control_imucal_upload.candidate,
+                &control_imucal_preview) == 0U) {
+            app_control_imucal_set_event("apply_rejected", "merge_invalid");
+            app_control_report_imucal();
+            return;
+        }
+        if ((APP_FlightCalibration_PublishPreview(
+                 &control_imucal_preview) == 0U) ||
+            (APP_FlightCalibration_ReadActive(&active_snapshot) == 0U)) {
+            app_control_imucal_set_event("apply_rejected", "publish_failed");
+            app_control_report_imucal();
+            return;
+        }
+        control_imucal_preview_generation = active_snapshot.generation;
+        control_imucal_apply_sequence = safety_snapshot.sequence;
+        control_imucal_applied = 1U;
+        APP_Stabilizer_SetImuCalibrationCandidateArmLock(1U);
+        app_control_imucal_set_event("applied", "none");
+        app_control_report_imucal();
+        return;
+    }
+
+    if (strcmp(tokens[1], "REVERT") == 0) {
+        if (count != 2U) {
+            APP_Control_QueueText("ERR usage IMUCAL REVERT\r\n");
+            return;
+        }
+        if (SVC_Param_IsDirty() != 0U) {
+            app_control_imucal_set_event("revert_rejected", "param_dirty");
+            app_control_report_imucal();
+            return;
+        }
+        safety_error = app_control_imucal_safety(&safety_snapshot, 0U);
+        if (safety_error != NULL) {
+            app_control_imucal_set_event("revert_rejected", safety_error);
+            app_control_report_imucal();
+            return;
+        }
+        if ((control_imucal_confirmed_valid == 0U) ||
+            (APP_FlightCalibration_PublishPreview(
+                 &control_imucal_confirmed) == 0U) ||
+            (APP_FlightCalibration_ReadActive(&active_snapshot) == 0U)) {
+            app_control_imucal_set_event("revert_rejected", "publish_failed");
+            app_control_report_imucal();
+            return;
+        }
+        control_imucal_confirmed_generation = active_snapshot.generation;
+        app_control_imucal_clear_candidate();
+        app_control_imucal_set_event("reverted", "none");
+        app_control_report_imucal();
+        return;
+    }
+
+    if (strcmp(tokens[1], "COMMIT") == 0) {
+        if (count != 2U) {
+            APP_Control_QueueText("ERR usage IMUCAL COMMIT\r\n");
+            return;
+        }
+        if ((control_imucal_applied == 0U) ||
+            (control_imucal_commit_pending != 0U) ||
+            (control_imucal_upload.state != APP_FLIGHT_CAL_UPLOAD_READY)) {
+            app_control_imucal_set_event("commit_rejected", "not_applied");
+            app_control_report_imucal();
+            return;
+        }
+        context_error = app_control_imucal_candidate_context_error();
+        if (context_error != NULL) {
+            app_control_imucal_set_event("commit_rejected", context_error);
+            app_control_report_imucal();
+            return;
+        }
+        safety_error = app_control_imucal_safety(&safety_snapshot, 1U);
+        if (safety_error != NULL) {
+            app_control_imucal_set_event("commit_rejected", safety_error);
+            app_control_report_imucal();
+            return;
+        }
+        if ((APP_FlightCalibration_ReadActive(&active_snapshot) == 0U) ||
+            (active_snapshot.generation != control_imucal_preview_generation) ||
+            (memcmp(&active_snapshot.calibration,
+                    &control_imucal_preview,
+                    sizeof(control_imucal_preview)) != 0) ||
+            (safety_snapshot.calibration_generation !=
+             control_imucal_preview_generation)) {
+            app_control_imucal_set_event("commit_rejected", "preview_not_observed");
+            app_control_report_imucal();
+            return;
+        }
+        memset(blob, 0, sizeof(blob));
+        param_status = SVC_Param_GetBlob(blob, sizeof(blob), &blob_size);
+        decode_status = (param_status == SVC_PARAM_STATUS_OK) ?
+            APP_FlightCalibration_Decode(blob, blob_size, &current_record) :
+            APP_FLIGHT_CAL_DECODE_INVALID;
+        if ((decode_status == APP_FLIGHT_CAL_DECODE_INVALID) ||
+            (memcmp(&current_record,
+                    &control_imucal_confirmed,
+                    sizeof(current_record)) != 0) ||
+            (APP_FlightCalibration_MergeV1Candidate(
+                 &current_record,
+                 &control_imucal_upload.candidate,
+                 &control_imucal_pending_record) == 0U)) {
+            app_control_imucal_set_event("commit_rejected", "persisted_base_changed");
+            app_control_report_imucal();
+            return;
+        }
+        encoded_size = APP_FlightCalibration_Encode(
+            &control_imucal_pending_record, encoded, sizeof(encoded));
+        if (encoded_size == 0U) {
+            app_control_imucal_set_event("commit_rejected", "encode_failed");
+            app_control_report_imucal();
+            return;
+        }
+        param_status = SVC_Param_SetBlob(encoded, encoded_size);
+        if (param_status != SVC_PARAM_STATUS_OK) {
+            app_control_imucal_set_event("commit_rejected", "set_blob_failed");
+            app_control_report_imucal();
+            return;
+        }
+        control_imucal_commit_pending = 1U;
+        control_imucal_last_request = SVC_Param_RequestSaveBlob();
+        app_control_imucal_set_event("commit_queued",
+            (control_imucal_last_request != 0U) ? "none" : "queue_retry");
+        app_control_report_imucal();
+        return;
+    }
+
+    APP_Control_QueueText(
+        "ERR usage IMUCAL BEGIN|DATA|END|APPLY|REVERT|COMMIT\r\n");
+}
+
+static void app_control_service_imucal(void)
+{
+    if ((control_imucal_applied == 0U) &&
+        (control_imucal_commit_pending == 0U) &&
+        (APP_FlightCalibration_UploadExpire(&control_imucal_upload,
+                                             HAL_GetTick()) != 0U)) {
+        APP_Stabilizer_SetImuCalibrationCandidateArmLock(0U);
+        app_control_imucal_set_event("expired", "timeout");
+    }
+    if ((control_imucal_commit_pending != 0U) &&
+        (SVC_Param_IsDirty() != 0U) &&
+        (control_imucal_last_request == 0U)) {
+        control_imucal_last_request = SVC_Param_RequestSaveBlob();
+    }
+}
+
+static int32_t app_control_acceptance_milli(float value)
+{
+    if ((!isfinite(value)) || (value > 2147483.0f)) return 2147483647L;
+    if (value < -2147483.0f) return (-2147483647L - 1L);
+    return (int32_t)(value * 1000.0f);
+}
+
+static void app_control_report_acceptance(void)
+{
+    APP_AcceptanceLeaseStatus lease;
+    APP_AcceptanceSnapshot sample;
+    APP_FirmwareIdentity identity;
+    uint8_t sample_valid = APP_Acceptance_ReadSnapshot(&sample);
+    uint8_t identity_valid = APP_FirmwareIdentity_Get(&identity);
+    APP_Acceptance_GetLeaseStatus(&lease);
+    app_control_queue_proto_text(
+        APP_PROTO_MSG_ACCEPTANCE,
+        "ACCEPT active=%u lease=%lu issued_ms=%lu expires_ms=%lu lease_ms=%u "
+        "stage=%s props=%u sample=%u seq=%lu\r\n",
+        (unsigned int)lease.active, (unsigned long)lease.lease_id,
+        (unsigned long)lease.issued_ms, (unsigned long)lease.expires_ms,
+        (unsigned int)APP_ACCEPTANCE_LEASE_MS,
+        APP_Acceptance_StageText(lease.stage),
+        (unsigned int)lease.props_removed, (unsigned int)sample_valid,
+        (unsigned long)((sample_valid != 0U) ? sample.sequence : 0U));
+    if (sample_valid == 0U) return;
+    app_control_queue_proto_text(
+        APP_PROTO_MSG_ACCEPTANCE,
+        "ACCEPT context fw=0x%08lX contract=1 orientation=%u calgen=%lu "
+        "valid=0x%02X esc=%u,%u link=%u failsafe=%u failsafe_ms=%lu mode=safe\r\n",
+        (unsigned long)((identity_valid != 0U) ? identity.image_crc32 : 0U),
+        (unsigned int)sample.orientation_code,
+        (unsigned long)sample.calibration_generation,
+        (unsigned int)sample.calibration_valid_mask,
+        (unsigned int)sample.esc_ccr[0], (unsigned int)sample.esc_ccr[1],
+        (unsigned int)sample.link_present,
+        (unsigned int)sample.failsafe_active,
+        (unsigned long)sample.failsafe_elapsed_ms);
+    app_control_queue_proto_text(
+        APP_PROTO_MSG_ACCEPTANCE,
+        "ACCEPT motion rc=%u,%u,%u nav_mmps=%ld,%ld angle_mdeg=%ld,%ld "
+        "rate_mdps=%ld,%ld moment_u=%ld,%ld\r\n",
+        sample.rc_us[0], sample.rc_us[1], sample.rc_us[2],
+        (long)app_control_acceptance_milli(sample.nav_velocity_m_s[0]),
+        (long)app_control_acceptance_milli(sample.nav_velocity_m_s[1]),
+        (long)app_control_acceptance_milli(sample.angle_deg[0]),
+        (long)app_control_acceptance_milli(sample.angle_deg[1]),
+        (long)app_control_acceptance_milli(sample.rate_dps[0]),
+        (long)app_control_acceptance_milli(sample.rate_dps[1]),
+        (long)app_control_acceptance_milli(sample.moment_n_m[0]),
+        (long)app_control_acceptance_milli(sample.moment_n_m[1]));
+    app_control_queue_proto_text(
+        APP_PROTO_MSG_ACCEPTANCE,
+        "ACCEPT control restoring_u=%ld,%ld damping_u=%ld,%ld\r\n",
+        (long)app_control_acceptance_milli(sample.restoring_moment_n_m[0]),
+        (long)app_control_acceptance_milli(sample.restoring_moment_n_m[1]),
+        (long)app_control_acceptance_milli(sample.damping_moment_n_m[0]),
+        (long)app_control_acceptance_milli(sample.damping_moment_n_m[1]));
+    app_control_queue_proto_text(
+        APP_PROTO_MSG_ACCEPTANCE,
+        "ACCEPT servo center=%u,%u cmd=%u,%u sent=%u,%u feedback=%u,%u "
+        "fb_valid=0x%02X fb_age=%u,%u\r\n",
+        sample.servo_center_us[0], sample.servo_center_us[1],
+        sample.servo_command_us[0], sample.servo_command_us[1],
+        sample.servo_sent_us[0], sample.servo_sent_us[1],
+        sample.servo_feedback_us[0], sample.servo_feedback_us[1],
+        sample.servo_feedback_valid_mask,
+        sample.servo_feedback_age_ms[0], sample.servo_feedback_age_ms[1]);
+}
+
+static void app_control_handle_acceptance(char **tokens, uint32_t count)
+{
+    APP_AcceptanceLeaseStatus lease;
+    APP_AcceptanceStage stage;
+    APP_FlightCalibrationSnapshot calibration;
+    StabilizerValidationImuSnapshot safety;
+    uint32_t lease_id;
+    uint32_t now_ms = HAL_GetTick();
+    uint64_t now_us;
+    const char *value;
+
+    if ((count == 1U) && (strcmp(tokens[0], "ACCEPT?") == 0)) {
+        app_control_report_acceptance();
+        return;
+    }
+    if ((count < 3U) || (strcmp(tokens[0], "ACCEPT") != 0) ||
+        (strcmp(tokens[1], "V2") != 0)) {
+        APP_Control_QueueText("ERR usage ACCEPT? | ACCEPT V2 START|KEEPALIVE|STAGE|STOP\r\n");
+        return;
+    }
+    if (strcmp(tokens[2], "START") == 0) {
+        value = app_control_token_value(tokens, count, "props");
+        if ((value == NULL) || (strcmp(value, "1") != 0) ||
+            (SVC_Param_IsDirty() != 0U) ||
+            (control_imucal_applied != 0U) ||
+            (control_imucal_commit_pending != 0U) ||
+            (APP_Stabilizer_IsImuCalibrationCandidateArmLocked() != 0U) ||
+            (APP_FlightCalibration_ReadActive(&calibration) == 0U) ||
+            ((calibration.calibration.valid_mask &
+              (APP_FLIGHT_CAL_VALID_ORIENTATION | APP_FLIGHT_CAL_VALID_ACCEL |
+               APP_FLIGHT_CAL_VALID_GYRO)) !=
+              (APP_FLIGHT_CAL_VALID_ORIENTATION | APP_FLIGHT_CAL_VALID_ACCEL |
+               APP_FLIGHT_CAL_VALID_GYRO)) ||
+            (calibration.calibration.orientation_code !=
+             APP_Sensor_GetFluOrientation()) ||
+            (APP_Stabilizer_ReadValidationImuSnapshot(&safety) == 0U)) {
+            APP_Control_QueueText("ACCEPT event=start_rejected reason=prerequisite\r\n");
+            return;
+        }
+        now_us = SVC_Timestamp_Us();
+        if ((safety.armed != 0U) || (safety.timestamp_us == 0ULL) ||
+            (now_us < safety.timestamp_us) ||
+            ((now_us - safety.timestamp_us) > 100000ULL) ||
+            (APP_Acceptance_Start(now_ms, 1U, &lease_id) == 0U)) {
+            APP_Control_QueueText("ACCEPT event=start_rejected reason=unsafe\r\n");
+            return;
+        }
+        APP_Control_QueueText("ACCEPT event=started lease=%lu lease_ms=%u esc=0,0\r\n",
+                              (unsigned long)lease_id,
+                              (unsigned int)APP_ACCEPTANCE_LEASE_MS);
+        app_control_report_acceptance();
+        return;
+    }
+    value = app_control_token_value(tokens, count, "lease");
+    if ((value == NULL) || (app_control_parse_u32(value, &lease_id) == 0U)) {
+        APP_Control_QueueText("ACCEPT event=rejected reason=bad_lease\r\n");
+        return;
+    }
+    APP_Acceptance_GetLeaseStatus(&lease);
+    if ((lease.active == 0U) || (lease.lease_id != lease_id)) {
+        APP_Control_QueueText("ACCEPT event=rejected reason=lease_mismatch\r\n");
+        return;
+    }
+    if (strcmp(tokens[2], "KEEPALIVE") == 0) {
+        APP_Control_QueueText("ACCEPT event=keepalive ok=%u lease=%lu\r\n",
+            (unsigned int)APP_Acceptance_Keepalive(now_ms, lease_id),
+            (unsigned long)lease_id);
+        return;
+    } else if (strcmp(tokens[2], "STAGE") == 0) {
+        value = app_control_token_value(tokens, count, "name");
+        if ((APP_Acceptance_Keepalive(now_ms, lease_id) == 0U) ||
+            (APP_Acceptance_ParseStage(value, &stage) == 0U) ||
+            (APP_Acceptance_SetStage(stage) == 0U)) {
+            APP_Control_QueueText("ACCEPT event=stage_rejected reason=invalid\r\n");
+            return;
+        }
+        APP_Control_QueueText("ACCEPT event=stage ok=1 name=%s lease=%lu\r\n",
+                              APP_Acceptance_StageText(stage),
+                              (unsigned long)lease_id);
+    } else if (strcmp(tokens[2], "STOP") == 0) {
+        APP_Acceptance_Stop();
+        APP_Control_QueueText("ACCEPT event=stopped lease=%lu esc=0,0\r\n",
+                              (unsigned long)lease_id);
+    } else {
+        APP_Control_QueueText("ERR usage ACCEPT V2 START|KEEPALIVE|STAGE|STOP\r\n");
+        return;
+    }
+    app_control_report_acceptance();
+}
+
+static uint8_t app_control_send_boot_scheduled(void)
+{
+    APP_UART_TxMessage tx_message;
+    APP_UART_TxMessage dropped;
+    int written;
+
+    if ((uartTxQueueHandle == 0) || (APP_IMU_Capture_IsExportActive() != 0U)) {
+        return 0U;
+    }
+    tx_message.function = APP_PROTO_MSG_BOOT_STATUS;
+    written = snprintf(
+        tx_message.text,
+        sizeof(tx_message.text),
+        "BOOT mode=dfu state=scheduled delay_ms=%u transport=usb_reenumerate\r\n",
+        (unsigned int)APP_BOOT_DFU_SCHEDULE_DELAY_MS);
+    if ((written <= 0) || ((uint32_t)written >= sizeof(tx_message.text))) {
+        return 0U;
+    }
+    tx_message.length = (uint16_t)written;
+
+    /* Scheduling is forbidden until USB reports transmit completion. */
+    if (APP_USB_CDC_Write((const uint8_t *)tx_message.text,
+                          tx_message.length,
+                          100U) == 0U) {
+        return 0U;
+    }
+
+    if (control_maint_output_active == 0U) {
+        if (osMessageQueuePut(uartTxQueueHandle, &tx_message, 0U, 0U) != osOK) {
+            (void)osMessageQueueGet(uartTxQueueHandle, &dropped, 0U, 0U);
+            (void)osMessageQueuePut(uartTxQueueHandle, &tx_message, 0U, 0U);
+        }
+        APP_UART_NotifyTxPending();
+    } else {
+        APP_MaintUART_Write(tx_message.text, tx_message.length);
+    }
+    return 1U;
+}
+
+static uint8_t app_control_imuframe_is_safe(void)
+{
+    StabilizerValidationImuSnapshot snapshot;
+
+    memset(&snapshot, 0, sizeof(snapshot));
+    if (APP_Stabilizer_ReadValidationImuSnapshot(&snapshot) == 0U) {
+        return 0U;
+    }
+    if (snapshot.armed != 0U) {
+        return 0U;
+    }
+    if ((snapshot.esc_pulse_us[0] > 1100U) ||
+        (snapshot.esc_pulse_us[1] > 1100U)) {
+        return 0U;
+    }
+    return 1U;
+}
+
+static void app_control_report_imuframe(const char *event, uint32_t request_id)
+{
+    uint8_t active_code;
+    uint8_t dirty;
+    uint8_t pending_code;
+    uint8_t temporary;
+    const char *frame;
+
+    app_control_imuframe_sync_param();
+    active_code = APP_Sensor_GetFluOrientation();
+    dirty = SVC_Param_IsDirty();
+    pending_code = (control_imuframe_pending_valid != 0U) ?
+                   control_imuframe_pending_code :
+                   APP_SENSOR_FLU_ORIENTATION_LEGACY;
+    temporary = (active_code != control_imuframe_confirmed_code) ? 1U : 0U;
+
+    if (active_code >= APP_SENSOR_FLU_ORIENTATION_COUNT) {
+        frame = "legacy_intermediate";
+    } else if (temporary != 0U) {
+        frame = "canonical_flu_candidate";
+    } else {
+        frame = "canonical_flu_persisted";
+    }
+
+    app_control_queue_proto_text(
+        APP_PROTO_MSG_TEXT_LINE,
+        "IMUFRAME event=%s base=legacy_intermediate_v1 "
+        "active=%s active_code=%u persisted=%s persisted_code=%u "
+        "pending_code=%u pending_valid=%u temporary=%u dirty=%u "
+        "frame=%s arm_lock=%u request=%lu\r\n",
+        (event != NULL) ? event : "status",
+        APP_Sensor_GetFluOrientationDescriptorForCode(active_code),
+        (unsigned int)active_code,
+        APP_Sensor_GetFluOrientationDescriptorForCode(
+            control_imuframe_confirmed_code),
+        (unsigned int)control_imuframe_confirmed_code,
+        (unsigned int)pending_code,
+        (unsigned int)control_imuframe_pending_valid,
+        (unsigned int)temporary,
+        (unsigned int)dirty,
+        frame,
+        (unsigned int)APP_Stabilizer_IsImuFrameArmLocked(),
+        (unsigned long)request_id);
+}
+
+static void app_control_handle_imuframe(char **tokens, uint32_t count)
+{
+    APP_FlightCalibration calibration;
+    APP_FlightCalibrationDecodeStatus decode_status;
+    uint8_t blob[sizeof(APP_FlightCalibration)];
+    uint8_t encoded[sizeof(APP_FlightCalibration)];
+    uint32_t blob_size = 0U;
+    uint32_t encoded_size;
+    SVC_ParamStatus status;
+    uint8_t active_code;
+
+    if ((tokens == NULL) || (count == 0U)) {
+        return;
+    }
+
+    app_control_imuframe_sync_param();
+
+    if (strcmp(tokens[0], "IMUFRAME?") == 0) {
+        app_control_report_imuframe("status", control_imuframe_last_request);
+        return;
+    }
+
+    if (APP_Stabilizer_IsImuCalibrationCandidateArmLocked() != 0U) {
+        app_control_report_imuframe("imucal_busy", 0U);
+        return;
+    }
+
+    if ((count >= 2U) && (strcmp(tokens[1], "APPLY") == 0)) {
+        if (app_control_imuframe_is_safe() == 0U) {
+            app_control_report_imuframe("safety_blocked", 0U);
+            return;
+        }
+        if (SVC_Param_IsDirty() != 0U) {
+            app_control_report_imuframe("apply_busy", 0U);
+            return;
+        }
+        if ((count != 3U) ||
+            (APP_Sensor_SetFluOrientation(tokens[2]) == 0U)) {
+            app_control_report_imuframe("invalid_descriptor", 0U);
+            return;
+        }
+        control_imuframe_boot_selection_pending = 0U;
+        control_imuframe_last_request = 0U;
+        app_control_report_imuframe("applied", 0U);
+        return;
+    }
+
+    if ((count >= 2U) && (strcmp(tokens[1], "REVERT") == 0)) {
+        if (app_control_imuframe_is_safe() == 0U) {
+            app_control_report_imuframe("safety_blocked", 0U);
+            return;
+        }
+        if (SVC_Param_IsReady() == 0U) {
+            app_control_report_imuframe("param_not_ready", 0U);
+            return;
+        }
+        if (SVC_Param_IsDirty() != 0U) {
+            app_control_report_imuframe("revert_busy", 0U);
+            return;
+        }
+        if ((count != 2U) ||
+            (APP_Sensor_SetFluOrientationCode(
+                 control_imuframe_confirmed_code) == 0U)) {
+            app_control_report_imuframe("revert_failed", 0U);
+            return;
+        }
+        control_imuframe_boot_selection_pending = 0U;
+        control_imuframe_last_request = 0U;
+        app_control_report_imuframe("reverted", 0U);
+        return;
+    }
+
+    if ((count >= 2U) && (strcmp(tokens[1], "COMMIT") == 0)) {
+        if (app_control_imuframe_is_safe() == 0U) {
+            app_control_report_imuframe("safety_blocked", 0U);
+            return;
+        }
+        if (count != 2U) {
+            app_control_report_imuframe("invalid_usage", 0U);
+            return;
+        }
+        if (SVC_Param_IsReady() == 0U) {
+            app_control_report_imuframe("param_not_ready", 0U);
+            return;
+        }
+
+        active_code = APP_Sensor_GetFluOrientation();
+        if (SVC_Param_IsDirty() != 0U) {
+            if ((control_imuframe_pending_valid == 0U) ||
+                (active_code != control_imuframe_pending_code)) {
+                app_control_report_imuframe("commit_busy", 0U);
+                return;
+            }
+            control_imuframe_last_request = SVC_Param_RequestSaveBlob();
+            if (control_imuframe_last_request == 0U) {
+                app_control_report_imuframe("commit_queue_failed", 0U);
+                return;
+            }
+            app_control_report_imuframe("commit_queued",
+                                        control_imuframe_last_request);
+            return;
+        }
+
+        memset(blob, 0, sizeof(blob));
+        status = SVC_Param_GetBlob(blob, sizeof(blob), &blob_size);
+        if ((status == SVC_PARAM_STATUS_OK) && (blob_size == 0U)) {
+            APP_FlightCalibration_Defaults(&calibration);
+        } else if (status == SVC_PARAM_STATUS_OK) {
+            decode_status = APP_FlightCalibration_Decode(
+                blob, blob_size, &calibration);
+            if (decode_status == APP_FLIGHT_CAL_DECODE_INVALID) {
+                app_control_report_imuframe("commit_decode_failed", 0U);
+                return;
+            }
+        } else if (status == SVC_PARAM_STATUS_NO_VALID_RECORD) {
+            APP_FlightCalibration_Defaults(&calibration);
+        } else {
+            app_control_report_imuframe("commit_read_failed", 0U);
+            return;
+        }
+
+        if (APP_FlightCalibration_UpdateOrientation(&calibration,
+                                                    active_code) == 0U) {
+            app_control_report_imuframe("commit_failed", 0U);
+            return;
+        }
+        encoded_size = APP_FlightCalibration_Encode(
+            &calibration, encoded, sizeof(encoded));
+        if (encoded_size == 0U) {
+            app_control_report_imuframe("commit_encode_failed", 0U);
+            return;
+        }
+        status = SVC_Param_SetBlob(encoded, encoded_size);
+        if (status != SVC_PARAM_STATUS_OK) {
+            app_control_report_imuframe("commit_failed", 0U);
+            return;
+        }
+
+        control_imuframe_pending_code = active_code;
+        control_imuframe_pending_valid = 1U;
+        control_imuframe_boot_selection_pending = 0U;
+        control_imuframe_last_request = SVC_Param_RequestSaveBlob();
+        if (control_imuframe_last_request == 0U) {
+            app_control_report_imuframe("commit_queue_failed", 0U);
+            return;
+        }
+        app_control_report_imuframe("commit_queued",
+                                    control_imuframe_last_request);
+        return;
+    }
+
+    app_control_report_imuframe("invalid_usage", 0U);
+}
+
+static const char *app_control_boot_state_name(APP_BootState state)
+{
+    switch (state) {
+    case APP_BOOT_STATE_WAITING_USB_REPLY:
+        return "waiting_usb_reply";
+    case APP_BOOT_STATE_SCHEDULED:
+        return "scheduled";
+    case APP_BOOT_STATE_ENTERING:
+        return "entering";
+    case APP_BOOT_STATE_IDLE:
+    default:
+        return "idle";
+    }
+}
+
+static const char *app_control_boot_safety_name(APP_BootSafety safety)
+{
+    switch (safety) {
+    case APP_BOOT_SAFETY_NO_VALID_SNAPSHOT:
+        return "snapshot_invalid";
+    case APP_BOOT_SAFETY_ARMED:
+        return "armed";
+    case APP_BOOT_SAFETY_ESC_HIGH:
+        return "esc_high";
+    case APP_BOOT_SAFETY_SNAPSHOT_STALE:
+        return "snapshot_stale";
+    case APP_BOOT_SAFETY_OK:
+    default:
+        return "ok";
+    }
+}
+
+static void app_control_report_boot(void)
+{
+    APP_BootStatus status;
+
+    APP_Boot_GetStatus(&status);
+    app_control_queue_proto_text(
+        APP_PROTO_MSG_BOOT_STATUS,
+        "BOOT mode=dfu state=%s target=rom_usb_dfu addr=0x%08lX delay_ms=%u "
+        "remain_ms=%lu valid=%u armed=%u esc=%u,%u safe=%u reason=%s "
+        "age_us=%lu seq=%lu request_seq=%lu vector=%u confirm=BOOT_DFU_CONFIRM\r\n",
+        app_control_boot_state_name(status.state),
+        (unsigned long)APP_BOOT_ROM_DFU_VECTOR_ADDRESS,
+        (unsigned int)APP_BOOT_DFU_SCHEDULE_DELAY_MS,
+        (unsigned long)status.remaining_ms,
+        (unsigned int)status.snapshot_valid,
+        (unsigned int)status.armed,
+        (unsigned int)status.esc_pulse_us[0],
+        (unsigned int)status.esc_pulse_us[1],
+        (unsigned int)(status.safety == APP_BOOT_SAFETY_OK),
+        app_control_boot_safety_name(status.safety),
+        (unsigned long)status.snapshot_age_us,
+        (unsigned long)status.snapshot_sequence,
+        (unsigned long)status.request_sequence,
+        (unsigned int)status.vector_valid);
+}
+
+static void app_control_handle_boot(char **tokens, uint32_t count)
+{
+    APP_BootRequestResult result;
+    const char *reason;
+
+    if ((tokens == NULL) || (count == 0U)) {
+        return;
+    }
+
+    if (strcmp(tokens[0], "BOOT?") == 0) {
+        if (count != 1U) {
+            APP_Control_QueueText("ERR usage BOOT?\r\n");
+            return;
+        }
+        app_control_report_boot();
+        return;
+    }
+
+    /* Exact three-token confirmation prevents a generic BOOT/DFU click. */
+    if ((count != 3U) ||
+        (strcmp(tokens[1], "DFU") != 0) ||
+        (strcmp(tokens[2], "CONFIRM") != 0)) {
+        APP_Control_QueueText("ERR usage BOOT DFU CONFIRM\r\n");
+        return;
+    }
+
+    result = APP_Boot_RequestDfu();
+    if (result == APP_BOOT_REQUEST_READY_FOR_USB) {
+        if (app_control_send_boot_scheduled() == 0U) {
+            APP_Boot_CancelDfuRequest();
+            app_control_queue_proto_text(
+                APP_PROTO_MSG_BOOT_STATUS,
+                "BOOT mode=dfu state=refused reason=usb_confirmation_failed\r\n");
+            return;
+        }
+        if (APP_Boot_ConfirmDfuScheduled() == 0U) {
+            APP_Boot_CancelDfuRequest();
+            app_control_queue_proto_text(
+                APP_PROTO_MSG_BOOT_STATUS,
+                "BOOT mode=dfu state=cancelled reason=schedule_state_failed\r\n");
+        }
+        return;
+    }
+
+    switch (result) {
+    case APP_BOOT_REQUEST_ALREADY_PENDING:
+        reason = "already_pending";
+        break;
+    case APP_BOOT_REQUEST_NO_VALID_SNAPSHOT:
+        reason = "snapshot_invalid";
+        break;
+    case APP_BOOT_REQUEST_ARMED:
+        reason = "armed";
+        break;
+    case APP_BOOT_REQUEST_ESC_HIGH:
+        reason = "esc_high";
+        break;
+    case APP_BOOT_REQUEST_SNAPSHOT_STALE:
+        reason = "snapshot_stale";
+        break;
+    case APP_BOOT_REQUEST_VECTOR_INVALID:
+    default:
+        reason = "rom_vector_invalid";
+        break;
+    }
+    app_control_queue_proto_text(APP_PROTO_MSG_BOOT_STATUS,
+                                 "BOOT mode=dfu state=refused reason=%s\r\n",
+                                 reason);
+}
+
+static void app_control_service_boot(void)
+{
+    APP_BootEvent event = APP_Boot_Tick();
+    const char *reason;
+
+    if (event == APP_BOOT_EVENT_NONE) {
+        return;
+    }
+
+    switch (event) {
+    case APP_BOOT_EVENT_CANCELLED_NO_SNAPSHOT:
+        reason = "snapshot_invalid";
+        break;
+    case APP_BOOT_EVENT_CANCELLED_ARMED:
+        reason = "armed";
+        break;
+    case APP_BOOT_EVENT_CANCELLED_ESC_HIGH:
+        reason = "esc_high";
+        break;
+    case APP_BOOT_EVENT_CANCELLED_SNAPSHOT_STALE:
+        reason = "snapshot_stale";
+        break;
+    case APP_BOOT_EVENT_CANCELLED_SEQUENCE_STALLED:
+        reason = "snapshot_sequence_stalled";
+        break;
+    case APP_BOOT_EVENT_ESC_DISABLE_FAILED:
+        reason = "esc_disable_failed";
+        break;
+    case APP_BOOT_EVENT_MAGIC_WRITE_FAILED:
+        reason = "reset_magic_write_failed";
+        break;
+    case APP_BOOT_EVENT_VECTOR_INVALID:
+    default:
+        reason = "rom_vector_invalid";
+        break;
+    }
+
+    app_control_queue_proto_text(APP_PROTO_MSG_BOOT_STATUS,
+                                 "BOOT mode=dfu state=cancelled reason=%s\r\n",
+                                 reason);
 }
 
 static void app_control_handle_flight_log(char **tokens, uint32_t count)
@@ -1676,8 +2929,14 @@ static void app_control_report_baro(void)
 static void app_control_report_imu(void)
 {
     APP_IMU_Status imu_status;
+    StabilizerValidationImuSnapshot snapshot;
+    APP_FirmwareIdentity firmware_identity;
+    uint8_t snapshot_valid;
+    uint8_t firmware_identity_valid;
 
     APP_IMU_GetStatus(&imu_status);
+    snapshot_valid = APP_Stabilizer_ReadValidationImuSnapshot(&snapshot);
+    firmware_identity_valid = APP_FirmwareIdentity_Get(&firmware_identity);
     app_control_queue_proto_text(APP_PROTO_MSG_IMU_STATE,
                                  "IMU ok=%u stage=%s stage_id=%u st=%ld err=%ld who=0x%02X exp=0x%02X n=%lu\r\n",
                                  (unsigned int)imu_status.initialized,
@@ -1688,18 +2947,115 @@ static void app_control_report_imu(void)
                                  (unsigned int)imu_status.who_am_i,
                                  (unsigned int)BSP_ICM42688_WHO_AM_I_VALUE,
                                  (unsigned long)imu_status.sample_count);
-    app_control_queue_proto_text(APP_PROTO_MSG_IMU_SCALED,
-                                 "IMU scaled ax_mg=%d ay_mg=%d az_mg=%d gx_mdps=%ld gy_mdps=%ld gz_mdps=%ld temp_cdeg=%d roll=%d pitch=%d yaw=%d\r\n",
-                                 (int)imu_status.accel_x_mg,
-                                 (int)imu_status.accel_y_mg,
-                                 (int)imu_status.accel_z_mg,
-                                 (long)imu_status.gyro_x_mdps,
-                                 (long)imu_status.gyro_y_mdps,
-                                 (long)imu_status.gyro_z_mdps,
-                                 (int)imu_status.temperature_cdeg,
-                                 (int)imu_status.roll_cdeg,
-                                 (int)imu_status.pitch_cdeg,
-                                 (int)imu_status.yaw_cdeg);
+    if (snapshot_valid == 0U) {
+        app_control_queue_proto_text(
+            APP_PROTO_MSG_IMU_SCALED,
+            "IMU sample valid=0 source=stabilizer_snapshot unavailable\r\n");
+    } else if (firmware_identity_valid == 0U) {
+        app_control_queue_proto_text(
+            APP_PROTO_MSG_IMU_SCALED,
+            "IMU sample valid=0 source=firmware_identity unavailable\r\n");
+    } else {
+        int32_t accel_mg[3];
+        int32_t gyro_mdps[3];
+        int32_t attitude_cdeg[3];
+        int32_t temperature_cdeg;
+        int32_t acceleration_error_cdeg;
+        int32_t acceleration_recovery_trigger_milli;
+        uint32_t timestamp_ms;
+        uint8_t fusion_flags = 0U;
+        const char *snapshot_frame;
+
+        accel_mg[0] = (int32_t)(snapshot.accel_g[0] * 1000.0f);
+        accel_mg[1] = (int32_t)(snapshot.accel_g[1] * 1000.0f);
+        accel_mg[2] = (int32_t)(snapshot.accel_g[2] * 1000.0f);
+        gyro_mdps[0] = (int32_t)(snapshot.gyro_dps[0] * 1000.0f);
+        gyro_mdps[1] = (int32_t)(snapshot.gyro_dps[1] * 1000.0f);
+        gyro_mdps[2] = (int32_t)(snapshot.gyro_dps[2] * 1000.0f);
+        attitude_cdeg[0] = (int32_t)(snapshot.roll_deg * 100.0f);
+        attitude_cdeg[1] = (int32_t)(snapshot.pitch_deg * 100.0f);
+        attitude_cdeg[2] = (int32_t)(snapshot.yaw_deg * 100.0f);
+        temperature_cdeg = (int32_t)(snapshot.temperature_c * 100.0f);
+        acceleration_error_cdeg =
+            (int32_t)(snapshot.fusion_acceleration_error_deg * 100.0f);
+        acceleration_recovery_trigger_milli =
+            (int32_t)(snapshot.fusion_acceleration_recovery_trigger * 1000.0f);
+        timestamp_ms = (uint32_t)(snapshot.timestamp_us / 1000ULL);
+        if (snapshot.fusion_accelerometer_ignored != 0U) {
+            fusion_flags |= APP_IMU_CAPTURE_FUSION_ACCEL_IGNORED;
+        }
+        if (snapshot.fusion_accel_norm_rejected != 0U) {
+            fusion_flags |= APP_IMU_CAPTURE_FUSION_NORM_REJECTED;
+        }
+        if (snapshot.fusion_acceleration_recovery != 0U) {
+            fusion_flags |= APP_IMU_CAPTURE_FUSION_ACCEL_RECOVERY;
+        }
+        if (snapshot.fusion_angular_rate_recovery != 0U) {
+            fusion_flags |= APP_IMU_CAPTURE_FUSION_RATE_RECOVERY;
+        }
+
+        /* Derive provenance from this exact seqlock snapshot, not from the
+         * independently mutable global orientation selection.  Protocol
+         * values are frame=legacy_intermediate or frame=canonical_flu_ram. */
+        snapshot_frame =
+            (snapshot.imu_frame_orientation_code <
+             APP_SENSOR_FLU_ORIENTATION_COUNT) ?
+            "canonical_flu_ram" : "legacy_intermediate";
+
+        /*
+         * Keep each line below APP_UART_TX_TEXT_SIZE even at maximum integer
+         * width.  The first line is provenance/state; the second is the
+         * coherent sample and Fusion diagnostics from the same snapshot.
+         */
+        app_control_queue_proto_text(
+            APP_PROTO_MSG_IMU_SCALED,
+            "IMU sample valid=1 source=stabilizer_snapshot frame=%s units=mg_mdps_cdeg contract=%u migration=0x%02lX orientation=%u ts_ms=%lu seq=%lu bias=%u armed=%u m1=%u m2=%u temp_cdeg=%ld\r\n",
+            snapshot_frame,
+            (unsigned int)DRV_FRAME_CONTRACT_VERSION,
+            (unsigned long)DRV_FRAME_RUNTIME_MIGRATION_DONE_MASK,
+            (unsigned int)snapshot.imu_frame_orientation_code,
+            (unsigned long)timestamp_ms,
+            (unsigned long)snapshot.sequence,
+            (unsigned int)snapshot.gyro_bias_ready,
+            (unsigned int)snapshot.armed,
+            (unsigned int)snapshot.esc_pulse_us[0],
+            (unsigned int)snapshot.esc_pulse_us[1],
+            (long)temperature_cdeg);
+        app_control_queue_proto_text(
+            APP_PROTO_MSG_IMU_SCALED,
+            "IMU sample seq=%lu ax=%ld ay=%ld az=%ld gx=%ld gy=%ld gz=%ld roll=%ld pitch=%ld yaw=%ld fusion_flags=0x%02X ferr_cdeg=%ld ftrig_milli=%ld fcorr=%lu\r\n",
+            (unsigned long)snapshot.sequence,
+            (long)accel_mg[0],
+            (long)accel_mg[1],
+            (long)accel_mg[2],
+            (long)gyro_mdps[0],
+            (long)gyro_mdps[1],
+            (long)gyro_mdps[2],
+            (long)attitude_cdeg[0],
+            (long)attitude_cdeg[1],
+            (long)attitude_cdeg[2],
+            (unsigned int)fusion_flags,
+            (long)acceleration_error_cdeg,
+            (long)acceleration_recovery_trigger_milli,
+            (unsigned long)snapshot.fusion_accel_correction_count);
+        app_control_queue_proto_text(
+            APP_PROTO_MSG_IMU_SCALED,
+            "IMU calibration cal_generation=%lu valid_mask=0x%02X firmware_crc32=0x%08lX\r\n",
+            (unsigned long)snapshot.calibration_generation,
+            (unsigned int)snapshot.calibration_valid_mask,
+            (unsigned long)firmware_identity.image_crc32);
+        /*
+         * 采样链健康单独一行：上位机据此拒绝在降级状态下采集标定证据，并把
+         * "为什么不能解锁"显示成真实原因，而不是笼统的 IMU 未就绪。
+         */
+        app_control_queue_proto_text(
+            APP_PROTO_MSG_IMU_SCALED,
+            "IMU health level=%u rate_hz=%u fault=%u fault_ever=%u\r\n",
+            (unsigned int)snapshot.imu_health_level,
+            (unsigned int)snapshot.imu_sample_rate_hz,
+            (unsigned int)snapshot.imu_health_fault_active,
+            (unsigned int)snapshot.imu_health_fault_ever);
+    }
     app_control_queue_proto_text(APP_PROTO_MSG_IMU_STATE,
                                  "IMU diag valid=%u m0_tok=0x%02X m0_msb=0x%02X m0_b0=0x%02X m3_tok=0x%02X m3_msb=0x%02X m3_b0=0x%02X best_mode=%u best_hdr=%u\r\n",
                                  (unsigned int)imu_status.diag_valid,
@@ -3755,7 +5111,33 @@ void APP_Control_Init(void)
         return;
     }
 
+    APP_Boot_Init();
+    APP_Acceptance_Init();
+    APP_FlightCalibration_ResetActive();
+    APP_FlightCalibration_UploadReset(&control_imucal_upload);
+    APP_FlightCalibration_Defaults(&control_imucal_confirmed);
+    memset(&control_imucal_preview, 0, sizeof(control_imucal_preview));
+    memset(&control_imucal_pending_record, 0,
+           sizeof(control_imucal_pending_record));
+    control_imucal_confirmed_generation = 0U;
+    control_imucal_preview_generation = 0U;
+    control_imucal_apply_sequence = 0U;
+    control_imucal_last_request = 0U;
+    control_imucal_confirmed_valid = 0U;
+    control_imucal_applied = 0U;
+    control_imucal_commit_pending = 0U;
+    app_control_imucal_set_event("init", "none");
+    APP_Stabilizer_SetImuCalibrationCandidateArmLock(0U);
     app_control_defaults(&control_config);
+    control_imuframe_confirmed_code = APP_SENSOR_FLU_ORIENTATION_LEGACY;
+    control_imuframe_pending_code = APP_SENSOR_FLU_ORIENTATION_LEGACY;
+    control_imuframe_pending_valid = 0U;
+    control_imuframe_generation_valid = 0U;
+    control_imuframe_last_dirty = 0U;
+    control_imuframe_boot_selection_pending = 1U;
+    control_imuframe_param_generation = 0U;
+    control_imuframe_last_request = 0U;
+    app_control_imuframe_sync_param();
     control_wifi_reset_pending = 0U;
     control_wifi_reset_deadline_ms = 0U;
     APP_Ident_Init();
@@ -3792,6 +5174,10 @@ void APP_Control_MaintTick(void)
 
 static void app_control_tick_common(uint8_t emit_heartbeat)
 {
+    app_control_service_boot();
+    app_control_imuframe_sync_param();
+    app_control_service_imucal();
+    APP_Acceptance_Service(HAL_GetTick());
     app_control_service_wifi_reset();
     app_control_service_flash_autosave();
     app_control_ident_step();
@@ -3848,6 +5234,49 @@ static void app_control_tick_common(uint8_t emit_heartbeat)
 #endif
 }
 
+/*
+ * TELEM —— 遥测通道 schema 查询。
+ *
+ *   TELEM?              -> 一行表头（版本/通道数/速率/分页大小/指纹）
+ *   TELEM CH from=<n>   -> 至多 APP_TELEM_PAGE_SIZE 条通道行 + 一行页脚
+ *
+ * 分页而非一次性回全表：uartTxQueue 深度 32 且满时丢最旧的一条，28 条通道
+ * 一次推进队列在慢链路上会静默丢掉开头几条，而 schema 丢一条就会让上位机
+ * 建错表。分页把单次回包压到 7 条，并且天然可重试。
+ */
+static void app_control_handle_telem(char **tokens, uint32_t count)
+{
+    const char *from_text;
+    uint32_t    from;
+
+    if (tokens == NULL) {
+        return;
+    }
+
+    if (strcmp(tokens[0], "TELEM?") == 0) {
+        if (count != 1U) {
+            APP_Control_QueueText("ERR usage TELEM?\r\n");
+            return;
+        }
+        APP_Telemetry_ReportHeader();
+        return;
+    }
+
+    if ((count < 2U) || (strcmp(tokens[1], "CH") != 0)) {
+        APP_Control_QueueText("ERR usage TELEM CH from=<n>\r\n");
+        return;
+    }
+
+    from_text = app_control_token_value(tokens, count, "from");
+    if ((count != 3U) || (from_text == NULL) ||
+        (app_control_parse_u32(from_text, &from) == 0U)) {
+        APP_Control_QueueText("ERR usage TELEM CH from=<n>\r\n");
+        return;
+    }
+
+    APP_Telemetry_ReportPage(from);
+}
+
 static void app_control_dispatch_tokens(char **tokens, uint32_t count, uint8_t emit_ack)
 {
     if ((tokens == NULL) || (count == 0U)) {
@@ -3870,6 +5299,9 @@ static void app_control_dispatch_tokens(char **tokens, uint32_t count, uint8_t e
         app_control_report_status();
     } else if (strcmp(tokens[0], "RTOS?") == 0) {
         app_control_report_rtos();
+    } else if ((strcmp(tokens[0], "BOOT?") == 0) ||
+               (strcmp(tokens[0], "BOOT") == 0)) {
+        app_control_handle_boot(tokens, count);
     } else if (strcmp(tokens[0], "FLASH?") == 0) {
         app_control_report_flash();
     } else if (strcmp(tokens[0], "FLASH") == 0) {
@@ -3880,6 +5312,15 @@ static void app_control_dispatch_tokens(char **tokens, uint32_t count, uint8_t e
         app_control_handle_baro(tokens, count);
     } else if (strcmp(tokens[0], "IMU?") == 0) {
         app_control_report_imu();
+    } else if ((strcmp(tokens[0], "IMUCAL?") == 0) ||
+               (strcmp(tokens[0], "IMUCAL") == 0)) {
+        app_control_handle_imucal(tokens, count);
+    } else if ((strcmp(tokens[0], "ACCEPT?") == 0) ||
+               (strcmp(tokens[0], "ACCEPT") == 0)) {
+        app_control_handle_acceptance(tokens, count);
+    } else if ((strcmp(tokens[0], "IMUFRAME?") == 0) ||
+               (strcmp(tokens[0], "IMUFRAME") == 0)) {
+        app_control_handle_imuframe(tokens, count);
     } else if (strcmp(tokens[0], "FLOW?") == 0) {
         APP_OpticalFlow_Report();
     } else if (strcmp(tokens[0], "FLOW") == 0) {
@@ -4000,6 +5441,9 @@ static void app_control_dispatch_tokens(char **tokens, uint32_t count, uint8_t e
     } else if ((strcmp(tokens[0], "IMUCAP?") == 0) ||
                (strcmp(tokens[0], "IMUCAP") == 0)) {
         app_control_handle_imu_capture(tokens, count);
+    } else if ((strcmp(tokens[0], "TELEM?") == 0) ||
+               (strcmp(tokens[0], "TELEM") == 0)) {
+        app_control_handle_telem(tokens, count);
     } else if (strcmp(tokens[0], "Sensor_Data:1") == 0) {
         vofaStreamActive = 1U;
         APP_Control_QueueText("OK IMU stream started\r\n");

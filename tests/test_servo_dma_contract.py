@@ -9,15 +9,15 @@ def read(path: str) -> str:
 
 
 def test_stabilizer_uses_nonblocking_servo_dma_path() -> None:
-    freertos = read("Core/Src/freertos.c")
+    freertos = read("Core/Src/freertos.c") + read("App/Src/app_stabilizer.c")
 
-    assert "BSP_BusServo_MoveManyAsync(moves, 2U,\n                                         STABILIZER_SERVO_MOVE_TIME_MS)" in freertos
+    assert "BSP_BusServo_MoveManyAsync(frame->moves, 2U,\n                                   STABILIZER_SERVO_MOVE_TIME_MS)" in freertos
     assert "BSP_BusServo_MoveMany(moves, 2U" not in freertos
     assert "DRV_SERVO_MoveCmd moves[2]" in freertos
     assert "BSP_PWM_SetServoPulse" not in freertos
     assert "stabilizer_servo_should_send" in freertos
     assert "stabilizer_servo_command_slot_due" in freertos
-    assert "stabilizer_servo_record_target(moves);" in freertos
+    assert "stabilizer_servo_record_target(frame->moves);" in freertos
     assert "STABILIZER_SERVO_BUS_FRAME_MS" in freertos
     assert "STABILIZER_SERVO_REFRESH_MS" in freertos
     assert "STABILIZER_SERVO_DELTA_US" in freertos
@@ -25,25 +25,22 @@ def test_stabilizer_uses_nonblocking_servo_dma_path() -> None:
     assert "#define STABILIZER_SERVO_BUS_FRAME_MS 10U" in freertos
     assert "#define STABILIZER_SERVO_MOVE_TIME_MS 0U" in freertos
     assert "#define STABILIZER_SERVO_REFRESH_MS    500U" in freertos
-    assert "#define VOFA_SEND_PERIOD_MS            25U" in freertos
-    assert "stabilizer_servo_commit_sent(moves, now);" in freertos
+    assert "#define VOFA_SEND_PERIOD_MS            APP_TELEM_PERIOD_MS" in freertos
+    assert "stabilizer_servo_commit_sent(frame->moves, frame->now_ms);" in freertos
     assert "stabilizer_servo_bus_diag.move_attempt_count++;" in freertos
     assert "stabilizer_servo_bus_diag.move_busy_count++;" in freertos
     assert "== DRV_SERVO_OK" in freertos
 
 
 def test_stabilizer_keeps_direct_servo_debug_switch_with_controller_path() -> None:
-    freertos = read("Core/Src/freertos.c")
+    freertos = read("Core/Src/freertos.c") + read("App/Src/app_stabilizer.c")
 
+    # Direct-angle-servo debug switch permanently disabled; dead code removed.
     assert "#define STABILIZER_USE_DIRECT_ANGLE_SERVO 0U" in freertos
-    assert "static void stabilizer_map_angle_direct_to_servo" in freertos
-    assert "float body_x_tilt_rad = pitch_deg * STABILIZER_DEG_TO_RAD *" in freertos
-    assert "float body_y_tilt_rad = roll_deg * STABILIZER_DEG_TO_RAD *" in freertos
-    assert "DRV_COAX_CTRL_BodyTiltRadToServoPulses(body_x_tilt_rad," in freertos
-    assert "body_y_tilt_rad," in freertos
-    assert "DRV_COAX_CTRL_Run(&attitude, &reference, &ctrl_out);" in freertos
-    assert "moves[0].pulse_us = ctrl_out.servo_alpha_us;" in freertos
-    assert "moves[1].pulse_us = ctrl_out.servo_beta_us;" in freertos
+    assert "static void stabilizer_map_angle_direct_to_servo" not in freertos
+    assert "DRV_COAX_CTRL_Run(&frame->attitude, &frame->reference, &frame->ctrl_out);" in freertos
+    assert "frame->moves[0].pulse_us = frame->ctrl_out.servo_alpha_us;" in freertos
+    assert "frame->moves[1].pulse_us = frame->ctrl_out.servo_beta_us;" in freertos
 
 
 def test_servo_async_path_uses_uart_dma_and_cache_clean() -> None:
@@ -89,21 +86,21 @@ def test_uart_callbacks_route_uart7_to_servo_dma_diagnostics() -> None:
 
 
 def test_vofa_stream_sends_compact_dashboard_channels() -> None:
-    freertos = read("Core/Src/freertos.c")
+    freertos = read("Core/Src/freertos.c") + read("App/Src/app_stabilizer.c")
 
-    assert "#define VOFA_DATA_SIZE 28U" in freertos
+    assert "#define VOFA_DATA_SIZE                 ((uint8_t)APP_TELEM_CH_COUNT)" in freertos
     assert "DRV_SERVO_Diag servo_diag;" not in freertos
     assert "BSP_BusServo_GetDiag(&servo_diag);" not in freertos
-    assert "vofa_data[4] = (float)(SVC_Timestamp_Us() / 1000ULL) * 0.001f;" in freertos
-    assert "vofa_data[5] = vofa_debug.vel_est_m_s[0];" in freertos
-    assert "vofa_data[6] = vofa_debug.vel_est_m_s[1];" in freertos
-    assert '(void)DRV_COAX_CTRL_GetParam("coax.roll_rate_kd", &vofa_data[7]);' in freertos
-    assert '(void)DRV_COAX_CTRL_GetParam("coax.vel_loop_enable", &vofa_data[17]);' in freertos
-    assert '(void)DRV_COAX_CTRL_GetParam("coax.roll_angle_kp", &vofa_data[18]);' in freertos
-    assert '(void)DRV_COAX_CTRL_GetParam("coax.pitch_angle_kp", &vofa_data[19]);' in freertos
-    assert '(void)DRV_COAX_CTRL_GetParam("coax.pos_z_kp", &vofa_data[20]);' in freertos
-    assert '(void)DRV_COAX_CTRL_GetParam("coax.pos_z_ki", &vofa_data[21]);' in freertos
-    assert '(void)DRV_COAX_CTRL_GetParam("coax.vel_z_kd", &vofa_data[22]);' in freertos
+    assert "vofa_data[APP_TELEM_CH_TIME] = (float)(SVC_Timestamp_Us() / 1000ULL) * 0.001f;" in freertos
+    assert "vofa_data[APP_TELEM_CH_VEL_EST_X] = vofa_debug.vel_est_m_s[0];" in freertos
+    assert "vofa_data[APP_TELEM_CH_VEL_EST_Y] = vofa_debug.vel_est_m_s[1];" in freertos
+    assert '(void)DRV_COAX_CTRL_GetParam("coax.roll_rate_kd", &vofa_data[APP_TELEM_CH_ROLL_RATE_KD]);' in freertos
+    assert '(void)DRV_COAX_CTRL_GetParam("coax.vel_loop_enable", &vofa_data[APP_TELEM_CH_VEL_LOOP_ENABLE]);' in freertos
+    assert '(void)DRV_COAX_CTRL_GetParam("coax.roll_angle_kp", &vofa_data[APP_TELEM_CH_ROLL_ANGLE_KP]);' in freertos
+    assert '(void)DRV_COAX_CTRL_GetParam("coax.pitch_angle_kp", &vofa_data[APP_TELEM_CH_PITCH_ANGLE_KP]);' in freertos
+    assert '(void)DRV_COAX_CTRL_GetParam("coax.pos_z_kp", &vofa_data[APP_TELEM_CH_POS_Z_KP]);' in freertos
+    assert '(void)DRV_COAX_CTRL_GetParam("coax.pos_z_ki", &vofa_data[APP_TELEM_CH_POS_Z_KI]);' in freertos
+    assert '(void)DRV_COAX_CTRL_GetParam("coax.vel_z_kd", &vofa_data[APP_TELEM_CH_VEL_Z_KD]);' in freertos
     assert "osDelay(VOFA_SEND_PERIOD_MS);" in freertos
 
 

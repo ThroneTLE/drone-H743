@@ -64,6 +64,24 @@ def test_capture_hook_runs_before_filtering() -> None:
     assert push_at < scale_at < lpf_at
 
 
+def test_export_only_sees_timestamp_matched_completed_samples() -> None:
+    source = read("App/Src/app_imu_capture.c")
+    header = read("App/Inc/app_imu_capture.h")
+    stabilizer = read("App/Src/app_stabilizer.c")
+
+    assert "uint32_t timestamp_us" in header[header.index(
+        "APP_IMU_Capture_AnnotateControl"):]
+    assert "slot->timestamp_us != timestamp_us" in source
+    assert "imu_capture_annotation_mask" in source
+    assert "APP_IMU_CAPTURE_ANNOTATION_COMPLETE" in source
+    assert "imu_capture_export_total = imu_capture_committed_index" in source
+    assert "status->stored = imu_capture_committed_index" in source
+    assert "APP_IMU_CAPTURE_DRAINING" in source
+    control_call = stabilizer[stabilizer.index(
+        "APP_IMU_Capture_AnnotateControl("):]
+    assert "(uint32_t)msg->base.timestamp_us" in control_call[:300]
+
+
 def test_export_runs_off_the_sampling_path() -> None:
     source = read("Core/Src/freertos.c")
 
@@ -89,7 +107,10 @@ def test_sample_layout_matches_host_decoder() -> None:
 
     # Packed, or the compiler's tail padding silently desynchronises the host.
     assert "__attribute__((packed))" in header
-    assert module.SAMPLE_SIZE == 46
+    assert module.SAMPLE_SIZE == 48
+    assert module.SAMPLE_SIZE_V3 == 46
+    assert module.HEADER_SIZE == 56
+    assert module.HEADER_SIZE_V3 == 40
     assert module.HEADER_SIZE == struct.calcsize(module.HEADER_FMT)
 
 

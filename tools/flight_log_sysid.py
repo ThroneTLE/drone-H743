@@ -13,6 +13,14 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Callable, Iterable
 
+try:
+    from .project_paths import FLIGHT_LOG_ANALYSIS_DIR, dated_directory_for_name
+except ImportError:  # Allows running as: python tools/flight_log_sysid.py
+    try:
+        from tools.project_paths import FLIGHT_LOG_ANALYSIS_DIR, dated_directory_for_name
+    except ImportError:
+        from project_paths import FLIGHT_LOG_ANALYSIS_DIR, dated_directory_for_name
+
 
 DEFAULT_GAP_S = 0.100
 DEFAULT_TILT_LIMIT_RAD = 0.4886922
@@ -1237,8 +1245,7 @@ def print_console_summary(analysis: FlightLogAnalysis) -> None:
 
 
 def default_report_dir(csv_path: Path) -> Path:
-    # 中文注释：默认把报告放到日志同目录的 .tmp/sysid_xxx，方便每次复查。
-    return csv_path.parent / ".tmp" / f"sysid_{csv_path.stem}"
+    return dated_directory_for_name(FLIGHT_LOG_ANALYSIS_DIR, csv_path.name) / f"sysid_{csv_path.stem}"
 
 
 def parse_args() -> argparse.Namespace:
@@ -1249,7 +1256,7 @@ def parse_args() -> argparse.Namespace:
         "--out-dir",
         type=Path,
         default=None,
-        help="directory for JSON/CSV/Markdown reports; default: <csv dir>/.tmp/sysid_<csv stem>",
+        help="directory for reports; default: data/analysis/flight_logs/sysid_<csv stem>",
     )
     parser.add_argument("--gap-ms", type=float, default=DEFAULT_GAP_S * 1000.0, help="segment break gap in ms")
     return parser.parse_args()

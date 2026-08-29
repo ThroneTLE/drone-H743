@@ -15,6 +15,32 @@ from tkinter import filedialog, messagebox, ttk
 from typing import Any, Iterable
 
 try:
+    from .project_paths import (
+        DATA_ROOT,
+        FLIGHT_LOG_DIR,
+        RERUN_REPLAY_DIR,
+        dated_directory,
+        latest_dated_directory,
+    )
+except ImportError:  # Allows running as: python tools/flight_log_rerun_replay.py
+    try:
+        from tools.project_paths import (
+            DATA_ROOT,
+            FLIGHT_LOG_DIR,
+            RERUN_REPLAY_DIR,
+            dated_directory,
+            latest_dated_directory,
+        )
+    except ImportError:
+        from project_paths import (
+            DATA_ROOT,
+            FLIGHT_LOG_DIR,
+            RERUN_REPLAY_DIR,
+            dated_directory,
+            latest_dated_directory,
+        )
+
+try:
     import numpy as np
     import pandas as pd
 except Exception:  # pragma: no cover - depends on host optional packages
@@ -23,8 +49,8 @@ except Exception:  # pragma: no cover - depends on host optional packages
 
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
-DEFAULT_LOG_DIR = ROOT_DIR / "tools" / "data" / "flight_logs"
-DEFAULT_OUT_DIR = ROOT_DIR / ".tmp" / "rerun_replay"
+DEFAULT_LOG_DIR = FLIGHT_LOG_DIR
+DEFAULT_OUT_DIR = dated_directory(RERUN_REPLAY_DIR)
 DEFAULT_GAP_MS = 200.0
 DEFAULT_MAX_ROWS_PER_SEGMENT = 2600
 RERUN_INSTALL_HINT = "python -m pip install rerun-sdk"
@@ -65,9 +91,9 @@ def require_rerun() -> Any:
 def latest_csv_in(folder: Path) -> Path | None:
     if not folder.exists() or not folder.is_dir():
         return None
-    files = [path for path in folder.glob("flightlog_*.csv") if path.is_file()]
+    files = [path for path in folder.rglob("flightlog_*.csv") if path.is_file()]
     if not files:
-        files = [path for path in folder.glob("*.csv") if path.is_file()]
+        files = [path for path in folder.rglob("*.csv") if path.is_file()]
     if not files:
         return None
     return max(files, key=lambda path: (path.stat().st_mtime, path.name))
@@ -635,7 +661,7 @@ class RerunReplayUI(tk.Tk):
     def choose_csv(self) -> None:
         path = filedialog.askopenfilename(
             title="选择 flightlog CSV",
-            initialdir=str(DEFAULT_LOG_DIR if DEFAULT_LOG_DIR.exists() else ROOT_DIR),
+            initialdir=str(latest_dated_directory(DEFAULT_LOG_DIR) if DEFAULT_LOG_DIR.exists() else DATA_ROOT),
             filetypes=(("CSV files", "*.csv"), ("All files", "*.*")),
         )
         if path:

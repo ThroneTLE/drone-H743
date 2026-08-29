@@ -7,9 +7,15 @@
 extern "C" {
 #endif
 
+typedef enum {
+    DRV_ATTITUDE_FUSION_CONVENTION_NED = 0U,
+    DRV_ATTITUDE_FUSION_CONVENTION_NWU = 1U,
+} DRV_AttitudeFusionConvention;
+
 /*
- * Attitude-only fusion input in the aircraft's compensated NED contract.
- * Gyroscope units are degrees per second and accelerometer units are g.
+ * Attitude-only fusion input.  The caller must identify the convention at
+ * initialisation and provide both gyroscope and accelerometer in that same
+ * proper body frame.  Units are degrees/second and g.
  */
 typedef struct {
     uint64_t time_us;
@@ -38,6 +44,8 @@ typedef struct {
 } DRV_AttitudeFusionOutput;
 
 void DRV_AttitudeFusion_Init(void);
+void DRV_AttitudeFusion_InitForConvention(
+    DRV_AttitudeFusionConvention convention);
 uint8_t DRV_AttitudeFusion_Update(
     const DRV_AttitudeFusionInput *input,
     DRV_AttitudeFusionOutput *output);

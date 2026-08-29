@@ -18,6 +18,14 @@ from pathlib import Path
 from typing import BinaryIO, Iterable
 
 try:
+    from .project_paths import FLIGHT_LOG_DIR, dated_directory
+except ImportError:  # Allows running as: python tools/flight_log_receive.py
+    try:
+        from tools.project_paths import FLIGHT_LOG_DIR, dated_directory
+    except ImportError:
+        from project_paths import FLIGHT_LOG_DIR, dated_directory
+
+try:
     import tkinter as tk
     from tkinter import filedialog, messagebox, ttk
 except Exception:  # pragma: no cover - CLI/parser tests do not need Tk.
@@ -35,8 +43,7 @@ except Exception:  # pragma: no cover - handled at runtime in the GUI.
 
 
 DEFAULT_BAUD = 57600
-ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_OUT_DIR = ROOT / "tools" / "data" / "flight_logs"
+DEFAULT_OUT_DIR = dated_directory(FLIGHT_LOG_DIR)
 DEFAULT_TIMEOUT_S = 2.0
 SECTOR_SIZE = 4096
 SECTOR_HEADER_SIZE = 256

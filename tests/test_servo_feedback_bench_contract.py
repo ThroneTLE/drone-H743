@@ -46,7 +46,7 @@ def test_feedback_bench_is_opt_in_and_step_profile_is_bounded() -> None:
 
 def test_feedback_bench_commands_and_realistic_move_load_are_wired() -> None:
     control = read("App/Src/app_control.c")
-    freertos = read("Core/Src/freertos.c")
+    freertos = read("Core/Src/freertos.c") + read("App/Src/app_stabilizer.c")
     cmake = read("CMakeLists.txt")
 
     assert 'strcmp(tokens[1], "FB") == 0' in control
@@ -56,9 +56,9 @@ def test_feedback_bench_commands_and_realistic_move_load_are_wired() -> None:
     assert 'strcmp(tokens[2], "STATUS") == 0' in control
     assert 'strcmp(tokens[2], "STOP") == 0' in control
     assert "APP_ServoFeedbackBench_MoveRefreshDue" in freertos
-    assert "APP_ServoFeedbackBench_ApplyTargets(now, moves);" in freertos
-    assert "APP_ServoFeedbackBench_Step(now, moves);" in freertos
-    assert "BSP_BusServo_Service(now);" in freertos
+    assert "APP_ServoFeedbackBench_ApplyTargets(frame->now_ms, frame->moves);" in freertos
+    assert "APP_ServoFeedbackBench_Step(frame->now_ms, frame->moves);" in freertos
+    assert "BSP_BusServo_Service(frame->now_ms);" in freertos
     assert "if (APP_ServoFeedbackBench_IsActive() != 0U)" in freertos
     assert "rc_armed = 0U;" in freertos
     assert "App/Src/app_servo_feedback_bench.c" in cmake

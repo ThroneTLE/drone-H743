@@ -38,6 +38,10 @@
 #define APP_PROTO_REQ_RTOS           0x101BU
 #define APP_PROTO_REQ_AIRFRAME       0x101CU
 #define APP_PROTO_REQ_IDENT          0x101DU
+#define APP_PROTO_REQ_IMU_FRAME      0x101EU
+#define APP_PROTO_REQ_BOOT           0x101FU
+#define APP_PROTO_REQ_IMU_CAL        0x1020U
+#define APP_PROTO_REQ_ACCEPTANCE     0x1021U
 
 #define APP_PROTO_MSG_CMD_LINE  0x2000U
 #define APP_PROTO_MSG_TEXT_LINE 0x2001U
@@ -77,6 +81,9 @@
 #define APP_PROTO_MSG_RTOS_RECORD       0x221DU
 #define APP_PROTO_MSG_FLASH_BENCH       0x221EU
 #define APP_PROTO_MSG_AIRFRAME_RECORD   0x221FU
+#define APP_PROTO_MSG_BOOT_STATUS       0x2220U
+#define APP_PROTO_MSG_IMU_CAL           0x2221U
+#define APP_PROTO_MSG_ACCEPTANCE        0x2222U
 
 /* Temporarily disabled for VOFA migration
 typedef struct {

@@ -10,7 +10,7 @@ def read(path: str) -> str:
 
 def test_runtime_feedback_uses_deterministic_50_hz_per_servo_slots() -> None:
     source = read("App/Src/app_servo_feedback.c")
-    freertos = read("Core/Src/freertos.c")
+    freertos = read("Core/Src/freertos.c") + read("App/Src/app_stabilizer.c")
     cmake = read("CMakeLists.txt")
 
     assert "APP_SERVO_FEEDBACK_FRAME_PERIOD_MS 10U" in source
@@ -31,7 +31,7 @@ def test_runtime_feedback_uses_deterministic_50_hz_per_servo_slots() -> None:
 def test_runtime_feedback_snapshot_carries_quality_metadata() -> None:
     header = read("App/Inc/app_servo_feedback.h")
     flight_header = read("App/Inc/app_flight_log.h")
-    freertos = read("Core/Src/freertos.c")
+    freertos = read("Core/Src/freertos.c") + read("App/Src/app_stabilizer.c")
 
     assert "uint16_t position_us[APP_SERVO_FEEDBACK_SLOT_COUNT];" in header
     assert "uint16_t age_ms[APP_SERVO_FEEDBACK_SLOT_COUNT];" in header
@@ -42,4 +42,4 @@ def test_runtime_feedback_snapshot_carries_quality_metadata() -> None:
     assert "uint32_t busy_count;" in header
     assert "servo_alpha_feedback_us" in flight_header
     assert "servo_beta_feedback_sequence" in flight_header
-    assert "APP_ServoFeedback_GetLogSample(now, &servo_feedback_sample);" in freertos
+    assert "APP_ServoFeedback_GetLogSample(frame->now_ms, &servo_feedback_sample);" in freertos

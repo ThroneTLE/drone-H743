@@ -48,12 +48,21 @@ static uint8_t finite_vector3(const float value[3])
 
 void DRV_AttitudeFusion_Init(void)
 {
+    DRV_AttitudeFusion_InitForConvention(
+        DRV_ATTITUDE_FUSION_CONVENTION_NED);
+}
+
+void DRV_AttitudeFusion_InitForConvention(
+    DRV_AttitudeFusionConvention convention)
+{
     FusionAhrsSettings settings = fusionAhrsDefaultSettings;
 
     memset(&attitude_fusion_state, 0, sizeof(attitude_fusion_state));
     FusionAhrsInitialise(&attitude_fusion_state.ahrs);
     settings.sampleRate = DRV_ATTITUDE_FUSION_SAMPLE_RATE_HZ;
-    settings.convention = FusionConventionNed;
+    settings.convention =
+        (convention == DRV_ATTITUDE_FUSION_CONVENTION_NWU) ?
+        FusionConventionNwu : FusionConventionNed;
     settings.gain = DRV_ATTITUDE_FUSION_GAIN;
     settings.gyroscopeRange = DRV_ATTITUDE_FUSION_GYRO_RANGE_DPS;
     settings.accelerationRejection =

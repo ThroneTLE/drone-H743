@@ -10,6 +10,32 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
 try:
+    from .project_paths import (
+        DATA_ROOT,
+        FLIGHT_LOG_ANALYSIS_DIR,
+        FLIGHT_LOG_DIR,
+        dated_directory_for_name,
+        latest_dated_directory,
+    )
+except ImportError:  # Allows running as: python tools/flight_log_sysid_ui.py
+    try:
+        from tools.project_paths import (
+            DATA_ROOT,
+            FLIGHT_LOG_ANALYSIS_DIR,
+            FLIGHT_LOG_DIR,
+            dated_directory_for_name,
+            latest_dated_directory,
+        )
+    except ImportError:
+        from project_paths import (
+            DATA_ROOT,
+            FLIGHT_LOG_ANALYSIS_DIR,
+            FLIGHT_LOG_DIR,
+            dated_directory_for_name,
+            latest_dated_directory,
+        )
+
+try:
     from . import flight_log_sysid as sysid
 except ImportError:  # Allows running as: python tools/flight_log_sysid_ui.py
     import flight_log_sysid as sysid
@@ -29,7 +55,7 @@ except Exception:  # pragma: no cover - depends on host optional packages
     NavigationToolbar2Tk = None
 
 
-DEFAULT_LOG_DIR = Path(__file__).resolve().parent / "data" / "flight_logs"
+DEFAULT_LOG_DIR = FLIGHT_LOG_DIR
 
 
 def format_cell(value: object, digits: int = 3) -> str:
@@ -42,8 +68,7 @@ def format_cell(value: object, digits: int = 3) -> str:
 
 
 def default_report_dir(csv_path: Path) -> Path:
-    # 中文注释：默认把报告放到日志同目录的 .tmp/sysid_xxx，方便每次复查。
-    return csv_path.parent / ".tmp" / f"sysid_{csv_path.stem}"
+    return dated_directory_for_name(FLIGHT_LOG_ANALYSIS_DIR, csv_path.name) / f"sysid_{csv_path.stem}"
 
 
 def translate_flag(flag: str) -> str:
@@ -272,7 +297,7 @@ class FlightLogSysidUI(tk.Tk):
     def open_csv(self) -> None:
         path = filedialog.askopenfilename(
             title="打开飞行日志 CSV",
-            initialdir=str(DEFAULT_LOG_DIR),
+            initialdir=str(latest_dated_directory(DEFAULT_LOG_DIR) if DEFAULT_LOG_DIR.exists() else DATA_ROOT),
             filetypes=(("飞行日志 CSV", "flightlog_*.csv"), ("CSV 文件", "*.csv"), ("所有文件", "*.*")),
         )
         if path:

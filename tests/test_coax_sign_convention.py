@@ -1,5 +1,9 @@
 """Sign-convention self-check for the coaxial attitude controller.
 
+This is a legacy runtime-adapter test, not the canonical body-frame definition.
+The sole canonical contract is Driver/Inc/drv_frame_contract.h; this file remains
+until the complete sensor-to-actuator runtime chain is migrated to FLU.
+
 Why this file exists: the sensor-to-servo chain carries several independent sign
 switches. Their effects mask each other, because a negative gain is
 mathematically the same as flipping a sign — so a polarity error can be absorbed
@@ -72,7 +76,7 @@ def test_control_law_is_negative_feedback_by_structure() -> None:
 
 
 def test_stick_polarity_lives_in_exactly_one_place() -> None:
-    freertos = read("Core/Src/freertos.c")
+    freertos = read("App/Src/app_stabilizer.c")
 
     # The stick mapping is the only sign that changes pilot-facing direction;
     # every other sign applies to measured and target attitude alike and

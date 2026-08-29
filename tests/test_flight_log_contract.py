@@ -37,7 +37,7 @@ def test_flight_log_uses_app_flash_service_only() -> None:
 
 
 def test_stabilizer_records_snapshots_without_direct_flash_access() -> None:
-    freertos = read("Core/Src/freertos.c")
+    freertos = read("Core/Src/freertos.c") + read("App/Src/app_stabilizer.c")
     drv_header = read("Driver/Inc/drv_coax_ctrl.h")
     drv_source = read("Driver/Src/drv_coax_ctrl.c")
 

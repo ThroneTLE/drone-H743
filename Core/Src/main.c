@@ -32,6 +32,7 @@
 /* USER CODE BEGIN Includes */
 #include "bsp.h"
 #include "app.h"
+#include "app_boot.h"
 #include "svc_timestamp.h"
 #include <string.h>
 /* USER CODE END Includes */
@@ -380,6 +381,7 @@ int main(void)
 {
 
   /* USER CODE BEGIN 1 */
+  APP_Boot_TryRomDfu();
 
   /* USER CODE END 1 */
 

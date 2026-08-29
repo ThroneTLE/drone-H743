@@ -8,16 +8,12 @@ import threading
 from pathlib import Path
 
 from tools import imu_attitude_tuner as tuner
+from tools.project_paths import IMU_ATTITUDE_CAPTURE_DIR, dated_directory_for_name
 
 
 ROOT = Path(__file__).resolve().parents[1]
-REAL_CAPTURE = (
-    ROOT
-    / "tools"
-    / "data"
-    / "imu_attitude_data"
-    / "imu_vertical_shake_20260727_130109.csv"
-)
+REAL_CAPTURE_NAME = "imu_vertical_shake_20260727_130109.csv"
+REAL_CAPTURE = dated_directory_for_name(IMU_ATTITUDE_CAPTURE_DIR, REAL_CAPTURE_NAME) / REAL_CAPTURE_NAME
 
 
 def float_word(value: float) -> str:

@@ -18,7 +18,8 @@ def read(path: str) -> str:
 
 def test_latest_csv_and_segment_helpers(tmp_path: Path) -> None:
     older = tmp_path / "flightlog_older.csv"
-    newer = tmp_path / "flightlog_newer.csv"
+    newer = tmp_path / "2026-07-25" / "flightlog_newer.csv"
+    newer.parent.mkdir()
     older.write_text("timestamp_us,sequence\n0,1\n", encoding="utf-8")
     newer.write_text("timestamp_us,sequence\n0,1\n", encoding="utf-8")
     os.utime(older, (1000, 1000))

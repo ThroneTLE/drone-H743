@@ -276,18 +276,18 @@ def test_optical_flow_sources_are_wired_into_firmware_and_cubemx() -> None:
 
 
 def test_velocity_source_uses_flow_dominant_ekf_without_imu_velocity_fallback() -> None:
-    freertos = read("Core/Src/freertos.c")
+    freertos = read("Core/Src/freertos.c") + read("App/Src/app_stabilizer.c")
     app_flow = read("App/Src/app_optical_flow.c")
     app_flow_header = read("App/Inc/app_optical_flow.h")
 
-    assert "velocity_imu_x_m_s = nav_state.vel_m_s[0];" in freertos
+    assert "ctx->velocity_imu_x_m_s = ctx->nav_state.vel_m_s[0];" in freertos
     assert "APP_OpticalFlow_GetVelocitySample(&flow_vx_m_s," in freertos
-    assert "stabilizer_velocity_estimator_step(&vel_estimator," in freertos
+    assert "stabilizer_velocity_estimator_step(&ctx->vel_estimator," in freertos
     assert "DRV_NAV_EKF_Predict(&state->ekf, acc_x_m_s2, acc_y_m_s2, dt_sec);" in freertos
     assert "DRV_NAV_EKF_FuseFlow(&state->ekf," in freertos
     assert "DRV_NAV_EKF_GetDiagnostics(&state->ekf, &state->diagnostics);" in freertos
-    assert "flow_accepted = stabilizer_velocity_estimator_step(&vel_estimator," in freertos
-    assert "velocity_state_x_m_s = vel_estimator.vel_m_s[0];" in freertos
+    assert "flow_accepted = stabilizer_velocity_estimator_step(&ctx->vel_estimator," in freertos
+    assert "ctx->velocity_state_x_m_s = ctx->vel_estimator.vel_m_s[0];" in freertos
     assert "APP_OpticalFlow_SetVelocitySource(APP_OPTICAL_FLOW_VEL_SOURCE_IMU);" not in freertos
     assert "APP_OpticalFlow_SetVelocitySource(APP_OPTICAL_FLOW_VEL_SOURCE_NONE);" in freertos
     assert "APP_OpticalFlow_SetVelocitySource(APP_OPTICAL_FLOW_VEL_SOURCE_FLOW);" in freertos
@@ -327,7 +327,7 @@ def test_optical_flow_fault_recovery_runs_outside_sensor_step() -> None:
 def test_micolink_height_and_unrotated_velocity_are_applied_in_app_layer() -> None:
     app_flow = read("App/Src/app_optical_flow.c")
     header = read("App/Inc/app_optical_flow.h")
-    freertos = read("Core/Src/freertos.c")
+    freertos = read("Core/Src/freertos.c") + read("App/Src/app_stabilizer.c")
 
     assert "APP_FLOW_MOUNT_COS_45" not in app_flow
     assert "APP_FLOW_MOUNT_SIN_45" not in app_flow
@@ -353,7 +353,7 @@ def test_micolink_height_and_unrotated_velocity_are_applied_in_app_layer() -> No
     assert "frame->flow_received_ms != flow_ctx.processed_flow_ms" in app_flow
     assert "flow_ctx.height_valid = 1U;" in app_flow
     assert "APP_OpticalFlow_GetHeightSample" in header
-    assert "APP_OpticalFlow_GetHeightSample(&range_height_m," in freertos
+    assert "APP_OpticalFlow_GetHeightSample(&frame->range_height_m," in freertos
     assert "APP_Rangefinder_GetHeightSample" not in freertos
     assert "APP_OpticalFlow_UpdateHeightFromRange" not in app_flow
     assert "APP_OpticalFlow_UpdateHeightFromPressure" not in app_flow
@@ -366,7 +366,7 @@ def test_micolink_height_and_unrotated_velocity_are_applied_in_app_layer() -> No
 def test_optical_flow_requires_high_quality_before_control_use() -> None:
     app_flow = read("App/Src/app_optical_flow.c")
     header = read("App/Inc/app_optical_flow.h")
-    freertos = read("Core/Src/freertos.c")
+    freertos = read("Core/Src/freertos.c") + read("App/Src/app_stabilizer.c")
 
     assert "#define APP_OPTICAL_FLOW_MIN_QUALITY 80U" in header
     assert "#define APP_FLOW_MIN_QUALITY         APP_OPTICAL_FLOW_MIN_QUALITY" in app_flow

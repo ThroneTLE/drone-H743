@@ -14,7 +14,7 @@ Typical use:
     python tools/imu_vibration_capture.py --port COM7 --capture --analyse
 
     # analyse an existing capture without touching hardware
-    python tools/imu_vibration_capture.py --analyse-file tools/data/imu_vibration/xxx.csv
+    python tools/imu_vibration_capture.py --analyse-file data/captures/imu_vibration/YYYY-MM-DD/xxx.csv
 """
 
 from __future__ import annotations
@@ -29,6 +29,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 try:
+    from .project_paths import IMU_VIBRATION_CAPTURE_DIR, dated_directory
+except ImportError:  # Allows running as: python tools/imu_vibration_capture.py
+    try:
+        from tools.project_paths import IMU_VIBRATION_CAPTURE_DIR, dated_directory
+    except ImportError:
+        from project_paths import IMU_VIBRATION_CAPTURE_DIR, dated_directory
+
+try:
     import serial
 except Exception:  # pragma: no cover - only needed for live capture
     serial = None
@@ -36,22 +44,39 @@ except Exception:  # pragma: no cover - only needed for live capture
 import numpy as np
 
 
-ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_OUT_DIR = ROOT / "tools" / "data" / "imu_vibration"
+DEFAULT_OUT_DIR = dated_directory(IMU_VIBRATION_CAPTURE_DIR)
 
 # Must not be four printable bytes: the old "IMUC" value collided with the
 # "IMUCAP DUMP ok ..." status line and the reader parsed that text as a header.
 CAPTURE_MAGIC = 0xA5C3494D
-CAPTURE_VERSION = 3
+CAPTURE_VERSION = 4
+CAPTURE_VERSION_V3 = 3
 FLAG_LAST = 0x00000001
+FLAG_INVALID_PROVENANCE = 0x00000002
+BASE_FRAME_RAW_CHIP_FILTERED_LEGACY_V1 = 1
 
 # Must match APP_IMU_CaptureBlockHeader in App/Inc/app_imu_capture.h.
-HEADER_FMT = "<IHHIIIHHHHHHII"
+HEADER_FMT_V3 = "<IHHIIIHHHHHHII"
+HEADER_FMT_V4 = "<IHHIIIHHHHHHHBBIB3xIII"
+HEADER_FMT = HEADER_FMT_V4
 HEADER_SIZE = struct.calcsize(HEADER_FMT)
+HEADER_SIZE_V3 = struct.calcsize(HEADER_FMT_V3)
 
 # Must match APP_IMU_CaptureSample.
-SAMPLE_FMT = "<I3h3h3h3hhhhHHHHBBh"
+SAMPLE_FMT_V3 = "<I3h3h3h3hhhhHHHHBBh"
+SAMPLE_FMT_V4 = "<Ih3h3h3h3h3h4HBBh"
+SAMPLE_FMT = SAMPLE_FMT_V4
 SAMPLE_SIZE = struct.calcsize(SAMPLE_FMT)
+SAMPLE_SIZE_V3 = struct.calcsize(SAMPLE_FMT_V3)
+
+ORIENTATION_AXES = (
+    (+1, +2, +3), (+1, -2, -3), (-1, +2, -3), (-1, -2, +3),
+    (+1, +3, -2), (+1, -3, +2), (-1, +3, +2), (-1, -3, -2),
+    (+2, +1, -3), (+2, -1, +3), (-2, +1, +3), (-2, -1, -3),
+    (+2, +3, +1), (+2, -3, -1), (-2, +3, -1), (-2, -3, +1),
+    (+3, +1, +2), (+3, -1, -2), (-3, +1, -2), (-3, -1, +2),
+    (+3, +2, -1), (+3, -2, +1), (-3, +2, +1), (-3, -2, -1),
+)
 
 FUSION_FLAG_NAMES = {
     0x01: "accel_ignored",
@@ -65,12 +90,15 @@ CSV_FIELDS = (
     "index",
     "timestamp_us",
     "dt_us",
+    "temperature_c",
     "raw_accel_x", "raw_accel_y", "raw_accel_z",
     "raw_gyro_x", "raw_gyro_y", "raw_gyro_z",
     "accel_x_g", "accel_y_g", "accel_z_g",
     "gyro_x_dps", "gyro_y_dps", "gyro_z_dps",
     "accel_filt_x_g", "accel_filt_y_g", "accel_filt_z_g",
     "gyro_filt_x_dps", "gyro_filt_y_dps", "gyro_filt_z_dps",
+    "accel_filt_legacy_x_g", "accel_filt_legacy_y_g", "accel_filt_legacy_z_g",
+    "gyro_filt_legacy_x_dps", "gyro_filt_legacy_y_dps", "gyro_filt_legacy_z_dps",
     "roll_deg", "pitch_deg", "yaw_deg",
     "motor_upper_us", "motor_lower_us",
     "servo_alpha_us", "servo_beta_us",
@@ -98,7 +126,24 @@ def crc32(data: bytes) -> int:
 
 
 def parse_header(raw: bytes) -> dict:
-    fields = struct.unpack(HEADER_FMT, raw[:HEADER_SIZE])
+    if len(raw) < 8:
+        raise ValueError("capture header is truncated")
+    magic, version, header_size = struct.unpack_from("<IHH", raw, 0)
+    if version == CAPTURE_VERSION_V3 and header_size == HEADER_SIZE_V3:
+        fields = struct.unpack(HEADER_FMT_V3, raw[:HEADER_SIZE_V3])
+        result = {
+            "magic": fields[0], "version": fields[1], "header_size": fields[2],
+            "session_id": fields[3], "total_samples": fields[4], "offset_samples": fields[5],
+            "block_samples": fields[6], "sample_size": fields[7], "accel_aaf_hz": fields[8],
+            "gyro_aaf_hz": fields[9], "accel_range_g": fields[10], "gyro_range_dps": fields[11],
+            "flags": fields[12], "payload_crc32": fields[13],
+            "frame_contract": None, "orientation_code": None, "calibration_valid_mask": None,
+            "calibration_generation": None, "base_frame": None, "firmware_image_crc32": None,
+        }
+        return result
+    if version != CAPTURE_VERSION or header_size != HEADER_SIZE:
+        raise ValueError(f"unsupported capture ABI version={version} header_size={header_size}")
+    fields = struct.unpack(HEADER_FMT_V4, raw[:HEADER_SIZE])
     return {
         "magic": fields[0],
         "version": fields[1],
@@ -112,16 +157,46 @@ def parse_header(raw: bytes) -> dict:
         "gyro_aaf_hz": fields[9],
         "accel_range_g": fields[10],
         "gyro_range_dps": fields[11],
-        "flags": fields[12],
-        "payload_crc32": fields[13],
+        "frame_contract": fields[12], "orientation_code": fields[13],
+        "calibration_valid_mask": fields[14], "calibration_generation": fields[15],
+        "base_frame": fields[16], "firmware_image_crc32": fields[17],
+        "flags": fields[18], "payload_crc32": fields[19],
     }
 
 
-def decode_samples(payload: bytes, count: int) -> list[tuple]:
+def decode_samples(payload: bytes, count: int, *, version: int = CAPTURE_VERSION) -> list[tuple]:
+    sample_format = SAMPLE_FMT_V4 if version == CAPTURE_VERSION else SAMPLE_FMT_V3
+    sample_size = struct.calcsize(sample_format)
+    if len(payload) != count * sample_size:
+        raise ValueError("capture payload size does not match sample count")
     return [
-        struct.unpack_from(SAMPLE_FMT, payload, i * SAMPLE_SIZE)
+        struct.unpack_from(sample_format, payload, i * sample_size)
         for i in range(count)
     ]
+
+
+def rotate_legacy_to_flu(vector, orientation_code: int) -> tuple[float, float, float]:
+    if type(orientation_code) is not int or not 0 <= orientation_code < len(ORIENTATION_AXES):
+        raise ValueError("orientation_code must be 0..23")
+    values = tuple(float(value) for value in vector)
+    axes = ORIENTATION_AXES[orientation_code]
+    return tuple(values[abs(axis) - 1] * (-1.0 if axis < 0 else 1.0) for axis in axes)
+
+
+def validate_v1_provenance(meta: dict) -> None:
+    if meta.get("version") != CAPTURE_VERSION:
+        raise ValueError("V1 requires IMUCAP v4 provenance; v3 is read-only compatibility")
+    if int(meta.get("flags", 0)) & FLAG_INVALID_PROVENANCE:
+        raise ValueError("IMUCAP v4 INVALID_PROVENANCE flag rejects V1 capture")
+    if meta.get("frame_contract") != 1 or meta.get("base_frame") != BASE_FRAME_RAW_CHIP_FILTERED_LEGACY_V1:
+        raise ValueError("V1 requires frame contract 1 and base_frame 1")
+    orientation = meta.get("orientation_code")
+    if type(orientation) is not int or not 0 <= orientation <= 23:
+        raise ValueError("V1 requires orientation_code 0..23")
+    if not isinstance(meta.get("calibration_generation"), int) or meta["calibration_generation"] <= 0:
+        raise ValueError("V1 requires nonzero calibration_generation")
+    if not isinstance(meta.get("firmware_image_crc32"), int) or meta["firmware_image_crc32"] <= 0:
+        raise ValueError("V1 requires nonzero firmware_image_crc32")
 
 
 class CaptureLink:
@@ -176,6 +251,8 @@ class CaptureLink:
         magic = struct.pack("<I", CAPTURE_MAGIC)
         samples: dict[int, tuple] = {}
         meta: dict = {}
+        provenance_reference: dict | None = None
+        accumulated_flags = 0
         bad_crc = 0
         mismatches: list[str] = []
 
@@ -190,18 +267,35 @@ class CaptureLink:
                 continue
             del self.buf[:idx]
 
-            if not self._fill(HEADER_SIZE, deadline):
+            if not self._fill(8, deadline):
                 break
-            header = parse_header(bytes(self.buf[:HEADER_SIZE]))
+            _magic, candidate_version, candidate_header_size = struct.unpack_from("<IHH", self.buf, 0)
+            expected_header_size = (
+                HEADER_SIZE if candidate_version == CAPTURE_VERSION
+                else HEADER_SIZE_V3 if candidate_version == CAPTURE_VERSION_V3
+                else 0
+            )
+            if expected_header_size == 0 or candidate_header_size != expected_header_size:
+                mismatches.append(f"version={candidate_version} header_size={candidate_header_size}")
+                del self.buf[:4]
+                continue
+            if not self._fill(expected_header_size, deadline):
+                break
+            try:
+                header = parse_header(bytes(self.buf[:expected_header_size]))
+            except ValueError as exc:
+                mismatches.append(str(exc))
+                del self.buf[:4]
+                continue
 
             # A magic match can still be a false positive (stray bytes, or a
             # value that happens to appear inside a payload). Treat an
             # implausible header as noise and resync past it rather than
             # aborting the whole dump.
             plausible = (
-                header["version"] == CAPTURE_VERSION
-                and header["sample_size"] == SAMPLE_SIZE
-                and header["header_size"] == HEADER_SIZE
+                header["version"] in (CAPTURE_VERSION_V3, CAPTURE_VERSION)
+                and header["sample_size"] == (SAMPLE_SIZE if header["version"] == CAPTURE_VERSION else SAMPLE_SIZE_V3)
+                and header["header_size"] == expected_header_size
                 and 0 < header["block_samples"] <= 1024
                 and header["total_samples"] <= 1 << 20
                 and header["offset_samples"] <= header["total_samples"]
@@ -212,18 +306,31 @@ class CaptureLink:
                 del self.buf[:4]  # step past this magic and keep looking
                 continue
 
-            payload_bytes = header["block_samples"] * SAMPLE_SIZE
-            if not self._fill(HEADER_SIZE + payload_bytes, deadline):
+            payload_bytes = header["block_samples"] * header["sample_size"]
+            if not self._fill(expected_header_size + payload_bytes, deadline):
                 break
-            payload = bytes(self.buf[HEADER_SIZE : HEADER_SIZE + payload_bytes])
-            del self.buf[: HEADER_SIZE + payload_bytes]
+            payload = bytes(self.buf[expected_header_size : expected_header_size + payload_bytes])
+            del self.buf[: expected_header_size + payload_bytes]
 
             if crc32(payload) != header["payload_crc32"]:
                 bad_crc += 1
                 continue
 
-            meta = header
-            for i, sample in enumerate(decode_samples(payload, header["block_samples"])):
+            provenance_keys = (
+                "version", "header_size", "session_id", "total_samples", "sample_size",
+                "accel_range_g", "gyro_range_dps", "frame_contract", "orientation_code",
+                "calibration_valid_mask", "calibration_generation", "base_frame",
+                "firmware_image_crc32",
+            )
+            current_provenance = {key: header.get(key) for key in provenance_keys}
+            if provenance_reference is None:
+                provenance_reference = current_provenance
+            elif current_provenance != provenance_reference:
+                raise RuntimeError("IMUCAP block provenance changed within one dump")
+            accumulated_flags |= int(header["flags"])
+            meta = dict(header)
+            meta["flags"] = accumulated_flags
+            for i, sample in enumerate(decode_samples(payload, header["block_samples"], version=header["version"])):
                 samples[header["offset_samples"] + i] = sample
 
             got = len(samples)
@@ -264,10 +371,23 @@ def samples_to_rows(samples: list[tuple], meta: dict) -> list[dict]:
     prev_ts = None
 
     for index, s in enumerate(samples):
-        (ts, ax, ay, az, gx, gy, gz,
-         afx, afy, afz, gfx, gfy, gfz,
-         roll, pitch, yaw,
-         mu, ml, sa, sb, fflags, flflags, aerr) = s
+        if meta.get("version", CAPTURE_VERSION_V3) == CAPTURE_VERSION:
+            (ts, temperature_raw, ax, ay, az, gx, gy, gz,
+             afx, afy, afz, gfx, gfy, gfz,
+             roll, pitch, yaw, mu, ml, sa, sb, fflags, flflags, aerr) = s
+            temperature_c = temperature_raw / 132.48 + 25.0
+            accel_legacy = (afx / 1000.0, afy / 1000.0, afz / 1000.0)
+            gyro_legacy = (gfx / 100.0, gfy / 100.0, gfz / 100.0)
+            accel_flu = rotate_legacy_to_flu(accel_legacy, int(meta["orientation_code"]))
+            gyro_flu = rotate_legacy_to_flu(gyro_legacy, int(meta["orientation_code"]))
+        else:
+            (ts, ax, ay, az, gx, gy, gz,
+             afx, afy, afz, gfx, gfy, gfz,
+             roll, pitch, yaw, mu, ml, sa, sb, fflags, flflags, aerr) = s
+            temperature_c = None
+            accel_legacy = (afx / 1000.0, afy / 1000.0, afz / 1000.0)
+            gyro_legacy = (gfx / 100.0, gfy / 100.0, gfz / 100.0)
+            accel_flu, gyro_flu = accel_legacy, gyro_legacy
 
         # uint32 microsecond stamps wrap about every 71 minutes.
         dt = None if prev_ts is None else (ts - prev_ts) & 0xFFFFFFFF
@@ -277,16 +397,15 @@ def samples_to_rows(samples: list[tuple], meta: dict) -> list[dict]:
             "index": index,
             "timestamp_us": ts,
             "dt_us": dt if dt is not None else "",
+            "temperature_c": temperature_c if temperature_c is not None else "",
             "raw_accel_x": ax, "raw_accel_y": ay, "raw_accel_z": az,
             "raw_gyro_x": gx, "raw_gyro_y": gy, "raw_gyro_z": gz,
             "accel_x_g": ax / a_lsb, "accel_y_g": ay / a_lsb, "accel_z_g": az / a_lsb,
             "gyro_x_dps": gx / g_lsb, "gyro_y_dps": gy / g_lsb, "gyro_z_dps": gz / g_lsb,
-            "accel_filt_x_g": afx / 1000.0,
-            "accel_filt_y_g": afy / 1000.0,
-            "accel_filt_z_g": afz / 1000.0,
-            "gyro_filt_x_dps": gfx / 100.0,
-            "gyro_filt_y_dps": gfy / 100.0,
-            "gyro_filt_z_dps": gfz / 100.0,
+            "accel_filt_x_g": accel_flu[0], "accel_filt_y_g": accel_flu[1], "accel_filt_z_g": accel_flu[2],
+            "gyro_filt_x_dps": gyro_flu[0], "gyro_filt_y_dps": gyro_flu[1], "gyro_filt_z_dps": gyro_flu[2],
+            "accel_filt_legacy_x_g": accel_legacy[0], "accel_filt_legacy_y_g": accel_legacy[1], "accel_filt_legacy_z_g": accel_legacy[2],
+            "gyro_filt_legacy_x_dps": gyro_legacy[0], "gyro_filt_legacy_y_dps": gyro_legacy[1], "gyro_filt_legacy_z_dps": gyro_legacy[2],
             "roll_deg": roll / 100.0,
             "pitch_deg": pitch / 100.0,
             "yaw_deg": yaw / 100.0,
@@ -696,4 +815,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
-

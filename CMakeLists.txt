@@ -49,6 +49,7 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     # Driver layer
     Driver/Src/drv_imu.c
+    Driver/Src/drv_imu_calibration.c
     Driver/Src/drv_baro.c
     Driver/Src/drv_gd25q32.c
     Driver/Src/drv_mag.c
@@ -88,14 +89,20 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     BSP/Src/bsp_aiwb2_power.c
     # App layer
     App/Src/app.c
+    App/Src/app_action.c
     App/Src/app_aiwb2.c
     App/Src/app_background.c
     App/Src/app_baro.c
+    App/Src/app_boot.c
+    App/Src/app_acceptance.c
     App/Src/app_control.c
     App/Src/app_diag.c
     App/Src/app_flash.c
+    App/Src/app_firmware_identity.c
+    App/Src/app_flight_calibration.c
     App/Src/app_flight_log.c
     App/Src/app_imu_capture.c
+    App/Src/app_imu_health.c
     App/Src/app_flash_service.c
     App/Src/app_gps.c
     App/Src/app_optical_flow.c
@@ -105,6 +112,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     App/Src/app_servo_feedback.c
     App/Src/app_servo_feedback_bench.c
     App/Src/app_sensor.c
+    App/Src/app_stabilizer.c
     App/Src/app_led.c
     App/Src/app_mag.c
     App/Src/app_maint_uart.c
@@ -112,6 +120,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     App/Src/app_nav_estimator.c
     App/Src/app_proto.c
     App/Src/app_tasks.c
+    App/Src/app_telemetry.c
     App/Src/app_uart.c
     App/Src/app_usb_cdc.c
     App/Src/app_elrs.c

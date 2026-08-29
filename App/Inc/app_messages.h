@@ -74,6 +74,8 @@ typedef struct {
     uint8_t fusion_acceleration_recovery;
     uint8_t fusion_angular_rate_recovery;
     uint8_t fusion_accel_norm_rejected;
+    /* 0xFF=legacy_intermediate_v1, 0..23=R_FLU<-legacy correction. */
+    uint8_t imu_frame_orientation_code;
 } APP_Sensor_SampleMessage;
 
 typedef struct {

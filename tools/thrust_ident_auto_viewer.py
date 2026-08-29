@@ -15,6 +15,14 @@ from matplotlib.figure import Figure
 
 import pressure_rs485_gui as pressure_gui
 
+try:
+    from .project_paths import THRUST_IDENT_DIR, latest_dated_directory
+except ImportError:  # Allows running as: python tools/thrust_ident_auto_viewer.py
+    try:
+        from tools.project_paths import THRUST_IDENT_DIR, latest_dated_directory
+    except ImportError:
+        from project_paths import THRUST_IDENT_DIR, latest_dated_directory
+
 
 @dataclass
 class Dataset:
@@ -181,7 +189,7 @@ class ThrustAutoViewer(tk.Tk):
     def add_csv(self) -> None:
         paths = filedialog.askopenfilenames(
             title="Open thrust auto CSV",
-            initialdir=Path(__file__).parent,
+            initialdir=latest_dated_directory(THRUST_IDENT_DIR),
             filetypes=(("CSV files", "*.csv"), ("All files", "*.*")),
         )
         for text in paths:
@@ -332,7 +340,7 @@ class ThrustAutoViewer(tk.Tk):
             return
         path_text = filedialog.asksaveasfilename(
             title="Export aligned table",
-            initialdir=Path(__file__).parent,
+            initialdir=latest_dated_directory(THRUST_IDENT_DIR),
             initialfile="thrust_auto_view_table.csv",
             defaultextension=".csv",
             filetypes=(("CSV files", "*.csv"), ("All files", "*.*")),
@@ -376,7 +384,7 @@ class ThrustAutoViewer(tk.Tk):
     def export_plot_png(self) -> None:
         path_text = filedialog.asksaveasfilename(
             title="Export plot",
-            initialdir=Path(__file__).parent,
+            initialdir=latest_dated_directory(THRUST_IDENT_DIR),
             initialfile="thrust_auto_view.png",
             defaultextension=".png",
             filetypes=(("PNG image", "*.png"), ("All files", "*.*")),

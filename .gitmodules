@@ -1,0 +1,3 @@
+[submodule "tools/上位机/Serial-Studio"]
+	path = tools/ground_station/Serial-Studio
+	url = https://github.com/ThroneTLE/Serial-Studio.git

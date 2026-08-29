@@ -13,6 +13,14 @@ from tkinter import filedialog, messagebox, ttk
 from typing import Iterable
 
 try:
+    from .project_paths import DATA_ROOT, latest_dated_directory
+except ImportError:  # Allows running as: python tools/flight_log_workbench.py
+    try:
+        from tools.project_paths import DATA_ROOT, latest_dated_directory
+    except ImportError:
+        from project_paths import DATA_ROOT, latest_dated_directory
+
+try:
     from . import flight_log_rerun_replay as replay
     from .flight_log_waveform_ui import (
         CHANNEL_GROUPS,
@@ -410,7 +418,7 @@ class FlightLogWorkbench(tk.Tk):
     def choose_folder(self) -> None:
         folder = filedialog.askdirectory(
             title="选择飞行日志文件夹",
-            initialdir=str(self.folder_path if self.folder_path.exists() else ROOT_DIR),
+            initialdir=str(latest_dated_directory(self.folder_path) if self.folder_path.exists() else DATA_ROOT),
         )
         if folder:
             self.folder_path = Path(folder)
@@ -420,7 +428,7 @@ class FlightLogWorkbench(tk.Tk):
     def choose_csv(self) -> None:
         csv_path = filedialog.askopenfilename(
             title="选择 flightlog CSV",
-            initialdir=str(self.folder_path if self.folder_path.exists() else DEFAULT_LOG_DIR),
+            initialdir=str(latest_dated_directory(self.folder_path) if self.folder_path.exists() else DATA_ROOT),
             filetypes=(("CSV files", "*.csv"), ("All files", "*.*")),
         )
         if csv_path:

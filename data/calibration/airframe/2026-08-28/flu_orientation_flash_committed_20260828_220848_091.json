@@ -1,0 +1,59 @@
+{
+  "format": "drone-h743-flu-orientation-application",
+  "schema": 1,
+  "created_at": "2026-08-28T22:08:48.091195+08:00",
+  "event": "flash_committed",
+  "base_frame": "legacy_intermediate_v1",
+  "target_frame": "canonical_flu",
+  "contract": 1,
+  "candidate_matrix_flu_from_legacy": [
+    [
+      -1,
+      0,
+      0
+    ],
+    [
+      0,
+      -1,
+      0
+    ],
+    [
+      0,
+      0,
+      1
+    ]
+  ],
+  "candidate_descriptor": "-x,-y,+z",
+  "candidate_confidence": 0.9953372314886955,
+  "candidate_source": "D:\\stm32hal\\drone-H743\\data\\calibration\\airframe\\2026-08-28\\flu_acceptance_v0_20260828_173317_report.json",
+  "target_report": {
+    "event": "status",
+    "base": "legacy_intermediate_v1",
+    "active": "-x,-y,+z",
+    "active_code": "3",
+    "persisted": "-x,-y,+z",
+    "persisted_code": "3",
+    "pending_code": "255",
+    "pending_valid": "0",
+    "temporary": "0",
+    "dirty": "0",
+    "frame": "canonical_flu_persisted",
+    "arm_lock": "1",
+    "request": "1"
+  },
+  "verification_mode": true,
+  "verification_passed": true,
+  "required_stage_status": {
+    "level": "PASS",
+    "nose_up": "PASS",
+    "left_side_up": "PASS",
+    "positive_roll": "PASS",
+    "positive_pitch": "PASS",
+    "positive_yaw": "PASS"
+  },
+  "ram_applied": true,
+  "persisted": true,
+  "flash_writes": 1,
+  "firmware_written": false,
+  "flight_release": false
+}

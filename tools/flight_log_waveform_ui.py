@@ -12,6 +12,14 @@ from tkinter import filedialog, messagebox, ttk
 from typing import Iterable
 
 try:
+    from .project_paths import DATA_ROOT, FLIGHT_LOG_DIR, latest_dated_directory
+except ImportError:  # Allows running as: python tools/flight_log_waveform_ui.py
+    try:
+        from tools.project_paths import DATA_ROOT, FLIGHT_LOG_DIR, latest_dated_directory
+    except ImportError:
+        from project_paths import DATA_ROOT, FLIGHT_LOG_DIR, latest_dated_directory
+
+try:
     import numpy as np
     import pandas as pd
 except Exception:  # pragma: no cover - depends on host optional packages
@@ -36,7 +44,7 @@ except Exception:  # pragma: no cover - depends on host optional packages
 
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
-DEFAULT_LOG_DIR = ROOT_DIR / "tools" / "data" / "flight_logs"
+DEFAULT_LOG_DIR = FLIGHT_LOG_DIR
 DEFAULT_MAX_POINTS = 6000
 DEFAULT_GAP_MS = 200.0
 WHEEL_ZOOM_BASE = 1.25
@@ -103,7 +111,7 @@ def discover_csv_files(folder: Path) -> list[Path]:
     if not folder.exists() or not folder.is_dir():
         return []
     return sorted(
-        (path for path in folder.glob("*.csv") if path.is_file()),
+        (path for path in folder.rglob("*.csv") if path.is_file()),
         key=lambda path: (path.stat().st_mtime, path.name),
         reverse=True,
     )
@@ -408,7 +416,7 @@ class FlightLogWaveformUI(tk.Tk):
     def choose_folder(self) -> None:
         folder = filedialog.askdirectory(
             title="选择飞行日志文件夹",
-            initialdir=str(self.folder_path if self.folder_path.exists() else ROOT_DIR),
+            initialdir=str(latest_dated_directory(self.folder_path) if self.folder_path.exists() else DATA_ROOT),
         )
         if folder:
             self.folder_path = Path(folder)
@@ -418,7 +426,7 @@ class FlightLogWaveformUI(tk.Tk):
     def choose_csv(self) -> None:
         csv_path = filedialog.askopenfilename(
             title="选择 flightlog CSV",
-            initialdir=str(self.folder_path if self.folder_path.exists() else ROOT_DIR),
+            initialdir=str(latest_dated_directory(self.folder_path) if self.folder_path.exists() else DATA_ROOT),
             filetypes=(("CSV files", "*.csv"), ("All files", "*.*")),
         )
         if csv_path:

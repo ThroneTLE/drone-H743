@@ -1,0 +1,43 @@
+{
+  "format": "drone-h743-flu-orientation-workflow",
+  "schema": 1,
+  "updated_at": "2026-08-28T22:08:32.085942+08:00",
+  "phase": "ram_verification",
+  "candidate_matrix_flu_from_legacy": [
+    [
+      -1,
+      0,
+      0
+    ],
+    [
+      0,
+      -1,
+      0
+    ],
+    [
+      0,
+      0,
+      1
+    ]
+  ],
+  "candidate_descriptor": "-x,-y,+z",
+  "candidate_confidence": 0.9953372314886955,
+  "candidate_source": "D:\\stm32hal\\drone-H743\\data\\calibration\\airframe\\2026-08-28\\flu_acceptance_v0_20260828_173317_report.json",
+  "target_state_at_save": {
+    "event": "applied",
+    "base": "legacy_intermediate_v1",
+    "active": "-x,-y,+z",
+    "active_code": "3",
+    "persisted": "legacy",
+    "persisted_code": "255",
+    "pending_code": "255",
+    "pending_valid": "0",
+    "temporary": "1",
+    "dirty": "0",
+    "frame": "canonical_flu_candidate",
+    "arm_lock": "1",
+    "request": "0"
+  },
+  "target_state_requires_recheck": true,
+  "flight_release": false
+}

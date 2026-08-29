@@ -20,6 +20,14 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+try:
+    from .project_paths import IMU_ATTITUDE_CAPTURE_DIR, dated_directory
+except ImportError:  # Allows running as: python tools/imu_attitude_tuner.py
+    try:
+        from tools.project_paths import IMU_ATTITUDE_CAPTURE_DIR, dated_directory
+    except ImportError:
+        from project_paths import IMU_ATTITUDE_CAPTURE_DIR, dated_directory
+
 
 LEGACY_MESSAGE_BYTES = 160
 CURRENT_MESSAGE_BYTES = 176
@@ -642,12 +650,7 @@ def write_analysis_report(
 
 def _default_output() -> Path:
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    return (
-        Path(__file__).resolve().parent
-        / "data"
-        / "imu_attitude_data"
-        / f"imu_fusion_bench_{timestamp}.csv"
-    )
+    return dated_directory(IMU_ATTITUDE_CAPTURE_DIR) / f"imu_fusion_bench_{timestamp}.csv"
 
 
 def _add_record_arguments(parser: argparse.ArgumentParser) -> None:
