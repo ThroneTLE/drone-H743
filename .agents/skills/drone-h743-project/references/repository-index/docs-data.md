@@ -4,7 +4,7 @@
 
 Read this shard only when the task needs architecture rationale, controller math, historical evidence, captures, datasets, or agent-support documentation.
 
-Document snapshot: `0739354727e0`; aggregate snapshot: `a2a2ae24f16e`. Covered files: 310.
+Document snapshot: `6c6372f90f7a`; aggregate snapshot: `8771d1a2d012`. Covered files: 311.
 
 ## Documents and agent support
 
@@ -14,10 +14,10 @@ Document snapshot: `0739354727e0`; aggregate snapshot: `a2a2ae24f16e`. Covered f
 | `.agents/skills/drone-h743-project/references/flash-architecture.md` | FLASH / GD25Q32 Architecture | `Required Layering`, `Focused Validation` |
 | `.agents/skills/drone-h743-project/references/flu-coordinate-contract.md` | FLU Coordinate Contract | `Authority`, `Adapter Rules`, `Current Migration Status`, `Required Validation`, `Staged Physical Acceptance` |
 | `.agents/skills/drone-h743-project/references/h7-memory-domains.md` | STM32H743 Memory And Domain Notes For This Project | `先记住的结论`, `当前工程 `.ioc` 已暴露的主要内存区`, `项目内推荐的四区分工`, `1. ITCM`, `2. DTCM`, `3. D1 / AXI SRAM` (+5) |
-| `.agents/skills/drone-h743-project/references/progress-notes.md` | drone-H743 Current Bring-Up Notes | `FLASH / GD25Q32`, `Other Bring-Up Facts`, `IMU Frame V0`, `USB DFU / V1 / V2A` |
+| `.agents/skills/drone-h743-project/references/progress-notes.md` | drone-H743 Current Bring-Up Notes | `FLASH / GD25Q32`, `Other Bring-Up Facts`, `IMU Frame V0`, `USB DFU / V1 / V2A`, `Ground Calibration Subsystems (2026-08-29 wave)` |
 | `.agents/skills/drone-h743-project/references/runtime-services.md` | Runtime Services And Background Work | `Ownership`, `Focused Validation` |
 | `.agents/skills/drone-h743-project/scripts/update_repository_index.py` | Build the compact, task-routed repository index used by the project skill | `git_working_files`, `read_bytes`, `read_text`, `compact`, `human_topic`, `c_symbols` (+21) |
-| `.agents/skills/drone-h743-project/SKILL.md` | drone-H743 Project Skill | `Repository Index Workflow`, `Project Data Paths`, `Canonical FLU Body Frame`, `Core Boundaries`, `Layering`, `STM32H743 And FreeRTOS` (+2) |
+| `.agents/skills/drone-h743-project/SKILL.md` | drone-H743 Project Skill | `Repository Index Workflow`, `Pipeline Governance`, `Project Data Paths`, `Canonical FLU Body Frame`, `Core Boundaries`, `Layering` (+4) |
 | `.claude/settings.local.json` | Project documentation for settings.local | — |
 | `.claude/skills/drone-h743-project.md` | Project documentation for drone h743 project | — |
 | `.codex/config.toml` | Repository-local Codex configuration | — |
@@ -33,6 +33,7 @@ Document snapshot: `0739354727e0`; aggregate snapshot: `a2a2ae24f16e`. Covered f
 | `doc/coaxial_drone_controller_comparison.pdf` | Project documentation for coaxial drone controller comparison | — |
 | `doc/controller_walkthrough.md` | 当前飞行控制器图解 | `先看结论`, `一张总流程图`, `控制循环的节拍`, `第一步：遥控器不是直接控制姿态角`, `第二步：状态估计把传感器变成“当前状态”`, `姿态与角速度` (+62) |
 | `doc/identification_tether_geometry.md` | 系统辨识参数与结果记录 | `用户原话记录`, `坐标系与对称假设`, `质量与重心`, `舵机与推力矢量几何`, `关键点 z 坐标（原点 = 电路板中心，z+ 向上）`, `倾转机构` (+42) |
+| `doc/m1-baseline-runbook.md` | M1 底层与原始数据健康 · 实机作业单 | `1. 烧录当前固件`, `2. 连接工作台`, `3. M1 证据采集清单（对照 PIPELINE M1 门）`, `4. 收尾（强制）`, `备忘（后续节点的坑，提前知道）` |
 | `doc/nonlinear_balance_controller.md` | 非线性平衡式同轴倾转控制器 | `1. 控制目标`, `2. 坐标与已知物理量`, `3. 速度参考模型`, `4. 期望推力方向`, `5. 舵机与期望机体姿态耦合`, `6. SO(3) 姿态力矩` (+4) |
 | `doc/飞控.drawio` | Project documentation for 飞控 | — |
 

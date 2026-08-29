@@ -4,7 +4,7 @@
 
 Read this shard only when the task uses serial/TCP diagnostics, log analysis, identification, capture, calibration, or desktop UIs.
 
-Source snapshot: `82893c13a27c`; aggregate snapshot: `ce7def1f86a3`. Covered files: 5287.
+Source snapshot: `139b6d9df81d`; aggregate snapshot: `ce7def1f86a3`. Covered files: 5289.
 
 | File/module or scope | Content outline | Key entry points / size |
 |---|---|---|
@@ -13,7 +13,7 @@ Source snapshot: `82893c13a27c`; aggregate snapshot: `ce7def1f86a3`. Covered fil
 | `tools/aiwb2_tcp_loop_test.py` | End-to-end Ai-WB2 TCP transparent-mode loop test via CH340. This script treats the CH340 serial port as the MCU side an… | `env_int`, `read_idle`, `send_at`, `ensure_at_mode`, `configure_module`, `wait_for_client` (+3) |
 | `tools/attitude_ident_pid.py` | Analyze closed-loop attitude-identification FLOG CSVs and suggest PD gains. This tool is intentionally conservative: it… | `SegmentFit`, `split_segments`, `clean_segment`, `uniform_signal`, `simulate_second_order`, `fit_closed_loop` (+3) |
 | `tools/decode_saleae_spi_csv.py` | Decode SPI bytes from a Saleae raw digital.csv export. Default mapping follows the current Saleae hookup: Channel 0 = C… | `parse_args`, `load_rows`, `decode`, `bits_to_bytes`, `fmt_bytes`, `main` |
-| `tools/drone_tcp_panel.py` | Ground-station panel for the drone-H743 Ai-WB2 transparent link | `udp_payload_is_probably_text`, `parse_kv`, `safe_int`, `rc_channel_travel`, `rc_detect_channel`, `rc_map_is_valid` (+35) |
+| `tools/drone_tcp_panel.py` | Ground-station panel for the drone-H743 Ai-WB2 transparent link | `udp_payload_is_probably_text`, `parse_kv`, `safe_int`, `safe_float`, `rc_channel_travel`, `rc_detect_channel` (+38) |
 | `tools/esp8266_pwm_calibrator/.gitignore` | Host-side utility for .gitignore | — |
 | `tools/esp8266_pwm_calibrator/platformio.ini` | Host-side utility for platformio | — |
 | `tools/esp8266_pwm_calibrator/README.md` | ESP8266 PWM Calibrator | `Wiring`, `Build And Upload`, `Serial Protocol`, `GUI Workflow`, `OLED Status`, `Test Flow And Loss Coefficient` (+1) |
@@ -30,13 +30,14 @@ Source snapshot: `82893c13a27c`; aggregate snapshot: `ce7def1f86a3`. Covered fil
 | `tools/flight_log_workbench.py` | H743 飞行日志 All-in-One 查看与 Rerun 回放工作台。 | `segment_label`, `available_preset_channels`, `make_rerun_wrapper_command`, `format_optional`, `time_axis_for_segment`, `FlightLogWorkbench` (+2) |
 | `tools/flight_validation.py` | Read-only V0 flight-sensor validation algorithms. This module deliberately has no transport, parameter, Flash, or firmw… | `ValidationStatus`, `ValidationStage`, `StageDefinition`, `ValidationThresholds`, `ImuSample`, `ValidationSession` (+22) |
 | `tools/flow_velocity_filter_eval.py` | Evaluate optical-flow velocity robustness from H743 flight-log CSV files. 这个脚本用于对比旧的光流直通速度和当前固件里的抗离群思路： 1. 原始 Micolink… | `SeriesStats`, `ReplayResult`, `parse_float`, `parse_int`, `time_s`, `quality_to_noise` (+6) |
+| `tools/ground_calibration.py` | Host-only analysis for ground calibration evidence. The functions in this module never write target parameters. They tu… | `GroundCalibrationError`, `FlowRangeSample`, `analyze_flow_zero`, `analyze_flow_axis`, `fit_range_two_point`, `analyze_rotation_compensation` (+1) |
 | `tools/ground_station/drone_simulator.py` | Drone-H743 High-Fidelity Flight Telemetry Simulator & Test Server for Serial-Studio. Simulates: - 3D Attitude (Roll, Pi… | `DroneSimulator` |
 | `tools/ground_station/README.md` | drone-H743 专属上位机与飞控自检架构 | `0. 先读这一节：当前真实状态`, ``Drone-H743-GCS.ssproj` 是对着仿真器做的，不是对着固件`, ``.ssproj` 还有 16 个无效的控件 id`, `1. 核心工程思想：上位机不持有危险动作的时间轴`, `反模式：时间轴在上位机手里`, `这两行之间进程被杀 / USB 被拔 / 用户 Ctrl+C` (+25) |
 | `tools/ground_station/ROADMAP.md` | 上位机与飞控自检体系 —— 框架与推进记录 | `一、整体框架`, `贯穿全层的两条原则`, `二、进度总览`, `三、已完成事项明细`, `2026-08-29 · Serial-Studio 能力探底（L3）`, `2026-08-29 · 遥测通道 schema（L1）· `c3b163f`` (+16) |
 | `tools/ground_station/ss-api-schema-gpl3.json` | Host-side utility for ss api schema gpl3 | — |
 | `tools/imu_attitude_tuner.py` | Record IMU samples and analyse x-io Fusion rejection/recovery diagnostics | `OpenOcdTelnet`, `decode_message`, `resolve_symbol_address`, `quality_summary`, `record_openocd`, `analyze_capture` (+2) |
 | `tools/imu_filter_report.py` | Visualise the vibration spectrum and the 1st- vs 2nd-order filter tradeoff. Reads the throttle-sweep captures produced… | `biquad_coeffs`, `apply_biquad`, `apply_iir1`, `response_db`, `group_delay_ms`, `spectrum` (+5) |
-| `tools/imu_metrology.py` | Host-only V1 IMU metrology and immutable calibration evidence. V0 answers the discrete frame question. This module star… | `NumpyRequiredError`, `MetrologyStatus`, `CaptureMethod`, `MetrologyStage`, `StageDefinition`, `MetrologyThresholds` (+21) |
+| `tools/imu_metrology.py` | Host-only V1 IMU metrology and immutable calibration evidence. V0 answers the discrete frame question. This module star… | `NumpyRequiredError`, `MetrologyStatus`, `CaptureMethod`, `MetrologyStage`, `StageDefinition`, `gyro_rotation_motion_window` (+23) |
 | `tools/imu_vibration_capture.py` | Capture full-rate raw IMU samples over USB CDC and analyse the vibration spectrum. Why this exists: the flight log (~25… | `crc32`, `parse_header`, `decode_samples`, `rotate_legacy_to_flu`, `validate_v1_provenance`, `CaptureLink` (+9) |
 | `tools/imu_vibration_ui.py` | Point-and-click UI for full-rate raw IMU vibration captures. Pick a COM port, pick a test step, press the button. Each… | `VibrationCaptureUI`, `main` |
 | `tools/imucal_protocol.py` | Host-side encoder and guarded transport for the target IMUCAL protocol | `ImuCalProtocolError`, `EncodedV1Candidate`, `ImuCalTransactionResult`, `encode_v1_candidate`, `load_and_encode_v1_candidate`, `upload_commands` (+5) |
@@ -49,11 +50,12 @@ Source snapshot: `82893c13a27c`; aggregate snapshot: `ce7def1f86a3`. Covered fil
 | `tools/run_flight_log_rerun_replay.ps1` | Host-side utility for run flight log rerun replay | — |
 | `tools/saleae_imu_spi_capture.py` | Capture the ICM42688 SPI bus with Saleae Logic 2 Automation. Default channel mapping follows the current Saleae hookup:… | `parse_args`, `add_spi_analyzer`, `export_capture`, `load_digital_csv`, `summarize_edges`, `main` |
 | `tools/servo_baud_sweep.py` | Sweep Zhongling bus-servo baud rates from a PC serial adapter. This is meant for recovering a servo after its ID or bau… | `parse_args`, `read_reply`, `write_command`, `send_at_baud`, `main` |
+| `tools/stationary_drift.py` | 静止漂移自检：飞机不动放 30~60 秒，看它自己以为发生了什么。 为什么需要这一项： 六面标定解出来的是"摆在六个姿态下读数对不对"，但用户真正在意的是"放着不动 时它会不会自己飘"。这两件事不等价 —— 系数写对了、静止时照样可能因为… | `DriftSample`, `DriftReport`, `analyze_drift`, `summarise`, `compare`, `report_to_dict` (+4) |
 | `tools/synex_config_builder.py` | Inspect and build Synex Qt INI configurations without editing @Variant text | `inspect_config`, `finalize_config`, `roundtrip`, `main` |
 | `tools/tcp_bidirectional_test.py` | Bidirectional TCP <-> WiFi module <-> CH340 serial test. Topology: PC (TCP server :6666) <--WiFi--> Ai-WB2 <--UART--> C… | `ts`, `main` |
 | `tools/thrust_ident_auto_viewer.py` | Viewer for thrust_ident_auto CSV files | `Dataset`, `default_label`, `load_dataset`, `ThrustAutoViewer`, `main` |
 | `tools/update_vofa_tabview.ps1` | Host-side utility for update vofa tabview | `Replace-UniqueToken` |
-| `tools/v1_metrology_session.py` | Resumable host-side V1 IMU metrology capture sessions | `measure_capture_rate`, `validate_capture_sample_rate`, `CapturePlan`, `CaptureRecord`, `V1Session`, `AnalysisSummary` (+10) |
+| `tools/v1_metrology_session.py` | Resumable host-side V1 IMU metrology capture sessions | `measure_capture_rate`, `validate_capture_sample_rate`, `CapturePlan`, `minimum_samples`, `CaptureRecord`, `V1Session` (+17) |
 | `tools/vofa_serial_capture.py` | Capture USART1/VOFA JustFloat telemetry from the flight controller. The firmware currently sends 28 little-endian float… | `RunningStats`, `build_parser`, `safe_text`, `split_lines`, `parse_frame`, `write_metadata` (+1) |
 | `tools/vofa_udp_bridge.py` | Bridge Ai-WB2 UDP transparent mode to fixed VOFA UDP ports. Why this exists: - Ai-WB2 auto transparent mode is configur… | `log`, `main` |
 | `tools/ground_station/ bundled tree` | Bundled application/runtime distribution; inspect an exact file only when maintaining that bundle | 5239 files / 135.6 MiB / .svg×854, .h×841, .cpp×635, .md×459, .py×257 |

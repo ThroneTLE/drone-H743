@@ -39,7 +39,7 @@ Known legacy boundaries include:
 - `Core/Src/freertos.c`: current sensor-task alignment and legacy NED/FRD comments; this file remains CubeMX-owned.
 - `Driver/Src/drv_attitude_fusion.c`: x-io Fusion NED convention.
 - `Driver/Src/drv_imu_nav.c`: current local-level acceleration basis and Z-down assumptions.
-- `Driver/Src/drv_coax_ctrl.c`: force-frame, rate-frame, 90-degree servo mount, and actuator polarity adapters.
+- `Driver/Src/drv_coax_ctrl.c`: force-frame, rate-frame, and 90-degree servo mount adapters; servo polarity and travel now come from the runtime `ServoCalibration` (`pulse_sign`/`center_us`/`min_us`/`max_us`), not compile-time sign macros.
 - `tools/drone_tcp_panel.py`: artificial-horizon integration and accelerometer-angle display.
 - `tools/flight_log_rerun_replay.py`: current X-forward/Y-right/Z-down replay geometry.
 - `doc/controller_walkthrough.md`: as-implemented descriptions that may still use legacy FRD/local-frame terminology.
@@ -67,7 +67,7 @@ When intentionally changing the contract itself, update `drv_frame_contract.h`, 
 Use these names consistently; do not inflate V0 with later calibration work:
 
 - **V0 frame acceptance:** infer `R_FLU<-legacy_intermediate_v1` from the three positive static bases (level/+Z, nose-up/+X, left-side-up/+Y), require `det=+1`, then verify `+roll/+pitch/+yaw`. The host may apply the result to RAM only after explicit physical-axis confirmation. A second 6-step run must directly match FLU, and accelerometer tilt must agree with Fusion, before `IMUFRAME COMMIT` writes the Param dual-slot Flash record. Reverse static poses are legacy-compatible optional evidence, not normal workflow steps.
-- **V1 sensor metrology:** estimate repeatable gyro/accelerometer bias, scale, non-orthogonality, temperature drift, noise and powered vibration. V0 signed permutations are not substitutes for these continuous calibration parameters.
+- **V1 sensor metrology:** the room-temperature flow is exactly six-face accelerometer calibration plus stationary gyro bias/noise (7 capture stages). Hand-rotation scale checks and multi-plateau temperature drift are retired from V1 for lack of fixtures (rate table, thermal chamber) and live on the frozen sideline until those exist. V0 signed permutations are not substitutes for these continuous calibration parameters.
 - **V2 end-to-end actuation:** validate navigation transforms, controller error signs, RC intent, servo/motor polarity, mixer response and failsafe with props removed, then constrained/tethered power tests. Only matching executable and physical evidence may advance the corresponding migration bits.
 
 `IMUFRAME APPLY` is a preview and must reset frame-dependent estimator/navigation state. While the runtime migration mask is incomplete, any active FLU candidate remains arm-locked. `COMMIT` persists only the mapping; it never implies `flight_release=true`.

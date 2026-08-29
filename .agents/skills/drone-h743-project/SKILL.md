@@ -1,6 +1,6 @@
 ---
 name: drone-h743-project
-description: Apply project-specific guardrails when modifying or reviewing the STM32H743 FreeRTOS flight-control firmware in this repository, including CubeMX ownership, App/Services/Driver/BSP boundaries, H7 DMA/cache, RTOS tasks, and board bring-up. Do not use outside this repository.
+description: Apply project-specific guardrails and PIPELINE.md mainline governance when modifying or reviewing the STM32H743 FreeRTOS flight-control firmware in this repository, including CubeMX ownership, App/Services/Driver/BSP boundaries, H7 DMA/cache, RTOS tasks, and board bring-up. Do not use outside this repository.
 ---
 
 # drone-H743 Project Skill
@@ -19,6 +19,18 @@ Use the generated repository index before reading project files:
 Execute the generator as a tool; do not read its source during ordinary project work. Use a narrow `rg --files` or `rg -n` query only when the index has no matching entry or a listed dependency must be resolved. Do not dump the whole repository, preload every index shard, or recursively read source, vendor, capture, or data directories.
 
 After adding, changing, moving, or deleting a non-ignored repository file, regenerate the index and run `--check` before finishing. The generator indexes hand-written code per module, aggregates vendor/data trees, and enforces an 8 KiB entry-page, 32 KiB per-shard, and 96 KiB total limit. If a limit is reached, improve grouping or summaries instead of raising the limit by default. Never edit generated index pages manually.
+
+## Pipeline Governance
+
+`PIPELINE.md` at the repository root is the authoritative mainline/sideline status map for bring-up work. After checking the repository index, read `PIPELINE.md` completely before planning or acting on every project task.
+
+- Classify the request against a named mainline or sideline node before changing files.
+- Default to the current mainline node or a direct blocker revealed by it. Do not silently skip prerequisites.
+- If a request conflicts with the mainline, prematurely advances a later node, or touches a frozen sideline, warn the author before editing and explain the consequence. Proceed as an exception only after the author explicitly chooses it, then record that decision in `PIPELINE.md`.
+- Treat `completed`, `incomplete`, and `frozen` as evidence-backed states. Software implementation or host tests cannot complete a node whose gate requires flashing or physical verification.
+- After every completed software test, build, flash, or physical validation, update `PIPELINE.md` in the same task. Update the Mermaid node and gate gap when status changes, and always update the latest-evidence table even when status does not change.
+- Never claim calibration completion, runtime FLU compliance, flight release, or sideline reactivation unless the corresponding pipeline gate is satisfied and recorded.
+- Keep the diagram, gate table, current-mainline pointer, latest-evidence table, and last-updated date mutually consistent. After every edit to `PIPELINE.md`, run `python -m pytest tests/test_pipeline_contract.py -q`; it mechanically enforces that consistency plus the M7 freeze while runtime FLU migration is incomplete.
 
 ## Project Data Paths
 
@@ -62,6 +74,10 @@ App tasks / application-facing services / Services
 - `Core/*`: CubeMX/HAL MCU configuration.
 
 Do not put chip protocols in BSP or reverse the Driver-to-BSP dependency. Before changing FLASH or runtime service boundaries, read the corresponding reference below.
+
+## File Size And AI Readability
+
+The author requires bounded file sizes: giant files defeat AI context loading, hunk-level commit splitting, and human review. `tools/drone_tcp_panel.py` (~11k lines) and `App/Src/app_control.c` (~6k lines) are already over budget — never append new features to them; create a new module/file and wire it in (follow the `App/Src/app_stabilizer.c` extraction precedent). Guideline ceilings for hand-written code: roughly 1500 lines per C file and 2000 per Python file; when a change would exceed them, extract a module instead of adding a section. Splitting the existing oversized files is PIPELINE sideline S6 — do not start it mid-bring-up without the author's go-ahead.
 
 ## STM32H743 And FreeRTOS
 

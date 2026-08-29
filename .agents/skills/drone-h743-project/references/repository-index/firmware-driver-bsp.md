@@ -4,14 +4,14 @@
 
 Read this shard only when the task touches device protocols, reusable algorithms, buses, GPIO, DMA callbacks, cache hooks, or board bindings.
 
-Source snapshot: `92061b3ae197`. Indexed files: 74.
+Source snapshot: `a5414c5e0ee1`. Indexed files: 74.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
 | `Driver/Inc/drv_airframe_model.h` | Reusable device or algorithm driver for airframe model | — |
 | `Driver/Inc/drv_attitude_fusion.h`<br>`Driver/Src/drv_attitude_fusion.c` | Reusable device or algorithm driver for attitude fusion | `DRV_AttitudeFusion_Init`, `DRV_AttitudeFusion_InitForConvention`, `DRV_AttitudeFusion_Update`, `DRV_AttitudeFusion_GetOutput` |
 | `Driver/Inc/drv_baro.h`<br>`Driver/Src/drv_baro.c` | Reusable device or algorithm driver for baro | `DRV_BARO_Init`, `DRV_BARO_ReadId`, `DRV_BARO_ReadIdTxRx`, `DRV_BARO_ReadRegister`, `DRV_BARO_ReadRegisters`, `DRV_BARO_WriteRegister` |
-| `Driver/Inc/drv_coax_ctrl.h`<br>`Driver/Src/drv_coax_ctrl.c` | Reusable device or algorithm driver for coax ctrl | `DRV_COAX_CTRL_Init`, `DRV_COAX_CTRL_ResetState`, `DRV_COAX_CTRL_Run`, `DRV_COAX_CTRL_GetLastDebug`, `DRV_COAX_CTRL_GetDefaultParams`, `DRV_COAX_CTRL_ResetParams` (+11) |
+| `Driver/Inc/drv_coax_ctrl.h`<br>`Driver/Src/drv_coax_ctrl.c` | Reusable device or algorithm driver for coax ctrl | `DRV_COAX_CTRL_Init`, `DRV_COAX_CTRL_ResetState`, `DRV_COAX_CTRL_Run`, `DRV_COAX_CTRL_GetLastDebug`, `DRV_COAX_CTRL_GetDefaultParams`, `DRV_COAX_CTRL_ResetParams` (+16) |
 | `Driver/Inc/drv_elrs.h`<br>`Driver/Src/drv_elrs.c` | Reusable device or algorithm driver for elrs | `DRV_ELRS_Init`, `DRV_ELRS_ProcessByte`, `DRV_ELRS_Crc8`, `DRV_ELRS_GetChannels`, `DRV_ELRS_GetLinkStats`, `DRV_ELRS_MarkRcFrameTime` (+9) |
 | `Driver/Inc/drv_frame_contract.h` | Reusable device or algorithm driver for frame contract | `DRV_FRAME_FluToFrd` |
 | `Driver/Inc/drv_gd25q32.h`<br>`Driver/Src/drv_gd25q32.c` | Reusable device or algorithm driver for gd25q32 | `DRV_GD25Q32_Init`, `DRV_GD25Q32_ReleaseFromPowerDown`, `DRV_GD25Q32_ReadJedecId`, `DRV_GD25Q32_ReadStatus1`, `DRV_GD25Q32_ReadStatus2`, `DRV_GD25Q32_ReadStatus3` (+12) |
