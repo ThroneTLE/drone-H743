@@ -91,12 +91,6 @@ def test_legacy_branch_transform_is_pinned_including_its_improper_gyro() -> None
     assert "fusion_input.accelerometer_g[2] = -msg->imu.accel_z_g;" in legacy_branch
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="R-F1 red test: drv_attitude_fusion.h exports quaternion[4] without "
-    "declaring direction, component order or the two named frames; cleared by "
-    "the seam 1 implementation commit",
-)
 def test_header_declares_quaternion_direction_order_and_named_frames() -> None:
     """The FLU reference forbids exporting attitude without this declaration."""
     header = read(FUSION_HEADER)

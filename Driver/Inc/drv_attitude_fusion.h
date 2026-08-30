@@ -7,6 +7,20 @@
 extern "C" {
 #endif
 
+/*
+ * Estimator convention.  Each value fixes a body frame and a navigation frame
+ * together; they are not interchangeable and must match the frame the caller
+ * actually samples in.
+ *
+ *   NWU  body FLU  (+X forward, +Y left,  +Z up)
+ *        nav  NWU  (North, West, Up)
+ *        Canonical pairing of Driver/Inc/drv_frame_contract.h; selected by the
+ *        runtime once a V0 orientation candidate is active.
+ *
+ *   NED  body FRD  (+X forward, +Y right, +Z down)
+ *        nav  NED  (North, East, Down)
+ *        Legacy fallback used only while no V0 candidate is persisted.
+ */
 typedef enum {
     DRV_ATTITUDE_FUSION_CONVENTION_NED = 0U,
     DRV_ATTITUDE_FUSION_CONVENTION_NWU = 1U,
@@ -24,6 +38,20 @@ typedef struct {
     float dt_s;
 } DRV_AttitudeFusionInput;
 
+/*
+ * Attitude output.
+ *
+ * quaternion: body-to-navigation rotation, component order (w, x, y, z).
+ *   Rotating a vector expressed in the body frame by this quaternion yields
+ *   the same vector expressed in the navigation frame selected at
+ *   initialisation.  Level and stationary is the identity quaternion.
+ *
+ * roll_deg / pitch_deg / yaw_deg: Euler decomposition of that same rotation.
+ *   Under the NWU convention the signs are the canonical ones of
+ *   drv_frame_contract.h -- positive roll is right wing down, positive pitch
+ *   is nose down, positive yaw is nose left.  Verified end to end against the
+ *   real estimator in tests/test_flu_seam1_estimator_frame.py.
+ */
 typedef struct {
     uint64_t time_us;
     float quaternion[4];
