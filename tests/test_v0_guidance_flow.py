@@ -19,6 +19,9 @@ from tools import drone_tcp_panel as panel
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = (ROOT / "tools" / "drone_tcp_panel.py").read_text(encoding="utf-8")
+VALIDATION_SOURCE = (
+    ROOT / "tools" / "panel_lib" / "pages" / "validation_v0.py"
+).read_text(encoding="utf-8")
 
 
 def poll_subject(
@@ -109,7 +112,7 @@ def test_unrelated_tab_does_not_poll() -> None:
 
 def test_readiness_copy_promises_the_automatic_poll() -> None:
     """UI 文案承诺自动轮询；轮询条件必须真的覆盖 V0 页，否则文案在说谎。"""
-    assert "坐标系校准页会自动轮询 IMU" in SOURCE
+    assert "坐标系校准页会自动轮询 IMU" in VALIDATION_SOURCE
     start = SOURCE.index("def _imu_poll_tick(self)")
     end = SOURCE.index("\n    def ", start + 1)
     body = SOURCE[start:end]

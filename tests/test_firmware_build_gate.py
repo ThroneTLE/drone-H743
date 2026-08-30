@@ -26,6 +26,9 @@ V1_SOURCE = (
 V2_SOURCE = (
     ROOT / "tools" / "panel_lib" / "pages" / "acceptance_v2.py"
 ).read_text(encoding="utf-8")
+EVIDENCE_SOURCE = (
+    ROOT / "tools" / "panel_lib" / "evidence.py"
+).read_text(encoding="utf-8")
 
 
 def function_body(source: str, signature: str) -> str:
@@ -250,7 +253,7 @@ def test_v1_and_v2a_keep_the_full_snapshot_gate() -> None:
     assert "_validation_live_safety_gate()" in function_body(
         V1_SOURCE, "    def _v1_refresh_controls("
     )
-    gate = function_body(SOURCE, "    def _validation_live_safety_gate(")
+    gate = function_body(EVIDENCE_SOURCE, "    def _validation_live_safety_gate(")
     assert 'if level != "ok":' in gate
 
 

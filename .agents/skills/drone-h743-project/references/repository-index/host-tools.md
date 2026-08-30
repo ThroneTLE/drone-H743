@@ -4,7 +4,7 @@
 
 Read this shard only when the task uses serial/TCP diagnostics, log analysis, identification, capture, calibration, or desktop UIs.
 
-Source snapshot: `011e4630135c`; aggregate snapshot: `ce7def1f86a3`. Covered files: 5304.
+Source snapshot: `5a27c68386ea`; aggregate snapshot: `ce7def1f86a3`. Covered files: 5306.
 
 | File/module or scope | Content outline | Key entry points / size |
 |---|---|---|
@@ -14,7 +14,7 @@ Source snapshot: `011e4630135c`; aggregate snapshot: `ce7def1f86a3`. Covered fil
 | `tools/attitude_ident_pid.py` | Analyze closed-loop attitude-identification FLOG CSVs and suggest PD gains. This tool is intentionally conservative: it… | `SegmentFit`, `split_segments`, `clean_segment`, `uniform_signal`, `simulate_second_order`, `fit_closed_loop` (+3) |
 | `tools/decode_saleae_spi_csv.py` | Decode SPI bytes from a Saleae raw digital.csv export. Default mapping follows the current Saleae hookup: Channel 0 = C… | `parse_args`, `load_rows`, `decode`, `bits_to_bytes`, `fmt_bytes`, `main` |
 | `tools/drift_ab_check.py` | PIPELINE R-M3-2 · 静止漂移 A/B 采集与对比（只读）。 以 ~8Hz 轮询 `IMU?` 采集一段静止遥测，喂给 stationary_drift 分析器生成 DriftReport 并落盘，然后与最近一份历史基线（默… | `collect`, `main` |
-| `tools/drone_tcp_panel.py` | Ground-station panel for the drone-H743 Ai-WB2 transparent link | `firmware_update_link_gate`, `firmware_update_snapshot_advisory`, `v0_workflow_guidance`, `validation_history_artifacts`, `validation_sample_from_snapshot`, `validation_samples_from_csv` (+9) |
+| `tools/drone_tcp_panel.py` | Ground-station panel for the drone-H743 Ai-WB2 transparent link | `firmware_update_link_gate`, `firmware_update_snapshot_advisory`, `airframe_record_from_line`, `ident_record_from_line`, `fit_ident_step`, `normalize_module_key` (+4) |
 | `tools/esp8266_pwm_calibrator/.gitignore` | Host-side utility for .gitignore | — |
 | `tools/esp8266_pwm_calibrator/platformio.ini` | Host-side utility for platformio | — |
 | `tools/esp8266_pwm_calibrator/README.md` | ESP8266 PWM Calibrator | `Wiring`, `Build And Upload`, `Serial Protocol`, `GUI Workflow`, `OLED Status`, `Test Flow And Loss Coefficient` (+1) |
@@ -46,6 +46,7 @@ Source snapshot: `011e4630135c`; aggregate snapshot: `ce7def1f86a3`. Covered fil
 | `tools/m1_baseline_check.py` | PIPELINE M1 底层与原始数据健康 · 实机基线采集器。 通过 USB CDC 裸文本命令通道（APP_Control_ProcessLine）以固定频率轮询 `IMU?`，在静止条件下累计一段时间的证据，输出结构化 JSON 报… | `poll_once`, `run`, `main` |
 | `tools/organize_data.py` | Move canonical project data into sortable YYYY-MM-DD subdirectories | `CategoryRule`, `MovePlan`, `plan_category`, `build_plan`, `apply_plan`, `parse_args` (+1) |
 | `tools/panel_lib/__init__.py` | Reusable implementation modules for :mod:`tools.drone_tcp_panel` | — |
+| `tools/panel_lib/evidence.py` | V0 validation evidence persistence, restoration, and write guards | `validation_history_artifacts`, `validation_sample_from_snapshot`, `validation_samples_from_csv`, `signed_permutation_descriptor`, `EvidenceMixin` |
 | `tools/panel_lib/pages/__init__.py` | Panel page builders and their event handlers | — |
 | `tools/panel_lib/pages/acceptance_v2.py` | Propeller-off V2A control-chain acceptance page | `AcceptanceV2PageMixin` |
 | `tools/panel_lib/pages/drift.py` | Stationary-drift page builder and handlers | `DriftPageMixin` |
@@ -53,6 +54,7 @@ Source snapshot: `011e4630135c`; aggregate snapshot: `ce7def1f86a3`. Covered fil
 | `tools/panel_lib/pages/rc_wizard.py` | RC mapping and guided-calibration page builder and handlers | `rc_channel_travel`, `rc_detect_channel`, `rc_map_is_valid`, `rc_wizard_dominant`, `rc_wizard_step_ready`, `rc_wizard_window_stable` (+4) |
 | `tools/panel_lib/pages/servo_debug.py` | Bus-servo debug page builders and handlers | `ServoDebugPageMixin` |
 | `tools/panel_lib/pages/v1_metrology.py` | V1 IMU metrology page builder and handlers | `V1PageMixin` |
+| `tools/panel_lib/pages/validation_v0.py` | V0 coordinate-frame and polarity validation page | `v0_workflow_guidance`, `ValidationV0PageMixin` |
 | `tools/panel_lib/pages/vibration.py` | Vibration/filter placeholder page | `VibrationPageMixin` |
 | `tools/panel_lib/proto.py` | Protocol identifiers and line-parsing helpers for the panel | `parse_kv`, `safe_int`, `safe_float`, `first_value`, `first_float`, `ProtocolLineMixin` |
 | `tools/panel_lib/state.py` | Panel-local state persistence and best-effort log helpers | `PanelStateMixin`, `append_log`, `record_panel_crash` |

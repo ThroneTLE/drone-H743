@@ -1,19 +1,32 @@
 from __future__ import annotations
 
+import ast
+import hashlib
+import os
 from pathlib import Path
 from types import SimpleNamespace
 import tkinter as tk
 import queue
 import re
+import subprocess
+import sys
 
 import pytest
 
 from tools import drone_tcp_panel as panel
+from tools.panel_lib import evidence as panel_evidence
 from tools.panel_lib import transport as panel_transport
+from tools.panel_lib.pages import validation_v0 as validation_v0_page
 
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = (ROOT / "tools" / "drone_tcp_panel.py").read_text(encoding="utf-8")
+EVIDENCE_SOURCE = (
+    ROOT / "tools" / "panel_lib" / "evidence.py"
+).read_text(encoding="utf-8")
+VALIDATION_V0_SOURCE = (
+    ROOT / "tools" / "panel_lib" / "pages" / "validation_v0.py"
+).read_text(encoding="utf-8")
 V1_SOURCE = (
     ROOT / "tools" / "panel_lib" / "pages" / "v1_metrology.py"
 ).read_text(encoding="utf-8")
@@ -23,9 +36,82 @@ V2_SOURCE = (
 TRANSPORT_SOURCE = (ROOT / "tools" / "panel_lib" / "transport.py").read_text(
     encoding="utf-8"
 )
+INCREMENT10_PARENT = "69bf4158977c62f65a78f7dc4b61b8a9f80275b7"
+V0_PAGE_AST_SHA256 = {
+    "_build_validation_stepper": "fc3cd984eb80f7d0dc833d3e488eefa858e54a2fa71d468e06ccbf59f863164e",
+    "_validation_current_step": "4f85dc0baf49912ef1b050d7c0cfce42d5c49fd9ee74992d8bee34663224cd6a",
+    "_validation_refresh_stepper": "18ef352f3ce1f3bb20c1ef7647d0a8d2099c4172812cf36f70968c51b91f9791",
+    "_validation_recolor_stage_rows": "8e3bd0eb74fa22373c2bcc28119b59c37675302ba3ed1eaddfb950f55da910ae",
+    "_validation_set_gate": "e6fdd2fa939cbbb2bb7b1a9468baa61ad5f83dfbd9fe9fa707f1dc2b45c5eeba",
+    "_build_validation_page": "fc51614a1cc0497c45529fa7a48263292edf7ffcb1717a41169c6451f5231ab3",
+    "_validation_update_safety_text": "b39643683d08e58eb54249112b57ff979c6127fa6c2456c9b7c1a89b1c23428d",
+    "_validation_refresh_readiness": "1ca01fcc2ea6a980c2de22ac7065934cb32184f1963a81c8032fead7f93873e6",
+    "_validation_set_status": "5d3f430fa41769066c0073e5bb3195aa9f6dd0fe499ea3d793d3d96b0f78d7c0",
+    "_validation_selected_stage": "f8396054884d5298861756f8e257114867cd5ded507381dbbbc97d70d82073d2",
+    "_on_validation_stage_select": "e803cf911affe959b0c474f5ac432d3058d1b63cde7dafe5d875a94d085f3fa2",
+    "_validation_refresh_stage_view": "0cf5087241d610e7929d413b568aa99e152d32876e1a776f78e3b91f6cd0a148",
+    "_validation_refresh_candidate_summary": "c14cc75de6e77e3e6472cee2c05c5de3840764c1b615a4cd258733c08ab94702",
+    "_validation_candidate_verification_passed": "e108ca6c5c7a1b9dbffd58f401aa6eddff392c6f3b2643650904b4f518c3dc46",
+    "_validation_static_fusion_consistency": "a9556590cdcaf4483a282c5a3eaee279c4ba399f5851b10b3f07300ed4789654",
+    "_validation_candidate_level_ready": "54fa8e55c0a0e05ba2d0c0344700709d243bac70dd5ae239727d523c3384f6ef",
+    "_validation_refresh_orientation_controls": "541d9996dc19a36640019d17e8fcc216dad299b5836926d0fbf2764f37a54dbf",
+    "_validation_apply_candidate": "821876a9537787ad60150402f4f439ad9e742e7e30d1eeed5b0f0f0b38f9dccf",
+    "_validation_revert_candidate": "68a6b77ecd1db4c24d8169289ce33d7dd01c75997a15f7b05038f0b53ee67b9a",
+    "_validation_begin_candidate_verification": "1b1724e2f787b21e6ebcb76bebb661d06a703203b7c28603de8ae6b9ce34a1ea",
+    "_validation_commit_candidate": "8991f2ed784470b4953b37b14e21657b04ab73c57120c845b7eec503241c6943",
+    "_validation_note_orientation_event": "e7fa4b43f6ae05530fe4223e7232d328aa117e4de61ea570582d4fa370c4020b",
+    "_validation_send_orientation_command": "5327044fc17f29e8a3c95102d713471b553966a7e35f5ba0dee66250bc6df6d1",
+    "_validation_poll_orientation_commit": "88b67c88586284a79062ebee4758d78dfcbc0a89ff41d1ff82b2e8711a314c11",
+    "_validation_handle_imu_frame_line": "1a5780660cf75262692ecb29e2e71946dd03ae348e1aac60756785dcf83a569b",
+    "_validation_stage_inputs": "1bdeda74c3608d5aa07ceca7a48e6495b4691a8f8ef43250ead985720c255f57",
+    "_validation_rebuild_results": "6b20bd640b7dc205cdf090d7e8946b1b3ae3870efd19707b663fbc1b91e4432d",
+    "_validation_skip_stage": "345abe34461b5744a8a52b458de922c70248bd73ad0fa92a97cfcf667a828526",
+    "_validation_start_session": "28afa8f2ead337eeaebad37ef770aed10b84140d31cf8a9953ca84331db182dd",
+    "_validation_stop_session": "39789aeb07d44f609fd6be28143cf4d823def77d3d94d7ba2eb92c775d24a6e4",
+    "_validation_latest_is_safe": "4eca79e699352db68e9989f5e66bf7c894d4f60ce0fc97d2833ede509bff1b43",
+    "_validation_begin_stage": "c1e266f583b0ea900d4d8c169cb25beb6b6428bdce644ba7bb636a82f9dfbaa0",
+    "_validation_finish_stage": "0363a839cfee1fbeb75f80bd30815bbcee2c28c81f3b7ef8e5880cee812731fb",
+    "_validation_abort_active_stage": "5f85ca116f87fed3c93e5ca7ebb3e64245dc056a47e5b5a0c56c65282239b753",
+    "_validation_accept_imu_health": "54fa1881e4110c0bb3215faa47dfffe2db4e241d8ccdcb16ffed7edb43f38e70",
+    "_validation_health_state": "293f628cce3d64a09a358643c707faaf760697de226cd7af2784d6ebc9b33e38",
+    "_validation_target_restarted": "a9551e6878742199eff9abe747a59b84f03b88aafa769fcb8bad00993b7fe62a",
+    "_validation_accept_imu_values": "ebd39577cc8a7d33eeb23986f9a158f0050ca88e2bc503719749b1b695a15151",
+}
+EVIDENCE_AST_SHA256 = {
+    "_validation_live_safety_gate": "c8e337f0876111c36d368fa3423533eff107eb2d5a05cb1078466f87c2486c09",
+    "_validation_write_orientation_audit": "c4c616951e83b4acf540a4cb5a09a055cad959e0090c615ef1f7a139d82a884d",
+    "_validation_raw_row_from_sample": "a43979fe0c91674ffea284ed63ae4fce75d8209d336480a2bbaddef609744957",
+    "_validation_autosave_session": "ae4133acac4b6ad61635468b0a7bef19073c14c27b2d395a7553662511f4c63a",
+    "_validation_autosave_workflow": "707bbc06ec4e05238717bcb38969471a4056d58f831db801e84b86265825a765",
+    "_validation_load_workflow": "cf6901a35ad33c6688f05d5898c14d4999149ccf5fd00257bbe97480af180980",
+    "_validation_apply_loaded_session": "937350572cc444d50797cdea995ee88af3a4234a5aa3ff4af92f7d18d6be7de4",
+    "_validation_apply_report_only": "7e0b3cf38a1e3afb2d879c37758aa5fa0bfe075277666e32756db8ae427eb282",
+    "_validation_load_report_artifact": "4e3a7793cbad949e12a6aa5da44b792ebf2b4587803023705e6abb781a90f403",
+    "_validation_refresh_history_choices": "33d13bacdddc7083364027b4696b864717afe9247e4811c6ef0325810b476c11",
+    "_validation_load_artifact": "a8eda7eef265346fa3a4ad806ebc6978c61050676256c0e335df8514bf46c56b",
+    "_validation_load_selected_history": "440b49b1c09875a777a0c4267ea17f4575728ce3fa1a0d8e3ebbefd8f8dab1e8",
+    "_validation_load_latest_artifact": "8c25e9238055f3f0524a4987533c7d5732a8f83bedb85af8e6a41f2b62a809ba",
+    "_validation_resume_session": "525acd5122abeec18606841af40965a2eb0c81065444e1710c40bed09783eb82",
+    "_validation_write_report": "b9a75d336ef454d416ee549de1962a1dac7662cdb7faaec7b02eb9f3004d59e2",
+    "_validation_open_report_dir": "ffd6c85d1c7be4a949c9a40c1bb32d07440c2c38519fd3e1db551ff9c5e76407",
+    "_validation_command_allowed": "c71523aba05690a98dfc304ed95baff0a5389d58815b4a6ad3c65a959a8b3fc7",
+    "_validation_guard_command": "407b2b565c631dec84635c988d0e3b1ad7d4a7d4683ba4ce35bb8d41ef8648bd",
+}
+VALIDATION_HELPER_AST_SHA256 = {
+    "v0_workflow_guidance": "63c14f0d473be16f0d152de5b59a6b1d0127c95e82e65aa2b899a2b46c039984",
+    "validation_history_artifacts": "cde67ba5a3412cb795138189ebec5c6609ac0311a2095be46c703acf7823fe66",
+    "validation_sample_from_snapshot": "581d4a0d6bdcdbda759f0d289174fbdb3d902d2a9afb31fd5e58fdb1a363195f",
+    "validation_samples_from_csv": "aa92f5ae6f2f51c3926d937baf7ba59270b12a94670d4c9bf7c1b707440dd3a0",
+    "signed_permutation_descriptor": "b4e3ba261a1d8f3a1a6563d3c3c457389a2ca40543774f4e9145bc5eaf4b122f",
+}
 
 
 def function_body(source: str, signature: str) -> str:
+    if source is SOURCE and ("_validation" in signature or "_build_validation" in signature):
+        if signature in VALIDATION_V0_SOURCE:
+            source = VALIDATION_V0_SOURCE
+        elif signature in EVIDENCE_SOURCE:
+            source = EVIDENCE_SOURCE
     start = source.index(signature)
     end = source.find("\n    def ", start + len(signature))
     return source[start:] if end < 0 else source[start:end]
@@ -826,7 +912,7 @@ def test_panel_builds_the_reordered_v0_layout_without_connecting(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     calibration_dir = tmp_path / "calibration" / "airframe"
-    monkeypatch.setattr(panel, "AIRFRAME_CALIBRATION_DIR", calibration_dir)
+    monkeypatch.setattr(panel_evidence, "AIRFRAME_CALIBRATION_DIR", calibration_dir)
     monkeypatch.setattr(panel, "FIRMWARE_UPDATE_DIR", tmp_path / "firmware_updates")
     dialog_messages: list[tuple[str, str]] = []
     monkeypatch.setattr(
@@ -1138,3 +1224,129 @@ def test_panel_builds_the_reordered_v0_layout_without_connecting(
         assert '"flight_release": false' in audit_text
     finally:
         app.destroy()
+
+
+def _python_class_methods(path: Path, class_name: str) -> dict[str, ast.FunctionDef]:
+    module = ast.parse(path.read_text(encoding="utf-8"))
+    owner = next(
+        node for node in module.body
+        if isinstance(node, ast.ClassDef) and node.name == class_name
+    )
+    return {
+        node.name: node for node in owner.body if isinstance(node, ast.FunctionDef)
+    }
+
+
+def _python_class_assignments(path: Path, class_name: str) -> set[str]:
+    module = ast.parse(path.read_text(encoding="utf-8"))
+    owner = next(
+        node for node in module.body
+        if isinstance(node, ast.ClassDef) and node.name == class_name
+    )
+    names: set[str] = set()
+    for node in owner.body:
+        if isinstance(node, ast.Assign):
+            names.update(
+                target.id for target in node.targets if isinstance(target, ast.Name)
+            )
+    return names
+
+
+def _python_top_functions(path: Path) -> dict[str, ast.FunctionDef]:
+    return {
+        node.name: node
+        for node in ast.parse(path.read_text(encoding="utf-8")).body
+        if isinstance(node, ast.FunctionDef)
+    }
+
+
+def _python_ast_sha256(node: ast.AST) -> str:
+    return hashlib.sha256(ast.dump(node, include_attributes=False).encode()).hexdigest()
+
+
+def test_s6_increment10_validation_and_evidence_ast_owners() -> None:
+    legacy_path = ROOT / "tools" / "drone_tcp_panel.py"
+    evidence_path = ROOT / "tools" / "panel_lib" / "evidence.py"
+    validation_path = ROOT / "tools" / "panel_lib" / "pages" / "validation_v0.py"
+    legacy = _python_class_methods(legacy_path, "DronePanel")
+    evidence = _python_class_methods(evidence_path, "EvidenceMixin")
+    validation = _python_class_methods(validation_path, "ValidationV0PageMixin")
+
+    assert INCREMENT10_PARENT == "69bf4158977c62f65a78f7dc4b61b8a9f80275b7"
+    assert set(validation) == set(V0_PAGE_AST_SHA256)
+    assert set(evidence) == set(EVIDENCE_AST_SHA256)
+    assert (set(validation) | set(evidence)).isdisjoint(legacy)
+    assert {name: _python_ast_sha256(validation[name]) for name in V0_PAGE_AST_SHA256} == V0_PAGE_AST_SHA256
+    assert {name: _python_ast_sha256(evidence[name]) for name in EVIDENCE_AST_SHA256} == EVIDENCE_AST_SHA256
+    assert len(validation["_build_validation_page"].body) == 114
+
+    helper_owners = {
+        **_python_top_functions(validation_path),
+        **_python_top_functions(evidence_path),
+    }
+    assert set(helper_owners) == set(VALIDATION_HELPER_AST_SHA256)
+    assert {
+        name: _python_ast_sha256(helper_owners[name])
+        for name in VALIDATION_HELPER_AST_SHA256
+    } == VALIDATION_HELPER_AST_SHA256
+
+    assert _python_class_assignments(validation_path, "ValidationV0PageMixin") == {
+        "VALIDATION_STEPS",
+        "_STAGE_ROW_TAGS",
+        "_GATE_INDICATORS",
+        "_ORIENTATION_EVENT_STYLES",
+        "IMU_HEALTH_LABELS",
+    }
+    assert panel.ValidationV0PageMixin is validation_v0_page.ValidationV0PageMixin
+    assert panel.EvidenceMixin is panel_evidence.EvidenceMixin
+    for owner, hashes in (
+        (validation_v0_page.ValidationV0PageMixin, V0_PAGE_AST_SHA256),
+        (panel_evidence.EvidenceMixin, EVIDENCE_AST_SHA256),
+    ):
+        for name in hashes:
+            assert getattr(panel.DronePanel, name) is getattr(owner, name)
+    for name in panel_evidence.__all__:
+        assert getattr(panel, name) is getattr(panel_evidence, name), name
+    for name in validation_v0_page.__all__:
+        assert getattr(panel, name) is getattr(validation_v0_page, name), name
+    assert panel.DronePanel.VALIDATION_STEPS == (
+        "坐标发现", "RAM 复验", "写入 Flash"
+    )
+    assert all(
+        validation_v0_page.UI_PALETTE[name] == panel.UI_PALETTE[name]
+        for name in validation_v0_page.UI_PALETTE
+    )
+
+    for name in ("_validation_autosave_session", "_validation_autosave_workflow"):
+        first = evidence[name].body[0]
+        assert isinstance(first, ast.If)
+        assert isinstance(first.test, ast.Attribute)
+        assert first.test.attr == "validation_loaded_history"
+        assert len(first.body) == 1 and isinstance(first.body[0], ast.Return)
+        assert isinstance(first.body[0].value, ast.Constant)
+        assert first.body[0].value.value is None
+
+    env = os.environ.copy()
+    env.pop("PYTHONPATH", None)
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            (
+                "import drone_tcp_panel as p; "
+                "import panel_lib.evidence as e; "
+                "import panel_lib.pages.validation_v0 as v; "
+                "assert p.DronePanel._validation_autosave_session is "
+                "e.EvidenceMixin._validation_autosave_session; "
+                "assert p.DronePanel._build_validation_page is "
+                "v.ValidationV0PageMixin._build_validation_page"
+            ),
+        ],
+        cwd=ROOT / "tools",
+        env=env,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        timeout=20,
+    )
+    assert result.returncode == 0, result.stdout

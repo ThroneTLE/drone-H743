@@ -4,7 +4,7 @@
 
 Read this shard only when you need existing behavioral/architecture coverage or must choose focused regression tests.
 
-Source snapshot: `40cc9289abe3`. Indexed files: 83.
+Source snapshot: `bf6e91dba021`. Indexed files: 83.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -22,7 +22,7 @@ Source snapshot: `40cc9289abe3`. Indexed files: 83.
 | `tests/test_coax_sign_convention.py` | Sign-convention self-check for the coaxial attitude controller. This is a legacy runtime-adapter test, not the canonica… | `test_gains_are_positive_so_polarity_errors_cannot_be_masked`, `test_control_law_is_negative_feedback_by_structure`, `test_stick_polarity_lives_in_exactly_one_place`, `test_sign_convention_is_documented_in_one_block`, `test_controller_sign_convention_runtime` |
 | `tests/test_control_loop_blocking_contract.py` | 控制环禁止同步阻塞 I/O 的契约。 APP_Control_QueueText 在入队 UART 前会同步阻塞等 USB CDC（最坏 3x APP_CONTROL_USB_TEXT_TX_TIMEOUT_MS）。app_servo_c… | `test_servo_cal_state_machine_never_calls_blocking_text_send`, `test_servo_cal_posts_notices_through_the_pending_buffer`, `test_comms_task_flushes_the_notice_each_tick` |
 | `tests/test_data_organization.py` | Automated checks for data organization | `test_date_directory_helpers_are_sortable_and_validate_dates`, `test_organizer_groups_dated_and_undated_items`, `test_canonical_categories_have_only_date_or_classification_children` |
-| `tests/test_drone_validation_v0.py` | Automated checks for drone validation v0 | `test_snapshot_parser_requires_provenance_and_never_invents_zeroes`, `test_snapshot_parser_normalizes_target_units_without_claiming_flu`, `test_post_apply_gate_compares_canonical_accel_tilt_with_fusion`, `test_v0_session_command_gate_only_grants_exact_orientation_actions`, `test_v0_session_invalidates_transport_write_queues_at_the_send_boundary`, `test_validation_page_limits_target_writes_to_the_guarded_orientation_flow` (+32) |
+| `tests/test_drone_validation_v0.py` | Automated checks for drone validation v0 | `test_snapshot_parser_requires_provenance_and_never_invents_zeroes`, `test_snapshot_parser_normalizes_target_units_without_claiming_flu`, `test_post_apply_gate_compares_canonical_accel_tilt_with_fusion`, `test_v0_session_command_gate_only_grants_exact_orientation_actions`, `test_v0_session_invalidates_transport_write_queues_at_the_send_boundary`, `test_validation_page_limits_target_writes_to_the_guarded_orientation_flow` (+33) |
 | `tests/test_evidence_write_protection.py` | 历史验收证据不可变性契约。 2026-08-29 实际发生过一次证据破坏：面板启动时自动加载了 2026-08-28 的历史 验收会话，随后自动保存把 workflow.json 的 target_state_at_save（14 个键的… | `test_session_autosave_refuses_to_write_while_browsing_history`, `test_workflow_autosave_refuses_to_write_while_browsing_history`, `test_provenance_flag_lifecycle_backs_the_guard`, `test_ui_promise_matches_the_enforced_contract` |
 | `tests/test_firmware_build_gate.py` | 烧录前必须先编译，且编译失败绝不能继续烧录。 背景：USB DFU 一键烧录默认烧的是 build/Debug/drone-H743.elf。如果改完源码 忘了编译，就会把上一次的旧固件刷进飞控，而且现场很难看出来——固件"烧成功了"，… | `test_build_failure_raises_instead_of_returning_a_stale_elf`, `test_missing_cmake_is_reported_as_a_build_error`, `test_build_timeout_is_reported_as_a_build_error`, `test_successful_build_must_actually_produce_the_elf`, `test_successful_build_returns_the_preset_artifact`, `test_image_older_than_a_source_file_is_reported_stale` (+15) |
 | `tests/test_flash_bdd.py` | Automated checks for flash bdd | `test_bdd_flash_diagnostics_flow_is_app_service_to_gd25q32_driver`, `test_bdd_h743_cache_setting_matches_runtime_cache_enable` |

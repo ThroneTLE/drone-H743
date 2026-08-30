@@ -231,7 +231,7 @@ def test_old_firmware_without_health_does_not_block() -> None:
 
 
 def test_readiness_gate_consumes_the_health_state() -> None:
-    source = read("tools/drone_tcp_panel.py")
+    source = read("tools/panel_lib/pages/validation_v0.py")
     body = function_body(source, "    def _validation_refresh_readiness(")
     assert "_validation_health_state()" in body
     assert '_validation_set_gate("health"' in body

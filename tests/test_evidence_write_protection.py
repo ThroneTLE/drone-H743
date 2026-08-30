@@ -13,7 +13,8 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-PANEL = ROOT / "tools" / "drone_tcp_panel.py"
+EVIDENCE = ROOT / "tools" / "panel_lib" / "evidence.py"
+VALIDATION_PAGE = ROOT / "tools" / "panel_lib" / "pages" / "validation_v0.py"
 
 
 def method_source(source: str, name: str) -> str:
@@ -27,7 +28,7 @@ def method_source(source: str, name: str) -> str:
 
 
 def test_session_autosave_refuses_to_write_while_browsing_history() -> None:
-    source = PANEL.read_text(encoding="utf-8")
+    source = EVIDENCE.read_text(encoding="utf-8")
     body = method_source(source, "_validation_autosave_session")
     guard = body.find("if self.validation_loaded_history:")
     write = body.find("write_session(")
@@ -37,7 +38,7 @@ def test_session_autosave_refuses_to_write_while_browsing_history() -> None:
 
 
 def test_workflow_autosave_refuses_to_write_while_browsing_history() -> None:
-    source = PANEL.read_text(encoding="utf-8")
+    source = EVIDENCE.read_text(encoding="utf-8")
     body = method_source(source, "_validation_autosave_workflow")
     guard = body.find("if self.validation_loaded_history:")
     write = body.find("temporary.replace(path)")
@@ -48,11 +49,12 @@ def test_workflow_autosave_refuses_to_write_while_browsing_history() -> None:
 
 def test_provenance_flag_lifecycle_backs_the_guard() -> None:
     """守卫依赖的出处标志：加载置位；新建/继续显式清零后才恢复保存资格。"""
-    source = PANEL.read_text(encoding="utf-8")
+    source = EVIDENCE.read_text(encoding="utf-8")
     apply_loaded = method_source(source, "_validation_apply_loaded_session")
     assert "self.validation_loaded_history = True" in apply_loaded
     for reactivation in ("_validation_start_session", "_validation_resume_session"):
-        body = method_source(source, reactivation)
+        owner = VALIDATION_PAGE if reactivation == "_validation_start_session" else EVIDENCE
+        body = method_source(owner.read_text(encoding="utf-8"), reactivation)
         assert "self.validation_loaded_history = False" in body, (
             f"{reactivation} must explicitly clear the loaded-history flag before saving resumes"
         )
@@ -60,6 +62,9 @@ def test_provenance_flag_lifecycle_backs_the_guard() -> None:
 
 def test_ui_promise_matches_the_enforced_contract() -> None:
     """对话框对用户的承诺文本仍在；守卫就是这两句承诺的实现。"""
-    source = PANEL.read_text(encoding="utf-8")
+    source = (
+        EVIDENCE.read_text(encoding="utf-8")
+        + VALIDATION_PAGE.read_text(encoding="utf-8")
+    )
     assert "不会覆盖或删除历史报告" in source
     assert "不会删除任何历史文件" in source
