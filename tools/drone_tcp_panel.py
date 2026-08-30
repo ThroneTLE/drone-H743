@@ -22,7 +22,9 @@ try:
     from .panel_lib.pages import drift as _panel_drift
     from .panel_lib.pages import mechanical as _panel_mechanical
     from .panel_lib.pages import rc_wizard as _panel_rc
+    from .panel_lib.pages import servo_debug as _panel_servo_debug
     from .panel_lib.pages import v1_metrology as _panel_v1
+    from .panel_lib.pages import vibration as _panel_vibration
     from .panel_lib import proto as _panel_proto
     from .panel_lib import state as _panel_state
     from .panel_lib import transport as _panel_transport
@@ -31,7 +33,9 @@ except ImportError:  # Allows direct import and: python tools/drone_tcp_panel.py
         from tools.panel_lib.pages import drift as _panel_drift
         from tools.panel_lib.pages import mechanical as _panel_mechanical
         from tools.panel_lib.pages import rc_wizard as _panel_rc
+        from tools.panel_lib.pages import servo_debug as _panel_servo_debug
         from tools.panel_lib.pages import v1_metrology as _panel_v1
+        from tools.panel_lib.pages import vibration as _panel_vibration
         from tools.panel_lib import proto as _panel_proto
         from tools.panel_lib import state as _panel_state
         from tools.panel_lib import transport as _panel_transport
@@ -39,7 +43,9 @@ except ImportError:  # Allows direct import and: python tools/drone_tcp_panel.py
         from panel_lib.pages import drift as _panel_drift
         from panel_lib.pages import mechanical as _panel_mechanical
         from panel_lib.pages import rc_wizard as _panel_rc
+        from panel_lib.pages import servo_debug as _panel_servo_debug
         from panel_lib.pages import v1_metrology as _panel_v1
+        from panel_lib.pages import vibration as _panel_vibration
         from panel_lib import proto as _panel_proto
         from panel_lib import state as _panel_state
         from panel_lib import transport as _panel_transport
@@ -171,7 +177,9 @@ record_panel_crash = _panel_state.record_panel_crash
 DriftPageMixin = _panel_drift.DriftPageMixin
 drift = _panel_drift.drift
 MechanicalPageMixin = _panel_mechanical.MechanicalPageMixin
+ServoDebugPageMixin = _panel_servo_debug.ServoDebugPageMixin
 V1PageMixin = _panel_v1.V1PageMixin
+VibrationPageMixin = _panel_vibration.VibrationPageMixin
 
 # RC mapping/wizard compatibility forwarding.  The page module owns both its
 # pure calibration helpers and Tk handlers while legacy imports keep working.
@@ -1086,7 +1094,7 @@ def enable_hidpi_awareness() -> float:
         return 1.0
 
 
-class DronePanel(MechanicalPageMixin, RcWizardPageMixin, V1PageMixin, DriftPageMixin, PanelStateMixin, ProtocolLineMixin, tk.Tk):
+class DronePanel(VibrationPageMixin, ServoDebugPageMixin, MechanicalPageMixin, RcWizardPageMixin, V1PageMixin, DriftPageMixin, PanelStateMixin, ProtocolLineMixin, tk.Tk):
     def __init__(self) -> None:
         # 必须早于 super().__init__()：Tk 根窗口一旦创建，DPI 感知就无法再改。
         self.ui_dpi_scale = enable_hidpi_awareness()
@@ -2927,38 +2935,6 @@ class DronePanel(MechanicalPageMixin, RcWizardPageMixin, V1PageMixin, DriftPageM
             messagebox.showerror("光流 / 测距证据保存失败", str(exc))
             return
         self.flow_cal_status_var.set(f"地面采样证据已保存：{path}")
-
-    def _build_vibration_filter_page(self, parent: ttk.Frame) -> None:
-        ttk.Label(parent, text="VIBRATION / FILTER  /  预留页面", style="Eyebrow.TLabel").pack(anchor=tk.W)
-        ttk.Label(parent, text="振动检测与 IMU 滤波", style="PageTitle.TLabel").pack(anchor=tk.W)
-        ttk.Label(
-            parent,
-            text=(
-                "按当前阶段要求，本页只建立入口，不启动带桨叶旋转、不发电机命令、也不重新拟合滤波器。"
-                "以后接入时仍复用已有全速 IMU 采集和频谱报告链路。"
-            ),
-            style="Muted.TLabel", wraplength=1120,
-        ).pack(fill=tk.X, pady=(4, 10))
-        ttk.Frame(parent, height=1, style="Rule.TFrame").pack(fill=tk.X, pady=(0, 8))
-        current = ttk.LabelFrame(parent, text="当前固件滤波基线（保持不变）", padding=10)
-        current.pack(fill=tk.X)
-        for label, value in (
-            ("采样率", "1000 Hz"),
-            ("陀螺仪", "二阶 Butterworth 低通 · 80 Hz"),
-            ("加速度计", "二阶 Butterworth 低通 · 40 Hz"),
-            ("设计依据", "沿用此前实机采集；已测桨频约 56–180 Hz"),
-        ):
-            row = ttk.Frame(current)
-            row.pack(fill=tk.X, pady=3)
-            ttk.Label(row, text=label, width=14, style="Muted.TLabel").pack(side=tk.LEFT)
-            ttk.Label(row, text=value).pack(side=tk.LEFT)
-        pending = ttk.LabelFrame(parent, text="页面状态", padding=10)
-        pending.pack(fill=tk.X, pady=(10, 0))
-        ttk.Label(
-            pending,
-            text="未实现 · 不提供开始采集按钮 · 不执行带桨动力测试 · 不改当前滤波参数",
-            style="Warn.TLabel",
-        ).pack(anchor=tk.W)
 
     def _build_v2_page(self, parent: ttk.Frame) -> None:
         ttk.Label(parent, text="GROUND ACCEPTANCE  /  验证控制链与执行方向", style="Eyebrow.TLabel").pack(anchor=tk.W)
@@ -5974,20 +5950,6 @@ class DronePanel(MechanicalPageMixin, RcWizardPageMixin, V1PageMixin, DriftPageM
         for col in range(1, 4):
             pid.columnconfigure(col, weight=1)
 
-    def _build_servo_page(self, parent: ttk.Frame) -> None:
-        servo_notebook = ttk.Notebook(parent)
-        servo_notebook.pack(fill=tk.BOTH, expand=True)
-        for index in range(2):
-            frame = ttk.Frame(servo_notebook, padding=10)
-            servo_notebook.add(frame, text=f"舵机 {index}")
-            self._build_servo_tab(frame, index)
-
-        raw = ttk.LabelFrame(parent, text="手动原始舵机指令", padding=10)
-        raw.pack(fill=tk.X, pady=(10, 0))
-        self.raw_var = tk.StringVar(value="{#001P1500T0500!#002P1500T0500!}")
-        ttk.Entry(raw, textvariable=self.raw_var).pack(side=tk.LEFT, fill=tk.X, expand=True)
-        ttk.Button(raw, text="发送原始指令", command=self._send_raw).pack(side=tk.LEFT, padx=(6, 0))
-
     def _build_command_page(self, parent: ttk.Frame) -> None:
         quick = ttk.LabelFrame(parent, text="兼容 / 调试命令", padding=10)
         quick.pack(fill=tk.X)
@@ -6051,88 +6013,6 @@ class DronePanel(MechanicalPageMixin, RcWizardPageMixin, V1PageMixin, DriftPageM
         cmd_entry.bind("<Return>", lambda _event: self._send_custom())
         ttk.Button(cmd_frame, text="发送", command=self._send_custom,
                    style="Primary.TButton").pack(side=tk.LEFT, padx=(6, 0))
-
-    def _build_servo_tab(self, parent: ttk.Frame, index: int) -> None:
-        values: dict[str, tk.Variable] = {
-            "id": tk.IntVar(value=index + 1),
-            "pulse": tk.IntVar(value=1500),
-            "time": tk.IntVar(value=500),
-            "mode": tk.IntVar(value=1),
-            "enabled": tk.IntVar(value=1),
-            "new_id": tk.IntVar(value=index + 1),
-            "baud": tk.IntVar(value=4),
-        }
-        self.servo_widgets.append(values)
-
-        row = 0
-        ttk.Checkbutton(
-            parent,
-            text="启用此舵机槽位",
-            variable=values["enabled"],
-            command=lambda i=index: self._servo_enable(i),
-        ).grid(row=row, column=0, sticky=tk.W)
-        row += 1
-        self._spin(parent, row, "当前舵机 ID", values["id"], 0, 255, lambda i=index: self._servo_set_id(i))
-        row += 1
-        self._scale(parent, row, "目标位置 us", values["pulse"], 500, 2500)
-        row += 1
-        self._spin(parent, row, "运行时间 ms", values["time"], 0, 9999, None)
-        row += 1
-        self._spin(parent, row, "模式 1-8", values["mode"], 1, 8, lambda i=index: self._servo_mode(i))
-        row += 1
-        ttk.Button(parent, text="移动此舵机", command=lambda i=index: self._servo_move(i)).grid(row=row, column=0, pady=6, sticky=tk.EW)
-        ttk.Button(
-            parent,
-            text="按配置同时移动两路",
-            command=lambda: self._send_proto(PROTO_REQ_SERVO_MOVE_ALL, "SERVO MOVEALL"),
-        ).grid(row=row, column=1, pady=6, sticky=tk.EW)
-        row += 1
-
-        id_box = ttk.LabelFrame(parent, text="修改实体舵机 ID", padding=8)
-        id_box.grid(row=row, column=0, columnspan=2, sticky=tk.EW, pady=(8, 4))
-        ttk.Spinbox(id_box, from_=0, to=255, textvariable=values["new_id"], width=8).pack(side=tk.LEFT)
-        ttk.Button(id_box, text="写入新 ID", command=lambda i=index: self._servo_set_physical_id(i)).pack(side=tk.LEFT, padx=6)
-        row += 1
-
-        actions = ttk.LabelFrame(parent, text="众灵手册动作指令", padding=8)
-        actions.grid(row=row, column=0, columnspan=2, sticky=tk.EW)
-        action_names = [
-            ("读取版本", "VER"),
-            ("检测 ID", "PID"),
-            ("读取位置", "RAD"),
-            ("读取模式", "MOD?"),
-            ("释放扭力", "ULK"),
-            ("恢复扭力", "ULR"),
-            ("暂停", "DPT"),
-            ("继续", "DCT"),
-            ("停止", "DST"),
-            ("当前位置设中位", "SCK"),
-            ("设置启动位置", "CSD"),
-            ("清除启动位置", "CSM"),
-            ("恢复启动位置", "CSR"),
-            ("设置最小值", "SMI"),
-            ("设置最大值", "SMX"),
-            ("半恢复出厂", "CLEO"),
-            ("全恢复出厂", "CLE"),
-        ]
-        for n, (label, command) in enumerate(action_names):
-            ttk.Button(actions, text=label, command=lambda i=index, c=command: self._servo_cmd(i, c)).grid(
-                row=n // 2,
-                column=n % 2,
-                padx=3,
-                pady=3,
-                sticky=tk.EW,
-            )
-        actions.columnconfigure(0, weight=1)
-        actions.columnconfigure(1, weight=1)
-
-        baud_box = ttk.Frame(parent)
-        baud_box.grid(row=row + 1, column=0, columnspan=2, sticky=tk.EW, pady=(8, 0))
-        ttk.Label(baud_box, text="波特率代码").pack(side=tk.LEFT)
-        ttk.Spinbox(baud_box, from_=0, to=7, textvariable=values["baud"], width=5).pack(side=tk.LEFT, padx=6)
-        ttk.Button(baud_box, text="设置波特率", command=lambda i=index: self._servo_baud(i)).pack(side=tk.LEFT)
-
-        parent.columnconfigure(1, weight=1)
 
     def _spin(self, parent: ttk.Frame, row: int, label: str, variable: tk.Variable, minimum: int, maximum: int, command) -> None:
         ttk.Label(parent, text=label).grid(row=row, column=0, sticky=tk.W, pady=4)
@@ -6385,48 +6265,6 @@ class DronePanel(MechanicalPageMixin, RcWizardPageMixin, V1PageMixin, DriftPageM
     def _request_airframe(self) -> None:
         self._send_proto(PROTO_REQ_AIRFRAME, "AIRFRAME?")
 
-    def _send_raw(self) -> None:
-        payload = f"SERVO RAW {self.raw_var.get().strip()}"
-        self._send_proto(PROTO_REQ_SERVO_RAW, payload, payload)
-
-    def _servo_values(self, index: int) -> dict[str, int]:
-        widgets = self.servo_widgets[index]
-        return {key: int(var.get()) for key, var in widgets.items()}
-
-    def _servo_move(self, index: int) -> None:
-        values = self._servo_values(index)
-        payload = f"SERVO MOVE {index} {values['pulse']} {values['time']}"
-        self._send_proto(PROTO_REQ_SERVO_MOVE, payload, payload)
-
-    def _servo_mode(self, index: int) -> None:
-        values = self._servo_values(index)
-        payload = f"SERVO MODE {index} {values['mode']}"
-        self._send_proto(PROTO_REQ_SERVO_MODE, payload, payload)
-
-    def _servo_enable(self, index: int) -> None:
-        values = self._servo_values(index)
-        payload = f"SERVO ENABLE {index} {values['enabled']}"
-        self._send_proto(PROTO_REQ_SERVO_ENABLE, payload, payload)
-
-    def _servo_set_id(self, index: int) -> None:
-        values = self._servo_values(index)
-        payload = f"SERVO ID {index} {values['id']}"
-        self._send_proto(PROTO_REQ_SERVO_ID, payload, payload)
-
-    def _servo_set_physical_id(self, index: int) -> None:
-        values = self._servo_values(index)
-        payload = f"SERVO SETID {index} {values['new_id']}"
-        self._send_proto(PROTO_REQ_SERVO_SETID, payload, payload)
-
-    def _servo_cmd(self, index: int, command: str) -> None:
-        payload = f"SERVO CMD {index} {command}"
-        self._send_proto(PROTO_REQ_SERVO_ACTION, payload, payload)
-
-    def _servo_baud(self, index: int) -> None:
-        values = self._servo_values(index)
-        payload = f"SERVO CMD {index} BD {values['baud']}"
-        self._send_proto(PROTO_REQ_SERVO_ACTION, payload, payload)
-
     MAX_LOG_LINES = 2000
 
     def _should_show_raw_log(self, line: str) -> bool:
@@ -6535,31 +6373,6 @@ class DronePanel(MechanicalPageMixin, RcWizardPageMixin, V1PageMixin, DriftPageM
             handler(display)
             self.last_reply_rx = time.monotonic()
             self.last_cmd_var.set(f"最近回包: {display}")
-
-    def _update_servo_ok_line(self, line: str) -> None:
-        values = parse_kv(line)
-        parts = line.split()
-        if len(parts) < 2 or not parts[1].startswith("servo"):
-            return
-        index = safe_int(parts[1].replace("servo", ""), -1)
-        if index < 0:
-            return
-
-        field_map = {
-            "id": "id",
-            "enabled": "enabled",
-            "mode": "mode",
-            "pulse": "pulse",
-            "time": "time",
-        }
-        for src, dst in field_map.items():
-            if src in values:
-                self._set_param(f"servo{index}.{dst}", values[src], "OK", dirty=False)
-        if 0 <= index < len(self.servo_widgets):
-            widgets = self.servo_widgets[index]
-            for src, dst in field_map.items():
-                if src in values and dst in widgets:
-                    widgets[dst].set(safe_int(values[src]))
 
     def _update_config_result_line(self, line: str) -> None:
         values = parse_kv(line)

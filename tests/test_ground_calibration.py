@@ -1,10 +1,16 @@
 from __future__ import annotations
 
+import ast
+import hashlib
 import math
+import os
 from pathlib import Path
+import subprocess
+import sys
 
 import pytest
 
+from tools import drone_tcp_panel as legacy_panel
 from tools.ground_calibration import (
     FlowRangeSample,
     GroundCalibrationError,
@@ -14,6 +20,8 @@ from tools.ground_calibration import (
     fit_range_two_point,
     validate_servo_geometry,
 )
+from tools.panel_lib.pages import servo_debug as servo_debug_page
+from tools.panel_lib.pages import vibration as vibration_page
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -21,14 +29,37 @@ PANEL_SOURCE = (ROOT / "tools" / "drone_tcp_panel.py").read_text(encoding="utf-8
 MECHANICAL_PAGE_SOURCE = (
     ROOT / "tools" / "panel_lib" / "pages" / "mechanical.py"
 ).read_text(encoding="utf-8")
+SERVO_DEBUG_PAGE_PATH = ROOT / "tools" / "panel_lib" / "pages" / "servo_debug.py"
+VIBRATION_PAGE_PATH = ROOT / "tools" / "panel_lib" / "pages" / "vibration.py"
+VIBRATION_PAGE_SOURCE = VIBRATION_PAGE_PATH.read_text(encoding="utf-8")
+
+INCREMENT8_PARENT = "4eaf9f290d031a879f3baefa15f6e306ac9cbcf5"
+VIBRATION_AST_SHA256 = {
+    "_build_vibration_filter_page": "d6483841646aea2d7ae966623f75c441db8d11e01d983a95fa0a4db80e344106",
+}
+SERVO_DEBUG_AST_SHA256 = {
+    "_build_servo_page": "d26d416f9a002efe30c3848cd717b123eac8ad698a13a1e723892309d06ea917",
+    "_build_servo_tab": "47e4f39cf11240deea95976af1d20c84f196fc4a0574f432f3285474b3b08a3c",
+    "_send_raw": "93c964e44ca39d44dadffe470117080adda5f25bd6e54ab3dd29b6d1b610ca2b",
+    "_servo_values": "eb8e3632a5b07df9a26a46cc73ddd8c6ee40cc1c0ac2e0da8d514bff69b65484",
+    "_servo_move": "4cc86c79336b760bb2b4ce8e8b297c1d2d8c13f36e86abcdcec8d594ba3f6d98",
+    "_servo_mode": "3cd97ca97bb89bb6408c2a3fecf05c9b878f8cd42eb0daa74c98ca1efaca2c25",
+    "_servo_enable": "886020ccc807b35540014783c354710fc6d42ccffde9e31f806f129942a99a54",
+    "_servo_set_id": "464afb5be501ae2dbd2a9e56da8d4edf8db19ed6e2cb7dea79a8eb91cedcac37",
+    "_servo_set_physical_id": "d1e72d59244db33f8aab98ea032ec37dee10ce655f71025542825d69e79563b4",
+    "_servo_cmd": "96ea6e79bcb2f30ba523400b6c555344d335d100bb6cbdec00c5c34f39848177",
+    "_servo_baud": "d5e442de8d889383f12f55f3f1cd85c89dae795e7fd8773cc06d5f3ea51e21cd",
+    "_update_servo_ok_line": "e34aefe4ead010297387a1c03c366ce42be177ceb320461fab9fd403b521e6ff",
+}
 
 
 def function_body(name: str) -> str:
-    source = (
-        MECHANICAL_PAGE_SOURCE
-        if name == "_build_mechanical_calibration_page" or name.startswith("_mechanical_")
-        else PANEL_SOURCE
-    )
+    if name == "_build_mechanical_calibration_page" or name.startswith("_mechanical_"):
+        source = MECHANICAL_PAGE_SOURCE
+    elif name == "_build_vibration_filter_page":
+        source = VIBRATION_PAGE_SOURCE
+    else:
+        source = PANEL_SOURCE
     marker = f"    def {name}("
     start = source.index(marker)
     next_method = source.find("\n    def ", start + len(marker))
@@ -203,3 +234,66 @@ def test_servo_geometry_rejects_unsafe_or_degenerate_travel(values: tuple[int, i
     center, minimum, maximum = values
     with pytest.raises(GroundCalibrationError):
         validate_servo_geometry(center, minimum, maximum)
+
+
+def _class_methods(path: Path, class_name: str) -> dict[str, ast.FunctionDef]:
+    module = ast.parse(path.read_text(encoding="utf-8"))
+    owner = next(
+        node for node in module.body
+        if isinstance(node, ast.ClassDef) and node.name == class_name
+    )
+    return {
+        node.name: node for node in owner.body if isinstance(node, ast.FunctionDef)
+    }
+
+
+def _ast_sha256(node: ast.AST) -> str:
+    return hashlib.sha256(ast.dump(node, include_attributes=False).encode()).hexdigest()
+
+
+def test_s6_increment8_page_owners_ast_forwarding() -> None:
+    legacy = _class_methods(ROOT / "tools" / "drone_tcp_panel.py", "DronePanel")
+    vibration = _class_methods(VIBRATION_PAGE_PATH, "VibrationPageMixin")
+    servo_debug = _class_methods(SERVO_DEBUG_PAGE_PATH, "ServoDebugPageMixin")
+
+    assert INCREMENT8_PARENT == "4eaf9f290d031a879f3baefa15f6e306ac9cbcf5"
+    assert {name: _ast_sha256(vibration[name]) for name in VIBRATION_AST_SHA256} == VIBRATION_AST_SHA256
+    assert {name: _ast_sha256(servo_debug[name]) for name in SERVO_DEBUG_AST_SHA256} == SERVO_DEBUG_AST_SHA256
+    assert set(vibration) == set(VIBRATION_AST_SHA256)
+    assert set(servo_debug) == set(SERVO_DEBUG_AST_SHA256)
+    assert (set(vibration) | set(servo_debug)).isdisjoint(legacy)
+    assert len(vibration["_build_vibration_filter_page"].body) == 10
+    assert len(servo_debug["_build_servo_page"].body) == 8
+    assert len(servo_debug["_build_servo_tab"].body) == 33
+    assert legacy_panel.VibrationPageMixin is vibration_page.VibrationPageMixin
+    assert legacy_panel.ServoDebugPageMixin is servo_debug_page.ServoDebugPageMixin
+    for owner, hashes in (
+        (vibration_page.VibrationPageMixin, VIBRATION_AST_SHA256),
+        (servo_debug_page.ServoDebugPageMixin, SERVO_DEBUG_AST_SHA256),
+    ):
+        for name in hashes:
+            assert getattr(legacy_panel.DronePanel, name) is getattr(owner, name)
+
+    env = os.environ.copy()
+    env.pop("PYTHONPATH", None)
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            (
+                "import drone_tcp_panel as p; "
+                "import panel_lib.pages.servo_debug as s; "
+                "import panel_lib.pages.vibration as v; "
+                "assert p.DronePanel._servo_move is s.ServoDebugPageMixin._servo_move; "
+                "assert p.DronePanel._build_vibration_filter_page is "
+                "v.VibrationPageMixin._build_vibration_filter_page"
+            ),
+        ],
+        cwd=ROOT / "tools",
+        env=env,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        timeout=20,
+    )
+    assert result.returncode == 0, result.stdout

@@ -4,7 +4,7 @@
 
 Read this shard only when the task uses serial/TCP diagnostics, log analysis, identification, capture, calibration, or desktop UIs.
 
-Source snapshot: `7c1d6b4d703b`; aggregate snapshot: `ce7def1f86a3`. Covered files: 5301.
+Source snapshot: `cea1e110447e`; aggregate snapshot: `ce7def1f86a3`. Covered files: 5303.
 
 | File/module or scope | Content outline | Key entry points / size |
 |---|---|---|
@@ -50,7 +50,9 @@ Source snapshot: `7c1d6b4d703b`; aggregate snapshot: `ce7def1f86a3`. Covered fil
 | `tools/panel_lib/pages/drift.py` | Stationary-drift page builder and handlers | `DriftPageMixin` |
 | `tools/panel_lib/pages/mechanical.py` | Servo-mechanical calibration page builder and handlers | `MechanicalPageMixin` |
 | `tools/panel_lib/pages/rc_wizard.py` | RC mapping and guided-calibration page builder and handlers | `rc_channel_travel`, `rc_detect_channel`, `rc_map_is_valid`, `rc_wizard_dominant`, `rc_wizard_step_ready`, `rc_wizard_window_stable` (+4) |
+| `tools/panel_lib/pages/servo_debug.py` | Bus-servo debug page builders and handlers | `ServoDebugPageMixin` |
 | `tools/panel_lib/pages/v1_metrology.py` | V1 IMU metrology page builder and handlers | `V1PageMixin` |
+| `tools/panel_lib/pages/vibration.py` | Vibration/filter placeholder page | `VibrationPageMixin` |
 | `tools/panel_lib/proto.py` | Protocol identifiers and line-parsing helpers for the panel | `parse_kv`, `safe_int`, `safe_float`, `first_value`, `first_float`, `ProtocolLineMixin` |
 | `tools/panel_lib/state.py` | Panel-local state persistence and best-effort log helpers | `PanelStateMixin`, `append_log`, `record_panel_crash` |
 | `tools/panel_lib/transport.py` | Transport primitives and serial-device reconnect helpers for the panel | `udp_payload_is_probably_text`, `serial_device_identity_policy`, `serial_port_identity`, `serial_port_fingerprint`, `match_remembered_serial_port`, `select_reenumerated_application_port` (+7) |
