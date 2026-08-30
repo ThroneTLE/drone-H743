@@ -335,19 +335,27 @@ float APP_SensorRateMeter_Update(APP_Sensor_RateMeter *meter,
 /* ════════════════════════════════════════════════════════════════════════ */
 /*  采集轴对齐（IMU 芯片坐标系 → 本机标定中间轴）                           */
 /*                                                                        */
-/*  当前飞控板安装方向：                                                    */
-/*    IMU +Y 朝飞机下方，IMU +Z 朝飞机后方，IMU +X 朝飞机左方。              */
+/*  当前飞控板安装方向（由 M2 实测并已写入 Flash 的 V0 结果反推，2026-08-30）：*/
+/*    IMU +X 朝飞机左方，IMU +Y 朝飞机上方，IMU +Z 朝飞机前方。              */
 /*                                                                        */
-/*  下列映射仅定义采集后的中间轴。实机确认的最终姿态符号补偿为：               */
+/*  下列映射仅定义采集后的中间轴，不是机体系：                                */
+/*    legacy_intermediate_v1 X = -imu Z                                     */
+/*    legacy_intermediate_v1 Y = -imu X                                     */
+/*    legacy_intermediate_v1 Z =  imu Y                                     */
+/*  按上面的安装方向，该中间轴实为「X 后 / Y 右 / Z 上」，即相对 FLU 绕 Z     */
+/*  轴 180°。中间轴的物理含义由持久化的 V0 拟合定义，不由本注释定义。          */
+/*                                                                        */
+/*  叠加持久化 orientation code 3（"-x,-y,+z" = diag(-1,-1,+1)）后，本 seam  */
+/*  发布的合成映射即规范 FLU：                                               */
+/*    published X(前) = imu Z, published Y(左) = imu X, published Z(上) = imu Y */
+/*  该合成为 proper rotation（det=+1），accel/gyro 取同一旋转；由             */
+/*  tests/test_flu_seam0_sensor_frame.py 以 host 编译执行装置钉死。           */
+/*                                                                        */
+/*  仅当没有 V0 候选（legacy 哨兵）时，才在 StabilizerTask 的 Fusion 输入     */
+/*  边界退回旧符号补偿：                                                     */
 /*    roll rate = -gyro X, pitch rate = +gyro Y, yaw rate = +gyro Z           */
 /*    specific force = [-accel X, +accel Y, -accel Z]                         */
-/*  该补偿在 StabilizerTask 的 Fusion AHRS 输入边界执行，使动态角速度与       */
-/*  静态重力得到的 roll/pitch 方向一致。                                      */
-/*                                                                        */
-/*  因此轴映射为：                                                           */
-/*    body X = -imu Z                                                       */
-/*    body Y = -imu X                                                       */
-/*    body Z =  imu Y                                                       */
+/*  该补偿把中间轴送成 FRD 以配合 Fusion 的 NED 约定，属未迁移回退路径。       */
 /*                                                                        */
 /*  APP_Sensor_AlignToAirframe() 保持为本机标定中间轴固定映射。V0 候选由     */
 /*  APP_Sensor_ApplyFrameCorrection() 在完整 IMU 样本上一次性应用，避免       */

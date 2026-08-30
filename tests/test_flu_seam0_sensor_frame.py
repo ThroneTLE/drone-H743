@@ -76,11 +76,6 @@ def test_persisted_orientation_code_still_maps_to_its_descriptor() -> None:
     assert "{ -1, -2, +3 }" in entries[PERSISTED_ORIENTATION_CODE]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="R-F0 red test: app_sensor.c still documents the pre-V0 mounting; "
-    "cleared by the seam 0 implementation commit",
-)
 def test_mounting_comment_matches_the_measured_v0_result() -> None:
     """The physical-mounting comment must not contradict the persisted fit.
 
