@@ -4,7 +4,7 @@
 
 Read this shard only when the task uses serial/TCP diagnostics, log analysis, identification, capture, calibration, or desktop UIs.
 
-Source snapshot: `9be6f36964dd`; aggregate snapshot: `ce7def1f86a3`. Covered files: 5300.
+Source snapshot: `7c1d6b4d703b`; aggregate snapshot: `ce7def1f86a3`. Covered files: 5301.
 
 | File/module or scope | Content outline | Key entry points / size |
 |---|---|---|
@@ -48,6 +48,7 @@ Source snapshot: `9be6f36964dd`; aggregate snapshot: `ce7def1f86a3`. Covered fil
 | `tools/panel_lib/__init__.py` | Reusable implementation modules for :mod:`tools.drone_tcp_panel` | — |
 | `tools/panel_lib/pages/__init__.py` | Panel page builders and their event handlers | — |
 | `tools/panel_lib/pages/drift.py` | Stationary-drift page builder and handlers | `DriftPageMixin` |
+| `tools/panel_lib/pages/mechanical.py` | Servo-mechanical calibration page builder and handlers | `MechanicalPageMixin` |
 | `tools/panel_lib/pages/rc_wizard.py` | RC mapping and guided-calibration page builder and handlers | `rc_channel_travel`, `rc_detect_channel`, `rc_map_is_valid`, `rc_wizard_dominant`, `rc_wizard_step_ready`, `rc_wizard_window_stable` (+4) |
 | `tools/panel_lib/pages/v1_metrology.py` | V1 IMU metrology page builder and handlers | `V1PageMixin` |
 | `tools/panel_lib/proto.py` | Protocol identifiers and line-parsing helpers for the panel | `parse_kv`, `safe_int`, `safe_float`, `first_value`, `first_float`, `ProtocolLineMixin` |

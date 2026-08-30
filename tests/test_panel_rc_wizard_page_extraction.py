@@ -10,11 +10,13 @@ import subprocess
 import sys
 
 from tools import drone_tcp_panel as legacy_panel
+from tools.panel_lib.pages import mechanical as mechanical_page
 from tools.panel_lib.pages import rc_wizard as rc_page
 
 
 ROOT = Path(__file__).resolve().parents[1]
 LEGACY_PANEL_PATH = ROOT / "tools" / "drone_tcp_panel.py"
+MECHANICAL_PAGE_PATH = ROOT / "tools" / "panel_lib" / "pages" / "mechanical.py"
 RC_PAGE_PATH = ROOT / "tools" / "panel_lib" / "pages" / "rc_wizard.py"
 
 METHOD_AST_SHA256 = {
@@ -211,10 +213,13 @@ def test_forwarding() -> None:
 
 def test_protected_pages() -> None:
     legacy = class_methods(LEGACY_PANEL_PATH, "DronePanel")
+    mechanical = class_methods(MECHANICAL_PAGE_PATH, "MechanicalPageMixin")
+    owners = {**legacy, **mechanical}
 
     assert {
-        name: ast_sha256(legacy[name]) for name in UNTOUCHED_PAGE_AST_SHA256
+        name: ast_sha256(owners[name]) for name in UNTOUCHED_PAGE_AST_SHA256
     } == UNTOUCHED_PAGE_AST_SHA256
+    assert legacy_panel.MechanicalPageMixin is mechanical_page.MechanicalPageMixin
 
 
 def test_palette() -> None:

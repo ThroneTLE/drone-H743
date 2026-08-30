@@ -10,11 +10,13 @@ import subprocess
 import sys
 
 from tools import drone_tcp_panel as legacy_panel
+from tools.panel_lib.pages import mechanical as mechanical_page
 from tools.panel_lib.pages import v1_metrology as v1_page
 
 
 ROOT = Path(__file__).resolve().parents[1]
 LEGACY_PANEL_PATH = ROOT / "tools" / "drone_tcp_panel.py"
+MECHANICAL_PAGE_PATH = ROOT / "tools" / "panel_lib" / "pages" / "mechanical.py"
 V1_PAGE_PATH = ROOT / "tools" / "panel_lib" / "pages" / "v1_metrology.py"
 
 METHOD_AST_SHA256 = {
@@ -43,10 +45,8 @@ METHOD_AST_SHA256 = {
     "_v1_target_worker": "ab7013ab7d4a53b86232c75aa9a5bf4800e8e5411c46b6f5c4e37fb4ca4ed4a8",
     "_v1_drain_events": "26e7ed7959bf9e7d52a8c1b6b1010334656154ac393c131efed877ec292e0483",
 }
-UNTOUCHED_PAGE_BUILDERS = {
-    "_build_mechanical_calibration_page",
-    "_build_flow_range_calibration_page",
-}
+UNTOUCHED_LEGACY_BUILDERS = {"_build_flow_range_calibration_page"}
+EXTRACTED_MECHANICAL_BUILDERS = {"_build_mechanical_calibration_page"}
 
 
 def parsed(path: Path) -> ast.Module:
@@ -74,11 +74,14 @@ def ast_sha256(node: ast.AST) -> str:
 def test_v1_page_mixin_owns_the_builder_and_every_v1_handler() -> None:
     owned = class_methods(V1_PAGE_PATH, "V1PageMixin")
     legacy = class_methods(LEGACY_PANEL_PATH, "DronePanel")
+    mechanical = class_methods(MECHANICAL_PAGE_PATH, "MechanicalPageMixin")
 
     assert set(owned) == set(METHOD_AST_SHA256)
     assert set(METHOD_AST_SHA256).isdisjoint(legacy)
-    assert UNTOUCHED_PAGE_BUILDERS <= set(legacy)
-    assert UNTOUCHED_PAGE_BUILDERS.isdisjoint(owned)
+    assert UNTOUCHED_LEGACY_BUILDERS <= set(legacy)
+    assert EXTRACTED_MECHANICAL_BUILDERS <= set(mechanical)
+    assert (UNTOUCHED_LEGACY_BUILDERS | EXTRACTED_MECHANICAL_BUILDERS).isdisjoint(owned)
+    assert legacy_panel.MechanicalPageMixin is mechanical_page.MechanicalPageMixin
 
 
 def test_all_24_methods_match_the_post_increment4_ast() -> None:

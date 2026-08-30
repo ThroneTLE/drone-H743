@@ -18,13 +18,21 @@ from tools.ground_calibration import (
 
 ROOT = Path(__file__).resolve().parents[1]
 PANEL_SOURCE = (ROOT / "tools" / "drone_tcp_panel.py").read_text(encoding="utf-8")
+MECHANICAL_PAGE_SOURCE = (
+    ROOT / "tools" / "panel_lib" / "pages" / "mechanical.py"
+).read_text(encoding="utf-8")
 
 
 def function_body(name: str) -> str:
+    source = (
+        MECHANICAL_PAGE_SOURCE
+        if name == "_build_mechanical_calibration_page" or name.startswith("_mechanical_")
+        else PANEL_SOURCE
+    )
     marker = f"    def {name}("
-    start = PANEL_SOURCE.index(marker)
-    next_method = PANEL_SOURCE.find("\n    def ", start + len(marker))
-    return PANEL_SOURCE[start:] if next_method < 0 else PANEL_SOURCE[start:next_method]
+    start = source.index(marker)
+    next_method = source.find("\n    def ", start + len(marker))
+    return source[start:] if next_method < 0 else source[start:next_method]
 
 
 def test_calibration_navigation_uses_function_names_instead_of_version_codes() -> None:

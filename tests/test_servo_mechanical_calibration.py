@@ -77,11 +77,11 @@ def test_flow_compensation_snapshot_is_coherent_and_exported_as_flu() -> None:
 
 
 def test_panel_only_marks_servo_target_written_after_persisted_match() -> None:
-    panel = read("tools/drone_tcp_panel.py")
-    assert "应用到 RAM" in panel
-    assert "撤销 RAM 预览" in panel
-    assert "写入参数 Flash" in panel
-    assert "重启后核对" in panel
-    assert '_mechanical_target_matches_local("persisted")' in panel
-    assert '"target_parameters_written": persisted_match' in panel
-    assert '"reboot_verification_passed": self.mechanical_reboot_verified' in panel
+    mechanical = read("tools/panel_lib/pages/mechanical.py")
+    assert "应用到 RAM" in mechanical
+    assert "撤销 RAM 预览" in mechanical
+    assert "写入参数 Flash" in mechanical
+    assert "重启后核对" in mechanical
+    assert '_mechanical_target_matches_local("persisted")' in mechanical
+    assert '"target_parameters_written": persisted_match' in mechanical
+    assert '"reboot_verification_passed": self.mechanical_reboot_verified' in mechanical

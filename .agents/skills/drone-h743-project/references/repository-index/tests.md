@@ -4,7 +4,7 @@
 
 Read this shard only when you need existing behavioral/architecture coverage or must choose focused regression tests.
 
-Source snapshot: `f59df8a1079f`. Indexed files: 82.
+Source snapshot: `0c55c6b4dbfd`. Indexed files: 83.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -58,6 +58,7 @@ Source snapshot: `f59df8a1079f`. Indexed files: 82.
 | `tests/test_imuframe_param_protocol.py` | IMU frame correction persistence and command-safety contract | `test_protocol_reserves_a_stable_imuframe_request_id`, `test_orientation_lives_in_versioned_fcal_aggregate`, `test_ascii_commands_support_safe_temporary_apply_revert_and_commit`, `test_status_is_machine_parseable_and_distinguishes_candidate_from_flash`, `test_legacy_config_commands_cannot_change_active_orientation`, `test_runtime_tick_observes_param_generation_without_overwriting_temp_apply` (+1) |
 | `tests/test_led_status_contract.py` | Automated checks for led status contract | `test_led_status_reports_arm_block_reasons_and_flow_health` |
 | `tests/test_link_keepalive.py` | USB CDC 空闲探活回归测试。 背景（2026-08-28 ST-Link 实测确认）：飞控在 USB CDC 上是纯命令/响应通道—— 周期性 VOFA 遥测在 App/Src/app_vofa.c 里被 APP_AiWB2_IsS… | `test_firmware_has_no_unsolicited_usb_telemetry`, `test_link_health_check_drives_the_keepalive`, `test_idle_link_is_probed_with_readonly_ping`, `test_never_received_anything_still_gets_probed`, `test_busy_link_is_not_probed`, `test_keepalive_is_rate_limited` (+13) |
+| `tests/test_mech.py` | Automated checks for mech | `test_s6` |
 | `tests/test_nav_ekf_contract.py` | Automated checks for nav ekf contract | `test_quality_adaptive_flow_ekf_is_enabled_in_stabilizer`, `test_nav_ekf_exposes_industry_consistency_metrics`, `test_velocity_control_uses_flow_ekf_with_limited_compensated_imu_bridge`, `test_nav_ekf_state_model_contains_velocity_and_accel_bias` |
 | `tests/test_optical_flow_contract.py` | Automated checks for optical flow contract | `test_micolink_parser_accepts_live_range_and_flow_payload_shape`, `test_micolink_parser_rejects_bad_checksum_and_oversize_payload`, `test_micolink_parser_resynchronizes_after_noise_and_ignores_other_messages`, `test_optical_flow_sources_are_wired_into_firmware_and_cubemx`, `test_velocity_source_uses_flow_dominant_ekf_without_imu_velocity_fallback`, `test_optical_flow_fault_recovery_runs_outside_sensor_step` (+6) |
 | `tests/test_panel_autoconnect.py` | 记住上次的连接并在启动时自动连回去。 关键点是**按什么认板子**：Windows 给 USB 串口分配的 COM 号会变（本机就出现过同一块 飞控在 COM30/31/32 之间跳），而 ST-Link、蓝牙串口、CH340 会占掉腾出… | `test_fingerprint_is_stable_across_com_renumbering`, `test_two_boards_of_the_same_model_get_different_fingerprints`, `test_a_port_without_a_serial_number_falls_back_to_the_usb_location`, `test_a_port_with_no_usb_identity_has_no_fingerprint`, `test_same_port_is_matched`, `test_the_board_is_followed_when_windows_renumbers_it` (+10) |
