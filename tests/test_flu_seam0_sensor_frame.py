@@ -1,4 +1,4 @@
-"""R-F0 seam 0 (SENSOR) FLU evidence contract."""
+"""R-F0 seam 0 sensor FLU contract."""
 
 # test_sensor_orientation_runtime.py already pins the 24-entry Flash ABI table,
 # the fixed chip -> legacy_intermediate_v1 mapping and the per-code
@@ -57,7 +57,7 @@ def extract_orientation_source() -> str:
     return source[start:end]
 
 
-def test_persisted_code_maps_to_descriptor() -> None:
+def test_persisted_code_descriptor() -> None:
     """Guard the Flash ABI slot this seam's evidence is anchored to."""
     source = read(SOURCE)
     table_start = source.index("app_sensor_flu_orientations[APP_SENSOR_FLU_ORIENTATION_COUNT]")
@@ -218,7 +218,7 @@ int main(void)
 """
 
 
-def test_sensor_publishes_canonical_flu(
+def test_sensor_publishes_flu(
     tmp_path: Path,
 ) -> None:
     compiler = shutil.which("gcc") or shutil.which("clang")

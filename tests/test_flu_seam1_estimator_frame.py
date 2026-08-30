@@ -1,4 +1,4 @@
-"""R-F1 seam 1 (ESTIMATOR) FLU evidence contract."""
+"""R-F1 seam 1 estimator FLU contract."""
 
 # test_attitude_fusion_contract.py exercises the estimator only through
 # DRV_AttitudeFusion_Init(), i.e. the legacy NED convention fed with FRD
@@ -37,7 +37,7 @@ def read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def test_convention_tracks_active_frame() -> None:
+def test_convention_tracks_frame() -> None:
     """The convention must track the active body frame, not a build flag."""
     source = read(STABILIZER)
     assert re.search(
@@ -54,7 +54,7 @@ def _fusion_input_block(source: str) -> str:
     return source[start:end]
 
 
-def test_flu_branch_has_no_sign_compensation() -> None:
+def test_flu_branch_no_sign_comp() -> None:
     """Seam 1's whole point: no scattered negations once the body frame is FLU."""
     block = _fusion_input_block(read(STABILIZER))
     flu_branch = block[block.index("if (flu_active != 0U) {"):block.index("} else {")]
@@ -65,7 +65,7 @@ def test_flu_branch_has_no_sign_compensation() -> None:
     assert "-msg->imu." not in flu_branch
 
 
-def test_legacy_branch_transform_pinned() -> None:
+def test_legacy_transform_pinned() -> None:
     """Pin the un-migrated fallback exactly as it is.
 
     Expressed in chip axes the legacy branch feeds the estimator
@@ -89,7 +89,7 @@ def test_legacy_branch_transform_pinned() -> None:
     assert "fusion_input.accelerometer_g[2] = -msg->imu.accel_z_g;" in legacy_branch
 
 
-def test_header_declares_quaternion_frames() -> None:
+def test_header_quaternion_frames() -> None:
     """The FLU reference forbids exporting attitude without this declaration."""
     header = read(FUSION_HEADER)
     assert "body-to-navigation" in header
@@ -217,7 +217,7 @@ int main(void)
 """
 
 
-def test_estimator_flu_signs_under_nwu(tmp_path: Path) -> None:
+def test_estimator_nwu_signs(tmp_path: Path) -> None:
     compiler = shutil.which("gcc") or shutil.which("clang")
     if compiler is None:
         pytest.fail("seam 1 FLU contract requires host gcc or clang")

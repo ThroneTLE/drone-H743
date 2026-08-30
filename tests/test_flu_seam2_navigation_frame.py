@@ -52,7 +52,7 @@ def test_nav_header_names_frame() -> None:
     assert "level_z_body_unit" in header
 
 
-def test_boundary_adapter_declares_removal() -> None:
+def test_adapter_declares_removal() -> None:
     """The adapter must say, in words, when it is to be deleted."""
     source = read(STABILIZER)
     assert f"static void {ADAPTER}(" in source

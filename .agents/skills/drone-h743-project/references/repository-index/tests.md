@@ -4,7 +4,7 @@
 
 Read this shard only when you need existing behavioral/architecture coverage or must choose focused regression tests.
 
-Source snapshot: `750a0acebc1c`. Indexed files: 86.
+Source snapshot: `81ecf1b798fb`. Indexed files: 87.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -40,9 +40,10 @@ Source snapshot: `750a0acebc1c`. Indexed files: 86.
 | `tests/test_flight_validation.py` | Automated checks for flight validation | `test_fixed_stages_document_the_requested_flu_actions`, `test_static_stage_reports_statistics_axis_sign_and_pass`, `test_six_face_passes_flu_and_candidate_is_identity_but_not_applied`, `test_six_face_infers_nonidentity_signed_permutation_without_claiming_match`, `test_three_positive_bases_reject_an_improper_signed_permutation`, `test_positive_rotation_uses_canonical_flu_gyro_direction` (+14) |
 | `tests/test_flu_frame_contract.py` | Automated checks for flu frame contract | `test_skill_routes_coordinate_work_to_the_normative_contract`, `test_runtime_migration_cannot_be_declared_complete_yet`, `test_flu_contract_compiles_and_executes` |
 | `tests/test_flu_runtime_candidate_pipeline.py` | Automated checks for flu runtime candidate pipeline | `test_frame_candidate_is_applied_once_before_any_estimator_consumer`, `test_frame_change_resets_state_and_selects_nwu_for_canonical_flu`, `test_canonical_flu_fusion_branch_uses_one_unmodified_vector_contract`, `test_partial_runtime_migration_is_hard_locked_against_arming`, `test_snapshot_carries_the_frame_code_from_the_same_processed_sample`, `test_fusion_driver_exposes_explicit_ned_and_nwu_initialisation` |
-| `tests/test_flu_seam0_sensor_frame.py` | R-F0 seam 0 (SENSOR) FLU evidence contract | `test_persisted_code_maps_to_descriptor`, `test_mounting_comment_matches_v0`, `test_sensor_publishes_canonical_flu` |
-| `tests/test_flu_seam1_estimator_frame.py` | R-F1 seam 1 (ESTIMATOR) FLU evidence contract | `test_convention_tracks_active_frame`, `test_flu_branch_has_no_sign_compensation`, `test_legacy_branch_transform_pinned`, `test_header_declares_quaternion_frames`, `test_estimator_flu_signs_under_nwu` |
-| `tests/test_flu_seam2_navigation_frame.py` | R-F2 seam 2 (NAVIGATION) FLU migration contract | `test_nav_builds_local_level_flu`, `test_nav_header_names_frame`, `test_boundary_adapter_declares_removal`, `test_nav_bit_exact_through_adapter` |
+| `tests/test_flu_seam0_sensor_frame.py` | R-F0 seam 0 sensor FLU contract | `test_persisted_code_descriptor`, `test_mounting_comment_matches_v0`, `test_sensor_publishes_flu` |
+| `tests/test_flu_seam1_estimator_frame.py` | R-F1 seam 1 estimator FLU contract | `test_convention_tracks_frame`, `test_flu_branch_no_sign_comp`, `test_legacy_transform_pinned`, `test_header_quaternion_frames`, `test_estimator_nwu_signs` |
+| `tests/test_flu_seam2_navigation_frame.py` | R-F2 seam 2 (NAVIGATION) FLU migration contract | `test_nav_builds_local_level_flu`, `test_nav_header_names_frame`, `test_adapter_declares_removal`, `test_nav_bit_exact_through_adapter` |
+| `tests/test_flu_seam3_controller_frame.py` | R-F3 seam 3 controller FLU boundary contract | `test_frame_signs_and_gains`, `test_mount_outside_control_law`, `test_stabilizer_feed_pinned`, `test_header_input_contract` |
 | `tests/test_ground_calibration.py` | Automated checks for ground calibration | `test_calibration_navigation_uses_function_names_instead_of_version_codes`, `test_mechanical_page_is_guarded_and_only_claims_a_matching_target_readback`, `test_mechanical_page_jog_ux_covers_flu_guides_trim_and_release`, `test_flow_page_covers_required_ground_checks_and_uses_compensated_velocity`, `test_vibration_page_is_a_non_actionable_placeholder_with_existing_filter_baseline`, `test_static_flow_reports_zero_offset_and_noise` (+9) |
 | `tests/test_ident_decoupled.py` | Automated checks for ident decoupled | `test_ident_control_payload_and_decoupled_servo_takeover`, `test_ident_commands_exist_and_are_text_based`, `test_closed_loop_attitude_ident_injects_reference_accel_and_logs_it`, `test_attitude_ident_safe_start_accepts_unsettled_controller_quality`, `test_ident_sample_parser_and_step_fit` |
 | `tests/test_imu_aaf_contract.py` | Contract tests for the ICM-42688 anti-alias filter and accelerometer range. The AAF is an analogue filter ahead of the… | `test_accel_range_is_16g_to_avoid_vibration_clipping`, `test_scaling_is_derived_from_configured_range_not_hardcoded`, `test_aaf_registers_are_configured_in_both_user_banks`, `test_board_requests_an_aaf_cutoff_below_nyquist`, `test_aaf_cutoff_selection_snaps_to_supported_values` |
