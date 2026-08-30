@@ -74,7 +74,10 @@ def test_successful_receiving_ready_states_and_target_binding_are_accepted() -> 
 
 
 def test_panel_exposes_real_apply_revert_commit_controls() -> None:
-    source = (Path(__file__).resolve().parents[1] / "tools" / "drone_tcp_panel.py").read_text(encoding="utf-8")
+    source = (
+        Path(__file__).resolve().parents[1]
+        / "tools" / "panel_lib" / "pages" / "v1_metrology.py"
+    ).read_text(encoding="utf-8")
     assert "_v1_apply_candidate" in source
     assert "_v1_revert_candidate" in source
     assert "_v1_commit_candidate" in source

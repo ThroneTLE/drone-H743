@@ -4,7 +4,7 @@
 
 Read this shard only when you need existing behavioral/architecture coverage or must choose focused regression tests.
 
-Source snapshot: `7a4a9134f63c`. Indexed files: 79.
+Source snapshot: `f816223cbc20`. Indexed files: 80.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -65,6 +65,7 @@ Source snapshot: `7a4a9134f63c`. Indexed files: 79.
 | `tests/test_panel_proto_extraction.py` | S6 panel protocol extraction ownership and compatibility contract | `test_proto_module_owns_the_protocol_table_and_parsing_helpers`, `test_legacy_panel_forwards_every_proto_symbol_without_wrappers`, `test_protocol_line_methods_move_intact_to_the_mixin`, `test_transport_uses_proto_constants_but_keeps_existing_frame_builders`, `parsed`, `top_level_definitions` (+2) |
 | `tests/test_panel_state_extraction.py` | S6 panel-state persistence extraction ownership and compatibility contract | `test_state_module_owns_persistence_and_logging_implementation`, `test_legacy_panel_forwards_every_state_symbol_without_wrappers`, `test_panel_state_round_trip_uses_only_the_configured_state_path`, `test_logging_helpers_write_only_to_injected_temporary_paths`, `parsed`, `top_level_definitions` (+3) |
 | `tests/test_panel_transport_extraction.py` | S6 panel transport extraction ownership and compatibility contract | `test_transport_module_owns_moved_definitions`, `test_legacy_panel_forwards_the_transport_api_without_wrappers`, `test_legacy_panel_keeps_the_direct_script_import_context`, `top_level_definitions` |
+| `tests/test_panel_v1_page_extraction.py` | S6 V1-metrology page extraction ownership and compatibility contract | `test_v1_page_mixin_owns_the_builder_and_every_v1_handler`, `test_all_24_methods_match_the_post_increment4_ast`, `test_legacy_panel_forwards_v1_methods_without_wrappers`, `test_v1_page_keeps_the_extracted_drift_builder_composition`, `test_v1_module_keeps_the_same_dependencies_and_page_constants`, `test_legacy_panel_keeps_the_direct_script_import_context` (+3) |
 | `tests/test_pipeline_contract.py` | Automated checks for pipeline contract | `test_pipeline_exists_with_required_sections`, `test_mainline_nodes_match_between_diagram_and_gate_table`, `test_current_position_points_at_an_incomplete_mainline_node`, `test_flight_node_stays_frozen_until_runtime_flu_migration_completes`, `test_evidence_table_rows_are_dated_and_not_ahead_of_last_update`, `test_req_checklist_ids_unique_and_statuses_valid` (+5) |
 | `tests/test_project_index_contract.py` | Automated checks for project index contract | `test_repository_index_is_current`, `test_repository_index_has_hard_context_limits`, `test_large_vendor_and_data_trees_are_aggregated` |
 | `tests/test_rangefinder_contract.py` | Automated checks for rangefinder contract | `test_tfmini_parser_accepts_documented_nine_byte_frame`, `test_tfmini_parser_resynchronizes_after_noise_and_bad_checksum`, `test_uart8_rangefinder_is_wired_through_project_layers`, `test_rangefinder_no_longer_feeds_flow_or_altitude_control`, `test_rangefinder_filters_weak_samples_without_step_change_gating`, `test_vofa_channel_three_reports_combo_flow_height` (+4) |

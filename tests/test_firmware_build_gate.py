@@ -20,6 +20,9 @@ from tools import drone_tcp_panel as panel
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = (ROOT / "tools" / "drone_tcp_panel.py").read_text(encoding="utf-8")
+V1_SOURCE = (
+    ROOT / "tools" / "panel_lib" / "pages" / "v1_metrology.py"
+).read_text(encoding="utf-8")
 
 
 def function_body(source: str, signature: str) -> str:
@@ -238,8 +241,12 @@ def test_target_refusal_is_shown_verbatim() -> None:
 
 def test_v1_and_v2a_keep_the_full_snapshot_gate() -> None:
     """这两个流程会真的驱动舵机，且没有目标侧拒绝，必须保留主机闸门。"""
-    for name in ("    def _v2_start(", "    def _v1_refresh_controls("):
-        assert "_validation_live_safety_gate()" in function_body(SOURCE, name)
+    assert "_validation_live_safety_gate()" in function_body(
+        SOURCE, "    def _v2_start("
+    )
+    assert "_validation_live_safety_gate()" in function_body(
+        V1_SOURCE, "    def _v1_refresh_controls("
+    )
     gate = function_body(SOURCE, "    def _validation_live_safety_gate(")
     assert 'if level != "ok":' in gate
 

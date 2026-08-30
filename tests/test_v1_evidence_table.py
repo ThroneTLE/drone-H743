@@ -21,6 +21,7 @@ import pytest
 from tools import drone_tcp_panel as panel
 from tools import v1_metrology_session as session_module
 from tools.imu_metrology import MetrologyStage, MetrologyStatus
+from tools.panel_lib.pages import v1_metrology as v1_page
 
 from test_v1_metrology_session import v4_header, v4_sample
 
@@ -231,7 +232,7 @@ def test_an_old_session_still_shows_its_retired_captures(app, tmp_path) -> None:
 
 def test_the_capture_gives_the_operator_time_to_get_ready(app) -> None:
     """6 s 的录制窗口按下就开录，手还没扶稳窗口已经用掉一截。"""
-    source = Path(panel.__file__).read_text(encoding="utf-8")
+    source = Path(v1_page.__file__).read_text(encoding="utf-8")
     worker = source[source.index("def _v1_capture_worker"):]
     worker = worker[:worker.index("\n    def ")]
     prep = worker.index("V1_CAPTURE_PREP_SECONDS")

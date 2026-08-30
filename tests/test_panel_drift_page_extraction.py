@@ -14,6 +14,7 @@ from tools.panel_lib.pages import drift as drift_page
 ROOT = Path(__file__).resolve().parents[1]
 LEGACY_PANEL_PATH = ROOT / "tools" / "drone_tcp_panel.py"
 DRIFT_PAGE_PATH = ROOT / "tools" / "panel_lib" / "pages" / "drift.py"
+V1_PAGE_PATH = ROOT / "tools" / "panel_lib" / "pages" / "v1_metrology.py"
 
 BUILD_METHOD = "_build_drift_page"
 MOVED_HANDLERS = {
@@ -98,7 +99,7 @@ def test_moved_drift_page_ast_matches_the_pre_extraction_implementation() -> Non
 
 
 def test_v1_page_keeps_the_drift_builder_at_the_original_slot() -> None:
-    v1 = class_methods(LEGACY_PANEL_PATH, "DronePanel")["_build_v1_page"]
+    v1 = class_methods(V1_PAGE_PATH, "V1PageMixin")["_build_v1_page"]
     calls = [
         node
         for node in ast.walk(v1)

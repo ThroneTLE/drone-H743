@@ -4,7 +4,7 @@
 
 Read this shard only when the task uses serial/TCP diagnostics, log analysis, identification, capture, calibration, or desktop UIs.
 
-Source snapshot: `32d4bab8ec8b`; aggregate snapshot: `ce7def1f86a3`. Covered files: 5298.
+Source snapshot: `e0c432c181c7`; aggregate snapshot: `ce7def1f86a3`. Covered files: 5299.
 
 | File/module or scope | Content outline | Key entry points / size |
 |---|---|---|
@@ -48,6 +48,7 @@ Source snapshot: `32d4bab8ec8b`; aggregate snapshot: `ce7def1f86a3`. Covered fil
 | `tools/panel_lib/__init__.py` | Reusable implementation modules for :mod:`tools.drone_tcp_panel` | — |
 | `tools/panel_lib/pages/__init__.py` | Panel page builders and their event handlers | — |
 | `tools/panel_lib/pages/drift.py` | Stationary-drift page builder and handlers | `DriftPageMixin` |
+| `tools/panel_lib/pages/v1_metrology.py` | V1 IMU metrology page builder and handlers | `V1PageMixin` |
 | `tools/panel_lib/proto.py` | Protocol identifiers and line-parsing helpers for the panel | `parse_kv`, `safe_int`, `safe_float`, `first_value`, `first_float`, `ProtocolLineMixin` |
 | `tools/panel_lib/state.py` | Panel-local state persistence and best-effort log helpers | `PanelStateMixin`, `append_log`, `record_panel_crash` |
 | `tools/panel_lib/transport.py` | Transport primitives and serial-device reconnect helpers for the panel | `udp_payload_is_probably_text`, `serial_device_identity_policy`, `serial_port_identity`, `serial_port_fingerprint`, `match_remembered_serial_port`, `select_reenumerated_application_port` (+7) |

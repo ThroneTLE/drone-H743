@@ -14,6 +14,9 @@ from tools.panel_lib import transport as panel_transport
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = (ROOT / "tools" / "drone_tcp_panel.py").read_text(encoding="utf-8")
+V1_SOURCE = (
+    ROOT / "tools" / "panel_lib" / "pages" / "v1_metrology.py"
+).read_text(encoding="utf-8")
 TRANSPORT_SOURCE = (ROOT / "tools" / "panel_lib" / "transport.py").read_text(
     encoding="utf-8"
 )
@@ -548,7 +551,7 @@ def contrast_ratio(fg: str, bg: str) -> float:
 def test_panel_visual_hierarchy_uses_semantic_styles_and_guidance() -> None:
     configure = function_body(SOURCE, "    def _configure_style(")
     validation = function_body(SOURCE, "    def _build_validation_page(")
-    v1 = function_body(SOURCE, "    def _build_v1_page(")
+    v1 = function_body(V1_SOURCE, "    def _build_v1_page(")
     v2 = function_body(SOURCE, "    def _build_v2_page(")
     firmware = function_body(SOURCE, "    def _build_firmware_update_page(")
     for style in (
@@ -796,11 +799,11 @@ def test_v0_page_exposes_a_visible_history_selector_and_resume_control() -> None
 
 
 def test_v1_page_relinquishes_usb_and_exposes_guarded_apply_commit() -> None:
-    page = function_body(SOURCE, "    def _build_v1_page(")
-    start = function_body(SOURCE, "    def _v1_start_capture(")
-    worker = function_body(SOURCE, "    def _v1_capture_worker(")
-    drain = function_body(SOURCE, "    def _v1_drain_events(")
-    assert "IMU 零偏、比例与正交性校准" in SOURCE
+    page = function_body(V1_SOURCE, "    def _build_v1_page(")
+    start = function_body(V1_SOURCE, "    def _v1_start_capture(")
+    worker = function_body(V1_SOURCE, "    def _v1_capture_worker(")
+    drain = function_body(V1_SOURCE, "    def _v1_drain_events(")
+    assert "IMU 零偏、比例与正交性校准" in V1_SOURCE
     assert "应用基础/完整候选到 RAM" in page
     assert "确认后写入参数 Flash" in page
     assert "_v1_apply_candidate" in page
