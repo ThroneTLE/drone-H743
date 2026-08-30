@@ -27,6 +27,7 @@ SERVO_CAL_HEADER = ROOT / "App" / "Inc" / "app_servo_cal.h"
 CONTROL = ROOT / "App" / "Src" / "app_control.c"
 CONTROL_CORE = ROOT / "App" / "Src" / "app_control_core.c"
 SERVOCAL_CMD = ROOT / "App" / "Src" / "app_cmd_servocal.c"
+IMUCAL_CMD = ROOT / "App" / "Src" / "app_cmd_imucal.c"
 CONTROL_INTERNAL = ROOT / "App" / "Inc" / "app_control_internal.h"
 CMAKE = ROOT / "CMakeLists.txt"
 
@@ -120,6 +121,33 @@ STEP_C_INIT_FRAGMENT = """    memset(&control_servocal_preview, 0,
     control_servocal_commit_pending = 0U;
     app_control_servocal_set_event("init", "none");
     APP_Stabilizer_SetServoCalibrationCandidateArmLock(0U);"""
+STEP_D1_BODY_SHA256 = {
+    "app_control_imucal_clear_candidate": "e6c3bd116af8d32f7df1af6d73c4b4dc9784ff9aa908a13728f70830e1998cec",
+    "app_control_imucal_set_event": "48bffc9d5f42d37dedd67eadc50e3be522390e597996c655e43be709d4279722",
+    "app_control_report_imucal": "a303d165eafbc51114194e2fa9f991f8dcc4a9c39d420aeaffe4fe8f321b3d0e",
+    "app_control_parse_hex_u32": "4f907fca5afa2296619f2e43fdfe4495d2b2b8fc24931c3a2030c1f4833811c5",
+    "app_control_imucal_candidate_context_error": "5f851c8c07572645177909f463d785c40329083c19854d506460d5423fe8fd34",
+    "app_control_imucal_transfer_result": "900f5ec2f618107ad65f53ae0c53c23c66528ab9fbfebd31eb1edb2f214a9c85",
+    "app_control_handle_imucal": "23534947668ae744ef42e2bb6b0986fafa9d9b8ada1e5fbc5e2500141790424a",
+    "app_control_service_imucal": "5362e08b66811810813edb109e187f7378039ff8bdb9cc5579e67bfca68ead9c",
+}
+STEP_D1_STATE_NAMES = {
+    "control_imucal_upload",
+    "control_imucal_preview",
+    "control_imucal_pending_record",
+    "control_imucal_preview_generation",
+    "control_imucal_last_request",
+    "control_imucal_applied",
+    "control_imucal_commit_pending",
+    "control_imucal_last_event",
+    "control_imucal_last_reason",
+}
+STEP_D1_LEGACY_BODY_SHA256 = {
+    "APP_Control_Init": "915f5da2b411342a25a458a4c172f3cf1716a0bc1d870764764f7cf6489671eb",
+    "app_control_imuframe_sync_param": "1d5b5697c1d6b853bb76d6e38dc51268f4960410733dd87a8e1b9cd7ceb35db6",
+    "app_control_imucal_safety": "87327cf50ef57f4566ad276d868912f8bbac6f3e99524e80b20b2b0b544d4c78",
+    "app_control_handle_acceptance": "f10cf7512f9fab6a1e9ccfdc1957e8b2a3d2b5d4803c50b74dc27e3c2627e9a9",
+}
 
 CORE_HARNESS = r"""
 #include "app_control_internal.h"
@@ -281,12 +309,20 @@ def _body_after_signature(source: str, signature: str) -> str:
 
 def _check_app_control_step_b() -> None:
     control = CONTROL.read_text(encoding="utf-8")
+    imucal = IMUCAL_CMD.read_text(encoding="utf-8") if IMUCAL_CMD.is_file() else ""
     internal = CONTROL_INTERNAL.read_text(encoding="utf-8")
     for name, expected_hash in STEP_B_LEGACY_BODY_SHA256.items():
         body = _c_function_body(control, name)
         assert hashlib.sha256(body.encode()).hexdigest() == expected_hash
     for signature, expected_body in STEP_B_ACCESSOR_BODIES.items():
-        assert _body_after_signature(control, signature) == expected_body
+        owner = (
+            imucal
+            if any(name in signature for name in (
+                "imucal_upload_state", "imucal_applied", "imucal_commit_pending"
+            ))
+            else control
+        )
+        assert _body_after_signature(owner, signature) == expected_body
         assert signature in internal
     assert not re.search(r"\bextern\b.*\bcontrol_(?:imucal|imuframe)", internal)
 
@@ -378,11 +414,11 @@ def _check_app_control_step_c(tmp_path: Path) -> None:
     for call in (
         "app_cmd_servocal_init();",
         "app_cmd_servocal_on_persisted(&calibration);",
-        "app_cmd_servocal_is_busy()",
         "app_control_service_servocal();",
         "app_control_handle_servocal(tokens, count);",
     ):
         assert call in legacy
+    assert "app_cmd_servocal_is_busy()" in IMUCAL_CMD.read_text(encoding="utf-8")
     for declaration in (
         "void app_control_handle_servocal(char **tokens, uint32_t count);",
         "void app_control_service_servocal(void);",
@@ -411,6 +447,138 @@ def _check_app_control_step_c(tmp_path: Path) -> None:
             str(SERVOCAL_CMD),
             "-o",
             str(tmp_path / "app_cmd_servocal.o"),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+
+def _write_imucal_stubs(stub_dir: Path) -> None:
+    stub_dir.mkdir()
+    (stub_dir / "app_control.h").write_text(
+        "void APP_Control_QueueText(const char *, ...);\n", encoding="ascii"
+    )
+    (stub_dir / "app_firmware_identity.h").write_text(
+        "#include <stdint.h>\n"
+        "typedef struct { uint32_t image_crc32; uint32_t image_size; } APP_FirmwareIdentity;\n"
+        "uint8_t APP_FirmwareIdentity_Get(APP_FirmwareIdentity*);\n",
+        encoding="ascii",
+    )
+    (stub_dir / "app_proto.h").write_text(
+        "#define APP_PROTO_MSG_IMU_CAL 0x2221U\n", encoding="ascii"
+    )
+    (stub_dir / "app_sensor.h").write_text(
+        "#include <stdint.h>\n"
+        "#define APP_SENSOR_FLU_ORIENTATION_LEGACY 255U\n"
+        "typedef struct { uint32_t value; } DRV_IMU_Calibration;\n"
+        "uint8_t APP_Sensor_GetFluOrientation(void);\n",
+        encoding="ascii",
+    )
+    (stub_dir / "app_stabilizer.h").write_text(
+        "#include <stdint.h>\n"
+        "typedef struct { uint32_t sequence; uint32_t calibration_generation; } StabilizerValidationImuSnapshot;\n"
+        "uint8_t APP_Stabilizer_IsImuCalibrationCandidateArmLocked(void);\n"
+        "void APP_Stabilizer_SetImuCalibrationCandidateArmLock(uint8_t);\n",
+        encoding="ascii",
+    )
+    (stub_dir / "main.h").write_text(
+        "#include <stdint.h>\nuint32_t HAL_GetTick(void);\n", encoding="ascii"
+    )
+    (stub_dir / "svc_param.h").write_text(
+        "#include <stdint.h>\n"
+        "typedef enum { SVC_PARAM_STATUS_OK = 0 } SVC_ParamStatus;\n"
+        "uint8_t SVC_Param_IsDirty(void);\n"
+        "SVC_ParamStatus SVC_Param_GetBlob(uint8_t*,uint32_t,uint32_t*);\n"
+        "SVC_ParamStatus SVC_Param_SetBlob(const uint8_t*,uint32_t);\n"
+        "uint32_t SVC_Param_RequestSaveBlob(void);\n",
+        encoding="ascii",
+    )
+    (stub_dir / "app_flight_calibration.h").write_text(
+        "#include <stdint.h>\n"
+        "#define APP_FLIGHT_CAL_VALID_ORIENTATION 0x01U\n"
+        "typedef struct { uint32_t base_generation; uint8_t orientation_code; "
+        "uint8_t valid_mask; } APP_FlightCalibrationV1Candidate;\n"
+        "typedef struct { uint8_t schema; uint8_t frame_contract; "
+        "uint32_t calibration_generation; uint8_t valid_mask; uint8_t orientation_code; "
+        "float accel_bias[3]; float accel_correction[3][3]; float gyro_bias_ref[3]; "
+        "float gyro_temp_slope[3]; float reference_temp_c; uint8_t pad[64]; } APP_FlightCalibration;\n"
+        "typedef struct { APP_FlightCalibration calibration; uint32_t generation; } APP_FlightCalibrationSnapshot;\n"
+        "typedef enum { APP_FLIGHT_CAL_UPLOAD_EMPTY = 0, APP_FLIGHT_CAL_UPLOAD_READY = 3 } APP_FlightCalibrationUploadState;\n"
+        "typedef struct { APP_FlightCalibrationV1Candidate candidate; "
+        "uint32_t received_size; uint32_t expected_size; APP_FlightCalibrationUploadState state; } APP_FlightCalibrationUpload;\n"
+        "typedef enum { APP_FLIGHT_CAL_TRANSFER_OK = 0 } APP_FlightCalibrationTransferStatus;\n"
+        "typedef enum { APP_FLIGHT_CAL_DECODE_INVALID = 0 } APP_FlightCalibrationDecodeStatus;\n"
+        "struct DRV_IMU_Calibration;\n"
+        "uint8_t APP_FlightCalibration_ReadActive(APP_FlightCalibrationSnapshot*);\n"
+        "uint8_t APP_FlightCalibration_BuildImuCalibration(const APP_FlightCalibration*,uint8_t,void*);\n"
+        "const char *APP_FlightCalibration_UploadStateText(APP_FlightCalibrationUploadState);\n"
+        "void APP_FlightCalibration_UploadReset(APP_FlightCalibrationUpload*);\n"
+        "APP_FlightCalibrationTransferStatus APP_FlightCalibration_UploadBegin(APP_FlightCalibrationUpload*,uint32_t,uint32_t,uint32_t);\n"
+        "APP_FlightCalibrationTransferStatus APP_FlightCalibration_UploadDataHex(APP_FlightCalibrationUpload*,uint32_t,const char*,uint32_t);\n"
+        "APP_FlightCalibrationTransferStatus APP_FlightCalibration_UploadEnd(APP_FlightCalibrationUpload*,uint32_t);\n"
+        "uint8_t APP_FlightCalibration_UploadExpire(APP_FlightCalibrationUpload*,uint32_t);\n"
+        "const char *APP_FlightCalibration_TransferStatusText(APP_FlightCalibrationTransferStatus);\n"
+        "uint8_t APP_FlightCalibration_MergeV1Candidate(const APP_FlightCalibration*,const APP_FlightCalibrationV1Candidate*,APP_FlightCalibration*);\n"
+        "uint8_t APP_FlightCalibration_PublishPreview(const APP_FlightCalibration*);\n"
+        "APP_FlightCalibrationDecodeStatus APP_FlightCalibration_Decode(const uint8_t*,uint32_t,APP_FlightCalibration*);\n"
+        "uint32_t APP_FlightCalibration_Encode(const APP_FlightCalibration*,uint8_t*,uint32_t);\n",
+        encoding="ascii",
+    )
+
+
+def _check_app_control_step_d1(tmp_path: Path) -> None:
+    assert IMUCAL_CMD.is_file()
+    legacy = CONTROL.read_text(encoding="utf-8")
+    imucal = IMUCAL_CMD.read_text(encoding="utf-8")
+    internal = CONTROL_INTERNAL.read_text(encoding="utf-8")
+    for name, expected_hash in STEP_D1_BODY_SHA256.items():
+        assert hashlib.sha256(_c_function_body(imucal, name).encode()).hexdigest() == expected_hash
+        assert not re.search(
+            rf"^(?:static\s+)?(?:void|uint8_t|uint32_t|const char \*\s*)\s*"
+            rf"{re.escape(name)}\s*\(",
+            legacy,
+            re.MULTILINE,
+        ), name
+    for name in STEP_D1_STATE_NAMES:
+        assert re.search(rf"^static .*\b{re.escape(name)}(?:\b|;)", imucal, re.MULTILINE)
+        assert not re.search(rf"^static .*\b{re.escape(name)}(?:\b|;)", legacy, re.MULTILINE)
+        assert re.search(rf"^#define\s+{re.escape(name)}\b", legacy, re.MULTILINE)
+    assert len(imucal.splitlines()) <= 800
+    assert "extern" not in imucal
+    for name, expected_hash in STEP_D1_LEGACY_BODY_SHA256.items():
+        assert hashlib.sha256(_c_function_body(legacy, name).encode()).hexdigest() == expected_hash
+    handler = _c_function_body(imucal, "app_control_handle_imucal")
+    assert handler.index("app_control_imuframe_sync_param();") < handler.index('strcmp(tokens[0], "IMUCAL?")')
+    assert "app_cmd_servocal_is_busy()" in handler
+    assert "APP_CONTROL_IMUCAL_SNAPSHOT_MAX_AGE_US 100000ULL" in legacy
+    assert "APP_CONTROL_IMUCAL_ESC_SAFE_MAX_US 1100U" in legacy
+    for declaration in (
+        "void app_control_handle_imucal(char **tokens, uint32_t count);",
+        "void app_control_service_imucal(void);",
+        "void *app_cmd_imucal_upload_slot(void);",
+        "uint32_t *app_control_internal_imucal_apply_sequence_slot(void);",
+    ):
+        assert declaration in internal
+
+    gcc = shutil.which("gcc")
+    if gcc is None:
+        pytest.skip("host gcc is unavailable")
+    stub_dir = tmp_path / "imucal_stubs"
+    _write_imucal_stubs(stub_dir)
+    subprocess.run(
+        [
+            gcc,
+            "-std=c11",
+            "-Wall",
+            "-Wextra",
+            "-Werror",
+            f"-I{stub_dir}",
+            f"-I{ROOT / 'App' / 'Inc'}",
+            "-c",
+            str(IMUCAL_CMD),
+            "-o",
+            str(tmp_path / "app_cmd_imucal.o"),
         ],
         check=True,
         capture_output=True,
@@ -511,3 +679,4 @@ def test_comms_task_flushes_the_notice_each_tick(tmp_path: Path) -> None:
     _check_app_control_step_a(tmp_path)
     _check_app_control_step_b()
     _check_app_control_step_c(tmp_path)
+    _check_app_control_step_d1(tmp_path)

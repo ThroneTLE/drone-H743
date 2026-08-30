@@ -33,6 +33,22 @@ uint8_t app_control_internal_imucal_upload_state(void);
 uint8_t app_control_internal_imucal_applied(void);
 uint8_t app_control_internal_imucal_commit_pending(void);
 uint8_t app_control_internal_imuframe_confirmed_code(void);
+uint32_t *app_control_internal_imucal_confirmed_generation_slot(void);
+uint32_t *app_control_internal_imucal_apply_sequence_slot(void);
+
+void app_control_handle_imucal(char **tokens, uint32_t count);
+void app_control_service_imucal(void);
+void app_cmd_imucal_clear_candidate(void);
+void app_cmd_imucal_set_event(const char *event, const char *reason);
+void *app_cmd_imucal_upload_slot(void);
+void *app_cmd_imucal_preview_slot(void);
+void *app_cmd_imucal_pending_record_slot(void);
+uint32_t *app_cmd_imucal_preview_generation_slot(void);
+uint32_t *app_cmd_imucal_last_request_slot(void);
+uint8_t *app_cmd_imucal_applied_slot(void);
+uint8_t *app_cmd_imucal_commit_pending_slot(void);
+const char **app_cmd_imucal_last_event_slot(void);
+const char **app_cmd_imucal_last_reason_slot(void);
 
 void app_control_handle_servocal(char **tokens, uint32_t count);
 void app_control_service_servocal(void);

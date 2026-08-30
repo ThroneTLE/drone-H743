@@ -276,6 +276,7 @@ def test_confirmed_snapshot_and_guarded_imucal_protocol_contract() -> None:
     header = read("App/Inc/app_flight_calibration.h")
     source = read("App/Src/app_flight_calibration.c")
     control = read("App/Src/app_control.c")
+    imucal = read("App/Src/app_cmd_imucal.c")
 
     assert "APP_FlightCalibrationSnapshot" in header
     assert "APP_FlightCalibration_PublishConfirmed" in header
@@ -287,12 +288,12 @@ def test_confirmed_snapshot_and_guarded_imucal_protocol_contract() -> None:
     assert sync.index("if (dirty != 0U)") < sync.index(
         "APP_FlightCalibration_PublishConfirmed(&calibration)"
     )
-    assert 'strcmp(tokens[0], "IMUCAL?") == 0' in control
-    assert 'strcmp(tokens[0], "IMUCAL") == 0' in control
+    assert 'strcmp(tokens[0], "IMUCAL?") == 0' in imucal
+    assert 'strcmp(tokens[0], "IMUCAL") != 0' in imucal
     assert "app_control_handle_imucal(tokens, count);" in control
-    assert "cal_generation=" in control
-    assert "valid_mask=" in control
-    assert "firmware_crc32=" in control
+    assert "cal_generation=" in imucal
+    assert "valid_mask=" in imucal
+    assert "firmware_crc32=" in imucal
 
 
 def test_imucap_v4_layout_provenance_and_v3_constants() -> None:

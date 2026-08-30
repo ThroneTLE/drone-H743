@@ -262,7 +262,7 @@ def test_candidate_upload_state_machine_runs_on_host(tmp_path: Path) -> None:
 
 
 def test_ascii_protocol_is_bounded_guarded_and_machine_parseable() -> None:
-    source = read("App/Src/app_control.c")
+    source = read("App/Src/app_cmd_imucal.c")
     proto = read("App/Inc/app_proto.h")
 
     assert "#define APP_PROTO_REQ_IMU_CAL        0x1020U" in proto
@@ -307,11 +307,12 @@ def test_ascii_protocol_is_bounded_guarded_and_machine_parseable() -> None:
 
 
 def test_apply_revert_commit_obey_runtime_and_flash_boundaries() -> None:
-    source = read("App/Src/app_control.c")
+    source = read("App/Src/app_cmd_imucal.c")
+    control = read("App/Src/app_control.c")
     handler_start = source.index(
-        "static void app_control_handle_imucal(char **tokens, uint32_t count)\n{"
+        "void app_control_handle_imucal(char **tokens, uint32_t count)\n{"
     )
-    handler = source[handler_start:source.index("static void app_control_service_imucal", handler_start)]
+    handler = source[handler_start:source.index("void app_control_service_imucal", handler_start)]
     apply = handler[handler.index('strcmp(tokens[1], "APPLY")'):
                     handler.index('strcmp(tokens[1], "REVERT")')]
     revert = handler[handler.index('strcmp(tokens[1], "REVERT")'):
@@ -322,11 +323,11 @@ def test_apply_revert_commit_obey_runtime_and_flash_boundaries() -> None:
     assert "SVC_Param_SetBlob" not in apply
     assert "APP_FlightCalibration_PublishPreview" in revert
     assert "app_control_imucal_clear_candidate" in revert
-    assert "APP_Boot_HasSequenceAdvanced" in source
-    assert "APP_CONTROL_IMUCAL_SNAPSHOT_MAX_AGE_US 100000ULL" in source
-    assert "snapshot->armed != 0U" in source
-    assert "snapshot->esc_pulse_us[0]" in source
-    assert "snapshot->esc_pulse_us[1]" in source
+    assert "APP_Boot_HasSequenceAdvanced" in control
+    assert "APP_CONTROL_IMUCAL_SNAPSHOT_MAX_AGE_US 100000ULL" in control
+    assert "snapshot->armed != 0U" in control
+    assert "snapshot->esc_pulse_us[0]" in control
+    assert "snapshot->esc_pulse_us[1]" in control
     assert "safety_snapshot.calibration_generation" in commit
     assert "APP_FlightCalibration_MergeV1Candidate" in commit
     assert commit.index("SVC_Param_GetBlob") < commit.index(
@@ -343,13 +344,14 @@ def test_candidate_hard_locks_arm_and_general_save_cannot_persist_preview() -> N
     stabilizer_h = read("App/Inc/app_stabilizer.h")
     stabilizer_c = read("App/Src/app_stabilizer.c")
     control = read("App/Src/app_control.c")
+    imucal = read("App/Src/app_cmd_imucal.c")
 
     assert "APP_Stabilizer_SetImuCalibrationCandidateArmLock" in stabilizer_h
     arm = stabilizer_c[stabilizer_c.index("uint8_t APP_Stabilizer_IsImuFrameArmLocked"):
                        stabilizer_c.index("void APP_Stabilizer_SetImuCalibrationCandidateArmLock")]
     assert "stabilizer_imu_calibration_candidate_arm_lock" in arm
-    assert "APP_Stabilizer_SetImuCalibrationCandidateArmLock(1U)" in control
-    assert "APP_Stabilizer_SetImuCalibrationCandidateArmLock(0U)" in control
+    assert "APP_Stabilizer_SetImuCalibrationCandidateArmLock(1U)" in imucal
+    assert "APP_Stabilizer_SetImuCalibrationCandidateArmLock(0U)" in imucal
     assert 'app_control_report_imuframe("imucal_busy", 0U)' in control
 
     save_start = control.index('} else if (strcmp(tokens[0], "SAVE") == 0)')
@@ -361,8 +363,8 @@ def test_candidate_hard_locks_arm_and_general_save_cannot_persist_preview() -> N
 
 
 def test_protocol_is_transport_not_a_claim_of_v1_verification() -> None:
-    source = read("App/Src/app_control.c")
+    source = read("App/Src/app_cmd_imucal.c")
 
     assert "must already have accepted validate_candidate_for_application" in source
-    assert "flight_release" not in source[source.index("static void app_control_handle_imucal"):]
-    assert "verified=1" not in source[source.index("static void app_control_handle_imucal"):]
+    assert "flight_release" not in source[source.index("void app_control_handle_imucal"):]
+    assert "verified=1" not in source[source.index("void app_control_handle_imucal"):]
