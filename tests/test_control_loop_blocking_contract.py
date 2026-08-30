@@ -18,6 +18,7 @@ CONTROL = ROOT / "App" / "Src" / "app_control.c"
 CONTROL_CORE = ROOT / "App" / "Src" / "app_control_core.c"
 SERVOCAL_CMD = ROOT / "App" / "Src" / "app_cmd_servocal.c"
 IMUCAL_CMD = ROOT / "App" / "Src" / "app_cmd_imucal.c"
+RCMAP_CMD = ROOT / "App" / "Src" / "app_cmd_rcmap.c"
 CONTROL_INTERNAL = ROOT / "App" / "Inc" / "app_control_internal.h"
 CMAKE = ROOT / "CMakeLists.txt"
 
@@ -138,6 +139,46 @@ STEP_D1_LEGACY_BODY_SHA256 = {
     "app_control_imucal_safety": "87327cf50ef57f4566ad276d868912f8bbac6f3e99524e80b20b2b0b544d4c78",
     "app_control_handle_acceptance": "f10cf7512f9fab6a1e9ccfdc1957e8b2a3d2b5d4803c50b74dc27e3c2627e9a9",
 }
+STEP_D2_PARENT_COMMIT = "ebc106f6fa8c2b16d7e7d5dda7fe8f43d1b878dd"
+STEP_D2_BODY_SHA256 = {
+    "app_control_apply_rc_config": "3ad6a64240584cc332457b241b7df41c90523f90da956ec5b3ecba52f77b3f8b",
+    "app_control_report_rc_map": "06f31a4cae822bd0ef7f38ac839d4af72fe39d6c078f40ee8584321fe2ba4c05",
+    "app_control_report_rc_live": "944a9a81b307258c01c44ef2a510d083bd8a4ffdc7fc14407c885c90a118bccd",
+    "app_control_rc_write_allowed": "91115b13961e4c5835ce97950fde25a4e3845fa041e2bc10445171fdc8fbbaee",
+}
+STEP_D2_PARENT_HANDLER_SHA256 = (
+    "6dbe4c5ae3411cbf0a9c72239a0413b5fbd184d2f24af0ce1cdeac8a44e11920"
+)
+STEP_D2_CHILD_HANDLER_SHA256 = (
+    "6a5dfe240a7011112c5171ad5060b584a50e30c265d5bb7a98eebb9b0c3d4676"
+)
+STEP_D2_DELEGATED_PERSIST_FRAGMENT = """        save_status = app_control_internal_commit_config_persist();
+        if (save_status != APP_FLASH_SERVICE_OK) {
+            app_control_report_rc_map("commit_failed");
+            return;
+        }"""
+STEP_D2_PARENT_PERSIST_FRAGMENT = """        save_status = app_control_save_config();
+        if (save_status != APP_FLASH_SERVICE_OK) {
+            control_config.last_flash_status = (uint8_t)save_status;
+            app_control_report_rc_map("commit_failed");
+            return;
+        }
+        control_config.last_flash_status = (uint8_t)save_status;
+        control_config.loaded_from_flash = 1U;
+        control_config.flash_valid = 1U;"""
+STEP_D2_PERSIST_HELPER_BODY = """{
+    APP_FlashService_Status save_status;
+
+    save_status = app_control_save_config();
+    if (save_status != APP_FLASH_SERVICE_OK) {
+        control_config.last_flash_status = (uint8_t)save_status;
+        return (uint8_t)save_status;
+    }
+    control_config.last_flash_status = (uint8_t)save_status;
+    control_config.loaded_from_flash = 1U;
+    control_config.flash_valid = 1U;
+    return (uint8_t)save_status;
+}"""
 
 CORE_HARNESS = r"""
 #include "app_control_internal.h"
@@ -537,7 +578,13 @@ def _check_app_control_step_d1(tmp_path: Path) -> None:
     assert len(imucal.splitlines()) <= 800
     assert "extern" not in imucal
     for name, expected_hash in STEP_D1_LEGACY_BODY_SHA256.items():
-        assert hashlib.sha256(_c_function_body(legacy, name).encode()).hexdigest() == expected_hash
+        body = _c_function_body(legacy, name)
+        if name == "APP_Control_Init":
+            body = body.replace(
+                "app_cmd_rcmap_apply_config(NULL);",
+                "app_control_apply_rc_config(NULL);",
+            )
+        assert hashlib.sha256(body.encode()).hexdigest() == expected_hash
     handler = _c_function_body(imucal, "app_control_handle_imucal")
     assert handler.index("app_control_imuframe_sync_param();") < handler.index('strcmp(tokens[0], "IMUCAL?")')
     assert "app_cmd_servocal_is_busy()" in handler
@@ -569,6 +616,108 @@ def _check_app_control_step_d1(tmp_path: Path) -> None:
             str(IMUCAL_CMD),
             "-o",
             str(tmp_path / "app_cmd_imucal.o"),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+
+def _write_rcmap_stubs(stub_dir: Path) -> None:
+    stub_dir.mkdir()
+    (stub_dir / "app_flash_service.h").write_text(
+        "typedef enum { APP_FLASH_SERVICE_OK = 0, APP_FLASH_SERVICE_ERROR = 1 } "
+        "APP_FlashService_Status;\n",
+        encoding="ascii",
+    )
+    (stub_dir / "app_stabilizer.h").write_text(
+        "#include <stdint.h>\nuint8_t APP_Stabilizer_IsArmed(void);\n",
+        encoding="ascii",
+    )
+    (stub_dir / "main.h").write_text(
+        "#include <stdint.h>\nuint32_t HAL_GetTick(void);\n",
+        encoding="ascii",
+    )
+
+
+def _check_app_control_step_d2(tmp_path: Path) -> None:
+    assert RCMAP_CMD.is_file()
+    legacy = CONTROL.read_text(encoding="utf-8")
+    rcmap = RCMAP_CMD.read_text(encoding="utf-8")
+    internal = CONTROL_INTERNAL.read_text(encoding="utf-8")
+    cmake = CMAKE.read_text(encoding="utf-8")
+
+    for name, expected_hash in STEP_D2_BODY_SHA256.items():
+        assert hashlib.sha256(_c_function_body(rcmap, name).encode()).hexdigest() == expected_hash, (
+            f"{name} diverged from D2 parent {STEP_D2_PARENT_COMMIT}"
+        )
+    handler = _c_function_body(rcmap, "app_control_handle_rc_map")
+    assert hashlib.sha256(handler.encode()).hexdigest() == STEP_D2_CHILD_HANDLER_SHA256
+    assert handler.count(STEP_D2_DELEGATED_PERSIST_FRAGMENT) == 1
+    parent_equivalent = handler.replace(
+        STEP_D2_DELEGATED_PERSIST_FRAGMENT,
+        STEP_D2_PARENT_PERSIST_FRAGMENT,
+    )
+    assert hashlib.sha256(parent_equivalent.encode()).hexdigest() == STEP_D2_PARENT_HANDLER_SHA256
+
+    for name in (*STEP_D2_BODY_SHA256, "app_control_handle_rc_map"):
+        assert not re.search(
+            rf"^(?:static\s+)?(?:void|uint8_t)\s+{re.escape(name)}\s*\(",
+            legacy,
+            re.MULTILINE,
+        ), name
+    for name in ("control_rc_config", "control_rc_config_dirty"):
+        assert re.search(rf"^static .*\b{re.escape(name)}(?:\b|;)", rcmap, re.MULTILINE)
+        assert name not in legacy
+    assert "#define APP_CONTROL_RC_FRESH_TIMEOUT_MS 500U" in rcmap
+    assert "APP_CONTROL_RC_FRESH_TIMEOUT_MS" not in legacy
+    assert len(rcmap.splitlines()) <= 800
+    assert "extern" not in rcmap
+    assert "control_config" not in rcmap
+    assert "app_control_save_config" not in rcmap
+
+    assert _body_after_signature(
+        legacy,
+        "uint8_t app_control_internal_commit_config_persist(void)",
+    ) == STEP_D2_PERSIST_HELPER_BODY
+    assert legacy.count("app_cmd_rcmap_apply_config(") == 4
+    assert legacy.count("app_cmd_rcmap_config()") == 1
+    assert "app_control_report_rc_live();" in legacy
+    assert "app_control_handle_rc_map(tokens, count);" in legacy
+    assert "App/Src/app_cmd_rcmap.c" in cmake
+    for declaration in (
+        "void app_control_report_rc_live(void);",
+        "void app_control_handle_rc_map(char *tokens[], uint32_t count);",
+        "void app_cmd_rcmap_apply_config(const void *config);",
+        "const void *app_cmd_rcmap_config(void);",
+        "uint8_t app_control_internal_commit_config_persist(void);",
+    ):
+        assert declaration in internal
+    flash_driver = (ROOT / "Driver" / "Inc" / "drv_gd25q32.h").read_text(
+        encoding="utf-8"
+    )
+    assert "DRV_GD25Q32_OK = 0" in flash_driver
+    assert "DRV_GD25Q32_DMA_ERROR\n} DRV_GD25Q32_Status;" in flash_driver
+
+    gcc = shutil.which("gcc")
+    if gcc is None:
+        pytest.skip("host gcc is unavailable")
+    stub_dir = tmp_path / "rcmap_stubs"
+    _write_rcmap_stubs(stub_dir)
+    subprocess.run(
+        [
+            gcc,
+            "-std=c11",
+            "-Wall",
+            "-Wextra",
+            "-Werror",
+            f"-I{stub_dir}",
+            f"-I{ROOT / 'App' / 'Inc'}",
+            f"-I{ROOT / 'Driver' / 'Inc'}",
+            "-c",
+            str(RCMAP_CMD),
+            "-o",
+            str(tmp_path / "app_cmd_rcmap.o"),
         ],
         check=True,
         capture_output=True,
@@ -670,3 +819,7 @@ def test_control_split(tmp_path: Path) -> None:
     _check_app_control_step_b()
     _check_app_control_step_c(tmp_path)
     _check_app_control_step_d1(tmp_path)
+
+
+def test_control_split_d2_rcmap(tmp_path: Path) -> None:
+    _check_app_control_step_d2(tmp_path)

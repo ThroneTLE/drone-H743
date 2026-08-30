@@ -479,14 +479,14 @@ def test_firmware_refuses_duplicate_channels_and_short_travel() -> None:
 
 def test_mapping_writes_are_blocked_while_armed() -> None:
     """改映射等于改'哪根杆是油门'，解锁状态下改一次就可能让电机响应错通道。"""
-    control = read("App/Src/app_control.c")
-    handler = control[control.index("static void app_control_handle_rc_map("):]
-    handler = handler[: handler.index("\nstatic void app_control_report_uart_stats(")]
-    for command in ("SET", "DEADBAND", "RESET", "COMMIT"):
+    rcmap = read("App/Src/app_cmd_rcmap.c")
+    handler = rcmap[rcmap.index("void app_control_handle_rc_map("):]
+    handler = handler[: handler.index("\nvoid app_cmd_rcmap_apply_config(")]
+    for command in ("SET", "DEADBAND", "CALIBRATED", "RESET", "COMMIT"):
         section = handler[handler.index(f'strcmp(tokens[1], "{command}") == 0'):]
         section = section[:600]
         assert "app_control_rc_write_allowed() == 0U" in section, command
-    assert 'return (APP_Stabilizer_IsArmed() == 0U) ? 1U : 0U;' in control
+    assert 'return (APP_Stabilizer_IsArmed() == 0U) ? 1U : 0U;' in rcmap
 
 
 def test_flash_record_migrates_instead_of_discarding_old_config() -> None:
@@ -498,7 +498,7 @@ def test_flash_record_migrates_instead_of_discarding_old_config() -> None:
     load = control[control.index("record.version == APP_CONTROL_CFG_VERSION_V16"):]
     load = load[: load.index("APP_CONTROL_CFG_VERSION_V15")]
     assert "control_config = legacy_record.config" in load
-    assert "app_control_apply_rc_config(NULL)" in load
+    assert "app_cmd_rcmap_apply_config(NULL)" in load
 
 
 def test_invalid_config_falls_back_to_defaults_not_to_zero() -> None:

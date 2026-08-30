@@ -56,4 +56,10 @@ void app_cmd_servocal_init(void);
 void app_cmd_servocal_on_persisted(const void *record);
 uint8_t app_cmd_servocal_is_busy(void);
 
+void app_control_report_rc_live(void);
+void app_control_handle_rc_map(char *tokens[], uint32_t count);
+void app_cmd_rcmap_apply_config(const void *config);
+const void *app_cmd_rcmap_config(void);
+uint8_t app_control_internal_commit_config_persist(void);
+
 #endif /* APP_CONTROL_INTERNAL_H */

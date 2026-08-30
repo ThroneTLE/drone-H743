@@ -4,7 +4,7 @@
 
 Read this shard only when the task touches application behavior, RTOS task bodies, control flow, diagnostics, commands, or synchronous services.
 
-Source snapshot: `92fce7be7d31`. Indexed files: 87.
+Source snapshot: `79961e21c2ad`. Indexed files: 88.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -16,6 +16,7 @@ Source snapshot: `92fce7be7d31`. Indexed files: 87.
 | `App/Inc/app_baro.h`<br>`App/Src/app_baro.c` | Application behavior and task-facing logic for baro | `APP_Baro_ReportStartup`, `APP_Baro_GetStatus`, `APP_Baro_ReadSnapshot` |
 | `App/Inc/app_boot.h`<br>`App/Src/app_boot.c` | Application behavior and task-facing logic for boot | `APP_Boot_Init`, `APP_Boot_TryRomDfu`, `APP_Boot_EvaluateSafety`, `APP_Boot_IsVectorReasonable`, `APP_Boot_IsSnapshotFresh`, `APP_Boot_HasSequenceAdvanced` (+5) |
 | `App/Src/app_cmd_imucal.c` | Application behavior and task-facing logic for cmd imucal | `APP_FlightCalibration_ReadActive`, `SVC_Param_IsDirty`, `APP_Sensor_GetFluOrientation`, `APP_FlightCalibration_MergeV1Candidate`, `APP_FlightCalibration_PublishPreview`, `APP_FlightCalibration_UploadExpire` (+1) |
+| `App/Src/app_cmd_rcmap.c` | Application behavior and task-facing logic for cmd rcmap | `APP_RcConfig_Validate` |
 | `App/Src/app_cmd_servocal.c` | Application behavior and task-facing logic for cmd servocal | `APP_Sensor_GetFluOrientation`, `SVC_Param_IsDirty`, `APP_FlightCalibration_UpdateServoMechanical`, `APP_FlightCalibration_PublishPreview` |
 | `App/Inc/app_control.h`<br>`App/Src/app_control.c` | Application behavior and task-facing logic for control | `APP_Control_Init`, `APP_Control_Tick`, `APP_Control_QueueText`, `APP_Control_ProcessLine`, `APP_Control_MaintTick`, `APP_Control_ProcessMaintLine` (+2) |
 | `App/Src/app_control_core.c` | Application behavior and task-facing logic for control core | `APP_IMU_Capture_IsExportActive` |
