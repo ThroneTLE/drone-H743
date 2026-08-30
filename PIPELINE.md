@@ -91,7 +91,7 @@ flowchart TB
 | R-M6-1 | M6 | 〔人+机〕RCMAP 向导标定并 COMMIT | 12 步向导完成，重启回读一致 | 待做 |
 | R-M6-2..4 | M6 | 〔人+机〕V2A 无桨端到端 + 失控保护 | ACCEPT 全阶段通过；断链进入安全态；方向一致性表全对 | 待做 |
 | R-F0~F5 | M7前置 | 〔码〕运行时 FLU 迁移六 seam（spec §10，顺序固定） | 每 seam：先红测试→实施→host 绿→实机 A/B→翻掩码位 | 待做 |
-| R-S6-1 | S6 | 〔码〕panel 拆分为 tools/panel_lib/ 包（spec §11） | 每次搬一页；行为零变更；全量绿 | 待审核（增量4 静止漂移页；增量1/2/3已过审，余 pages/evidence） |
+| R-S6-1 | S6 | 〔码〕panel 拆分为 tools/panel_lib/ 包（spec §11） | 每次搬一页；行为零变更；全量绿 | 进行中（增量1~4 已过审 2026-08-30；余 V1/RC/机械/光流等页 + evidence） |
 | R-S6-2 | S6 | 〔码〕app_control 按命令域拆分（spec §11） | 每域 ≤800 行；host 装置照编；构建零警告 | 待做 |
 
 ## 最近验证证据
@@ -100,6 +100,7 @@ flowchart TB
 
 | 日期 | 范围 | 证据 | 结果 | 对状态的影响 |
 |---|---|---|---|---|
+| 2026-08-30 | 审核：R-S6-1 增量4 过审 | 审核者独立复核：范围=单提交 f5ddbe88（基于 7fb9a605）；7/7 handler AST 逐一相同；builder 属"片段抽方法"型搬迁——审核者独立验证 17/17 条语句与父提交 `_build_v1_page` 内**连续片段**逐条相同，宿主 70→54 条（−17+1 调用，算术精确）、调用点唯一；零残留、DriftPageMixin 继承；全量 `713 passed` 与构建复跑一致；零板机接触。执行者以语句级（非函数级）表述一致性，措辞精确 | **过审** | R-S6-1 置"进行中"（增量4完成）；panel 10612→10468 行 |
 | 2026-08-30 | S6 panel 拆分增量4（R-S6-1） | 新建 `tools/panel_lib/pages/`，`DriftPageMixin` 接管静止漂移 builder 与全部 7 个 `_drift_*` handlers；原 V1 页位置仅调用继承的 builder，旧模块保留同对象转发；`tests/test_panel_drift_page_extraction.py` 以预拆分 HEAD `88e33205` 的 SHA-256 锁定 17 条 builder AST 语句和 7/7 handler AST，并验证所有权、转发及内存样本配对；聚焦回归 `76 passed`，全量 `713 passed`；`cmake --build --preset Debug`：`ninja: no work to do.`、零警告；未启动串口/板机 | 软件验证通过，待审核 | R-S6-1 置**待审核（增量4）**；panel 10612→10468 行；S6 保持 🟡，不改变主线位置 M4 |
 | 2026-08-30 | **M2 完整 V0 复跑（作者实测，R-M2-2 超额）** | 作者在当前固件（面板为 S6 增量3 后版本）完整重跑 V0：RAM 映射复验 6/6 PASS（静止水平66/机头朝上64/左侧朝上62/+roll 52/+pitch 48/+yaw 49 样本）、加速度倾角↔Fusion 中位误差 0.46°（限8°）、候选 `R=diag(-1,-1,+1)` conf=99.53%、`IMUFRAME COMMIT` 写入 Flash；审核者独立串口回读：`active=persisted=-x,-y,+z dirty=0 frame=canonical_flu_persisted arm_lock=1`（arm_lock 因迁移掩码未完成按契约保持）。附注：8-28 归档 session/workflow 被续采路径以逐字节相同内容回写（仅行尾差异，已还原）——归档状态与本次实测状态完全一致，构成跨固件不变性旁证 | **PASS** | **M2 置 ✅（三条腿全满足）；M3 前置解除同时置 ✅；当前位置移至 M4** |
 | 2026-08-30 | R-M2-2 判据讨论归档 | 作者质疑手势复验与 8-28 已做的 V0 动态验证重复；审核者核实：运行时姿态链零符号改动（三路审计+FLU 契约测试）+ M6 方向矩阵天然覆盖动态复核，同意免除。随后作者直接以完整 V0 复跑给出更强证据，讨论以超额完成收束。备用工具 `tools/gesture_sign_check.py`（录制+自动分段判号）保留入库，供 M6 方向一致性日与后续 seam 抽查复用 | 归档 | 判据变更记录在案；工具入库 |
