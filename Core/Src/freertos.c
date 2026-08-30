@@ -59,6 +59,7 @@
 #include "app_telemetry.h"
 #include "app_ident.h"
 #include "app_servo_cal.h"
+#include "app_servo_jog.h"
 #include "app_servo_feedback.h"
 #include "app_servo_feedback_bench.h"
 #include "app_stabilizer.h"
@@ -324,6 +325,7 @@ void MX_FREERTOS_Init(void) {
   /* add queues, ... */
   APP_Task_LED_Init();
   APP_ServoCal_Init();
+  APP_ServoJog_Init();
   /* USER CODE END RTOS_QUEUES */
 
   /* Create the thread(s) */

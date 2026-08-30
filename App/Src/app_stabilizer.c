@@ -39,6 +39,7 @@
 #include "app_sensor.h"
 #include "app_messages.h"
 #include "app_servo_cal.h"
+#include "app_servo_jog.h"
 #include "app_servo_feedback.h"
 #include "app_servo_feedback_bench.h"
 #include "app_acceptance.h"
@@ -2131,18 +2132,37 @@ static void stabilizer_control_commit(StabilizerContext *ctx,
                                       StabilizerControlFrame *frame)
 {
   BSP_BusServo_Service(frame->now_ms);
+  if (frame->servo_cal_active != 0U) {
+    /* 手势标定已释放扭矩，地面点动必须立即让位。 */
+    APP_ServoJog_ForceRelease("servo_cal");
+  }
   if (frame->servo_cal_active == 0U) {
     uint8_t servo_command_slot_due;
     uint16_t acceptance_alpha_us;
     uint16_t acceptance_beta_us;
+    uint8_t acceptance_override;
+    const char *jog_yield_reason = NULL;
 
-    if (APP_Acceptance_GetServoOverride(&acceptance_alpha_us,
-                                        &acceptance_beta_us) != 0U) {
+    acceptance_override = APP_Acceptance_GetServoOverride(&acceptance_alpha_us,
+                                                          &acceptance_beta_us);
+    if (acceptance_override != 0U) {
       frame->moves[0].pulse_us = acceptance_alpha_us;
       frame->moves[1].pulse_us = acceptance_beta_us;
     }
 
     APP_ServoFeedbackBench_ApplyTargets(frame->now_ms, frame->moves);
+
+    /* 地面点动仲裁：验收覆盖/反馈台架/解锁任一存在则点动立即让位。 */
+    if (acceptance_override != 0U) {
+      jog_yield_reason = "acceptance";
+    } else if (APP_ServoFeedbackBench_IsActive() != 0U) {
+      jog_yield_reason = "fb_bench";
+    } else if (frame->rc_armed != 0U) {
+      jog_yield_reason = "armed";
+    }
+    APP_ServoJog_Apply(frame->now_ms, jog_yield_reason,
+                       &frame->moves[0].pulse_us,
+                       &frame->moves[1].pulse_us);
     stabilizer_servo_record_target(frame->moves);
     servo_command_slot_due = stabilizer_servo_command_slot_due(frame->now_ms);
 

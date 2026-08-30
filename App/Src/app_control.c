@@ -15,6 +15,7 @@
 #include "app_optical_flow.h"
 #include "app_rangefinder.h"
 #include "app_servo_cal.h"
+#include "app_servo_jog.h"
 #include "app_servo_feedback.h"
 #include "app_servo_feedback_bench.h"
 #include "app_sensor.h"
@@ -4450,6 +4451,12 @@ static void app_control_handle_servo(char **tokens, uint32_t count)
         return;
     }
 
+    if (strcmp(tokens[1], "JOG") == 0) {
+        /* 保持型地面点动，解析与回复归 app_servo_jog.c（通信上下文）。 */
+        APP_ServoJog_HandleCommand(tokens, count, HAL_GetTick());
+        return;
+    }
+
     if (strcmp(tokens[1], "FB") == 0) {
         uint32_t duration_ms;
         uint32_t timeout_ms = 10U;
@@ -5887,9 +5894,20 @@ static void app_control_service_servo_cal_notice(void)
     }
 }
 
+/* 补发地面点动模块在控制环上下文缓存的事件文本（见 app_servo_jog.c）。 */
+static void app_control_service_servo_jog_notice(void)
+{
+    char notice[64];
+
+    if (APP_ServoJog_TakeNotice(notice, (uint16_t)sizeof(notice)) != 0U) {
+        APP_Control_QueueText("%s", notice);
+    }
+}
+
 static void app_control_tick_common(uint8_t emit_heartbeat)
 {
     app_control_service_servo_cal_notice();
+    app_control_service_servo_jog_notice();
     app_control_service_boot();
     app_control_imuframe_sync_param();
     app_control_service_imucal();

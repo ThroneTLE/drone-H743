@@ -58,7 +58,8 @@ python -m pytest tests -q 全量（当前基线 696+ 项）与 cmake --build --p
 ## 7. 安全规范
 
 - 解锁四门（不可削弱）：IMU frame arm-lock、IMU 健康、RC 链路、低油门上升沿；标定候选（IMUCAL/SERVOCAL）RAM 预览期一律 arm-lock。
-- DFU：主机只做 advisory；拒绝判定归固件 BOOT 处理器（`app_boot.h` 四类原因），`test_firmware_build_gate.py` 锁定其存在。真驱动舵机的路径（V1 采集、V2A、SERVO MOVE）保留主机硬门（新鲜快照 + armed=0 + 拆桨勾选）。
+- DFU：主机只做 advisory；拒绝判定归固件 BOOT 处理器（`app_boot.h` 四类原因），`test_firmware_build_gate.py` 锁定其存在。真驱动舵机的路径（V1 采集、V2A、SERVO MOVE/JOG）保留主机硬门（新鲜快照 + armed=0 + 拆桨勾选）。
+- 地面点动：机械校准页一律用保持型 `SERVO JOG ch us`（`app_servo_jog.c`）——在稳定环 commit 仲裁点接管输出，优先级 手势标定>验收>反馈台架>解锁>点动，500µs/s 斜坡、120s 超时或 `SERVO JOG STOP` 交还；一次性 `SERVO MOVE` 会被稳定环 500ms 强制刷新覆盖，禁止再用于机械校准（`test_servo_jog_contract.py`）。
 - 证据不可变：`data/calibration/**` 历史文件只读；面板仅浏览态禁止 autosave（`test_evidence_write_protection.py`）。执行者不得修改/删除任何既有证据文件。
 - 默认拆桨；带桨属 M7，冻结中。
 

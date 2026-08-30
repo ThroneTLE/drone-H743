@@ -47,10 +47,28 @@ def test_mechanical_page_is_guarded_and_only_claims_a_matching_target_readback()
     assert "已拆除全部桨叶" in page
     assert "validate_servo_geometry" in values
     assert "_validation_live_safety_gate" in move
-    assert "SERVO MOVE" in move
+    # 点动必须走保持型 SERVO JOG：一次性 SERVO MOVE 会被稳定环 500ms 强制刷新拉回。
+    assert "SERVO JOG" in move
+    assert "SERVO MOVE" not in move
     assert '_mechanical_target_matches_local("persisted")' in save
     assert '"target_parameters_written": persisted_match' in save
     assert '"flight_release": False' in save
+
+
+def test_mechanical_page_jog_ux_covers_flu_guides_trim_and_release() -> None:
+    page = function_body("_build_mechanical_calibration_page")
+    nudge = function_body("_mechanical_nudge_center")
+    stop = function_body("_mechanical_jog_stop")
+    # 判向文字必须引用 FLU 契约方向，而不是含糊的"机构标记"自说自话。
+    assert "向机体左侧(+Y)倾" in page
+    assert "向机尾(−X)倾" in page
+    assert "中点微调" in page
+    assert "结束点动" in page
+    # 中点微调与点动同一安全门；微调后中心仍满足两侧 ≥50 µs 几何约束。
+    assert "_validation_live_safety_gate" in nudge
+    assert "minimum + 50" in nudge and "maximum - 50" in nudge
+    assert "SERVO JOG" in nudge
+    assert '"SERVO JOG STOP"' in stop
 
 
 def test_flow_page_covers_required_ground_checks_and_uses_compensated_velocity() -> None:

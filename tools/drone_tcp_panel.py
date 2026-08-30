@@ -2965,6 +2965,8 @@ class DronePanel(V1PageMixin, DriftPageMixin, PanelStateMixin, ProtocolLineMixin
                 "本页用于逐路小步移动、记录真正的机械中立位、脉宽方向和不干涉行程。"
                 "确认后可先应用到 RAM 做 A/B 验证，再写入 FCAL 双槽参数 Flash；"
                 "预览和写入期间飞控保持硬解锁锁定，重启后必须回读一致才算闭环。"
+                "点动为保持型（SERVO JOG）：舵机匀速走到目标后停住，直到点「结束点动」、"
+                "超时 120 s 或飞控解锁才交还稳定环。坐标基准 FLU：+X 机头、+Y 左、+Z 上。"
             ),
             style="Muted.TLabel", wraplength=1120,
         ).pack(fill=tk.X, pady=(4, 10))
@@ -2985,6 +2987,11 @@ class DronePanel(V1PageMixin, DriftPageMixin, PanelStateMixin, ProtocolLineMixin
             command=lambda: self._send_proto(PROTO_REQ_IMU, "IMU?"),
             style="Secondary.TButton",
         ).pack(side=tk.RIGHT)
+        ttk.Button(
+            safety, text="结束点动（交还稳定环）",
+            command=self._mechanical_jog_stop,
+            style="Danger.TButton",
+        ).pack(side=tk.RIGHT, padx=(0, 8))
 
         table = ttk.LabelFrame(parent, text="两路机械记录", padding=8)
         table.pack(fill=tk.X, pady=(8, 0))
@@ -2994,11 +3001,19 @@ class DronePanel(V1PageMixin, DriftPageMixin, PanelStateMixin, ProtocolLineMixin
                 row=0, column=column, sticky=tk.W, padx=4, pady=(0, 5)
             )
 
-        for index, (axis, title) in enumerate((
-            ("alpha", "Alpha · 左右倾转机构"),
-            ("beta", "Beta · 前后倾转机构"),
+        for index, (axis, title, flu_guide) in enumerate((
+            (
+                "alpha", "Alpha · 左右倾转（总线舵机 ID1）",
+                "FLU 判向：点「+50」后旋翼轴向机体左侧(+Y)倾 → 选「机构标记正向」；"
+                "向右侧(−Y)倾 → 「机构标记反向」。",
+            ),
+            (
+                "beta", "Beta · 前后倾转（总线舵机 ID2）",
+                "FLU 判向：点「+50」后旋翼轴向机尾(−X)倾 → 选「机构标记正向」；"
+                "向机头(+X)倾 → 「机构标记反向」。",
+            ),
         )):
-            row = index * 2 + 1
+            row = index * 3 + 1
             values: dict[str, tk.Variable] = {
                 "axis": tk.StringVar(value=axis),
                 "center": tk.IntVar(value=1500),
@@ -3032,9 +3047,21 @@ class DronePanel(V1PageMixin, DriftPageMixin, PanelStateMixin, ProtocolLineMixin
                     command=lambda i=index, t=target: self._mechanical_move(i, t),
                     style="Secondary.TButton" if target == "center" else "Warning.TButton",
                 ).pack(side=tk.LEFT, padx=2)
+            ttk.Label(actions, text="中点微调", style="Muted.TLabel").pack(
+                side=tk.LEFT, padx=(10, 2))
+            for label, delta in (("-10", -10), ("-2", -2), ("+2", 2), ("+10", 10)):
+                ttk.Button(
+                    actions, text=label,
+                    command=lambda i=index, d=delta: self._mechanical_nudge_center(i, d),
+                    style="Secondary.TButton",
+                ).pack(side=tk.LEFT, padx=2)
+
+            ttk.Label(
+                table, text=flu_guide, style="Guide.TLabel", wraplength=1080,
+            ).grid(row=row + 1, column=0, columnspan=6, sticky=tk.W, padx=4)
 
             confirms = ttk.Frame(table)
-            confirms.grid(row=row + 1, column=0, columnspan=6, sticky=tk.W, padx=4, pady=(0, 7))
+            confirms.grid(row=row + 2, column=0, columnspan=6, sticky=tk.W, padx=4, pady=(0, 7))
             ttk.Checkbutton(
                 confirms, text="机械中立位已对正", variable=values["center_confirmed"]
             ).pack(side=tk.LEFT)
@@ -3261,12 +3288,44 @@ class DronePanel(V1PageMixin, DriftPageMixin, PanelStateMixin, ProtocolLineMixin
         }.get(target_name)
         if target is None:
             return
-        payload = f"SERVO MOVE {index} {target} 800"
+        payload = f"SERVO JOG {index} {target}"
         self._send_proto(PROTO_REQ_SERVO_MOVE, payload, payload)
         axis = str(self.mechanical_rows[index]["axis"].get()).upper()
         self.mechanical_status_var.set(
-            f"已命令 {axis} 舵机缓慢移动到 {target} µs；目视检查机构，异常立即断开舵机电源"
+            f"已命令 {axis} 舵机匀速点动到 {target} µs 并保持（500 µs/s，超时 120 s 自动交还）；"
+            "目视检查机构，异常立即断开舵机电源"
         )
+
+    def _mechanical_nudge_center(self, index: int, delta_us: int) -> None:
+        if not self.validation_props_removed_var.get() or not self.validation_power_safe_var.get():
+            messagebox.showwarning("舵机机械校准安全门", "必须拆桨、固定机体，并确认电机不会启动。")
+            return
+        gate_ok, reason = self._validation_live_safety_gate()
+        if not gate_ok:
+            messagebox.showwarning("舵机机械校准安全门", reason)
+            return
+        row = self.mechanical_rows[index]
+        try:
+            minimum = int(row["minimum"].get())
+            maximum = int(row["maximum"].get())
+            center = int(row["center"].get())
+        except (ValueError, tk.TclError) as exc:
+            messagebox.showerror("舵机机械参数无效", str(exc))
+            return
+        # 微调后的中心仍须满足 validate_servo_geometry 的两侧各 ≥50 µs 约束。
+        center = max(minimum + 50, min(maximum - 50, center + delta_us))
+        row["center"].set(center)
+        payload = f"SERVO JOG {index} {center}"
+        self._send_proto(PROTO_REQ_SERVO_MOVE, payload, payload)
+        axis = str(row["axis"].get()).upper()
+        self.mechanical_status_var.set(
+            f"{axis} 中点微调至 {center} µs，舵机实时跟随；"
+            "对正后勾选确认并「应用到 RAM」→「写入参数 Flash」"
+        )
+
+    def _mechanical_jog_stop(self) -> None:
+        self._send_proto(PROTO_REQ_SERVO_MOVE, "SERVO JOG STOP", "SERVO JOG STOP")
+        self.mechanical_status_var.set("已请求结束点动，舵机输出交还稳定环")
 
     def _mechanical_save_evidence(self) -> None:
         axes: list[dict[str, object]] = []
