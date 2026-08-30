@@ -10,6 +10,7 @@ USB_HEADER = ROOT / "App" / "Inc" / "app_usb_cdc.h"
 USB_IF = ROOT / "USB_DEVICE" / "App" / "usbd_cdc_if.c"
 IOC = ROOT / "drone-H743.ioc"
 PANEL = ROOT / "tools" / "drone_tcp_panel.py"
+PANEL_TRANSPORT = ROOT / "tools" / "panel_lib" / "transport.py"
 
 
 def read(path: Path) -> str:
@@ -77,9 +78,11 @@ def test_imucap_binary_export_owns_usb_stream_while_active() -> None:
 def test_usb_text_buffers_cover_protocol_lines_and_panel_can_select_serial() -> None:
     usb_header = read(USB_HEADER)
     panel = read(PANEL)
+    transport = read(PANEL_TRANSPORT)
 
     assert "#define APP_USB_CDC_TX_SIZE 1536U" in usb_header
     assert 'values=("tcp", "udp", "serial")' in panel
-    assert "SerialTransport" in panel
+    assert "class SerialTransport" in transport
+    assert "SerialTransport = _panel_transport.SerialTransport" in panel
     assert 'self._send_proto_silent(PROTO_REQ_IMU, "IMU?")' in panel
     assert "source=stabilizer_snapshot" in read(CONTROL)

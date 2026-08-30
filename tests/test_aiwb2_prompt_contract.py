@@ -48,6 +48,7 @@ def test_usart1_wifi_udp_pid_tuning_path_is_text_line_based() -> None:
     app_aiwb2 = read("App/Src/app_aiwb2.c")
     app_control = read("App/Src/app_control.c")
     panel = read("tools/drone_tcp_panel.py")
+    transport = read("tools/panel_lib/transport.py")
 
     assert "huart1.Init.Mode = UART_MODE_TX_RX;" in usart
     assert "DMA_REQUEST_USART1_RX" in usart
@@ -63,9 +64,9 @@ def test_usart1_wifi_udp_pid_tuning_path_is_text_line_based() -> None:
     assert "DRV_COAX_CTRL_SetParam(kp_name, kp)" in app_control
     assert "DRV_COAX_CTRL_SetParam(name, value)" in app_control
 
-    assert "class UdpTransport" in panel
+    assert "class UdpTransport" in transport
     assert 'values=("tcp", "udp", "serial")' in panel
-    assert "return self.send_line(text)" in panel
+    assert "return self.send_line(text)" in transport
     assert "self.structured_protocol_supported = False" in panel
 
 

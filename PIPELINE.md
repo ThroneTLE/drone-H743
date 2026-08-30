@@ -91,7 +91,7 @@ flowchart TB
 | R-M6-1 | M6 | 〔人+机〕RCMAP 向导标定并 COMMIT | 12 步向导完成，重启回读一致 | 待做 |
 | R-M6-2..4 | M6 | 〔人+机〕V2A 无桨端到端 + 失控保护 | ACCEPT 全阶段通过；断链进入安全态；方向一致性表全对 | 待做 |
 | R-F0~F5 | M7前置 | 〔码〕运行时 FLU 迁移六 seam（spec §10，顺序固定） | 每 seam：先红测试→实施→host 绿→实机 A/B→翻掩码位 | 待做 |
-| R-S6-1 | S6 | 〔码〕panel 拆分为 tools/panel_lib/ 包（spec §11） | 每次搬一页；行为零变更；全量绿 | 待做 |
+| R-S6-1 | S6 | 〔码〕panel 拆分为 tools/panel_lib/ 包（spec §11） | 每次搬一页；行为零变更；全量绿 | 待审核 |
 | R-S6-2 | S6 | 〔码〕app_control 按命令域拆分（spec §11） | 每域 ≤800 行；host 装置照编；构建零警告 | 待做 |
 
 ## 最近验证证据
@@ -100,6 +100,7 @@ flowchart TB
 
 | 日期 | 范围 | 证据 | 结果 | 对状态的影响 |
 |---|---|---|---|---|
+| 2026-08-30 | S6 panel 拆分首增量（R-S6-1） | `tools/panel_lib/transport.py` 接管 TCP/UDP/串口、USB 指纹匹配与重枚举等待；`tests/test_panel_transport_extraction.py` 锁定新模块所有权、旧路径同对象转发及直接脚本导入；13 个搬移定义与拆分前 AST 一致；`python -m pytest tests -q`：700 passed；`cmake --build --preset Debug`：通过、零警告 | 软件验证通过，待审核 | R-S6-1 置**待审核**；S6 保持 🟡，不改变主线位置 |
 | 2026-08-30 | M1 实机基线（R-M1-1） | 烧录 98d5637c 后 `m1_baseline_check.py` 60s×10Hz：588→再跑 PASS；均值 991.9Hz、最坏间隙 0.5ms、fault=0、\|a\|=1016mg、陀螺均值<0.04dps、温升 0.57°C；首跑 6 次丢行为采集脚本竞态（health 行未等齐），已修并注释 | PASS | **M1 置 ✅，当前位置移至 M2** |
 | 2026-08-30 | M2 重启回读（R-M2-1） | OpenOCD `reset run` 硬复位后 IMU?：orientation=3、frame=canonical_flu_ram、cal_generation=2/mask=0x07 从 Flash 正确重载 | PASS | M2 仅余粗符号手势（R-M2-2） |
 | 2026-08-30 | M3 离线重分析（R-M3-1） | 8-28 六面+静止陀螺会话按当前判据重分析：WARN 可用（RMS 0.0268g，超 PASS 线约1.5°；六面残差 0.020~0.033g、1.0~4.7°，全部远低于 0.075g FAIL 线） | 通过 | 免徒手重采；M3 余静止漂移 A/B |

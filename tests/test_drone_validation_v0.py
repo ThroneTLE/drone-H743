@@ -9,10 +9,14 @@ import re
 import pytest
 
 from tools import drone_tcp_panel as panel
+from tools.panel_lib import transport as panel_transport
 
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = (ROOT / "tools" / "drone_tcp_panel.py").read_text(encoding="utf-8")
+TRANSPORT_SOURCE = (ROOT / "tools" / "panel_lib" / "transport.py").read_text(
+    encoding="utf-8"
+)
 
 
 def function_body(source: str, signature: str) -> str:
@@ -205,7 +209,7 @@ def test_v0_session_invalidates_transport_write_queues_at_the_send_boundary() ->
     assert serial._send_queue.empty()
     assert tcp._send_generation == 1
     assert serial._send_generation == 1
-    assert SOURCE.count("generation != self._send_generation") == 2
+    assert TRANSPORT_SOURCE.count("generation != self._send_generation") == 2
     start = function_body(SOURCE, "    def _validation_start_session(")
     assert "transport.cancel_pending_sends()" in start
     assert start.index("transport.cancel_pending_sends()") < start.index(
@@ -447,9 +451,9 @@ def test_serial_transport_latches_port_and_changes_connection_generation(
         def start(self) -> None:
             return
 
-    monkeypatch.setattr(panel, "HAS_PYSERIAL", True)
-    monkeypatch.setattr(panel, "serial", FakeSerialModule)
-    monkeypatch.setattr(panel.threading, "Thread", NoopThread)
+    monkeypatch.setattr(panel_transport, "HAS_PYSERIAL", True)
+    monkeypatch.setattr(panel_transport, "serial", FakeSerialModule)
+    monkeypatch.setattr(panel_transport.threading, "Thread", NoopThread)
     transport = panel.SerialTransport(queue.Queue())
     initial = transport.connection_generation
     transport.start("COM31", 115200)
