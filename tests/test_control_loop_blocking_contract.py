@@ -1,14 +1,4 @@
-"""控制环禁止同步阻塞 I/O 的契约。
-
-APP_Control_QueueText 在入队 UART 前会同步阻塞等 USB CDC（最坏 3x
-APP_CONTROL_USB_TEXT_TX_TIMEOUT_MS）。app_servo_cal.c 的手势状态机整体
-跑在 500Hz 控制环（stabilizer_control_prepare -> APP_ServoCal_Step），
-曾经四处直接调用 QueueText，把最坏 ~30ms 的阻塞埋进姿态环。
-
-修复后的结构：控制环内只 vsnprintf 进单条通告缓冲并置标志；通信任务的
-app_control_tick_common 经 APP_ServoCal_TakeNotice() 取走后再排队发送。
-本文件防止任何一半被回退。
-"""
+"""S6 control contracts."""
 
 from __future__ import annotations
 
@@ -646,7 +636,7 @@ def _check_app_control_step_a(tmp_path: Path) -> None:
     subprocess.run([str(executable)], check=True, capture_output=True, text=True)
 
 
-def test_servo_cal_state_machine_never_calls_blocking_text_send() -> None:
+def test_no_blocking() -> None:
     source = SERVO_CAL.read_text(encoding="utf-8")
     assert "APP_Control_QueueText(" not in source, (
         "app_servo_cal.c runs inside the 500Hz control loop; it must post "
@@ -657,7 +647,7 @@ def test_servo_cal_state_machine_never_calls_blocking_text_send() -> None:
     )
 
 
-def test_servo_cal_posts_notices_through_the_pending_buffer() -> None:
+def test_notice_buffer() -> None:
     source = SERVO_CAL.read_text(encoding="utf-8")
     assert "servo_cal_post_notice(" in source
     assert "servo_cal_notice_pending" in source
@@ -666,7 +656,7 @@ def test_servo_cal_posts_notices_through_the_pending_buffer() -> None:
     assert "APP_ServoCal_TakeNotice" in header
 
 
-def test_comms_task_flushes_the_notice_each_tick(tmp_path: Path) -> None:
+def test_control_split(tmp_path: Path) -> None:
     source = CONTROL.read_text(encoding="utf-8")
     flush = source.find("APP_ServoCal_TakeNotice(")
     tick = source.find("static void app_control_tick_common(uint8_t emit_heartbeat)\n{")

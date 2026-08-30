@@ -228,7 +228,7 @@ def _compile_and_run(tmp_path: Path, sources: list[Path], harness_text: str,
     return result.stdout.strip()
 
 
-def test_portable_driver_math_noop_and_invalid_branch(tmp_path: Path) -> None:
+def test_driver_math(tmp_path: Path) -> None:
     assert _compile_and_run(
         tmp_path,
         [ROOT / "Driver" / "Src" / "drv_imu_calibration.c"],
@@ -237,7 +237,7 @@ def test_portable_driver_math_noop_and_invalid_branch(tmp_path: Path) -> None:
     ) == "ok"
 
 
-def test_active_snapshot_generation_and_invalid_publish(tmp_path: Path) -> None:
+def test_snapshot_publish(tmp_path: Path) -> None:
     (tmp_path / "app_sensor.h").write_text(
         "#define APP_SENSOR_FLU_ORIENTATION_COUNT 24U\n"
         "#define APP_SENSOR_FLU_ORIENTATION_LEGACY 255U\n",
@@ -254,7 +254,7 @@ def test_active_snapshot_generation_and_invalid_publish(tmp_path: Path) -> None:
     ) == "ok"
 
 
-def test_runtime_pipeline_applies_v1_once_and_resets_on_generation() -> None:
+def test_v1_pipeline() -> None:
     source = read("App/Src/app_stabilizer.c")
     step = source[source.index("static void stabilizer_imu_step(") :]
     apply_v0 = step.index("APP_Sensor_ApplyFrameCorrection(&msg->imu)")
@@ -272,7 +272,7 @@ def test_runtime_pipeline_applies_v1_once_and_resets_on_generation() -> None:
     assert "ctx->attitude_zero_ready = 0U;" in reset
 
 
-def test_confirmed_snapshot_and_guarded_imucal_protocol_contract() -> None:
+def test_imucal_contract() -> None:
     header = read("App/Inc/app_flight_calibration.h")
     source = read("App/Src/app_flight_calibration.c")
     control = read("App/Src/app_control.c")
@@ -296,7 +296,7 @@ def test_confirmed_snapshot_and_guarded_imucal_protocol_contract() -> None:
     assert "firmware_crc32=" in imucal
 
 
-def test_imucap_v4_layout_provenance_and_v3_constants() -> None:
+def test_capture_abi() -> None:
     header = read("App/Inc/app_imu_capture.h")
     source = read("App/Src/app_imu_capture.c")
 
@@ -323,7 +323,7 @@ def test_imucap_v4_layout_provenance_and_v3_constants() -> None:
     assert "slot->temperature_raw = raw->temperature;" in source
 
 
-def test_capture_never_mixes_provenance_epochs() -> None:
+def test_capture_epochs() -> None:
     header = read("App/Inc/app_imu_capture.h")
     source = read("App/Src/app_imu_capture.c")
     push = source[source.index("void APP_IMU_Capture_Push") :
@@ -340,7 +340,7 @@ def test_capture_never_mixes_provenance_epochs() -> None:
     assert "flags |= APP_IMU_CAPTURE_FLAG_INVALID_PROVENANCE;" in source
 
 
-def test_firmware_identity_is_real_linked_image_crc_not_placeholder() -> None:
+def test_firmware_crc_source() -> None:
     header = read("App/Inc/app_firmware_identity.h")
     source = read("App/Src/app_firmware_identity.c")
     linker = read("STM32H743XX_FLASH.ld")
@@ -354,7 +354,7 @@ def test_firmware_identity_is_real_linked_image_crc_not_placeholder() -> None:
     assert "__data_source_end = __tdata_source_end" in linker
 
 
-def test_firmware_identity_crc_and_range_runtime(tmp_path: Path) -> None:
+def test_firmware_crc_runtime(tmp_path: Path) -> None:
     assert _compile_and_run(
         tmp_path,
         [ROOT / "App" / "Src" / "app_firmware_identity.c"],
@@ -363,7 +363,7 @@ def test_firmware_identity_crc_and_range_runtime(tmp_path: Path) -> None:
     ) == "ok"
 
 
-def test_icm42688_temperature_scale_is_unified() -> None:
+def test_temperature_scale() -> None:
     app_sensor = read("App/Src/app_sensor.c")
     driver = read("Driver/Src/drv_imu.c")
 
@@ -372,7 +372,7 @@ def test_icm42688_temperature_scale_is_unified() -> None:
     assert "+ APP_IMU_TEMP_OFFSET_C" in app_sensor
 
 
-def test_new_runtime_sources_are_built() -> None:
+def test_sources_built() -> None:
     cmake = read("CMakeLists.txt")
 
     assert "Driver/Src/drv_imu_calibration.c" in cmake

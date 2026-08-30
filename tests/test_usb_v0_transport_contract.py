@@ -32,7 +32,7 @@ def c_function_body(source: str, signature: str) -> str:
     raise AssertionError(f"unterminated function: {signature}")
 
 
-def test_usb_cdc_is_cubemx_configured_and_routes_received_lines_to_control() -> None:
+def test_usb_route() -> None:
     ioc = read(IOC)
     interface = read(USB_IF)
     app = read(USB_APP)
@@ -48,7 +48,7 @@ def test_usb_cdc_is_cubemx_configured_and_routes_received_lines_to_control() -> 
     assert "APP_Control_ProcessLine(app_usb_cdc_line);" in process
 
 
-def test_structured_v0_replies_are_mirrored_to_usb_and_uart() -> None:
+def test_mirror() -> None:
     source = read(CONTROL_CORE)
     body = c_function_body(
         source,
@@ -64,7 +64,7 @@ def test_structured_v0_replies_are_mirrored_to_usb_and_uart() -> None:
     assert "return" not in body[usb_at:uart_at]
 
 
-def test_imucap_binary_export_owns_usb_stream_while_active() -> None:
+def test_export_guard() -> None:
     control = read(CONTROL_CORE)
     assert (
         "IMUCAP export\n     * owns the CDC byte stream while active" in control
@@ -76,7 +76,7 @@ def test_imucap_binary_export_owns_usb_stream_while_active() -> None:
     assert "if (APP_IMU_Capture_IsExportActive() == 0U)" in proto_body
 
 
-def test_usb_text_buffers_cover_protocol_lines_and_panel_can_select_serial() -> None:
+def test_serial_select() -> None:
     usb_header = read(USB_HEADER)
     panel = read(PANEL)
     transport = read(PANEL_TRANSPORT)

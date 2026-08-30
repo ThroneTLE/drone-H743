@@ -1,3 +1,5 @@
+"""IMUCAL split contracts."""
+
 from __future__ import annotations
 
 import shutil
@@ -220,7 +222,7 @@ int main(void)
 """
 
 
-def test_candidate_upload_state_machine_runs_on_host(tmp_path: Path) -> None:
+def test_upload_runtime(tmp_path: Path) -> None:
     compiler = shutil.which("gcc") or shutil.which("clang")
     if compiler is None:
         pytest.skip("host C compiler is unavailable")
@@ -261,7 +263,7 @@ def test_candidate_upload_state_machine_runs_on_host(tmp_path: Path) -> None:
     assert result.stdout.strip() == "ok"
 
 
-def test_ascii_protocol_is_bounded_guarded_and_machine_parseable() -> None:
+def test_protocol_contract() -> None:
     source = read("App/Src/app_cmd_imucal.c")
     proto = read("App/Inc/app_proto.h")
 
@@ -306,7 +308,7 @@ def test_ascii_protocol_is_bounded_guarded_and_machine_parseable() -> None:
         assert field in source
 
 
-def test_apply_revert_commit_obey_runtime_and_flash_boundaries() -> None:
+def test_transactions() -> None:
     source = read("App/Src/app_cmd_imucal.c")
     control = read("App/Src/app_control.c")
     handler_start = source.index(
@@ -340,7 +342,7 @@ def test_apply_revert_commit_obey_runtime_and_flash_boundaries() -> None:
     assert "control_imucal_commit_pending = 1U" in commit
 
 
-def test_candidate_hard_locks_arm_and_general_save_cannot_persist_preview() -> None:
+def test_arm_lock() -> None:
     stabilizer_h = read("App/Inc/app_stabilizer.h")
     stabilizer_c = read("App/Src/app_stabilizer.c")
     control = read("App/Src/app_control.c")
@@ -362,7 +364,7 @@ def test_candidate_hard_locks_arm_and_general_save_cannot_persist_preview() -> N
     assert "control_imucal_preview" not in save
 
 
-def test_protocol_is_transport_not_a_claim_of_v1_verification() -> None:
+def test_scope() -> None:
     source = read("App/Src/app_cmd_imucal.c")
 
     assert "must already have accepted validate_candidate_for_application" in source
