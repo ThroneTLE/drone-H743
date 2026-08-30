@@ -1,0 +1,54 @@
+{
+  "format": "drone-h743-servo-mechanical-evidence",
+  "schema": 1,
+  "created_at": "2026-08-30T14:07:43.500273+08:00",
+  "body_frame": "FLU",
+  "props_removed_confirmed": true,
+  "motor_safe_confirmed": true,
+  "axes": [
+    {
+      "axis": "alpha",
+      "servo_index": 0,
+      "center_us": 1530,
+      "minimum_us": 1000,
+      "maximum_us": 2000,
+      "positive_pulse_direction": "机构标记反向",
+      "physical_confirmations": {
+        "center": true,
+        "direction": true,
+        "travel": true
+      }
+    },
+    {
+      "axis": "beta",
+      "servo_index": 1,
+      "center_us": 1500,
+      "minimum_us": 1000,
+      "maximum_us": 2000,
+      "positive_pulse_direction": "机构标记反向",
+      "physical_confirmations": {
+        "center": true,
+        "direction": true,
+        "travel": true
+      }
+    }
+  ],
+  "target_parameters_written": true,
+  "target_persisted_readback": {
+    "scope": "persisted",
+    "runtime_gen": "3",
+    "record_gen": "3",
+    "valid": "1",
+    "alpha_center": "1530",
+    "alpha_min": "1000",
+    "alpha_max": "2000",
+    "alpha_sign": "-1",
+    "beta_center": "1500",
+    "beta_min": "1000",
+    "beta_max": "2000",
+    "beta_sign": "-1"
+  },
+  "reboot_verification_passed": false,
+  "flight_release": false,
+  "status": "PERSISTED_READBACK_MATCH"
+}
