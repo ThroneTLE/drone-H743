@@ -31,13 +31,4 @@ void APP_Control_ReportUartStats(uint32_t rx_bytes,
                                   uint32_t rx_overflows,
                                   uint32_t rx_errors);
 
-/* Utilities exposed for command-domain modules (app_cmd_*.c).
- * Previously static in app_control.c; made extern for S6 split. */
-void app_control_queue_proto_text(uint16_t function, const char *format, ...);
-const char *app_control_token_value(char **tokens,
-                                    uint32_t count,
-                                    const char *key);
-uint8_t app_control_parse_u32(const char *text, uint32_t *value);
-uint8_t app_control_parse_i32(const char *text, int32_t *value);
-
 #endif

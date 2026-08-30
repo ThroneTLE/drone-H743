@@ -1,4 +1,4 @@
-"""Servo calibration."""
+"""Persistent servo-mechanical calibration and flow-compensation evidence."""
 
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ def test_servo_mechanical_fields_reuse_fcal_reserved_space_without_abi_growth() 
 
 
 def test_servocal_protocol_has_preview_revert_commit_and_param_confirmation() -> None:
-    control = read("App/Src/app_control.c") + read("App/Src/app_cmd_servocal.c")
+    control = read("App/Src/app_control.c")
     proto = read("App/Inc/app_proto.h")
     stabilizer = read("App/Src/app_stabilizer.c")
     assert "APP_PROTO_REQ_SERVO_CAL      0x1024U" in proto
