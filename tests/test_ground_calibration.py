@@ -29,6 +29,9 @@ PANEL_SOURCE = (ROOT / "tools" / "drone_tcp_panel.py").read_text(encoding="utf-8
 MECHANICAL_PAGE_SOURCE = (
     ROOT / "tools" / "panel_lib" / "pages" / "mechanical.py"
 ).read_text(encoding="utf-8")
+FLOW_PAGE_SOURCE = (
+    ROOT / "tools" / "panel_lib" / "pages" / "flow_ranging.py"
+).read_text(encoding="utf-8")
 SERVO_DEBUG_PAGE_PATH = ROOT / "tools" / "panel_lib" / "pages" / "servo_debug.py"
 VIBRATION_PAGE_PATH = ROOT / "tools" / "panel_lib" / "pages" / "vibration.py"
 VIBRATION_PAGE_SOURCE = VIBRATION_PAGE_PATH.read_text(encoding="utf-8")
@@ -58,6 +61,8 @@ def function_body(name: str) -> str:
         source = MECHANICAL_PAGE_SOURCE
     elif name == "_build_vibration_filter_page":
         source = VIBRATION_PAGE_SOURCE
+    elif name.startswith(("_flow_", "_build_flow_", "_update_flow_", "_update_range_")):
+        source = FLOW_PAGE_SOURCE
     else:
         source = PANEL_SOURCE
     marker = f"    def {name}("
@@ -111,8 +116,8 @@ def test_mechanical_page_jog_ux_covers_flu_guides_trim_and_release() -> None:
 
 
 def test_flow_page_covers_required_ground_checks_and_uses_compensated_velocity() -> None:
-    stages = PANEL_SOURCE[PANEL_SOURCE.index("FLOW_CALIBRATION_STAGES = {"):
-                          PANEL_SOURCE.index("DEFAULT_HOST =")]
+    stages = FLOW_PAGE_SOURCE[FLOW_PAGE_SOURCE.index("FLOW_CALIBRATION_STAGES = {"):
+                              FLOW_PAGE_SOURCE.index("class FlowRangingPageMixin")]
     page = function_body("_build_flow_range_calibration_page")
     save = function_body("_flow_cal_save_report")
     for stage in ("static_zero", "forward_x", "left_y", "range_near", "range_far", "yaw_rotation"):

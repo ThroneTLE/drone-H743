@@ -48,7 +48,7 @@ flowchart TB
         S3["⏸ S3 精密陀螺比例、非正交与温漂<br/>等待旋转台和多温点实验条件"]
         S4["⏸ S4 滤波器重新整定<br/>保持现有采集数据和滤波参数"]
         S5["⏸ S5 PID、控制律优化与新飞行功能<br/>底层验收完成后再恢复"]
-        S6["🟡 S6 巨型文件拆分<br/>panel≈11k行 / app_control≈6k行；新功能一律新模块（立即生效），存量拆分待 M2 实机复跑后穿插"]
+        S6["✅ S6 巨型文件拆分<br/>panel 11446→5443 行 / app_control 6257→4131 行；两项存量拆分均已收官，新功能一律新模块（持续生效）"]
     end
 
     M0 -.约束.-> S1
@@ -93,7 +93,7 @@ flowchart TB
 | R-F0~F5 | M7前置 | 〔码〕运行时 FLU 迁移六 seam（spec §10，顺序固定） | 每 seam：先红测试→实施→host 绿→实机 A/B→翻掩码位 | ✅ 2026-08-30（六 seam 契约与证据基线交付完成，合并场次实机通过；**掩码维持 0x00**——F0/F1/F3~F5 为钉契约型、F2 边界仍适配回 legacy，运行时表述迁移须待 M6 后另立 R-F6） |
 | R-F5b | M7前置 | 〔码〕飞行日志坐标溯源字段 + 回放逐文件选口径（格式改动已获批） | 记录版本升级且旧版本永远可读（§6）；含 frame/契约版本/fw_crc32；回放按文件溯源选口径，无溯源按 legacy FRD 渲染并标注 | 进行中（软件面过审、v8 头与 fw_crc32 实机确认 2026-08-30；余「已填充溯源」需真实录制会话，顺延 M6 带 RC 场次） |
 | R-F1b | 待定 | 〔码〕legacy gyro 反射修正（det=−1 与 accel 不自洽，F1 只钉未改） | 仅当掩码完成后决定保留 legacy 分支才执行；改动影响 legacy yaw 可观测输出，须单独实机 A/B | ⏸（待 legacy 分支去留决策） |
-| R-S6-1 | S6 | 〔码〕panel 拆分为 tools/panel_lib/ 包（spec §11） | 每次搬一页；行为零变更；全量绿 | 进行中（增量1~10 已过审 2026-08-30；仅余光流测距页，M5 台架结束后解冻） |
+| R-S6-1 | S6 | 〔码〕panel 拆分为 tools/panel_lib/ 包（spec §11） | 每次搬一页；行为零变更；全量绿 | ✅（增量1~11 全部完成 2026-08-30；panel 11446→5443 行） |
 | R-S6-2 | S6 | 〔码〕app_control 按命令域拆分（spec §11，路径已裁决见 §11.1） | 每域 ≤800 行；host 装置照编；构建零警告；函数体逐字节搬移 | ✅ 2026-08-30（A~D4 全过审；app_control.c 6257→4131；命令面实机冒烟并入六 seam 合并场次） |
 
 ## 最近验证证据
@@ -102,6 +102,7 @@ flowchart TB
 
 | 日期 | 范围 | 证据 | 结果 | 对状态的影响 |
 |---|---|---|---|---|
+| 2026-08-30 | **R-S6-1 增量11（收官）· 光流与测距页，审核者自行实施** | 父提交 `925356ba`。提前解冻理由：作者指示"先做完全部代码工作再配合实机"，在 M5 台架**开始前**搬比中途搬安全。`tools/panel_lib/pages/flow_ranging.py`（417 行）的 `FlowRangingPageMixin` 接管 10 个方法与页面常量 `FLOW_CALIBRATION_STAGES`。**搬家忠实性由旧哈希自证**：`test_mech.py` 里增量1 就钉死的 8 个光流方法 AST SHA-256 **一字未改**，仅把查找位置从 `DronePanel` 改到 `FlowRangingPageMixin` 即全部命中；新搬的 `_update_flow_line`/`_update_range_line` 两个遥测处理器哈希取自父提交 `DronePanel` 亦精确匹配（10/10）。零残留由 `isdisjoint(legacy)` 锁死。**顺带修既有违规（§11.1 共存拷贝）**：`V1_CAPTURE_PREP_SECONDS`/`V1_FACE_RESIDUAL_WARN_G`/`_FAIL_G`/`V1_STAGE_LABELS` 此前在 panel 与 v1_metrology.py **各留一份定义**（增量5 审核漏判，值相等故测试用 `==` 未暴露），现改为转发，并由新契约的 `own_definitions()`（区分定义与 `X = _panel_v1.X` 转发）锁死"只准一处定义"。四处既有源码断言（test_mech/test_panel_rc_wizard/test_panel_v1/test_servo_mechanical）均为 owner 锚点纯重定向，断言零削弱。**真 GUI 冒烟**：实际构造 `DronePanel()`，`flow_cal_tree`/`stage_combo`/`start/stop_button`/`flow_range_tab` 齐备，喂真实格式 `FLOW`/`RANGE` 报文，实时行渲染出 `comp_flu=(10,-2)mm/s orientation=3`、六阶段键序不变。全量 `777 passed`；索引 current；本增量未接触串口/板机/证据目录 | 通过（审核者自实施自验证，凭搬家前哈希不变自证） | **R-S6-1 置 ✅**，panel 11446→5443 行；**S6 副线整体收官 ✅**；代码侧待办清零，余项全部需作者在场 |
 | 2026-08-30 | **合并实机场次（S6-2 收官固件 + 六 seam + F5b），审核者执行** | 固件 `562c089e` 清树重配重编（FLASH 366588 B，零警告）→ OpenOCD `Verified OK`，fw_crc32=**0xEB349274**。①`m1_baseline_check` **PASS**（证据 `m1_baseline_20260830_190210.json`）；②`drift_ab_check` **PASS**（baseline WARN→new WARN，偏航漂移 1.35→0.59°/min 改善，cal_gen=3 保持）；③命令面全链回读健康：`IMUFRAME active=persisted=-x,-y,+z code=3`、`SERVOCAL active=persisted` 双路与 M4 值逐字段一致（1530/1000/2000/−1、1500/1000/2000/−1、gen=3）、`RCMAP calibrated=1 dirty=0 gen=2 valid=1`、`RTOS`/`FLASH`/`FLOG` 正常——**证明 app_control 拆四域后命令面零回归**；④**R-F5b 实机**：`FLOG TESTFILL 1` 写扇区并 `FLOG DUMP` 回读解析，头为 `FLS1 version=8 header_size=256 record_size=528`（记录布局未变属实）、`firmware_crc32=0xEB349274` 与在跑固件精确吻合——**后台上下文 CRC 采样路径实机确认**（即先前追认的工单偏离成立）；溯源三项为 0/valid=0 系**设计内**（`app_stabilizer.c:2462` 非录制时传 NULL 快照，读方保守落 legacy），已填充溯源需真实录制会话，顺延至 M6 带 RC 场次。**过程记录**：首轮探测出现"回复滞后一拍"，二分至 `77f658f4` 仍复现后判定为构建树损坏产物（ninja 规则文件破损、checkout 期间产物错配），清树重配重编后消失，5/5 PING 窗内回复——**非固件缺陷，为审核者工具链问题** | 实机验证通过 | R-S6-2 实机冒烟通过；R-F5b 实机部分完成（余已填充溯源，顺延 M6） |
 | 2026-08-30 | **掩码位裁决：维持 0x00，不翻位** | 审核者据 `drv_frame_contract.h:41-54` 原文（"Runtime migration is tracked per seam so completion cannot be hand-waved / Set bits only with a matching end-to-end executable/physical test"）判定：六个位的语义是**该 seam 的运行时表述已迁移为 FLU**，而本轮交付中 F0/F1/F3/F4/F5 经审核者自身裁决已改型为「钉极性契约+具名坐标标注」，剥注释比对确认零表述变更；唯一真迁移 F2 亦在消费边界以 `stabilizer_nav_flu_to_legacy_fwd_right_down()` 转回旧表述（适配器自带"seam 3/4 迁移后删除"注释）。故运行时 FLU 迁移**实质未完成**，翻任何一位都属该注释明令禁止的 hand-waving。真正的表述迁移以控制器参考系为核心，其正确性判据是 M6 拆桨方向验收，须待 M6 后另行立项 | **维持 0x00** | R-F0~F5 置 ✅（软件契约与证据基线交付完成）；**M7 保持 ⏸**，解冻仍需运行时迁移另行立项 |
 | 2026-08-30 | 审核：R-S6-2 D2~D4 过审，REQ 收官置 ✅ | 主审逐域字节级复核：D2 rcmap 4/5 逐字节一致，handler 唯一偏离精确等于裁决（6 行 delta：`save_config` 调用换 `app_control_internal_commit_config_persist()`+4 行下沉；helper 体内为原序列逐字节含错误路径）；D3 flow 3/3 一致、`acceptance_milli` 单 return 纯委托、32U/100U 超时原值；D4 system 9/9 + diag 14/14 一致、7 个新增纯访问器、5 个留守函数（report_config/flash/baro/imu、token_u32）HEAD 哈希未动；四文件 267/179/411/542 行全 ≤800；安全常量 100000ULL/10U 现值确认；config 全程 const 视图。主审复跑全量 `772 passed`、构建 no-op 零警告。**并发记录（责任在主审）**：f5b6e1e8 提交时再次卷入执行者未提交的 PIPELINE 状态与证据行（纯文本、无源码卷入，后由索引重建消化）——主审对 PIPELINE 的"只加自己行"纪律执行两次失守，自罚记档 | **过审，R-S6-2 置 ✅** | S6 仅余 S6-1 光流页；六 seam+FLOG+命令面合并实机场次解锁，为代码侧最后一道门 |

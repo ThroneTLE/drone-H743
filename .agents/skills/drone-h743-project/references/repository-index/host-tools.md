@@ -4,7 +4,7 @@
 
 Read this shard only when the task uses serial/TCP diagnostics, log analysis, identification, capture, calibration, or desktop UIs.
 
-Source snapshot: `4b40adeab0ba`; aggregate snapshot: `ce7def1f86a3`. Covered files: 5306.
+Source snapshot: `98b5071933f0`; aggregate snapshot: `ce7def1f86a3`. Covered files: 5307.
 
 | File/module or scope | Content outline | Key entry points / size |
 |---|---|---|
@@ -50,6 +50,7 @@ Source snapshot: `4b40adeab0ba`; aggregate snapshot: `ce7def1f86a3`. Covered fil
 | `tools/panel_lib/pages/__init__.py` | Panel page builders and their event handlers | — |
 | `tools/panel_lib/pages/acceptance_v2.py` | Propeller-off V2A control-chain acceptance page | `AcceptanceV2PageMixin` |
 | `tools/panel_lib/pages/drift.py` | Stationary-drift page builder and handlers | `DriftPageMixin` |
+| `tools/panel_lib/pages/flow_ranging.py` | Optical-flow / combined-ranging ground calibration page and its handlers | `FlowRangingPageMixin` |
 | `tools/panel_lib/pages/mechanical.py` | Servo-mechanical calibration page builder and handlers | `MechanicalPageMixin` |
 | `tools/panel_lib/pages/rc_wizard.py` | RC mapping and guided-calibration page builder and handlers | `rc_channel_travel`, `rc_detect_channel`, `rc_map_is_valid`, `rc_wizard_dominant`, `rc_wizard_step_ready`, `rc_wizard_window_stable` (+4) |
 | `tools/panel_lib/pages/servo_debug.py` | Bus-servo debug page builders and handlers | `ServoDebugPageMixin` |

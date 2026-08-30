@@ -18,6 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 LEGACY_PANEL_PATH = ROOT / "tools" / "drone_tcp_panel.py"
 MECHANICAL_PAGE_PATH = ROOT / "tools" / "panel_lib" / "pages" / "mechanical.py"
 V1_PAGE_PATH = ROOT / "tools" / "panel_lib" / "pages" / "v1_metrology.py"
+FLOW_PAGE_PATH = ROOT / "tools" / "panel_lib" / "pages" / "flow_ranging.py"
 
 METHOD_AST_SHA256 = {
     "_build_v1_page": "406c0f27969e064cfe7132b65a655613b61fc3e853439cfddf8c94565bc0efd9",
@@ -45,7 +46,8 @@ METHOD_AST_SHA256 = {
     "_v1_target_worker": "ab7013ab7d4a53b86232c75aa9a5bf4800e8e5411c46b6f5c4e37fb4ca4ed4a8",
     "_v1_drain_events": "26e7ed7959bf9e7d52a8c1b6b1010334656154ac393c131efed877ec292e0483",
 }
-UNTOUCHED_LEGACY_BUILDERS = {"_build_flow_range_calibration_page"}
+# 增量11 起光流页也搬走了，这里从"仍留在旧文件"改成"已归 flow_ranging.py"。
+EXTRACTED_FLOW_BUILDERS = {"_build_flow_range_calibration_page"}
 EXTRACTED_MECHANICAL_BUILDERS = {"_build_mechanical_calibration_page"}
 
 
@@ -75,12 +77,14 @@ def test_v1_page_mixin_owns_the_builder_and_every_v1_handler() -> None:
     owned = class_methods(V1_PAGE_PATH, "V1PageMixin")
     legacy = class_methods(LEGACY_PANEL_PATH, "DronePanel")
     mechanical = class_methods(MECHANICAL_PAGE_PATH, "MechanicalPageMixin")
+    flow = class_methods(FLOW_PAGE_PATH, "FlowRangingPageMixin")
 
     assert set(owned) == set(METHOD_AST_SHA256)
     assert set(METHOD_AST_SHA256).isdisjoint(legacy)
-    assert UNTOUCHED_LEGACY_BUILDERS <= set(legacy)
+    assert EXTRACTED_FLOW_BUILDERS <= set(flow)
+    assert EXTRACTED_FLOW_BUILDERS.isdisjoint(legacy)
     assert EXTRACTED_MECHANICAL_BUILDERS <= set(mechanical)
-    assert (UNTOUCHED_LEGACY_BUILDERS | EXTRACTED_MECHANICAL_BUILDERS).isdisjoint(owned)
+    assert (EXTRACTED_FLOW_BUILDERS | EXTRACTED_MECHANICAL_BUILDERS).isdisjoint(owned)
     assert legacy_panel.MechanicalPageMixin is mechanical_page.MechanicalPageMixin
 
 

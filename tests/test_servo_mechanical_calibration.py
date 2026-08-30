@@ -63,7 +63,7 @@ def test_flow_compensation_snapshot_is_coherent_and_exported_as_flu() -> None:
     header = read("App/Inc/app_stabilizer.h")
     stabilizer = read("App/Src/app_stabilizer.c")
     flow_cmd = read("App/Src/app_cmd_flow.c")
-    panel = read("tools/drone_tcp_panel.py")
+    panel = read("tools/panel_lib/pages/flow_ranging.py")
     assert "StabilizerFlowCompensationSnapshot" in header
     assert "APP_Stabilizer_ReadFlowCompensationSnapshot" in header
     assert "stabilizer_flow_comp_seqlock" in stabilizer

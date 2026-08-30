@@ -14,6 +14,7 @@ from tools.panel_lib.pages import mechanical as mechanical_page
 ROOT = Path(__file__).resolve().parents[1]
 LEGACY_PANEL_PATH = ROOT / "tools" / "drone_tcp_panel.py"
 MECHANICAL_PAGE_PATH = ROOT / "tools" / "panel_lib" / "pages" / "mechanical.py"
+FLOW_PAGE_PATH = ROOT / "tools" / "panel_lib" / "pages" / "flow_ranging.py"
 PARENT_COMMIT = "e88b3d99a061d199ab1fe9fb69d7e952c0a6e2bf"
 
 METHOD_AST_SHA256 = {
@@ -98,8 +99,14 @@ def _check_dependencies() -> None:
 
 
 def _check_flow_page_frozen() -> None:
+    """增量11 把光流页搬进 flow_ranging.py；这里的哈希仍是搬家前的值。
+
+    键不变、哈希不变、只有所有者变了——这正是"搬家不改行为"的判据。
+    """
+    owner = class_methods(FLOW_PAGE_PATH, "FlowRangingPageMixin")
     legacy = class_methods(LEGACY_PANEL_PATH, "DronePanel")
-    assert {name: ast_sha256(legacy[name]) for name in FLOW_AST_SHA256} == FLOW_AST_SHA256
+    assert {name: ast_sha256(owner[name]) for name in FLOW_AST_SHA256} == FLOW_AST_SHA256
+    assert set(FLOW_AST_SHA256).isdisjoint(legacy), "旧文件里不许留副本"
 
 
 def _check_direct_import() -> None:

@@ -4,7 +4,7 @@
 
 Read this shard only when you need existing behavioral/architecture coverage or must choose focused regression tests.
 
-Source snapshot: `abd6703a78be`. Indexed files: 90.
+Source snapshot: `30f2634e9d55`. Indexed files: 91.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -70,6 +70,7 @@ Source snapshot: `abd6703a78be`. Indexed files: 90.
 | `tests/test_optical_flow_contract.py` | — | `test_micolink_parser_accepts_live_range_and_flow_payload_shape`, `test_micolink_parser_rejects_bad_checksum_and_oversize_payload`, `test_micolink_parser_resynchronizes_after_noise_and_ignores_other_messages`, `test_optical_flow_sources_are_wired_into_firmware_and_cubemx`, `test_velocity_source_uses_flow_dominant_ekf_without_imu_velocity_fallback`, `test_optical_flow_fault_recovery_runs_outside_sensor_step` (+6) |
 | `tests/test_panel_autoconnect.py` | 记住上次的连接并在启动时自动连回去。 关键点是**按什么认板子**：Windows 给 USB 串口分配的 COM 号会变（本机就出现过同一块 飞控在 COM30/31/32 之间跳），而 ST-Link、蓝牙串口、CH340 会占掉腾出… | `test_fingerprint_is_stable_across_com_renumbering`, `test_two_boards_of_the_same_model_get_different_fingerprints`, `test_a_port_without_a_serial_number_falls_back_to_the_usb_location`, `test_a_port_with_no_usb_identity_has_no_fingerprint`, `test_same_port_is_matched`, `test_the_board_is_followed_when_windows_renumbers_it` (+10) |
 | `tests/test_panel_drift_page_extraction.py` | S6 stationary-drift page extraction ownership and compatibility contract | `test_drift_page_mixin_owns_only_its_builder_and_handlers`, `test_legacy_panel_forwards_the_drift_page_without_wrappers`, `test_moved_drift_page_ast_matches_the_pre_extraction_implementation`, `test_v1_page_keeps_the_drift_builder_at_the_original_slot`, `test_drift_sample_pairing_behavior_is_preserved_in_memory` |
+| `tests/test_panel_flow_page_extraction.py` | R-S6-1 增量11（收官）：光流与测距页搬进 panel_lib/pages/flow_ranging.py。 搬家的判据只有一条——行为零变更。这里用三种独立方式钉： 1. 逐方法 AST 哈希与搬家前逐字节一致（哈希取自父提交 9… | `test_flow_mixin_owns_every_moved_method_with_the_pre_move_ast`, `test_page_constant_has_exactly_one_definition`, `test_legacy_panel_forwards_the_same_objects`, `test_flow_page_dependencies_stay_the_same_objects`, `test_direct_script_import_context_still_resolves` |
 | `tests/test_panel_proto_extraction.py` | S6 panel protocol extraction ownership and compatibility contract | `test_proto_module_owns_the_protocol_table_and_parsing_helpers`, `test_legacy_panel_forwards_every_proto_symbol_without_wrappers`, `test_protocol_line_methods_move_intact_to_the_mixin`, `test_transport_uses_proto_constants_but_keeps_existing_frame_builders` |
 | `tests/test_panel_rc_wizard_page_extraction.py` | S6 RC page extraction contract | `test_method_ownership`, `test_method_ast`, `test_helper_ownership`, `test_forwarding`, `test_protected_pages`, `test_palette` (+1) |
 | `tests/test_panel_state_extraction.py` | S6 panel-state persistence extraction ownership and compatibility contract | `test_state_module_owns_persistence_and_logging_implementation`, `test_legacy_panel_forwards_every_state_symbol_without_wrappers`, `test_panel_state_round_trip_uses_only_the_configured_state_path`, `test_logging_helpers_write_only_to_injected_temporary_paths` |

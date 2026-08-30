@@ -17,6 +17,7 @@ from tools.panel_lib.pages import rc_wizard as rc_page
 ROOT = Path(__file__).resolve().parents[1]
 LEGACY_PANEL_PATH = ROOT / "tools" / "drone_tcp_panel.py"
 MECHANICAL_PAGE_PATH = ROOT / "tools" / "panel_lib" / "pages" / "mechanical.py"
+FLOW_PAGE_PATH = ROOT / "tools" / "panel_lib" / "pages" / "flow_ranging.py"
 RC_PAGE_PATH = ROOT / "tools" / "panel_lib" / "pages" / "rc_wizard.py"
 
 METHOD_AST_SHA256 = {
@@ -214,7 +215,9 @@ def test_forwarding() -> None:
 def test_protected_pages() -> None:
     legacy = class_methods(LEGACY_PANEL_PATH, "DronePanel")
     mechanical = class_methods(MECHANICAL_PAGE_PATH, "MechanicalPageMixin")
-    owners = {**legacy, **mechanical}
+    # 增量11 之后光流页归 flow_ranging.py；哈希不变，只是换了查找位置。
+    flow = class_methods(FLOW_PAGE_PATH, "FlowRangingPageMixin")
+    owners = {**legacy, **mechanical, **flow}
 
     assert {
         name: ast_sha256(owners[name]) for name in UNTOUCHED_PAGE_AST_SHA256
