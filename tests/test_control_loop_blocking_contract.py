@@ -19,6 +19,7 @@ CONTROL_CORE = ROOT / "App" / "Src" / "app_control_core.c"
 SERVOCAL_CMD = ROOT / "App" / "Src" / "app_cmd_servocal.c"
 IMUCAL_CMD = ROOT / "App" / "Src" / "app_cmd_imucal.c"
 RCMAP_CMD = ROOT / "App" / "Src" / "app_cmd_rcmap.c"
+FLOW_CMD = ROOT / "App" / "Src" / "app_cmd_flow.c"
 CONTROL_INTERNAL = ROOT / "App" / "Inc" / "app_control_internal.h"
 CMAKE = ROOT / "CMakeLists.txt"
 
@@ -179,6 +180,18 @@ STEP_D2_PERSIST_HELPER_BODY = """{
     control_config.flash_valid = 1U;
     return (uint8_t)save_status;
 }"""
+STEP_D3_PARENT_COMMIT = "350c2732014240e434583096f692ca5f62622d02"
+STEP_D3_BODY_SHA256 = {
+    "app_control_parse_hex_byte": "822f7d5255be98c3cf3ef75a9fbbe59c94cfa0bf4e8a7b1105e78a0d2af318d4",
+    "app_control_handle_flow": "7b52901d414dacbe3a88faee468ba4aaafb52605674128df19915bd14493c163",
+    "app_control_report_flow": "7be12a05196978c8655bbba1aeb15b5dfdeeb9f1ee2794814a4a6b6caef61e9f",
+}
+STEP_D3_ACCEPTANCE_BODY_SHA256 = (
+    "55bdb96ca6630a2e7036c0e4932ec33822ff82f8e54f455242fe7a2df5f9fdb2"
+)
+STEP_D3_ACCESSOR_BODY = """{
+    return app_control_acceptance_milli(value);
+}"""
 
 CORE_HARNESS = r"""
 #include "app_control_internal.h"
@@ -270,7 +283,7 @@ int main(void)
 
 def _c_function_body(source: str, name: str) -> str:
     pattern = re.compile(
-        rf"^(?:static\s+)?(?:void|uint8_t|uint32_t|const char \*\s*)\s*"
+        rf"^(?:static\s+)?(?:void|uint8_t|uint32_t|int32_t|const char \*\s*)\s*"
         rf"{re.escape(name)}\s*\(",
         re.MULTILINE,
     )
@@ -725,6 +738,103 @@ def _check_app_control_step_d2(tmp_path: Path) -> None:
     )
 
 
+def _write_flow_stubs(stub_dir: Path) -> None:
+    stub_dir.mkdir()
+    (stub_dir / "app_control.h").write_text(
+        "void APP_Control_QueueText(const char *, ...);\n", encoding="ascii"
+    )
+    (stub_dir / "app_optical_flow.h").write_text(
+        "void APP_OpticalFlow_Report(void);\n", encoding="ascii"
+    )
+    (stub_dir / "app_stabilizer.h").write_text(
+        "#include <stdint.h>\n"
+        "typedef struct { uint32_t sample_ms; uint16_t frame_contract; "
+        "uint8_t orientation_code; uint8_t valid; "
+        "float sensor_velocity_flu_m_s[2]; float optical_rot_comp_flu_m_s[2]; "
+        "float offset_rot_comp_flu_m_s[2]; float corrected_velocity_flu_m_s[2]; "
+        "} StabilizerFlowCompensationSnapshot;\n"
+        "uint8_t APP_Stabilizer_ReadFlowCompensationSnapshot("
+        "StabilizerFlowCompensationSnapshot *);\n",
+        encoding="ascii",
+    )
+    (stub_dir / "bsp_optical_flow.h").write_text(
+        "#include <stdint.h>\n"
+        "typedef int BSP_OPTICAL_FLOW_StatusCode;\n"
+        "BSP_OPTICAL_FLOW_StatusCode BSP_OPTICAL_FLOW_TransmitRaw("
+        "const uint8_t *,uint16_t,uint32_t);\n"
+        "uint16_t BSP_OPTICAL_FLOW_ReceiveRaw(uint8_t *,uint16_t,uint32_t);\n"
+        "BSP_OPTICAL_FLOW_StatusCode BSP_OPTICAL_FLOW_TransceiveRaw("
+        "const uint8_t *,uint16_t,uint8_t *,uint16_t,uint16_t *,uint32_t);\n",
+        encoding="ascii",
+    )
+
+
+def _check_app_control_step_d3(tmp_path: Path) -> None:
+    assert FLOW_CMD.is_file()
+    legacy = CONTROL.read_text(encoding="utf-8")
+    flow = FLOW_CMD.read_text(encoding="utf-8")
+    internal = CONTROL_INTERNAL.read_text(encoding="utf-8")
+    cmake = CMAKE.read_text(encoding="utf-8")
+
+    for name, expected_hash in STEP_D3_BODY_SHA256.items():
+        assert hashlib.sha256(_c_function_body(flow, name).encode()).hexdigest() == expected_hash, (
+            f"{name} diverged from D3 parent {STEP_D3_PARENT_COMMIT}"
+        )
+        assert not re.search(
+            rf"^(?:static\s+)?(?:void|uint8_t)\s+{re.escape(name)}\s*\(",
+            legacy,
+            re.MULTILINE,
+        ), name
+    assert hashlib.sha256(
+        _c_function_body(legacy, "app_control_acceptance_milli").encode()
+    ).hexdigest() == STEP_D3_ACCEPTANCE_BODY_SHA256
+    assert _body_after_signature(
+        legacy,
+        "int32_t app_control_internal_acceptance_milli(float value)",
+    ) == STEP_D3_ACCESSOR_BODY
+    assert (
+        "#define app_control_acceptance_milli \\\n"
+        "    app_control_internal_acceptance_milli"
+    ) in flow
+    assert "#define APP_CONTROL_FLOW_RAW_MAX_BYTES 32U" in flow
+    assert "APP_CONTROL_FLOW_RAW_MAX_BYTES" not in legacy
+    assert len(flow.splitlines()) <= 800
+    assert "extern" not in flow
+    assert "App/Src/app_cmd_flow.c" in cmake
+    assert "app_control_report_flow();" in legacy
+    assert "app_control_handle_flow(tokens, count);" in legacy
+    for declaration in (
+        "int32_t app_control_internal_acceptance_milli(float value);",
+        "void app_control_handle_flow(char **tokens, uint32_t count);",
+        "void app_control_report_flow(void);",
+    ):
+        assert declaration in internal
+
+    gcc = shutil.which("gcc")
+    if gcc is None:
+        pytest.skip("host gcc is unavailable")
+    stub_dir = tmp_path / "flow_stubs"
+    _write_flow_stubs(stub_dir)
+    subprocess.run(
+        [
+            gcc,
+            "-std=c11",
+            "-Wall",
+            "-Wextra",
+            "-Werror",
+            f"-I{stub_dir}",
+            f"-I{ROOT / 'App' / 'Inc'}",
+            "-c",
+            str(FLOW_CMD),
+            "-o",
+            str(tmp_path / "app_cmd_flow.o"),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+
 def _check_app_control_step_a(tmp_path: Path) -> None:
     assert CONTROL_CORE.is_file()
     assert CONTROL_INTERNAL.is_file()
@@ -823,3 +933,7 @@ def test_control_split(tmp_path: Path) -> None:
 
 def test_control_split_d2_rcmap(tmp_path: Path) -> None:
     _check_app_control_step_d2(tmp_path)
+
+
+def test_control_split_d3_flow(tmp_path: Path) -> None:
+    _check_app_control_step_d3(tmp_path)

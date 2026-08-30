@@ -62,4 +62,8 @@ void app_cmd_rcmap_apply_config(const void *config);
 const void *app_cmd_rcmap_config(void);
 uint8_t app_control_internal_commit_config_persist(void);
 
+int32_t app_control_internal_acceptance_milli(float value);
+void app_control_handle_flow(char **tokens, uint32_t count);
+void app_control_report_flow(void);
+
 #endif /* APP_CONTROL_INTERNAL_H */

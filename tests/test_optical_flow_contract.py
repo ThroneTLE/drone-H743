@@ -253,6 +253,7 @@ def test_optical_flow_sources_are_wired_into_firmware_and_cubemx() -> None:
     usart = read("Core/Src/usart.c")
     ioc = read("drone-H743.ioc")
     control = read("App/Src/app_control.c")
+    flow_cmd = read("App/Src/app_cmd_flow.c")
     driver_header = read("Driver/Inc/drv_optical_flow.h")
 
     assert "Driver/Src/drv_optical_flow.c" in cmake
@@ -266,11 +267,11 @@ def test_optical_flow_sources_are_wired_into_firmware_and_cubemx() -> None:
     assert "USART2.BaudRate=115200" in ioc
     assert "#define DRV_OPTICAL_FLOW_BAUD_RATE 115200U" in driver_header
     assert "FLOW?" in control
-    assert "APP_OpticalFlow_Report();" in control
-    assert "FLOW PINGAB" not in control
-    assert "FLOW XCV rx_len hex..." in control
-    assert "BSP_OPTICAL_FLOW_TransceiveRaw" in control
-    assert "BSP_OPTICAL_FLOW_TransmitRaw" in control
+    assert "APP_OpticalFlow_Report();" in flow_cmd
+    assert "FLOW PINGAB" not in control + flow_cmd
+    assert "FLOW XCV rx_len hex..." in flow_cmd
+    assert "BSP_OPTICAL_FLOW_TransceiveRaw" in flow_cmd
+    assert "BSP_OPTICAL_FLOW_TransmitRaw" in flow_cmd
     assert "APP_Task_OpticalFlow_Init();" in freertos
     assert "APP_Task_OpticalFlow_Step();" in freertos
 

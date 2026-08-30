@@ -62,7 +62,7 @@ def test_runtime_consumers_use_the_same_servo_calibration() -> None:
 def test_flow_compensation_snapshot_is_coherent_and_exported_as_flu() -> None:
     header = read("App/Inc/app_stabilizer.h")
     stabilizer = read("App/Src/app_stabilizer.c")
-    control = read("App/Src/app_control.c")
+    flow_cmd = read("App/Src/app_cmd_flow.c")
     panel = read("tools/drone_tcp_panel.py")
     assert "StabilizerFlowCompensationSnapshot" in header
     assert "APP_Stabilizer_ReadFlowCompensationSnapshot" in header
@@ -70,8 +70,8 @@ def test_flow_compensation_snapshot_is_coherent_and_exported_as_flu() -> None:
     assert "__DMB();" in stabilizer
     assert "sensor_velocity_flu_m_s[1] = -debug->sensor_velocity_m_s[1]" in stabilizer
     assert "corrected_velocity_flu_m_s[1] = -debug->corrected_velocity_m_s[1]" in stabilizer
-    assert "source=controller_legacy_x_forward_y_right export=canonical_flu" in control
-    assert "corr_vx_mm_s" in control
+    assert "source=controller_legacy_x_forward_y_right export=canonical_flu" in flow_cmd
+    assert "corr_vx_mm_s" in flow_cmd
     assert "vx_compensated_m_s" in panel
     assert 'self.flow_diag_values.get("export") != "canonical_flu"' in panel
 

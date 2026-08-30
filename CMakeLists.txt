@@ -100,6 +100,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     App/Src/app_cmd_servocal.c
     App/Src/app_cmd_imucal.c
     App/Src/app_cmd_rcmap.c
+    App/Src/app_cmd_flow.c
     App/Src/app_diag.c
     App/Src/app_flash.c
     App/Src/app_firmware_identity.c

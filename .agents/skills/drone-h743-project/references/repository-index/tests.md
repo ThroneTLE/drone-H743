@@ -4,7 +4,7 @@
 
 Read this shard only when you need existing behavioral/architecture coverage or must choose focused regression tests.
 
-Source snapshot: `cd28eb432f70`. Indexed files: 89.
+Source snapshot: `f40ddda1d6de`. Indexed files: 89.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -20,7 +20,7 @@ Source snapshot: `cd28eb432f70`. Indexed files: 89.
 | `tests/test_baro_contract.py` | — | `test_baro_ok_requires_real_spl06_who_am_i_not_only_spi_success` |
 | `tests/test_coax_ctrl_contract.py` | — | `test_servo_output_compensates_90_degree_ccw_mounting`, `test_tilt_limit_is_twenty_eight_degrees_in_driver_controller`, `test_generated_controller_is_not_built_or_called`, `test_bus_servos_are_180_degree_centered_and_limited_to_90_degrees`, `test_manual_and_ident_servo_limits_follow_each_calibrated_center`, `test_mbd_controller_gains_are_runtime_coax_params` (+11) |
 | `tests/test_coax_sign_convention.py` | Sign-convention self-check for the coaxial attitude controller. This is a legacy runtime-adapter test, not the canonica… | `test_gains_are_positive_so_polarity_errors_cannot_be_masked`, `test_control_law_is_negative_feedback_by_structure`, `test_stick_polarity_lives_in_exactly_one_place`, `test_sign_convention_is_documented_in_one_block`, `test_controller_sign_convention_runtime` |
-| `tests/test_control_loop_blocking_contract.py` | S6 control contracts | `test_no_blocking`, `test_notice_buffer`, `test_control_split`, `test_control_split_d2_rcmap` |
+| `tests/test_control_loop_blocking_contract.py` | S6 control contracts | `test_no_blocking`, `test_notice_buffer`, `test_control_split`, `test_control_split_d2_rcmap`, `test_control_split_d3_flow` |
 | `tests/test_data_organization.py` | — | `test_date_directory_helpers_are_sortable_and_validate_dates`, `test_organizer_groups_dated_and_undated_items`, `test_canonical_categories_have_only_date_or_classification_children` |
 | `tests/test_drone_validation_v0.py` | — | `test_snapshot_parser_requires_provenance_and_never_invents_zeroes`, `test_snapshot_parser_normalizes_target_units_without_claiming_flu`, `test_post_apply_gate_compares_canonical_accel_tilt_with_fusion`, `test_v0_session_command_gate_only_grants_exact_orientation_actions`, `test_v0_session_invalidates_transport_write_queues_at_the_send_boundary`, `test_validation_page_limits_target_writes_to_the_guarded_orientation_flow` (+33) |
 | `tests/test_evidence_write_protection.py` | 历史验收证据不可变性契约。 2026-08-29 实际发生过一次证据破坏：面板启动时自动加载了 2026-08-28 的历史 验收会话，随后自动保存把 workflow.json 的 target_state_at_save（14 个键的… | `test_session_autosave_refuses_to_write_while_browsing_history`, `test_workflow_autosave_refuses_to_write_while_browsing_history`, `test_provenance_flag_lifecycle_backs_the_guard`, `test_ui_promise_matches_the_enforced_contract` |
