@@ -47,29 +47,38 @@ def test_replay_geometry_is_frozen() -> None:
     assert "return [float(y_right), float(x_forward), float(-z_down)]" in source
 
 
-def test_replay_does_not_reinterpret_history_as_flu() -> None:
-    """No unconditional FLU conversion may appear in the replay path.
+def test_replay_converts_to_flu_only_on_recorded_provenance() -> None:
+    """R-F5b made the FLU conversion conditional; it must never be blanket.
 
     Historical logs predating the V0 candidate were recorded with FRD attitude
-    from the Fusion NED path.  Converting every file would corrupt exactly the
-    evidence spec section 10 protects.
+    from the Fusion NED path and carry no provenance.  Converting every file
+    would corrupt exactly the evidence spec section 10 protects, so the
+    conversion has to sit behind the recorded frame identity and the
+    no-provenance branch has to land on legacy.
     """
     source = read(REPLAY)
-    assert "y_left" not in source
-    assert "FluToFrd" not in source
-    assert "DRV_FRAME_FrdToFlu" not in source
+    # The conversion exists, but only inside the canonical_flu branch.
+    assert "def flu_to_local_down_angles(" in source
+    assert 'if attitude_frame == ATTITUDE_FRAME_FLU:' in source
+    # Absent or inconsistent provenance must fall back to legacy, not to FLU.
+    assert 'return ATTITUDE_FRAME_LEGACY, "未标注坐标系（无溯源列）' in source
+    assert "ATTITUDE_FRAME_LEGACY = \"legacy_frd\"" in source
 
 
-def test_log_record_still_carries_no_frame_provenance() -> None:
-    """Pin the gap, so adding provenance forces a revisit of this seam.
+def test_log_record_now_carries_frame_provenance() -> None:
+    """The seam 5 sentinel fired as designed and was re-adjudicated by R-F5b.
 
-    If this ever fails it is good news: it means the log format gained a frame
-    identifier, and the replay may finally choose its convention per file
-    instead of assuming one.
+    Its predecessor asserted the log carried *no* frame provenance, and said
+    that failing would be good news.  R-F5b added the provenance, so the
+    contract is restated here: the snapshot must carry the frame identity that
+    lets a reader pick a convention per file.  Placement, version migration and
+    the v7 read-back guarantee are locked by
+    tests/test_flight_log_frame_provenance.py.
     """
     header = read(LOG_HEADER)
-    for field in ("frame", "orientation", "contract_version", "firmware_crc32"):
-        assert field not in header
+    assert "uint8_t frame_orientation_code;" in header
+    assert "uint8_t frame_contract_version;" in header
+    assert "uint32_t calibration_generation;" in header
 
 
 def test_logged_attitude_source_is_pinned() -> None:
@@ -92,4 +101,7 @@ def test_replay_declares_its_frame_contract() -> None:
     assert "X前/Y右/Z下" in head
     assert "FLU" in head
     assert "历史数据永不重释义" in head
-    assert "帧内未记录坐标系" in head
+    # R-F5b: the declaration must now also state how the convention is chosen
+    # and what happens when a file carries no provenance.
+    assert "resolve_attitude_frame" in head
+    assert "没有溯源就一律按 legacy FRD 渲染" in head

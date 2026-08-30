@@ -4,7 +4,7 @@
 
 Read this shard only when the task uses serial/TCP diagnostics, log analysis, identification, capture, calibration, or desktop UIs.
 
-Source snapshot: `1af9f4e84d74`; aggregate snapshot: `ce7def1f86a3`. Covered files: 5306.
+Source snapshot: `4b40adeab0ba`; aggregate snapshot: `ce7def1f86a3`. Covered files: 5306.
 
 | File/module or scope | Content outline | Key entry points / size |
 |---|---|---|
@@ -23,8 +23,8 @@ Source snapshot: `1af9f4e84d74`; aggregate snapshot: `ce7def1f86a3`. Covered fil
 | `tools/flash_diag_test.py` | Run drone-H743 RTOS/flash diagnostics over a noisy UART stream. The firmware may continuously print IMU samples. This t… | `CommandSpec`, `CheckResult`, `SerialTransport`, `LineReader`, `parse_kv`, `int_value` (+14) |
 | `tools/flash_stlink_gdb.ps1` | Host-side utility for flash stlink gdb | — |
 | `tools/flight_acceptance_v2.py` | Strict, evidence-only V2A flight-control acceptance engine | `AcceptanceStatus`, `V2Stage`, `StageDefinition`, `V2Thresholds`, `V2Sample`, `PhysicalConfirmation` (+14) |
-| `tools/flight_log_receive.py` | Receive FlightLog dumps from USART1 and convert them to bin/csv/json | `FlightLogError`, `ExportBegin`, `ExportBlock`, `ExportEnd`, `ReceiveResult`, `crc32` (+24) |
-| `tools/flight_log_rerun_replay.py` | 把 H743 飞行日志导出为 Rerun 现场回放。 坐标系契约（seam 5 具名标注，2026-08-30，R-F5） 本工具的回放几何固定假设日志中的 roll/pitch/yaw 属 **X前/Y右/Z下** （见 rpy_bod… | `ReplaySegment`, `require_pandas`, `require_rerun`, `latest_csv_in`, `resolve_csv_path`, `safe_float` (+29) |
+| `tools/flight_log_receive.py` | Receive FlightLog dumps from USART1 and convert them to bin/csv/json | `FlightLogError`, `ExportBegin`, `ExportBlock`, `ExportEnd`, `ReceiveResult`, `crc32` (+25) |
+| `tools/flight_log_rerun_replay.py` | 把 H743 飞行日志导出为 Rerun 现场回放。 坐标系契约（seam 5 具名标注 R-F5，逐文件选口径 R-F5b，2026-08-30） 本工具的回放几何固定为 **X前/Y右/Z下**（见 rpy_body_to_local… | `ReplaySegment`, `require_pandas`, `require_rerun`, `latest_csv_in`, `resolve_csv_path`, `safe_float` (+31) |
 | `tools/flight_log_sysid.py` | Reusable system-identification summaries for H743 flight-log CSV files | `ChannelStats`, `SegmentSummary`, `GainGroupSummary`, `LinearFit`, `TuningAdvice`, `FlightLogAnalysis` (+39) |
 | `tools/flight_log_sysid_ui.py` | H743 飞行日志系统辨识的 Tkinter 图形界面。 | `format_cell`, `default_report_dir`, `translate_flag`, `translate_severity`, `FlightLogSysidUI`, `short_gain_label` (+2) |
 | `tools/flight_log_waveform_ui.py` | H743 飞行日志通道波形查看器。 | `ChannelStats`, `discover_csv_files`, `human_size`, `choose_time_column`, `is_numeric_column`, `numeric_columns` (+8) |

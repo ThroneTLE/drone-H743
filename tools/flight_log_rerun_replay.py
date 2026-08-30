@@ -1,33 +1,30 @@
 #!/usr/bin/env python3
 """把 H743 飞行日志导出为 Rerun 现场回放。
 
-坐标系契约（seam 5 具名标注，2026-08-30，R-F5）
+坐标系契约（seam 5 具名标注 R-F5，逐文件选口径 R-F5b，2026-08-30）
 
-本工具的回放几何固定假设日志中的 roll/pitch/yaw 属 **X前/Y右/Z下**
-（见 rpy_body_to_local_down 与 local_down_to_rerun）。这是历史口径，
-刻意保持不变。
+本工具的回放几何固定为 **X前/Y右/Z下**（见 rpy_body_to_local_down 与
+local_down_to_rerun）。这套几何刻意不变，变的只是「送进去之前如何解释
+日志里的 roll/pitch/yaw」。
 
-已知残留，未在本 seam 修复：固件经 seam 0/1 迁移后，
-app_stabilizer.c 记录的姿态取自 ctx->roll_control 等，已是
-Driver/Inc/drv_frame_contract.h 的规范 **FLU**（+X前/+Y左/+Z上）。
-FLU 与 FRD 对同一数值的 pitch/yaw 含义相反（FLU 的 +pitch 是机头下俯、
-+yaw 是机头左转），因此新日志的这两个通道在此按旧口径渲染。
-横滚不受影响（两套口径的 X 都是前向）。
+口径按文件溯源选择，见 resolve_attitude_frame()：
+- 扇区头 v8 起带坐标溯源（frame_orientation_code 等），经
+  flight_log_receive.py 落进 CSV 的 attitude_frame 列。标注为
+  canonical_flu 时，先用 flu_to_local_down_angles() 把规范 FLU 欧拉角
+  转成本回放几何的角度（roll 同号、pitch/yaw 反号——FLU 与 FRD 的 X 同为
+  前向，+Y 由左变右、+Z 由上变下，是绕 X 的 180° 旋转）。
+- **没有溯源就一律按 legacy FRD 渲染并在 world/attitude_frame 里标注**。
+  v7 及更早的日志帧内不记坐标系，既可能录于 V0 候选生效前（FRD 姿态）
+  也可能在其后，无从分辨；按 doc/technical-spec.md §10
+  「历史数据永不重释义，新数据带 frame 标注」，宁可保持旧口径也不能猜成
+  FLU。同一文件里混了口径时同样按最保守的 legacy 处理。
 
-之所以不能就地改正：**帧内未记录坐标系**——飞行日志记录不含任何坐标
-系标识、格式版本或固件 CRC，读者无法判断某文件录制时用的是哪套口径。
-V0 候选生效前录制的日志（如 log/flightlog_20260726_*.csv）确为 FRD 姿态，
-若在此无条件转成 FLU，就会把它们按错误口径重读，违反
-doc/technical-spec.md §10 的「历史数据永不重释义，新数据带 frame 标注」
-（同章另明文：迁移期间历史 NED/FRD 数据禁止按 FLU 重读）。
+判定极性仍不归这里：回放只按记录口径显示，飞控极性由 M6 拆桨方向验收
+判定。
 
-正确的修复顺序是先给日志格式加坐标溯源字段（可观测格式改动，须单独
-立项经作者批准），再让本工具按文件逐份选择口径。在那之前请把回放的
-pitch/yaw 视为「按记录口径显示」，不要据此判定飞控极性——极性判定归
-M6 拆桨方向验收。
-
-约束由 tests/test_flu_seam5_telemetry_frame.py 钉死：几何冻结、禁止
-出现无条件 FLU 转换、日志无溯源字段这一事实本身也被断言。
+约束由 tests/test_flu_seam5_telemetry_frame.py 与
+tests/test_flight_log_frame_provenance.py 钉死：几何冻结、FLU 转换必须
+以溯源为条件、v7 永远可读。
 """
 
 from __future__ import annotations
@@ -283,6 +280,47 @@ def rrd_name(csv_path: Path, segment: ReplaySegment) -> str:
     return f"{csv_path.stem}_seg{segment.index:02d}_{reason}_{segment.duration_s:.2f}s.rrd"
 
 
+ATTITUDE_FRAME_FLU = "canonical_flu"
+ATTITUDE_FRAME_LEGACY = "legacy_frd"
+
+
+def resolve_attitude_frame(frame: "pd.DataFrame") -> tuple[str, str]:
+    """按文件溯源决定姿态口径，返回 (口径, 给人看的说明)。
+
+    有溯源就按声明的坐标系渲染；没有溯源一律维持 legacy FRD 几何并显式
+    标注——v7 及更早的日志帧内不记坐标系，既可能录于 V0 候选生效前也可能
+    在其后，无从分辨。按 spec §10「历史数据永不重释义」，宁可保持旧口径，
+    也不能猜成 FLU。
+    """
+    if "attitude_frame" not in frame.columns:
+        return ATTITUDE_FRAME_LEGACY, "未标注坐标系（无溯源列）：按 legacy FRD 渲染"
+
+    values = {str(value) for value in frame["attitude_frame"].dropna().unique()}
+    if not values:
+        return ATTITUDE_FRAME_LEGACY, "未标注坐标系（溯源列为空）：按 legacy FRD 渲染"
+    if values == {ATTITUDE_FRAME_FLU}:
+        return ATTITUDE_FRAME_FLU, "溯源标注 canonical_flu：按规范 FLU 渲染"
+    if ATTITUDE_FRAME_FLU in values:
+        # 同一文件里混了口径（跨固件的扇区），只能按最保守的来。
+        return (
+            ATTITUDE_FRAME_LEGACY,
+            f"坐标系标注不一致 {sorted(values)}：按 legacy FRD 渲染",
+        )
+    return ATTITUDE_FRAME_LEGACY, "未标注坐标系：按 legacy FRD 渲染"
+
+
+def flu_to_local_down_angles(
+    roll_rad: float, pitch_rad: float, yaw_rad: float
+) -> tuple[float, float, float]:
+    """规范 FLU 欧拉角 → 本回放的 X前/Y右/Z下 欧拉角。
+
+    FLU 与 FRD 的 X 都是前向，故 roll 同号；+Y 由左变右、+Z 由上变下，
+    这是绕 X 的 180° 旋转，pitch 与 yaw 同时反号。仅在文件自带
+    canonical_flu 溯源时使用，历史文件不走这条路径。
+    """
+    return roll_rad, -pitch_rad, -yaw_rad
+
+
 def rpy_body_to_local_down(roll_rad: float, pitch_rad: float, yaw_rad: float) -> "np.ndarray":
     # 中文注释：使用常见航向-俯仰-横滚顺序，坐标为 X前/Y右/Z下。
     cr, sr = math.cos(roll_rad), math.sin(roll_rad)
@@ -371,12 +409,16 @@ def drone_geometry(
     pitch_deg: float,
     yaw_deg: float,
     force_body_n: tuple[float, float, float],
+    attitude_frame: str = ATTITUDE_FRAME_LEGACY,
 ) -> tuple[list[list[list[float]]], list[list[int]], list[list[list[float]]], list[list[int]]]:
-    rotation = rpy_body_to_local_down(
-        math.radians(roll_deg),
-        math.radians(pitch_deg),
-        math.radians(yaw_deg),
-    )
+    roll_rad = math.radians(roll_deg)
+    pitch_rad = math.radians(pitch_deg)
+    yaw_rad = math.radians(yaw_deg)
+    if attitude_frame == ATTITUDE_FRAME_FLU:
+        roll_rad, pitch_rad, yaw_rad = flu_to_local_down_angles(
+            roll_rad, pitch_rad, yaw_rad
+        )
+    rotation = rpy_body_to_local_down(roll_rad, pitch_rad, yaw_rad)
     position = np.array([x_m, y_m, -height_m], dtype=float)
 
     body_strips_body = [
@@ -487,6 +529,7 @@ def export_segment_to_rrd(
     step = export_stride(len(segment_frame), max_rows, stride)
     segment_frame = segment_frame.iloc[::step].copy()
     time_s = segment_time_s(segment_frame)
+    attitude_frame, attitude_frame_note = resolve_attitude_frame(segment_frame)
     pos_x, pos_y, height = position_columns(segment_frame, time_s)
     path_points = [
         local_down_to_rerun([finite_or(x), finite_or(y), -finite_or(z)])
@@ -496,6 +539,12 @@ def export_segment_to_rrd(
     app_id = f"drone_h743_{csv_path.stem}_seg{segment.index:02d}"
     rr.init(app_id, spawn=False)
     rr.save(str(rrd_path))
+    # 把口径选择摆在回放里，避免看的人默认它就是 FLU。
+    rr.log(
+        "world/attitude_frame",
+        rr.TextDocument(f"attitude_frame={attitude_frame}\n{attitude_frame_note}"),
+        static=True,
+    )
     rr.log("world/ground_grid", rr.LineStrips3D(build_ground_grid(), colors=[70, 70, 70], radii=0.002), static=True)
     rr.log("world/path", rr.LineStrips3D([path_points], colors=[255, 255, 255], radii=0.006), static=True)
 
@@ -516,6 +565,7 @@ def export_segment_to_rrd(
             finite_or(row.get("pitch_deg"), 0.0),
             finite_or(row.get("yaw_deg"), 0.0),
             force,
+            attitude_frame,
         )
         rr.log("scene/drone_body", rr.LineStrips3D(body_lines, colors=body_colors, radii=[0.016, 0.016, 0.012, 0.01, 0.006]))
         rr.log("scene/thrust_axis", rr.LineStrips3D(thrust_lines, colors=thrust_colors, radii=0.018))

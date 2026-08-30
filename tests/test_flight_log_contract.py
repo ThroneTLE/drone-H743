@@ -64,7 +64,10 @@ def test_flight_log_v7_records_flow_servo_bus_attitude_ident_and_z_integral() ->
     receiver = read("tools/flight_log_receive.py")
 
     assert "sizeof(APP_FlightLogRecord) == 528U" in source
-    assert "#define APP_FLIGHT_LOG_VERSION            7U" in source
+    # R-F5b bumped the *sector header* to v8 for frame provenance; the record
+    # layout below is unchanged, and v7 sectors must stay readable forever.
+    assert "#define APP_FLIGHT_LOG_VERSION            8U" in source
+    assert "#define APP_FLIGHT_LOG_VERSION_V7         7U" in source
     assert "float desired_attitude_rpy_rad[3];" in header
     assert "float moment_cmd_n_m[3];" in header
     assert "float horizontal_command_scale;" in header

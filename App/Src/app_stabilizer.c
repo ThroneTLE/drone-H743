@@ -2318,6 +2318,14 @@ static void stabilizer_control_commit(StabilizerContext *ctx,
 
     memset(&flog_snapshot, 0, sizeof(flog_snapshot));
     APP_OpticalFlow_GetStatus(&flow_status);
+    /*
+     * 坐标溯源（R-F5b）：全部取自控制环里本就现成的量，无额外开销。
+     * 读方据 frame_orientation_code 判断这批记录的姿态是规范 FLU（0..23）
+     * 还是 legacy 中间轴（255），不必再靠录制日期猜。
+     */
+    flog_snapshot.frame_orientation_code = ctx->imu_frame_orientation_code;
+    flog_snapshot.frame_contract_version = DRV_FRAME_CONTRACT_VERSION;
+    flog_snapshot.calibration_generation = ctx->imu_calibration_generation;
     flog_snapshot.timestamp_us = ctx->last_msg.base.timestamp_us;
     flog_snapshot.tick_ms = frame->now_ms;
     flog_snapshot.imu_sequence = ctx->last_msg.base.sequence;

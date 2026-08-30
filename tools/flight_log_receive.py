@@ -117,6 +117,21 @@ SECTOR_HEADER_PREFIX = struct.Struct("<IHHIIIIIIIIQII")
 PARAMS_STRUCT = struct.Struct("<" + "f" * len(PARAM_NAMES))
 V6_PARAMS_STRUCT = struct.Struct("<" + "f" * len(V6_PARAM_NAMES))
 LEGACY_PARAMS_STRUCT = struct.Struct("<" + "f" * len(LEGACY_PARAM_NAMES))
+# 坐标溯源块（扇区头 v8 起），紧跟 params，占原 reserved 区的前 12 字节。
+# v7 及更早在该位置是清零保留区，故解析出来天然是「无溯源」。
+FRAME_PROVENANCE_STRUCT = struct.Struct("<BBBBII")
+FRAME_PROVENANCE_NAMES = (
+    "frame_provenance_valid",
+    "frame_orientation_code",
+    "frame_contract_version",
+    "frame_reserved0",
+    "firmware_crc32",
+    "calibration_generation",
+)
+# V0 码 0..23 表示姿态已是规范 FLU；255 表示 legacy 中间轴。
+FRAME_ORIENTATION_LEGACY = 255
+FRAME_ORIENTATION_COUNT = 24
+
 EXPORT_HEADER = struct.Struct("<IHHIIHHI")
 EXPORT_BLOCK_MAGIC_BYTES = struct.pack("<I", EXPORT_BLOCK_MAGIC)
 # V3 (320B) was the record layout until 2026-07-24; it has no servo
@@ -543,6 +558,21 @@ def read_export_item_resync(
             line.clear()
 
 
+def attitude_frame_from_provenance(provenance: dict[str, object]) -> str:
+    """把扇区溯源翻成姿态口径标识。
+
+    没有溯源的扇区一律判为 legacy_frd：v7 及更早既可能录于 V0 候选生效前
+    （FRD 姿态），也可能录于其后，帧内无从分辨。按 spec §10「历史数据永不
+    重释义」，宁可保持旧口径，也不能猜成 FLU。
+    """
+    if not provenance.get("frame_provenance_valid"):
+        return "unknown_legacy_frd"
+    code = int(provenance.get("frame_orientation_code", FRAME_ORIENTATION_LEGACY))
+    if code < FRAME_ORIENTATION_COUNT:
+        return "canonical_flu"
+    return "legacy_frd"
+
+
 def parse_sector_header(data: bytes, offset: int) -> dict[str, object] | None:
     header = data[offset : offset + SECTOR_HEADER_SIZE]
     if len(header) < SECTOR_HEADER_SIZE:
@@ -571,7 +601,20 @@ def parse_sector_header(data: bytes, offset: int) -> dict[str, object] | None:
     else:
         return None
     params_values = params_struct.unpack_from(header, SECTOR_HEADER_PREFIX.size)
+    # 缺失域装默认：只有 v8 起才有溯源块，更早的版本一律报「无溯源」，
+    # 不去读那段保留区，免得把任意字节当成合法方向码。
+    provenance = dict.fromkeys(FRAME_PROVENANCE_NAMES, 0)
+    if int(prefix[1]) >= 8:
+        offset_provenance = SECTOR_HEADER_PREFIX.size + params_struct.size
+        provenance = dict(
+            zip(
+                FRAME_PROVENANCE_NAMES,
+                FRAME_PROVENANCE_STRUCT.unpack_from(header, offset_provenance),
+            )
+        )
     return {
+        **provenance,
+        "attitude_frame": attitude_frame_from_provenance(provenance),
         "magic": magic,
         "version": prefix[1],
         "header_size": prefix[2],
@@ -1000,6 +1043,12 @@ def parse_flash_image(data: bytes) -> tuple[list[dict[str, object]], list[dict[s
             if record is not None:
                 record["sector_seq"] = sector["sector_seq"]
                 record["sector_index"] = sector["sector_index"]
+                # 让溯源随记录进 CSV，回放才能逐文件选口径而不必回头读扇区。
+                record["attitude_frame"] = sector["attitude_frame"]
+                record["frame_orientation_code"] = sector["frame_orientation_code"]
+                record["frame_contract_version"] = sector["frame_contract_version"]
+                record["firmware_crc32"] = sector["firmware_crc32"]
+                record["calibration_generation"] = sector["calibration_generation"]
                 records.append(record)
             pos += record_size
     return sectors, records, errors

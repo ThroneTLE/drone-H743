@@ -1,5 +1,6 @@
 #include "app_flight_log.h"
 
+#include "app_firmware_identity.h"
 #include "app_flash_service.h"
 #include "app_messages.h"
 #include "app_tasks.h"
@@ -19,7 +20,14 @@
 #define APP_FLIGHT_LOG_SECTOR_MAGIC       0x31534C46UL /* FLS1 */
 #define APP_FLIGHT_LOG_RECORD_MAGIC       0x31524C46UL /* FLR1 */
 #define APP_FLIGHT_LOG_EXPORT_BLOCK_MAGIC 0x31424C46UL /* FLB1 */
-#define APP_FLIGHT_LOG_VERSION            7U
+/*
+ * v8 起扇区头带坐标溯源（R-F5b）。按 spec §6：恒 256 字节，演进只吃保留区，
+ * 既有字段偏移一律不变；旧版本必须永远可读，缺失域装默认。
+ * v7 的那 12 个字节本就是清零的保留区，故其 header_crc32 无需重算即仍成立，
+ * 读出来 frame_provenance_valid==0 天然表示「无溯源」。
+ */
+#define APP_FLIGHT_LOG_VERSION            8U
+#define APP_FLIGHT_LOG_VERSION_V7         7U
 #define APP_FLIGHT_LOG_EXPORT_VERSION     1U
 #define APP_FLIGHT_LOG_REGION_SIZE \
     (APP_FLIGHT_LOG_REGION_END_EXCL - APP_FLIGHT_LOG_REGION_START)
@@ -57,7 +65,19 @@ typedef struct __attribute__((packed)) {
     uint32_t params_size;
     uint32_t header_crc32;
     DRV_COAX_CTRL_Params params;
-    uint8_t reserved[84];
+    /*
+     * 坐标溯源（v8 起，占用原 reserved 的前 12 字节）。
+     * frame_orientation_code 为 V0 码：0..23 表示已发布规范 FLU，
+     * 255（APP_SENSOR_FLU_ORIENTATION_LEGACY）表示 legacy 中间轴。
+     * 读方据此选口径；v7 及更早为全零，即 frame_provenance_valid==0。
+     */
+    uint8_t  frame_provenance_valid;
+    uint8_t  frame_orientation_code;
+    uint8_t  frame_contract_version;
+    uint8_t  frame_reserved0;
+    uint32_t firmware_crc32;
+    uint32_t calibration_generation;
+    uint8_t reserved[72];
 } APP_FlightLogSectorHeader;
 
 typedef struct __attribute__((packed)) {
@@ -201,6 +221,16 @@ static uint32_t flight_log_export_seq;
 static uint32_t flight_log_export_next_ms;
 static APP_FlightLogExportTransport flight_log_export_transport;
 static uint8_t flight_log_flush_requested;
+
+/*
+ * 最近一帧快照带来的坐标溯源。扇区头在后台任务里填充，与控制环不同步，
+ * 故在此缓存；单字节/对齐 32 位写入在 Cortex-M7 上是原子的，读写双方各自
+ * 只碰一个标量，无需加锁。
+ */
+static uint8_t flight_log_frame_provenance_ready;
+static uint8_t flight_log_frame_orientation_code;
+static uint8_t flight_log_frame_contract_version;
+static uint32_t flight_log_frame_calibration_generation;
 static uint8_t flight_log_export_pending;
 static uint8_t flight_log_export_restore_vofa;
 static uint8_t flight_log_export_cancel_requested;
@@ -343,7 +373,8 @@ static uint8_t flight_log_sector_header_valid(APP_FlightLogSectorHeader *header)
         return 0U;
     }
     if ((header->magic != APP_FLIGHT_LOG_SECTOR_MAGIC) ||
-        (header->version != APP_FLIGHT_LOG_VERSION) ||
+        ((header->version != APP_FLIGHT_LOG_VERSION) &&
+         (header->version != APP_FLIGHT_LOG_VERSION_V7)) ||
         (header->header_size != APP_FLIGHT_LOG_SECTOR_HEADER_SIZE) ||
         (header->sector_size != APP_FLASH_SERVICE_SECTOR_SIZE) ||
         (header->record_size != sizeof(APP_FlightLogRecord)) ||
@@ -357,7 +388,24 @@ static uint8_t flight_log_sector_header_valid(APP_FlightLogSectorHeader *header)
     expected_crc = flight_log_crc32((const uint8_t *)header, sizeof(*header));
     header->header_crc32 = saved_crc;
 
-    return (expected_crc == saved_crc) ? 1U : 0U;
+    if (expected_crc != saved_crc) {
+        return 0U;
+    }
+
+    /*
+     * 缺失域装默认（spec §6）：v7 没有溯源块，显式清零而不是让读方去猜，
+     * 免得把保留区里的任意字节当成一个合法的 V0 方向码。
+     */
+    if (header->version == APP_FLIGHT_LOG_VERSION_V7) {
+        header->frame_provenance_valid = 0U;
+        header->frame_orientation_code = 0U;
+        header->frame_contract_version = 0U;
+        header->frame_reserved0 = 0U;
+        header->firmware_crc32 = 0UL;
+        header->calibration_generation = 0UL;
+    }
+
+    return 1U;
 }
 
 static void flight_log_order_insert(uint16_t sector_index, uint32_t sector_seq)
@@ -456,6 +504,18 @@ static void flight_log_fill_sector_header(APP_FlightLogSectorHeader *header,
         DRV_COAX_CTRL_GetParams(&params);
         memcpy(&header->params, &params, sizeof(params));
     }
+    /*
+     * 坐标溯源。方向码/契约版本/标定代数由最近一帧快照带上来（控制环里本就
+     * 现成）；firmware_crc32 只在这里取——首次 APP_FirmwareIdentity_Get() 会
+     * 对整个镜像算 CRC32，250Hz 控制环不得阻塞于此（spec §5）。本函数只经
+     * flight_log_open_sector ← flight_log_write_records ←
+     * APP_FlightLog_BackgroundStep 可达，属后台任务上下文。
+     */
+    header->frame_provenance_valid = flight_log_frame_provenance_ready;
+    header->frame_orientation_code = flight_log_frame_orientation_code;
+    header->frame_contract_version = flight_log_frame_contract_version;
+    header->firmware_crc32 = APP_FirmwareIdentity_GetCrc32();
+    header->calibration_generation = flight_log_frame_calibration_generation;
     header->header_crc32 = 0U;
     header->header_crc32 = flight_log_crc32((const uint8_t *)header,
                                             sizeof(*header));
@@ -984,6 +1044,15 @@ void APP_FlightLog_Observe(const APP_FlightLogSnapshot *snapshot,
 
     if (flight_log_status.initialized == 0U) {
         return;
+    }
+
+    /* 记下最近一帧的坐标溯源，供后台填扇区头时使用。 */
+    if (snapshot != NULL) {
+        flight_log_frame_orientation_code = snapshot->frame_orientation_code;
+        flight_log_frame_contract_version = snapshot->frame_contract_version;
+        flight_log_frame_calibration_generation =
+            snapshot->calibration_generation;
+        flight_log_frame_provenance_ready = 1U;
     }
 
     if ((should_record == 0U) || (snapshot == NULL) ||

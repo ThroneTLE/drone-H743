@@ -56,11 +56,6 @@ def slice_between(source: str, start: str, end: str) -> str:
     return source[begin:stop]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="R-F5b red test: sector header has no provenance block and the "
-    "version is still 7; cleared by the implementation commit",
-)
 def test_sector_header_declares_provenance_in_reserved_area() -> None:
     source = read(LOG_SOURCE)
     assert "#define APP_FLIGHT_LOG_VERSION            8U" in source
@@ -82,11 +77,6 @@ def test_sector_header_declares_provenance_in_reserved_area() -> None:
     assert "uint8_t reserved[84];" not in header
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="R-F5b red test: the stabilizer does not populate snapshot "
-    "provenance yet; cleared by the implementation commit",
-)
 def test_stabilizer_fills_snapshot_provenance_from_existing_sources() -> None:
     source = read(STABILIZER)
     assert "flog_snapshot.frame_orientation_code = ctx->imu_frame_orientation_code;" in source
@@ -96,11 +86,6 @@ def test_stabilizer_fills_snapshot_provenance_from_existing_sources() -> None:
     assert "APP_FirmwareIdentity" not in source
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="R-F5b red test: firmware CRC is not sampled in the background "
-    "sector-header path yet; cleared by the implementation commit",
-)
 def test_firmware_crc_is_sampled_off_the_control_loop() -> None:
     source = read(LOG_SOURCE)
     fill = slice_between(
@@ -197,11 +182,6 @@ int main(void)
 """
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="R-F5b red test: the sector header has no provenance block, so the "
-    "harness cannot compile; cleared by the implementation commit",
-)
 def test_sector_header_migration_runs_on_host(tmp_path: Path) -> None:
     compiler = shutil.which("gcc") or shutil.which("clang")
     if compiler is None:
@@ -247,7 +227,7 @@ def test_sector_header_migration_runs_on_host(tmp_path: Path) -> None:
         + "\n"
         + "int main(void)"
         + HARNESS.split("int main(void)")[1],
-        encoding="ascii",
+        encoding="utf-8",
     )
     executable = tmp_path / "flight_log_header.exe"
     subprocess.run(
@@ -306,11 +286,6 @@ def build_sector_header(version: int, *, provenance: tuple | None = None) -> byt
     return bytes(body)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="R-F5b red test: flight_log_receive.py does not surface sector "
-    "provenance yet; cleared by the implementation commit",
-)
 def test_receive_tool_reads_provenance_and_still_reads_v7() -> None:
     sys.path.insert(0, str(ROOT / "tools"))
     try:
@@ -335,11 +310,6 @@ def test_receive_tool_reads_provenance_and_still_reads_v7() -> None:
     assert v7["frame_provenance_valid"] == 0
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="R-F5b red test: the replay still hard-codes one convention; "
-    "cleared by the implementation commit",
-)
 def test_replay_selects_convention_per_file() -> None:
     source = read(REPLAY)
     # A named resolver, not a scattered conditional.
