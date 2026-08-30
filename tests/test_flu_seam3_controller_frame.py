@@ -28,8 +28,6 @@ from __future__ import annotations
 from pathlib import Path
 import re
 
-import pytest
-
 
 ROOT = Path(__file__).resolve().parents[1]
 CTRL_SOURCE = ROOT / "Driver" / "Src" / "drv_coax_ctrl.c"
@@ -86,13 +84,6 @@ def test_stabilizer_feed_pinned() -> None:
     assert "frame->attitude.vz_m_s = -frame->range_velocity_m_s;" in source
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="R-F3 red test: drv_coax_ctrl.h still claims its inputs are body "
-    "FRD and its reference frame Y-right, which contradicts the FLU attitude "
-    "and rates the runtime actually feeds it; cleared by the seam 3 "
-    "implementation commit",
-)
 def test_header_input_contract() -> None:
     header = read(CTRL_HEADER)
     assert "IMU axes are already rotated to body FRD before this layer." not in header

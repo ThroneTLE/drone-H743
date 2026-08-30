@@ -44,9 +44,14 @@ extern "C" {
 
 typedef struct {
     /*
-     * Paper p_d, p_d_dot and p_d_ddot references in the local controller frame.
-     * X is forward, Y is right. Z follows the existing altitude convention:
+     * Paper p_d, p_d_dot and p_d_ddot references in the local controller
+     * frame. X is forward, Y is right. Z follows the existing altitude
+     * convention:
      * range height above ground is exposed to the controller as z = -height.
+     *
+     * This is the legacy local-level frame and is deliberately NOT the
+     * canonical FLU body frame; the attitude feedback below arrives in FLU
+     * instead.  See DRV_COAX_CTRL_AttitudeInput for the full seam 3 frame map.
      */
     float x_m;
     float y_m;
@@ -73,7 +78,28 @@ typedef struct {
 typedef struct {
     /*
      * Paper p, p_dot and attitude feedback after App-layer sensor mounting
-     * correction. IMU axes are already rotated to body FRD before this layer.
+     * correction.
+     *
+     * Frames actually delivered by the runtime (seam 3 audit, 2026-08-30):
+     *   roll_rad / pitch_rad / yaw_rad, gyro_*_rad_s
+     *       canonical FLU body frame of Driver/Inc/drv_frame_contract.h --
+     *       +X forward, +Y left, +Z up; +roll right wing down, +pitch nose
+     *       down, +yaw nose left.  Passed in unconverted.
+     *   x_m / y_m / z_m, vx_m_s / vy_m_s / vz_m_s
+     *       still the legacy (forward, right, down) local-level frame; the
+     *       App layer negates the altitude channel on the way in.
+     *
+     * The conversion from the delivered attitude into the control law's own
+     * force frame is NOT done by the caller.  It lives in this driver as
+     * DRV_COAX_CTRL_FORCE_FRAME_ROLL_SIGN / _PITCH_SIGN (attitude) and
+     * DRV_COAX_CTRL_RATE_FRAME_ROLL_SIGN / _PITCH_SIGN (body rates).  The
+     * force-frame sign is applied to the measured and the target attitude
+     * alike, so it cancels in the attitude error and never reaches stick
+     * direction.  Keep polarity in those named constants; never fold it into
+     * a gain.
+     *
+     * Whether those constants suit this airframe is settled by M6 props-off
+     * direction verification, not by host tests.
      */
     float x_m;
     float y_m;

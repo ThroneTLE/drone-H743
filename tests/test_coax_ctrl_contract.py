@@ -178,7 +178,10 @@ def test_controller_wrapper_exposes_velocity_first_vector_control_inputs() -> No
     assert "float dt_sec;" in header
     assert "uint8_t horizontal_velocity_valid;" in header
     assert "range height above ground is exposed to the controller as z = -height" in header
-    assert "IMU axes are already rotated to body FRD before this layer" in header
+    # R-F3 replaced the stale "already rotated to body FRD" claim with the frame
+    # map the runtime actually delivers; see tests/test_flu_seam3_controller_frame.py.
+    assert "canonical FLU body frame" in header
+    assert "still the legacy (forward, right, down) local-level frame" in header
     assert "float yaw_rate_rad_s;" in header
     assert "float yaw_accel_rad_s2;" in header
     assert "Paper psi_d, psi_d_dot and psi_d_ddot references" in header
