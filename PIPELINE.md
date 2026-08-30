@@ -91,7 +91,7 @@ flowchart TB
 | R-M6-1 | M6 | 〔人+机〕RCMAP 向导标定并 COMMIT | 12 步向导完成，重启回读一致 | 待做 |
 | R-M6-2..4 | M6 | 〔人+机〕V2A 无桨端到端 + 失控保护 | ACCEPT 全阶段通过；断链进入安全态；方向一致性表全对 | 待做 |
 | R-F0~F5 | M7前置 | 〔码〕运行时 FLU 迁移六 seam（spec §10，顺序固定） | 每 seam：先红测试→实施→host 绿→实机 A/B→翻掩码位 | 待做 |
-| R-S6-1 | S6 | 〔码〕panel 拆分为 tools/panel_lib/ 包（spec §11） | 每次搬一页；行为零变更；全量绿 | 待审核（增量2 proto.py；增量1已过审，余 state/pages/evidence） |
+| R-S6-1 | S6 | 〔码〕panel 拆分为 tools/panel_lib/ 包（spec §11） | 每次搬一页；行为零变更；全量绿 | 进行中（增量1 transport、增量2 proto 均已过审 2026-08-30；余 state/pages/evidence） |
 | R-S6-2 | S6 | 〔码〕app_control 按命令域拆分（spec §11） | 每域 ≤800 行；host 装置照编；构建零警告 | 待做 |
 
 ## 最近验证证据
@@ -100,6 +100,7 @@ flowchart TB
 
 | 日期 | 范围 | 证据 | 结果 | 对状态的影响 |
 |---|---|---|---|---|
+| 2026-08-30 | 审核：R-S6-1 增量2 过审 | 审核者独立复核：范围=单提交 00beb5f3；**AST 独立比对 5 函数+2 方法逐一相同、82/82 常量与真源逐字节一致**（校验器曾误报 4 个常量不一致，实为父提交 panel 的增量1转发行覆盖了 transport 真定义的归并优先级问题，肉眼比对排除）；旧位置零残留、面板类继承 ProtocolLineMixin、82/82 转发、transport→proto 单向依赖无环；全量 `704 passed` 与固件构建审核者复跑一致（一次复跑出现 687+17 瞬态条件跳过，总数吻合、与提交无关）；本增量无任何串口/板机接触 | **过审** | R-S6-1 置"进行中"（增量2完成）；panel 10769→10673 行 |
 | 2026-08-30 | S6 panel 拆分增量2（R-S6-1） | `tools/panel_lib/proto.py` 接管 82 个 `PROTO_*` 常量、5 个纯行解析函数和 2 个协议行规范化方法；`tests/test_panel_proto_extraction.py` 锁定实现所有权、旧路径同对象转发、transport 常量复用及 build/CRC 留在 transport 的边界；与父提交 AST 比对全部一致；`python -m pytest tests -q`：704 passed；`cmake --build --preset Debug`：通过、零警告 | 软件验证通过，待审核 | R-S6-1 置**待审核（增量2）**；S6 保持 🟡，不改变主线位置 |
 | 2026-08-30 | 审核：R-S6-1 增量1 过审 | 审核者独立复核（spec §13）：范围=单提交 e699b789 仅含拆分相关文件；**AST 独立比对 13/13 定义与拆分前逐一相同、旧文件零残留、13/13 转发**；三个既有测试改动均为 move 导致的 monkeypatch/源断言重定向；全量 `700 passed` 与固件构建由审核者亲自复跑。执行者披露的开发期短暂打开 COM31：根因=monkeypatch 打在旧模块（与 diff 证据吻合），终态已修复、无字节收发、板机无影响——记违规一次（AGENTS.md 规则5），因如实披露且无害不打回 | **过审** | R-S6-1 置"进行中"（增量1完成）；panel 11446→10769 行 |
 | 2026-08-30 | S6 panel 拆分首增量（R-S6-1） | `tools/panel_lib/transport.py` 接管 TCP/UDP/串口、USB 指纹匹配与重枚举等待；`tests/test_panel_transport_extraction.py` 锁定新模块所有权、旧路径同对象转发及直接脚本导入；13 个搬移定义与拆分前 AST 一致；`python -m pytest tests -q`：700 passed；`cmake --build --preset Debug`：通过、零警告 | 软件验证通过，待审核 | R-S6-1 置**待审核**；S6 保持 🟡，不改变主线位置 |
