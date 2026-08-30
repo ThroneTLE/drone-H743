@@ -92,7 +92,7 @@ flowchart TB
 | R-M6-2..4 | M6 | 〔人+机〕V2A 无桨端到端 + 失控保护 | ACCEPT 全阶段通过；断链进入安全态；方向一致性表全对 | 待做 |
 | R-F0~F5 | M7前置 | 〔码〕运行时 FLU 迁移六 seam（spec §10，顺序固定） | 每 seam：先红测试→实施→host 绿→实机 A/B→翻掩码位 | 待做 |
 | R-S6-1 | S6 | 〔码〕panel 拆分为 tools/panel_lib/ 包（spec §11） | 每次搬一页；行为零变更；全量绿 | 待审核（增量7~10；增量1~6 已过审 2026-08-30；余光流测距页） |
-| R-S6-2 | S6 | 〔码〕app_control 按命令域拆分（spec §11） | 每域 ≤800 行；host 装置照编；构建零警告 | 待做 |
+| R-S6-2 | S6 | 〔码〕app_control 按命令域拆分（spec §11） | 每域 ≤800 行；host 装置照编；构建零警告 | 待审核（增量1 SERVOCAL域） |
 
 ## 最近验证证据
 
@@ -100,6 +100,7 @@ flowchart TB
 
 | 日期 | 范围 | 证据 | 结果 | 对状态的影响 |
 |---|---|---|---|---|
+| 2026-08-30 | S6 app_control 拆分增量1（R-S6-2） | 新建 `App/Src/app_cmd_servocal.c`（377 行）+ `App/Inc/app_cmd_servocal.h`（43 行）；`app_control.c` 6258→5933 行（−325 行）；SERVOCAL 命令族（clear_preview/set_event/report_servocal_record/report_servocal/parse_servocal/handle_servocal/service_servocal）与 8 个专属 static 变量整体搬移；适配器 `app_cmd_servocal_notify_persisted`/`app_cmd_servocal_is_busy`/`app_cmd_servocal_init` 闭合反向耦合；`tests/test_app_control_split.py` 锁定零残留与分发；全量 `737 passed`；`cmake --build --preset Debug` 零警告；未启动串口/板机 | 软件验证通过，待审核 | R-S6-2 置**待审核（增量1 SERVOCAL域）**；S6 保持 🟡，主线仍为 M5 |
 | 2026-08-30 | S6 panel 拆分增量10（R-S6-1） | 父提交 `69bf4158`；`tools/panel_lib/pages/validation_v0.py` 的 `ValidationV0PageMixin` 接管 38 个 V0 builder/handlers 与 `v0_workflow_guidance`，`tools/panel_lib/evidence.py` 的 `EvidenceMixin` 接管 18 个共享安全/证据方法及 4 个证据 helper、10 个 validation 常量；独立比对 56/56 方法、5/5 helper、5/5 类常量、10/10 模块常量 AST 全部相同。`_validation_autosave_session`/`_validation_autosave_workflow` 首条 loaded_history 早退守卫逐 AST 保持；`test_evidence_write_protection.py` 仅 owner 锚点重定向、断言未变。聚焦 `190 passed`；开发期两个聚焦红灯均为旧源码/monkeypatch owner 锚点，纯重定向后归零；全量 `736 passed`；Debug 构建 `ninja: no work to do.`、零警告；索引 current；未启动串口/板机 | 软件验证通过，待审核 | R-S6-1 统一置**待审核（增量7~10）**；panel 8166→5814 行；S6 保持 🟡，主线仍为 M5 |
 | 2026-08-30 | S6 panel 拆分增量9（R-S6-1） | 父提交 `4d87d78f`；`tools/panel_lib/pages/acceptance_v2.py` 的 `AcceptanceV2PageMixin` 接管 `_build_v2_page` 与 5 个 `_v2_*` handlers，6/6 方法 AST 相同，builder 保持 22 条语句；V2A 租约/ESC 安全门/证据源码锚点仅重定向。聚焦 `81 passed`；全量 `735 passed`；Debug 构建 `ninja: no work to do.`、零警告；索引 current；未启动串口/板机 | 软件验证通过，待审核 | R-S6-1 保持进行中直至本批统一交审；panel 8285→8166 行；不改变 M5 |
 | 2026-08-30 | S6 panel 拆分增量8（R-S6-1） | 父提交 `4eaf9f29`；`tools/panel_lib/pages/vibration.py` 接管 1 个振动占位 builder，`tools/panel_lib/pages/servo_debug.py` 接管 12 个舵机调试 builders/handlers（含 `_send_raw`、`_update_servo_ok_line`）；13/13 方法 AST 相同；参数编辑页共享的 `_param_value_for_servo` 明确保留 legacy。聚焦 `42 passed`；全量 `734 passed`；Debug 构建 `ninja: no work to do.`、零警告；索引 current；未启动串口/板机 | 软件验证通过，待审核 | R-S6-1 保持进行中直至本批统一交审；panel 8472→8285 行；不改变 M5 |

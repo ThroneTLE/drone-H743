@@ -1,3 +1,5 @@
+"""USB V0."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -51,7 +53,7 @@ def test_structured_v0_replies_are_mirrored_to_usb_and_uart() -> None:
     source = read(CONTROL)
     body = c_function_body(
         source,
-        "static void app_control_queue_proto_text(uint16_t function, const char *format, ...)",
+        "void app_control_queue_proto_text(uint16_t function, const char *format, ...)",
     )
 
     gate_at = body.index("APP_IMU_Capture_IsExportActive() == 0U")
@@ -70,7 +72,7 @@ def test_imucap_binary_export_owns_usb_stream_while_active() -> None:
     )
     proto_body = c_function_body(
         control,
-        "static void app_control_queue_proto_text(uint16_t function, const char *format, ...)",
+        "void app_control_queue_proto_text(uint16_t function, const char *format, ...)",
     )
     assert "if (APP_IMU_Capture_IsExportActive() == 0U)" in proto_body
 
