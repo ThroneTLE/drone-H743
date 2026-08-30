@@ -38,6 +38,43 @@ STEP_A_BODY_SHA256 = {
     "app_control_crc32": "3169f7344b5ead9306fc097785bd32626479e1b7c01040d8b8d6c44b12d2998a",
     "app_control_token_value": "9305c3293c9348edbcd2f09908a04a8d54270fc4441eee05a146d43167ff968e",
 }
+STEP_B_LEGACY_BODY_SHA256 = {
+    "app_control_imuframe_sync_param": "0545057e9f0ce48fdb0bf77f885311c4682ff4b9839cc5af58d1946777eb16b3",
+    "app_control_imucal_safety": "87327cf50ef57f4566ad276d868912f8bbac6f3e99524e80b20b2b0b544d4c78",
+}
+STEP_B_ACCESSOR_BODIES = {
+    "const void *app_control_internal_imucal_confirmed_record(void)": (
+        "{\n    return &control_imucal_confirmed;\n}"
+    ),
+    "uint32_t app_control_internal_imucal_confirmed_generation(void)": (
+        "{\n    return control_imucal_confirmed_generation;\n}"
+    ),
+    "uint8_t app_control_internal_imucal_confirmed_valid(void)": (
+        "{\n    return control_imucal_confirmed_valid;\n}"
+    ),
+    "void app_control_internal_imuframe_sync_param(void)": (
+        "{\n    app_control_imuframe_sync_param();\n}"
+    ),
+    "const char *app_control_internal_imucal_safety(": (
+        "{\n"
+        "    return app_control_imucal_safety(\n"
+        "        (StabilizerValidationImuSnapshot *)snapshot,\n"
+        "        require_sequence_progress);\n"
+        "}"
+    ),
+    "uint8_t app_control_internal_imucal_upload_state(void)": (
+        "{\n    return (uint8_t)control_imucal_upload.state;\n}"
+    ),
+    "uint8_t app_control_internal_imucal_applied(void)": (
+        "{\n    return control_imucal_applied;\n}"
+    ),
+    "uint8_t app_control_internal_imucal_commit_pending(void)": (
+        "{\n    return control_imucal_commit_pending;\n}"
+    ),
+    "uint8_t app_control_internal_imuframe_confirmed_code(void)": (
+        "{\n    return control_imuframe_confirmed_code;\n}"
+    ),
+}
 
 CORE_HARNESS = r"""
 #include "app_control_internal.h"
@@ -133,8 +170,9 @@ def _c_function_body(source: str, name: str) -> str:
         rf"{re.escape(name)}\s*\(",
         re.MULTILINE,
     )
-    match = pattern.search(source)
-    assert match is not None, name
+    matches = list(pattern.finditer(source))
+    assert matches, name
+    match = matches[-1]
     brace = source.index("{", match.start())
     depth = 0
     for index in range(brace, len(source)):
@@ -180,6 +218,32 @@ def _write_core_stubs(stub_dir: Path) -> None:
         "uint8_t APP_USB_CDC_Write(const uint8_t*,uint16_t,uint32_t);\n",
         encoding="ascii",
     )
+
+
+def _body_after_signature(source: str, signature: str) -> str:
+    start = source.rindex(signature)
+    brace = source.index("{", start)
+    depth = 0
+    for index in range(brace, len(source)):
+        if source[index] == "{":
+            depth += 1
+        elif source[index] == "}":
+            depth -= 1
+            if depth == 0:
+                return source[brace:index + 1]
+    raise AssertionError(f"unterminated C function after {signature}")
+
+
+def _check_app_control_step_b() -> None:
+    control = CONTROL.read_text(encoding="utf-8")
+    internal = CONTROL_INTERNAL.read_text(encoding="utf-8")
+    for name, expected_hash in STEP_B_LEGACY_BODY_SHA256.items():
+        body = _c_function_body(control, name)
+        assert hashlib.sha256(body.encode()).hexdigest() == expected_hash
+    for signature, expected_body in STEP_B_ACCESSOR_BODIES.items():
+        assert _body_after_signature(control, signature) == expected_body
+        assert signature in internal
+    assert not re.search(r"\bextern\b.*\bcontrol_(?:imucal|imuframe)", internal)
 
 
 def _check_app_control_step_a(tmp_path: Path) -> None:
@@ -273,3 +337,4 @@ def test_comms_task_flushes_the_notice_each_tick(tmp_path: Path) -> None:
         "app_control_tick_common must call the notice flush service"
     )
     _check_app_control_step_a(tmp_path)
+    _check_app_control_step_b()

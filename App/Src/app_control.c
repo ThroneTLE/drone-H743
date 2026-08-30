@@ -775,6 +775,55 @@ static const char *app_control_imucal_safety(
     return NULL;
 }
 
+const void *app_control_internal_imucal_confirmed_record(void)
+{
+    return &control_imucal_confirmed;
+}
+
+uint32_t app_control_internal_imucal_confirmed_generation(void)
+{
+    return control_imucal_confirmed_generation;
+}
+
+uint8_t app_control_internal_imucal_confirmed_valid(void)
+{
+    return control_imucal_confirmed_valid;
+}
+
+void app_control_internal_imuframe_sync_param(void)
+{
+    app_control_imuframe_sync_param();
+}
+
+const char *app_control_internal_imucal_safety(
+    void *snapshot,
+    uint8_t require_sequence_progress)
+{
+    return app_control_imucal_safety(
+        (StabilizerValidationImuSnapshot *)snapshot,
+        require_sequence_progress);
+}
+
+uint8_t app_control_internal_imucal_upload_state(void)
+{
+    return (uint8_t)control_imucal_upload.state;
+}
+
+uint8_t app_control_internal_imucal_applied(void)
+{
+    return control_imucal_applied;
+}
+
+uint8_t app_control_internal_imucal_commit_pending(void)
+{
+    return control_imucal_commit_pending;
+}
+
+uint8_t app_control_internal_imuframe_confirmed_code(void)
+{
+    return control_imuframe_confirmed_code;
+}
+
 static void app_control_imucal_transfer_result(
     const char *event,
     APP_FlightCalibrationTransferStatus status)

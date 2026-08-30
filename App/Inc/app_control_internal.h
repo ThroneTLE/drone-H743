@@ -21,4 +21,17 @@ void app_control_queue_proto_text(uint16_t function, const char *format, ...);
 /* Narrow bridge for the one legacy transport-mode flag read by QueueProtoText. */
 uint8_t app_control_internal_maint_output_active(void);
 
+/* Read-only calibration mirrors and pure delegates for extracted command domains. */
+const void *app_control_internal_imucal_confirmed_record(void);
+uint32_t app_control_internal_imucal_confirmed_generation(void);
+uint8_t app_control_internal_imucal_confirmed_valid(void);
+void app_control_internal_imuframe_sync_param(void);
+const char *app_control_internal_imucal_safety(
+    void *snapshot,
+    uint8_t require_sequence_progress);
+uint8_t app_control_internal_imucal_upload_state(void);
+uint8_t app_control_internal_imucal_applied(void);
+uint8_t app_control_internal_imucal_commit_pending(void);
+uint8_t app_control_internal_imuframe_confirmed_code(void);
+
 #endif /* APP_CONTROL_INTERNAL_H */
