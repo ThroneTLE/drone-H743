@@ -69,7 +69,29 @@ typedef struct {
     uint32_t reserved1[3];
 } APP_RcConfig;
 
-/* 控制环每周期解析一次的结果，避免在多处重复查表。 */
+/*
+ * 控制环每周期解析一次的结果，避免在多处重复查表。
+ *
+ * norm[] 的坐标归属（seam 4 具名标注，2026-08-30）
+ *
+ * norm[] 是**摇杆空间**量，不是机体系矢量：它只经过通道映射、reversed、
+ * 死区与端点标定，尚未乘任何机体极性，因此不承载 FLU/FRD 语义，也不受
+ * Driver/Inc/drv_frame_contract.h 约束。
+ *
+ * 由摇杆空间到机体意图的转换只发生在一个地方：app_stabilizer.c 的
+ * STABILIZER_RC_ATTITUDE_TARGET_PITCH_SIGN / _ROLL_SIGN。这两个常量是
+ * 整条链路上唯一决定「摇杆方向」的符号——其余坐标符号同时作用于实测与
+ * 目标姿态、在姿态误差中相消，因此只有改这两个才会改变打杆方向。
+ * 其中 pitch 的取值经实机确认（+1 时前推变成后倾，故取 -1）。
+ *
+ * reversed 是**发射机侧**的通道反向，用于抵消不同发射机/摇杆接线差异。
+ * 禁止用它补偿机体坐标系错误：那属于坐标符号改动，按 AGENTS.md 规则 4
+ * 必须单独立项经作者批准，并由 M6 拆桨方向验收判定，不能在标定页顺手翻。
+ *
+ * 横向口径说明：RC 与速度测量当前均为「机体系右正」，与控制器参考系
+ * （X前/Y右/Z下）一致，刻意不是规范 FLU 的左正；统一到 FLU 要等控制器
+ * 参考系本身迁移（见 DRV_COAX_CTRL_AttitudeInput 的 seam 3 坐标映射）。
+ */
 typedef struct {
     uint16_t us[APP_RC_FUNC_COUNT];    /* 映射后的原始脉宽，未反向 */
     float    norm[APP_RC_FUNC_COUNT];  /* [-1,+1]，已反向/死区/标定 */

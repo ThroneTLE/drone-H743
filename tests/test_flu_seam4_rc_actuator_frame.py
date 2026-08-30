@@ -25,8 +25,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 
 ROOT = Path(__file__).resolve().parents[1]
 STABILIZER = ROOT / "App" / "Src" / "app_stabilizer.c"
@@ -79,13 +77,6 @@ def test_servo_mechanical_polarity_is_applied_after_allocation() -> None:
     assert "servo_beta_tilt_rad *" in source
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="R-F4 red test: app_rc_config.h documents norm[] only as "
-    "'[-1,+1] 已反向/死区/标定' and never states what +1 means physically or "
-    "that 'reversed' is transmitter-side only; cleared by the seam 4 "
-    "implementation commit",
-)
 def test_rc_header_names_the_intent_frame() -> None:
     header = read(RC_HEADER)
     # norm[] must be identified as stick space, not a body-frame vector.
