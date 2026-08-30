@@ -20,6 +20,9 @@ from tools import drone_tcp_panel as panel
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = (ROOT / "tools" / "drone_tcp_panel.py").read_text(encoding="utf-8")
+RC_PAGE_SOURCE = (
+    ROOT / "tools" / "panel_lib" / "pages" / "rc_wizard.py"
+).read_text(encoding="utf-8")
 STATE_SOURCE = (ROOT / "tools" / "panel_lib" / "state.py").read_text(encoding="utf-8")
 
 
@@ -215,16 +218,16 @@ def test_a_parked_channel_does_not_swamp_later_steps() -> None:
 
 
 def test_the_wizard_measures_against_the_gate_time_baseline() -> None:
-    reference = function_body(SOURCE, "    def _rc_wizard_reference(")
+    reference = function_body(RC_PAGE_SOURCE, "    def _rc_wizard_reference(")
     assert "self.rc_wizard_baseline or self.rc_wizard_center" in reference
-    feed = function_body(SOURCE, "    def _rc_wizard_feed(")
+    feed = function_body(RC_PAGE_SOURCE, "    def _rc_wizard_feed(")
     assert "self.rc_wizard_baseline = list(channels)" in feed
     assert "self.rc_wizard_armed = True" in feed
 
 
 def test_the_two_steps_of_one_stick_need_no_return_to_center() -> None:
     """前推 → 后拉是一路扫过去的，中间硬要求回中只是多余的摩擦。"""
-    advance = function_body(SOURCE, "    def _rc_wizard_advance(")
+    advance = function_body(RC_PAGE_SOURCE, "    def _rc_wizard_advance(")
     assert "RC_WIZARD_STEPS[self.rc_wizard_index][0] == previous" in advance
     assert "release_channel = None" in advance
 
@@ -528,7 +531,7 @@ def test_rc_page_pulls_the_mapping_on_its_own() -> None:
 
 
 def test_panel_validates_before_sending_anything() -> None:
-    send = function_body(SOURCE, "    def _rc_send_map(")
+    send = function_body(RC_PAGE_SOURCE, "    def _rc_send_map(")
     assert "rc_map_is_valid(functions)" in send
     assert send.index("rc_map_is_valid(functions)") < send.index("RCMAP SET")
     # 解锁时不发，靠飞控回 armed_blocked 太晚：那时候命令已经发出去了。
@@ -536,28 +539,28 @@ def test_panel_validates_before_sending_anything() -> None:
 
 
 def test_commit_requires_explicit_confirmation() -> None:
-    commit = function_body(SOURCE, "    def _rc_commit(")
+    commit = function_body(RC_PAGE_SOURCE, "    def _rc_commit(")
     assert "askyesno" in commit
     assert "_rc_send_map(commit=True)" in commit
 
 
 def test_sweep_keeps_old_endpoints_for_channels_that_barely_moved() -> None:
-    body = function_body(SOURCE, "    def _rc_apply_sweep(")
+    body = function_body(RC_PAGE_SOURCE, "    def _rc_apply_sweep(")
     assert "RC_MIN_SPAN_US" in body
     assert "skipped" in body
 
 
 def test_wizard_consumes_every_live_frame() -> None:
     """端点靠整段过程的实测极值；只看两个步骤的瞬时值会漏掉更极端的位置。"""
-    accumulate = function_body(SOURCE, "    def _rc_accumulate(")
+    accumulate = function_body(RC_PAGE_SOURCE, "    def _rc_accumulate(")
     assert "self._rc_wizard_feed(channels)" in accumulate
-    feed = function_body(SOURCE, "    def _rc_wizard_feed(")
+    feed = function_body(RC_PAGE_SOURCE, "    def _rc_wizard_feed(")
     assert "self.rc_wizard_min[index] = min(" in feed
     assert "self.rc_wizard_max[index] = max(" in feed
 
 
 def test_wizard_requires_live_rc_and_an_explicit_safety_confirmation() -> None:
-    start = function_body(SOURCE, "    def _rc_wizard_start(")
+    start = function_body(RC_PAGE_SOURCE, "    def _rc_wizard_start(")
     assert "_rc_live_ok()" in start
     assert "askyesno" in start
     assert "螺旋桨已经拆下" in start
@@ -569,7 +572,7 @@ def test_wizard_requires_live_rc_and_an_explicit_safety_confirmation() -> None:
 
 def test_wizard_pushes_the_result_to_the_aircraft() -> None:
     """只填界面不下发的话，摇杆十字按新映射画、飞控按旧的飞，等于什么都没验证。"""
-    finish = function_body(SOURCE, "    def _rc_wizard_finish(")
+    finish = function_body(RC_PAGE_SOURCE, "    def _rc_wizard_finish(")
     assert "self._rc_send_map(commit=False)" in finish
     # 非法映射不能下发；Flash 仍然要单独确认。
     assert finish.index("if not ok:") < finish.index("_rc_send_map(commit=False)")
@@ -591,7 +594,7 @@ def test_wizard_prompts_describe_the_action_not_the_jargon() -> None:
 
 
 def test_wizard_back_discards_that_step_result() -> None:
-    back = function_body(SOURCE, "    def _rc_wizard_back(")
+    back = function_body(RC_PAGE_SOURCE, "    def _rc_wizard_back(")
     assert "self.rc_wizard_results.pop((function, direction), None)" in back
 
 
@@ -691,10 +694,10 @@ def test_the_crash_log_names_a_file_the_user_can_send() -> None:
 
 def test_the_wizard_leaves_a_trace_of_every_state_change() -> None:
     """卡住/绑错/闪退都要能从日志复盘，而不是靠用户回忆。"""
-    trace = function_body(SOURCE, "    def _rc_wizard_trace(")
+    trace = function_body(RC_PAGE_SOURCE, "    def _rc_wizard_trace(")
     assert "RC_WIZARD_TRACE_LOG" in trace
     assert "us=" in trace
-    feed = function_body(SOURCE, "    def _rc_wizard_feed(")
+    feed = function_body(RC_PAGE_SOURCE, "    def _rc_wizard_feed(")
     for event in ("gate_wait", "gate_open", "captured", "waiting"):
         assert f'"{event}"' in feed, event
     # 只记状态跳变，不记每一帧，否则一次校准会写出上万行。
@@ -703,4 +706,4 @@ def test_the_wizard_leaves_a_trace_of_every_state_change() -> None:
         ("    def _rc_wizard_cancel(", "cancel"),
         ("    def _rc_wizard_finish(", "finish"),
     ):
-        assert f'"{event}"' in function_body(SOURCE, name), event
+        assert f'"{event}"' in function_body(RC_PAGE_SOURCE, name), event

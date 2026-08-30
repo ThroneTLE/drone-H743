@@ -91,7 +91,7 @@ flowchart TB
 | R-M6-1 | M6 | 〔人+机〕RCMAP 向导标定并 COMMIT | 12 步向导完成，重启回读一致 | 待做 |
 | R-M6-2..4 | M6 | 〔人+机〕V2A 无桨端到端 + 失控保护 | ACCEPT 全阶段通过；断链进入安全态；方向一致性表全对 | 待做 |
 | R-F0~F5 | M7前置 | 〔码〕运行时 FLU 迁移六 seam（spec §10，顺序固定） | 每 seam：先红测试→实施→host 绿→实机 A/B→翻掩码位 | 待做 |
-| R-S6-1 | S6 | 〔码〕panel 拆分为 tools/panel_lib/ 包（spec §11） | 每次搬一页；行为零变更；全量绿 | 进行中（增量1~5 已过审 2026-08-30；余 RC/机械/光流等页 + evidence） |
+| R-S6-1 | S6 | 〔码〕panel 拆分为 tools/panel_lib/ 包（spec §11） | 每次搬一页；行为零变更；全量绿 | 待审核（增量6 RC向导页；增量1~5已过审，余机械/光流等页 + evidence） |
 | R-S6-2 | S6 | 〔码〕app_control 按命令域拆分（spec §11） | 每域 ≤800 行；host 装置照编；构建零警告 | 待做 |
 
 ## 最近验证证据
@@ -100,6 +100,7 @@ flowchart TB
 
 | 日期 | 范围 | 证据 | 结果 | 对状态的影响 |
 |---|---|---|---|---|
+| 2026-08-30 | S6 panel 拆分增量6（R-S6-1） | `tools/panel_lib/pages/rc_wizard.py` 的 `RcWizardPageMixin` 接管完整 `_build_rc_page` 与 34 个 `_rc_*` handlers，并接管 9 个 RC 纯 helper/15 个专属常量；相对指定基线 `8b8085c6` 独立比对 35/35 方法 + 9/9 helper AST 全部相同，builder 保持 72 条语句；契约锁定旧路径同对象转发、直接脚本导入及机械/SERVO JOG/光流页相对实际父提交不变；既有 RC 源码契约仅重定向 owner。并发说明：审核侧样式提交 `27149729` 在共享工作树中提前收录了本增量的 panel 转发/删除，故审核范围须按 `8b8085c6..本增量最终提交` 复核；聚焦回归 `80 passed`，全量两次绿色：`732 passed`、`731 passed, 1 skipped`（Tk 条件跳过）；`cmake --build --preset Debug`：`ninja: no work to do.`、零警告；未启动串口/板机 | 软件验证通过，待审核 | R-S6-1 置**待审核（增量6）**；panel 9962→8900 行；S6 保持 🟡，不改变主线位置 M5 |
 | 2026-08-30 | **M4 舵机机械校准（作者实测 R-M4-1 + 审核者复位回读 R-M4-2）** | 作者拆桨台架完成两路中心/方向/行程三项人工确认并 preview→COMMIT：alpha 中心1530 限位1000/2000 sign=−1，beta 中心1500 限位1000/2000 sign=−1（两路均"机构标记反向"），证据 `servo_mechanical_20260830_140743.json`（status=PERSISTED_READBACK_MATCH）。审核者 R-M4-2：ST-Link 硬复位前后 `SERVOCAL?` 三行回读，persisted 复位前后逐字段一致、开机 active==persisted、valid=1、dirty=0、gen=3，证据 `servocal_reboot_readback_20260830_141226.json` VERDICT=PASS（首次采集因主机脚本截断 persisted 行误判 FAIL，属工具缺陷，已修复重采并删除误导文件）。另核实作者提出的映射语义疑虑：斜率恒为物理常数 (2500−500)µs/180°（`drv_coax_ctrl.c` `coax_ctrl_tilt_rad_to_servo_pulse`），标定 min/max 仅作输出钳制限位，不参与量程换算；`SERVO ANGLE` 调试路径同 | **M4 PASS** | **R-M4-1、R-M4-2 置 ✅；M4 置 ✅；当前主线位置移至 M5** |
 | 2026-08-30 | 审核：R-S6-1 增量5 过审 | 审核者独立复核：范围=单提交 631e1fb1（基于 911a8167），零证据文件触碰；独立 AST 比对 24/24 方法（23 handlers + builder）与父提交逐一相同、builder 54 条语句、panel 零遗留、MRO 头插 V1PageMixin 正确；机械/光流页及 `_mechanical_move` 在其提交点与父提交逐字节相同（遵守"不动作者在用页"指令）；5 个既有测试改动全部为源锚点纯重定向、断言无削弱；新契约测试沿用金标准（AST SHA-256 钉死 + 同对象转发 + 子进程直跑导入）；审核者在含本增量的 HEAD 全量复跑 `725 passed`、构建零警告；零板机接触 | **过审** | R-S6-1 置"进行中"（增量5完成）；panel 10468→9886 行（后续审核者 jog 修复又 +76） |
 | 2026-08-30 | M4 阻塞缺陷修复：SERVO JOG 保持型点动（审核者实机） | 作者台架实测：机械页点最小/最大"走到一半被拉回中点"。根因=稳定环 commit 持续流式下发目标（3µs 死区+500ms 强制刷新），一次性 `SERVO MOVE` 慢移必然被覆盖。修复：新模块 `App/Src/app_servo_jog.c` 在 commit 仲裁点接管（优先级 手势标定>验收>反馈台架>解锁>点动），500µs/s 斜坡保持、120s 超时自动交还；机械页改发 `SERVO JOG`、增中点微调（±2/±10 µs 实时跟随）、「结束点动」与两路 FLU 判向文字（alpha：+50µs→左(+Y)倾=正向；beta：+50µs→机尾(−X)倾=正向，源自 `coax_ctrl_body_tilt_to_servo_tilts` 符号链）。`tests/test_servo_jog_contract.py` gcc 宿主编译真模块验证斜坡/保持/重定目标/超时/让位/命令面 + 仲裁顺序源码契约；全量 `725 passed`；构建零警告；OpenOCD 烧录 `Verified OK`；COM31 实测 7/7 PASS（JOG/保持中 IMU? 存活/STOP/非法参数/SERVOCAL? 回读）。附带修复：build/Debug 系统识别被污染（CMakeSystem 记录 Windows/非交叉），清树重配置恢复 | 实机验证通过 | R-M4-1 的点动阻塞解除，M4 台架可继续；主线位置不变 M4 |
