@@ -274,6 +274,10 @@ def individual_row(path: str, kind: str) -> str:
         test_symbols = [symbol for symbol in symbols if symbol.startswith("test_")]
         if test_symbols:
             symbols = test_symbols
+        # 无 docstring 的测试模块不重复"Automated checks for 文件名"样板：
+        # 该信息可从路径直接读出，省下的字节留给分片 32KB 硬限（2026-08-30 F4/F5 扩容裁决）。
+        if purpose.startswith("Automated checks for"):
+            purpose = "—"
     return f"| `{path}` | {compact(purpose)} | {symbol_cell(symbols)} |"
 
 
