@@ -4,7 +4,7 @@
 
 Read this shard only when you need existing behavioral/architecture coverage or must choose focused regression tests.
 
-Source snapshot: `898b395b88f6`. Indexed files: 87.
+Source snapshot: `9e04a5b10a70`. Indexed files: 88.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -44,6 +44,7 @@ Source snapshot: `898b395b88f6`. Indexed files: 87.
 | `tests/test_flu_seam1_estimator_frame.py` | R-F1 seam 1 estimator FLU contract | `test_convention_tracks_frame`, `test_flu_branch_no_sign_comp`, `test_legacy_transform_pinned`, `test_header_quaternion_frames`, `test_estimator_nwu_signs` |
 | `tests/test_flu_seam2_navigation_frame.py` | R-F2 seam 2 (NAVIGATION) FLU migration contract | `test_nav_builds_local_level_flu`, `test_nav_header_names_frame`, `test_adapter_declares_removal`, `test_nav_bit_exact_through_adapter` |
 | `tests/test_flu_seam3_controller_frame.py` | R-F3 seam 3 controller FLU boundary contract | `test_frame_signs_and_gains`, `test_mount_outside_control_law`, `test_stabilizer_feed_pinned`, `test_header_input_contract` |
+| `tests/test_flu_seam4_rc_actuator_frame.py` | R-F4 seam 4 RC/actuator polarity contract | `test_stick_direction_has_exactly_one_decision_point`, `test_velocity_measurement_polarity_is_a_named_constant`, `test_yaw_stick_maps_to_a_rate_reference_without_a_hidden_sign`, `test_servo_mechanical_polarity_is_applied_after_allocation`, `test_rc_header_names_the_intent_frame` |
 | `tests/test_ground_calibration.py` | — | `test_calibration_navigation_uses_function_names_instead_of_version_codes`, `test_mechanical_page_is_guarded_and_only_claims_a_matching_target_readback`, `test_mechanical_page_jog_ux_covers_flu_guides_trim_and_release`, `test_flow_page_covers_required_ground_checks_and_uses_compensated_velocity`, `test_vibration_page_is_a_non_actionable_placeholder_with_existing_filter_baseline`, `test_static_flow_reports_zero_offset_and_noise` (+9) |
 | `tests/test_ident_decoupled.py` | — | `test_ident_control_payload_and_decoupled_servo_takeover`, `test_ident_commands_exist_and_are_text_based`, `test_closed_loop_attitude_ident_injects_reference_accel_and_logs_it`, `test_attitude_ident_safe_start_accepts_unsettled_controller_quality`, `test_ident_sample_parser_and_step_fit` |
 | `tests/test_imu_aaf_contract.py` | Contract tests for the ICM-42688 anti-alias filter and accelerometer range. The AAF is an analogue filter ahead of the… | `test_accel_range_is_16g_to_avoid_vibration_clipping`, `test_scaling_is_derived_from_configured_range_not_hardcoded`, `test_aaf_registers_are_configured_in_both_user_banks`, `test_board_requests_an_aaf_cutoff_below_nyquist`, `test_aaf_cutoff_selection_snaps_to_supported_values` |
