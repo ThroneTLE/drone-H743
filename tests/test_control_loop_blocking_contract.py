@@ -26,6 +26,7 @@ SERVO_CAL = ROOT / "App" / "Src" / "app_servo_cal.c"
 SERVO_CAL_HEADER = ROOT / "App" / "Inc" / "app_servo_cal.h"
 CONTROL = ROOT / "App" / "Src" / "app_control.c"
 CONTROL_CORE = ROOT / "App" / "Src" / "app_control_core.c"
+SERVOCAL_CMD = ROOT / "App" / "Src" / "app_cmd_servocal.c"
 CONTROL_INTERNAL = ROOT / "App" / "Inc" / "app_control_internal.h"
 CMAKE = ROOT / "CMakeLists.txt"
 
@@ -39,7 +40,9 @@ STEP_A_BODY_SHA256 = {
     "app_control_token_value": "9305c3293c9348edbcd2f09908a04a8d54270fc4441eee05a146d43167ff968e",
 }
 STEP_B_LEGACY_BODY_SHA256 = {
-    "app_control_imuframe_sync_param": "0545057e9f0ce48fdb0bf77f885311c4682ff4b9839cc5af58d1946777eb16b3",
+    # C extracts only the contiguous SERVOCAL persisted fragment; the rest of
+    # sync is pinned by this direct-parent hash and the fragment below.
+    "app_control_imuframe_sync_param": "1d5b5697c1d6b853bb76d6e38dc51268f4960410733dd87a8e1b9cd7ceb35db6",
     "app_control_imucal_safety": "87327cf50ef57f4566ad276d868912f8bbac6f3e99524e80b20b2b0b544d4c78",
 }
 STEP_B_ACCESSOR_BODIES = {
@@ -75,6 +78,48 @@ STEP_B_ACCESSOR_BODIES = {
         "{\n    return control_imuframe_confirmed_code;\n}"
     ),
 }
+STEP_C_BODY_SHA256 = {
+    "app_control_servocal_clear_preview": "b1854d00dff1cdcfcf730b1c1e10b03aa2ef2d85f6bd37a55f3cde2a8505f84e",
+    "app_control_servocal_set_event": "a4aae2e90420e2db7233774aaa71d786c3040f2360e1a22bfb9c2e65128b9dc7",
+    "app_control_report_servocal_record": "41de7a2923ed57076d428b92cfa7dc33dbfcf0f1e42329a8262188aba60e1283",
+    "app_control_report_servocal": "47dff691d685afff45143df773e0eb692c1ae47b5c90af6743965299cf2b15d4",
+    "app_control_parse_servocal": "8ac31c2ea6d80c4f2c0c6c0ac730b903d738ae22ff746d2fa500dd226e15cb5b",
+    "app_control_handle_servocal": "75f9f7389664a52523366bd3d3b6390d5b5905d90e38282214d752ccc9aab07d",
+    "app_control_service_servocal": "ec23df6b66699a1aa7aeec88247c39007acbe3d5dbcb46d81c1a994b4f76d135",
+}
+STEP_C_STATE_NAMES = {
+    "control_servocal_preview",
+    "control_servocal_pending_record",
+    "control_servocal_preview_generation",
+    "control_servocal_last_request",
+    "control_servocal_applied",
+    "control_servocal_commit_pending",
+    "control_servocal_last_event",
+    "control_servocal_last_reason",
+}
+STEP_C_PERSISTED_FRAGMENT = """    if (control_servocal_commit_pending != 0U) {
+        if (memcmp(&calibration,
+                   &control_servocal_pending_record,
+                   sizeof(calibration)) == 0) {
+            app_control_servocal_set_event("committed", "none");
+        } else {
+            app_control_servocal_set_event("commit_failed", "record_mismatch");
+        }
+        app_control_servocal_clear_preview();
+    } else if (control_servocal_applied != 0U) {
+        app_control_servocal_set_event("reverted", "persisted_changed");
+        app_control_servocal_clear_preview();
+    }"""
+STEP_C_INIT_FRAGMENT = """    memset(&control_servocal_preview, 0,
+           sizeof(control_servocal_preview));
+    memset(&control_servocal_pending_record, 0,
+           sizeof(control_servocal_pending_record));
+    control_servocal_preview_generation = 0U;
+    control_servocal_last_request = 0U;
+    control_servocal_applied = 0U;
+    control_servocal_commit_pending = 0U;
+    app_control_servocal_set_event("init", "none");
+    APP_Stabilizer_SetServoCalibrationCandidateArmLock(0U);"""
 
 CORE_HARNESS = r"""
 #include "app_control_internal.h"
@@ -246,6 +291,133 @@ def _check_app_control_step_b() -> None:
     assert not re.search(r"\bextern\b.*\bcontrol_(?:imucal|imuframe)", internal)
 
 
+def _write_servocal_stubs(stub_dir: Path) -> None:
+    (stub_dir / "app_control.h").write_text(
+        "void APP_Control_QueueText(const char *, ...);\n", encoding="ascii"
+    )
+    (stub_dir / "app_acceptance.h").write_text(
+        "#include <stdint.h>\nuint8_t APP_Acceptance_IsActive(void);\n",
+        encoding="ascii",
+    )
+    (stub_dir / "app_proto.h").write_text(
+        "#define APP_PROTO_MSG_SERVO_CAL 0x2225U\n", encoding="ascii"
+    )
+    (stub_dir / "app_sensor.h").write_text(
+        "#include <stdint.h>\nuint8_t APP_Sensor_GetFluOrientation(void);\n",
+        encoding="ascii",
+    )
+    (stub_dir / "app_stabilizer.h").write_text(
+        "#include <stdint.h>\n"
+        "typedef struct { uint32_t value[16]; } StabilizerValidationImuSnapshot;\n"
+        "uint8_t APP_Stabilizer_IsServoCalibrationCandidateArmLocked(void);\n"
+        "void APP_Stabilizer_SetServoCalibrationCandidateArmLock(uint8_t);\n",
+        encoding="ascii",
+    )
+    (stub_dir / "drv_coax_ctrl.h").write_text(
+        "#include <stdint.h>\n"
+        "#define DRV_COAX_CTRL_SERVO_COUNT 2U\n"
+        "#define DRV_COAX_CTRL_SERVO_ALPHA_INDEX 0U\n"
+        "#define DRV_COAX_CTRL_SERVO_BETA_INDEX 1U\n"
+        "typedef struct { uint16_t center_us[2]; uint16_t min_us[2]; "
+        "uint16_t max_us[2]; int8_t pulse_sign[2]; } DRV_COAX_CTRL_ServoCalibration;\n"
+        "void DRV_COAX_CTRL_GetDefaultServoCalibration(DRV_COAX_CTRL_ServoCalibration*);\n"
+        "uint8_t DRV_COAX_CTRL_ValidateServoCalibration(const DRV_COAX_CTRL_ServoCalibration*);\n",
+        encoding="ascii",
+    )
+    (stub_dir / "svc_param.h").write_text(
+        "#include <stdint.h>\n"
+        "typedef enum { SVC_PARAM_STATUS_OK = 0 } SVC_ParamStatus;\n"
+        "uint8_t SVC_Param_IsDirty(void);\n"
+        "SVC_ParamStatus SVC_Param_SetBlob(const uint8_t*,uint32_t);\n"
+        "uint32_t SVC_Param_RequestSaveBlob(void);\n",
+        encoding="ascii",
+    )
+    (stub_dir / "app_flight_calibration.h").write_text(
+        "#include <stdint.h>\n"
+        "typedef struct { uint32_t calibration_generation; uint8_t bytes[156]; } APP_FlightCalibration;\n"
+        "typedef struct { APP_FlightCalibration calibration; uint32_t generation; } APP_FlightCalibrationSnapshot;\n"
+        "typedef enum { APP_FLIGHT_CAL_UPLOAD_EMPTY = 0, APP_FLIGHT_CAL_UPLOAD_READY = 3 } APP_FlightCalibrationUploadState;\n"
+        "typedef struct { APP_FlightCalibrationUploadState state; } APP_FlightCalibrationUpload;\n"
+        "uint8_t APP_FlightCalibration_ReadActive(APP_FlightCalibrationSnapshot*);\n"
+        "uint8_t APP_FlightCalibration_BuildServoMechanical(const APP_FlightCalibration*,void*);\n"
+        "uint8_t APP_FlightCalibration_UpdateServoMechanical(APP_FlightCalibration*,const void*);\n"
+        "uint8_t APP_FlightCalibration_PublishPreview(const APP_FlightCalibration*);\n"
+        "uint32_t APP_FlightCalibration_Encode(const APP_FlightCalibration*,uint8_t*,uint32_t);\n",
+        encoding="ascii",
+    )
+
+
+def _check_app_control_step_c(tmp_path: Path) -> None:
+    assert SERVOCAL_CMD.is_file()
+    legacy = CONTROL.read_text(encoding="utf-8")
+    servocal = SERVOCAL_CMD.read_text(encoding="utf-8")
+    internal = CONTROL_INTERNAL.read_text(encoding="utf-8")
+    for name, expected_hash in STEP_C_BODY_SHA256.items():
+        assert hashlib.sha256(_c_function_body(servocal, name).encode()).hexdigest() == expected_hash
+        assert not re.search(
+            rf"^(?:static\s+)?(?:void|uint8_t|uint32_t|const char \*\s*)\s*"
+            rf"{re.escape(name)}\s*\(",
+            legacy,
+            re.MULTILINE,
+        ), name
+    for name in STEP_C_STATE_NAMES:
+        assert re.search(rf"^static .*\b{re.escape(name)}(?:\b|;)", servocal, re.MULTILINE)
+        assert name not in legacy
+    assert len(servocal.splitlines()) <= 800
+    assert "extern" not in servocal
+    assert STEP_C_PERSISTED_FRAGMENT in servocal
+    assert STEP_C_INIT_FRAGMENT in servocal
+    sync = _c_function_body(legacy, "app_control_imuframe_sync_param")
+    assert sync.index("app_control_imucal_clear_candidate();") < sync.index(
+        "app_cmd_servocal_on_persisted(&calibration);"
+    ) < sync.index("control_imuframe_confirmed_code = orientation_code;")
+    report = _c_function_body(servocal, "app_control_report_servocal")
+    handler = _c_function_body(servocal, "app_control_handle_servocal")
+    assert report.index("app_control_imuframe_sync_param();") < report.index("memset(&active")
+    assert handler.index("app_control_imuframe_sync_param();") < handler.index('strcmp(tokens[0], "SERVOCAL?")')
+    for call in (
+        "app_cmd_servocal_init();",
+        "app_cmd_servocal_on_persisted(&calibration);",
+        "app_cmd_servocal_is_busy()",
+        "app_control_service_servocal();",
+        "app_control_handle_servocal(tokens, count);",
+    ):
+        assert call in legacy
+    for declaration in (
+        "void app_control_handle_servocal(char **tokens, uint32_t count);",
+        "void app_control_service_servocal(void);",
+        "void app_cmd_servocal_init(void);",
+        "void app_cmd_servocal_on_persisted(const void *record);",
+        "uint8_t app_cmd_servocal_is_busy(void);",
+    ):
+        assert declaration in internal
+
+    gcc = shutil.which("gcc")
+    if gcc is None:
+        pytest.skip("host gcc is unavailable")
+    stub_dir = tmp_path / "servocal_stubs"
+    stub_dir.mkdir()
+    _write_servocal_stubs(stub_dir)
+    subprocess.run(
+        [
+            gcc,
+            "-std=c11",
+            "-Wall",
+            "-Wextra",
+            "-Werror",
+            f"-I{stub_dir}",
+            f"-I{ROOT / 'App' / 'Inc'}",
+            "-c",
+            str(SERVOCAL_CMD),
+            "-o",
+            str(tmp_path / "app_cmd_servocal.o"),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+
 def _check_app_control_step_a(tmp_path: Path) -> None:
     assert CONTROL_CORE.is_file()
     assert CONTROL_INTERNAL.is_file()
@@ -338,3 +510,4 @@ def test_comms_task_flushes_the_notice_each_tick(tmp_path: Path) -> None:
     )
     _check_app_control_step_a(tmp_path)
     _check_app_control_step_b()
+    _check_app_control_step_c(tmp_path)

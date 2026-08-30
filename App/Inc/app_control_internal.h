@@ -34,4 +34,10 @@ uint8_t app_control_internal_imucal_applied(void);
 uint8_t app_control_internal_imucal_commit_pending(void);
 uint8_t app_control_internal_imuframe_confirmed_code(void);
 
+void app_control_handle_servocal(char **tokens, uint32_t count);
+void app_control_service_servocal(void);
+void app_cmd_servocal_init(void);
+void app_cmd_servocal_on_persisted(const void *record);
+uint8_t app_cmd_servocal_is_busy(void);
+
 #endif /* APP_CONTROL_INTERNAL_H */
