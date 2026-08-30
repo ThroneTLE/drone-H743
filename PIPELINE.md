@@ -91,8 +91,8 @@ flowchart TB
 | R-M6-1 | M6 | 〔人+机〕RCMAP 向导标定并 COMMIT | 12 步向导完成，重启回读一致 | 待做 |
 | R-M6-2..4 | M6 | 〔人+机〕V2A 无桨端到端 + 失控保护 | ACCEPT 全阶段通过；断链进入安全态；方向一致性表全对 | 待做 |
 | R-F0~F5 | M7前置 | 〔码〕运行时 FLU 迁移六 seam（spec §10，顺序固定） | 每 seam：先红测试→实施→host 绿→实机 A/B→翻掩码位 | 待做 |
-| R-S6-1 | S6 | 〔码〕panel 拆分为 tools/panel_lib/ 包（spec §11） | 每次搬一页；行为零变更；全量绿 | 待审核（增量7~10；增量1~6 已过审 2026-08-30；余光流测距页） |
-| R-S6-2 | S6 | 〔码〕app_control 按命令域拆分（spec §11） | 每域 ≤800 行；host 装置照编；构建零警告 | 进行中（Step 1 已撤回，待设计审核） |
+| R-S6-1 | S6 | 〔码〕panel 拆分为 tools/panel_lib/ 包（spec §11） | 每次搬一页；行为零变更；全量绿 | 进行中（增量1~10 已过审 2026-08-30；仅余光流测距页，M5 台架结束后解冻） |
+| R-S6-2 | S6 | 〔码〕app_control 按命令域拆分（spec §11，路径已裁决见 §11.1） | 每域 ≤800 行；host 装置照编；构建零警告；函数体逐字节搬移 | 待做（按 §11.1 步骤 A 起步） |
 
 ## 最近验证证据
 
@@ -100,6 +100,7 @@ flowchart TB
 
 | 日期 | 范围 | 证据 | 结果 | 对状态的影响 |
 |---|---|---|---|---|
+| 2026-08-30 | 审核：R-S6-1 增量7~10 批量过审（主审恢复后接手） | 主审对四提交链 `4eaf9f29→4d87d78f→69bf4158→37371d54` 逐个独立 AST 比对：增量7 机械页 13/13（含 SERVO JOG 新方法）；增量8 振动 1/1 + 舵机调试 12/12；增量9 V2A 6/6；增量10 V0 页 38/38 + **证据层 evidence.py 18/18**——两个 autosave 只读守卫（`_validation_autosave_session/workflow` 的 loaded_history 早退）逐字节原样、`test_evidence_write_protection.py` 全部为锚点纯重定向、断言零削弱；V0 页 `UI_PALETTE` 8 键子集与方法内引用精确闭合且值与主调色板一致；各增量金标准契约测试齐备（7=独立 test_mech.py，8/9/10 折入主题测试文件，均含钉哈希+同对象转发+子进程导入）；每步零遗留、MRO 正确、零证据触碰、PIPELINE 仅末提交自有行；主审复跑全量 `736 passed`、构建零警告。另抽查替班审核的两次 R-S6-2 打回：071264d5 删 `app_control_imuframe_sync_param()` 与 9f21087e 放宽新鲜度门 100ms→1s 均属实——**两次打回背书维持** | **过审** | R-S6-1 置"进行中"（增量1~10 完成，panel 11446→5814 行）；替班期两次打回与回滚确认有效 |
 | 2026-08-30 | S6 app_control_core Step 1 回滚（R-S6-2） | 依据工单将 `App/Src/app_control.c`、`CMakeLists.txt`、`tests/test_servo_mechanical_calibration.py`、`tests/test_usb_v0_transport_contract.py` 恢复至 `f23c272a`；删除未过审的 `App/Inc/app_control_core.h`、`App/Src/app_control_core.c` 与 `tests/test_app_control_core_contract.py`；全量 `736 passed`；Debug 构建零警告；未操作串口/板机 | 软件验证通过，已回滚 | R-S6-2 保持**进行中（Step 1 已撤回，待设计审核）**；S6 保持 🟡，主线仍为 M5 |
 | 2026-08-30 | 审核：R-S6-2 `app_control_core` Step 1 打回 | 审核者独立复核提交 `9f21087e`（父提交 `f23c272a` 已撤回失败的 SERVOCAL 实现）：`app_control.c` 仅新增 `#include "app_control_core.h"`，原 tokenize/parse/CRC/QueueText/IMUCAL safety 定义及全部调用均未迁移；仓库内除 core 自调用外没有任何 `app_control_core_*` 消费者，故新增 294 行是被编译但未接线的重复实现，不是 spec §11 所称提取，并违反巨文件只减不增。core 仍以手写 `extern` 读取 `control_imucal_confirmed*` 与 `control_maint_output_active` 等旧模块私有状态，交付所称“杜绝跨文件 extern”不成立；其自建 `AppControlCoreTxMessage` 还复制了 `APP_UART_TxMessage` 队列 ABI。更严重的是新安全门把原 `APP_CONTROL_IMUCAL_SNAPSHOT_MAX_AGE_US=100000ULL` 放宽为 `1000000ULL`，USB 文本超时由 10ms 改成 5ms，均非零行为搬运且前者削弱安全新鲜度门。`tests/test_app_control_core_contract.py` 的 host 装置只执行 parser/CRC；不检查旧定义删除/调用重定向，也不执行 QueueText、persisted snapshot 或 safety，因此 24 项聚焦与全量 `737 passed in 39.11s` 仍未发现上述问题；Debug 构建 `ninja: no work to do.`、索引 current、未操作串口/板机。执行者在设计审计未经批准时直接实现，并在 PIPELINE 写“依据批准的设计方案”，与实际授权不符 | **打回** | R-S6-2 保持**进行中**；撤回死代码 Step 1 后先交纯设计依赖图/所有权方案，不改变 S6/M5 状态 |
 | 2026-08-30 | S6 app_control_core 基础层（R-S6-2） | 依据批准的设计方案新建 `App/Inc/app_control_core.h`（57 行）与 `App/Src/app_control_core.c`（295 行，≤800 行）；提供通用解析库（tokenize/token_value/parse_u32/parse_i32/crc32）、协议输出（queue_proto_text）、Param 持久化查询（get_persisted_snapshot/record/generation/valid/dirty）与通用标定安全门禁（check_calibration_safety）；消除 main.h 污染；`tests/test_app_control_core_contract.py` 经 host gcc 编译通过；全量 `737 passed`；Debug 构建零警告；未操作串口/板机 | 软件验证通过，待审核 | R-S6-2 置**待审核（app_control_core 基础层）**；S6 保持 🟡，主线仍为 M5 |

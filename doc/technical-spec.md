@@ -96,6 +96,17 @@ python -m pytest tests -q 全量（当前基线 696+ 项）与 cmake --build --p
 
 **app_control.c（C）**：按命令域拆 `App/Src/app_cmd_imucal.c / app_cmd_servocal.c / app_cmd_rcmap.c / app_cmd_flow.c / app_cmd_system.c` + `app_control_core.c`（QueueText/tick/持久化）。分发表留在 app_control.c；新文件各 ≤800 行；每拆一域：CMake 登记→host 装置照编→固件构建零警告。QueueText 上下文契约与 §5 一致。
 
+### 11.1 app_control 拆分裁决（2026-08-30，审核者批准的唯一执行路径）
+
+两次打回（071264d5 删同步调用、9f21087e 复制实现+放宽安全门）确立两条铁律：**提取=搬移**（定义离开 app_control.c、全部调用点重定向，禁止并存副本）；**常量与时序逐字节不变**（`APP_CONTROL_IMUCAL_SNAPSHOT_MAX_AGE_US=100000ULL`、USB 文本超时 10ms 等安全参数任何改动都须单独立项）。跨域私有状态禁止手写 `extern`，只能经共享内部头 `App/Inc/app_control_internal.h` 声明的接口。
+
+步骤固定，一步一增量一 commit，函数体逐字节一致（唯一允许差异：static→外链的签名行、include 调整，逐条列出）；发现清单外耦合立即停并上报：
+
+- **步骤 A `app_control_core.c`**：只搬零私有状态耦合的纯函数——tokenize/token 取值/parse_u32/parse_i32/CRC32/`app_control_queue_proto_text`。契约测试须含 host gcc 编译执行装置（parser/CRC 真跑）+ app_control.c 零残留断言。
+- **步骤 B 标定快照访问器**：不搬实现，仅在 internal.h 为 `control_imucal_confirmed*` 镜像、`app_control_imuframe_sync_param()`、`app_control_imucal_safety()` 增加窄访问器（app_control.c 内实现），供后续域调用。
+- **步骤 C SERVOCAL 域**：整体搬移 7 函数至 `app_cmd_servocal.c`，**保留原函数首部的 `app_control_imuframe_sync_param()` 调用**（经步骤 B 访问器）；解析/发送用步骤 A 的 core，不得将原 static helper 升级为公共 API。
+- **步骤 D+**：IMUCAL → RCMAP → FLOW → SYSTEM 依同法，每域前先交耦合清单。
+
 ## 12. 工具链与环境
 
 - 构建 `cmake --build --preset Debug`；烧录（ST-Link）：`"D:/Program Files/OpenOCD-20240916-0.12.0/bin/openocd.exe" -f interface/stlink.cfg -f target/stm32h7x.cfg -c "program build/Debug/drone-H743.elf verify reset exit"`；复位同上 `-c "init; reset run; shutdown"`。
