@@ -20,6 +20,8 @@ SERVOCAL_CMD = ROOT / "App" / "Src" / "app_cmd_servocal.c"
 IMUCAL_CMD = ROOT / "App" / "Src" / "app_cmd_imucal.c"
 RCMAP_CMD = ROOT / "App" / "Src" / "app_cmd_rcmap.c"
 FLOW_CMD = ROOT / "App" / "Src" / "app_cmd_flow.c"
+SYSTEM_CMD = ROOT / "App" / "Src" / "app_cmd_system.c"
+DIAG_CMD = ROOT / "App" / "Src" / "app_cmd_diag.c"
 CONTROL_INTERNAL = ROOT / "App" / "Inc" / "app_control_internal.h"
 CMAKE = ROOT / "CMakeLists.txt"
 
@@ -180,7 +182,7 @@ STEP_D2_PERSIST_HELPER_BODY = """{
     control_config.flash_valid = 1U;
     return (uint8_t)save_status;
 }"""
-STEP_D3_PARENT_COMMIT = "350c2732014240e434583096f692ca5f62622d02"
+STEP_D3_PARENT_COMMIT = "aa538a1cbb0e68b8e232c42a2b7096528ba2547a"
 STEP_D3_BODY_SHA256 = {
     "app_control_parse_hex_byte": "822f7d5255be98c3cf3ef75a9fbbe59c94cfa0bf4e8a7b1105e78a0d2af318d4",
     "app_control_handle_flow": "7b52901d414dacbe3a88faee468ba4aaafb52605674128df19915bd14493c163",
@@ -192,6 +194,183 @@ STEP_D3_ACCEPTANCE_BODY_SHA256 = (
 STEP_D3_ACCESSOR_BODY = """{
     return app_control_acceptance_milli(value);
 }"""
+STEP_D4_PARENT_COMMIT = "e44770bbaebd836d0df808bee80961db7db5cda0"
+STEP_D4_SYSTEM_BODY_SHA256 = {
+    "app_control_report_caps": "7168dbe1c6c100c96700cdf59edeb18a877bc1b6283609c803e815522e8db25b",
+    "app_control_report_wifi": "24b59dc153bd8562e7df5834771ccbf458d42f9093a779f0e3d95cf4d3bfcafe",
+    "app_control_report_task_stack": "3b031570d95dbeb1945322c62b579aea15cf1be23552d8914372d43386a08f7b",
+    "app_control_report_rtos": "db1ad86880a7e398f9dc5e0ec2e8d0a119b43b3b2e045adec19f010f2f7216de",
+    "app_control_report_modules": "ef4a910aefdb3e805b29a55c9ad782b61b17217372e671b36bea5c7e6f3879b5",
+    "app_control_report_status": "a78f2d54a89071eaf96634d556361154a5371d6c84f30550d228e818ed34e578",
+    "app_control_report_usb_cdc_stats": "7cc8a758ff5d3e9c184f30338ef9955b6e0383e8a15329f32303ef42ea1f0f9c",
+    "app_control_report_uart_stats": "a007f9a28d3078df665affa2edbd4095c1891700263f8d89b20959e7155c9627",
+    "APP_Control_ReportUartStats": "aa55a393bc18a14388f8ecad6d721ebce5ac7b425ee0c23b8cd9d6d653415d35",
+}
+STEP_D4_DIAG_BODY_SHA256 = {
+    "app_control_imu_stage_name": "43d16b390cb2b218d8ac36c812ad83b3e1e00fd4e5ab4675ecec64eeb3ecc2df",
+    "app_control_flash_ok": "4d79f0b726b0c237b9c2b87af8238047e8211ad471862be308019892f4616e8b",
+    "app_control_age_text": "7571ac5413aa09024f96a1ae4d8d3dd75365255f5f770246797ac5dadecf4f5e",
+    "app_control_flash_stage": "365f505fc55be49645ccc429a8986780887c099b014dd71c7d608ee2a6a74215",
+    "app_control_baro_ok": "4ea85895d0472403204645d4d1fc865620f9e1a62db279aba9d6699fdb036a1e",
+    "app_control_baro_stage": "b91be3cbaf71c6e95691702030b4d72e2d183112b56042025b7fa9fbe01f6cf7",
+    "app_control_aiwb2_state_name": "98c840dadf57ea0d5437b3eb437bc2ea6e5c62029fb6d57e410db78a8e55349e",
+    "app_control_parse_u32_auto": "e7cf8135b868f444397cbd63e33f55621b2b82b6c585951e59af4059237db45c",
+    "app_control_protocol_err": "2ed34ed98edfa7e4582e34caa851c146857606d43c5e746c172d05b31cfdbc1c",
+    "app_control_req_spl06": "71a70258158e3c1215c87e5bf85a32de7e38c0d14cef203d44f962191f8ced2a",
+    "app_control_req_icm42688": "4805915e544657f7d537d4fdea16dcb098b786620f8b9b0bf060bd83edbefe84",
+    "app_control_req_m9n": "6768cfd5dfe511c1ef7cb3422461425b15a50c63832632778f48b4df9b181c58",
+    "app_control_req_mag": "5c1993ac6286decfbc1c87fddcd66da1e0942c900c31d24ea43b651f62c02f01",
+    "app_control_handle_req": "b45a25557d453f9754b9411b853ed99e07d73795b69888630fde18886df4cc4c",
+}
+STEP_D4_PROTECTED_LEGACY_BODY_SHA256 = {
+    "app_control_report_config": "c9d30f2565e2de3830fcaca89e6f8d86f163431bb079893d44779bf414a75164",
+    "app_control_report_flash": "2d92c4b5a88196604779cd0e73673d9db0b10d3adaf6f1f66878549a9f84decc",
+    "app_control_report_baro": "e108b9fb652b46f7735c8129ed888d323167ee085b0e672e3d8fddce59723752",
+    "app_control_report_imu": "683dfc8099042862a6835572e894508333373f0ca84b27acda1e7cd309d54cc3",
+    "app_control_token_u32": "8e1c6bdd61e5fc1253e46d639c3f559291b5a0e88f69bab2b817b5adea834b07",
+}
+
+D4_STUB_HEADER = r"""
+#ifndef D4_STUBS_H
+#define D4_STUBS_H
+#include <stddef.h>
+#include <stdint.h>
+
+#define APP_CONTROL_SERVO_COUNT 2U
+typedef struct { uint8_t id; uint16_t pulse_us; uint16_t time_ms; uint8_t mode; uint8_t enabled; } APP_ControlServoConfig;
+typedef struct { uint8_t loaded_from_flash; uint8_t flash_valid; uint8_t last_flash_status; APP_ControlServoConfig servo[2]; } APP_ControlConfig;
+void APP_Control_QueueText(const char *, ...);
+
+typedef struct { int32_t probe_status; int32_t status1_status; int32_t read_status; uint8_t manufacturer_id; uint8_t memory_type; uint8_t capacity_id; uint8_t status1; } APP_Flash_Status;
+typedef struct { int32_t init_status; int32_t split_status; int32_t txrx_status; uint8_t product_id; uint8_t split_id; uint8_t txrx_id; uint8_t bmp280_id; uint8_t cs_level; uint8_t miso_level; } APP_Baro_Status;
+typedef struct {
+    uint8_t initialized; uint8_t init_stage; int32_t last_status; int32_t last_error;
+    uint8_t who_am_i; uint32_t sample_count; int16_t accel_x_mg; int16_t accel_y_mg;
+    int16_t accel_z_mg; int32_t gyro_x_mdps; int32_t gyro_y_mdps; int32_t gyro_z_mdps;
+    int16_t temperature_cdeg; uint8_t diag_valid; uint8_t diag_mode0_tokmas;
+    uint8_t diag_mode0_msb; uint8_t diag_mode0_bit0; uint8_t diag_mode3_tokmas;
+    uint8_t diag_mode3_msb; uint8_t diag_mode3_bit0; uint8_t diag_best_mode;
+    uint8_t diag_best_header; uint8_t diag_burst_m0_b0_1; uint8_t diag_burst_m0_b0_2;
+    uint8_t diag_burst_m0_b0_3; uint8_t diag_burst_m0_b0_4;
+    uint8_t diag_burst_m3_tok_1; uint8_t diag_burst_m3_tok_2;
+    uint8_t diag_burst_m3_tok_3; uint8_t diag_burst_m3_tok_4;
+} APP_IMU_Status;
+typedef struct { uint8_t initialized; int32_t init_status; uint32_t baud_rate; uint32_t bytes; uint32_t frames; uint8_t valid; uint32_t age_ms; int velocity_source; uint8_t velocity_valid; uint32_t checksum_errors; float height_m; float vx_m_s; float vy_m_s; } APP_OPTICAL_FLOW_Status;
+typedef struct {
+    uint8_t initialized; int32_t init_status; int32_t last_status; int type;
+    uint8_t address; uint8_t who_am_i; uint32_t sample_count; int16_t raw_x;
+    int16_t raw_y; int16_t raw_z; int32_t x_mgauss; int32_t y_mgauss;
+    int32_t z_mgauss; uint8_t detected_ist8310; uint8_t detected_hmc5883;
+    uint8_t detected_qmc5883; uint8_t hmc_id_a; uint8_t hmc_id_b; uint8_t hmc_id_c;
+} APP_MAG_Status;
+typedef struct {
+    uint8_t initialized; int32_t init_status; uint8_t fix_type; uint8_t valid_fix;
+    uint8_t num_sv; uint32_t last_rx_ms; uint32_t packets; uint32_t nav_pvt_packets;
+    uint32_t nmea_sentences; uint32_t nmea_gga_sentences; uint32_t baud_rate;
+    uint32_t bytes; uint32_t checksum_errors; uint32_t nmea_checksum_errors;
+    uint32_t payload_overflows; uint32_t nmea_overflows; uint32_t rx_restarts;
+    uint32_t uart_errors; uint32_t last_uart_error; uint32_t config_writes;
+    int32_t lon_deg_e7; int32_t lat_deg_e7; int32_t hmsl_mm; uint32_t hacc_mm;
+    uint32_t vacc_mm; int32_t vel_n_mm_s; int32_t vel_e_mm_s; int32_t vel_d_mm_s;
+    int32_t heading_motion_deg_e5; uint16_t year; uint8_t month; uint8_t day;
+    uint8_t hour; uint8_t minute; uint8_t second;
+} APP_GPS_Status;
+typedef struct {
+    APP_Baro_Status status; int32_t raw_status; int32_t coef_status; uint8_t scaled_valid;
+    int32_t pressure_raw; int32_t temperature_raw; int32_t pressure_pa;
+    int32_t temperature_cdeg; uint8_t prs_cfg; uint8_t tmp_cfg; uint8_t meas_cfg;
+    uint8_t cfg_reg; uint8_t int_sts; uint8_t fifo_sts; uint8_t raw_regs[14]; uint8_t id;
+} APP_Baro_Snapshot;
+typedef struct {
+    uint8_t initialized; uint32_t predict_count; uint32_t flow_update_count;
+    uint32_t flow_reject_count; uint32_t flow_skip_count; float last_nis;
+    float last_gate_nis; float last_innovation_m_s[2]; float last_flow_noise_m_s;
+    float vel_m_s[2]; float accel_bias_m_s2[2]; float covariance_diag[4];
+} DRV_NAV_EKF_Diagnostics;
+typedef struct { uint8_t stack_overflow_seen; char stack_overflow_task[32]; uint8_t malloc_failed_seen; uint32_t malloc_failed_count; } APP_DiagFaultInfo;
+
+typedef enum {
+    APP_AIWB2_STATE_START_DELAY = 0, APP_AIWB2_STATE_WAIT_BOOT_CONNECT,
+    APP_AIWB2_STATE_ESCAPE_BEFORE, APP_AIWB2_STATE_WAIT_PROBE,
+    APP_AIWB2_STATE_SEND_COMMAND, APP_AIWB2_STATE_WAIT_COMMAND,
+    APP_AIWB2_STATE_ESCAPE_AFTER, APP_AIWB2_STATE_WAIT_TRANSPARENT_OK,
+    APP_AIWB2_STATE_SOCKET_READY, APP_AIWB2_STATE_TRANSPARENT,
+    APP_AIWB2_STATE_RETRY_DELAY
+} APP_AiWB2_State;
+typedef enum {
+    BSP_ICM42688_INIT_STAGE_NONE = 0, BSP_ICM42688_INIT_STAGE_BANK_SELECT,
+    BSP_ICM42688_INIT_STAGE_RESET, BSP_ICM42688_INIT_STAGE_WHO_AM_I,
+    BSP_ICM42688_INIT_STAGE_GYRO_CONFIG, BSP_ICM42688_INIT_STAGE_ACCEL_CONFIG,
+    BSP_ICM42688_INIT_STAGE_FILTER_CONFIG, BSP_ICM42688_INIT_STAGE_PWR_MGMT,
+    BSP_ICM42688_INIT_STAGE_SIGNAL_RESET, BSP_ICM42688_INIT_STAGE_READY
+} BSP_ICM42688_InitStage;
+#define BSP_ICM42688_WHO_AM_I_VALUE 0x47U
+#define BSP_SPL06_ID_VALUE 0x10U
+#define BSP_SPL06_OK 0
+
+#define APP_PROTO_MSG_CAPS_RECORD 1U
+#define APP_PROTO_MSG_WIFI_RECORD 2U
+#define APP_PROTO_MSG_RTOS_RECORD 3U
+#define APP_PROTO_MSG_MODULES_SUMMARY 4U
+#define APP_PROTO_MSG_HW_FLASH 5U
+#define APP_PROTO_MSG_HW_BARO 6U
+#define APP_PROTO_MSG_HW_IMU 7U
+#define APP_PROTO_MSG_GPS_RECORD 8U
+#define APP_PROTO_MSG_MAG_RECORD 9U
+#define APP_PROTO_MSG_STATUS_FLASH 10U
+#define APP_PROTO_MSG_STATUS_BARO 11U
+#define APP_PROTO_MSG_STATUS_IMU 12U
+#define APP_PROTO_MSG_UART_STATS 13U
+
+void APP_Flash_GetStatus(APP_Flash_Status *);
+void APP_Baro_GetStatus(APP_Baro_Status *);
+void APP_Baro_ReadSnapshot(APP_Baro_Snapshot *);
+void APP_IMU_GetStatus(APP_IMU_Status *);
+void APP_OpticalFlow_GetStatus(APP_OPTICAL_FLOW_Status *);
+const char *APP_OpticalFlow_VelSourceName(int);
+void APP_MAG_GetStatus(APP_MAG_Status *);
+const char *APP_MAG_GetTypeName(int);
+void APP_GPS_GetStatus(APP_GPS_Status *);
+void APP_NavEstimator_GetVelocityEKF(DRV_NAV_EKF_Diagnostics *);
+void APP_Diag_GetFaultInfo(APP_DiagFaultInfo *);
+void APP_UART_GetStats(uint32_t *, uint32_t *, uint32_t *, uint32_t *);
+void APP_UART_GetRxEventStats(uint32_t *, uint32_t *, uint32_t *);
+uint32_t APP_USB_CDC_GetTxSent(void);
+uint32_t APP_USB_CDC_GetTxDropped(void);
+
+APP_AiWB2_State APP_AiWB2_GetState(void);
+uint8_t APP_AiWB2_IsTransparent(void);
+uint32_t APP_AiWB2_GetRetryCount(void);
+int32_t APP_AiWB2_GetLastSocketError(void);
+uint8_t APP_AiWB2_IsPowerRecycleActive(void);
+uint32_t APP_AiWB2_GetDeadlineRemainingMs(void);
+uint8_t APP_AiWB2_IsProvisionActive(void);
+uint32_t APP_AiWB2_GetCommandIndex(void);
+uint32_t APP_AiWB2_GetCommandCount(void);
+uint8_t BSP_AiWB2_IsEnabled(void);
+uint8_t BSP_AiWB2_GetLastWrittenState(void);
+uint32_t BSP_AiWB2_GetWriteCount(void);
+uint32_t HAL_GetTick(void);
+
+typedef void *osThreadId_t;
+typedef void *osMessageQueueId_t;
+typedef void *TaskHandle_t;
+typedef uint32_t UBaseType_t;
+extern osMessageQueueId_t uartTxQueueHandle;
+extern osMessageQueueId_t backgroundReqQueueHandle;
+extern osMessageQueueId_t backgroundRespQueueHandle;
+extern osThreadId_t SensorTaskHandle;
+extern osThreadId_t messageTaskHandle;
+extern osThreadId_t UARTTaskHandle;
+extern osThreadId_t backgroundTaskHandle;
+uint32_t osMessageQueueGetCount(osMessageQueueId_t);
+uint32_t osMessageQueueGetCapacity(osMessageQueueId_t);
+UBaseType_t uxTaskGetStackHighWaterMark(TaskHandle_t);
+size_t xPortGetFreeHeapSize(void);
+size_t xPortGetMinimumEverFreeHeapSize(void);
+
+#endif
+"""
 
 CORE_HARNESS = r"""
 #include "app_control_internal.h"
@@ -835,6 +1014,153 @@ def _check_app_control_step_d3(tmp_path: Path) -> None:
     )
 
 
+def _write_d4_stubs(stub_dir: Path) -> None:
+    stub_dir.mkdir()
+    (stub_dir / "d4_stubs.h").write_text(D4_STUB_HEADER, encoding="ascii")
+    headers = {
+        "app_control.h", "app_aiwb2.h", "app_baro.h", "app_diag.h",
+        "app_flash.h", "app_gps.h", "app_mag.h", "app_nav_estimator.h",
+        "app_optical_flow.h", "app_proto.h", "app_sensor.h", "app_tasks.h",
+        "app_uart.h", "app_usb_cdc.h", "bsp_aiwb2_power.h", "bsp_baro.h",
+        "bsp_imu.h", "main.h", "FreeRTOS.h", "task.h",
+    }
+    for header in headers:
+        (stub_dir / header).write_text(
+            '#include "d4_stubs.h"\n', encoding="ascii"
+        )
+
+
+def _check_app_control_step_d4(tmp_path: Path) -> None:
+    assert SYSTEM_CMD.is_file()
+    assert DIAG_CMD.is_file()
+    legacy = CONTROL.read_text(encoding="utf-8")
+    system = SYSTEM_CMD.read_text(encoding="utf-8")
+    diag = DIAG_CMD.read_text(encoding="utf-8")
+    internal = CONTROL_INTERNAL.read_text(encoding="utf-8")
+    cmake = CMAKE.read_text(encoding="utf-8")
+
+    for owner, expected in (
+        (system, STEP_D4_SYSTEM_BODY_SHA256),
+        (diag, STEP_D4_DIAG_BODY_SHA256),
+    ):
+        for name, expected_hash in expected.items():
+            assert hashlib.sha256(_c_function_body(owner, name).encode()).hexdigest() == expected_hash, (
+                f"{name} diverged from D4 parent {STEP_D4_PARENT_COMMIT}"
+            )
+            assert not re.search(
+                rf"^(?:static\s+)?(?:void|uint8_t|uint32_t|int32_t|const char \*\s*)\s*"
+                rf"{re.escape(name)}\s*\(",
+                legacy,
+                re.MULTILINE,
+            ), name
+    for name, expected_hash in STEP_D4_PROTECTED_LEGACY_BODY_SHA256.items():
+        assert hashlib.sha256(_c_function_body(legacy, name).encode()).hexdigest() == expected_hash
+        assert not re.search(
+            rf"^(?:static\s+)?(?:void|uint8_t|uint32_t|const char \*\s*)\s*"
+            rf"{re.escape(name)}\s*\(",
+            system + diag,
+            re.MULTILINE,
+        ), name
+
+    assert len(system.splitlines()) <= 800
+    assert len(diag.splitlines()) <= 800
+    assert "extern control_" not in system + diag + internal
+    assert (
+        "#define control_config \\\n"
+        "    (*(const APP_ControlConfig *)app_control_internal_config_view())"
+    ) in system
+    assert _body_after_signature(
+        legacy,
+        "const void *app_control_internal_config_view(void)",
+    ) == "{\n    return &control_config;\n}"
+    assert not re.search(
+        r"^APP_ControlConfig \*app_control_internal_config_view",
+        legacy + internal,
+        re.MULTILINE,
+    )
+
+    delegate_bodies = {
+        "const char *app_control_internal_imu_stage_name(uint8_t stage)": (
+            "{\n    return app_control_imu_stage_name(stage);\n}"
+        ),
+        "uint8_t app_control_internal_flash_ok(const void *status)": (
+            "{\n    return app_control_flash_ok((const APP_Flash_Status *)status);\n}"
+        ),
+        "const char *app_control_internal_flash_stage(const void *status)": (
+            "{\n    return app_control_flash_stage((const APP_Flash_Status *)status);\n}"
+        ),
+        "uint8_t app_control_internal_baro_ok(const void *status)": (
+            "{\n    return app_control_baro_ok((const APP_Baro_Status *)status);\n}"
+        ),
+        "const char *app_control_internal_baro_stage(const void *status)": (
+            "{\n    return app_control_baro_stage((const APP_Baro_Status *)status);\n}"
+        ),
+        "const char *app_control_internal_aiwb2_state_name(uint32_t state)": (
+            "{\n    return app_control_aiwb2_state_name((APP_AiWB2_State)state);\n}"
+        ),
+        "uint8_t app_control_internal_parse_u32_auto(const char *text, uint32_t *value)": (
+            "{\n    return app_control_parse_u32_auto(text, value);\n}"
+        ),
+    }
+    for signature, body in delegate_bodies.items():
+        assert _body_after_signature(diag, signature) == body
+        assert signature + ";" in internal
+
+    for declaration in (
+        "void app_control_report_caps(void);",
+        "void app_control_report_wifi(void);",
+        "void app_control_report_rtos(void);",
+        "void app_control_report_modules(void);",
+        "void app_control_report_status(void);",
+        "void app_control_handle_req(char **tokens, uint32_t count);",
+        "const void *app_control_internal_config_view(void);",
+    ):
+        assert declaration in internal
+    for call in (
+        "app_control_report_modules();",
+        "app_control_report_caps();",
+        "app_control_handle_req(tokens, count);",
+        "app_control_report_status();",
+        "app_control_report_rtos();",
+        "app_control_report_wifi();",
+    ):
+        assert call in legacy
+    assert "APP_Control_ReportUartStats(" not in legacy
+    assert "APP_Control_ReportUartStats(" in (ROOT / "App/Src/app_uart.c").read_text(
+        encoding="utf-8"
+    )
+    assert "App/Src/app_cmd_system.c" in cmake
+    assert "App/Src/app_cmd_diag.c" in cmake
+
+    gcc = shutil.which("gcc")
+    if gcc is None:
+        pytest.skip("host gcc is unavailable")
+    stub_dir = tmp_path / "d4_stubs"
+    _write_d4_stubs(stub_dir)
+    for source, output in (
+        (SYSTEM_CMD, "app_cmd_system.o"),
+        (DIAG_CMD, "app_cmd_diag.o"),
+    ):
+        subprocess.run(
+            [
+                gcc,
+                "-std=c11",
+                "-Wall",
+                "-Wextra",
+                "-Werror",
+                f"-I{stub_dir}",
+                f"-I{ROOT / 'App' / 'Inc'}",
+                "-c",
+                str(source),
+                "-o",
+                str(tmp_path / output),
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+
 def _check_app_control_step_a(tmp_path: Path) -> None:
     assert CONTROL_CORE.is_file()
     assert CONTROL_INTERNAL.is_file()
@@ -937,3 +1263,7 @@ def test_control_split_d2_rcmap(tmp_path: Path) -> None:
 
 def test_control_split_d3_flow(tmp_path: Path) -> None:
     _check_app_control_step_d3(tmp_path)
+
+
+def test_control_split_d4_system_and_diag(tmp_path: Path) -> None:
+    _check_app_control_step_d4(tmp_path)

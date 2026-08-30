@@ -9,7 +9,7 @@ def read(path: str) -> str:
 
 
 def test_baro_ok_requires_real_spl06_who_am_i_not_only_spi_success() -> None:
-    control = read("App/Src/app_control.c")
+    control = read("App/Src/app_cmd_diag.c")
 
     assert "status->product_id == BSP_SPL06_ID_VALUE" in control
     assert "status->split_id == BSP_SPL06_ID_VALUE" in control

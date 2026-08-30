@@ -11,7 +11,7 @@ def read(path: str) -> str:
 def test_quality_adaptive_flow_ekf_is_enabled_in_stabilizer() -> None:
     cmake = read("CMakeLists.txt")
     freertos = read("Core/Src/freertos.c") + read("App/Src/app_stabilizer.c")
-    control = read("App/Src/app_control.c")
+    control = read("App/Src/app_cmd_system.c")
 
     assert "Driver/Src/drv_nav_ekf.c" in cmake
     assert "App/Src/app_nav_estimator.c" in cmake

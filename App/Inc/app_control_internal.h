@@ -66,4 +66,20 @@ int32_t app_control_internal_acceptance_milli(float value);
 void app_control_handle_flow(char **tokens, uint32_t count);
 void app_control_report_flow(void);
 
+void app_control_report_caps(void);
+void app_control_report_wifi(void);
+void app_control_report_rtos(void);
+void app_control_report_modules(void);
+void app_control_report_status(void);
+void app_control_handle_req(char **tokens, uint32_t count);
+
+const void *app_control_internal_config_view(void);
+const char *app_control_internal_imu_stage_name(uint8_t stage);
+uint8_t app_control_internal_flash_ok(const void *status);
+const char *app_control_internal_flash_stage(const void *status);
+uint8_t app_control_internal_baro_ok(const void *status);
+const char *app_control_internal_baro_stage(const void *status);
+const char *app_control_internal_aiwb2_state_name(uint32_t state);
+uint8_t app_control_internal_parse_u32_auto(const char *text, uint32_t *value);
+
 #endif /* APP_CONTROL_INTERNAL_H */
