@@ -20,21 +20,20 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
 try:
+    from .panel_lib import proto as _panel_proto
     from .panel_lib import transport as _panel_transport
 except ImportError:  # Allows direct import and: python tools/drone_tcp_panel.py
     try:
+        from tools.panel_lib import proto as _panel_proto
         from tools.panel_lib import transport as _panel_transport
     except ImportError:
+        from panel_lib import proto as _panel_proto
         from panel_lib import transport as _panel_transport
 
 # Compatibility forwarding: existing callers may keep importing these names from
 # tools.drone_tcp_panel while transport.py owns their implementations.
 HAS_PYSERIAL = _panel_transport.HAS_PYSERIAL
 PYSERIAL_ERROR = _panel_transport.PYSERIAL_ERROR
-PROTO_DIR_FROM_FC = _panel_transport.PROTO_DIR_FROM_FC
-PROTO_DIR_TO_FC = _panel_transport.PROTO_DIR_TO_FC
-PROTO_HEADER = _panel_transport.PROTO_HEADER
-PROTO_MSG_CMD_LINE = _panel_transport.PROTO_MSG_CMD_LINE
 SERIAL_ASCII_COMPAT_MODE = _panel_transport.SERIAL_ASCII_COMPAT_MODE
 SERIAL_TX_DEBUG_ENABLED = _panel_transport.SERIAL_TX_DEBUG_ENABLED
 SerialTransport = _panel_transport.SerialTransport
@@ -51,6 +50,97 @@ serial_port_fingerprint = _panel_transport.serial_port_fingerprint
 serial_port_identity = _panel_transport.serial_port_identity
 udp_payload_is_probably_text = _panel_transport.udp_payload_is_probably_text
 wait_for_application_serial = _panel_transport.wait_for_application_serial
+
+# Protocol compatibility forwarding follows the same rule: proto.py owns the
+# table and pure parsers while legacy imports keep seeing the same objects.
+PROTO_COMPAT_FALLBACK_DELAY_MS = _panel_proto.PROTO_COMPAT_FALLBACK_DELAY_MS
+PROTO_PROBE_SETTLE_MS = _panel_proto.PROTO_PROBE_SETTLE_MS
+PROTO_HEADER = _panel_proto.PROTO_HEADER
+PROTO_DIR_TO_FC = _panel_proto.PROTO_DIR_TO_FC
+PROTO_DIR_FROM_FC = _panel_proto.PROTO_DIR_FROM_FC
+PROTO_REQ_PING = _panel_proto.PROTO_REQ_PING
+PROTO_REQ_STATUS = _panel_proto.PROTO_REQ_STATUS
+PROTO_REQ_CONFIG = _panel_proto.PROTO_REQ_CONFIG
+PROTO_REQ_PARAMS = _panel_proto.PROTO_REQ_PARAMS
+PROTO_REQ_PID = _panel_proto.PROTO_REQ_PID
+PROTO_REQ_BARO = _panel_proto.PROTO_REQ_BARO
+PROTO_REQ_BARO_STREAM = _panel_proto.PROTO_REQ_BARO_STREAM
+PROTO_REQ_FLASH = _panel_proto.PROTO_REQ_FLASH
+PROTO_REQ_IMU = _panel_proto.PROTO_REQ_IMU
+PROTO_REQ_MODULES = _panel_proto.PROTO_REQ_MODULES
+PROTO_REQ_CAPS = _panel_proto.PROTO_REQ_CAPS
+PROTO_REQ_SAVE = _panel_proto.PROTO_REQ_SAVE
+PROTO_REQ_LOAD = _panel_proto.PROTO_REQ_LOAD
+PROTO_REQ_DEFAULTS = _panel_proto.PROTO_REQ_DEFAULTS
+PROTO_REQ_PARAM_SET = _panel_proto.PROTO_REQ_PARAM_SET
+PROTO_REQ_PID_SET = _panel_proto.PROTO_REQ_PID_SET
+PROTO_REQ_SERVO_MOVE = _panel_proto.PROTO_REQ_SERVO_MOVE
+PROTO_REQ_SERVO_MOVE_ALL = _panel_proto.PROTO_REQ_SERVO_MOVE_ALL
+PROTO_REQ_SERVO_ID = _panel_proto.PROTO_REQ_SERVO_ID
+PROTO_REQ_SERVO_SETID = _panel_proto.PROTO_REQ_SERVO_SETID
+PROTO_REQ_SERVO_MODE = _panel_proto.PROTO_REQ_SERVO_MODE
+PROTO_REQ_SERVO_ENABLE = _panel_proto.PROTO_REQ_SERVO_ENABLE
+PROTO_REQ_SERVO_ACTION = _panel_proto.PROTO_REQ_SERVO_ACTION
+PROTO_REQ_SERVO_RAW = _panel_proto.PROTO_REQ_SERVO_RAW
+PROTO_REQ_WIFI = _panel_proto.PROTO_REQ_WIFI
+PROTO_REQ_GPS = _panel_proto.PROTO_REQ_GPS
+PROTO_REQ_MAG = _panel_proto.PROTO_REQ_MAG
+PROTO_REQ_RTOS = _panel_proto.PROTO_REQ_RTOS
+PROTO_REQ_AIRFRAME = _panel_proto.PROTO_REQ_AIRFRAME
+PROTO_REQ_IDENT = _panel_proto.PROTO_REQ_IDENT
+PROTO_REQ_IMU_FRAME = _panel_proto.PROTO_REQ_IMU_FRAME
+PROTO_REQ_IMU_CAL = _panel_proto.PROTO_REQ_IMU_CAL
+PROTO_REQ_ACCEPTANCE = _panel_proto.PROTO_REQ_ACCEPTANCE
+PROTO_REQ_RC = _panel_proto.PROTO_REQ_RC
+PROTO_REQ_RCMAP = _panel_proto.PROTO_REQ_RCMAP
+PROTO_REQ_SERVO_CAL = _panel_proto.PROTO_REQ_SERVO_CAL
+PROTO_MSG_CMD_LINE = _panel_proto.PROTO_MSG_CMD_LINE
+PROTO_MSG_TEXT_LINE = _panel_proto.PROTO_MSG_TEXT_LINE
+PROTO_MSG_CMD_RX = _panel_proto.PROTO_MSG_CMD_RX
+PROTO_MSG_CMD_ACK = _panel_proto.PROTO_MSG_CMD_ACK
+PROTO_MSG_CMD_ERR = _panel_proto.PROTO_MSG_CMD_ERR
+PROTO_MSG_CMD_OK = _panel_proto.PROTO_MSG_CMD_OK
+PROTO_MSG_PONG = _panel_proto.PROTO_MSG_PONG
+PROTO_MSG_HW_FLASH = _panel_proto.PROTO_MSG_HW_FLASH
+PROTO_MSG_HW_BARO = _panel_proto.PROTO_MSG_HW_BARO
+PROTO_MSG_HW_IMU = _panel_proto.PROTO_MSG_HW_IMU
+PROTO_MSG_STATUS_FLASH = _panel_proto.PROTO_MSG_STATUS_FLASH
+PROTO_MSG_STATUS_BARO = _panel_proto.PROTO_MSG_STATUS_BARO
+PROTO_MSG_STATUS_IMU = _panel_proto.PROTO_MSG_STATUS_IMU
+PROTO_MSG_UART_STATS = _panel_proto.PROTO_MSG_UART_STATS
+PROTO_MSG_CONFIG_SUMMARY = _panel_proto.PROTO_MSG_CONFIG_SUMMARY
+PROTO_MSG_CONFIG_SERVO = _panel_proto.PROTO_MSG_CONFIG_SERVO
+PROTO_MSG_PARAM_RECORD = _panel_proto.PROTO_MSG_PARAM_RECORD
+PROTO_MSG_PID_RECORD = _panel_proto.PROTO_MSG_PID_RECORD
+PROTO_MSG_FLASH_RECORD = _panel_proto.PROTO_MSG_FLASH_RECORD
+PROTO_MSG_BARO_STATE = _panel_proto.PROTO_MSG_BARO_STATE
+PROTO_MSG_BARO_DIAG = _panel_proto.PROTO_MSG_BARO_DIAG
+PROTO_MSG_BARO_RAW = _panel_proto.PROTO_MSG_BARO_RAW
+PROTO_MSG_BARO_STREAM = _panel_proto.PROTO_MSG_BARO_STREAM
+PROTO_MSG_IMU_STATE = _panel_proto.PROTO_MSG_IMU_STATE
+PROTO_MSG_IMU_SCALED = _panel_proto.PROTO_MSG_IMU_SCALED
+PROTO_MSG_MODULES_SUMMARY = _panel_proto.PROTO_MSG_MODULES_SUMMARY
+PROTO_MSG_CAPS_RECORD = _panel_proto.PROTO_MSG_CAPS_RECORD
+PROTO_MSG_READY = _panel_proto.PROTO_MSG_READY
+PROTO_MSG_SAVE_RESULT = _panel_proto.PROTO_MSG_SAVE_RESULT
+PROTO_MSG_LOAD_RESULT = _panel_proto.PROTO_MSG_LOAD_RESULT
+PROTO_MSG_DEFAULTS_RESULT = _panel_proto.PROTO_MSG_DEFAULTS_RESULT
+PROTO_MSG_SERVO_RESULT = _panel_proto.PROTO_MSG_SERVO_RESULT
+PROTO_MSG_WIFI_RECORD = _panel_proto.PROTO_MSG_WIFI_RECORD
+PROTO_MSG_GPS_RECORD = _panel_proto.PROTO_MSG_GPS_RECORD
+PROTO_MSG_MAG_RECORD = _panel_proto.PROTO_MSG_MAG_RECORD
+PROTO_MSG_RTOS_RECORD = _panel_proto.PROTO_MSG_RTOS_RECORD
+PROTO_MSG_FLASH_BENCH = _panel_proto.PROTO_MSG_FLASH_BENCH
+PROTO_MSG_AIRFRAME_RECORD = _panel_proto.PROTO_MSG_AIRFRAME_RECORD
+PROTO_MSG_RC_LIVE = _panel_proto.PROTO_MSG_RC_LIVE
+PROTO_MSG_RC_MAP = _panel_proto.PROTO_MSG_RC_MAP
+PROTO_MSG_SERVO_CAL = _panel_proto.PROTO_MSG_SERVO_CAL
+ProtocolLineMixin = _panel_proto.ProtocolLineMixin
+first_float = _panel_proto.first_float
+first_value = _panel_proto.first_value
+parse_kv = _panel_proto.parse_kv
+safe_float = _panel_proto.safe_float
+safe_int = _panel_proto.safe_int
 
 try:
     from .flight_validation import (
@@ -426,85 +516,6 @@ UI_MONO = "Consolas"
 UI_SIZE = 10        # 正文
 UI_SIZE_SM = 9      # 页签、eyebrow、表头
 UI_SIZE_TITLE = 16
-PROTO_COMPAT_FALLBACK_DELAY_MS = 400
-PROTO_PROBE_SETTLE_MS = 900
-PROTO_REQ_PING = 0x1000
-PROTO_REQ_STATUS = 0x1001
-PROTO_REQ_CONFIG = 0x1002
-PROTO_REQ_PARAMS = 0x1003
-PROTO_REQ_PID = 0x1004
-PROTO_REQ_BARO = 0x1005
-PROTO_REQ_BARO_STREAM = 0x1006
-PROTO_REQ_FLASH = 0x1007
-PROTO_REQ_IMU = 0x1008
-PROTO_REQ_MODULES = 0x1009
-PROTO_REQ_CAPS = 0x100A
-PROTO_REQ_SAVE = 0x100B
-PROTO_REQ_LOAD = 0x100C
-PROTO_REQ_DEFAULTS = 0x100D
-PROTO_REQ_PARAM_SET = 0x100E
-PROTO_REQ_PID_SET = 0x100F
-PROTO_REQ_SERVO_MOVE = 0x1010
-PROTO_REQ_SERVO_MOVE_ALL = 0x1011
-PROTO_REQ_SERVO_ID = 0x1012
-PROTO_REQ_SERVO_SETID = 0x1013
-PROTO_REQ_SERVO_MODE = 0x1014
-PROTO_REQ_SERVO_ENABLE = 0x1015
-PROTO_REQ_SERVO_ACTION = 0x1016
-PROTO_REQ_SERVO_RAW = 0x1017
-PROTO_REQ_WIFI = 0x1018
-PROTO_REQ_GPS = 0x1019
-PROTO_REQ_MAG = 0x101A
-PROTO_REQ_RTOS = 0x101B
-PROTO_REQ_AIRFRAME = 0x101C
-PROTO_REQ_IDENT = 0x101D
-PROTO_REQ_IMU_FRAME = 0x101E
-PROTO_REQ_IMU_CAL = 0x1020
-PROTO_REQ_ACCEPTANCE = 0x1021
-PROTO_REQ_RC = 0x1022
-PROTO_REQ_RCMAP = 0x1023
-PROTO_REQ_SERVO_CAL = 0x1024
-PROTO_MSG_TEXT_LINE = 0x2001
-PROTO_MSG_CMD_RX = 0x2100
-PROTO_MSG_CMD_ACK = 0x2101
-PROTO_MSG_CMD_ERR = 0x2102
-PROTO_MSG_CMD_OK = 0x2103
-PROTO_MSG_PONG = 0x2200
-PROTO_MSG_HW_FLASH = 0x2201
-PROTO_MSG_HW_BARO = 0x2202
-PROTO_MSG_HW_IMU = 0x2203
-PROTO_MSG_STATUS_FLASH = 0x2204
-PROTO_MSG_STATUS_BARO = 0x2205
-PROTO_MSG_STATUS_IMU = 0x2206
-PROTO_MSG_UART_STATS = 0x2207
-PROTO_MSG_CONFIG_SUMMARY = 0x2208
-PROTO_MSG_CONFIG_SERVO = 0x2209
-PROTO_MSG_PARAM_RECORD = 0x220A
-PROTO_MSG_PID_RECORD = 0x220B
-PROTO_MSG_FLASH_RECORD = 0x220C
-PROTO_MSG_BARO_STATE = 0x220D
-PROTO_MSG_BARO_DIAG = 0x220E
-PROTO_MSG_BARO_RAW = 0x220F
-PROTO_MSG_BARO_STREAM = 0x2210
-PROTO_MSG_IMU_STATE = 0x2211
-PROTO_MSG_IMU_SCALED = 0x2212
-PROTO_MSG_MODULES_SUMMARY = 0x2213
-PROTO_MSG_CAPS_RECORD = 0x2214
-PROTO_MSG_READY = 0x2215
-PROTO_MSG_SAVE_RESULT = 0x2216
-PROTO_MSG_LOAD_RESULT = 0x2217
-PROTO_MSG_DEFAULTS_RESULT = 0x2218
-PROTO_MSG_SERVO_RESULT = 0x2219
-PROTO_MSG_WIFI_RECORD = 0x221A
-PROTO_MSG_GPS_RECORD = 0x221B
-PROTO_MSG_MAG_RECORD = 0x221C
-PROTO_MSG_RTOS_RECORD = 0x221D
-PROTO_MSG_FLASH_BENCH = 0x221E
-PROTO_MSG_AIRFRAME_RECORD = 0x221F
-PROTO_MSG_RC_LIVE = 0x2223
-PROTO_MSG_RC_MAP = 0x2224
-PROTO_MSG_SERVO_CAL = 0x2225
-
 try:
     from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
     from matplotlib.figure import Figure
@@ -554,32 +565,6 @@ MODULE_ALIASES = {
     "WIFI": "WIFI",
     "AIWB2": "WIFI",
 }
-
-
-def parse_kv(line: str) -> dict[str, str]:
-    result: dict[str, str] = {}
-    for match in re.finditer(r"([A-Za-z0-9_.-]+)=([^ \r\n]+)", line):
-        result[match.group(1)] = match.group(2).rstrip(",")
-    return result
-
-
-def safe_int(value: str | None, default: int = 0) -> int:
-    if value is None:
-        return default
-    try:
-        return int(value, 0)
-    except ValueError:
-        return default
-
-
-def safe_float(value: str | None, default: float = 0.0) -> float:
-    if value is None:
-        return default
-    try:
-        parsed = float(value)
-    except ValueError:
-        return default
-    return parsed if math.isfinite(parsed) else default
 
 
 # ---------------------------------------------------------------------------
@@ -1040,24 +1025,6 @@ def validation_history_artifacts(root: Path) -> tuple[tuple[str, Path], ...]:
     return tuple((label, path) for label, path, _sort in rows)
 
 
-def first_value(values: dict[str, str], *names: str) -> str:
-    for name in names:
-        if name in values:
-            return values[name]
-    return "-"
-
-
-def first_float(values: dict[str, str], *names: str) -> float | None:
-    for name in names:
-        if name not in values:
-            continue
-        try:
-            return float(values[name])
-        except ValueError:
-            return None
-    return None
-
-
 VALIDATION_SNAPSHOT_REQUIRED_FIELDS = (
     "valid", "source", "frame", "units", "contract", "migration", "ts_ms", "seq",
     "bias", "armed", "m1", "m2", "ax_mg", "ay_mg", "az_mg",
@@ -1371,7 +1338,7 @@ def enable_hidpi_awareness() -> float:
         return 1.0
 
 
-class DronePanel(tk.Tk):
+class DronePanel(ProtocolLineMixin, tk.Tk):
     def __init__(self) -> None:
         # 必须早于 super().__init__()：Tk 根窗口一旦创建，DPI 感知就无法再改。
         self.ui_dpi_scale = enable_hidpi_awareness()
@@ -8741,69 +8708,6 @@ class DronePanel(tk.Tk):
             handler(display)
             self.last_reply_rx = time.monotonic()
             self.last_cmd_var.set(f"最近回包: {display}")
-
-    def _normalize_proto_line(self, function: int, text: str) -> str:
-        stripped = text.strip()
-        if function == PROTO_MSG_TEXT_LINE:
-            return stripped
-        if function == PROTO_MSG_CMD_RX:
-            return self._ensure_line_prefix(stripped, "RX")
-        if function == PROTO_MSG_CMD_ACK:
-            return self._ensure_line_prefix(stripped, "ACK")
-        if function == PROTO_MSG_CMD_ERR:
-            return self._ensure_line_prefix(stripped, "ERR")
-        if function == PROTO_MSG_CMD_OK:
-            return self._ensure_line_prefix(stripped, "OK")
-        if function == PROTO_MSG_PONG:
-            return self._ensure_line_prefix(stripped, "PONG")
-        if function == PROTO_MSG_READY:
-            return self._ensure_line_prefix(stripped, "READY")
-        if function == PROTO_MSG_WIFI_RECORD:
-            if stripped.startswith(("WIFI ", "RSP ")):
-                return stripped
-            return self._ensure_line_prefix(stripped, "WIFI")
-        if function == PROTO_MSG_GPS_RECORD:
-            if stripped.startswith(("GPS ", "GPS_USART2 ", "M9N ", "HW ", "STATUS ", "RSP ")):
-                return stripped
-            return self._ensure_line_prefix(stripped, "GPS")
-        if function == PROTO_MSG_MAG_RECORD:
-            if stripped.startswith(("MAG ", "MAG_I2C1 ", "HW ", "STATUS ", "RSP ")):
-                return stripped
-            return self._ensure_line_prefix(stripped, "MAG")
-
-        prefix_map = {
-            PROTO_MSG_HW_FLASH: "HW FLASH",
-            PROTO_MSG_HW_BARO: "HW SPL06",
-            PROTO_MSG_HW_IMU: "HW ICM42688",
-            PROTO_MSG_STATUS_FLASH: "STATUS flash",
-            PROTO_MSG_STATUS_BARO: "STATUS baro",
-            PROTO_MSG_STATUS_IMU: "STATUS imu",
-            PROTO_MSG_UART_STATS: "UART1",
-            PROTO_MSG_CONFIG_SUMMARY: "CFG",
-            PROTO_MSG_CONFIG_SERVO: "CFG",
-            PROTO_MSG_PARAM_RECORD: "PARAM",
-            PROTO_MSG_PID_RECORD: "PID",
-            PROTO_MSG_FLASH_RECORD: "FLASH",
-            PROTO_MSG_BARO_STATE: "BARO",
-            PROTO_MSG_BARO_DIAG: "BARO",
-            PROTO_MSG_BARO_RAW: "BARO",
-            PROTO_MSG_BARO_STREAM: "BARO",
-            PROTO_MSG_RTOS_RECORD: "RTOS",
-            PROTO_MSG_FLASH_BENCH: "FLASH",
-            PROTO_MSG_AIRFRAME_RECORD: "AIRFRAME",
-        }
-        prefix = prefix_map.get(function)
-        if prefix is None:
-            return stripped if stripped else f"fn=0x{function:04X}"
-        return self._ensure_line_prefix(stripped, prefix)
-
-    def _ensure_line_prefix(self, text: str, prefix: str) -> str:
-        stripped = text.strip()
-        if not stripped:
-            return prefix
-        if stripped.startswith(prefix):
-            return stripped
-        return f"{prefix} {stripped}"
 
     def _update_servo_ok_line(self, line: str) -> None:
         values = parse_kv(line)

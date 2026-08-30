@@ -9,13 +9,16 @@ import time
 from abc import ABC, abstractmethod
 from typing import Callable, Sequence
 
+from .proto import (
+    PROTO_DIR_FROM_FC,
+    PROTO_DIR_TO_FC,
+    PROTO_HEADER,
+    PROTO_MSG_CMD_LINE,
+)
+
 
 SERIAL_ASCII_COMPAT_MODE = True
 SERIAL_TX_DEBUG_ENABLED = True
-PROTO_HEADER = b"$X"
-PROTO_DIR_TO_FC = ord("<")
-PROTO_DIR_FROM_FC = ord(">")
-PROTO_MSG_CMD_LINE = 0x2000
 
 try:
     import serial  # type: ignore

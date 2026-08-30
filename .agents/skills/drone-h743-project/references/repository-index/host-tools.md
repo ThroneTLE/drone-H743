@@ -4,7 +4,7 @@
 
 Read this shard only when the task uses serial/TCP diagnostics, log analysis, identification, capture, calibration, or desktop UIs.
 
-Source snapshot: `d2df91ad6d25`; aggregate snapshot: `ce7def1f86a3`. Covered files: 5292.
+Source snapshot: `5e1d45484da0`; aggregate snapshot: `ce7def1f86a3`. Covered files: 5293.
 
 | File/module or scope | Content outline | Key entry points / size |
 |---|---|---|
@@ -13,7 +13,7 @@ Source snapshot: `d2df91ad6d25`; aggregate snapshot: `ce7def1f86a3`. Covered fil
 | `tools/aiwb2_tcp_loop_test.py` | End-to-end Ai-WB2 TCP transparent-mode loop test via CH340. This script treats the CH340 serial port as the MCU side an… | `env_int`, `read_idle`, `send_at`, `ensure_at_mode`, `configure_module`, `wait_for_client` (+3) |
 | `tools/attitude_ident_pid.py` | Analyze closed-loop attitude-identification FLOG CSVs and suggest PD gains. This tool is intentionally conservative: it… | `SegmentFit`, `split_segments`, `clean_segment`, `uniform_signal`, `simulate_second_order`, `fit_closed_loop` (+3) |
 | `tools/decode_saleae_spi_csv.py` | Decode SPI bytes from a Saleae raw digital.csv export. Default mapping follows the current Saleae hookup: Channel 0 = C… | `parse_args`, `load_rows`, `decode`, `bits_to_bytes`, `fmt_bytes`, `main` |
-| `tools/drone_tcp_panel.py` | Ground-station panel for the drone-H743 Ai-WB2 transparent link | `parse_kv`, `safe_int`, `safe_float`, `rc_channel_travel`, `rc_detect_channel`, `rc_map_is_valid` (+25) |
+| `tools/drone_tcp_panel.py` | Ground-station panel for the drone-H743 Ai-WB2 transparent link | `rc_channel_travel`, `rc_detect_channel`, `rc_map_is_valid`, `rc_wizard_dominant`, `rc_wizard_step_ready`, `rc_wizard_window_stable` (+20) |
 | `tools/esp8266_pwm_calibrator/.gitignore` | Host-side utility for .gitignore | — |
 | `tools/esp8266_pwm_calibrator/platformio.ini` | Host-side utility for platformio | — |
 | `tools/esp8266_pwm_calibrator/README.md` | ESP8266 PWM Calibrator | `Wiring`, `Build And Upload`, `Serial Protocol`, `GUI Workflow`, `OLED Status`, `Test Flow And Loss Coefficient` (+1) |
@@ -44,6 +44,7 @@ Source snapshot: `d2df91ad6d25`; aggregate snapshot: `ce7def1f86a3`. Covered fil
 | `tools/m1_baseline_check.py` | PIPELINE M1 底层与原始数据健康 · 实机基线采集器。 通过 USB CDC 裸文本命令通道（APP_Control_ProcessLine）以固定频率轮询 `IMU?`，在静止条件下累计一段时间的证据，输出结构化 JSON 报… | `poll_once`, `run`, `main` |
 | `tools/organize_data.py` | Move canonical project data into sortable YYYY-MM-DD subdirectories | `CategoryRule`, `MovePlan`, `plan_category`, `build_plan`, `apply_plan`, `parse_args` (+1) |
 | `tools/panel_lib/__init__.py` | Reusable implementation modules for :mod:`tools.drone_tcp_panel` | — |
+| `tools/panel_lib/proto.py` | Protocol identifiers and line-parsing helpers for the panel | `parse_kv`, `safe_int`, `safe_float`, `first_value`, `first_float`, `ProtocolLineMixin` |
 | `tools/panel_lib/transport.py` | Transport primitives and serial-device reconnect helpers for the panel | `udp_payload_is_probably_text`, `serial_device_identity_policy`, `serial_port_identity`, `serial_port_fingerprint`, `match_remembered_serial_port`, `select_reenumerated_application_port` (+7) |
 | `tools/pressure_rs485_gui.py` | Tkinter GUI for the RS485 Modbus pressure/weight transmitter | `IdentPoint`, `IdentRun`, `LossRow`, `motor_name`, `is_esp_controller`, `percent_to_pulse` (+10) |
 | `tools/pressure_rs485_test.py` | RS485 Modbus-RTU test tool for the 4-channel weighing/pressure transmitter. Manual notes used here: - Protocol: Modbus… | `ReadResult`, `crc16_modbus`, `add_crc`, `check_crc`, `dip_to_addr`, `parse_u16` (+8) |
