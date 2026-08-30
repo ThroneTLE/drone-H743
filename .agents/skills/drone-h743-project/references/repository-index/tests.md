@@ -4,7 +4,7 @@
 
 Read this shard only when you need existing behavioral/architecture coverage or must choose focused regression tests.
 
-Source snapshot: `f40ddda1d6de`. Indexed files: 89.
+Source snapshot: `85920baf9f0b`. Indexed files: 90.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -30,6 +30,7 @@ Source snapshot: `f40ddda1d6de`. Indexed files: 89.
 | `tests/test_flight_acceptance_v2.py` | — | `test_complete_v2a_passes_but_never_releases_flight`, `test_thresholds_strict`, `test_thresholds_serialized_and_metric_integrity_protected`, `test_zero_sample_pass_semantically_impossible`, `test_sequence_timestamp_and_context_are_strict`, `test_lease_and_physical_confirmation_are_bound` (+6) |
 | `tests/test_flight_calibration_param_contract.py` | Versioned aggregate flight-calibration parameter contract | `test_fcal_schema_owns_v0_v1_and_reserved_v2_fields`, `test_imuframe_commit_updates_the_aggregate_instead_of_replacing_it`, `test_fcal_codec_and_migration_compile_and_run_on_host` |
 | `tests/test_flight_log_contract.py` | — | `test_flight_log_region_leaves_reserved_flash_sectors`, `test_flight_log_uses_app_flash_service_only`, `test_stabilizer_records_snapshots_without_direct_flash_access`, `test_flight_log_v7_records_flow_servo_bus_attitude_ident_and_z_integral`, `test_large_cpu_only_log_buffers_are_placed_in_axi_sram`, `test_background_task_drives_flight_log_slow_work` (+2) |
+| `tests/test_flight_log_frame_provenance.py` | R-F5b flight-log frame provenance and version migration | `test_sector_header_declares_provenance_in_reserved_area`, `test_stabilizer_fills_snapshot_provenance_from_existing_sources`, `test_firmware_crc_is_sampled_off_the_control_loop`, `test_sector_header_migration_runs_on_host`, `test_receive_tool_reads_provenance_and_still_reads_v7`, `test_replay_selects_convention_per_file` |
 | `tests/test_flight_log_paths.py` | — | `test_canonical_data_tree_is_root_scoped`, `test_receive_uses_canonical_flight_log_dir`, `test_receive_has_headless_cli_and_canonical_gui_default`, `test_waveform_and_rerun_read_canonical_log_dir`, `test_sysid_ui_points_open_dialog_at_flight_logs`, `test_sysid_cli_writes_reports_by_default` (+4) |
 | `tests/test_flight_log_receive.py` | — | `test_export_block_parser_validates_crc`, `test_export_block_parser_rejects_crc_mismatch`, `test_begin_line_requires_flight_log_magic`, `test_end_line_requires_done_and_matching_counts`, `test_parse_record_and_csv_fields`, `test_parse_legacy_record_without_servo_feedback` (+13) |
 | `tests/test_flight_log_rerun_replay.py` | — | `test_latest_csv_and_segment_helpers`, `test_split_segments_and_summary_fields`, `test_coordinate_mapping_and_rpy_identity`, `test_rerun_replay_tool_exposes_ui_and_export_path`, `test_rerun_replay_wrapper_keeps_sdk_in_isolated_venv`, `test_parse_segment_selection_rejects_bad_tokens` (+1) |
