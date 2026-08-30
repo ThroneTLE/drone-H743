@@ -96,6 +96,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     App/Src/app_boot.c
     App/Src/app_acceptance.c
     App/Src/app_control.c
+    App/Src/app_control_core.c
     App/Src/app_diag.c
     App/Src/app_flash.c
     App/Src/app_firmware_identity.c

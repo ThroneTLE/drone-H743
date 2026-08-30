@@ -92,7 +92,7 @@ flowchart TB
 | R-M6-2..4 | M6 | 〔人+机〕V2A 无桨端到端 + 失控保护 | ACCEPT 全阶段通过；断链进入安全态；方向一致性表全对 | 待做 |
 | R-F0~F5 | M7前置 | 〔码〕运行时 FLU 迁移六 seam（spec §10，顺序固定） | 每 seam：先红测试→实施→host 绿→实机 A/B→翻掩码位 | 待做 |
 | R-S6-1 | S6 | 〔码〕panel 拆分为 tools/panel_lib/ 包（spec §11） | 每次搬一页；行为零变更；全量绿 | 待审核（增量7~10；增量1~6 已过审 2026-08-30；余光流测距页） |
-| R-S6-2 | S6 | 〔码〕app_control 按命令域拆分（spec §11） | 每域 ≤800 行；host 装置照编；构建零警告 | 进行中（增量1打回：SERVOCAL 同步调用缺失，跨域耦合未按派单停审） |
+| R-S6-2 | S6 | 〔码〕app_control 按命令域拆分（spec §11） | 每域 ≤800 行；host 装置照编；构建零警告 | 待审核（app_control_core 基础层） |
 
 ## 最近验证证据
 
@@ -100,6 +100,7 @@ flowchart TB
 
 | 日期 | 范围 | 证据 | 结果 | 对状态的影响 |
 |---|---|---|---|---|
+| 2026-08-30 | S6 app_control_core 基础层（R-S6-2） | 依据批准的设计方案新建 `App/Inc/app_control_core.h`（57 行）与 `App/Src/app_control_core.c`（295 行，≤800 行）；提供通用解析库（tokenize/token_value/parse_u32/parse_i32/crc32）、协议输出（queue_proto_text）、Param 持久化查询（get_persisted_snapshot/record/generation/valid/dirty）与通用标定安全门禁（check_calibration_safety）；消除 main.h 污染；`tests/test_app_control_core_contract.py` 经 host gcc 编译通过；全量 `737 passed`；Debug 构建零警告；未操作串口/板机 | 软件验证通过，待审核 | R-S6-2 置**待审核（app_control_core 基础层）**；S6 保持 🟡，主线仍为 M5 |
 | 2026-08-30 | 审核：R-S6-2 增量1 SERVOCAL 域打回 | 审核者独立复核提交 `071264d5`：7 个声明搬移函数中 5 个函数体与父提交一致，但 `app_control_report_servocal` 与 `app_control_handle_servocal` 均删除了原有首段 `app_control_imuframe_sync_param()`，SERVOCAL 查询/安全判定可能读取未同步的 persisted 校准上下文，违反零行为变更。新模块另以手写 `extern` 直连 7 个 IMUCAL/IMUFRAME 私有状态和 `app_control_imucal_safety`，并把 4 个原 static 解析/发送 helper 扩为 `app_control.h` 公共接口；这正是派单规定“发现跨域引用立即停并上报”的情形，却在原工单内自行扩域。`tests/test_app_control_split.py` 仅检查文本所有权/接线/行数，没有 spec §11 要求的 host 编译执行装置，也未锁定父函数体，因而未捕获同步调用丢失；两个既有测试还把 static 锚点改成外链并缩短模块说明。审核者复跑全量 `737 passed in 40.38s`，Debug 构建 `ninja: no work to do.`、零警告，说明现有回归未覆盖该行为缺口；`git diff --check` 另报新测试 EOF 多余空行。未操作串口/板机 | **打回** | R-S6-2 退回**进行中**；须恢复同步语义并先决策共享 core 边界，不改变 S6/M5 状态 |
 | 2026-08-30 | S6 app_control 拆分增量1（R-S6-2） | 新建 `App/Src/app_cmd_servocal.c`（377 行）+ `App/Inc/app_cmd_servocal.h`（43 行）；`app_control.c` 6258→5933 行（−325 行）；SERVOCAL 命令族（clear_preview/set_event/report_servocal_record/report_servocal/parse_servocal/handle_servocal/service_servocal）与 8 个专属 static 变量整体搬移；适配器 `app_cmd_servocal_notify_persisted`/`app_cmd_servocal_is_busy`/`app_cmd_servocal_init` 闭合反向耦合；`tests/test_app_control_split.py` 锁定零残留与分发；全量 `737 passed`；`cmake --build --preset Debug` 零警告；未启动串口/板机 | 软件验证通过，待审核 | R-S6-2 置**待审核（增量1 SERVOCAL域）**；S6 保持 🟡，主线仍为 M5 |
 | 2026-08-30 | S6 panel 拆分增量10（R-S6-1） | 父提交 `69bf4158`；`tools/panel_lib/pages/validation_v0.py` 的 `ValidationV0PageMixin` 接管 38 个 V0 builder/handlers 与 `v0_workflow_guidance`，`tools/panel_lib/evidence.py` 的 `EvidenceMixin` 接管 18 个共享安全/证据方法及 4 个证据 helper、10 个 validation 常量；独立比对 56/56 方法、5/5 helper、5/5 类常量、10/10 模块常量 AST 全部相同。`_validation_autosave_session`/`_validation_autosave_workflow` 首条 loaded_history 早退守卫逐 AST 保持；`test_evidence_write_protection.py` 仅 owner 锚点重定向、断言未变。聚焦 `190 passed`；开发期两个聚焦红灯均为旧源码/monkeypatch owner 锚点，纯重定向后归零；全量 `736 passed`；Debug 构建 `ninja: no work to do.`、零警告；索引 current；未启动串口/板机 | 软件验证通过，待审核 | R-S6-1 统一置**待审核（增量7~10）**；panel 8166→5814 行；S6 保持 🟡，主线仍为 M5 |
