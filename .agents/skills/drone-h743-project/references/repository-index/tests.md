@@ -4,7 +4,7 @@
 
 Read this shard only when you need existing behavioral/architecture coverage or must choose focused regression tests.
 
-Source snapshot: `e7860028e7b8`. Indexed files: 89.
+Source snapshot: `186cc4a45b1b`. Indexed files: 89.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|

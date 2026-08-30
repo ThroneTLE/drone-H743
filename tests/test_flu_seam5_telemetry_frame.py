@@ -25,8 +25,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 
 ROOT = Path(__file__).resolve().parents[1]
 REPLAY = ROOT / "tools" / "flight_log_rerun_replay.py"
@@ -88,13 +86,6 @@ def test_telemetry_seam_cannot_be_declared_done() -> None:
     assert "#define DRV_FRAME_RUNTIME_MIGRATION_DONE_MASK               0U" in contract
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="R-F5 red test: flight_log_rerun_replay.py states its frame only in "
-    "two inline comments and never declares that the firmware now logs FLU, "
-    "that logs carry no frame identifier, or that history must not be "
-    "reinterpreted; cleared by the seam 5 implementation commit",
-)
 def test_replay_declares_its_frame_contract() -> None:
     source = read(REPLAY)
     head = source[: source.index("from __future__")]
