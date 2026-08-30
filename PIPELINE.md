@@ -91,7 +91,7 @@ flowchart TB
 | R-M6-1 | M6 | 〔人+机〕RCMAP 向导标定并 COMMIT | 12 步向导完成，重启回读一致 | 待做 |
 | R-M6-2..4 | M6 | 〔人+机〕V2A 无桨端到端 + 失控保护 | ACCEPT 全阶段通过；断链进入安全态；方向一致性表全对 | 待做 |
 | R-F0~F5 | M7前置 | 〔码〕运行时 FLU 迁移六 seam（spec §10，顺序固定） | 每 seam：先红测试→实施→host 绿→实机 A/B→翻掩码位 | 待做 |
-| R-S6-1 | S6 | 〔码〕panel 拆分为 tools/panel_lib/ 包（spec §11） | 每次搬一页；行为零变更；全量绿 | 待审核（增量5 V1计量页；增量1~4已过审，余 RC/机械/光流等页 + evidence） |
+| R-S6-1 | S6 | 〔码〕panel 拆分为 tools/panel_lib/ 包（spec §11） | 每次搬一页；行为零变更；全量绿 | 进行中（增量1~5 已过审 2026-08-30；余 RC/机械/光流等页 + evidence） |
 | R-S6-2 | S6 | 〔码〕app_control 按命令域拆分（spec §11） | 每域 ≤800 行；host 装置照编；构建零警告 | 待做 |
 
 ## 最近验证证据
@@ -100,6 +100,7 @@ flowchart TB
 
 | 日期 | 范围 | 证据 | 结果 | 对状态的影响 |
 |---|---|---|---|---|
+| 2026-08-30 | 审核：R-S6-1 增量5 过审 | 审核者独立复核：范围=单提交 631e1fb1（基于 911a8167），零证据文件触碰；独立 AST 比对 24/24 方法（23 handlers + builder）与父提交逐一相同、builder 54 条语句、panel 零遗留、MRO 头插 V1PageMixin 正确；机械/光流页及 `_mechanical_move` 在其提交点与父提交逐字节相同（遵守"不动作者在用页"指令）；5 个既有测试改动全部为源锚点纯重定向、断言无削弱；新契约测试沿用金标准（AST SHA-256 钉死 + 同对象转发 + 子进程直跑导入）；审核者在含本增量的 HEAD 全量复跑 `725 passed`、构建零警告；零板机接触 | **过审** | R-S6-1 置"进行中"（增量5完成）；panel 10468→9886 行（后续审核者 jog 修复又 +76） |
 | 2026-08-30 | M4 阻塞缺陷修复：SERVO JOG 保持型点动（审核者实机） | 作者台架实测：机械页点最小/最大"走到一半被拉回中点"。根因=稳定环 commit 持续流式下发目标（3µs 死区+500ms 强制刷新），一次性 `SERVO MOVE` 慢移必然被覆盖。修复：新模块 `App/Src/app_servo_jog.c` 在 commit 仲裁点接管（优先级 手势标定>验收>反馈台架>解锁>点动），500µs/s 斜坡保持、120s 超时自动交还；机械页改发 `SERVO JOG`、增中点微调（±2/±10 µs 实时跟随）、「结束点动」与两路 FLU 判向文字（alpha：+50µs→左(+Y)倾=正向；beta：+50µs→机尾(−X)倾=正向，源自 `coax_ctrl_body_tilt_to_servo_tilts` 符号链）。`tests/test_servo_jog_contract.py` gcc 宿主编译真模块验证斜坡/保持/重定目标/超时/让位/命令面 + 仲裁顺序源码契约；全量 `725 passed`；构建零警告；OpenOCD 烧录 `Verified OK`；COM31 实测 7/7 PASS（JOG/保持中 IMU? 存活/STOP/非法参数/SERVOCAL? 回读）。附带修复：build/Debug 系统识别被污染（CMakeSystem 记录 Windows/非交叉），清树重配置恢复 | 实机验证通过 | R-M4-1 的点动阻塞解除，M4 台架可继续；主线位置不变 M4 |
 | 2026-08-30 | S6 panel 拆分增量5（R-S6-1） | `tools/panel_lib/pages/v1_metrology.py` 的 `V1PageMixin` 接管完整 `_build_v1_page` 与 23 个 `_v1_*` handlers；相对父提交 `911a8167` 独立比对 24/24 方法 AST 全部相同，builder 保持 54 条语句并继续唯一调用漂移页 builder；`tests/test_panel_v1_page_extraction.py` 锁定实现所有权、同对象转发、直接脚本导入、依赖/常量等价及机械/光流页不迁移；既有 V1 源码契约仅重定向到新 owner；聚焦回归 `117 passed`，全量 `719 passed`；`cmake --build --preset Debug`：`ninja: no work to do.`、零警告；未启动串口/板机 | 软件验证通过，待审核 | R-S6-1 置**待审核（增量5）**；panel 10468→9886 行；S6 保持 🟡，不改变主线位置 M4 |
 | 2026-08-30 | 审核：R-S6-1 增量4 过审 | 审核者独立复核：范围=单提交 f5ddbe88（基于 7fb9a605）；7/7 handler AST 逐一相同；builder 属"片段抽方法"型搬迁——审核者独立验证 17/17 条语句与父提交 `_build_v1_page` 内**连续片段**逐条相同，宿主 70→54 条（−17+1 调用，算术精确）、调用点唯一；零残留、DriftPageMixin 继承；全量 `713 passed` 与构建复跑一致；零板机接触。执行者以语句级（非函数级）表述一致性，措辞精确 | **过审** | R-S6-1 置"进行中"（增量4完成）；panel 10612→10468 行 |
