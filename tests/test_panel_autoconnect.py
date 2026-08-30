@@ -14,6 +14,7 @@ from tools import drone_tcp_panel as panel
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = (ROOT / "tools" / "drone_tcp_panel.py").read_text(encoding="utf-8")
+STATE_SOURCE = (ROOT / "tools" / "panel_lib" / "state.py").read_text(encoding="utf-8")
 
 
 def function_body(source: str, signature: str) -> str:
@@ -128,7 +129,7 @@ def test_only_successful_connections_are_remembered() -> None:
 
 
 def test_state_records_the_fingerprint_not_just_the_com_number() -> None:
-    save = function_body(SOURCE, "    def _save_panel_state(")
+    save = function_body(STATE_SOURCE, "    def _save_panel_state(")
     assert 'state["serial_port"] = device' in save
     assert "serial_port_fingerprint(" in save
     assert 'state["auto_connect"]' in save
@@ -151,9 +152,9 @@ def test_restore_is_deferred_so_the_window_paints_first() -> None:
 
 
 def test_write_failures_never_break_the_live_connection() -> None:
-    save = function_body(SOURCE, "    def _save_panel_state(")
+    save = function_body(STATE_SOURCE, "    def _save_panel_state(")
     assert "except OSError:" in save
-    load = function_body(SOURCE, "    def _load_panel_state(")
+    load = function_body(STATE_SOURCE, "    def _load_panel_state(")
     assert "except json.JSONDecodeError:" in load
     assert "except (OSError, ValueError):" in load
 

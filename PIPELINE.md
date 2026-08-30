@@ -91,7 +91,7 @@ flowchart TB
 | R-M6-1 | M6 | 〔人+机〕RCMAP 向导标定并 COMMIT | 12 步向导完成，重启回读一致 | 待做 |
 | R-M6-2..4 | M6 | 〔人+机〕V2A 无桨端到端 + 失控保护 | ACCEPT 全阶段通过；断链进入安全态；方向一致性表全对 | 待做 |
 | R-F0~F5 | M7前置 | 〔码〕运行时 FLU 迁移六 seam（spec §10，顺序固定） | 每 seam：先红测试→实施→host 绿→实机 A/B→翻掩码位 | 待做 |
-| R-S6-1 | S6 | 〔码〕panel 拆分为 tools/panel_lib/ 包（spec §11） | 每次搬一页；行为零变更；全量绿 | 进行中（增量1 transport、增量2 proto 均已过审 2026-08-30；余 state/pages/evidence） |
+| R-S6-1 | S6 | 〔码〕panel 拆分为 tools/panel_lib/ 包（spec §11） | 每次搬一页；行为零变更；全量绿 | 待审核（增量3 state.py；增量1/2已过审，余 pages/evidence） |
 | R-S6-2 | S6 | 〔码〕app_control 按命令域拆分（spec §11） | 每域 ≤800 行；host 装置照编；构建零警告 | 待做 |
 
 ## 最近验证证据
@@ -100,6 +100,7 @@ flowchart TB
 
 | 日期 | 范围 | 证据 | 结果 | 对状态的影响 |
 |---|---|---|---|---|
+| 2026-08-30 | S6 panel 拆分增量3（R-S6-1） | `tools/panel_lib/state.py` 接管 `_load_panel_state`/`_save_panel_state`、`PANEL_STATE_PATH`/日志路径及 `append_log`/`record_panel_crash`；`tests/test_panel_state_extraction.py` 锁定实现所有权、旧路径同对象转发并仅用 `tmp_path` 验证状态与日志 I/O；与父提交 AST 比对 2 函数+2 方法+2 日志路径全部一致；全量 708 项三次均绿：两次 `708 passed`、一次 `707 passed, 1 skipped`（Tk 条件跳过）；`cmake --build --preset Debug`：通过、零警告 | 软件验证通过，待审核 | R-S6-1 置**待审核（增量3）**；S6 保持 🟡，不改变主线位置 |
 | 2026-08-30 | M3 漂移 A/B（R-M3-2） | 新工具 `tools/drift_ab_check.py`（只读，60s/475帧@8Hz）：新固件 0xF12AD9F5 vs 8-29 旧固件 0x15F33731、同标定 gen=2。偏航漂移 1.352→1.333°/min（改善）、陀螺零偏峰 0.0243→0.0211dps（改善）、横滚/俯仰 ±0.01°/min（噪声底）、\|a\| 偏差 15.6→16.1mg（+0.5mg 重复性）；两份报告均 WARN（已知标定残差），无恶化项 | **PASS** | R-M3-2 置 ✅；报告入 `data/calibration/imu_metrology/2026-08-30/stationary_drift/` |
 | 2026-08-30 | M3 免重 APPLY（R-M3-4） | 同源链：板上 persisted `cal_generation=2`（今日两次回读含硬复位后）← `imucal_commit_20260829_211321.json` ← `room_temperature_candidate.json`（`candidate_calibration_generation=2`，`session_id=v1-20260828-221343`，来源指纹=该会话六面采集）= R-M3-1 重分析的同一会话。附注：重分析会就地刷新派生的 candidate 文件（原始采集 CSV/meta 未动，属文档化的派生物再生成） | 成立 | R-M3-4 置 ✅；M3 三项证据齐备，仅待 M2 前置 |
 | 2026-08-30 | 审核：R-S6-1 增量2 过审 | 审核者独立复核：范围=单提交 00beb5f3；**AST 独立比对 5 函数+2 方法逐一相同、82/82 常量与真源逐字节一致**（校验器曾误报 4 个常量不一致，实为父提交 panel 的增量1转发行覆盖了 transport 真定义的归并优先级问题，肉眼比对排除）；旧位置零残留、面板类继承 ProtocolLineMixin、82/82 转发、transport→proto 单向依赖无环；全量 `704 passed` 与固件构建审核者复跑一致（一次复跑出现 687+17 瞬态条件跳过，总数吻合、与提交无关）；本增量无任何串口/板机接触 | **过审** | R-S6-1 置"进行中"（增量2完成）；panel 10769→10673 行 |

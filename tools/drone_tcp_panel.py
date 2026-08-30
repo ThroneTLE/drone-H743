@@ -12,7 +12,6 @@ import re
 import statistics
 import sys
 import threading
-import traceback
 import time
 import tkinter as tk
 from datetime import datetime
@@ -21,13 +20,16 @@ from tkinter import filedialog, messagebox, ttk
 
 try:
     from .panel_lib import proto as _panel_proto
+    from .panel_lib import state as _panel_state
     from .panel_lib import transport as _panel_transport
 except ImportError:  # Allows direct import and: python tools/drone_tcp_panel.py
     try:
         from tools.panel_lib import proto as _panel_proto
+        from tools.panel_lib import state as _panel_state
         from tools.panel_lib import transport as _panel_transport
     except ImportError:
         from panel_lib import proto as _panel_proto
+        from panel_lib import state as _panel_state
         from panel_lib import transport as _panel_transport
 
 # Compatibility forwarding: existing callers may keep importing these names from
@@ -142,6 +144,16 @@ parse_kv = _panel_proto.parse_kv
 safe_float = _panel_proto.safe_float
 safe_int = _panel_proto.safe_int
 
+# Panel-local persistence and logs are owned by state.py; these aliases preserve
+# the original module API for callers and existing Tk wiring.
+LOG_DIR = _panel_state.LOG_DIR
+PANEL_CRASH_LOG = _panel_state.PANEL_CRASH_LOG
+PANEL_STATE_PATH = _panel_state.PANEL_STATE_PATH
+PanelStateMixin = _panel_state.PanelStateMixin
+RC_WIZARD_TRACE_LOG = _panel_state.RC_WIZARD_TRACE_LOG
+append_log = _panel_state.append_log
+record_panel_crash = _panel_state.record_panel_crash
+
 try:
     from .flight_validation import (
         STAGE_DEFINITIONS,
@@ -179,8 +191,6 @@ try:
         FIRMWARE_UPDATE_DIR,
         FLIGHT_ACCEPTANCE_CALIBRATION_DIR,
         FLOW_RANGE_CALIBRATION_DIR,
-        LOG_DIR,
-        PANEL_STATE_PATH,
         PROJECT_ROOT,
         SERVO_MECHANICAL_CALIBRATION_DIR,
         TELEMETRY_DIR,
@@ -225,8 +235,6 @@ except ImportError:  # Allows running as: python tools/drone_tcp_panel.py
             FIRMWARE_UPDATE_DIR,
             FLIGHT_ACCEPTANCE_CALIBRATION_DIR,
             FLOW_RANGE_CALIBRATION_DIR,
-            LOG_DIR,
-            PANEL_STATE_PATH,
             PROJECT_ROOT,
             SERVO_MECHANICAL_CALIBRATION_DIR,
             TELEMETRY_DIR,
@@ -270,8 +278,6 @@ except ImportError:  # Allows running as: python tools/drone_tcp_panel.py
             FIRMWARE_UPDATE_DIR,
             FLIGHT_ACCEPTANCE_CALIBRATION_DIR,
             FLOW_RANGE_CALIBRATION_DIR,
-            LOG_DIR,
-            PANEL_STATE_PATH,
             PROJECT_ROOT,
             SERVO_MECHANICAL_CALIBRATION_DIR,
             TELEMETRY_DIR,
@@ -1338,7 +1344,7 @@ def enable_hidpi_awareness() -> float:
         return 1.0
 
 
-class DronePanel(ProtocolLineMixin, tk.Tk):
+class DronePanel(PanelStateMixin, ProtocolLineMixin, tk.Tk):
     def __init__(self) -> None:
         # 必须早于 super().__init__()：Tk 根窗口一旦创建，DPI 感知就无法再改。
         self.ui_dpi_scale = enable_hidpi_awareness()
@@ -2026,45 +2032,6 @@ class DronePanel(ProtocolLineMixin, tk.Tk):
     # ------------------------------------------------------------------
     # 上次连接记录
     # ------------------------------------------------------------------
-
-    def _load_panel_state(self) -> dict[str, object]:
-        try:
-            raw = PANEL_STATE_PATH.read_text(encoding="utf-8")
-        except (OSError, ValueError):
-            return {}
-        try:
-            state = json.loads(raw)
-        except json.JSONDecodeError:
-            return {}
-        return state if isinstance(state, dict) else {}
-
-    def _save_panel_state(self) -> None:
-        """记下这次连的是什么，供下次启动自动重连。写失败不能影响正在跑的连接。"""
-        state = dict(self._panel_state)
-        state["transport"] = self.transport_var.get()
-        state["auto_connect"] = bool(self.auto_connect_var.get())
-        if self.transport is self.serial_transport:
-            device = self.serial_transport.active_port or ""
-            if device:
-                state["serial_port"] = device
-                state["serial_fingerprint"] = serial_port_fingerprint(
-                    self._serial_port_identity.get(device)
-                )
-                try:
-                    state["serial_baud"] = int(self.serial_baud_var.get())
-                except (tk.TclError, ValueError):
-                    pass
-        elif self.transport is self.tcp_transport:
-            state["tcp_host"] = self.host_var.get()
-            state["tcp_port"] = self.port_var.get()
-        self._panel_state = state
-        try:
-            ensure_directory(PANEL_STATE_PATH.parent)
-            PANEL_STATE_PATH.write_text(
-                json.dumps(state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
-            )
-        except OSError:
-            pass
 
     def _restore_last_connection(self) -> None:
         """启动时按上次的记录自动连回去。"""
@@ -10630,34 +10597,6 @@ class DronePanel(ProtocolLineMixin, tk.Tk):
         self._stop()
         self._ident_close_csv()
         self.destroy()
-
-
-PANEL_CRASH_LOG = LOG_DIR / "panel_crash.log"
-RC_WIZARD_TRACE_LOG = LOG_DIR / "rc_wizard.log"
-
-
-def append_log(path: Path, text: str) -> None:
-    """尽力写日志。日志本身失败绝不能再把程序带下去。"""
-    try:
-        ensure_directory(path.parent)
-        stamp = datetime.now().astimezone().isoformat(timespec="milliseconds")
-        with path.open("a", encoding="utf-8", newline="\n") as stream:
-            stream.write(f"[{stamp}] {text.rstrip()}\n")
-    except OSError:
-        pass
-
-
-def record_panel_crash(exc_type, exc_value, exc_tb) -> str:
-    """把异常写进日志并返回摘要。
-
-    在这之前，回调里的异常只会打到 stderr——从资源管理器或 IDE 启动时根本没有
-    stderr，用户看到的就是"窗口突然没了"，而且校准做到一半的进度全丢，没有任何
-    可查的线索。
-    """
-    text = "".join(traceback.format_exception(exc_type, exc_value, exc_tb))
-    append_log(PANEL_CRASH_LOG, "PANEL EXCEPTION\n" + text)
-    lines = [line for line in text.strip().splitlines() if line.strip()]
-    return "\n".join(lines[-4:]) if lines else repr(exc_value)
 
 
 def main() -> None:

@@ -4,7 +4,7 @@
 
 Read this shard only when you need existing behavioral/architecture coverage or must choose focused regression tests.
 
-Source snapshot: `b73ee2f31df8`. Indexed files: 77.
+Source snapshot: `b0b34bd5e687`. Indexed files: 78.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -62,6 +62,7 @@ Source snapshot: `b73ee2f31df8`. Indexed files: 77.
 | `tests/test_optical_flow_contract.py` | Automated checks for optical flow contract | `test_micolink_parser_accepts_live_range_and_flow_payload_shape`, `test_micolink_parser_rejects_bad_checksum_and_oversize_payload`, `test_micolink_parser_resynchronizes_after_noise_and_ignores_other_messages`, `test_optical_flow_sources_are_wired_into_firmware_and_cubemx`, `test_velocity_source_uses_flow_dominant_ekf_without_imu_velocity_fallback`, `test_optical_flow_fault_recovery_runs_outside_sensor_step` (+14) |
 | `tests/test_panel_autoconnect.py` | 记住上次的连接并在启动时自动连回去。 关键点是**按什么认板子**：Windows 给 USB 串口分配的 COM 号会变（本机就出现过同一块 飞控在 COM30/31/32 之间跳），而 ST-Link、蓝牙串口、CH340 会占掉腾出… | `test_fingerprint_is_stable_across_com_renumbering`, `test_two_boards_of_the_same_model_get_different_fingerprints`, `test_a_port_without_a_serial_number_falls_back_to_the_usb_location`, `test_a_port_with_no_usb_identity_has_no_fingerprint`, `test_same_port_is_matched`, `test_the_board_is_followed_when_windows_renumbers_it` (+12) |
 | `tests/test_panel_proto_extraction.py` | S6 panel protocol extraction ownership and compatibility contract | `test_proto_module_owns_the_protocol_table_and_parsing_helpers`, `test_legacy_panel_forwards_every_proto_symbol_without_wrappers`, `test_protocol_line_methods_move_intact_to_the_mixin`, `test_transport_uses_proto_constants_but_keeps_existing_frame_builders`, `parsed`, `top_level_definitions` (+2) |
+| `tests/test_panel_state_extraction.py` | S6 panel-state persistence extraction ownership and compatibility contract | `test_state_module_owns_persistence_and_logging_implementation`, `test_legacy_panel_forwards_every_state_symbol_without_wrappers`, `test_panel_state_round_trip_uses_only_the_configured_state_path`, `test_logging_helpers_write_only_to_injected_temporary_paths`, `parsed`, `top_level_definitions` (+3) |
 | `tests/test_panel_transport_extraction.py` | S6 panel transport extraction ownership and compatibility contract | `test_transport_module_owns_moved_definitions`, `test_legacy_panel_forwards_the_transport_api_without_wrappers`, `test_legacy_panel_keeps_the_direct_script_import_context`, `top_level_definitions` |
 | `tests/test_pipeline_contract.py` | Automated checks for pipeline contract | `test_pipeline_exists_with_required_sections`, `test_mainline_nodes_match_between_diagram_and_gate_table`, `test_current_position_points_at_an_incomplete_mainline_node`, `test_flight_node_stays_frozen_until_runtime_flu_migration_completes`, `test_evidence_table_rows_are_dated_and_not_ahead_of_last_update`, `test_req_checklist_ids_unique_and_statuses_valid` (+5) |
 | `tests/test_project_index_contract.py` | Automated checks for project index contract | `test_repository_index_is_current`, `test_repository_index_has_hard_context_limits`, `test_large_vendor_and_data_trees_are_aggregated` |

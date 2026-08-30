@@ -20,6 +20,7 @@ from tools import drone_tcp_panel as panel
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = (ROOT / "tools" / "drone_tcp_panel.py").read_text(encoding="utf-8")
+STATE_SOURCE = (ROOT / "tools" / "panel_lib" / "state.py").read_text(encoding="utf-8")
 
 
 def read(relative: str) -> str:
@@ -678,13 +679,13 @@ def test_callback_exceptions_are_logged_and_the_window_survives() -> None:
 
 
 def test_the_crash_log_names_a_file_the_user_can_send() -> None:
-    assert "PANEL_CRASH_LOG = LOG_DIR" in SOURCE
-    record = SOURCE[SOURCE.index("def record_panel_crash("):]
-    record = record[: record.index("\ndef ", 1)]
+    assert "PANEL_CRASH_LOG = LOG_DIR" in STATE_SOURCE
+    record = STATE_SOURCE[STATE_SOURCE.index("def record_panel_crash("):]
+    record = record[: record.index("\n\n__all__", 1)]
     assert "traceback.format_exception" in record
     assert "append_log(PANEL_CRASH_LOG" in record
     # 写日志失败不能再把程序带下去。
-    append = SOURCE[SOURCE.index("def append_log("):]
+    append = STATE_SOURCE[STATE_SOURCE.index("def append_log("):]
     assert "except OSError:" in append[: append.index("\ndef ", 1)]
 
 
