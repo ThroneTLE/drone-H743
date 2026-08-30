@@ -4,7 +4,7 @@
 
 Read this shard only when the task uses serial/TCP diagnostics, log analysis, identification, capture, calibration, or desktop UIs.
 
-Source snapshot: `cea1e110447e`; aggregate snapshot: `ce7def1f86a3`. Covered files: 5303.
+Source snapshot: `011e4630135c`; aggregate snapshot: `ce7def1f86a3`. Covered files: 5304.
 
 | File/module or scope | Content outline | Key entry points / size |
 |---|---|---|
@@ -47,6 +47,7 @@ Source snapshot: `cea1e110447e`; aggregate snapshot: `ce7def1f86a3`. Covered fil
 | `tools/organize_data.py` | Move canonical project data into sortable YYYY-MM-DD subdirectories | `CategoryRule`, `MovePlan`, `plan_category`, `build_plan`, `apply_plan`, `parse_args` (+1) |
 | `tools/panel_lib/__init__.py` | Reusable implementation modules for :mod:`tools.drone_tcp_panel` | — |
 | `tools/panel_lib/pages/__init__.py` | Panel page builders and their event handlers | — |
+| `tools/panel_lib/pages/acceptance_v2.py` | Propeller-off V2A control-chain acceptance page | `AcceptanceV2PageMixin` |
 | `tools/panel_lib/pages/drift.py` | Stationary-drift page builder and handlers | `DriftPageMixin` |
 | `tools/panel_lib/pages/mechanical.py` | Servo-mechanical calibration page builder and handlers | `MechanicalPageMixin` |
 | `tools/panel_lib/pages/rc_wizard.py` | RC mapping and guided-calibration page builder and handlers | `rc_channel_travel`, `rc_detect_channel`, `rc_map_is_valid`, `rc_wizard_dominant`, `rc_wizard_step_ready`, `rc_wizard_window_stable` (+4) |

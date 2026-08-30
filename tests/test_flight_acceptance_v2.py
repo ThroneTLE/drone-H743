@@ -1,10 +1,17 @@
 from __future__ import annotations
 
+import ast
+import hashlib
 import json
 import math
+import os
 from dataclasses import FrozenInstanceError, replace
+from pathlib import Path
+import subprocess
+import sys
 import pytest
 
+from tools import drone_tcp_panel as legacy_panel
 from tools.flight_acceptance_v2 import (
     ACCEPTANCE_CAPTURE_SOURCE, ACCEPTANCE_PROVENANCE, AcceptanceStatus,
     PhysicalConfirmation, STAGE_DEFINITIONS, UNSUPPORTED_STAGES, V2Sample,
@@ -12,6 +19,21 @@ from tools.flight_acceptance_v2 import (
     report_from_json, report_to_dict, report_to_json,
     validate_report_for_application,
 )
+from tools.panel_lib.pages import acceptance_v2 as acceptance_v2_page
+
+
+ROOT = Path(__file__).resolve().parents[1]
+LEGACY_PANEL_PATH = ROOT / "tools" / "drone_tcp_panel.py"
+V2_PAGE_PATH = ROOT / "tools" / "panel_lib" / "pages" / "acceptance_v2.py"
+INCREMENT9_PARENT = "4d87d78f7497318737f3b3645f812ce3dd9977e7"
+V2_PAGE_AST_SHA256 = {
+    "_build_v2_page": "88c22660c867905d80525a96d22f1620bb8f021e2e989806dd03b28e859340f2",
+    "_v2_start": "f462ccdc451e156315c59e34efe38fc8ca886902a0e322dccb0004856e81156e",
+    "_v2_set_stage": "9c9f56d725688ceda0e73aa1a11edb0d0082addac16a13e24cd29a76c7300fe1",
+    "_v2_stop": "f546e12abedd6833bf4e533f083974b139a6a4e02253916be273ed160a4f49d8",
+    "_v2_tick": "a8c65b3513ef1ca1b278bc7d1ff97e639dc4f6d39161c2280f5d40930a5608e3",
+    "_v2_handle_line": "f70b04a3dccf56bc38abc6f381da2035b3445155876f4437d7908a7faecc1446",
+}
 
 
 def sample(stage: V2Stage, sequence: int = 1, **overrides: object) -> V2Sample:
@@ -185,3 +207,59 @@ def test_strict_json_and_application_recompute() -> None:
     with pytest.raises(ValueError, match="unsafe"): report_from_dict(payload)
     payload = report_to_dict(report); payload["stages"][0]["metrics"][0]["value"] = float("nan")
     with pytest.raises(ValueError, match="non-finite"): report_from_json(json.dumps(payload, allow_nan=True))
+
+
+def _page_methods(path: Path, class_name: str) -> dict[str, ast.FunctionDef]:
+    module = ast.parse(path.read_text(encoding="utf-8"))
+    owner = next(
+        node for node in module.body
+        if isinstance(node, ast.ClassDef) and node.name == class_name
+    )
+    return {
+        node.name: node for node in owner.body if isinstance(node, ast.FunctionDef)
+    }
+
+
+def _page_ast_sha256(node: ast.AST) -> str:
+    return hashlib.sha256(ast.dump(node, include_attributes=False).encode()).hexdigest()
+
+
+def test_s6_increment9_v2_page_ast_owner_and_forwarding() -> None:
+    owned = _page_methods(V2_PAGE_PATH, "AcceptanceV2PageMixin")
+    legacy = _page_methods(LEGACY_PANEL_PATH, "DronePanel")
+
+    assert INCREMENT9_PARENT == "4d87d78f7497318737f3b3645f812ce3dd9977e7"
+    assert set(owned) == set(V2_PAGE_AST_SHA256)
+    assert set(owned).isdisjoint(legacy)
+    assert {name: _page_ast_sha256(owned[name]) for name in V2_PAGE_AST_SHA256} == V2_PAGE_AST_SHA256
+    assert len(owned["_build_v2_page"].body) == 22
+    assert legacy_panel.AcceptanceV2PageMixin is acceptance_v2_page.AcceptanceV2PageMixin
+    for name in V2_PAGE_AST_SHA256:
+        assert getattr(legacy_panel.DronePanel, name) is getattr(
+            acceptance_v2_page.AcceptanceV2PageMixin, name
+        )
+    for name in (
+        "FLIGHT_ACCEPTANCE_CALIBRATION_DIR", "dated_directory", "ensure_directory"
+    ):
+        assert getattr(acceptance_v2_page, name) is getattr(legacy_panel, name)
+
+    env = os.environ.copy()
+    env.pop("PYTHONPATH", None)
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            (
+                "import drone_tcp_panel as p; "
+                "import panel_lib.pages.acceptance_v2 as v; "
+                "assert p.DronePanel._v2_tick is v.AcceptanceV2PageMixin._v2_tick"
+            ),
+        ],
+        cwd=ROOT / "tools",
+        env=env,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        timeout=20,
+    )
+    assert result.returncode == 0, result.stdout

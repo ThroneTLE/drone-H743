@@ -52,7 +52,7 @@ def test_v2a_stage_names_match_offline_engine_and_servo_delta_is_bounded() -> No
 
 def test_v2a_protocol_is_explicit_and_panel_keeps_lease_alive() -> None:
     control = read("App/Src/app_control.c")
-    panel = read("tools/drone_tcp_panel.py")
+    panel = read("tools/panel_lib/pages/acceptance_v2.py")
     proto = read("App/Inc/app_proto.h")
     assert "APP_PROTO_REQ_ACCEPTANCE     0x1021U" in proto
     assert "APP_PROTO_MSG_ACCEPTANCE        0x2222U" in proto

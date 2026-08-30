@@ -4,7 +4,7 @@
 
 Read this shard only when you need existing behavioral/architecture coverage or must choose focused regression tests.
 
-Source snapshot: `24a015212bc6`. Indexed files: 83.
+Source snapshot: `40cc9289abe3`. Indexed files: 83.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -27,7 +27,7 @@ Source snapshot: `24a015212bc6`. Indexed files: 83.
 | `tests/test_firmware_build_gate.py` | 烧录前必须先编译，且编译失败绝不能继续烧录。 背景：USB DFU 一键烧录默认烧的是 build/Debug/drone-H743.elf。如果改完源码 忘了编译，就会把上一次的旧固件刷进飞控，而且现场很难看出来——固件"烧成功了"，… | `test_build_failure_raises_instead_of_returning_a_stale_elf`, `test_missing_cmake_is_reported_as_a_build_error`, `test_build_timeout_is_reported_as_a_build_error`, `test_successful_build_must_actually_produce_the_elf`, `test_successful_build_returns_the_preset_artifact`, `test_image_older_than_a_source_file_is_reported_stale` (+15) |
 | `tests/test_flash_bdd.py` | Automated checks for flash bdd | `test_bdd_flash_diagnostics_flow_is_app_service_to_gd25q32_driver`, `test_bdd_h743_cache_setting_matches_runtime_cache_enable` |
 | `tests/test_flash_layering.py` | Automated checks for flash layering | `test_app_uses_flash_service_not_bsp_flash_api`, `test_bsp_flash_bus_has_no_device_level_flash_api`, `test_gd25q32_driver_has_chip_specific_name`, `test_flash_service_is_public_app_boundary`, `test_legacy_bsp_chip_driver_removed` |
-| `tests/test_flight_acceptance_v2.py` | Automated checks for flight acceptance v2 | `test_complete_v2a_passes_but_never_releases_flight`, `test_thresholds_strict`, `test_thresholds_serialized_and_metric_integrity_protected`, `test_zero_sample_pass_semantically_impossible`, `test_sequence_timestamp_and_context_are_strict`, `test_lease_and_physical_confirmation_are_bound` (+5) |
+| `tests/test_flight_acceptance_v2.py` | Automated checks for flight acceptance v2 | `test_complete_v2a_passes_but_never_releases_flight`, `test_thresholds_strict`, `test_thresholds_serialized_and_metric_integrity_protected`, `test_zero_sample_pass_semantically_impossible`, `test_sequence_timestamp_and_context_are_strict`, `test_lease_and_physical_confirmation_are_bound` (+6) |
 | `tests/test_flight_calibration_param_contract.py` | Versioned aggregate flight-calibration parameter contract | `test_fcal_schema_owns_v0_v1_and_reserved_v2_fields`, `test_imuframe_commit_updates_the_aggregate_instead_of_replacing_it`, `test_fcal_codec_and_migration_compile_and_run_on_host` |
 | `tests/test_flight_log_contract.py` | Automated checks for flight log contract | `test_flight_log_region_leaves_reserved_flash_sectors`, `test_flight_log_uses_app_flash_service_only`, `test_stabilizer_records_snapshots_without_direct_flash_access`, `test_flight_log_v7_records_flow_servo_bus_attitude_ident_and_z_integral`, `test_large_cpu_only_log_buffers_are_placed_in_axi_sram`, `test_background_task_drives_flight_log_slow_work` (+2) |
 | `tests/test_flight_log_paths.py` | Automated checks for flight log paths | `test_canonical_data_tree_is_root_scoped`, `test_receive_uses_canonical_flight_log_dir`, `test_receive_has_headless_cli_and_canonical_gui_default`, `test_waveform_and_rerun_read_canonical_log_dir`, `test_sysid_ui_points_open_dialog_at_flight_logs`, `test_sysid_cli_writes_reports_by_default` (+4) |

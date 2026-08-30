@@ -17,6 +17,9 @@ SOURCE = (ROOT / "tools" / "drone_tcp_panel.py").read_text(encoding="utf-8")
 V1_SOURCE = (
     ROOT / "tools" / "panel_lib" / "pages" / "v1_metrology.py"
 ).read_text(encoding="utf-8")
+V2_SOURCE = (
+    ROOT / "tools" / "panel_lib" / "pages" / "acceptance_v2.py"
+).read_text(encoding="utf-8")
 TRANSPORT_SOURCE = (ROOT / "tools" / "panel_lib" / "transport.py").read_text(
     encoding="utf-8"
 )
@@ -552,7 +555,7 @@ def test_panel_visual_hierarchy_uses_semantic_styles_and_guidance() -> None:
     configure = function_body(SOURCE, "    def _configure_style(")
     validation = function_body(SOURCE, "    def _build_validation_page(")
     v1 = function_body(V1_SOURCE, "    def _build_v1_page(")
-    v2 = function_body(SOURCE, "    def _build_v2_page(")
+    v2 = function_body(V2_SOURCE, "    def _build_v2_page(")
     firmware = function_body(SOURCE, "    def _build_firmware_update_page(")
     for style in (
         "Primary.TButton", "Secondary.TButton", "Warning.TButton",
