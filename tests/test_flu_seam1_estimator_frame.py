@@ -1,24 +1,22 @@
-"""R-F1 seam 1 (ESTIMATOR) FLU evidence contract.
+"""R-F1 seam 1 (ESTIMATOR) FLU evidence contract."""
 
-`tests/test_attitude_fusion_contract.py` exercises the estimator only through
-`DRV_AttitudeFusion_Init()`, i.e. the legacy NED convention fed with FRD
-specific force.  The NWU convention -- the one the runtime actually selects
-whenever a V0 candidate is active (`app_stabilizer.c`) -- had no executable
-coverage at all, so nothing pinned that the estimator reports canonical FLU
-signs, and nothing pinned the exported quaternion's direction or component
-order.  The FLU reference requires both to be declared before attitude is
-exported.
-
-Seam 1 carries no runtime behaviour change (author ruling 2026-08-30, option
-C).  This contract is the executable evidence for
-`DRV_FRAME_MIGRATION_ESTIMATOR_ADAPTER_BIT`.
-
-It also pins the legacy fallback's input transform exactly as it is today,
-including the fact that its gyro transform is improper.  That is a finding, not
-something this batch may repair: changing it would move an observable output
-(legacy yaw sign) and AGENTS.md rule 4 reserves coordinate-sign changes for a
-separately approved item.
-"""
+# test_attitude_fusion_contract.py exercises the estimator only through
+# DRV_AttitudeFusion_Init(), i.e. the legacy NED convention fed with FRD
+# specific force.  The NWU convention -- the one the runtime actually selects
+# whenever a V0 candidate is active -- had no executable coverage at all, so
+# nothing pinned that the estimator reports canonical FLU signs, and nothing
+# pinned the exported quaternion's direction or component order.  The FLU
+# reference requires both to be declared before attitude is exported.
+#
+# Seam 1 carries no runtime behaviour change (author ruling 2026-08-30, option
+# C).  This is the executable evidence for
+# DRV_FRAME_MIGRATION_ESTIMATOR_ADAPTER_BIT.
+#
+# It also pins the legacy fallback's input transform exactly as it is today,
+# including the fact that its gyro transform is improper.  That is a finding,
+# not something this batch may repair: changing it would move an observable
+# output (legacy yaw sign) and AGENTS.md rule 4 reserves coordinate-sign
+# changes for a separately approved item.
 
 from __future__ import annotations
 
@@ -39,7 +37,7 @@ def read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def test_stabilizer_selects_nwu_for_flu_and_ned_for_legacy() -> None:
+def test_convention_tracks_active_frame() -> None:
     """The convention must track the active body frame, not a build flag."""
     source = read(STABILIZER)
     assert re.search(
@@ -56,7 +54,7 @@ def _fusion_input_block(source: str) -> str:
     return source[start:end]
 
 
-def test_flu_branch_feeds_the_estimator_without_sign_compensation() -> None:
+def test_flu_branch_has_no_sign_compensation() -> None:
     """Seam 1's whole point: no scattered negations once the body frame is FLU."""
     block = _fusion_input_block(read(STABILIZER))
     flu_branch = block[block.index("if (flu_active != 0U) {"):block.index("} else {")]
@@ -67,7 +65,7 @@ def test_flu_branch_feeds_the_estimator_without_sign_compensation() -> None:
     assert "-msg->imu." not in flu_branch
 
 
-def test_legacy_branch_transform_is_pinned_including_its_improper_gyro() -> None:
+def test_legacy_branch_transform_pinned() -> None:
     """Pin the un-migrated fallback exactly as it is.
 
     Expressed in chip axes the legacy branch feeds the estimator
@@ -91,7 +89,7 @@ def test_legacy_branch_transform_is_pinned_including_its_improper_gyro() -> None
     assert "fusion_input.accelerometer_g[2] = -msg->imu.accel_z_g;" in legacy_branch
 
 
-def test_header_declares_quaternion_direction_order_and_named_frames() -> None:
+def test_header_declares_quaternion_frames() -> None:
     """The FLU reference forbids exporting attitude without this declaration."""
     header = read(FUSION_HEADER)
     assert "body-to-navigation" in header
@@ -219,7 +217,7 @@ int main(void)
 """
 
 
-def test_estimator_reports_canonical_flu_signs_under_nwu(tmp_path: Path) -> None:
+def test_estimator_flu_signs_under_nwu(tmp_path: Path) -> None:
     compiler = shutil.which("gcc") or shutil.which("clang")
     if compiler is None:
         pytest.fail("seam 1 FLU contract requires host gcc or clang")

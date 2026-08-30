@@ -1,26 +1,24 @@
-"""R-F0 seam 0 (SENSOR) FLU evidence contract.
+"""R-F0 seam 0 (SENSOR) FLU evidence contract."""
 
-`tests/test_sensor_orientation_runtime.py` already pins the 24-entry Flash ABI
-table, the fixed chip -> legacy_intermediate_v1 mapping and the per-code
-`APP_Sensor_ApplyFrameCorrection` behaviour, but it checks each stage in
-isolation.  Nothing pinned the property the migration mask actually cares
-about: that the *composition* of both stages, under the orientation code that
-is persisted on the airframe, is a proper rotation delivering the canonical FLU
-body frame of `Driver/Inc/drv_frame_contract.h`.
-
-This module links the real `app_sensor.c` orientation code against the real
-normative header in one host executable and pins:
-
-  * the composed chip -> published mapping under persisted code 3,
-  * that the composition is a proper rotation (det = +1, no reflection),
-  * that accelerometer and gyroscope receive the identical rotation,
-  * that a level, stationary board publishes the contract's specific force.
-
-Seam 0 carries no source behaviour change (author ruling 2026-08-30, option C):
-the runtime already publishes FLU whenever a V0 candidate is active, so this
-contract is the executable evidence the reviewer needs before flipping
-`DRV_FRAME_MIGRATION_SENSOR_TO_FLU_BIT`.  It is green on arrival by design.
-"""
+# test_sensor_orientation_runtime.py already pins the 24-entry Flash ABI table,
+# the fixed chip -> legacy_intermediate_v1 mapping and the per-code
+# APP_Sensor_ApplyFrameCorrection behaviour, but it checks each stage in
+# isolation.  Nothing pinned the property the migration mask actually cares
+# about: that the *composition* of both stages, under the orientation code
+# persisted on the airframe, is a proper rotation delivering the canonical FLU
+# body frame of Driver/Inc/drv_frame_contract.h.
+#
+# This module links the real app_sensor.c orientation code against the real
+# normative header in one host executable and pins:
+#   * the composed chip -> published mapping under persisted code 3,
+#   * that the composition is a proper rotation (det = +1, no reflection),
+#   * that accelerometer and gyroscope receive the identical rotation,
+#   * that a level, stationary board publishes the contract's specific force.
+#
+# Seam 0 carries no source behaviour change (author ruling 2026-08-30, option
+# C): the runtime already publishes FLU whenever a V0 candidate is active, so
+# this contract is the executable evidence the reviewer needs before flipping
+# DRV_FRAME_MIGRATION_SENSOR_TO_FLU_BIT.
 
 from __future__ import annotations
 
@@ -59,7 +57,7 @@ def extract_orientation_source() -> str:
     return source[start:end]
 
 
-def test_persisted_orientation_code_still_maps_to_its_descriptor() -> None:
+def test_persisted_code_maps_to_descriptor() -> None:
     """Guard the Flash ABI slot this seam's evidence is anchored to."""
     source = read(SOURCE)
     table_start = source.index("app_sensor_flu_orientations[APP_SENSOR_FLU_ORIENTATION_COUNT]")
@@ -76,7 +74,7 @@ def test_persisted_orientation_code_still_maps_to_its_descriptor() -> None:
     assert "{ -1, -2, +3 }" in entries[PERSISTED_ORIENTATION_CODE]
 
 
-def test_mounting_comment_matches_the_measured_v0_result() -> None:
+def test_mounting_comment_matches_v0() -> None:
     """The physical-mounting comment must not contradict the persisted fit.
 
     The composed mapping is published = [+chip_z, +chip_x, +chip_y], so IMU +X
@@ -220,7 +218,7 @@ int main(void)
 """
 
 
-def test_sensor_seam_publishes_canonical_flu_under_persisted_orientation(
+def test_sensor_publishes_canonical_flu(
     tmp_path: Path,
 ) -> None:
     compiler = shutil.which("gcc") or shutil.which("clang")

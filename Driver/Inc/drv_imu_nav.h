@@ -7,6 +7,23 @@
 extern "C" {
 #endif
 
+/*
+ * Strapdown velocity state.
+ *
+ * Navigation frame: local-level FLU -- +X forward, +Y left, +Z up -- built
+ * each update from the smoothed gravity reference, with heading left free
+ * (this estimator has no heading source, so +X is the body forward axis
+ * projected into the level plane, not North).  Body inputs are the canonical
+ * FLU body frame of Driver/Inc/drv_frame_contract.h.
+ *
+ * acc_bias_nav_m_s2 / acc_nav_m_s2 / vel_m_s are all expressed in that
+ * navigation frame.
+ *
+ * level_z_body_unit is the navigation *up* axis expressed in body
+ * coordinates; at rest it equals the normalised specific force.  Before the
+ * seam 2 migration this frame was (forward, right, down) and the field held
+ * the down axis instead.
+ */
 typedef struct {
     float acc_bias_nav_m_s2[3];
     float acc_nav_m_s2[3];

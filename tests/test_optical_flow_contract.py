@@ -280,7 +280,14 @@ def test_velocity_source_uses_flow_dominant_ekf_without_imu_velocity_fallback() 
     app_flow = read("App/Src/app_optical_flow.c")
     app_flow_header = read("App/Inc/app_optical_flow.h")
 
-    assert "ctx->velocity_imu_x_m_s = ctx->nav_state.vel_m_s[0];" in freertos
+    # R-F2 routes the nav velocity through the temporary seam 2/3 boundary
+    # adapter, so pin the whole chain: it must still originate in
+    # ctx->nav_state.vel_m_s and reach velocity_imu_x_m_s unconditionally.
+    assert (
+        "stabilizer_nav_flu_to_legacy_fwd_right_down(ctx->nav_state.vel_m_s,"
+        in freertos
+    )
+    assert "ctx->velocity_imu_x_m_s = nav_vel_legacy[0];" in freertos
     assert "APP_OpticalFlow_GetVelocitySample(&flow_vx_m_s," in freertos
     assert "stabilizer_velocity_estimator_step(&ctx->vel_estimator," in freertos
     assert "DRV_NAV_EKF_Predict(&state->ekf, acc_x_m_s2, acc_y_m_s2, dt_sec);" in freertos

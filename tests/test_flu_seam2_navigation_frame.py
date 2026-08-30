@@ -1,22 +1,21 @@
-"""R-F2 seam 2 (NAVIGATION) FLU migration contract.
+"""R-F2 seam 2 (NAVIGATION) FLU migration contract."""
 
-`drv_imu_nav.c` resolves specific force into a local-level frame built from the
-gravity reference.  Before this seam that frame was (forward, right, down):
-`level_z_body_unit` held the *down* axis (`z = -accel`), `y = cross(z, x)`
-resolved to right, and the vertical channel added `+gravity`.  Seam 2 migrates
-it to local-level FLU (forward, left, up).
-
-Downstream is not migrated yet.  `nav_state.vel_m_s` feeds the velocity
-estimator and reaches the wire as `ekf_vx_mm_s` / `ekf_vy_mm_s` from
-`App/Src/app_control.c`, so `app_stabilizer.c` converts back at the boundary.
-Every one of those observable numbers must stay bit-identical.
-
-The transform is a signed axis flip and IEEE arithmetic is sign-symmetric for
-every operation involved (division, dot, cross, EMA, integration), so the
-equivalence is exact, not approximate.  This module proves it by running the
-real migrated driver against a reference implementation of the pre-migration
-algorithm and requiring exact equality through the adapter.
-"""
+# drv_imu_nav.c resolves specific force into a local-level frame built from the
+# gravity reference.  Before this seam that frame was (forward, right, down):
+# level_z_body_unit held the *down* axis (z = -accel), y = cross(z, x) resolved
+# to right, and the vertical channel added +gravity.  Seam 2 migrates it to
+# local-level FLU (forward, left, up).
+#
+# Downstream is not migrated yet.  nav_state.vel_m_s feeds the velocity
+# estimator and reaches the wire as ekf_vx_mm_s / ekf_vy_mm_s from
+# App/Src/app_control.c, so app_stabilizer.c converts back at the boundary.
+# Every one of those observable numbers must stay bit-identical.
+#
+# The transform is a signed axis flip and IEEE arithmetic is sign-symmetric for
+# every operation involved (division, dot, cross, EMA, integration), so the
+# equivalence is exact, not approximate.  This module proves it by running the
+# real migrated driver against a reference implementation of the pre-migration
+# algorithm and requiring exact equality through the adapter.
 
 from __future__ import annotations
 
@@ -39,12 +38,7 @@ def read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="R-F2 red test: drv_imu_nav.c still builds a (forward, right, down) "
-    "local-level frame; cleared by the seam 2 implementation commit",
-)
-def test_navigation_builds_a_local_level_flu_frame() -> None:
+def test_nav_builds_local_level_flu() -> None:
     """The gravity reference must be the up axis, and gravity must subtract."""
     source = read(NAV_SOURCE)
     assert "level_z_body_unit[0] = -input->accel_x_g" not in source
@@ -52,23 +46,13 @@ def test_navigation_builds_a_local_level_flu_frame() -> None:
     assert "imu_nav_dot3(z_body, acc_body_m_s2) - gravity" in source
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="R-F2 red test: drv_imu_nav.h does not name the navigation frame; "
-    "cleared by the seam 2 implementation commit",
-)
-def test_navigation_header_names_its_frame() -> None:
+def test_nav_header_names_frame() -> None:
     header = read(NAV_HEADER)
     assert "local-level FLU" in header
     assert "level_z_body_unit" in header
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="R-F2 red test: the temporary seam 2/3 boundary adapter does not "
-    "exist yet; cleared by the seam 2 implementation commit",
-)
-def test_boundary_adapter_exists_and_declares_its_own_removal() -> None:
+def test_boundary_adapter_declares_removal() -> None:
     """The adapter must say, in words, when it is to be deleted."""
     source = read(STABILIZER)
     assert f"static void {ADAPTER}(" in source
@@ -231,6 +215,19 @@ static int exact3(const float flu[3], const float legacy[3])
         && converted[2] == legacy[2];
 }
 
+/*
+ * level_z_body_unit is not a navigation-frame vector, so it does not take the
+ * boundary adapter.  It is the navigation Z axis expressed in *body*
+ * coordinates, and seam 2 turns it from down into up, which negates all three
+ * components.
+ */
+static int exact_negated3(const float up_axis[3], const float down_axis[3])
+{
+    return up_axis[0] == -down_axis[0]
+        && up_axis[1] == -down_axis[1]
+        && up_axis[2] == -down_axis[2];
+}
+
 int main(void)
 {
     DRV_IMU_NAV_State migrated;
@@ -278,7 +275,8 @@ int main(void)
 
         CHECK(exact3(migrated.acc_nav_m_s2, legacy.acc_nav_m_s2), 10);
         CHECK(exact3(migrated.vel_m_s, legacy.vel_m_s), 11);
-        CHECK(exact3(migrated.level_z_body_unit, legacy.level_z_body_unit), 12);
+        CHECK(exact_negated3(migrated.level_z_body_unit,
+                             legacy.level_z_body_unit), 12);
     }
 
     /*
@@ -318,13 +316,7 @@ int main(void)
 """
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="R-F2 red test: the driver still resolves into (forward, right, "
-    "down), so the harness stops at CHECK 2 (gravity reference is not the up "
-    "axis); cleared by the seam 2 implementation commit",
-)
-def test_migrated_navigation_is_bit_exact_through_the_boundary_adapter(
+def test_nav_bit_exact_through_adapter(
     tmp_path: Path,
 ) -> None:
     compiler = shutil.which("gcc") or shutil.which("clang")

@@ -57,9 +57,15 @@ static void imu_nav_update_level_reference(DRV_IMU_NAV_State *state,
         return;
     }
 
-    z_body[0] = -input->accel_x_g;
-    z_body[1] = -input->accel_y_g;
-    z_body[2] = -input->accel_z_g;
+    /*
+     * Specific force points up when the airframe is at rest, so the raw
+     * accelerometer vector is already the local-level up axis in body
+     * coordinates.  (Before the seam 2 migration this was negated to build a
+     * down axis for a (forward, right, down) frame.)
+     */
+    z_body[0] = input->accel_x_g;
+    z_body[1] = input->accel_y_g;
+    z_body[2] = input->accel_z_g;
     norm_g = sqrtf(imu_nav_dot3(z_body, z_body));
     if (norm_g < IMU_NAV_MIN_ACCEL_NORM_G) {
         return;
@@ -111,6 +117,14 @@ static void imu_nav_acc_body_to_nav(const DRV_IMU_NAV_Input *input,
     float y_body[3];
     float x_dot_z;
 
+    /*
+     * Degenerate fallback: assume the airframe is level, i.e. up is body +Z.
+     * This constant was already +Z before the seam 2 migration, when the axis
+     * it fed was supposed to be *down*; the vertical channel then produced
+     * +2g instead of 0 for a level sample.  Migrating the frame makes the
+     * fallback consistent with the axis it fills in.  Reached only when the
+     * smoothed gravity reference fails to normalise.
+     */
     if (imu_nav_normalize3(z_body) == 0U) {
         z_body[0] = 0.0f;
         z_body[1] = 0.0f;
@@ -132,15 +146,16 @@ static void imu_nav_acc_body_to_nav(const DRV_IMU_NAV_Input *input,
         (void)imu_nav_normalize3(x_body);
     }
 
+    /* z is up and x is forward, so cross(z, x) is left: the frame is FLU. */
     imu_nav_cross3(z_body, x_body, y_body);
 
     /*
      * Accelerometers measure specific force.  At rest, body specific force is
-     * opposite down, so dot(z_down_body, f_body) is -g and +gravity gives 0.
+     * +g along up, so dot(z_up_body, f_body) is +g and -gravity gives 0.
      */
     acc_nav_m_s2[0] = imu_nav_dot3(x_body, acc_body_m_s2);
     acc_nav_m_s2[1] = imu_nav_dot3(y_body, acc_body_m_s2);
-    acc_nav_m_s2[2] = imu_nav_dot3(z_body, acc_body_m_s2) + gravity;
+    acc_nav_m_s2[2] = imu_nav_dot3(z_body, acc_body_m_s2) - gravity;
 }
 
 void DRV_IMU_NAV_Reset(DRV_IMU_NAV_State *state)

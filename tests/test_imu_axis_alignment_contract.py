@@ -19,10 +19,15 @@ def test_legacy_imu_mount_axis_adapter_is_documented() -> None:
     source = read("App/Src/app_sensor.c")
     header = read("App/Inc/app_sensor.h")
 
-    assert "IMU +Y 朝飞机下方" in source
-    assert "IMU +Z 朝飞机后方" in source
+    # Mounting corrected by R-F0 to match the physically measured, persisted V0
+    # result (orientation code 3).  The pre-V0 text claimed +Y down and +Z aft,
+    # which is a 180 deg error about Y; see
+    # tests/test_flu_seam0_sensor_frame.py.
     assert "IMU +X 朝飞机左方" in source
+    assert "IMU +Y 朝飞机上方" in source
+    assert "IMU +Z 朝飞机前方" in source
     assert "本机标定中间轴" in source
+    # The legacy compensation must stay documented as the unmigrated fallback.
     assert "roll rate = -gyro X, pitch rate = +gyro Y, yaw rate = +gyro Z" in source
     assert "specific force = [-accel X, +accel Y, -accel Z]" in source
     assert "姿态最终正负号以实机补偿后的输出为准" in header
@@ -31,9 +36,11 @@ def test_legacy_imu_mount_axis_adapter_is_documented() -> None:
 def test_imu_axes_are_rotated_to_legacy_intermediate_frame() -> None:
     source = read("App/Src/app_sensor.c")
 
-    assert "body X = -imu Z" in source
-    assert "body Y = -imu X" in source
-    assert "body Z =  imu Y" in source
+    # R-F0 relabelled these from "body" to the intermediate frame's real name:
+    # the mapping's output is legacy_intermediate_v1, not the body frame.
+    assert "legacy_intermediate_v1 X = -imu Z" in source
+    assert "legacy_intermediate_v1 Y = -imu X" in source
+    assert "legacy_intermediate_v1 Z =  imu Y" in source
     assert "out[0] = -in[2];" in source
     assert "out[1] = -in[0];" in source
     assert "out[2] =  in[1];" in source

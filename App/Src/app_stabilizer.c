@@ -1262,6 +1262,26 @@ static void stabilizer_reset_for_imu_frame(
   stabilizer_validation_imu_reset();
 }
 
+/*
+ * 临时边界适配，seam 3/4 迁移后删除。
+ *
+ * seam 2 已把 drv_imu_nav 的导航系迁移为本地水平 FLU（前/左/上）。其下游
+ * 尚未迁移：速度估计器、光流融合、VOFA 调试与飞行日志仍按旧的
+ * （前/右/下）表述解释这些数值，且 App/Src/app_control.c 以
+ * ekf_vx_mm_s / ekf_vy_mm_s 把它们送上遥测。本函数在消费边界把导航量
+ * 转回旧表述，使全部可观测输出逐位不变。
+ *
+ * 这是坐标表述转换，不是极性修正：seam 3/4 迁移这些消费者后，本函数
+ * 连同其全部调用点一并删除，不得改成带增益或符号常量的形式。
+ */
+static void stabilizer_nav_flu_to_legacy_fwd_right_down(const float flu[3],
+                                                        float legacy[3])
+{
+  legacy[0] =  flu[0];
+  legacy[1] = -flu[1];
+  legacy[2] = -flu[2];
+}
+
 static void stabilizer_imu_step(StabilizerContext *ctx,
                                  APP_Sensor_SampleMessage *msg)
 {
@@ -1553,6 +1573,9 @@ static void stabilizer_imu_step(StabilizerContext *ctx,
 
   {
     DRV_IMU_NAV_Input nav_input;
+    /* seam 2 导航量的旧表述副本，见 stabilizer_nav_flu_to_legacy_fwd_right_down */
+    float nav_vel_legacy[3];
+    float nav_acc_legacy[3];
 
     nav_input.accel_x_g = msg->imu.accel_x_g;
     nav_input.accel_y_g = msg->imu.accel_y_g;
@@ -1572,8 +1595,13 @@ static void stabilizer_imu_step(StabilizerContext *ctx,
       DRV_IMU_NAV_Update(&ctx->nav_state, &nav_input);
     }
 
-    ctx->velocity_imu_x_m_s = ctx->nav_state.vel_m_s[0];
-    ctx->velocity_imu_y_m_s = ctx->nav_state.vel_m_s[1];
+    stabilizer_nav_flu_to_legacy_fwd_right_down(ctx->nav_state.vel_m_s,
+                                                nav_vel_legacy);
+    stabilizer_nav_flu_to_legacy_fwd_right_down(ctx->nav_state.acc_nav_m_s2,
+                                                nav_acc_legacy);
+
+    ctx->velocity_imu_x_m_s = nav_vel_legacy[0];
+    ctx->velocity_imu_y_m_s = nav_vel_legacy[1];
     {
       float imu_accel_x_m_s2 = 0.0f;
       float imu_accel_y_m_s2 = 0.0f;
@@ -1654,11 +1682,11 @@ static void stabilizer_imu_step(StabilizerContext *ctx,
       ctx->vofa_debug.acc_nav_m_s2[1] = imu_accel_y_m_s2;
       (void)imu_accel_weight;
     }
-    ctx->vofa_debug.acc_nav_m_s2[2] = ctx->nav_state.acc_nav_m_s2[2];
+    ctx->vofa_debug.acc_nav_m_s2[2] = nav_acc_legacy[2];
     ctx->vofa_debug.vel_est_m_s[0] = ctx->velocity_state_x_m_s;
     ctx->vofa_debug.vel_est_m_s[1] =
       STABILIZER_VELOCITY_MEAS_Y_SIGN * ctx->velocity_state_y_m_s;
-    ctx->vofa_debug.vel_est_m_s[2] = ctx->nav_state.vel_m_s[2];
+    ctx->vofa_debug.vel_est_m_s[2] = nav_vel_legacy[2];
     ctx->vofa_debug.nav_accel_lpf_alpha = ctx->nav_state.accel_lpf_alpha;
     ctx->vofa_debug.nav_velocity_leak_hz = ctx->nav_state.velocity_leak_rate_hz;
     stabilizer_vofa_debug_publish(&ctx->vofa_debug);
