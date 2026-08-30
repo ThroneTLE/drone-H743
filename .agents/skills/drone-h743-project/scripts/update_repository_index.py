@@ -269,6 +269,11 @@ def individual_row(path: str, kind: str) -> str:
         symbols = powershell_symbols(path)
     elif suffix in {".c", ".h", ".cpp"}:
         symbols = c_symbols([path])
+    if kind == "test":
+        # 测试分片只列 test_* 入口：模块级辅助函数（read/method_source 等）是噪音。
+        test_symbols = [symbol for symbol in symbols if symbol.startswith("test_")]
+        if test_symbols:
+            symbols = test_symbols
     return f"| `{path}` | {compact(purpose)} | {symbol_cell(symbols)} |"
 
 

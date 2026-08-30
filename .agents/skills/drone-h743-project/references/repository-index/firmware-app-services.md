@@ -4,7 +4,7 @@
 
 Read this shard only when the task touches application behavior, RTOS task bodies, control flow, diagnostics, commands, or synchronous services.
 
-Source snapshot: `49e3855d1d80`. Indexed files: 81.
+Source snapshot: `ea536d68536a`. Indexed files: 83.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -41,6 +41,7 @@ Source snapshot: `49e3855d1d80`. Indexed files: 81.
 | `App/Inc/app_servo_cal.h`<br>`App/Src/app_servo_cal.c` | Application behavior and task-facing logic for servo cal | `APP_ServoCal_Init`, `APP_ServoCal_Step`, `APP_ServoCal_IsActive`, `APP_ServoCal_GetState`, `APP_ServoCal_TakeNotice` |
 | `App/Inc/app_servo_feedback.h`<br>`App/Src/app_servo_feedback.c` | Application behavior and task-facing logic for servo feedback | `APP_ServoFeedback_Init`, `APP_ServoFeedback_Service`, `APP_ServoFeedback_GetLogSample` |
 | `App/Inc/app_servo_feedback_bench.h`<br>`App/Src/app_servo_feedback_bench.c` | Application behavior and task-facing logic for servo feedback bench | `APP_ServoFeedbackBench_Init`, `APP_ServoFeedbackBench_Start`, `APP_ServoFeedbackBench_StartSweep`, `APP_ServoFeedbackBench_StartStep`, `APP_ServoFeedbackBench_Stop`, `APP_ServoFeedbackBench_ReportStatus` (+5) |
+| `App/Inc/app_servo_jog.h`<br>`App/Src/app_servo_jog.c` | Application behavior and task-facing logic for servo jog | `APP_ServoJog_Init`, `APP_ServoJog_HandleCommand`, `APP_ServoJog_Request`, `APP_ServoJog_ReleaseAll`, `APP_ServoJog_IsActive`, `APP_ServoJog_Apply` (+2) |
 | `App/Inc/app_stabilizer.h`<br>`App/Src/app_stabilizer.c` | Application behavior and task-facing logic for stabilizer | `APP_Stabilizer_LatchImuFault`, `APP_Stabilizer_ClearImuFault`, `APP_Stabilizer_MarkImuSample`, `APP_Stabilizer_ReadVofaDebug`, `APP_Stabilizer_ReadValidationImuSnapshot`, `APP_Stabilizer_ReadFlowCompensationSnapshot` (+7) |
 | `App/Inc/app_tasks.h`<br>`App/Src/app_tasks.c` | Application behavior and task-facing logic for tasks | `APP_Task_LED_Init`, `APP_Task_LED_Step`, `APP_Task_GPS_Init`, `APP_Task_GPS_Step`, `APP_Task_OpticalFlow_Init`, `APP_Task_OpticalFlow_Step` (+10) |
 | `App/Inc/app_telemetry.h`<br>`App/Src/app_telemetry.c` | Application behavior and task-facing logic for telemetry | `APP_Telemetry_ChannelCount`, `APP_Telemetry_GetChannel`, `APP_Telemetry_SchemaHash`, `APP_Telemetry_ReportHeader`, `APP_Telemetry_ReportPage` |
