@@ -4,7 +4,7 @@
 
 Read this shard only when the task uses serial/TCP diagnostics, log analysis, identification, capture, calibration, or desktop UIs.
 
-Source snapshot: `77fb347a4eff`; aggregate snapshot: `ce7def1f86a3`. Covered files: 5295.
+Source snapshot: `32d4bab8ec8b`; aggregate snapshot: `ce7def1f86a3`. Covered files: 5298.
 
 | File/module or scope | Content outline | Key entry points / size |
 |---|---|---|
@@ -31,6 +31,7 @@ Source snapshot: `77fb347a4eff`; aggregate snapshot: `ce7def1f86a3`. Covered fil
 | `tools/flight_log_workbench.py` | H743 飞行日志 All-in-One 查看与 Rerun 回放工作台。 | `segment_label`, `available_preset_channels`, `make_rerun_wrapper_command`, `format_optional`, `time_axis_for_segment`, `FlightLogWorkbench` (+2) |
 | `tools/flight_validation.py` | Read-only V0 flight-sensor validation algorithms. This module deliberately has no transport, parameter, Flash, or firmw… | `ValidationStatus`, `ValidationStage`, `StageDefinition`, `ValidationThresholds`, `ImuSample`, `ValidationSession` (+22) |
 | `tools/flow_velocity_filter_eval.py` | Evaluate optical-flow velocity robustness from H743 flight-log CSV files. 这个脚本用于对比旧的光流直通速度和当前固件里的抗离群思路： 1. 原始 Micolink… | `SeriesStats`, `ReplayResult`, `parse_float`, `parse_int`, `time_s`, `quality_to_noise` (+6) |
+| `tools/gesture_sign_check.py` | PIPELINE R-M2-2 · 粗符号手势验证（录制 + 自动分段判号，只读）。 作者按口令做三个小动作（机头下压回平 / 右翼下压回平 / 机头左转转回）， 本工具全程 ~12Hz 轮询 `IMU?` 录制原始数据，随后离线自动判定… | `record`, `segments`, `judge`, `main` |
 | `tools/ground_calibration.py` | Host-only analysis for ground calibration evidence. The functions in this module never write target parameters. They tu… | `GroundCalibrationError`, `FlowRangeSample`, `analyze_flow_zero`, `analyze_flow_axis`, `fit_range_two_point`, `analyze_rotation_compensation` (+1) |
 | `tools/ground_station/drone_simulator.py` | Drone-H743 High-Fidelity Flight Telemetry Simulator & Test Server for Serial-Studio. Simulates: - 3D Attitude (Roll, Pi… | `DroneSimulator` |
 | `tools/ground_station/README.md` | drone-H743 专属上位机与飞控自检架构 | `0. 先读这一节：当前真实状态`, ``Drone-H743-GCS.ssproj` 是对着仿真器做的，不是对着固件`, ``.ssproj` 还有 16 个无效的控件 id`, `1. 核心工程思想：上位机不持有危险动作的时间轴`, `反模式：时间轴在上位机手里`, `这两行之间进程被杀 / USB 被拔 / 用户 Ctrl+C` (+25) |
@@ -45,6 +46,8 @@ Source snapshot: `77fb347a4eff`; aggregate snapshot: `ce7def1f86a3`. Covered fil
 | `tools/m1_baseline_check.py` | PIPELINE M1 底层与原始数据健康 · 实机基线采集器。 通过 USB CDC 裸文本命令通道（APP_Control_ProcessLine）以固定频率轮询 `IMU?`，在静止条件下累计一段时间的证据，输出结构化 JSON 报… | `poll_once`, `run`, `main` |
 | `tools/organize_data.py` | Move canonical project data into sortable YYYY-MM-DD subdirectories | `CategoryRule`, `MovePlan`, `plan_category`, `build_plan`, `apply_plan`, `parse_args` (+1) |
 | `tools/panel_lib/__init__.py` | Reusable implementation modules for :mod:`tools.drone_tcp_panel` | — |
+| `tools/panel_lib/pages/__init__.py` | Panel page builders and their event handlers | — |
+| `tools/panel_lib/pages/drift.py` | Stationary-drift page builder and handlers | `DriftPageMixin` |
 | `tools/panel_lib/proto.py` | Protocol identifiers and line-parsing helpers for the panel | `parse_kv`, `safe_int`, `safe_float`, `first_value`, `first_float`, `ProtocolLineMixin` |
 | `tools/panel_lib/state.py` | Panel-local state persistence and best-effort log helpers | `PanelStateMixin`, `append_log`, `record_panel_crash` |
 | `tools/panel_lib/transport.py` | Transport primitives and serial-device reconnect helpers for the panel | `udp_payload_is_probably_text`, `serial_device_identity_policy`, `serial_port_identity`, `serial_port_fingerprint`, `match_remembered_serial_port`, `select_reenumerated_application_port` (+7) |

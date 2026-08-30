@@ -4,7 +4,7 @@
 
 Read this shard only when you need existing behavioral/architecture coverage or must choose focused regression tests.
 
-Source snapshot: `b0b34bd5e687`. Indexed files: 78.
+Source snapshot: `7a4a9134f63c`. Indexed files: 79.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -61,6 +61,7 @@ Source snapshot: `b0b34bd5e687`. Indexed files: 78.
 | `tests/test_nav_ekf_contract.py` | Automated checks for nav ekf contract | `test_quality_adaptive_flow_ekf_is_enabled_in_stabilizer`, `test_nav_ekf_exposes_industry_consistency_metrics`, `test_velocity_control_uses_flow_ekf_with_limited_compensated_imu_bridge`, `test_nav_ekf_state_model_contains_velocity_and_accel_bias`, `read` |
 | `tests/test_optical_flow_contract.py` | Automated checks for optical flow contract | `test_micolink_parser_accepts_live_range_and_flow_payload_shape`, `test_micolink_parser_rejects_bad_checksum_and_oversize_payload`, `test_micolink_parser_resynchronizes_after_noise_and_ignores_other_messages`, `test_optical_flow_sources_are_wired_into_firmware_and_cubemx`, `test_velocity_source_uses_flow_dominant_ekf_without_imu_velocity_fallback`, `test_optical_flow_fault_recovery_runs_outside_sensor_step` (+14) |
 | `tests/test_panel_autoconnect.py` | 记住上次的连接并在启动时自动连回去。 关键点是**按什么认板子**：Windows 给 USB 串口分配的 COM 号会变（本机就出现过同一块 飞控在 COM30/31/32 之间跳），而 ST-Link、蓝牙串口、CH340 会占掉腾出… | `test_fingerprint_is_stable_across_com_renumbering`, `test_two_boards_of_the_same_model_get_different_fingerprints`, `test_a_port_without_a_serial_number_falls_back_to_the_usb_location`, `test_a_port_with_no_usb_identity_has_no_fingerprint`, `test_same_port_is_matched`, `test_the_board_is_followed_when_windows_renumbers_it` (+12) |
+| `tests/test_panel_drift_page_extraction.py` | S6 stationary-drift page extraction ownership and compatibility contract | `test_drift_page_mixin_owns_only_its_builder_and_handlers`, `test_legacy_panel_forwards_the_drift_page_without_wrappers`, `test_moved_drift_page_ast_matches_the_pre_extraction_implementation`, `test_v1_page_keeps_the_drift_builder_at_the_original_slot`, `test_drift_sample_pairing_behavior_is_preserved_in_memory`, `parsed` (+3) |
 | `tests/test_panel_proto_extraction.py` | S6 panel protocol extraction ownership and compatibility contract | `test_proto_module_owns_the_protocol_table_and_parsing_helpers`, `test_legacy_panel_forwards_every_proto_symbol_without_wrappers`, `test_protocol_line_methods_move_intact_to_the_mixin`, `test_transport_uses_proto_constants_but_keeps_existing_frame_builders`, `parsed`, `top_level_definitions` (+2) |
 | `tests/test_panel_state_extraction.py` | S6 panel-state persistence extraction ownership and compatibility contract | `test_state_module_owns_persistence_and_logging_implementation`, `test_legacy_panel_forwards_every_state_symbol_without_wrappers`, `test_panel_state_round_trip_uses_only_the_configured_state_path`, `test_logging_helpers_write_only_to_injected_temporary_paths`, `parsed`, `top_level_definitions` (+3) |
 | `tests/test_panel_transport_extraction.py` | S6 panel transport extraction ownership and compatibility contract | `test_transport_module_owns_moved_definitions`, `test_legacy_panel_forwards_the_transport_api_without_wrappers`, `test_legacy_panel_keeps_the_direct_script_import_context`, `top_level_definitions` |
