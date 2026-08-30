@@ -93,6 +93,29 @@ def test_evidence_table_rows_are_dated_and_not_ahead_of_last_update() -> None:
     assert max(dates) <= date.today(), "evidence rows must not carry future dates"
 
 
+def test_req_checklist_ids_unique_and_statuses_valid() -> None:
+    """执行需求清单：REQ 编号唯一；状态只允许既定词汇；✅ 仅审核会话可落。"""
+    text = pipeline_text()
+    checklist = section(text, "执行需求清单（派单用）")
+    rows: list[tuple[str, str]] = []
+    for line in checklist.splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("| R-"):
+            continue
+        cells = [cell.strip() for cell in stripped.strip("|").split("|")]
+        assert len(cells) == 5, f"REQ row must have 5 columns: {stripped!r}"
+        rows.append((cells[0], cells[-1]))
+    assert rows, "REQ checklist must contain at least one R-* row"
+    ids = [req_id for req_id, _ in rows]
+    assert len(ids) == len(set(ids)), f"duplicate REQ ids: {sorted(set(i for i in ids if ids.count(i) > 1))}"
+    allowed = ("待做", "进行中", "待审核", "✅", "条件跳过", "⏸")
+    for req_id, status in rows:
+        assert any(status.startswith(token) for token in allowed), (
+            f"{req_id} has invalid status {status!r}; allowed prefixes: {allowed}"
+        )
+    assert "doc/technical-spec.md" in text, "checklist must route executors to the technical spec"
+
+
 def test_skill_routes_project_tasks_through_pipeline_governance() -> None:
     skill = SKILL.read_text(encoding="utf-8")
     assert "Pipeline Governance" in skill

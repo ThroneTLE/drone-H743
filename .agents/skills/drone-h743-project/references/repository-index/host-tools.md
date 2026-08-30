@@ -4,7 +4,7 @@
 
 Read this shard only when the task uses serial/TCP diagnostics, log analysis, identification, capture, calibration, or desktop UIs.
 
-Source snapshot: `139b6d9df81d`; aggregate snapshot: `ce7def1f86a3`. Covered files: 5289.
+Source snapshot: `ae86e071ca61`; aggregate snapshot: `ce7def1f86a3`. Covered files: 5290.
 
 | File/module or scope | Content outline | Key entry points / size |
 |---|---|---|
@@ -41,6 +41,7 @@ Source snapshot: `139b6d9df81d`; aggregate snapshot: `ce7def1f86a3`. Covered fil
 | `tools/imu_vibration_capture.py` | Capture full-rate raw IMU samples over USB CDC and analyse the vibration spectrum. Why this exists: the flight log (~25… | `crc32`, `parse_header`, `decode_samples`, `rotate_legacy_to_flu`, `validate_v1_provenance`, `CaptureLink` (+9) |
 | `tools/imu_vibration_ui.py` | Point-and-click UI for full-rate raw IMU vibration captures. Pick a COM port, pick a test step, press the button. Each… | `VibrationCaptureUI`, `main` |
 | `tools/imucal_protocol.py` | Host-side encoder and guarded transport for the target IMUCAL protocol | `ImuCalProtocolError`, `EncodedV1Candidate`, `ImuCalTransactionResult`, `encode_v1_candidate`, `load_and_encode_v1_candidate`, `upload_commands` (+5) |
+| `tools/m1_baseline_check.py` | PIPELINE M1 底层与原始数据健康 · 实机基线采集器。 通过 USB CDC 裸文本命令通道（APP_Control_ProcessLine）以固定频率轮询 `IMU?`，在静止条件下累计一段时间的证据，输出结构化 JSON 报… | `poll_once`, `run`, `main` |
 | `tools/organize_data.py` | Move canonical project data into sortable YYYY-MM-DD subdirectories | `CategoryRule`, `MovePlan`, `plan_category`, `build_plan`, `apply_plan`, `parse_args` (+1) |
 | `tools/pressure_rs485_gui.py` | Tkinter GUI for the RS485 Modbus pressure/weight transmitter | `IdentPoint`, `IdentRun`, `LossRow`, `motor_name`, `is_esp_controller`, `percent_to_pulse` (+10) |
 | `tools/pressure_rs485_test.py` | RS485 Modbus-RTU test tool for the 4-channel weighing/pressure transmitter. Manual notes used here: - Protocol: Modbus… | `ReadResult`, `crc16_modbus`, `add_crc`, `check_crc`, `dip_to_addr`, `parse_u16` (+8) |

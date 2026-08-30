@@ -22,7 +22,7 @@ After adding, changing, moving, or deleting a non-ignored repository file, regen
 
 ## Pipeline Governance
 
-`PIPELINE.md` at the repository root is the authoritative mainline/sideline status map for bring-up work. After checking the repository index, read `PIPELINE.md` completely before planning or acting on every project task.
+`PIPELINE.md` at the repository root is the authoritative mainline/sideline status map for bring-up work. After checking the repository index, read `PIPELINE.md` completely before planning or acting on every project task. Work is dispatched through its 执行需求清单 (REQ checklist) under the executor/reviewer protocol in `doc/technical-spec.md`: executors may only set a REQ to 待审核; only the reviewing session marks ✅ after verifying evidence.
 
 - Classify the request against a named mainline or sideline node before changing files.
 - Default to the current mainline node or a direct blocker revealed by it. Do not silently skip prerequisites.
