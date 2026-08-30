@@ -1,4 +1,4 @@
-"""Servo calibration."""
+"""Persistent servo-mechanical calibration and flow-compensation evidence."""
 
 from __future__ import annotations
 

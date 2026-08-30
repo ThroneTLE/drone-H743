@@ -1,5 +1,4 @@
 #include "app_control.h"
-#include "app_control_core.h"
 
 #include "app_aiwb2.h"
 #include "app_acceptance.h"
