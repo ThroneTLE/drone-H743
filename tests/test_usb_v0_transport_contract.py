@@ -5,6 +5,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 CONTROL = ROOT / "App" / "Src" / "app_control.c"
+CONTROL_CORE = ROOT / "App" / "Src" / "app_control_core.c"
 USB_APP = ROOT / "App" / "Src" / "app_usb_cdc.c"
 USB_HEADER = ROOT / "App" / "Inc" / "app_usb_cdc.h"
 USB_IF = ROOT / "USB_DEVICE" / "App" / "usbd_cdc_if.c"
@@ -48,10 +49,10 @@ def test_usb_cdc_is_cubemx_configured_and_routes_received_lines_to_control() -> 
 
 
 def test_structured_v0_replies_are_mirrored_to_usb_and_uart() -> None:
-    source = read(CONTROL)
+    source = read(CONTROL_CORE)
     body = c_function_body(
         source,
-        "static void app_control_queue_proto_text(uint16_t function, const char *format, ...)",
+        "void app_control_queue_proto_text(uint16_t function, const char *format, ...)",
     )
 
     gate_at = body.index("APP_IMU_Capture_IsExportActive() == 0U")
@@ -64,13 +65,13 @@ def test_structured_v0_replies_are_mirrored_to_usb_and_uart() -> None:
 
 
 def test_imucap_binary_export_owns_usb_stream_while_active() -> None:
-    control = read(CONTROL)
+    control = read(CONTROL_CORE)
     assert (
         "IMUCAP export\n     * owns the CDC byte stream while active" in control
     )
     proto_body = c_function_body(
         control,
-        "static void app_control_queue_proto_text(uint16_t function, const char *format, ...)",
+        "void app_control_queue_proto_text(uint16_t function, const char *format, ...)",
     )
     assert "if (APP_IMU_Capture_IsExportActive() == 0U)" in proto_body
 

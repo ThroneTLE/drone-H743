@@ -1,4 +1,5 @@
 #include "app_control.h"
+#include "app_control_internal.h"
 
 #include "app_aiwb2.h"
 #include "app_acceptance.h"
@@ -64,19 +65,6 @@
 #define APP_CONTROL_CFG_VERSION_V15 15U
 #define APP_CONTROL_CFG_ADDRESS     (APP_FLASH_SERVICE_SIZE_BYTES - 4096UL)
 #define APP_CONTROL_MAX_LINE        128U
-/*
- * 一条 IMU? 会连发 8 行文本，上位机必须把其中两行（provenance + 采样值）凑成同一
- * 个 seq 才算一份有效快照。之前这里只给 2ms：HAL_GetTick 是 1ms 粒度，实际预算只有
- * 1~2 个 USB 帧，主机稍微晚一帧收包整行就被丢掉，而返回值又被 (void) 吃掉。结果是
- * 快照永远凑不齐、validation_latest_host_time 永远是 0，界面显示"安全快照已过期"。
- * 同一个任务里 IMUCAP 导出本来就按 50ms/块阻塞，所以 10ms 在该任务的时间尺度内。
- *
- * 契约：APP_Control_QueueText / app_control_queue_proto_text 只允许在通信任务
- * 上下文（APP_UART_Task_Step -> APP_Control_Tick 及命令分发）调用——它们会同步
- * 阻塞等 USB CDC，最坏 3x 本超时。控制环模块（如 app_servo_cal 的 500Hz 状态机）
- * 一律改置事件标志，由 app_control_tick_common 里的 notice 服务补发。
- */
-#define APP_CONTROL_USB_TEXT_TX_TIMEOUT_MS 10U
 /* 与 STABILIZER_RC_LOSS_TIMEOUT_MS 一致：上位机看到的 fresh 要和控制环判定同源。 */
 #define APP_CONTROL_RC_FRESH_TIMEOUT_MS 500U
 #define APP_CONTROL_HEARTBEAT_ENABLED 0U
@@ -245,6 +233,11 @@ static uint8_t control_flash_buf_a[APP_CONTROL_FLASH_BENCH_MAX_LEN];
 __attribute__((section(".dma_buffer"), aligned(32)))
 static uint8_t control_flash_buf_b[APP_CONTROL_FLASH_BENCH_MAX_LEN];
 
+uint8_t app_control_internal_maint_output_active(void)
+{
+    return control_maint_output_active;
+}
+
 static void app_control_handle_param(char **tokens, uint32_t count);
 static void app_control_report_pid_legacy(void);
 static uint8_t app_control_handle_pid_slider_line(const char *line);
@@ -253,17 +246,10 @@ static void app_control_report_usb_cdc_stats(void);
 static void app_control_apply_rc_config(const APP_RcConfig *config);
 static APP_FlashService_Status app_control_save_config(void);
 void APP_Control_QueueText(const char *format, ...);
-static void app_control_queue_proto_text(uint16_t function, const char *format, ...);
 static uint8_t app_control_send_boot_scheduled(void);
 static void app_control_handle_flight_log(char **tokens, uint32_t count);
 static void app_control_handle_imu_capture(char **tokens, uint32_t count);
 static void app_control_dispatch_tokens(char **tokens, uint32_t count, uint8_t emit_ack);
-static uint32_t app_control_tokenize(char *buffer, char **tokens, uint32_t max_tokens);
-static uint8_t app_control_parse_u32(const char *text, uint32_t *value);
-static uint8_t app_control_parse_i32(const char *text, int32_t *value);
-static const char *app_control_token_value(char **tokens,
-                                           uint32_t count,
-                                           const char *key);
 static void app_control_handle_wifi(char **tokens, uint32_t count);
 static void app_control_handle_motor(char **tokens, uint32_t count);
 static void app_control_handle_ident(char **tokens, uint32_t count);
@@ -457,73 +443,7 @@ void APP_Control_QueueText(const char *format, ...)
     }
 }
 
-static void app_control_queue_proto_text(uint16_t function, const char *format, ...)
-{
-    APP_UART_TxMessage tx_message;
-    APP_UART_TxMessage dropped;
-    va_list args;
-    int written;
 
-    if ((format == NULL) || (uartTxQueueHandle == 0)) {
-        return;
-    }
-
-    tx_message.function = function;
-    va_start(args, format);
-    written = vsnprintf(tx_message.text, sizeof(tx_message.text), format, args);
-    va_end(args);
-
-    if (written < 0) {
-        return;
-    }
-
-    if ((uint32_t)written >= sizeof(tx_message.text)) {
-        tx_message.length = (uint16_t)(sizeof(tx_message.text) - 1U);
-        tx_message.text[tx_message.length] = '\0';
-    } else {
-        tx_message.length = (uint16_t)written;
-    }
-
-    /*
-     * Mirror structured text to USB CDC so the V0 validation page can use the
-     * virtual COM port instead of the slower USART1/WiFi path.  IMUCAP export
-     * owns the CDC byte stream while active; injecting text there would corrupt
-     * its binary framing, so USB mirroring is deliberately suspended.
-     */
-    if (APP_IMU_Capture_IsExportActive() == 0U) {
-        (void)APP_USB_CDC_Write((const uint8_t *)tx_message.text,
-                                tx_message.length,
-                                APP_CONTROL_USB_TEXT_TX_TIMEOUT_MS);
-    }
-
-    if (control_maint_output_active == 0U) {
-        if (osMessageQueuePut(uartTxQueueHandle, &tx_message, 0U, 0U) != osOK) {
-            (void)osMessageQueueGet(uartTxQueueHandle, &dropped, 0U, 0U);
-            (void)osMessageQueuePut(uartTxQueueHandle, &tx_message, 0U, 0U);
-        }
-        APP_UART_NotifyTxPending();
-    } else {
-        APP_MaintUART_Write(tx_message.text, tx_message.length);
-    }
-}
-
-static uint32_t app_control_tokenize(char *buffer, char **tokens, uint32_t max_tokens)
-{
-    uint32_t count = 0U;
-    char *token;
-
-    if ((buffer == NULL) || (tokens == NULL) || (max_tokens == 0U)) {
-        return 0U;
-    }
-
-    token = strtok(buffer, " \t\r\n");
-    while ((token != NULL) && (count < max_tokens)) {
-        tokens[count++] = token;
-        token = strtok(NULL, " \t\r\n");
-    }
-
-    return count;
-}
 
 static void app_control_imucal_clear_candidate(void)
 {
@@ -2306,41 +2226,7 @@ static uint8_t app_control_parse_vofa_pwm(const char *text,
     return 1U;
 }
 
-static uint8_t app_control_parse_u32(const char *text, uint32_t *value)
-{
-    char *end_ptr;
-    unsigned long parsed;
 
-    if ((text == NULL) || (value == NULL) || (*text == '\0')) {
-        return 0U;
-    }
-
-    parsed = strtoul(text, &end_ptr, 10);
-    if ((end_ptr == text) || (*end_ptr != '\0')) {
-        return 0U;
-    }
-
-    *value = (uint32_t)parsed;
-    return 1U;
-}
-
-static uint8_t app_control_parse_i32(const char *text, int32_t *value)
-{
-    char *end_ptr;
-    long parsed;
-
-    if ((text == NULL) || (value == NULL) || (*text == '\0')) {
-        return 0U;
-    }
-
-    parsed = strtol(text, &end_ptr, 10);
-    if ((end_ptr == text) || (*end_ptr != '\0')) {
-        return 0U;
-    }
-
-    *value = (int32_t)parsed;
-    return 1U;
-}
 
 static uint8_t app_control_parse_u32_auto(const char *text, uint32_t *value)
 {
@@ -2406,21 +2292,7 @@ static void app_control_report_ident(void)
     APP_Ident_ReportStatus();
 }
 
-static uint32_t app_control_crc32_update(uint32_t crc, const uint8_t *data, uint32_t len)
-{
-    for (uint32_t i = 0U; i < len; ++i) {
-        crc ^= data[i];
-        for (uint32_t bit = 0U; bit < 8U; ++bit) {
-            crc = (crc & 1U) ? ((crc >> 1U) ^ 0xEDB88320UL) : (crc >> 1U);
-        }
-    }
-    return crc;
-}
 
-static uint32_t app_control_crc32(const uint8_t *data, uint32_t len)
-{
-    return app_control_crc32_update(0xFFFFFFFFUL, data, len) ^ 0xFFFFFFFFUL;
-}
 
 static uint8_t app_control_token_u32(char **tokens,
                                      uint32_t count,
@@ -2459,26 +2331,6 @@ static uint32_t app_control_time_us(void)
     return HAL_GetTick() * 1000UL;
 }
 
-static const char *app_control_token_value(char **tokens,
-                                           uint32_t count,
-                                           const char *key)
-{
-    size_t key_len;
-
-    if ((tokens == NULL) || (key == NULL)) {
-        return NULL;
-    }
-
-    key_len = strlen(key);
-    for (uint32_t index = 1U; index < count; ++index) {
-        if ((strncmp(tokens[index], key, key_len) == 0) &&
-            (tokens[index][key_len] == '=')) {
-            return &tokens[index][key_len + 1U];
-        }
-    }
-
-    return NULL;
-}
 
 static const char *app_control_after_param_separator(const char *text)
 {
