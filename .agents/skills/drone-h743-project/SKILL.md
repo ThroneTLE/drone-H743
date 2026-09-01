@@ -97,7 +97,8 @@ Two rules that a green test suite does not satisfy on its own. Any claim about a
 
 Read only the references relevant to the current request:
 
-- Executor work modes (routine REQ / algorithm validation / bug-fix), and when an executor may act on a defect outside the assigned REQ: [references/work-modes.md](references/work-modes.md)
+- Executor work modes — the default layer, the cross-cutting bug-fix mode, and how a per-class mode under `references/modes/` is mounted: [references/work-modes.md](references/work-modes.md)
+- Planning and dispatching work orders, and authoring a new per-class mode before that class is dispatched for the first time: [references/dispatcher-prompt.md](references/dispatcher-prompt.md)
 - FLU body axes, IMU/Fusion/navigation transforms, controller/RC/actuator polarity: [references/flu-coordinate-contract.md](references/flu-coordinate-contract.md)
 - FLASH/GD25Q32 APIs, ownership, naming, or tests: [references/flash-architecture.md](references/flash-architecture.md)
 - `Param`, `backgroundTask`, slow operations, or service/task ownership: [references/runtime-services.md](references/runtime-services.md)

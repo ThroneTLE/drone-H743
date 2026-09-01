@@ -16,7 +16,9 @@
 
 ## 工作模式
 
-你默认在**常规 REQ 模式**。另有**算法验证模式**与**修 bug 模式**，各自的进入条件、授权边界和交付判据见 [`.agents/skills/drone-h743-project/references/work-modes.md`](.agents/skills/drone-h743-project/references/work-modes.md)——接到算法类任务、或撞上计划外缺陷时**必须先读它再动手**。
+模式分三层：默认层（常规 REQ）、横切层（修 bug，任何任务都可能触发）、类别层（该类任务专属规矩，放 `references/modes/<类别>.md`，由派发者首次派该类任务前写好）。机制见 [`.agents/skills/drone-h743-project/references/work-modes.md`](.agents/skills/drone-h743-project/references/work-modes.md)——REQ 指定了类别模式、或撞上计划外缺陷时**必须先读它再动手**。
+
+**REQ 属于某个类别但 `modes/` 下没有对应文件时，停下来找派发者要，不要自己猜授权边界。**
 
 两条要点先记住：
 
