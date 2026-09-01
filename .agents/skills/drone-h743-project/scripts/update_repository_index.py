@@ -278,6 +278,10 @@ def individual_row(path: str, kind: str) -> str:
         # 该信息可从路径直接读出，省下的字节留给分片 32KB 硬限（2026-08-30 F4/F5 扩容裁决）。
         if purpose.startswith("Automated checks for"):
             purpose = "—"
+        # 测试分片每行只列 4 个入口而非 6 个：本分片的用途是"挑到文件"，
+        # 挑中之后就该直接打开文件看，多列的两个名字换不来判断力，却持续
+        # 挤占 32KB 硬限。改密度、不抬限制（延续 2026-08-30 F4/F5 裁决）。
+        return f"| `{path}` | {compact(purpose)} | {symbol_cell(symbols, limit=4)} |"
     return f"| `{path}` | {compact(purpose)} | {symbol_cell(symbols)} |"
 
 

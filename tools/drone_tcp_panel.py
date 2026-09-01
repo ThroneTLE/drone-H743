@@ -3872,6 +3872,12 @@ class DronePanel(ValidationV0PageMixin, EvidenceMixin, AcceptanceV2PageMixin, Vi
             self.flow_latest_gyro_z_dps = safe_float(values.get("gz_dps"))
         elif "gz_mdps" in values:
             self.flow_latest_gyro_z_dps = safe_float(values.get("gz_mdps")) * 0.001
+        elif "gz" in values:
+            # 固件的 `IMU sample seq=` 行按 units=mg_mdps_cdeg 发**裸 gz**（mdps）。
+            # 上面两个名字固件从来没发过，所以旋转补偿阶一直拿不到偏航角速度，
+            # 299 个实采样本无一带 gyro_z（2026-08-30 台架实测）。下面 has_sample
+            # 早就在认裸 "gx" 了，这里只是把漏掉的一半补上。
+            self.flow_latest_gyro_z_dps = safe_float(values.get("gz")) * 0.001
         if "rate_hz" in values and "level" in values:
             self._validation_accept_imu_health(values)
             return
