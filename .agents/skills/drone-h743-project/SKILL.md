@@ -77,7 +77,9 @@ Do not put chip protocols in BSP or reverse the Driver-to-BSP dependency. Before
 
 ## File Size And AI Readability
 
-The author requires bounded file sizes: giant files defeat AI context loading, hunk-level commit splitting, and human review. `tools/drone_tcp_panel.py` (~11k lines) and `App/Src/app_control.c` (~6k lines) are already over budget — never append new features to them; create a new module/file and wire it in (follow the `App/Src/app_stabilizer.c` extraction precedent). Guideline ceilings for hand-written code: roughly 1500 lines per C file and 2000 per Python file; when a change would exceed them, extract a module instead of adding a section. Splitting the existing oversized files is PIPELINE sideline S6 — do not start it mid-bring-up without the author's go-ahead.
+The author requires bounded file sizes: giant files defeat AI context loading, hunk-level commit splitting, and human review. Guideline ceilings for hand-written code: roughly 1500 lines per C file and 2000 per Python file; when a change would exceed them, extract a module instead of adding a section (follow the `App/Src/app_stabilizer.c` extraction precedent).
+
+Sideline S6 finished the scheduled split (panel 11446→5449, `app_control.c` 6257→4131), but **both files are still 2–3× over ceiling**. The append ban therefore stands: never add new features to `tools/drone_tcp_panel.py` or `App/Src/app_control.c` — create a new module and wire it in. Further shrinking of either file is opportunistic, not scheduled; do not start a new extraction mid-bring-up without the author's go-ahead.
 
 ## STM32H743 And FreeRTOS
 
@@ -89,10 +91,13 @@ Keep ISRs short and wake tasks with RTOS primitives. CubeMX-created tasks and RT
 
 Validate in proportion to the change. Inspect existing tests and build presets before choosing commands. For architecture or naming changes, add or update focused contract tests in `tests/*` so removed dependencies and legacy names cannot return. Task-specific references contain focused validation commands where needed.
 
+Two rules that a green test suite does not satisfy on its own. Any claim about an *algorithm's* behaviour must rest on recorded data under `data/`, compared against a baseline on the same dataset — self-authored inputs are for unit tests, never for the conclusion. And when a host tool parses firmware output, pin the test's fixture to the real emitted format (the firmware source format string or a captured line), because a name that firmware never emits fails silently rather than loudly.
+
 ## Task-Specific References
 
 Read only the references relevant to the current request:
 
+- Executor work modes (routine REQ / algorithm validation / bug-fix), and when an executor may act on a defect outside the assigned REQ: [references/work-modes.md](references/work-modes.md)
 - FLU body axes, IMU/Fusion/navigation transforms, controller/RC/actuator polarity: [references/flu-coordinate-contract.md](references/flu-coordinate-contract.md)
 - FLASH/GD25Q32 APIs, ownership, naming, or tests: [references/flash-architecture.md](references/flash-architecture.md)
 - `Param`, `backgroundTask`, slow operations, or service/task ownership: [references/runtime-services.md](references/runtime-services.md)

@@ -4,7 +4,7 @@
 
 Read this shard only when the task needs architecture rationale, controller math, historical evidence, captures, datasets, or agent-support documentation.
 
-Document snapshot: `ebcd9689af8d`; aggregate snapshot: `bce40fdbb9f9`. Covered files: 316.
+Document snapshot: `adfe938c9141`; aggregate snapshot: `bce40fdbb9f9`. Covered files: 317.
 
 ## Documents and agent support
 
@@ -16,6 +16,7 @@ Document snapshot: `ebcd9689af8d`; aggregate snapshot: `bce40fdbb9f9`. Covered f
 | `.agents/skills/drone-h743-project/references/h7-memory-domains.md` | STM32H743 Memory And Domain Notes For This Project | `先记住的结论`, `当前工程 `.ioc` 已暴露的主要内存区`, `项目内推荐的四区分工`, `1. ITCM`, `2. DTCM`, `3. D1 / AXI SRAM` (+5) |
 | `.agents/skills/drone-h743-project/references/progress-notes.md` | drone-H743 Current Bring-Up Notes | `FLASH / GD25Q32`, `Other Bring-Up Facts`, `IMU Frame V0`, `USB DFU / V1 / V2A`, `Ground Calibration Subsystems (2026-08-29 wave)` |
 | `.agents/skills/drone-h743-project/references/runtime-services.md` | Runtime Services And Background Work | `Ownership`, `Focused Validation` |
+| `.agents/skills/drone-h743-project/references/work-modes.md` | 执行者工作模式 | `1. 常规 REQ 模式（默认）`, `2. 算法验证模式`, `何时进入`, `授权`, `判据（验收看这几条，不看"测试绿不绿"）`, `不许做（未经作者单独批准）` (+5) |
 | `.agents/skills/drone-h743-project/scripts/update_repository_index.py` | Build the compact, task-routed repository index used by the project skill | `git_working_files`, `read_bytes`, `read_text`, `compact`, `human_topic`, `c_symbols` (+21) |
 | `.agents/skills/drone-h743-project/SKILL.md` | drone-H743 Project Skill | `Repository Index Workflow`, `Pipeline Governance`, `Project Data Paths`, `Canonical FLU Body Frame`, `Core Boundaries`, `Layering` (+4) |
 | `.claude/settings.local.json` | Project documentation for settings.local | — |
