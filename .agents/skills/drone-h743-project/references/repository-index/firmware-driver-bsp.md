@@ -4,7 +4,7 @@
 
 Read this shard only when the task touches device protocols, reusable algorithms, buses, GPIO, DMA callbacks, cache hooks, or board bindings.
 
-Source snapshot: `e8e0c9722d44`. Indexed files: 76.
+Source snapshot: `3fd5263fca8d`. Indexed files: 76.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -15,7 +15,7 @@ Source snapshot: `e8e0c9722d44`. Indexed files: 76.
 | `Driver/Inc/drv_elrs.h`<br>`Driver/Src/drv_elrs.c` | Reusable device or algorithm driver for elrs | `DRV_ELRS_Init`, `DRV_ELRS_ProcessByte`, `DRV_ELRS_Crc8`, `DRV_ELRS_GetChannels`, `DRV_ELRS_GetLinkStats`, `DRV_ELRS_MarkRcFrameTime` (+9) |
 | `Driver/Inc/drv_frame_contract.h` | Reusable device or algorithm driver for frame contract | `DRV_FRAME_FluToFrd` |
 | `Driver/Inc/drv_gd25q32.h`<br>`Driver/Src/drv_gd25q32.c` | Reusable device or algorithm driver for gd25q32 | `DRV_GD25Q32_Init`, `DRV_GD25Q32_ReleaseFromPowerDown`, `DRV_GD25Q32_ReadJedecId`, `DRV_GD25Q32_ReadStatus1`, `DRV_GD25Q32_ReadStatus2`, `DRV_GD25Q32_ReadStatus3` (+12) |
-| `Driver/Inc/drv_gd25q32_timing_probe.h`<br>`Driver/Src/drv_gd25q32_timing_probe.c` | Reusable device or algorithm driver for gd25q32 timing probe | `DRV_GD25Q32_TimingProbe_TightPollEnabled`, `DRV_GD25Q32_TimingProbe_StartCycles`, `DRV_GD25Q32_TimingProbe_ElapsedUs`, `DRV_GD25Q32_TimingProbe_RecordBlock`, `DRV_GD25Q32_TimingProbe_RecordPage` |
+| `Driver/Inc/drv_gd25q32_timing_probe.h`<br>`Driver/Src/drv_gd25q32_timing_probe.c` | Reusable device or algorithm driver for gd25q32 timing probe | `DRV_GD25Q32_TimingProbe_TightPollEnabled`, `DRV_GD25Q32_TimingProbe_SuspendResumeEnabled`, `DRV_GD25Q32_TimingProbe_StartCycles`, `DRV_GD25Q32_TimingProbe_ElapsedUs`, `DRV_GD25Q32_TimingProbe_RecordBlock`, `DRV_GD25Q32_TimingProbe_RecordPage` (+3) |
 | `Driver/Inc/drv_gps.h`<br>`Driver/Src/drv_gps.c` | Reusable device or algorithm driver for gps | `DRV_GPS_Init`, `DRV_GPS_ConfigureM9NDefault`, `DRV_GPS_Service`, `DRV_GPS_OnUartRxCplt`, `DRV_GPS_OnUartError`, `DRV_GPS_Invalidate` |
 | `Driver/Inc/drv_imu.h`<br>`Driver/Src/drv_imu.c` | Reusable device or algorithm driver for imu | `DRV_IMU_DefaultConfig`, `DRV_IMU_AafSettingForCutoff`, `DRV_IMU_Init`, `DRV_IMU_Reset`, `DRV_IMU_ReadWhoAmI`, `DRV_IMU_ReadRegister` (+9) |
 | `Driver/Inc/drv_imu_calibration.h`<br>`Driver/Src/drv_imu_calibration.c` | Reusable device or algorithm driver for imu calibration | `DRV_IMU_Calibration_Apply` |

@@ -22,13 +22,20 @@ def test_firmware_probe_is_thin_and_keeps_normal_polling_default() -> None:
     driver = (ROOT / "Driver/Src/drv_gd25q32.c").read_text(encoding="utf-8")
     cmake = (ROOT / "CMakeLists.txt").read_text(encoding="utf-8")
 
-    assert "DRV_GD25Q32_TIMING_SAMPLE_CAPACITY 32U" in header
+    assert "DRV_GD25Q32_TIMING_SAMPLE_CAPACITY 64U" in header
     assert "g_drv_gd25q32_timing_probe" in header
     assert "tight_poll_enabled" in header
     assert ".tight_poll_enabled = 0U" in source
     assert "DRV_GD25Q32_TimingProbe_RecordBlock" in source
     assert "DRV_GD25Q32_TimingProbe_RecordPage" in source
+    assert "DRV_GD25Q32_TimingProbe_RecordSuspend" in source
+    assert "DRV_GD25Q32_TimingProbe_RecordResume" in source
+    assert ".suspend_resume_enabled = 0U" in source
     assert "DRV_GD25Q32_TimingProbe_TightPollEnabled" in driver
+    assert "GD25Q32_CMD_PROGRAM_ERASE_SUSPEND 0x75U" in driver
+    assert "GD25Q32_CMD_PROGRAM_ERASE_RESUME  0x7AU" in driver
+    assert "GD25Q32_STATUS2_SUS1" in driver
+    assert "gd25q32_timing_probe_suspend_resume" in driver
     assert "#define GD25Q32_BUSY_POLL_DELAY_MS     1U" in driver
     assert "App/Src/app_control.c" in cmake
     assert "Driver/Src/drv_gd25q32_timing_probe.c" in cmake
@@ -101,3 +108,54 @@ def test_go_requires_twenty_percent_margin_not_merely_250hz() -> None:
     assert barely["go"] is False
     assert clear["throughput_hz"] >= 300.0
     assert clear["go"] is True
+
+
+def test_cooperative_throughput_accounts_for_every_page_and_interruption() -> None:
+    analysis = _load_analysis()
+    result = analysis.cooperative_block_throughput(
+        block_size=32768,
+        sector_size=4096,
+        header_size=256,
+        record_size=528,
+        batch_records=4,
+        page_size=256,
+        block_erase_samples_us=[100_000, 104_205],
+        page_program_samples_us=[800, 1_006],
+        suspend_samples_us=[30, 40],
+        resume_samples_us=[20, 25],
+        required_rate_hz=250.0,
+        required_margin_fraction=0.20,
+    )
+
+    # 8 logical sectors, each opened/written in two background batches.
+    assert result["logical_sectors"] == 8
+    assert result["records_per_block"] == 56
+    assert result["page_programs_per_block"] == 8 * 17
+    assert result["interruptions_per_block"] == 8 * 2
+    expected_us = 104_205 + 8 * 17 * 1_006 + 16 * (40 + 25)
+    assert result["cycle_us"] == expected_us
+    assert abs(result["throughput_hz"] - 56_000_000 / expected_us) < 1e-9
+    assert result["required_with_margin_hz"] == 300.0
+    assert result["go"] is False
+
+
+def test_even_zero_cost_suspend_resume_must_clear_the_300hz_gate() -> None:
+    analysis = _load_analysis()
+    result = analysis.cooperative_block_throughput(
+        block_size=65536,
+        sector_size=4096,
+        header_size=256,
+        record_size=528,
+        batch_records=4,
+        page_size=256,
+        block_erase_samples_us=[152_714],
+        page_program_samples_us=[1_299],
+        suspend_samples_us=[0],
+        resume_samples_us=[0],
+        required_rate_hz=250.0,
+        required_margin_fraction=0.20,
+    )
+
+    assert result["zero_handshake_upper_bound_hz"] < 250.0
+    assert result["throughput_hz"] == result["zero_handshake_upper_bound_hz"]
+    assert result["go"] is False

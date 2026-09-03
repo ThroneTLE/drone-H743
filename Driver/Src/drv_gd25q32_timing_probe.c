@@ -5,16 +5,19 @@
 
 #include <stddef.h>
 
-_Static_assert(sizeof(DRV_GD25Q32_TimingProbe) == 592U,
-               "OpenOCD decoder requires a 148-word probe block");
+_Static_assert(sizeof(DRV_GD25Q32_TimingProbe) == 1680U,
+               "OpenOCD decoder requires a 420-word probe block");
 _Static_assert(offsetof(DRV_GD25Q32_TimingProbe, tight_poll_enabled) == 8U,
                "OpenOCD tight-poll switch offset must stay stable");
+_Static_assert(offsetof(DRV_GD25Q32_TimingProbe, suspend_resume_enabled) == 16U,
+               "OpenOCD suspend/resume switch offset must stay stable");
 
 volatile DRV_GD25Q32_TimingProbe g_drv_gd25q32_timing_probe = {
     .magic = DRV_GD25Q32_TIMING_PROBE_MAGIC,
     .version = DRV_GD25Q32_TIMING_PROBE_VERSION,
     .tight_poll_enabled = 0U,
     .pending_page_block_kb = 0U,
+    .suspend_resume_enabled = 0U,
 };
 
 static void timing_probe_record(volatile DRV_GD25Q32_TimingSeries *series,
@@ -36,6 +39,11 @@ static void timing_probe_record(volatile DRV_GD25Q32_TimingSeries *series,
 uint8_t DRV_GD25Q32_TimingProbe_TightPollEnabled(void)
 {
     return (g_drv_gd25q32_timing_probe.tight_poll_enabled != 0U) ? 1U : 0U;
+}
+
+uint8_t DRV_GD25Q32_TimingProbe_SuspendResumeEnabled(void)
+{
+    return (g_drv_gd25q32_timing_probe.suspend_resume_enabled != 0U) ? 1U : 0U;
 }
 
 uint32_t DRV_GD25Q32_TimingProbe_StartCycles(void)
@@ -82,4 +90,31 @@ void DRV_GD25Q32_TimingProbe_RecordPage(uint32_t elapsed_us)
         return;
     }
     g_drv_gd25q32_timing_probe.pending_page_block_kb = 0U;
+}
+
+void DRV_GD25Q32_TimingProbe_RecordSuspend(uint32_t elapsed_us,
+                                           uint8_t status1,
+                                           uint8_t status2)
+{
+    timing_probe_record(&g_drv_gd25q32_timing_probe.suspend_to_ready,
+                        elapsed_us);
+    g_drv_gd25q32_timing_probe.last_suspend_status1 = status1;
+    g_drv_gd25q32_timing_probe.last_suspend_status2 = status2;
+    g_drv_gd25q32_timing_probe.suspend_success_count++;
+}
+
+void DRV_GD25Q32_TimingProbe_RecordResume(uint32_t elapsed_us,
+                                          uint8_t status1,
+                                          uint8_t status2)
+{
+    timing_probe_record(&g_drv_gd25q32_timing_probe.resume_to_running,
+                        elapsed_us);
+    g_drv_gd25q32_timing_probe.last_resume_status1 = status1;
+    g_drv_gd25q32_timing_probe.last_resume_status2 = status2;
+    g_drv_gd25q32_timing_probe.resume_success_count++;
+}
+
+void DRV_GD25Q32_TimingProbe_RecordHandshakeError(void)
+{
+    g_drv_gd25q32_timing_probe.handshake_error_count++;
 }

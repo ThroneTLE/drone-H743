@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Capture GD25Q32 page/32K/64K timings for the R-M1-3 decision.
+"""Capture GD25Q32 page/block and suspend/resume timings for R-M1-3.
 
 This is deliberately a measurement tool, not the flight-log preerase
 implementation.  It reuses the existing FLOG TESTFILL and FLASH SCRATCH TEST
@@ -31,9 +31,9 @@ from project_paths import (
 
 PROBE_SYMBOL = "g_drv_gd25q32_timing_probe"
 PROBE_MAGIC = 0x544C4646
-PROBE_VERSION = 1
-PROBE_WORDS = 148
-SERIES_WORDS = 36
+PROBE_VERSION = 2
+PROBE_WORDS = 420
+SERIES_WORDS = 68
 TARGET_ADDRESS = 0x00010000
 
 
@@ -136,13 +136,14 @@ def _run_openocd(openocd: Path, scripts: Path, commands: str) -> str:
 
 
 def _arm_probe(openocd: Path, scripts: Path, address: int) -> str:
-    # Header: magic/version/tight/pending. Four series follow, 36 words each.
+    # Twelve header words followed by six 68-word timing series.
     commands = (
+        f"mww 0x{address:08X} 0 {PROBE_WORDS}; "
         f"mww 0x{address:08X} 0x{PROBE_MAGIC:08X}; "
         f"mww 0x{address + 4:08X} 0x{PROBE_VERSION:08X}; "
         f"mww 0x{address + 8:08X} 1; "
         f"mww 0x{address + 12:08X} 0; "
-        f"mww 0x{address + 16:08X} 0 {4 * SERIES_WORDS}"
+        f"mww 0x{address + 16:08X} 1"
     )
     return _run_openocd(openocd, scripts, commands)
 
@@ -165,7 +166,7 @@ def _read_probe_words(openocd: Path, scripts: Path, address: int) -> tuple[list[
 
 def _decode_series(words: list[int], offset: int) -> dict[str, Any]:
     count, min_us, max_us, sum_us = words[offset : offset + 4]
-    stored = min(count, 32)
+    stored = min(count, 64)
     samples = words[offset + 4 : offset + 4 + stored]
     return {
         "count": count,
@@ -181,14 +182,29 @@ def _decode_probe(words: list[int]) -> dict[str, Any]:
         raise RuntimeError(
             f"probe ABI mismatch magic=0x{words[0]:08X} version={words[1]}"
         )
-    names = ("erase_32k", "erase_64k", "page_after_32k", "page_after_64k")
+    names = (
+        "erase_32k",
+        "erase_64k",
+        "page_after_32k",
+        "page_after_64k",
+        "suspend_to_ready",
+        "resume_to_running",
+    )
     result: dict[str, Any] = {
         "magic": words[0],
         "version": words[1],
         "tight_poll_enabled": words[2],
         "pending_page_block_kb": words[3],
+        "suspend_resume_enabled": words[4],
+        "suspend_success_count": words[5],
+        "resume_success_count": words[6],
+        "handshake_error_count": words[7],
+        "last_suspend_status1": words[8],
+        "last_suspend_status2": words[9],
+        "last_resume_status1": words[10],
+        "last_resume_status2": words[11],
     }
-    offset = 4
+    offset = 12
     for name in names:
         result[name] = _decode_series(words, offset)
         offset += SERIES_WORDS
@@ -237,8 +253,35 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--nm", type=Path, default=_default_nm())
     parser.add_argument("--openocd", type=Path, default=_default_openocd())
     parser.add_argument("--openocd-scripts", type=Path, default=_default_openocd_scripts())
+    parser.add_argument("--baseline-capture", type=Path)
     parser.add_argument("--output-dir", type=Path)
     return parser.parse_args()
+
+
+def _load_baseline_capture(path: Path | None) -> tuple[Path, dict[str, Any]]:
+    if path is not None:
+        candidates = [path]
+    else:
+        candidates = sorted(
+            FLIGHT_LOG_FLASH_TIMING_ANALYSIS_DIR.glob(
+                "**/flash_timing_capture_*.json"
+            ),
+            reverse=True,
+        )
+    for candidate in candidates:
+        capture = json.loads(candidate.read_text(encoding="utf-8"))
+        samples = capture.get("samples_us", {})
+        if all(
+            name in samples
+            for name in (
+                "erase_32k",
+                "erase_64k",
+                "page_after_32k",
+                "page_after_64k",
+            )
+        ) and "suspend_to_ready" not in samples:
+            return candidate, capture
+    raise RuntimeError("no pre-suspend baseline timing capture found")
 
 
 def main() -> int:
@@ -253,6 +296,7 @@ def main() -> int:
     if size != PROBE_WORDS * 4:
         raise SystemExit(f"probe size mismatch: ELF={size}, host={PROBE_WORDS * 4}")
 
+    baseline_path, baseline_capture = _load_baseline_capture(args.baseline_capture)
     transcript: list[dict[str, Any]] = []
     transport = SerialTransport(args.serial, args.baud)
     try:
@@ -280,11 +324,32 @@ def main() -> int:
 
     words, read_log = _read_probe_words(args.openocd, args.openocd_scripts, address)
     probe = _decode_probe(words)
-    for name in ("erase_32k", "erase_64k", "page_after_32k", "page_after_64k"):
+    for name in (
+        "erase_32k",
+        "erase_64k",
+        "page_after_32k",
+        "page_after_64k",
+    ):
         if probe[name]["count"] != args.iterations:
             raise SystemExit(
                 f"{name} captured {probe[name]['count']}, expected {args.iterations}"
             )
+    expected_handshakes = args.iterations * 2
+    for name in ("suspend_to_ready", "resume_to_running"):
+        if probe[name]["count"] != expected_handshakes:
+            raise SystemExit(
+                f"{name} captured {probe[name]['count']}, expected {expected_handshakes}"
+            )
+    if probe["handshake_error_count"] != 0:
+        raise SystemExit(f"probe recorded {probe['handshake_error_count']} handshake errors")
+    if (probe["last_suspend_status1"] & 0x01) != 0 or (
+        probe["last_suspend_status2"] & 0x80
+    ) == 0:
+        raise SystemExit(f"invalid suspended status: {probe}")
+    if (probe["last_resume_status1"] & 0x01) == 0 or (
+        probe["last_resume_status2"] & 0x80
+    ) != 0:
+        raise SystemExit(f"invalid resumed status: {probe}")
 
     now = datetime.now().astimezone()
     output_dir = ensure_directory(
@@ -295,12 +360,13 @@ def main() -> int:
     report_path = output_dir / f"flash_timing_analysis_{stamp}.json"
     capture = {
         "format": "drone-h743-flight-log-flash-timing-capture",
-        "schema": 1,
+        "schema": 2,
         "created_at": now.isoformat(),
         "firmware_elf": str(args.elf),
         "probe_symbol_address": f"0x{address:08X}",
         "target_address": f"0x{TARGET_ADDRESS:06X}",
         "iterations_per_block": args.iterations,
+        "baseline_source_capture": str(baseline_path),
         "destructive_scope": (
             "physical flight-log sectors 0..29 at 0x002000..0x01FFFF were "
             "overwritten by prefill; sectors 14..29 were erased at the end"
@@ -310,8 +376,16 @@ def main() -> int:
         "probe": probe,
         "samples_us": {
             name: probe[name]["samples_us"]
-            for name in ("erase_32k", "erase_64k", "page_after_32k", "page_after_64k")
+            for name in (
+                "erase_32k",
+                "erase_64k",
+                "page_after_32k",
+                "page_after_64k",
+                "suspend_to_ready",
+                "resume_to_running",
+            )
         },
+        "baseline_samples_us": baseline_capture["samples_us"],
         "flight_log_layout": {
             "sector_size": 4096,
             "header_size": 256,

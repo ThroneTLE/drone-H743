@@ -19,6 +19,8 @@
 #define GD25Q32_CMD_SECTOR_ERASE       0x20U
 #define GD25Q32_CMD_BLOCK_ERASE_32K    0x52U
 #define GD25Q32_CMD_BLOCK_ERASE_64K    0xD8U
+#define GD25Q32_CMD_PROGRAM_ERASE_SUSPEND 0x75U
+#define GD25Q32_CMD_PROGRAM_ERASE_RESUME  0x7AU
 #define GD25Q32_CMD_READ_JEDEC_ID      0x9FU
 
 #define GD25Q32_DEFAULT_TIMEOUT_MS     100U
@@ -31,10 +33,12 @@
 #define GD25Q32_STATUS1_BUSY           0x01U
 #define GD25Q32_STATUS1_WEL            0x02U
 #define GD25Q32_STATUS1_PROTECT_MASK   0x7CU
+#define GD25Q32_STATUS2_SUS1           0x80U
 #define GD25Q32_STATUS2_CMP            0x40U
 #define GD25Q32_STATUS2_WRITABLE_MASK  0x7BU
 #define GD25Q32_FAST_READ_DUMMY_BYTES  1U
 #define GD25Q32_FAST_READ_CMD_LEN      5U
+#define GD25Q32_TIMING_PROBE_HANDSHAKE_TIMEOUT_US 2000U
 
 __attribute__((section(".dma_buffer"), aligned(32)))
 static uint8_t flash_dma_tx[DRV_GD25Q32_DMA_CHUNK + GD25Q32_FAST_READ_CMD_LEN];
@@ -568,6 +572,84 @@ DRV_GD25Q32_Status DRV_GD25Q32_ReadDataFast(DRV_GD25Q32_Device *dev, uint32_t ad
     return DRV_GD25Q32_OK;
 }
 
+static DRV_GD25Q32_Status gd25q32_timing_probe_wait_status(
+    DRV_GD25Q32_Device *dev,
+    uint8_t expected_busy,
+    uint8_t expected_suspended,
+    uint8_t *status1_out,
+    uint8_t *status2_out)
+{
+    uint32_t start_cycles = DRV_GD25Q32_TimingProbe_StartCycles();
+    uint8_t status1 = 0U;
+    uint8_t status2 = 0U;
+    DRV_GD25Q32_Status status;
+
+    do {
+        status = DRV_GD25Q32_ReadStatus1(dev, &status1);
+        if (status != DRV_GD25Q32_OK) { return status; }
+        status = DRV_GD25Q32_ReadStatus2(dev, &status2);
+        if (status != DRV_GD25Q32_OK) { return status; }
+        if ((((status1 & GD25Q32_STATUS1_BUSY) != 0U) ? 1U : 0U) == expected_busy &&
+            (((status2 & GD25Q32_STATUS2_SUS1) != 0U) ? 1U : 0U) ==
+                expected_suspended) {
+            *status1_out = status1;
+            *status2_out = status2;
+            return DRV_GD25Q32_OK;
+        }
+    } while (DRV_GD25Q32_TimingProbe_ElapsedUs(start_cycles) <
+             GD25Q32_TIMING_PROBE_HANDSHAKE_TIMEOUT_US);
+
+    *status1_out = status1;
+    *status2_out = status2;
+    return DRV_GD25Q32_TIMEOUT;
+}
+
+static DRV_GD25Q32_Status gd25q32_timing_probe_suspend_resume(
+    DRV_GD25Q32_Device *dev,
+    uint32_t align_size)
+{
+    DRV_GD25Q32_Status status;
+    uint32_t start_cycles;
+    uint8_t status1 = 0U;
+    uint8_t status2 = 0U;
+    uint8_t command;
+
+    if ((DRV_GD25Q32_TimingProbe_SuspendResumeEnabled() == 0U) ||
+        ((align_size != DRV_GD25Q32_BLOCK32K_SIZE) &&
+         (align_size != DRV_GD25Q32_BLOCK64K_SIZE))) {
+        return DRV_GD25Q32_OK;
+    }
+
+    status = gd25q32_timing_probe_wait_status(dev, 1U, 0U,
+                                               &status1, &status2);
+    if (status != DRV_GD25Q32_OK) { goto handshake_error; }
+
+    command = GD25Q32_CMD_PROGRAM_ERASE_SUSPEND;
+    start_cycles = DRV_GD25Q32_TimingProbe_StartCycles();
+    status = gd25q32_spi_blocking_tx(dev, &command, 1U);
+    if (status != DRV_GD25Q32_OK) { goto handshake_error; }
+    status = gd25q32_timing_probe_wait_status(dev, 0U, 1U,
+                                               &status1, &status2);
+    if (status != DRV_GD25Q32_OK) { goto handshake_error; }
+    DRV_GD25Q32_TimingProbe_RecordSuspend(
+        DRV_GD25Q32_TimingProbe_ElapsedUs(start_cycles), status1, status2);
+
+    command = GD25Q32_CMD_PROGRAM_ERASE_RESUME;
+    start_cycles = DRV_GD25Q32_TimingProbe_StartCycles();
+    status = gd25q32_spi_blocking_tx(dev, &command, 1U);
+    if (status != DRV_GD25Q32_OK) { goto handshake_error; }
+    status = gd25q32_timing_probe_wait_status(dev, 1U, 0U,
+                                               &status1, &status2);
+    if (status != DRV_GD25Q32_OK) { goto handshake_error; }
+    DRV_GD25Q32_TimingProbe_RecordResume(
+        DRV_GD25Q32_TimingProbe_ElapsedUs(start_cycles), status1, status2);
+    return DRV_GD25Q32_OK;
+
+handshake_error:
+    DRV_GD25Q32_TimingProbe_RecordHandshakeError();
+    return status;
+}
+
 static DRV_GD25Q32_Status gd25q32_block_erase(DRV_GD25Q32_Device *dev,
                                             uint8_t erase_command,
                                             uint32_t address,
@@ -602,6 +684,9 @@ static DRV_GD25Q32_Status gd25q32_block_erase(DRV_GD25Q32_Device *dev,
     command[3] = (uint8_t)address;
 
     status = gd25q32_spi_blocking_tx(dev, command, sizeof(command));
+    if (status != DRV_GD25Q32_OK) { return status; }
+
+    status = gd25q32_timing_probe_suspend_resume(dev, align_size);
     if (status != DRV_GD25Q32_OK) { return status; }
 
     status = gd25q32_wait_while_busy(dev, timeout_ms);
