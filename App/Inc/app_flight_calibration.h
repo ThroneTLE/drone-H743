@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 
+#include "app_servo_type.h"
 #include "drv_coax_ctrl.h"
 #include "drv_imu_calibration.h"
 
@@ -18,7 +19,8 @@ extern "C" {
 #define APP_FLIGHT_CAL_VALID_GYRO        (1U << 2)
 #define APP_FLIGHT_CAL_VALID_GYRO_TEMP   (1U << 3)
 #define APP_FLIGHT_CAL_VALID_SERVO_MECHANICAL (1U << 4)
-#define APP_FLIGHT_CAL_VALID_MASK_SUPPORTED 0x1FU
+#define APP_FLIGHT_CAL_VALID_SERVO_TYPE  (1U << 5)
+#define APP_FLIGHT_CAL_VALID_MASK_SUPPORTED 0x3FU
 #define APP_FLIGHT_CAL_V1_VALID_MASK_SUPPORTED 0x0FU
 
 #define APP_FLIGHT_CAL_V1_CANDIDATE_MAGIC  0x31564349UL /* "ICV1" */
@@ -177,6 +179,12 @@ uint8_t APP_FlightCalibration_UpdateServoMechanical(
 uint8_t APP_FlightCalibration_BuildServoMechanical(
     const APP_FlightCalibration *calibration,
     DRV_COAX_CTRL_ServoCalibration *servo_calibration);
+uint8_t APP_FlightCalibration_UpdateServoType(
+    APP_FlightCalibration *calibration,
+    APP_ServoType servo_type);
+uint8_t APP_FlightCalibration_BuildServoType(
+    const APP_FlightCalibration *calibration,
+    APP_ServoType *servo_type);
 
 uint32_t APP_FlightCalibration_Crc32(const uint8_t *data, uint32_t size);
 void APP_FlightCalibration_UploadReset(APP_FlightCalibrationUpload *upload);

@@ -44,6 +44,7 @@
 #define APP_PROTO_REQ_ACCEPTANCE     0x1021U
 #define APP_PROTO_REQ_RC             0x1022U
 #define APP_PROTO_REQ_RCMAP          0x1023U
+#define APP_PROTO_REQ_SERVOTYPE      0x1024U
 #define APP_PROTO_REQ_SERVO_CAL      0x1024U
 
 #define APP_PROTO_MSG_CMD_LINE  0x2000U
@@ -90,6 +91,7 @@
 #define APP_PROTO_MSG_RC_LIVE           0x2223U
 #define APP_PROTO_MSG_RC_MAP            0x2224U
 #define APP_PROTO_MSG_SERVO_CAL         0x2225U
+#define APP_PROTO_MSG_SERVO_TYPE        0x2226U
 
 /* Temporarily disabled for VOFA migration
 typedef struct {

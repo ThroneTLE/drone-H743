@@ -37,7 +37,9 @@ STEP_A_BODY_SHA256 = {
 STEP_B_LEGACY_BODY_SHA256 = {
     # C extracts only the contiguous SERVOCAL persisted fragment; the rest of
     # sync is pinned by this direct-parent hash and the fragment below.
-    "app_control_imuframe_sync_param": "1d5b5697c1d6b853bb76d6e38dc51268f4960410733dd87a8e1b9cd7ceb35db6",
+    # S7 adds one persisted-servo-type observer beside the existing SERVOCAL
+    # observer; all earlier sync semantics remain pinned by the new full body.
+    "app_control_imuframe_sync_param": "ab1cb18e8324e2b0fced1ebcbc74bbf9ad772078ff0375efa666e7cbbc254e66",
     "app_control_imucal_safety": "87327cf50ef57f4566ad276d868912f8bbac6f3e99524e80b20b2b0b544d4c78",
 }
 STEP_B_ACCESSOR_BODIES = {
@@ -137,8 +139,9 @@ STEP_D1_STATE_NAMES = {
     "control_imucal_last_reason",
 }
 STEP_D1_LEGACY_BODY_SHA256 = {
-    "APP_Control_Init": "915f5da2b411342a25a458a4c172f3cf1716a0bc1d870764764f7cf6489671eb",
-    "app_control_imuframe_sync_param": "1d5b5697c1d6b853bb76d6e38dc51268f4960410733dd87a8e1b9cd7ceb35db6",
+    # S7 adds only servo-type init/sync hooks to these legacy owners.
+    "APP_Control_Init": "29b4da5acc7963cd71b0ce1ca0b3c677ad41b8b4e3f0ac80a9ee1e9a1b01b8f2",
+    "app_control_imuframe_sync_param": "ab1cb18e8324e2b0fced1ebcbc74bbf9ad772078ff0375efa666e7cbbc254e66",
     "app_control_imucal_safety": "87327cf50ef57f4566ad276d868912f8bbac6f3e99524e80b20b2b0b544d4c78",
     "app_control_handle_acceptance": "f10cf7512f9fab6a1e9ccfdc1957e8b2a3d2b5d4803c50b74dc27e3c2627e9a9",
 }
@@ -196,7 +199,8 @@ STEP_D3_ACCESSOR_BODY = """{
 }"""
 STEP_D4_PARENT_COMMIT = "e44770bbaebd836d0df808bee80961db7db5cda0"
 STEP_D4_SYSTEM_BODY_SHA256 = {
-    "app_control_report_caps": "7168dbe1c6c100c96700cdf59edeb18a877bc1b6283609c803e815522e8db25b",
+    # S7 advertises the newly registered SERVOTYPE? command.
+    "app_control_report_caps": "a52912965db6b093fefae217fdbb46117212d5e09ab5a912c7a1cb59f53ea108",
     "app_control_report_wifi": "24b59dc153bd8562e7df5834771ccbf458d42f9093a779f0e3d95cf4d3bfcafe",
     "app_control_report_task_stack": "3b031570d95dbeb1945322c62b579aea15cf1be23552d8914372d43386a08f7b",
     "app_control_report_rtos": "db1ad86880a7e398f9dc5e0ec2e8d0a119b43b3b2e045adec19f010f2f7216de",

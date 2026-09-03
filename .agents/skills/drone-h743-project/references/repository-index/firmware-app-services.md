@@ -4,7 +4,7 @@
 
 Read this shard only when the task touches application behavior, RTOS task bodies, control flow, diagnostics, commands, or synchronous services.
 
-Source snapshot: `e3499182cfb9`. Indexed files: 91.
+Source snapshot: `ef651732d355`. Indexed files: 94.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -20,6 +20,7 @@ Source snapshot: `e3499182cfb9`. Indexed files: 91.
 | `App/Src/app_cmd_imucal.c` | Application behavior and task-facing logic for cmd imucal | `APP_FlightCalibration_ReadActive`, `SVC_Param_IsDirty`, `APP_Sensor_GetFluOrientation`, `APP_FlightCalibration_MergeV1Candidate`, `APP_FlightCalibration_PublishPreview`, `APP_FlightCalibration_UploadExpire` (+1) |
 | `App/Src/app_cmd_rcmap.c` | Application behavior and task-facing logic for cmd rcmap | `APP_RcConfig_Validate` |
 | `App/Src/app_cmd_servocal.c` | Application behavior and task-facing logic for cmd servocal | `APP_Sensor_GetFluOrientation`, `SVC_Param_IsDirty`, `APP_FlightCalibration_UpdateServoMechanical`, `APP_FlightCalibration_PublishPreview` |
+| `App/Src/app_cmd_servotype.c` | Application behavior and task-facing logic for cmd servotype | `APP_Stabilizer_IsArmed`, `APP_ServoType_FromName`, `APP_FlightCalibration_UpdateServoType`, `SVC_Param_IsDirty` |
 | `App/Src/app_cmd_system.c` | Application behavior and task-facing logic for cmd system | `APP_Control_ReportUartStats` |
 | `App/Inc/app_control.h`<br>`App/Src/app_control.c` | Application behavior and task-facing logic for control | `APP_Control_Init`, `APP_Control_Tick`, `APP_Control_QueueText`, `APP_Control_ProcessLine`, `APP_Control_MaintTick`, `APP_Control_ProcessMaintLine` (+2) |
 | `App/Src/app_control_core.c` | Application behavior and task-facing logic for control core | `APP_IMU_Capture_IsExportActive` |
@@ -29,7 +30,7 @@ Source snapshot: `e3499182cfb9`. Indexed files: 91.
 | `App/Inc/app_firmware_identity.h`<br>`App/Src/app_firmware_identity.c` | Application behavior and task-facing logic for firmware identity | `APP_FirmwareIdentity_IsRangeValid`, `APP_FirmwareIdentity_ComputeCrc32`, `APP_FirmwareIdentity_Get`, `APP_FirmwareIdentity_GetCrc32` |
 | `App/Inc/app_flash.h`<br>`App/Src/app_flash.c` | Application behavior and task-facing logic for flash | `APP_Flash_ReportStartup`, `APP_Flash_RefreshStatus`, `APP_Flash_GetStatus` |
 | `App/Inc/app_flash_service.h`<br>`App/Src/app_flash_service.c` | Application behavior and task-facing logic for flash service | `APP_FlashService_Init`, `APP_FlashService_ProbeJedecId`, `APP_FlashService_ReadStatus1`, `APP_FlashService_ReadStatus2`, `APP_FlashService_ReadStatus3`, `APP_FlashService_WriteEnableProbe` (+9) |
-| `App/Inc/app_flight_calibration.h`<br>`App/Src/app_flight_calibration.c` | Application behavior and task-facing logic for flight calibration | `APP_FlightCalibration_Defaults`, `APP_FlightCalibration_Validate`, `APP_FlightCalibration_Encode`, `APP_FlightCalibration_Decode`, `APP_FlightCalibration_UpdateOrientation`, `APP_FlightCalibration_ResetActive` (+18) |
+| `App/Inc/app_flight_calibration.h`<br>`App/Src/app_flight_calibration.c` | Application behavior and task-facing logic for flight calibration | `APP_FlightCalibration_Defaults`, `APP_FlightCalibration_Validate`, `APP_FlightCalibration_Encode`, `APP_FlightCalibration_Decode`, `APP_FlightCalibration_UpdateOrientation`, `APP_FlightCalibration_ResetActive` (+20) |
 | `App/Inc/app_flight_log.h`<br>`App/Src/app_flight_log.c` | Application behavior and task-facing logic for flight log | `APP_FlightLog_Init`, `APP_FlightLog_BackgroundStep`, `APP_FlightLog_Observe`, `APP_FlightLog_GetStatus`, `APP_FlightLog_StartDump`, `APP_FlightLog_CancelDump` (+3) |
 | `App/Inc/app_gps.h`<br>`App/Src/app_gps.c` | Application behavior and task-facing logic for gps | `APP_GPS_Init`, `APP_GPS_Step`, `APP_GPS_GetStatus`, `APP_GPS_Report` |
 | `App/Inc/app_ident.h`<br>`App/Src/app_ident.c` | Application behavior and task-facing logic for ident | `APP_Ident_Init`, `APP_Ident_GetState`, `APP_Ident_IsRunning`, `APP_Ident_ReportStatus`, `APP_Ident_Arm`, `APP_Ident_Disarm` (+15) |
@@ -50,6 +51,7 @@ Source snapshot: `e3499182cfb9`. Indexed files: 91.
 | `App/Inc/app_servo_feedback.h`<br>`App/Src/app_servo_feedback.c` | Application behavior and task-facing logic for servo feedback | `APP_ServoFeedback_Init`, `APP_ServoFeedback_Service`, `APP_ServoFeedback_GetLogSample` |
 | `App/Inc/app_servo_feedback_bench.h`<br>`App/Src/app_servo_feedback_bench.c` | Application behavior and task-facing logic for servo feedback bench | `APP_ServoFeedbackBench_Init`, `APP_ServoFeedbackBench_Start`, `APP_ServoFeedbackBench_StartSweep`, `APP_ServoFeedbackBench_StartStep`, `APP_ServoFeedbackBench_Stop`, `APP_ServoFeedbackBench_ReportStatus` (+5) |
 | `App/Inc/app_servo_jog.h`<br>`App/Src/app_servo_jog.c` | Application behavior and task-facing logic for servo jog | `APP_ServoJog_Init`, `APP_ServoJog_HandleCommand`, `APP_ServoJog_Request`, `APP_ServoJog_ReleaseAll`, `APP_ServoJog_IsActive`, `APP_ServoJog_Apply` (+2) |
+| `App/Inc/app_servo_type.h`<br>`App/Src/app_servo_type.c` | Application behavior and task-facing logic for servo type | `APP_ServoType_IsValid`, `APP_ServoType_Name`, `APP_ServoType_FromName`, `APP_ServoType_ResetActive`, `APP_ServoType_PublishActive`, `APP_ServoType_GetActive` (+1) |
 | `App/Inc/app_stabilizer.h`<br>`App/Src/app_stabilizer.c` | Application behavior and task-facing logic for stabilizer | `APP_Stabilizer_LatchImuFault`, `APP_Stabilizer_ClearImuFault`, `APP_Stabilizer_MarkImuSample`, `APP_Stabilizer_ReadVofaDebug`, `APP_Stabilizer_ReadValidationImuSnapshot`, `APP_Stabilizer_ReadFlowCompensationSnapshot` (+7) |
 | `App/Inc/app_tasks.h`<br>`App/Src/app_tasks.c` | Application behavior and task-facing logic for tasks | `APP_Task_LED_Init`, `APP_Task_LED_Step`, `APP_Task_GPS_Init`, `APP_Task_GPS_Step`, `APP_Task_OpticalFlow_Init`, `APP_Task_OpticalFlow_Step` (+10) |
 | `App/Inc/app_telemetry.h`<br>`App/Src/app_telemetry.c` | Application behavior and task-facing logic for telemetry | `APP_Telemetry_ChannelCount`, `APP_Telemetry_GetChannel`, `APP_Telemetry_SchemaHash`, `APP_Telemetry_ReportHeader`, `APP_Telemetry_ReportPage` |

@@ -326,7 +326,11 @@ uint8_t APP_FlightCalibration_Validate(
         (app_flight_cal_matrix_valid(calibration->gyro_correction) == 0U) ||
         (((calibration->valid_mask &
            APP_FLIGHT_CAL_VALID_SERVO_MECHANICAL) != 0U) &&
-         (app_flight_cal_servo_valid(&servo_calibration) == 0U))) {
+         (app_flight_cal_servo_valid(&servo_calibration) == 0U)) ||
+        (((calibration->valid_mask &
+           APP_FLIGHT_CAL_VALID_SERVO_TYPE) != 0U) &&
+         !APP_SERVO_TYPE_IS_VALID(
+             (APP_ServoType)calibration->v2_actuator_mapping))) {
         return 0U;
     }
     return 1U;
@@ -652,6 +656,39 @@ uint8_t APP_FlightCalibration_BuildServoMechanical(
     memcpy(servo_calibration->pulse_sign, calibration->servo_pulse_sign,
            sizeof(servo_calibration->pulse_sign));
     return app_flight_cal_servo_valid(servo_calibration);
+}
+
+uint8_t APP_FlightCalibration_UpdateServoType(
+    APP_FlightCalibration *calibration,
+    APP_ServoType servo_type)
+{
+    if ((APP_FlightCalibration_Validate(calibration) == 0U) ||
+        !APP_SERVO_TYPE_IS_VALID(servo_type)) {
+        return 0U;
+    }
+    calibration->v2_actuator_mapping = (uint8_t)servo_type;
+    calibration->valid_mask |= APP_FLIGHT_CAL_VALID_SERVO_TYPE;
+    ++calibration->calibration_generation;
+    if (calibration->calibration_generation == 0U) {
+        calibration->calibration_generation = 1U;
+    }
+    return APP_FlightCalibration_Validate(calibration);
+}
+
+uint8_t APP_FlightCalibration_BuildServoType(
+    const APP_FlightCalibration *calibration,
+    APP_ServoType *servo_type)
+{
+    if (servo_type == NULL) {
+        return 0U;
+    }
+    *servo_type = APP_SERVO_TYPE_BUS;
+    if ((APP_FlightCalibration_Validate(calibration) == 0U) ||
+        ((calibration->valid_mask & APP_FLIGHT_CAL_VALID_SERVO_TYPE) == 0U)) {
+        return 0U;
+    }
+    *servo_type = (APP_ServoType)calibration->v2_actuator_mapping;
+    return 1U;
 }
 
 uint32_t APP_FlightCalibration_Crc32(const uint8_t *data, uint32_t size)

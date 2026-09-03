@@ -56,6 +56,11 @@ void app_cmd_servocal_init(void);
 void app_cmd_servocal_on_persisted(const void *record);
 uint8_t app_cmd_servocal_is_busy(void);
 
+void app_cmd_servotype_init(void);
+void app_cmd_servotype_on_persisted(const void *record);
+void app_control_handle_servotype(char **tokens, uint32_t count);
+void app_control_service_servotype(void);
+
 void app_control_report_rc_live(void);
 void app_control_handle_rc_map(char *tokens[], uint32_t count);
 void app_cmd_rcmap_apply_config(const void *config);

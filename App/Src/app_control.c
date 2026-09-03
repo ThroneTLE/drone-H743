@@ -411,6 +411,7 @@ static void app_control_imuframe_sync_param(void)
     }
 
     app_cmd_servocal_on_persisted(&calibration);
+    app_cmd_servotype_on_persisted(&calibration);
 
     control_imuframe_confirmed_code = orientation_code;
     control_imuframe_pending_code = orientation_code;
@@ -3720,6 +3721,7 @@ void APP_Control_Init(void)
     app_control_imucal_set_event("init", "none");
     APP_Stabilizer_SetImuCalibrationCandidateArmLock(0U);
     app_cmd_servocal_init();
+    app_cmd_servotype_init();
     app_control_defaults(&control_config);
     control_imuframe_confirmed_code = APP_SENSOR_FLU_ORIENTATION_LEGACY;
     control_imuframe_pending_code = APP_SENSOR_FLU_ORIENTATION_LEGACY;
@@ -3794,6 +3796,7 @@ static void app_control_tick_common(uint8_t emit_heartbeat)
     app_control_imuframe_sync_param();
     app_control_service_imucal();
     app_control_service_servocal();
+    app_control_service_servotype();
     APP_Acceptance_Service(HAL_GetTick());
     app_control_service_wifi_reset();
     app_control_service_flash_autosave();
@@ -3935,6 +3938,9 @@ static void app_control_dispatch_tokens(char **tokens, uint32_t count, uint8_t e
     } else if ((strcmp(tokens[0], "SERVOCAL?") == 0) ||
                (strcmp(tokens[0], "SERVOCAL") == 0)) {
         app_control_handle_servocal(tokens, count);
+    } else if ((strcmp(tokens[0], "SERVOTYPE?") == 0) ||
+               (strcmp(tokens[0], "SERVOTYPE") == 0)) {
+        app_control_handle_servotype(tokens, count);
     } else if ((strcmp(tokens[0], "ACCEPT?") == 0) ||
                (strcmp(tokens[0], "ACCEPT") == 0)) {
         app_control_handle_acceptance(tokens, count);

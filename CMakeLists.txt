@@ -99,6 +99,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     App/Src/app_control.c
     App/Src/app_control_core.c
     App/Src/app_cmd_servocal.c
+    App/Src/app_cmd_servotype.c
     App/Src/app_cmd_imucal.c
     App/Src/app_cmd_rcmap.c
     App/Src/app_cmd_flow.c
@@ -118,6 +119,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     App/Src/app_rc_config.c
     App/Src/app_ident.c
     App/Src/app_servo_cal.c
+    App/Src/app_servo_type.c
     App/Src/app_servo_jog.c
     App/Src/app_servo_feedback.c
     App/Src/app_servo_feedback_bench.c
