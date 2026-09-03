@@ -4,7 +4,7 @@
 
 Read this shard only when the task uses serial/TCP diagnostics, log analysis, identification, capture, calibration, or desktop UIs.
 
-Source snapshot: `3462ff8cf14a`; aggregate snapshot: `ce7def1f86a3`. Covered files: 5309.
+Source snapshot: `80c41f817717`; aggregate snapshot: `ce7def1f86a3`. Covered files: 5310.
 
 | File/module or scope | Content outline | Key entry points / size |
 |---|---|---|
@@ -24,7 +24,7 @@ Source snapshot: `3462ff8cf14a`; aggregate snapshot: `ce7def1f86a3`. Covered fil
 | `tools/flash_stlink_gdb.ps1` | Host-side utility for flash stlink gdb | — |
 | `tools/flash_timing_analysis.py` | Calculate conservative flight-log throughput from real Flash timings | `page_program_operations`, `page_programs_per_sector`, `distribution`, `overhead_distribution`, `block_throughput`, `cooperative_block_throughput` (+4) |
 | `tools/flash_timing_capture.py` | Capture GD25Q32 page/block and suspend/resume timings for R-M1-3. This is deliberately a measurement tool, not the flig… | `parse_args`, `main` |
-| `tools/flight_acceptance_v2.py` | Strict, evidence-only V2A flight-control acceptance engine | `AcceptanceStatus`, `V2Stage`, `StageDefinition`, `V2Thresholds`, `V2Sample`, `PhysicalConfirmation` (+14) |
+| `tools/flight_acceptance_v2.py` | Strict, evidence-only V2A flight-control acceptance engine | `AcceptanceStatus`, `ServoType`, `V2Stage`, `StageDefinition`, `V2Thresholds`, `V2Sample` (+15) |
 | `tools/flight_log_receive.py` | Receive FlightLog dumps from USART1 and convert them to bin/csv/json | `FlightLogError`, `ExportBegin`, `ExportBlock`, `ExportEnd`, `ReceiveResult`, `crc32` (+25) |
 | `tools/flight_log_rerun_replay.py` | 把 H743 飞行日志导出为 Rerun 现场回放。 坐标系契约（seam 5 具名标注 R-F5，逐文件选口径 R-F5b，2026-08-30） 本工具的回放几何固定为 **X前/Y右/Z下**（见 rpy_body_to_local… | `ReplaySegment`, `require_pandas`, `require_rerun`, `latest_csv_in`, `resolve_csv_path`, `safe_float` (+31) |
 | `tools/flight_log_sysid.py` | Reusable system-identification summaries for H743 flight-log CSV files | `ChannelStats`, `SegmentSummary`, `GainGroupSummary`, `LinearFit`, `TuningAdvice`, `FlightLogAnalysis` (+39) |
@@ -55,7 +55,8 @@ Source snapshot: `3462ff8cf14a`; aggregate snapshot: `ce7def1f86a3`. Covered fil
 | `tools/panel_lib/pages/flow_ranging.py` | Optical-flow / combined-ranging ground calibration page and its handlers | `FlowRangingPageMixin` |
 | `tools/panel_lib/pages/mechanical.py` | Servo-mechanical calibration page builder and handlers | `MechanicalPageMixin` |
 | `tools/panel_lib/pages/rc_wizard.py` | RC mapping and guided-calibration page builder and handlers | `rc_channel_travel`, `rc_detect_channel`, `rc_map_is_valid`, `rc_wizard_dominant`, `rc_wizard_step_ready`, `rc_wizard_window_stable` (+4) |
-| `tools/panel_lib/pages/servo_debug.py` | Bus-servo debug page builders and handlers | `ServoDebugPageMixin` |
+| `tools/panel_lib/pages/servo_debug.py` | Servo output debug page and the BUS/PWM host controls | `ServoDebugPageMixin` |
+| `tools/panel_lib/pages/servo_type_controls.py` | BUS/PWM servo type transaction controls for the host panel | `ServoTypeControlsMixin` |
 | `tools/panel_lib/pages/v1_metrology.py` | V1 IMU metrology page builder and handlers | `V1PageMixin` |
 | `tools/panel_lib/pages/validation_v0.py` | V0 coordinate-frame and polarity validation page | `v0_workflow_guidance`, `ValidationV0PageMixin` |
 | `tools/panel_lib/pages/vibration.py` | Vibration/filter placeholder page | `VibrationPageMixin` |

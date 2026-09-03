@@ -4,7 +4,7 @@
 
 Read this shard only when the task touches application behavior, RTOS task bodies, control flow, diagnostics, commands, or synchronous services.
 
-Source snapshot: `ef651732d355`. Indexed files: 94.
+Source snapshot: `70718d4fe6f7`. Indexed files: 96.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -47,6 +47,7 @@ Source snapshot: `ef651732d355`. Indexed files: 94.
 | `App/Inc/app_rangefinder.h`<br>`App/Src/app_rangefinder.c` | Application behavior and task-facing logic for rangefinder | `APP_Rangefinder_Init`, `APP_Rangefinder_Step`, `APP_Rangefinder_GetHeightSample`, `APP_Rangefinder_GetStatus`, `APP_Rangefinder_Report` |
 | `App/Inc/app_rc_config.h`<br>`App/Src/app_rc_config.c` | Application behavior and task-facing logic for rc config | `APP_RcConfig_Defaults`, `APP_RcConfig_Validate`, `APP_RcConfig_FunctionName`, `APP_RcConfig_FunctionFromName`, `APP_RcConfig_Normalize`, `APP_RcConfig_Throttle01` (+5) |
 | `App/Inc/app_sensor.h`<br>`App/Src/app_sensor.c` | Application behavior and task-facing logic for sensor | `APP_IMU_RawToScaled`, `APP_IMU_ConvertBaro`, `APP_Sensor_LpfInit`, `APP_Sensor_LpfApply`, `APP_Sensor_LpfApply3f`, `APP_Sensor_CalibrateGyroBias` (+13) |
+| `App/Inc/app_servo_bus_guard.h`<br>`App/Src/app_servo_bus_guard.c` | Application behavior and task-facing logic for servo bus guard | `APP_ServoBusGuard_IsPwmMode`, `APP_ServoBusGuard_IsBusOnlyCommand` |
 | `App/Inc/app_servo_cal.h`<br>`App/Src/app_servo_cal.c` | Application behavior and task-facing logic for servo cal | `APP_ServoCal_Init`, `APP_ServoCal_Step`, `APP_ServoCal_IsActive`, `APP_ServoCal_GetState`, `APP_ServoCal_TakeNotice` |
 | `App/Inc/app_servo_feedback.h`<br>`App/Src/app_servo_feedback.c` | Application behavior and task-facing logic for servo feedback | `APP_ServoFeedback_Init`, `APP_ServoFeedback_Service`, `APP_ServoFeedback_GetLogSample` |
 | `App/Inc/app_servo_feedback_bench.h`<br>`App/Src/app_servo_feedback_bench.c` | Application behavior and task-facing logic for servo feedback bench | `APP_ServoFeedbackBench_Init`, `APP_ServoFeedbackBench_Start`, `APP_ServoFeedbackBench_StartSweep`, `APP_ServoFeedbackBench_StartStep`, `APP_ServoFeedbackBench_Stop`, `APP_ServoFeedbackBench_ReportStatus` (+5) |

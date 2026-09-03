@@ -30,6 +30,7 @@ Readers search category roots recursively. Files with no trustworthy date token 
 | `telemetry/YYYY-MM-DD/` | Ad-hoc barometer/GPS exports | Ground-station panel |
 | `analysis/.../YYYY-MM-DD/` | Derived reports and Rerun artifacts | Offline analysis tools |
 | `analysis/flight_log_flash_timing/YYYY-MM-DD/` | GD25Q32 page-program/block-erase timing captures and throughput decisions | R-M1-3 Flash timing probe |
+| `analysis/servo_type/YYYY-MM-DD/` | 舵机BUS/PWM类型持久化、命令守卫与双输出路径实机证据 | S7舵机类型验收 |
 | `logs/.../YYYY-MM-DD/` | Miscellaneous local runtime logs | Manual diagnostics |
 | `firmware_updates/YYYY-MM-DD/` | USB ROM DFU programming/verification logs | Ground-station firmware-update page |
 
