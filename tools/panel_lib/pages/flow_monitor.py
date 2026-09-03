@@ -72,9 +72,10 @@ class FlowMonitorPageMixin:
         ttk.Label(
             parent,
             text=(
-                "本页选中时才按 5 Hz 发 FLOW?，切走即停。质量、高度、速度直接来自固件回包；"
-                "累计位移是上位机按真实经过时间对速度做的梯形积分，固件并不保存这个量，"
-                "所以“重置”只清本地累加，不会向飞控发任何命令。"
+                "本页选中时才按 5 Hz 发 FLOW?，切走即停。质量、高度、速度直接来自固件回包。"
+                "累计位移有两份口径：上位机这份是对回包里的传感器系速度按墙钟时间做梯形积分，"
+                "可本地清零；固件那份（R-M5-5 起的 FLOW nav）积的是飞控真正在用的融合速度、"
+                "步长走传感器自己的时间轴，只读、清零要重启或估计器复位。"
             ),
             style="Muted.TLabel", wraplength=1120,
         ).pack(fill=tk.X, pady=(4, 10))
@@ -121,27 +122,43 @@ class FlowMonitorPageMixin:
         self.flow_monitor_quality_bar = bar
 
     def _build_flow_monitor_displacement(self, parent: ttk.Frame) -> None:
-        box = ttk.LabelFrame(parent, text="累计位移（上位机按真实时间积分）", padding=10)
+        box = ttk.LabelFrame(parent, text="累计位移", padding=10)
         box.pack(fill=tk.X, pady=(10, 0))
         box.columnconfigure(1, weight=1)
 
-        for row, (key, label) in enumerate((("dx", "X 累计"), ("dy", "Y 累计"))):
-            self.flow_monitor_vars[key] = tk.StringVar(value="+0.000 m")
+        rows = (
+            ("dx", "X 累计（上位机）"),
+            ("dy", "Y 累计（上位机）"),
+            ("fw_dx", "X 累计（固件）"),
+            ("fw_dy", "Y 累计（固件）"),
+            ("fw_steps", "固件积分"),
+        )
+        for row, (key, label) in enumerate(rows):
+            self.flow_monitor_vars[key] = tk.StringVar(
+                value="+0.000 m" if key in ("dx", "dy") else "-"
+            )
             ttk.Label(box, text=label).grid(row=row, column=0, sticky=tk.W, padx=(0, 10), pady=3)
             value = ttk.Label(box, textvariable=self.flow_monitor_vars[key], style="Mono.TLabel")
             value.grid(row=row, column=1, sticky=tk.W, pady=3)
             self.flow_monitor_value_labels[key] = value
 
         self.flow_monitor_reset_button = ttk.Button(
-            box, text="重置累计位移", command=self._flow_monitor_reset_displacement,
+            box, text="重置累计位移（仅上位机）", command=self._flow_monitor_reset_displacement,
             style="Secondary.TButton",
         )
-        self.flow_monitor_reset_button.grid(row=2, column=0, columnspan=2, sticky=tk.W, pady=(8, 0))
+        self.flow_monitor_reset_button.grid(
+            row=len(rows), column=0, columnspan=2, sticky=tk.W, pady=(8, 0)
+        )
         ttk.Label(
             box,
-            text="速度无效的采样一律不参与积分，那段时间按“暂停”处理，既不补 0 也不外推。",
+            text=(
+                "上位机这份：速度无效的采样一律不参与积分，那段时间按“暂停”处理，"
+                "既不补 0 也不外推。\n"
+                "固件那份：只有被 EKF 采纳的光流样本才推进一步，所以“步数 0”意味着"
+                "没有可用量测，不是没动过。"
+            ),
             style="Muted.TLabel", wraplength=380, justify=tk.LEFT,
-        ).grid(row=3, column=0, columnspan=2, sticky=tk.W, pady=(6, 0))
+        ).grid(row=len(rows) + 1, column=0, columnspan=2, sticky=tk.W, pady=(6, 0))
 
     def _build_flow_monitor_plots(self, parent: ttk.Frame) -> None:
         velocity_box = ttk.LabelFrame(parent, text="速度曲线 vx / vy (m/s)", padding=8)
@@ -197,9 +214,13 @@ class FlowMonitorPageMixin:
         if not hasattr(self, "flow_monitor_values"):
             return
         section = self._flow_monitor_section(line)
-        if section not in ("status", "mico", "data"):
+        if section not in ("status", "mico", "data", "nav"):
             return
         self.flow_monitor_values.update(parse_kv(line))
+        if section == "nav":
+            # 固件侧的位置/位移是另一套口径（融合速度 + 传感器时间轴），只显示不落帧。
+            self._flow_monitor_refresh_displacement()
+            return
         if section != "data":
             return
         # data 段是一次回包里最后一段带速度和高度的，走到这里三段已经齐了。
@@ -319,11 +340,30 @@ class FlowMonitorPageMixin:
         self._flow_monitor_refresh_displacement()
 
     def _flow_monitor_refresh_displacement(self) -> None:
+        if not self.flow_monitor_vars:
+            return
         self.flow_monitor_vars["frames"].set(
             f"{self.flow_monitor_frames} 帧，其中 {self.flow_monitor_invalid_frames} 帧速度无效"
         )
         self.flow_monitor_vars["dx"].set(f"{self.flow_monitor_dx_m:+.3f} m")
         self.flow_monitor_vars["dy"].set(f"{self.flow_monitor_dy_m:+.3f} m")
+
+        values = self.flow_monitor_values
+        if "disp_x_mm" not in values:
+            # 老固件没有 FLOW nav 这一行，如实标注而不是显示一个假的 0。
+            for key in ("fw_dx", "fw_dy", "fw_steps"):
+                self.flow_monitor_vars[key].set("固件未上报（需 R-M5-5 之后的固件）")
+            return
+        self.flow_monitor_vars["fw_dx"].set(
+            f"{safe_int(values.get('disp_x_mm'), 0) * 0.001:+.3f} m"
+        )
+        self.flow_monitor_vars["fw_dy"].set(
+            f"{safe_int(values.get('disp_y_mm'), 0) * 0.001:+.3f} m"
+        )
+        self.flow_monitor_vars["fw_steps"].set(
+            f"{safe_int(values.get('steps'), 0)} 步，最近步长 "
+            f"{safe_int(values.get('dt_us'), 0)} µs"
+        )
 
     def _flow_monitor_tick(self) -> None:
         now_ns = time.monotonic_ns()

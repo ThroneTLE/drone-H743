@@ -167,13 +167,21 @@ uint32_t SVC_FlowNav_GetLastGoodMs(void);
 uint8_t SVC_FlowNav_Fuse(const SVC_FLOW_NAV_FuseInput *input);
 void SVC_FlowNav_GetVelocity(float *vx_m_s, float *vy_m_s);
 void SVC_FlowNav_GetPosition(float *x_m, float *y_m);
-/* 未限幅的累计位移，与位置同源同步长，只是不做安全限幅。 */
+/*
+ * 未限幅的累计位移（里程计），与位置同源同步长，只是不做安全限幅，
+ * 也不随控制模式切换归零。
+ */
 void SVC_FlowNav_GetDisplacement(float *dx_m, float *dy_m);
 uint32_t SVC_FlowNav_GetIntegratedStepCount(void);
 uint32_t SVC_FlowNav_GetLastIntegrationDtUs(void);
-/* 低油门直通 / 尚无 IMU 姿态时把估计器整体归零。 */
+/*
+ * 低油门直通 / 尚无 IMU 姿态时把估计器与控制位置归零。稳定环每个控制周期都会
+ * 调，所以这条路径**不碰**累计位移。
+ */
 void SVC_FlowNav_ResetEstimator(void);
 void SVC_FlowNav_ResetPosition(void);
+/* 里程计归零，只在传感器重初始化或显式请求时调。 */
+void SVC_FlowNav_ResetDisplacement(void);
 void SVC_FlowNav_GetEkfDiagnostics(DRV_NAV_EKF_Diagnostics *diagnostics);
 
 #ifdef __cplusplus

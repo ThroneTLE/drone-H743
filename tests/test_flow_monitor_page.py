@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import tkinter as tk
+from pathlib import Path
 
 import pytest
 
@@ -55,6 +56,7 @@ class FakeTransport:
 def flow_reply(
     *, valid: int = 1, vel_valid: int = 1, height_valid: int = 1,
     quality: int = 180, vx_mm_s: int = 0, vy_mm_s: int = 0, height_mm: int = 400,
+    fw_disp_x_mm: int = 0, fw_disp_y_mm: int = 0, fw_steps: int = 0,
 ) -> list[str]:
     """一次 `FLOW?` 的真实回包形状：4 行来自 APP_OpticalFlow_Report + 2 行补偿快照。"""
     return [
@@ -77,6 +79,12 @@ def flow_reply(
         (
             "FLOW raw n=5 vx_avg=3 vy_avg=-2 dt_avg=10000 dist_avg=405 "
             "strength_avg=90 q_avg=180 vx_pp=1 vy_pp=1 dt_pp=10 dist_pp=2"
+        ),
+        # R-M5-5 追加的固件侧导航行：融合速度 + 传感器时间轴积分出来的位移。
+        (
+            f"FLOW nav pos_x_mm={fw_disp_x_mm} pos_y_mm={fw_disp_y_mm} "
+            f"disp_x_mm={fw_disp_x_mm} disp_y_mm={fw_disp_y_mm} "
+            f"vel_x_mm_s=0 vel_y_mm_s=0 steps={fw_steps} dt_us=10000"
         ),
         # 这一行的 valid 说的是旋转补偿快照，不是光流本身。
         "FLOW comp valid=0 export=canonical_flu reason=no_snapshot",
@@ -330,3 +338,52 @@ def test_calibration_page_parsing_still_works(app) -> None:
     # 监控页按段收，所以两边的 valid 现在本来就不是同一个值。
     assert app.flow_diag_values.get("valid") == "0"
     assert app.flow_monitor_values["valid"] == "1"
+
+
+# ------------------------------------------------- 固件侧累计位移（R-M5-5 之后）
+
+
+def test_firmware_displacement_is_shown_alongside_the_host_one(app) -> None:
+    """R-M5-5 之后固件自己也积位移，页面不能再声称“固件并不保存这个量”。"""
+    feed(app, fw_disp_x_mm=1250, fw_disp_y_mm=-380, fw_steps=417)
+
+    assert app.flow_monitor_vars["fw_dx"].get() == "+1.250 m"
+    assert app.flow_monitor_vars["fw_dy"].get() == "-0.380 m"
+    assert "417 步" in app.flow_monitor_vars["fw_steps"].get()
+    assert "10000 µs" in app.flow_monitor_vars["fw_steps"].get()
+    # 两份口径互不干扰：固件那份不进上位机的积分状态。
+    assert app.flow_monitor_dx_m == pytest.approx(0.0)
+    assert len(app.flow_monitor_samples) == 1
+
+
+def test_firmware_displacement_reports_absence_instead_of_a_fake_zero(app) -> None:
+    """老固件不发 FLOW nav 时必须如实标注，不能显示成 0.000 m 让人以为没动。"""
+    for line in flow_reply():
+        if not line.startswith("FLOW nav "):
+            app._handle_board_line(line)
+
+    for key in ("fw_dx", "fw_dy", "fw_steps"):
+        assert "固件未上报" in app.flow_monitor_vars[key].get()
+
+
+def test_local_reset_does_not_touch_the_firmware_accumulator(app) -> None:
+    feed(app, fw_disp_x_mm=1250, fw_steps=417)
+    app.clock.advance(0.2)
+    feed(app, vx_mm_s=1000, fw_disp_x_mm=1250, fw_steps=417)
+
+    sent_before = list(app.transport.lines)
+    app.flow_monitor_reset_button.invoke()
+
+    assert app.flow_monitor_dx_m == 0.0
+    # 固件那份是只读的，本地归零动不了它，也不许为此发帧。
+    assert app.flow_monitor_vars["fw_dx"].get() == "+1.250 m"
+    assert app.transport.lines == sent_before
+
+
+def test_page_text_no_longer_claims_the_firmware_has_no_displacement() -> None:
+    source = (
+        Path(flow_monitor_page.__file__).read_text(encoding="utf-8")
+    )
+    assert "固件并不保存这个量" not in source
+    assert "累计位移（上位机按真实时间积分）" not in source
+    assert "FLOW nav" in source

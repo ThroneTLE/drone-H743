@@ -4,7 +4,7 @@
 
 Read this shard only when you need existing behavioral/architecture coverage or must choose focused regression tests.
 
-Source snapshot: `2a14fa580843`. Indexed files: 101.
+Source snapshot: `931ea38e9274`. Indexed files: 101.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -41,8 +41,8 @@ Source snapshot: `2a14fa580843`. Indexed files: 101.
 | `tests/test_flight_log_waveform_ui.py` | — | `test_waveform_ui_helpers_do_not_start_tk`, `test_waveform_ui_exposes_folder_file_channel_plot_workflow` |
 | `tests/test_flight_log_workbench.py` | — | `test_workbench_helpers_build_segment_labels_and_presets`, `test_workbench_rerun_command_uses_isolated_wrapper`, `test_workbench_exposes_all_in_one_ui` |
 | `tests/test_flight_validation.py` | — | `test_fixed_stages_document_the_requested_flu_actions`, `test_static_stage_reports_statistics_axis_sign_and_pass`, `test_six_face_passes_flu_and_candidate_is_identity_but_not_applied`, `test_six_face_infers_nonidentity_signed_permutation_without_claiming_match` (+16) |
-| `tests/test_flow_monitor_page.py` | R-S1-2：“传感器 · 光流”实时监控页。 这里全部用真实的 `DronePanel()` 驱动，不做源码文本断言（那部分在 `tests/test_ground_calibration.py`）。钉四件事： 1. 轮询有自己的可见性… | `test_flow_poll_only_runs_while_the_flow_tab_is_selected`, `test_flow_poll_does_not_depend_on_the_calibration_collect_switch`, `test_readouts_follow_the_reply_and_survive_the_comp_line`, `test_invalid_data_is_marked_and_greys_out_nothing_silently` (+7) |
-| `tests/test_flow_nav_service_contract.py` | R-M5-5：光流导航 Service（Services/Src/svc_flow_nav.c）契约测试。 分两部分： 1. 行为部分用宿主 gcc 真编译 svc_flow_nav.c + drv_nav_ekf.c，跑一个 C 桩子，… | `test_flow_nav_service_behaviour_on_host_gcc`, `test_driver_layer_stays_a_pure_frame_parser`, `test_flow_math_has_exactly_one_owner`, `test_stabilizer_no_longer_owns_the_estimator` (+4) |
+| `tests/test_flow_monitor_page.py` | R-S1-2：“传感器 · 光流”实时监控页。 这里全部用真实的 `DronePanel()` 驱动，不做源码文本断言（那部分在 `tests/test_ground_calibration.py`）。钉四件事： 1. 轮询有自己的可见性… | `test_flow_poll_only_runs_while_the_flow_tab_is_selected`, `test_flow_poll_does_not_depend_on_the_calibration_collect_switch`, `test_readouts_follow_the_reply_and_survive_the_comp_line`, `test_invalid_data_is_marked_and_greys_out_nothing_silently` (+11) |
+| `tests/test_flow_nav_service_contract.py` | R-M5-5：光流导航 Service（Services/Src/svc_flow_nav.c）契约测试。 分两部分： 1. 行为部分用宿主 gcc 真编译 svc_flow_nav.c + drv_nav_ekf.c，跑一个 C 桩子，… | `test_flow_nav_service_behaviour_on_host_gcc`, `test_driver_layer_stays_a_pure_frame_parser`, `test_flow_math_has_exactly_one_owner`, `test_stabilizer_no_longer_owns_the_estimator` (+5) |
 | `tests/test_flow_yaw_gyro_capture.py` | M5 台架实测暴露的缺陷：旋转补偿阶永远拿不到偏航角速度。 2026-08-30 现场证据：`flow_range_20260830_200716.json` 里 299 个实采样本， `gyro_z_dps` **无一非 null**，… | `test_firmware_still_emits_bare_gz_in_mdps`, `test_every_known_gyro_spelling_lands_in_dps`, `test_yaw_stage_can_reach_the_15_dps_gate_from_a_real_line` |
 | `tests/test_flu_frame_contract.py` | — | `test_skill_routes_coordinate_work_to_the_normative_contract`, `test_runtime_migration_cannot_be_declared_complete_yet`, `test_flu_contract_compiles_and_executes` |
 | `tests/test_flu_runtime_candidate_pipeline.py` | — | `test_frame_candidate_is_applied_once_before_any_estimator_consumer`, `test_frame_change_resets_state_and_selects_nwu_for_canonical_flu`, `test_canonical_flu_fusion_branch_uses_one_unmodified_vector_contract`, `test_partial_runtime_migration_is_hard_locked_against_arming` (+2) |

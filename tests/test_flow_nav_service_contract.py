@@ -348,15 +348,41 @@ static int test_position_clamp_and_reset(void)
     CHECK(NEAR(px, SVC_FLOW_NAV_POSITION_LIMIT_M, 1e-3f), 301);
     CHECK(dx > SVC_FLOW_NAV_POSITION_LIMIT_M * 2.0f, 302);
 
-    /* 归零只清位置与累计位移。 */
+    /*
+     * ResetPosition / ResetEstimator 只清控制用的位置，**不许**碰里程计。
+     * 稳定环在低油门直通分支里每个控制周期都调 ResetEstimator，连带清掉累计
+     * 位移的话，地面上这个数永远是 0——这是实机上真发生过的缺陷。
+     */
     SVC_FlowNav_ResetPosition();
     SVC_FlowNav_GetPosition(&px, &py);
     SVC_FlowNav_GetDisplacement(&dx, &dy);
     CHECK(NEAR(px, 0.0f, 1e-9f) && NEAR(py, 0.0f, 1e-9f), 310);
-    CHECK(NEAR(dx, 0.0f, 1e-9f) && NEAR(dy, 0.0f, 1e-9f), 311);
+    CHECK(dx > SVC_FLOW_NAV_POSITION_LIMIT_M * 2.0f, 311);
+
+    {
+        float est_dx = 0.0f;
+        float est_dy = 0.0f;
+
+        SVC_FlowNav_ResetEstimator();
+        SVC_FlowNav_GetDisplacement(&est_dx, &est_dy);
+        CHECK(NEAR(est_dx, dx, 1e-6f), 312);
+        CHECK(NEAR(est_dy, dy, 1e-6f), 313);
+        CHECK(SVC_FlowNav_GetIntegratedStepCount() > 0UL, 314);
+    }
+
+    /* 里程计只在显式请求（或传感器重初始化）时归零。 */
+    SVC_FlowNav_ResetDisplacement();
+    SVC_FlowNav_GetDisplacement(&dx, &dy);
+    CHECK(NEAR(dx, 0.0f, 1e-9f) && NEAR(dy, 0.0f, 1e-9f), 315);
+    CHECK(SVC_FlowNav_GetIntegratedStepCount() == 0UL, 316);
+
+    /* 传感器重初始化会同时清掉两份。 */
+    SVC_FlowNav_Reset();
+    SVC_FlowNav_GetPosition(&px, &py);
+    SVC_FlowNav_GetDisplacement(&dx, &dy);
+    CHECK(NEAR(px, 0.0f, 1e-9f) && NEAR(dx, 0.0f, 1e-9f), 317);
 
     /* 估计器整体归零后速度也必须是 0。 */
-    SVC_FlowNav_ResetEstimator();
     {
         float vx = 1.0f;
         float vy = 1.0f;
@@ -535,6 +561,18 @@ def test_coax_control_law_is_untouched() -> None:
     ):
         assert expression in COAX, expression
     assert "SVC_FlowNav" not in COAX, "控制器不该直接依赖 Service，只吃 frame->attitude"
+
+
+def test_control_mode_reset_must_not_wipe_the_odometer() -> None:
+    """低油门直通每拍都调 ResetEstimator；里程计被它连带清掉就永远累不起来。"""
+    reset_position = SERVICE_C[
+        SERVICE_C.index("void SVC_FlowNav_ResetPosition(void)"):
+        SERVICE_C.index("void SVC_FlowNav_ResetDisplacement(void)")
+    ]
+    assert "displacement_m" not in reset_position
+    assert "position_m[0] = 0.0f" in reset_position
+    # 稳定环那条每拍都走的路径只允许调 ResetEstimator。
+    assert "SVC_FlowNav_ResetDisplacement();" not in STABILIZER
 
 
 def test_service_is_registered_in_the_build() -> None:

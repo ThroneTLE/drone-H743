@@ -455,6 +455,9 @@ void SVC_FlowNav_Reset(void)
     flow_nav_clear_velocity_sample();
     flow_nav_ctx.processed_flow_ms = 0U;
     flow_nav_ctx.velocity_reject_count = 0U;
+    /* 传感器重来一遍，里程计的连续性也就断了，跟着清。 */
+    SVC_FlowNav_ResetPosition();
+    SVC_FlowNav_ResetDisplacement();
 }
 
 void SVC_FlowNav_Age(uint32_t now_ms)
@@ -795,11 +798,23 @@ void SVC_FlowNav_ResetEstimator(void)
 
 void SVC_FlowNav_ResetPosition(void)
 {
+    /*
+     * 只清控制用的位置状态，不碰累计位移。
+     *
+     * 稳定环在低油门直通分支里每个控制周期都调一次 ResetEstimator，位置本来就该
+     * 在那里归零（外环重新以当前点为原点）。但累计位移是里程计，被这条每拍都走的
+     * 路径连带清掉就永远累不起来——地面上盯着这个数只会看到恒 0。
+     * 里程计只在传感器重新初始化或显式请求时清零。
+     */
     flow_nav_ctx.position_m[0] = 0.0f;
     flow_nav_ctx.position_m[1] = 0.0f;
+}
+
+void SVC_FlowNav_ResetDisplacement(void)
+{
     flow_nav_ctx.displacement_m[0] = 0.0f;
     flow_nav_ctx.displacement_m[1] = 0.0f;
-    flow_nav_ctx.pending_integration_dt_us = 0U;
+    flow_nav_ctx.integrated_step_count = 0U;
 }
 
 void SVC_FlowNav_GetEkfDiagnostics(DRV_NAV_EKF_Diagnostics *diagnostics)
