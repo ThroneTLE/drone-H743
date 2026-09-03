@@ -100,7 +100,7 @@ flowchart TB
 | R-S7-1 | S7 | 〔码〕固件新增舵机类型选择器（PWM/总线，持久化，仿 RCMAP/SERVOCAL 的 `?`/APPLY/REVERT/COMMIT） | 走既有 `SVC_Param` blob 机制；`?`回读含 active/persisted/dirty/generation；重启回读一致；不改 SERVOCAL 数据模型 | 待审核 |
 | R-S7-2 | S7 | 〔码〕`stabilizer_control_commit()` 按 R-S7-1 选择结果分支输出（`BSP_PWM_SetServoPulse` vs `BSP_BusServo_MoveManyAsync`），PWM 模式下不跑总线时隙调度/死区判断/反馈轮询（依赖 R-S7-1） | 两种模式下`SERVO JOG`/`SERVOCAL`行为不变；contract 测试覆盖分支选择；不改 `drv_coax_ctrl.c`/`app_servo_jog.c` | 待审核 |
 | R-S7-3 | S7 | 〔码〕PWM 模式下绕过总线专属逻辑：`app_servo_cal.c` 手势松力矩流程、`app_control.c` 的 `SERVO MOVE/ID/MODE/RAW/BAUDRATE` 调试命令族、`SERVO FB` 反馈台架（依赖 R-S7-1） | PWM 模式下上述路径拒绝/no-op 且不崩溃、不误报；总线模式行为逐字节不变 | 待审核 |
-| R-S7-4 | S7 | 〔码〕`tools/panel_lib/pages/servo_debug.py` 按舵机类型隐藏/禁用总线专属控件（ID/改ID/17指令按钮含ULK/ULR/波特率/RAW），PWM模式仅保留"目标位置us"核心控件（依赖 R-S7-1 的协议） | 总线模式UI/行为零回归；PWM模式下不发送总线专属子命令；`mechanical.py`不改动 | 待做 |
+| R-S7-4 | S7 | 〔码〕`tools/panel_lib/pages/servo_debug.py` 按舵机类型隐藏/禁用总线专属控件（ID/改ID/17指令按钮含ULK/ULR/波特率/RAW），PWM模式仅保留"目标位置us"核心控件（依赖 R-S7-1 的协议） | 总线模式UI/行为零回归；PWM模式下不发送总线专属子命令；`mechanical.py`不改动 | 待审核 |
 | R-S7-5 | S7 | 〔码〕上位机新增舵机类型选择控件，仿 RCMAP/SERVOCAL 单值 `?`/APPLY/COMMIT 模式（依赖 R-S7-1） | 读回状态含 dirty/valid/generation；不照搬 IMUFRAME 多步向导 | 待审核 |
 | R-S7-6 | S7 | 〔码〕`tools/flight_acceptance_v2.py` 的 `SERVO_ALPHA/BETA_POSITIVE/NEGATIVE` 四阶段在 PWM 模式下跳过（依赖 R-S7-1 的类型可读取） | PWM模式下四阶段标记 skip 而非 fail；总线模式判据（valid_fraction≥0.95、误差≤20µs）不变 | 待审核 |
 
@@ -110,6 +110,7 @@ flowchart TB
 
 | 日期 | 范围 | 证据 | 结果 | 对状态的影响 |
 |---|---|---|---|---|
+| 2026-09-02 | **R-S7-4 舵机调试页按类型裁剪** | `ServoDebugPageMixin`在板端active=pwm时禁用槽位enable、ID/改ID、运行时间、模式、MOVEALL、17项众灵手册动作（含ULK/ULR）、波特率与RAW；所有handler再做一次active门控，PWM唯一保留的“移动此舵机”改发通用`SERVO JOG <channel> <us>`。bus时原`SERVO MOVE`/MOVEALL/CMD/RAW路径保留。类型candidate与active已分离，active=pwm时仅把下拉候选改bus、未APPLY仍不发送总线命令；mechanical.py零改。R-S7-4/5联合聚焦 `9 passed in 1.74s`，面板全量子代理复跑 `819 passed in 58.78s` | host UI实现完成，待审核 | R-S7-4置**待审核**；S7保持🟡，其他节点不变 |
 | 2026-09-02 | **R-S7-1横切协议修复：SERVOTYPE请求ID唯一化** | 主执行复查R-S7-5接线时发现既有`SERVO_CAL`已占`0x1024`，而R-S7-1误给SERVOTYPE同号；ASCII直连无感但结构化面板会路由冲突。根因是R-S7-1测试只断言新ID存在，未断言全表唯一；在任何依赖REQ提交前改为`SERVOTYPE=0x1025`、`SERVO_CAL=0x1024`、MSG保持`0x2226`，固件/host新增不等断言，命令文本与回读格式不变；聚焦协议测试 `6 passed in 0.72s` | 阻塞协议缺陷已修复，待审核 | 独立fix提交`f87f3f50`；R-S7-1仍待审核，其余REQ统一使用0x1025 |
 | 2026-09-02 | **R-S7-5 上位机舵机类型单值控件** | 新`ServoTypeControlsMixin`独占BUS/PWM下拉、查询/APPLY/REVERT/COMMIT和回读解析；candidate与板端active分离，所有模式门控只信最近`SERVOTYPE` active回读。注册唯一请求ID`0x1025`/消息`0x2226`，大面板仅做常量转发及文本/结构化各一处路由；显示`state/active/persisted/dirty/valid/explicit/generation/record_generation/request`，未引入多步向导、未改mechanical.py。子代理首稿把candidate当active，主执行退回并补测“active=pwm仅选择bus未APPLY仍保持门控”；R-S7-4/5聚焦 `9 passed in 1.74s` | host控件实现完成，待审核 | R-S7-5置**待审核**；S7保持🟡，其他节点不变 |
 | 2026-09-02 | **S7横切修复：手势标定活动时禁止切换舵机类型** | 复查R-S7-3发现：若总线手势标定已经释放扭矩时切到PWM，PWM绕过会清状态且不能发总线恢复命令，日后切回bus可能保留松力矩。根因是SERVOTYPE事务只检查SERVOCAL预览忙态，未检查独立`APP_ServoCal_IsActive()`手势状态；原测试只覆盖“进入PWM后的总线调用阻断”，没有覆盖“切换瞬间已有bus状态机活动”。修复在统一transaction gate加入该活动态，APPLY/COMMIT均拒绝；bus流程不改。子代理按主执行复查退回完成，聚焦联合 `22 passed in 1.22s`，Debug零警告 | 阻塞危险的跨模式残留状态已封闭，待审核 | 独立fix提交；R-S7-3仍待审核，其他节点不变 |

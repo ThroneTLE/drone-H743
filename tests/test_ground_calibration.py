@@ -41,17 +41,20 @@ VIBRATION_AST_SHA256 = {
     "_build_vibration_filter_page": "d6483841646aea2d7ae966623f75c441db8d11e01d983a95fa0a4db80e344106",
 }
 SERVO_DEBUG_AST_SHA256 = {
-    "_build_servo_page": "d26d416f9a002efe30c3848cd717b123eac8ad698a13a1e723892309d06ea917",
-    "_build_servo_tab": "47e4f39cf11240deea95976af1d20c84f196fc4a0574f432f3285474b3b08a3c",
-    "_send_raw": "93c964e44ca39d44dadffe470117080adda5f25bd6e54ab3dd29b6d1b610ca2b",
+    "_build_servo_page": "cdbca905951b7c69996a5f2c4093367c915ba16d76b45072cb605b249f7f8640",
+    "_build_servo_tab": "4223d9b21a2cfe5abdf4b6d902be487231bb4533450780eedf395e1188f407e0",
+    "_servo_spin": "f7a1c49d31771e45a0e931da512d6a19fb5130701f5822fd1a29b6bef22e6733",
+    "_refresh_servo_output_controls": "6f5c31f85e094d2cd5bc2c61626a44125db36241a8d08550fb8d5cd94f6c604b",
+    "_send_raw": "bce3e02d68ff9b9ad4c69fa3b70c456fb18f203f0d0771471fab834663873b47",
     "_servo_values": "eb8e3632a5b07df9a26a46cc73ddd8c6ee40cc1c0ac2e0da8d514bff69b65484",
-    "_servo_move": "4cc86c79336b760bb2b4ce8e8b297c1d2d8c13f36e86abcdcec8d594ba3f6d98",
-    "_servo_mode": "3cd97ca97bb89bb6408c2a3fecf05c9b878f8cd42eb0daa74c98ca1efaca2c25",
-    "_servo_enable": "886020ccc807b35540014783c354710fc6d42ccffde9e31f806f129942a99a54",
-    "_servo_set_id": "464afb5be501ae2dbd2a9e56da8d4edf8db19ed6e2cb7dea79a8eb91cedcac37",
-    "_servo_set_physical_id": "d1e72d59244db33f8aab98ea032ec37dee10ce655f71025542825d69e79563b4",
-    "_servo_cmd": "96ea6e79bcb2f30ba523400b6c555344d335d100bb6cbdec00c5c34f39848177",
-    "_servo_baud": "d5e442de8d889383f12f55f3f1cd85c89dae795e7fd8773cc06d5f3ea51e21cd",
+    "_servo_move": "a20ce9b9cb7dc061413251305be82492bf8b323749541004a2650939adc61f85",
+    "_servo_move_all": "769fc0d0500cef04a1dd5a6e7af975a58359fd0aaa4f32666eff33795fd99950",
+    "_servo_mode": "605e3b441cf7618211518224f57c82dc257a916b550bd69ab1ac5f0f0cc9a429",
+    "_servo_enable": "81171cf844bac2fedf76e0698446397ae18a9924552ce6a046d59cc75aa6e206",
+    "_servo_set_id": "feecd52bcb00bc07d6af187071c26811cf227eb261cfc307510f22b0332def84",
+    "_servo_set_physical_id": "0c80edcc0d69035d83f7a8930b428b597244aa3ac5577f4e08179a126d600a13",
+    "_servo_cmd": "1af048dfd65fdb84e818357c3ce0e80f0ba01600fb5b7cf6ba90581f687a0547",
+    "_servo_baud": "6275e9dd10a41cb0a0b442fd87012f630af638c6c73879c40337fee14c13c6dc",
     "_update_servo_ok_line": "e34aefe4ead010297387a1c03c366ce42be177ceb320461fab9fd403b521e6ff",
 }
 
@@ -268,8 +271,8 @@ def test_s6_increment8_page_owners_ast_forwarding() -> None:
     assert set(servo_debug) == set(SERVO_DEBUG_AST_SHA256)
     assert (set(vibration) | set(servo_debug)).isdisjoint(legacy)
     assert len(vibration["_build_vibration_filter_page"].body) == 10
-    assert len(servo_debug["_build_servo_page"].body) == 8
-    assert len(servo_debug["_build_servo_tab"].body) == 33
+    assert len(servo_debug["_build_servo_page"].body) == 15
+    assert len(servo_debug["_build_servo_tab"].body) == 43
     assert legacy_panel.VibrationPageMixin is vibration_page.VibrationPageMixin
     assert legacy_panel.ServoDebugPageMixin is servo_debug_page.ServoDebugPageMixin
     for owner, hashes in (
