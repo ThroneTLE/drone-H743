@@ -4,7 +4,7 @@
 
 Read this shard only when you need existing behavioral/architecture coverage or must choose focused regression tests.
 
-Source snapshot: `33c6dbb409f1`. Indexed files: 99.
+Source snapshot: `ed4b8e0ff8c1`. Indexed files: 100.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -41,6 +41,7 @@ Source snapshot: `33c6dbb409f1`. Indexed files: 99.
 | `tests/test_flight_log_waveform_ui.py` | — | `test_waveform_ui_helpers_do_not_start_tk`, `test_waveform_ui_exposes_folder_file_channel_plot_workflow` |
 | `tests/test_flight_log_workbench.py` | — | `test_workbench_helpers_build_segment_labels_and_presets`, `test_workbench_rerun_command_uses_isolated_wrapper`, `test_workbench_exposes_all_in_one_ui` |
 | `tests/test_flight_validation.py` | — | `test_fixed_stages_document_the_requested_flu_actions`, `test_static_stage_reports_statistics_axis_sign_and_pass`, `test_six_face_passes_flu_and_candidate_is_identity_but_not_applied`, `test_six_face_infers_nonidentity_signed_permutation_without_claiming_match` (+16) |
+| `tests/test_flow_monitor_page.py` | R-S1-2：“传感器 · 光流”实时监控页。 这里全部用真实的 `DronePanel()` 驱动，不做源码文本断言（那部分在 `tests/test_ground_calibration.py`）。钉四件事： 1. 轮询有自己的可见性… | `test_flow_poll_only_runs_while_the_flow_tab_is_selected`, `test_flow_poll_does_not_depend_on_the_calibration_collect_switch`, `test_readouts_follow_the_reply_and_survive_the_comp_line`, `test_invalid_data_is_marked_and_greys_out_nothing_silently` (+7) |
 | `tests/test_flow_yaw_gyro_capture.py` | M5 台架实测暴露的缺陷：旋转补偿阶永远拿不到偏航角速度。 2026-08-30 现场证据：`flow_range_20260830_200716.json` 里 299 个实采样本， `gyro_z_dps` **无一非 null**，… | `test_firmware_still_emits_bare_gz_in_mdps`, `test_every_known_gyro_spelling_lands_in_dps`, `test_yaw_stage_can_reach_the_15_dps_gate_from_a_real_line` |
 | `tests/test_flu_frame_contract.py` | — | `test_skill_routes_coordinate_work_to_the_normative_contract`, `test_runtime_migration_cannot_be_declared_complete_yet`, `test_flu_contract_compiles_and_executes` |
 | `tests/test_flu_runtime_candidate_pipeline.py` | — | `test_frame_candidate_is_applied_once_before_any_estimator_consumer`, `test_frame_change_resets_state_and_selects_nwu_for_canonical_flu`, `test_canonical_flu_fusion_branch_uses_one_unmodified_vector_contract`, `test_partial_runtime_migration_is_hard_locked_against_arming` (+2) |
@@ -50,7 +51,7 @@ Source snapshot: `33c6dbb409f1`. Indexed files: 99.
 | `tests/test_flu_seam3_controller_frame.py` | R-F3 seam 3 controller FLU boundary contract | `test_frame_signs_and_gains`, `test_mount_outside_control_law`, `test_stabilizer_feed_pinned`, `test_header_input_contract` |
 | `tests/test_flu_seam4_rc_actuator_frame.py` | R-F4 seam 4 RC/actuator polarity contract | `test_stick_direction_has_exactly_one_decision_point`, `test_velocity_measurement_polarity_is_a_named_constant`, `test_yaw_stick_maps_to_a_rate_reference_without_a_hidden_sign`, `test_servo_mechanical_polarity_is_applied_after_allocation` (+1) |
 | `tests/test_flu_seam5_telemetry_frame.py` | R-F5 seam 5 telemetry/log frame contract | `test_replay_geometry_is_frozen`, `test_replay_converts_to_flu_only_on_recorded_provenance`, `test_log_record_now_carries_frame_provenance`, `test_logged_attitude_source_is_pinned` (+2) |
-| `tests/test_ground_calibration.py` | — | `test_calibration_navigation_uses_function_names_instead_of_version_codes`, `test_sensor_group_collects_baro_imu_gps_flow_under_one_expandable_tab`, `test_sensor_pages_stay_container_agnostic_and_navigation_follows_the_new_nesting`, `test_flow_sensor_tab_is_placeholder_only` (+14) |
+| `tests/test_ground_calibration.py` | — | `test_calibration_navigation_uses_function_names_instead_of_version_codes`, `test_sensor_group_collects_baro_imu_gps_flow_under_one_expandable_tab`, `test_sensor_pages_stay_container_agnostic_and_navigation_follows_the_new_nesting`, `test_flow_sensor_tab_is_a_real_monitor_page_owned_by_its_own_module` (+17) |
 | `tests/test_ident_decoupled.py` | — | `test_ident_control_payload_and_decoupled_servo_takeover`, `test_ident_commands_exist_and_are_text_based`, `test_closed_loop_attitude_ident_injects_reference_accel_and_logs_it`, `test_attitude_ident_safe_start_accepts_unsettled_controller_quality` (+1) |
 | `tests/test_imu_aaf_contract.py` | Contract tests for the ICM-42688 anti-alias filter and accelerometer range. The AAF is an analogue filter ahead of the… | `test_accel_range_is_16g_to_avoid_vibration_clipping`, `test_scaling_is_derived_from_configured_range_not_hardcoded`, `test_aaf_registers_are_configured_in_both_user_banks`, `test_board_requests_an_aaf_cutoff_below_nyquist` (+1) |
 | `tests/test_imu_attitude_tuner.py` | — | `test_persistent_openocd_telnet_word_parser`, `test_decode_openocd_message_layout`, `test_decode_archived_160_byte_message_defaults_fusion_diagnostics`, `test_archived_capture_is_marked_as_pre_fusion` (+2) |

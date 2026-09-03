@@ -4,7 +4,7 @@
 
 Read this shard only when the task uses serial/TCP diagnostics, log analysis, identification, capture, calibration, or desktop UIs.
 
-Source snapshot: `ec3cd9b0c8c9`; aggregate snapshot: `ce7def1f86a3`. Covered files: 5310.
+Source snapshot: `5852aa8e7250`; aggregate snapshot: `ce7def1f86a3`. Covered files: 5312.
 
 | File/module or scope | Content outline | Key entry points / size |
 |---|---|---|
@@ -52,6 +52,7 @@ Source snapshot: `ec3cd9b0c8c9`; aggregate snapshot: `ce7def1f86a3`. Covered fil
 | `tools/panel_lib/pages/__init__.py` | Panel page builders and their event handlers | — |
 | `tools/panel_lib/pages/acceptance_v2.py` | Propeller-off V2A control-chain acceptance page | `AcceptanceV2PageMixin` |
 | `tools/panel_lib/pages/drift.py` | Stationary-drift page builder and handlers | `DriftPageMixin` |
+| `tools/panel_lib/pages/flow_monitor.py` | “传感器 · 光流”实时监控页及其遥测行处理。 和“校准 · 光流与测距”那一页的分工：那页是标定专用通路，只在采集期间轮询、 只服务于零偏/比例/旋转补偿的证据采集。本页是常驻监视——自己的可见性门控轮询、 自己的解析状态、自己的缓冲，… | `FlowMonitorPageMixin` |
 | `tools/panel_lib/pages/flow_ranging.py` | Optical-flow / combined-ranging ground calibration page and its handlers | `FlowRangingPageMixin` |
 | `tools/panel_lib/pages/mechanical.py` | Servo-mechanical calibration page builder and handlers | `MechanicalPageMixin` |
 | `tools/panel_lib/pages/rc_wizard.py` | RC mapping and guided-calibration page builder and handlers | `rc_channel_travel`, `rc_detect_channel`, `rc_map_is_valid`, `rc_wizard_dominant`, `rc_wizard_step_ready`, `rc_wizard_window_stable` (+4) |
@@ -60,6 +61,7 @@ Source snapshot: `ec3cd9b0c8c9`; aggregate snapshot: `ce7def1f86a3`. Covered fil
 | `tools/panel_lib/pages/v1_metrology.py` | V1 IMU metrology page builder and handlers | `V1PageMixin` |
 | `tools/panel_lib/pages/validation_v0.py` | V0 coordinate-frame and polarity validation page | `v0_workflow_guidance`, `ValidationV0PageMixin` |
 | `tools/panel_lib/pages/vibration.py` | Vibration/filter placeholder page | `VibrationPageMixin` |
+| `tools/panel_lib/plotting.py` | Optional matplotlib backend for the panel pages. matplotlib 是可选依赖：没装也必须能开面板，只是曲线区停用。守卫放在这里， 让大面板和 panel_lib/pages/* 共用同… | — |
 | `tools/panel_lib/proto.py` | Protocol identifiers and line-parsing helpers for the panel | `parse_kv`, `safe_int`, `safe_float`, `first_value`, `first_float`, `ProtocolLineMixin` |
 | `tools/panel_lib/state.py` | Panel-local state persistence and best-effort log helpers | `PanelStateMixin`, `append_log`, `record_panel_crash` |
 | `tools/panel_lib/transport.py` | Transport primitives and serial-device reconnect helpers for the panel | `udp_payload_is_probably_text`, `serial_device_identity_policy`, `serial_port_identity`, `serial_port_fingerprint`, `match_remembered_serial_port`, `select_reenumerated_application_port` (+7) |

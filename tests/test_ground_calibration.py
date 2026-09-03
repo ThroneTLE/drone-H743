@@ -32,6 +32,9 @@ MECHANICAL_PAGE_SOURCE = (
 FLOW_PAGE_SOURCE = (
     ROOT / "tools" / "panel_lib" / "pages" / "flow_ranging.py"
 ).read_text(encoding="utf-8")
+FLOW_MONITOR_PAGE_SOURCE = (
+    ROOT / "tools" / "panel_lib" / "pages" / "flow_monitor.py"
+).read_text(encoding="utf-8")
 SERVO_DEBUG_PAGE_PATH = ROOT / "tools" / "panel_lib" / "pages" / "servo_debug.py"
 VIBRATION_PAGE_PATH = ROOT / "tools" / "panel_lib" / "pages" / "vibration.py"
 VIBRATION_PAGE_SOURCE = VIBRATION_PAGE_PATH.read_text(encoding="utf-8")
@@ -66,6 +69,10 @@ def function_body(name: str) -> str:
         source = MECHANICAL_PAGE_SOURCE
     elif name == "_build_vibration_filter_page":
         source = VIBRATION_PAGE_SOURCE
+    elif name.startswith(
+        ("_flow_monitor_", "_build_sensor_flow_", "_build_flow_monitor_", "_update_flow_monitor_")
+    ):
+        source = FLOW_MONITOR_PAGE_SOURCE
     elif name.startswith(("_flow_", "_build_flow_", "_update_flow_", "_update_range_")):
         source = FLOW_PAGE_SOURCE
     else:
@@ -128,13 +135,54 @@ def test_sensor_pages_stay_container_agnostic_and_navigation_follows_the_new_nes
     assert "self.sensor_notebook.select() == str(self.imu_tab)" in tick
 
 
-def test_flow_sensor_tab_is_placeholder_only() -> None:
-    """光流监控内容是后续独立 REQ，这次只占位，不许提前写功能。"""
+def test_flow_sensor_tab_is_a_real_monitor_page_owned_by_its_own_module() -> None:
+    """R-S1-2：占位页换成真实监控页，实现整体归 flow_monitor.py，不回流大文件。"""
 
-    body = function_body("_build_sensor_flow_placeholder_page")
-    assert "建设中" in body
-    for forbidden in ("_send_proto", "Canvas", "Button", "after(", "self.flow_"):
+    assert "_build_sensor_flow_placeholder_page" not in PANEL_SOURCE
+    assert "建设中" not in FLOW_MONITOR_PAGE_SOURCE
+    body = function_body("_build_sensor_flow_page")
+    assert "PageTitle.TLabel" in body
+    # 四项内容各有入口：质量/高度读数、速度曲线、可清零的累计位移。
+    readouts = function_body("_build_flow_monitor_readouts")
+    for key in ('"quality"', '"height"', '"velocity"', '"valid"'):
+        assert key in readouts
+    displacement = function_body("_build_flow_monitor_displacement")
+    assert "_flow_monitor_reset_displacement" in displacement
+    assert "_update_flow_monitor_velocity_plot" in FLOW_MONITOR_PAGE_SOURCE
+    # 大文件只留装配点，页面实现不许再往里堆。
+    for owned in ("_flow_monitor_handle_line", "_flow_monitor_integrate", "_flow_monitor_tick"):
+        assert f"    def {owned}(" not in PANEL_SOURCE
+        assert f"    def {owned}(" in FLOW_MONITOR_PAGE_SOURCE
+
+
+def test_flow_monitor_poll_is_gated_by_its_own_tab_and_never_reuses_the_calibration_switch() -> None:
+    """监控页必须自己发 FLOW?，且只在自己这一页被选中时发。"""
+
+    tick = function_body("_imu_poll_tick")
+    assert "self.sensor_notebook.select() == str(self.flow_sensor_tab)" in tick
+    assert "if flow_sensor_tab_visible and self._transport_connected():" in tick
+    # 校准页那条 flow_cal_collecting 轮询必须原样保留，且监控页不得挂在它上面。
+    assert 'if getattr(self, "flow_cal_collecting", False):' in tick
+    assert "self.flow_monitor_last_poll >= FLOW_MONITOR_POLL_PERIOD_S" in tick
+
+
+def test_flow_monitor_reset_stays_local_and_sends_no_protocol_frame() -> None:
+    """累计位移是上位机自己积出来的，归零只清本地状态——仿 _reset_imu_attitude。"""
+
+    body = function_body("_flow_monitor_reset_displacement")
+    for forbidden in ("_send_proto", "send_line", "transport"):
         assert forbidden not in body
+    assert "self.flow_monitor_dx_m = 0.0" in body
+    assert "self.flow_monitor_track.clear()" in body
+
+
+def test_flow_monitor_integration_uses_real_elapsed_time_and_pauses_on_invalid_velocity() -> None:
+    body = function_body("_flow_monitor_integrate")
+    assert "dt = now - anchor[0]" in body
+    assert "if not velocity_valid:" in body
+    assert "self.flow_monitor_anchor = None" in body
+    # 固定周期假设是禁止的：积分因子必须是实测 dt。
+    assert "FLOW_MONITOR_MAX_INTEGRATION_DT_S" in body
 
 
 def test_mechanical_page_is_guarded_and_only_claims_a_matching_target_readback() -> None:

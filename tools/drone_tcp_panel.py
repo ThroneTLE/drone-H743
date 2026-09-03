@@ -22,6 +22,7 @@ try:
     from .panel_lib import evidence as _panel_evidence
     from .panel_lib.pages import acceptance_v2 as _panel_acceptance_v2
     from .panel_lib.pages import drift as _panel_drift
+    from .panel_lib.pages import flow_monitor as _panel_flow_monitor
     from .panel_lib.pages import flow_ranging as _panel_flow
     from .panel_lib.pages import mechanical as _panel_mechanical
     from .panel_lib.pages import rc_wizard as _panel_rc
@@ -29,6 +30,7 @@ try:
     from .panel_lib.pages import v1_metrology as _panel_v1
     from .panel_lib.pages import vibration as _panel_vibration
     from .panel_lib.pages import validation_v0 as _panel_validation_v0
+    from .panel_lib import plotting as _panel_plotting
     from .panel_lib import proto as _panel_proto
     from .panel_lib import state as _panel_state
     from .panel_lib import transport as _panel_transport
@@ -37,6 +39,7 @@ except ImportError:  # Allows direct import and: python tools/drone_tcp_panel.py
         from tools.panel_lib import evidence as _panel_evidence
         from tools.panel_lib.pages import acceptance_v2 as _panel_acceptance_v2
         from tools.panel_lib.pages import drift as _panel_drift
+        from tools.panel_lib.pages import flow_monitor as _panel_flow_monitor
         from tools.panel_lib.pages import flow_ranging as _panel_flow
         from tools.panel_lib.pages import mechanical as _panel_mechanical
         from tools.panel_lib.pages import rc_wizard as _panel_rc
@@ -44,6 +47,7 @@ except ImportError:  # Allows direct import and: python tools/drone_tcp_panel.py
         from tools.panel_lib.pages import v1_metrology as _panel_v1
         from tools.panel_lib.pages import vibration as _panel_vibration
         from tools.panel_lib.pages import validation_v0 as _panel_validation_v0
+        from tools.panel_lib import plotting as _panel_plotting
         from tools.panel_lib import proto as _panel_proto
         from tools.panel_lib import state as _panel_state
         from tools.panel_lib import transport as _panel_transport
@@ -51,6 +55,7 @@ except ImportError:  # Allows direct import and: python tools/drone_tcp_panel.py
         from panel_lib import evidence as _panel_evidence
         from panel_lib.pages import acceptance_v2 as _panel_acceptance_v2
         from panel_lib.pages import drift as _panel_drift
+        from panel_lib.pages import flow_monitor as _panel_flow_monitor
         from panel_lib.pages import flow_ranging as _panel_flow
         from panel_lib.pages import mechanical as _panel_mechanical
         from panel_lib.pages import rc_wizard as _panel_rc
@@ -58,6 +63,7 @@ except ImportError:  # Allows direct import and: python tools/drone_tcp_panel.py
         from panel_lib.pages import v1_metrology as _panel_v1
         from panel_lib.pages import vibration as _panel_vibration
         from panel_lib.pages import validation_v0 as _panel_validation_v0
+        from panel_lib import plotting as _panel_plotting
         from panel_lib import proto as _panel_proto
         from panel_lib import state as _panel_state
         from panel_lib import transport as _panel_transport
@@ -211,6 +217,13 @@ DriftPageMixin = _panel_drift.DriftPageMixin
 drift = _panel_drift.drift
 FLOW_CALIBRATION_STAGES = _panel_flow.FLOW_CALIBRATION_STAGES
 FlowRangingPageMixin = _panel_flow.FlowRangingPageMixin
+FLOW_MONITOR_MAX_INTEGRATION_DT_S = _panel_flow_monitor.FLOW_MONITOR_MAX_INTEGRATION_DT_S
+FLOW_MONITOR_MAX_SAMPLES = _panel_flow_monitor.FLOW_MONITOR_MAX_SAMPLES
+FLOW_MONITOR_MAX_TRACK_POINTS = _panel_flow_monitor.FLOW_MONITOR_MAX_TRACK_POINTS
+FLOW_MONITOR_POLL_PERIOD_S = _panel_flow_monitor.FLOW_MONITOR_POLL_PERIOD_S
+FLOW_MONITOR_QUALITY_FULL_SCALE = _panel_flow_monitor.FLOW_MONITOR_QUALITY_FULL_SCALE
+FLOW_MONITOR_RENDER_PERIOD_NS = _panel_flow_monitor.FLOW_MONITOR_RENDER_PERIOD_NS
+FlowMonitorPageMixin = _panel_flow_monitor.FlowMonitorPageMixin
 MechanicalPageMixin = _panel_mechanical.MechanicalPageMixin
 ServoDebugPageMixin = _panel_servo_debug.ServoDebugPageMixin
 V1PageMixin = _panel_v1.V1PageMixin
@@ -559,17 +572,11 @@ UI_MONO = "Consolas"
 UI_SIZE = 10        # 正文
 UI_SIZE_SM = 9      # 页签、eyebrow、表头
 UI_SIZE_TITLE = 16
-try:
-    from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-    from matplotlib.figure import Figure
-
-    HAS_MATPLOTLIB = True
-    MATPLOTLIB_ERROR = ""
-except Exception as exc:  # pragma: no cover - depends on local optional package
-    FigureCanvasTkAgg = None  # type: ignore[assignment]
-    Figure = None  # type: ignore[assignment]
-    HAS_MATPLOTLIB = False
-    MATPLOTLIB_ERROR = str(exc)
+# 可选 matplotlib 守卫归 panel_lib/plotting.py 所有，页面模块与大面板共用一份判定。
+FigureCanvasTkAgg = _panel_plotting.FigureCanvasTkAgg
+Figure = _panel_plotting.Figure
+HAS_MATPLOTLIB = _panel_plotting.HAS_MATPLOTLIB
+MATPLOTLIB_ERROR = _panel_plotting.MATPLOTLIB_ERROR
 
 MODULES = [
     ("FLASH", "GD25Q32 Flash", "STATUS?"),
@@ -841,7 +848,7 @@ def enable_hidpi_awareness() -> float:
         return 1.0
 
 
-class DronePanel(ValidationV0PageMixin, EvidenceMixin, AcceptanceV2PageMixin, VibrationPageMixin, ServoDebugPageMixin, MechanicalPageMixin, RcWizardPageMixin, V1PageMixin, FlowRangingPageMixin, DriftPageMixin, PanelStateMixin, ProtocolLineMixin, tk.Tk):
+class DronePanel(ValidationV0PageMixin, EvidenceMixin, AcceptanceV2PageMixin, VibrationPageMixin, ServoDebugPageMixin, MechanicalPageMixin, RcWizardPageMixin, V1PageMixin, FlowRangingPageMixin, FlowMonitorPageMixin, DriftPageMixin, PanelStateMixin, ProtocolLineMixin, tk.Tk):
     def __init__(self) -> None:
         # 必须早于 super().__init__()：Tk 根窗口一旦创建，DPI 感知就无法再改。
         self.ui_dpi_scale = enable_hidpi_awareness()
@@ -1188,6 +1195,8 @@ class DronePanel(ValidationV0PageMixin, EvidenceMixin, AcceptanceV2PageMixin, Vi
         self.flow_diag_values: dict[str, str] = {}
         self.flow_latest_gyro_z_dps: float | None = None
         self.flow_cal_results: dict[str, dict[str, object]] = {}
+        # “传感器 · 光流”监控页的状态全部归 FlowMonitorPageMixin 自己所有。
+        self._init_flow_monitor_state()
 
         self.module_state: dict[str, dict[str, tk.StringVar]] = {}
         self.baro_vars: dict[str, tk.StringVar] = {}
@@ -1216,6 +1225,7 @@ class DronePanel(ValidationV0PageMixin, EvidenceMixin, AcceptanceV2PageMixin, Vi
         self.after(RX_DRAIN_IDLE_MS, self._drain_rx)
         self.after(LOG_FLUSH_PERIOD_MS, self._flush_log)
         self.after(250, self._baro_tick)
+        self.after(250, self._flow_monitor_tick)
         self.after(100, self._imu_poll_tick)
         self.after(100, self._firmware_drain_events)
         self.after(100, self._v1_drain_events)
@@ -1750,7 +1760,7 @@ class DronePanel(ValidationV0PageMixin, EvidenceMixin, AcceptanceV2PageMixin, Vi
         self._build_baro_page(baro)
         self._build_imu_page(imu)
         self._build_gps_page(gps)
-        self._build_sensor_flow_placeholder_page(flow_sensor)
+        self._build_sensor_flow_page(flow_sensor)
         self._build_ident_page(ident)
         self._build_params_page(params)
         self._build_servo_page(servos)
@@ -3100,16 +3110,6 @@ class DronePanel(ValidationV0PageMixin, EvidenceMixin, AcceptanceV2PageMixin, Vi
 
         info.columnconfigure(1, weight=1)
 
-    def _build_sensor_flow_placeholder_page(self, parent: ttk.Frame) -> None:
-        # 占位页：光流质量/高度/速度曲线/累计位移（含清零）的独立监控模块
-        # 后续单独实现，这里先只占住“传感器”分组下的位置。
-        ttk.Label(
-            parent,
-            text="光流传感器监控——建设中\n后续将展示质量、高度、速度曲线与累计位移（可清零）",
-            style="Muted.TLabel",
-            justify=tk.CENTER,
-        ).pack(expand=True)
-
     def _build_ident_page(self, parent: ttk.Frame) -> None:
         top = ttk.Frame(parent)
         top.pack(fill=tk.X)
@@ -3819,6 +3819,8 @@ class DronePanel(ValidationV0PageMixin, EvidenceMixin, AcceptanceV2PageMixin, Vi
             self._update_baro_line(line)
         elif line.startswith("FLOW "):
             self._update_flow_line(line)
+            # 监控页自己收一份：标定页那条解析是标定专用的，两边不共用状态。
+            self._flow_monitor_handle_line(line)
         elif line.startswith("RANGE "):
             self._update_range_line(line)
         elif line.startswith("RCMAP "):
@@ -4461,8 +4463,13 @@ class DronePanel(ValidationV0PageMixin, EvidenceMixin, AcceptanceV2PageMixin, Vi
             imu_tab_visible = sensor_visible and (
                 self.sensor_notebook.select() == str(self.imu_tab)
             )
+            flow_sensor_tab_visible = sensor_visible and (
+                self.sensor_notebook.select() == str(self.flow_sensor_tab)
+            )
         else:
             imu_tab_visible = outer_selection == str(self.imu_tab)
+            flow_sensor_tab_visible = False
+        self.flow_monitor_tab_visible = flow_sensor_tab_visible
         firmware_tab_visible = outer_selection == str(self.firmware_tab)
         calibration_group_tab = getattr(self, "calibration_group_tab", None)
         if calibration_group_tab is not None and hasattr(self, "calibration_notebook"):
@@ -4528,6 +4535,13 @@ class DronePanel(ValidationV0PageMixin, EvidenceMixin, AcceptanceV2PageMixin, Vi
             if now - self.mechanical_last_poll >= 1.0:
                 self.mechanical_last_poll = now
                 self._send_proto_silent(PROTO_REQ_SERVO_CAL, "SERVOCAL?")
+        # 光流监控页有自己的门控轮询：不能寄生在下面那个校准采集专用的开关上，
+        # 否则不做标定就永远拿不到数据。
+        if flow_sensor_tab_visible and self._transport_connected():
+            if now - self.flow_monitor_last_poll >= FLOW_MONITOR_POLL_PERIOD_S:
+                self.flow_monitor_last_poll = now
+                if self._validation_command_allowed("FLOW?"):
+                    self.transport.send_line("FLOW?")
         if getattr(self, "flow_cal_collecting", False):
             if not self._transport_connected():
                 self.flow_cal_collecting = False
