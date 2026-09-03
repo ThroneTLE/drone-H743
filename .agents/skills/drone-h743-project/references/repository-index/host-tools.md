@@ -4,7 +4,7 @@
 
 Read this shard only when the task uses serial/TCP diagnostics, log analysis, identification, capture, calibration, or desktop UIs.
 
-Source snapshot: `919f8d4f9426`; aggregate snapshot: `ce7def1f86a3`. Covered files: 5313.
+Source snapshot: `81b4486ed5dc`; aggregate snapshot: `ce7def1f86a3`. Covered files: 5314.
 
 | File/module or scope | Content outline | Key entry points / size |
 |---|---|---|
@@ -65,6 +65,7 @@ Source snapshot: `919f8d4f9426`; aggregate snapshot: `ce7def1f86a3`. Covered fil
 | `tools/panel_lib/plotting.py` | Optional matplotlib backend for the panel pages. matplotlib 是可选依赖：没装也必须能开面板，只是曲线区停用。守卫放在这里， 让大面板和 panel_lib/pages/* 共用同… | — |
 | `tools/panel_lib/proto.py` | Protocol identifiers and line-parsing helpers for the panel | `parse_kv`, `safe_int`, `safe_float`, `first_value`, `first_float`, `ProtocolLineMixin` |
 | `tools/panel_lib/state.py` | Panel-local state persistence and best-effort log helpers | `PanelStateMixin`, `append_log`, `record_panel_crash` |
+| `tools/panel_lib/telem_stream.py` | 遥测流 v2 的上位机侧：通道表装配、掩码帧解码、每通道环形缓冲。 对应固件的 `App/Src/app_telem_frame.c`（帧格式）与 `App/Src/app_telemetry.c` （通道表与 FNV-1a 指纹）。帧格… | `fnv1a`, `TelemChannel`, `TelemSchema`, `TelemSample`, `TelemDecoderStats`, `TelemDecoder` (+1) |
 | `tools/panel_lib/transport.py` | Transport primitives and serial-device reconnect helpers for the panel | `udp_payload_is_probably_text`, `serial_device_identity_policy`, `serial_port_identity`, `serial_port_fingerprint`, `match_remembered_serial_port`, `select_reenumerated_application_port` (+7) |
 | `tools/pressure_rs485_gui.py` | Tkinter GUI for the RS485 Modbus pressure/weight transmitter | `IdentPoint`, `IdentRun`, `LossRow`, `motor_name`, `is_esp_controller`, `percent_to_pulse` (+10) |
 | `tools/pressure_rs485_test.py` | RS485 Modbus-RTU test tool for the 4-channel weighing/pressure transmitter. Manual notes used here: - Protocol: Modbus… | `ReadResult`, `crc16_modbus`, `add_crc`, `check_crc`, `dip_to_addr`, `parse_u16` (+8) |

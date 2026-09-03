@@ -100,6 +100,10 @@ PROTO_MSG_SERVO_TYPE = 0x2226
 # 历史教训：0x1022/0x1023 曾被两端各自定义过一次，所以新号一律两端同一提交登记。
 PROTO_MSG_TELEM_FRAME = 0x2230
 
+# 这些 function 的 payload 是二进制。按 UTF-8 解会把 0x80~0xFF 换成 U+FFFD——
+# 不报错、不崩溃，只是把浮点位悄悄改掉，然后曲线看起来"有点怪"。
+PROTO_BINARY_FUNCTIONS = frozenset({PROTO_MSG_TELEM_FRAME})
+
 
 def parse_kv(line: str) -> dict[str, str]:
     result: dict[str, str] = {}

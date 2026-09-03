@@ -10,6 +10,7 @@ from abc import ABC, abstractmethod
 from typing import Callable, Sequence
 
 from .proto import (
+    PROTO_BINARY_FUNCTIONS,
     PROTO_DIR_FROM_FC,
     PROTO_DIR_TO_FC,
     PROTO_HEADER,
@@ -279,6 +280,35 @@ class TransportBase(ABC):
 
         return
 
+    def set_binary_sink(self, sink: Callable[[int, bytes], None] | None) -> None:
+        """Attach the consumer for binary-payload frames (telemetry stream v2).
+
+        走回调而不是走 `rx_queue`（与规划文档 §2.6 的"投递 ("proto_bin", fn,
+        bytes)"有意偏离，理由写在这里）：`rx_queue` 是 Tk 主循环按批次抽干的，
+        把 40 Hz~1 kHz 的遥测帧塞进去，波形就被 Tk 的事件循环节奏牵着走了——
+        正好与同一节要求的"环形缓冲在收线程里写、Tk 线程只读快照"相反。而且
+        `_drain_rx` 不认识的元组会掉进 `str(item)` 分支刷屏原始命令日志，要修
+        它就得改 `drone_tcp_panel.py`，而 R-T1-2 的判据是不改那个文件。
+
+        没挂 sink 时不是丢掉就算了：每一帧都计进 `binary_unclaimed`，
+        示波器页的统计条会把它显示出来。
+        """
+
+        self._binary_sink = sink
+
+    @property
+    def binary_unclaimed(self) -> int:
+        """收到但没人接手的二进制帧数（示波器页没打开时就是它在涨）。"""
+
+        return getattr(self, "_binary_unclaimed", 0)
+
+    def _deliver_binary(self, function: int, payload: bytes) -> None:
+        sink = getattr(self, "_binary_sink", None)
+        if sink is None:
+            self._binary_unclaimed = self.binary_unclaimed + 1
+            return
+        sink(function, payload)
+
     def _consume_buffer(self, buffer: bytearray) -> None:
         while buffer:
             if len(buffer) >= 9 and buffer[0:2] == PROTO_HEADER:
@@ -310,6 +340,9 @@ class TransportBase(ABC):
                     del buffer[:frame_length]
 
                     if frame[2] == PROTO_DIR_FROM_FC:
+                        if function in PROTO_BINARY_FUNCTIONS:
+                            self._deliver_binary(function, payload)
+                            continue
                         text = payload.decode("utf-8", errors="replace").rstrip("\r\n")
                         self.rx_queue.put(("proto", function, text))
                     else:

@@ -73,9 +73,10 @@ def test_proto_module_owns_the_protocol_table_and_parsing_helpers() -> None:
     proto_names = {name for name in vars(proto) if name.startswith("PROTO_")}
     legacy_names = {name for name in vars(legacy_panel) if name.startswith("PROTO_")}
 
-    # 86 = 84 + PROTO_MSG_TELEM_FRAME（S8 / R-T1-1 的遥测掩码帧）
-    #         + PROTO_MAX_FRAME_PAYLOAD（$X 解析器重同步用的长度上限）。
-    assert len(proto_names) == 86
+    # 87 = 84 + PROTO_MSG_TELEM_FRAME（S8 / R-T1-1 的遥测掩码帧）
+    #         + PROTO_MAX_FRAME_PAYLOAD（$X 解析器重同步用的长度上限）
+    #         + PROTO_BINARY_FUNCTIONS（payload 是二进制、不许按 UTF-8 解的 fn 集合）。
+    assert len(proto_names) == 87
     assert legacy_names == proto_names
     assert proto_names == owned_proto_assignments(PROTO_PATH)
     assert not owned_proto_assignments(LEGACY_PANEL_PATH)
