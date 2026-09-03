@@ -372,6 +372,32 @@ class FlowMonitorPageMixin:
             f"{safe_int(values.get('dt_us'), 0)} µs"
         )
 
+    def _flow_monitor_poll_tick(self, now: float) -> None:
+        """本页自己的可见性门控轮询。
+
+        R-T1-3 从 `drone_tcp_panel._imu_poll_tick` 整段搬到这里：门控逻辑与它
+        服务的页面放在一起，那个 5500 行的文件也少一块。行为不变——仍然是
+        “本页选中 + 已连接 + 到了周期”才发 `FLOW?`，仍然不寄生在标定页的
+        `flow_cal_collecting` 开关上（否则不做标定就永远拿不到数据）。
+        """
+        sensor_group_tab = getattr(self, "sensor_group_tab", None)
+        if sensor_group_tab is not None and hasattr(self, "sensor_notebook"):
+            visible = (self.notebook.select() == str(sensor_group_tab)) and (
+                self.sensor_notebook.select() == str(self.flow_sensor_tab)
+            )
+        else:
+            # 纯逻辑测试/旧嵌入者的扁平 Notebook 里没有二级分组。
+            visible = False
+        self.flow_monitor_tab_visible = visible
+
+        if not (visible and self._transport_connected()):
+            return
+        if now - self.flow_monitor_last_poll < FLOW_MONITOR_POLL_PERIOD_S:
+            return
+        self.flow_monitor_last_poll = now
+        if self._validation_command_allowed("FLOW?"):
+            self.transport.send_line("FLOW?")
+
     def _flow_monitor_tick(self) -> None:
         now_ns = time.monotonic_ns()
         if (

@@ -4,7 +4,7 @@
 
 Read this shard only when the task uses serial/TCP diagnostics, log analysis, identification, capture, calibration, or desktop UIs.
 
-Source snapshot: `81b4486ed5dc`; aggregate snapshot: `ce7def1f86a3`. Covered files: 5314.
+Source snapshot: `51fcce006bdb`; aggregate snapshot: `8416cfc6ff0d`. Covered files: 5316.
 
 | File/module or scope | Content outline | Key entry points / size |
 |---|---|---|
@@ -50,20 +50,9 @@ Source snapshot: `81b4486ed5dc`; aggregate snapshot: `ce7def1f86a3`. Covered fil
 | `tools/organize_data.py` | Move canonical project data into sortable YYYY-MM-DD subdirectories | `CategoryRule`, `MovePlan`, `plan_category`, `build_plan`, `apply_plan`, `parse_args` (+1) |
 | `tools/panel_lib/__init__.py` | Reusable implementation modules for :mod:`tools.drone_tcp_panel` | — |
 | `tools/panel_lib/evidence.py` | V0 validation evidence persistence, restoration, and write guards | `validation_history_artifacts`, `validation_sample_from_snapshot`, `validation_samples_from_csv`, `signed_permutation_descriptor`, `EvidenceMixin` |
-| `tools/panel_lib/pages/__init__.py` | Panel page builders and their event handlers | — |
-| `tools/panel_lib/pages/acceptance_v2.py` | Propeller-off V2A control-chain acceptance page | `AcceptanceV2PageMixin` |
-| `tools/panel_lib/pages/drift.py` | Stationary-drift page builder and handlers | `DriftPageMixin` |
-| `tools/panel_lib/pages/flow_monitor.py` | “传感器 · 光流”实时监控页及其遥测行处理。 和“校准 · 光流与测距”那一页的分工：那页是标定专用通路，只在采集期间轮询、 只服务于零偏/比例/旋转补偿的证据采集。本页是常驻监视——自己的可见性门控轮询、 自己的解析状态、自己的缓冲，… | `FlowMonitorPageMixin` |
-| `tools/panel_lib/pages/flow_ranging.py` | Optical-flow / combined-ranging ground calibration page and its handlers | `FlowRangingPageMixin` |
-| `tools/panel_lib/pages/mechanical.py` | Servo-mechanical calibration page builder and handlers | `MechanicalPageMixin` |
-| `tools/panel_lib/pages/rc_wizard.py` | RC mapping and guided-calibration page builder and handlers | `rc_channel_travel`, `rc_detect_channel`, `rc_map_is_valid`, `rc_wizard_dominant`, `rc_wizard_step_ready`, `rc_wizard_window_stable` (+4) |
-| `tools/panel_lib/pages/servo_debug.py` | Servo output debug page and the BUS/PWM host controls | `ServoDebugPageMixin` |
-| `tools/panel_lib/pages/servo_type_controls.py` | BUS/PWM servo type transaction controls for the host panel | `ServoTypeControlsMixin` |
-| `tools/panel_lib/pages/v1_metrology.py` | V1 IMU metrology page builder and handlers | `V1PageMixin` |
-| `tools/panel_lib/pages/validation_v0.py` | V0 coordinate-frame and polarity validation page | `v0_workflow_guidance`, `ValidationV0PageMixin` |
-| `tools/panel_lib/pages/vibration.py` | Vibration/filter placeholder page | `VibrationPageMixin` |
 | `tools/panel_lib/plotting.py` | Optional matplotlib backend for the panel pages. matplotlib 是可选依赖：没装也必须能开面板，只是曲线区停用。守卫放在这里， 让大面板和 panel_lib/pages/* 共用同… | — |
 | `tools/panel_lib/proto.py` | Protocol identifiers and line-parsing helpers for the panel | `parse_kv`, `safe_int`, `safe_float`, `first_value`, `first_float`, `ProtocolLineMixin` |
+| `tools/panel_lib/scope.py` | 纯 Tk Canvas 示波器控件（无 matplotlib 依赖）。 为什么不用 matplotlib / pyqtgraph（规划文档 §2.7 的裁决，摘要放在这里）： matplotlib 的 `FigureCanvasTkAgg… | `decimate_min_max`, `ScopeCurve`, `ScopeRange`, `ScopeCanvas` |
 | `tools/panel_lib/state.py` | Panel-local state persistence and best-effort log helpers | `PanelStateMixin`, `append_log`, `record_panel_crash` |
 | `tools/panel_lib/telem_stream.py` | 遥测流 v2 的上位机侧：通道表装配、掩码帧解码、每通道环形缓冲。 对应固件的 `App/Src/app_telem_frame.c`（帧格式）与 `App/Src/app_telemetry.c` （通道表与 FNV-1a 指纹）。帧格… | `fnv1a`, `TelemChannel`, `TelemSchema`, `TelemSample`, `TelemDecoderStats`, `TelemDecoder` (+1) |
 | `tools/panel_lib/transport.py` | Transport primitives and serial-device reconnect helpers for the panel | `udp_payload_is_probably_text`, `serial_device_identity_policy`, `serial_port_identity`, `serial_port_fingerprint`, `match_remembered_serial_port`, `select_reenumerated_application_port` (+7) |
@@ -84,5 +73,6 @@ Source snapshot: `81b4486ed5dc`; aggregate snapshot: `ce7def1f86a3`. Covered fil
 | `tools/vofa_serial_capture.py` | Capture USART1/VOFA JustFloat telemetry from the flight controller. The firmware currently sends 28 little-endian float… | `RunningStats`, `build_parser`, `safe_text`, `split_lines`, `parse_frame`, `write_metadata` (+1) |
 | `tools/vofa_udp_bridge.py` | Bridge Ai-WB2 UDP transparent mode to fixed VOFA UDP ports. Why this exists: - Ai-WB2 auto transparent mode is configur… | `log`, `main` |
 | `tools/ground_station/ bundled tree` | Bundled application/runtime distribution; inspect an exact file only when maintaining that bundle | 5239 files / 135.6 MiB / .svg×854, .h×841, .cpp×635, .md×459, .py×257 |
+| `tools/panel_lib/ bundled tree` | Bundled application/runtime distribution; inspect an exact file only when maintaining that bundle | 13 files / 293.7 KiB / .py×13 |
 
 Open the smallest listed tool or bundle landmark first; do not preload bundled runtimes.

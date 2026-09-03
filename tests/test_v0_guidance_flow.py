@@ -72,6 +72,11 @@ def poll_subject(
     subject.after = lambda *_a, **_k: None
     subject._imu_poll_tick = lambda: None  # 供末尾的 after() 重排引用
     subject._rc_render = lambda: None
+    # R-T1-3 把两页各自的门控轮询从 _imu_poll_tick 里搬进了页面模块，这里只
+    # 需要它们存在；它们各自的行为由 test_flow_monitor_page / test_scope_page
+    # 用真实 DronePanel 覆盖，不在这个纯逻辑桩里重复一遍。
+    subject._flow_monitor_poll_tick = lambda _now: None
+    subject._scope_poll_tick = lambda _now: None
     return subject
 
 

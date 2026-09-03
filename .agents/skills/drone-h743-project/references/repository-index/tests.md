@@ -4,7 +4,7 @@
 
 Read this shard only when you need existing behavioral/architecture coverage or must choose focused regression tests.
 
-Source snapshot: `8940297c7ed9`. Indexed files: 104.
+Source snapshot: `ef994bc61a57`. Indexed files: 105.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -89,6 +89,7 @@ Source snapshot: `8940297c7ed9`. Indexed files: 104.
 | `tests/test_rc_mapping_contract.py` | — | `test_freertos_documents_fixed_elrs_channel_map`, `test_controller_uses_named_rc_channels_for_references`, `test_ch6_selects_true_attitude_debug_mode_with_twenty_degree_limit` (+6) |
 | `tests/test_rom_dfu_boot_contract.py` | Safety and reset-context contract for the STM32H743 factory USB DFU path | `test_boot_command_is_explicit_scheduled_and_safety_gated`, `test_reset_magic_moves_the_rom_jump_out_of_the_freertos_task`, `test_rom_entry_clears_interrupt_cache_and_mpu_state` (+1) |
 | `tests/test_rom_dfu_host.py` | — | `test_cli_discovery_prefers_path_and_finds_common_cubeclt_layout`, `test_v0_image_gate_accepts_only_nonempty_elf_or_hex`, `test_image_gate_rejects_wrong_elf_machine_and_out_of_flash_hex` (+8) |
+| `tests/test_scope_page.py` | R-T1-3：“示波器 / 调参”页（`panel_lib/scope.py` + `panel_lib/pages/scope.py`）。 全部用真实的 `DronePanel()` + FakeTransport 驱动，照 `test… | `test_the_page_is_mounted_as_a_real_notebook_tab`, `test_panel_entry_point_only_carries_the_mount`, `test_stream_follows_tab_visibility` (+19) |
 | `tests/test_sensor_biquad_contract.py` | Contract tests for the 2nd-order Butterworth sensor filter. The filter was upgraded from a 1st-order IIR because measur… | `test_filter_is_second_order_biquad`, `test_cutoffs_match_the_measured_blade_band`, `test_biquad_runtime_behaviour` (+2) |
 | `tests/test_sensor_orientation_runtime.py` | Runtime IMU orientation selection at the raw-to-airframe seam | `test_public_api_uses_one_byte_legacy_sentinel_and_stable_descriptors`, `test_runtime_applies_one_proper_rotation_after_legacy_mapping` |
 | `tests/test_service_param_background_contract.py` | — | `test_services_layer_contains_only_param_service`, `test_background_task_and_queues_are_named_as_background_not_storage`, `test_freertos_objects_are_synchronized_with_ioc` (+2) |

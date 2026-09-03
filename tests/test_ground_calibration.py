@@ -159,11 +159,23 @@ def test_flow_monitor_poll_is_gated_by_its_own_tab_and_never_reuses_the_calibrat
     """监控页必须自己发 FLOW?，且只在自己这一页被选中时发。"""
 
     tick = function_body("_imu_poll_tick")
-    assert "self.sensor_notebook.select() == str(self.flow_sensor_tab)" in tick
-    assert "if flow_sensor_tab_visible and self._transport_connected():" in tick
-    # 校准页那条 flow_cal_collecting 轮询必须原样保留，且监控页不得挂在它上面。
+    # R-T1-3 把这段门控整体搬进 panel_lib/pages/flow_monitor.py（面板那个 5500 行
+    # 的文件只减不增）。断言跟着搬，语义不变。
+    assert "self._flow_monitor_poll_tick(now)" in tick
+    assert "flow_sensor_tab_visible" not in tick
+
+    monitor = (ROOT / "tools" / "panel_lib" / "pages" / "flow_monitor.py").read_text(
+        encoding="utf-8"
+    )
+    gate = monitor[monitor.index("def _flow_monitor_poll_tick"):]
+    gate = gate[: gate.index("\n    def ", 1)]
+    assert "self.sensor_notebook.select() == str(self.flow_sensor_tab)" in gate
+    assert "now - self.flow_monitor_last_poll < FLOW_MONITOR_POLL_PERIOD_S" in gate
+    assert 'self.transport.send_line("FLOW?")' in gate
+    # 监控页不得挂在标定采集开关上；那条采集轮询仍原样留在面板里。
+    body = gate[gate.index('"""', gate.index('"""') + 3) + 3:]
+    assert "flow_cal_collecting" not in body
     assert 'if getattr(self, "flow_cal_collecting", False):' in tick
-    assert "self.flow_monitor_last_poll >= FLOW_MONITOR_POLL_PERIOD_S" in tick
 
 
 def test_flow_monitor_reset_clears_both_accumulators() -> None:
