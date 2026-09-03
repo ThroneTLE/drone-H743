@@ -103,6 +103,7 @@ flowchart TB
 | R-S7-4 | S7 | 〔码〕`tools/panel_lib/pages/servo_debug.py` 按舵机类型隐藏/禁用总线专属控件（ID/改ID/17指令按钮含ULK/ULR/波特率/RAW），PWM模式仅保留"目标位置us"核心控件（依赖 R-S7-1 的协议） | 总线模式UI/行为零回归；PWM模式下不发送总线专属子命令；`mechanical.py`不改动 | 待审核 |
 | R-S7-5 | S7 | 〔码〕上位机新增舵机类型选择控件，仿 RCMAP/SERVOCAL 单值 `?`/APPLY/COMMIT 模式（依赖 R-S7-1） | 读回状态含 dirty/valid/generation；不照搬 IMUFRAME 多步向导 | 待审核 |
 | R-S7-6 | S7 | 〔码〕`tools/flight_acceptance_v2.py` 的 `SERVO_ALPHA/BETA_POSITIVE/NEGATIVE` 四阶段在 PWM 模式下跳过（依赖 R-S7-1 的类型可读取） | PWM模式下四阶段标记 skip 而非 fail；总线模式判据（valid_fraction≥0.95、误差≤20µs）不变 | 待审核 |
+| R-S7-7 | S7 | 〔码〕修bug：R-S7-4遗留缺陷——PWM模式下`servo_debug.py`"移动此舵机"误接`SERVO JOG`（500µs/s慢速斜坡，为`mechanical.py`标定设计），导致调试页从总线模式的近瞬间响应退化为爬行 | 新增PWM即时移动通路（不经JOG斜坡）供`servo_debug.py`专用；`mechanical.py`标定按钮的JOG行为逐字节不变；总线模式`SERVO MOVE`不变；契约测试覆盖两条路径互不干扰 | 待做 |
 
 ## 最近验证证据
 
