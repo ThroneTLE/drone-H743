@@ -155,7 +155,7 @@
 #define STABILIZER_RC_THROTTLE_ARM_LOW_PERCENT 10U
 #define STABILIZER_RC_STABILIZE_MIN_PERCENT 70U
 #define STABILIZER_RC_LOSS_TIMEOUT_MS  500U
-#define STABILIZER_FLIGHT_LOG_TAIL_RECORDS 125U /* 250 Hz log tail, about 500 ms */
+#define STABILIZER_FLIGHT_LOG_TAIL_RECORDS 125U /* 125 Hz log tail, about 1 s */
 #define STABILIZER_USE_RC_DIRECT_TILT_SERVO 0U   /* 0=自稳定控制器(永久), 1=CH1/CH2直控舵机调试 */
 #define STABILIZER_RC_ATTITUDE_TARGET_LIMIT_RAD 0.349065850f /* CH6 姿态调试最大 ±20° */
 /*
@@ -2306,7 +2306,7 @@ static void stabilizer_control_commit(StabilizerContext *ctx,
     APP_Acceptance_PublishObservation(&observation);
   }
 
-  if (ctx->flight_log_divider == 0U) {
+  if ((ctx->flight_log_divider & 0x03U) == 0U) {
     APP_FlightLogSnapshot flog_snapshot;
     APP_ServoFeedbackLogSample servo_feedback_sample;
     APP_OPTICAL_FLOW_Status flow_status;
@@ -2462,7 +2462,7 @@ static void stabilizer_control_commit(StabilizerContext *ctx,
     APP_FlightLog_Observe(flight_log_should_record ? &flog_snapshot : NULL,
                           flight_log_should_record);
   }
-  ctx->flight_log_divider ^= 1U;
+  ctx->flight_log_divider = (uint8_t)((uint32_t)(ctx->flight_log_divider + 1U) & 0x03U);
 }
 
 static void stabilizer_control_step(StabilizerContext *ctx)

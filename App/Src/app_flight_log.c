@@ -33,7 +33,11 @@
     (APP_FLIGHT_LOG_REGION_END_EXCL - APP_FLIGHT_LOG_REGION_START)
 #define APP_FLIGHT_LOG_SECTOR_COUNT \
     (APP_FLIGHT_LOG_REGION_SIZE / APP_FLASH_SERVICE_SECTOR_SIZE)
-#define APP_FLIGHT_LOG_QUEUE_CAPACITY     32U
+#define APP_FLIGHT_LOG_QUEUE_CAPACITY     64U
+#define APP_FLIGHT_LOG_BLOCK32K_HEAD_FRINGE_SECTORS  6U
+#define APP_FLIGHT_LOG_BLOCK32K_TAIL_FRINGE_SECTORS  4U
+#define APP_FLIGHT_LOG_BLOCK32K_SECTOR_COUNT \
+    (APP_FLASH_SERVICE_BLOCK32K_SIZE / APP_FLASH_SERVICE_SECTOR_SIZE)
 #define APP_FLIGHT_LOG_WRITE_BATCH_RECORDS 4U
 #define APP_FLIGHT_LOG_UART_EXPORT_PAYLOAD_MAX 48U
 #define APP_FLIGHT_LOG_USB_EXPORT_PAYLOAD_MAX 1024U
@@ -214,6 +218,8 @@ static uint32_t flight_log_sector_order_seq[APP_FLIGHT_LOG_SECTOR_COUNT];
 static uint32_t flight_log_next_sector_index;
 static uint32_t flight_log_current_sector_index;
 static uint32_t flight_log_sector_write_offset;
+static uint8_t flight_log_prepared_block_ready;
+static uint32_t flight_log_prepared_block_sector;
 static uint32_t flight_log_record_sequence;
 static uint32_t flight_log_export_sector_pos;
 static uint32_t flight_log_export_sector_offset;
@@ -408,6 +414,41 @@ static uint8_t flight_log_sector_header_valid(APP_FlightLogSectorHeader *header)
     return 1U;
 }
 
+static uint8_t flight_log_sector_in_prepared_block(uint32_t sector_index)
+{
+    uint32_t end_sector;
+
+    if (flight_log_prepared_block_ready == 0U) {
+        return 0U;
+    }
+
+    end_sector = flight_log_prepared_block_sector +
+                 APP_FLIGHT_LOG_BLOCK32K_SECTOR_COUNT;
+
+    return (sector_index >= flight_log_prepared_block_sector) &&
+           (sector_index < end_sector) ? 1U : 0U;
+}
+
+static uint8_t flight_log_is_block32k_candidate(uint32_t sector_index)
+{
+    uint32_t address = flight_log_sector_address(sector_index);
+    uint32_t block_end = sector_index + APP_FLIGHT_LOG_BLOCK32K_SECTOR_COUNT;
+
+    if (sector_index < APP_FLIGHT_LOG_BLOCK32K_HEAD_FRINGE_SECTORS) {
+        return 0U;
+    }
+
+    if (block_end > APP_FLIGHT_LOG_SECTOR_COUNT) {
+        return 0U;
+    }
+
+    if (block_end > (APP_FLIGHT_LOG_SECTOR_COUNT - APP_FLIGHT_LOG_BLOCK32K_TAIL_FRINGE_SECTORS)) {
+        return 0U;
+    }
+
+    return ((address % APP_FLASH_SERVICE_BLOCK32K_SIZE) == 0U) ? 1U : 0U;
+}
+
 static void flight_log_order_insert(uint16_t sector_index, uint32_t sector_seq)
 {
     uint32_t pos = flight_log_status.used_sectors;
@@ -441,6 +482,15 @@ static void flight_log_order_remove_sector(uint32_t sector_index)
     }
 }
 
+static void flight_log_order_remove_block(uint32_t sector_index)
+{
+    uint32_t offset;
+
+    for (offset = 0U; offset < APP_FLIGHT_LOG_BLOCK32K_SECTOR_COUNT; ++offset) {
+        flight_log_order_remove_sector(sector_index + offset);
+    }
+}
+
 static void flight_log_scan_existing(void)
 {
     APP_FlightLogSectorHeader header;
@@ -451,6 +501,7 @@ static void flight_log_scan_existing(void)
     flight_log_status.used_sectors = 0U;
     memset(flight_log_sector_order, 0, sizeof(flight_log_sector_order));
     memset(flight_log_sector_order_seq, 0, sizeof(flight_log_sector_order_seq));
+    flight_log_prepared_block_ready = 0U;
 
     for (uint32_t sector = 0U; sector < APP_FLIGHT_LOG_SECTOR_COUNT; ++sector) {
         APP_FlashService_Status st =
@@ -507,7 +558,7 @@ static void flight_log_fill_sector_header(APP_FlightLogSectorHeader *header,
     /*
      * 坐标溯源。方向码/契约版本/标定代数由最近一帧快照带上来（控制环里本就
      * 现成）；firmware_crc32 只在这里取——首次 APP_FirmwareIdentity_Get() 会
-     * 对整个镜像算 CRC32，250Hz 控制环不得阻塞于此（spec §5）。本函数只经
+     * 对整个镜像算 CRC32，高频控制环不得阻塞于此（spec §5）。本函数只经
      * flight_log_open_sector ← flight_log_write_records ←
      * APP_FlightLog_BackgroundStep 可达，属后台任务上下文。
      */
@@ -528,10 +579,36 @@ static uint8_t flight_log_open_sector(void)
     uint32_t address = flight_log_sector_address(sector);
     APP_FlashService_Status st;
 
-    st = APP_FlashService_EraseSector(address);
-    flight_log_status.last_flash_status = (uint32_t)st;
-    if (st != APP_FLASH_SERVICE_OK) {
-        return 0U;
+    if ((flight_log_prepared_block_ready != 0U) &&
+        (flight_log_sector_in_prepared_block(sector) == 0U)) {
+        flight_log_prepared_block_ready = 0U;
+    }
+
+    if (flight_log_prepared_block_ready == 0U) {
+        if (flight_log_is_block32k_candidate(sector) != 0U) {
+            st = APP_FlashService_EraseBlock32K(address);
+            flight_log_status.last_flash_status = (uint32_t)st;
+
+            if (st == APP_FLASH_SERVICE_OK) {
+                flight_log_prepared_block_ready = 1U;
+                flight_log_prepared_block_sector = sector;
+                flight_log_order_remove_block(sector);
+            } else {
+                flight_log_prepared_block_ready = 0U;
+
+                st = APP_FlashService_EraseSector(address);
+                flight_log_status.last_flash_status = (uint32_t)st;
+                if (st != APP_FLASH_SERVICE_OK) {
+                    return 0U;
+                }
+            }
+        } else {
+            st = APP_FlashService_EraseSector(address);
+            flight_log_status.last_flash_status = (uint32_t)st;
+            if (st != APP_FLASH_SERVICE_OK) {
+                return 0U;
+            }
+        }
     }
 
     flight_log_fill_sector_header(&header, sector);
@@ -1179,6 +1256,7 @@ APP_FlightLogCommandStatus APP_FlightLog_TestFill(uint32_t sectors)
     flight_log_status.sector_open = 0U;
     flight_log_status.sector_seq = 1U;
     flight_log_record_sequence = 0U;
+    flight_log_prepared_block_ready = 0U;
     flight_log_status.session_id =
         (uint32_t)(HAL_GetTick() ^ (uint32_t)SVC_Timestamp_Us() ^ 0xF10A7E57UL);
 

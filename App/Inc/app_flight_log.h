@@ -13,7 +13,7 @@ extern "C" {
 
 #define APP_FLIGHT_LOG_REGION_START       0x00002000UL
 #define APP_FLIGHT_LOG_REGION_END_EXCL    0x003FC000UL
-#define APP_FLIGHT_LOG_RATE_HZ            250U
+#define APP_FLIGHT_LOG_RATE_HZ            125U
 #define APP_FLIGHT_LOG_SECTOR_HEADER_SIZE 256U
 #define APP_FLIGHT_LOG_EXPORT_BAUD        57600U
 #define APP_FLIGHT_LOG_BACKGROUND_IDLE_MS 5U
@@ -44,7 +44,7 @@ typedef struct {
      * 经 APP_FlightLog_Observe 缓存后写进扇区头（每会话一次，不进每条记录）。
      * frame_orientation_code 为 V0 码：0..23 = 已发布规范 FLU，
      * 255 = legacy 中间轴。firmware_crc32 不在此处取——首次计算会遍历整个
-     * 镜像，250Hz 控制环不得阻塞（spec §5），改由扇区头填充路径在后台采样。
+     * 镜像，高频控制环不得阻塞（spec §5），改由扇区头填充路径在后台采样。
      */
     uint8_t frame_orientation_code;
     uint8_t frame_contract_version;

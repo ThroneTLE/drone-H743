@@ -5,8 +5,8 @@
 
 #include <stddef.h>
 
-_Static_assert(sizeof(DRV_GD25Q32_TimingProbe) == 1680U,
-               "OpenOCD decoder requires a 420-word probe block");
+_Static_assert(sizeof(DRV_GD25Q32_TimingProbe) == 1952U,
+               "OpenOCD decoder requires a 488-word probe block");
 _Static_assert(offsetof(DRV_GD25Q32_TimingProbe, tight_poll_enabled) == 8U,
                "OpenOCD tight-poll switch offset must stay stable");
 _Static_assert(offsetof(DRV_GD25Q32_TimingProbe, suspend_resume_enabled) == 16U,
@@ -67,7 +67,10 @@ uint32_t DRV_GD25Q32_TimingProbe_ElapsedUs(uint32_t start_cycles)
 void DRV_GD25Q32_TimingProbe_RecordBlock(uint32_t block_size,
                                          uint32_t elapsed_us)
 {
-    if (block_size == DRV_GD25Q32_BLOCK32K_SIZE) {
+    if (block_size == DRV_GD25Q32_SECTOR_SIZE) {
+        timing_probe_record(&g_drv_gd25q32_timing_probe.erase_4k,
+                            elapsed_us);
+    } else if (block_size == DRV_GD25Q32_BLOCK32K_SIZE) {
         timing_probe_record(&g_drv_gd25q32_timing_probe.erase_32k,
                             elapsed_us);
         g_drv_gd25q32_timing_probe.pending_page_block_kb = 32U;

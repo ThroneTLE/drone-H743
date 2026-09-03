@@ -8,7 +8,7 @@ extern "C" {
 #endif
 
 #define DRV_GD25Q32_TIMING_PROBE_MAGIC 0x544C4646UL /* FFLT */
-#define DRV_GD25Q32_TIMING_PROBE_VERSION 2U
+#define DRV_GD25Q32_TIMING_PROBE_VERSION 3U
 #define DRV_GD25Q32_TIMING_SAMPLE_CAPACITY 64U
 
 typedef struct {
@@ -42,6 +42,7 @@ typedef struct {
     DRV_GD25Q32_TimingSeries page_after_64k;
     DRV_GD25Q32_TimingSeries suspend_to_ready;
     DRV_GD25Q32_TimingSeries resume_to_running;
+    DRV_GD25Q32_TimingSeries erase_4k;
 } DRV_GD25Q32_TimingProbe;
 
 extern volatile DRV_GD25Q32_TimingProbe g_drv_gd25q32_timing_probe;

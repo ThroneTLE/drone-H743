@@ -27,6 +27,8 @@ def test_firmware_probe_is_thin_and_keeps_normal_polling_default() -> None:
     assert "tight_poll_enabled" in header
     assert ".tight_poll_enabled = 0U" in source
     assert "DRV_GD25Q32_TimingProbe_RecordBlock" in source
+    assert "erase_4k" in header
+    assert "block_size == DRV_GD25Q32_SECTOR_SIZE" in source
     assert "DRV_GD25Q32_TimingProbe_RecordPage" in source
     assert "DRV_GD25Q32_TimingProbe_RecordSuspend" in source
     assert "DRV_GD25Q32_TimingProbe_RecordResume" in source
@@ -42,7 +44,7 @@ def test_firmware_probe_is_thin_and_keeps_normal_polling_default() -> None:
     assert "FLASH TIMING" not in (ROOT / "App/Src/app_control.c").read_text(encoding="utf-8")
 
     flight_log = (ROOT / "App/Src/app_flight_log.c").read_text(encoding="utf-8")
-    assert "#define APP_FLIGHT_LOG_QUEUE_CAPACITY     32U" in flight_log
+    assert "#define APP_FLIGHT_LOG_QUEUE_CAPACITY     64U" in flight_log
     assert "#define APP_FLIGHT_LOG_WRITE_BATCH_RECORDS 4U" in flight_log
     assert "sizeof(APP_FlightLogRecord) == 528U" in flight_log
 
@@ -159,3 +161,32 @@ def test_even_zero_cost_suspend_resume_must_clear_the_300hz_gate() -> None:
     assert result["zero_handshake_upper_bound_hz"] < 250.0
     assert result["throughput_hz"] == result["zero_handshake_upper_bound_hz"]
     assert result["go"] is False
+
+
+def test_queue_peak_model_includes_unaligned_region_fringe_and_startup() -> None:
+    analysis = _load_analysis()
+    result = analysis.worst_case_queue_peak(
+        rate_hz=125,
+        queue_capacity=32,
+        batch_records=4,
+        sector_size=4096,
+        header_size=256,
+        record_size=528,
+        page_size=256,
+        page_program_us=1_006,
+        sector_erase_us=50_000,
+        block_erase_us=104_205,
+        background_wait_us=5_000,
+        region_start=0x2000,
+        region_end_excl=0x3FC000,
+        block_size=32768,
+    )
+
+    assert result["head_fringe_sectors"] == 6
+    assert result["tail_fringe_sectors"] == 4
+    assert result["steady_wrap_sector_erases"] == 10
+    assert result["startup_worst_sector_erases"] == 17
+    assert result["queue_capacity"] == 32
+    assert result["comfort_limit"] == 24
+    assert result["peak_records"] > 0
+    assert result["overflow_records"] >= 0

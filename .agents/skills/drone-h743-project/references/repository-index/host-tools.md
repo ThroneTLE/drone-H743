@@ -4,7 +4,7 @@
 
 Read this shard only when the task uses serial/TCP diagnostics, log analysis, identification, capture, calibration, or desktop UIs.
 
-Source snapshot: `1c940129e88d`; aggregate snapshot: `ce7def1f86a3`. Covered files: 5309.
+Source snapshot: `7ad3d6099baa`; aggregate snapshot: `ce7def1f86a3`. Covered files: 5309.
 
 | File/module or scope | Content outline | Key entry points / size |
 |---|---|---|
@@ -22,7 +22,7 @@ Source snapshot: `1c940129e88d`; aggregate snapshot: `ce7def1f86a3`. Covered fil
 | `tools/fit_motor_hammerstein.py` | Fit a motor Hammerstein model from thrust-identification CSV data. The model is: throttle/PWM -> static pressure/thrust… | `Sample`, `StepFit`, `TauFit`, `PredictionMetrics`, `load_samples`, `trimmed_mean` (+21) |
 | `tools/flash_diag_test.py` | Run drone-H743 RTOS/flash diagnostics over a noisy UART stream. The firmware may continuously print IMU samples. This t… | `CommandSpec`, `CheckResult`, `SerialTransport`, `LineReader`, `parse_kv`, `int_value` (+14) |
 | `tools/flash_stlink_gdb.ps1` | Host-side utility for flash stlink gdb | — |
-| `tools/flash_timing_analysis.py` | Calculate conservative flight-log throughput from real Flash timings | `page_program_operations`, `page_programs_per_sector`, `distribution`, `overhead_distribution`, `block_throughput`, `cooperative_block_throughput` (+2) |
+| `tools/flash_timing_analysis.py` | Calculate conservative flight-log throughput from real Flash timings | `page_program_operations`, `page_programs_per_sector`, `distribution`, `overhead_distribution`, `block_throughput`, `cooperative_block_throughput` (+4) |
 | `tools/flash_timing_capture.py` | Capture GD25Q32 page/block and suspend/resume timings for R-M1-3. This is deliberately a measurement tool, not the flig… | `parse_args`, `main` |
 | `tools/flight_acceptance_v2.py` | Strict, evidence-only V2A flight-control acceptance engine | `AcceptanceStatus`, `V2Stage`, `StageDefinition`, `V2Thresholds`, `V2Sample`, `PhysicalConfirmation` (+14) |
 | `tools/flight_log_receive.py` | Receive FlightLog dumps from USART1 and convert them to bin/csv/json | `FlightLogError`, `ExportBegin`, `ExportBlock`, `ExportEnd`, `ReceiveResult`, `crc32` (+25) |

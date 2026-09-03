@@ -4,7 +4,7 @@
 
 Read this shard only when you need existing behavioral/architecture coverage or must choose focused regression tests.
 
-Source snapshot: `b8febba47169`. Indexed files: 93.
+Source snapshot: `e4be2696c14a`. Indexed files: 94.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -27,9 +27,10 @@ Source snapshot: `b8febba47169`. Indexed files: 93.
 | `tests/test_firmware_build_gate.py` | 烧录前必须先编译，且编译失败绝不能继续烧录。 背景：USB DFU 一键烧录默认烧的是 build/Debug/drone-H743.elf。如果改完源码 忘了编译，就会把上一次的旧固件刷进飞控，而且现场很难看出来——固件"烧成功了"，… | `test_build_failure_raises_instead_of_returning_a_stale_elf`, `test_missing_cmake_is_reported_as_a_build_error`, `test_build_timeout_is_reported_as_a_build_error`, `test_successful_build_must_actually_produce_the_elf` (+17) |
 | `tests/test_flash_bdd.py` | — | `test_bdd_flash_diagnostics_flow_is_app_service_to_gd25q32_driver`, `test_bdd_h743_cache_setting_matches_runtime_cache_enable` |
 | `tests/test_flash_layering.py` | — | `test_app_uses_flash_service_not_bsp_flash_api`, `test_bsp_flash_bus_has_no_device_level_flash_api`, `test_gd25q32_driver_has_chip_specific_name`, `test_flash_service_is_public_app_boundary` (+1) |
-| `tests/test_flash_timing_measurement.py` | R-M1-3 block-erase timing measurement and throughput contracts | `test_firmware_probe_is_thin_and_keeps_normal_polling_default`, `test_page_program_count_matches_real_sector_layout_and_batching`, `test_throughput_uses_worst_samples_and_includes_background_waits`, `test_go_requires_twenty_percent_margin_not_merely_250hz` (+2) |
+| `tests/test_flash_timing_measurement.py` | R-M1-3 block-erase timing measurement and throughput contracts | `test_firmware_probe_is_thin_and_keeps_normal_polling_default`, `test_page_program_count_matches_real_sector_layout_and_batching`, `test_throughput_uses_worst_samples_and_includes_background_waits`, `test_go_requires_twenty_percent_margin_not_merely_250hz` (+3) |
 | `tests/test_flight_acceptance_v2.py` | — | `test_complete_v2a_passes_but_never_releases_flight`, `test_thresholds_strict`, `test_thresholds_serialized_and_metric_integrity_protected`, `test_zero_sample_pass_semantically_impossible` (+8) |
 | `tests/test_flight_calibration_param_contract.py` | Versioned aggregate flight-calibration parameter contract | `test_fcal_schema_owns_v0_v1_and_reserved_v2_fields`, `test_imuframe_commit_updates_the_aggregate_instead_of_replacing_it`, `test_fcal_codec_and_migration_compile_and_run_on_host` |
+| `tests/test_flight_log_block_erase_contract.py` | R-M1-3 block-erase + queue contracts for flight-log pipeline | `test_rate_and_trigger_divider_is_exact_125hz_quadrature`, `test_queue_capacity_is_64_and_record_queue_storage_matches`, `test_block_erase_only_for_head_tail_safe_32k_candidates_with_fallback`, `test_block_erase_success_removes_exact_block_from_order_and_prevents_double_erase` (+3) |
 | `tests/test_flight_log_contract.py` | — | `test_flight_log_region_leaves_reserved_flash_sectors`, `test_flight_log_uses_app_flash_service_only`, `test_stabilizer_records_snapshots_without_direct_flash_access`, `test_flight_log_v7_records_flow_servo_bus_attitude_ident_and_z_integral` (+4) |
 | `tests/test_flight_log_frame_provenance.py` | R-F5b flight-log frame provenance and version migration | `test_sector_header_declares_provenance_in_reserved_area`, `test_stabilizer_fills_snapshot_provenance_from_existing_sources`, `test_firmware_crc_is_sampled_off_the_control_loop`, `test_sector_header_migration_runs_on_host` (+2) |
 | `tests/test_flight_log_paths.py` | — | `test_canonical_data_tree_is_root_scoped`, `test_receive_uses_canonical_flight_log_dir`, `test_receive_has_headless_cli_and_canonical_gui_default`, `test_waveform_and_rerun_read_canonical_log_dir` (+6) |

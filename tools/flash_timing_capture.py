@@ -21,7 +21,7 @@ import time
 from typing import Any
 
 from flash_diag_test import LineReader, SerialTransport
-from flash_timing_analysis import analyse_capture
+from flash_timing_analysis import analyse_capture, analyse_queue_peak_capture
 from project_paths import (
     FLIGHT_LOG_FLASH_TIMING_ANALYSIS_DIR,
     dated_directory,
@@ -31,8 +31,8 @@ from project_paths import (
 
 PROBE_SYMBOL = "g_drv_gd25q32_timing_probe"
 PROBE_MAGIC = 0x544C4646
-PROBE_VERSION = 2
-PROBE_WORDS = 420
+PROBE_VERSION = 3
+PROBE_WORDS = 488
 SERIES_WORDS = 68
 TARGET_ADDRESS = 0x00010000
 
@@ -135,15 +135,21 @@ def _run_openocd(openocd: Path, scripts: Path, commands: str) -> str:
     return output
 
 
-def _arm_probe(openocd: Path, scripts: Path, address: int) -> str:
-    # Twelve header words followed by six 68-word timing series.
+def _arm_probe(
+    openocd: Path,
+    scripts: Path,
+    address: int,
+    *,
+    suspend_resume: bool,
+) -> str:
+    # Twelve header words followed by seven 68-word timing series.
     commands = (
         f"mww 0x{address:08X} 0 {PROBE_WORDS}; "
         f"mww 0x{address:08X} 0x{PROBE_MAGIC:08X}; "
         f"mww 0x{address + 4:08X} 0x{PROBE_VERSION:08X}; "
         f"mww 0x{address + 8:08X} 1; "
         f"mww 0x{address + 12:08X} 0; "
-        f"mww 0x{address + 16:08X} 1"
+        f"mww 0x{address + 16:08X} {1 if suspend_resume else 0}"
     )
     return _run_openocd(openocd, scripts, commands)
 
@@ -189,6 +195,7 @@ def _decode_probe(words: list[int]) -> dict[str, Any]:
         "page_after_64k",
         "suspend_to_ready",
         "resume_to_running",
+        "erase_4k",
     )
     result: dict[str, Any] = {
         "magic": words[0],
@@ -244,6 +251,36 @@ def _run_samples(
         print(f"{block_kb}K {iteration + 1}/{iterations}: {line}")
 
 
+def _run_sector_samples(
+    reader: LineReader,
+    iterations: int,
+    transcript: list[dict[str, Any]],
+) -> None:
+    for iteration in range(iterations):
+        scratch = _send_command(
+            reader,
+            f"FLASH SCRATCH TEST 0x{TARGET_ADDRESS:06X} 4",
+            ("FLASH scratch_test", "ERR "),
+            8.0,
+            transcript,
+        )
+        line = next((item for item in scratch if item.startswith("FLASH scratch_test")), "")
+        for token in (
+            "erase_kb=4",
+            "erase_st=0",
+            "read_st=0",
+            "ff=256",
+            "write_st=0",
+            "match=1",
+            "sr1=0x00",
+        ):
+            if token not in line:
+                raise RuntimeError(
+                    f"sector scratch failed at iteration {iteration + 1} ({token}): {line}"
+                )
+        print(f"4K {iteration + 1}/{iterations}: {line}")
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--serial", default="COM31")
@@ -254,6 +291,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--openocd", type=Path, default=_default_openocd())
     parser.add_argument("--openocd-scripts", type=Path, default=_default_openocd_scripts())
     parser.add_argument("--baseline-capture", type=Path)
+    parser.add_argument("--sector-only", action="store_true")
     parser.add_argument("--output-dir", type=Path)
     return parser.parse_args()
 
@@ -309,9 +347,17 @@ def main() -> int:
         safety["IMU?"] = _send_command(reader, "IMU?", ("IMU ", "ERR "), 3.0, transcript)
         _require_safety(safety)
 
-        arm_log = _arm_probe(args.openocd, args.openocd_scripts, address)
-        _run_samples(reader, args.iterations, 32, transcript)
-        _run_samples(reader, args.iterations, 64, transcript)
+        arm_log = _arm_probe(
+            args.openocd,
+            args.openocd_scripts,
+            address,
+            suspend_resume=not args.sector_only,
+        )
+        if args.sector_only:
+            _run_sector_samples(reader, args.iterations, transcript)
+        else:
+            _run_samples(reader, args.iterations, 32, transcript)
+            _run_samples(reader, args.iterations, 64, transcript)
 
         final: dict[str, list[str]] = {}
         final["FLASH?"] = _send_command(reader, "FLASH?", ("FLASH ", "ERR "), 3.0, transcript)
@@ -324,40 +370,50 @@ def main() -> int:
 
     words, read_log = _read_probe_words(args.openocd, args.openocd_scripts, address)
     probe = _decode_probe(words)
-    for name in (
-        "erase_32k",
-        "erase_64k",
-        "page_after_32k",
-        "page_after_64k",
-    ):
-        if probe[name]["count"] != args.iterations:
+    if args.sector_only:
+        if probe["erase_4k"]["count"] != args.iterations:
             raise SystemExit(
-                f"{name} captured {probe[name]['count']}, expected {args.iterations}"
+                f"erase_4k captured {probe['erase_4k']['count']}, expected {args.iterations}"
             )
-    expected_handshakes = args.iterations * 2
-    for name in ("suspend_to_ready", "resume_to_running"):
-        if probe[name]["count"] != expected_handshakes:
-            raise SystemExit(
-                f"{name} captured {probe[name]['count']}, expected {expected_handshakes}"
-            )
-    if probe["handshake_error_count"] != 0:
-        raise SystemExit(f"probe recorded {probe['handshake_error_count']} handshake errors")
-    if (probe["last_suspend_status1"] & 0x01) != 0 or (
-        probe["last_suspend_status2"] & 0x80
-    ) == 0:
-        raise SystemExit(f"invalid suspended status: {probe}")
-    if (probe["last_resume_status1"] & 0x01) == 0 or (
-        probe["last_resume_status2"] & 0x80
-    ) != 0:
-        raise SystemExit(f"invalid resumed status: {probe}")
+        if probe["suspend_success_count"] != 0 or probe["resume_success_count"] != 0:
+            raise SystemExit("sector-only measurement unexpectedly used suspend/resume")
+    else:
+        for name in (
+            "erase_32k",
+            "erase_64k",
+            "page_after_32k",
+            "page_after_64k",
+        ):
+            if probe[name]["count"] != args.iterations:
+                raise SystemExit(
+                    f"{name} captured {probe[name]['count']}, expected {args.iterations}"
+                )
+        expected_handshakes = args.iterations * 2
+        for name in ("suspend_to_ready", "resume_to_running"):
+            if probe[name]["count"] != expected_handshakes:
+                raise SystemExit(
+                    f"{name} captured {probe[name]['count']}, expected {expected_handshakes}"
+                )
+        if probe["handshake_error_count"] != 0:
+            raise SystemExit(f"probe recorded {probe['handshake_error_count']} handshake errors")
+        if (probe["last_suspend_status1"] & 0x01) != 0 or (
+            probe["last_suspend_status2"] & 0x80
+        ) == 0:
+            raise SystemExit(f"invalid suspended status: {probe}")
+        if (probe["last_resume_status1"] & 0x01) == 0 or (
+            probe["last_resume_status2"] & 0x80
+        ) != 0:
+            raise SystemExit(f"invalid resumed status: {probe}")
 
     now = datetime.now().astimezone()
     output_dir = ensure_directory(
         args.output_dir or dated_directory(FLIGHT_LOG_FLASH_TIMING_ANALYSIS_DIR, now)
     )
     stamp = now.strftime("%Y%m%d_%H%M%S")
-    capture_path = output_dir / f"flash_timing_capture_{stamp}.json"
-    report_path = output_dir / f"flash_timing_analysis_{stamp}.json"
+    capture_stem = "flash_sector_timing_capture" if args.sector_only else "flash_timing_capture"
+    report_stem = "flight_log_queue_peak_analysis" if args.sector_only else "flash_timing_analysis"
+    capture_path = output_dir / f"{capture_stem}_{stamp}.json"
+    report_path = output_dir / f"{report_stem}_{stamp}.json"
     capture = {
         "format": "drone-h743-flight-log-flash-timing-capture",
         "schema": 2,
@@ -368,8 +424,10 @@ def main() -> int:
         "iterations_per_block": args.iterations,
         "baseline_source_capture": str(baseline_path),
         "destructive_scope": (
-            "physical flight-log sectors 0..29 at 0x002000..0x01FFFF were "
-            "overwritten by prefill; sectors 14..29 were erased at the end"
+            "physical flight-log sector 14 at 0x010000 was erased/programmed"
+            if args.sector_only
+            else "physical flight-log sectors 0..29 at 0x002000..0x01FFFF were "
+                 "overwritten by prefill; sectors 14..29 were erased at the end"
         ),
         "safety_before": safety,
         "safety_after": final,
@@ -383,6 +441,7 @@ def main() -> int:
                 "page_after_64k",
                 "suspend_to_ready",
                 "resume_to_running",
+                "erase_4k",
             )
         },
         "baseline_samples_us": baseline_capture["samples_us"],
@@ -393,10 +452,13 @@ def main() -> int:
             "batch_records": 4,
             "page_size": 256,
             "background_wait_ms": 5,
+            "region_start": 0x2000,
+            "region_end_excl": 0x3FC000,
         },
         "acceptance_policy": {
             "required_rate_hz": 250.0,
             "required_margin_fraction": 0.20,
+            "candidate_rate_hz": 125,
         },
         "transcript": transcript,
         "openocd_arm_log": arm_log,
@@ -408,7 +470,11 @@ def main() -> int:
         newline="\n",
     )
     capture["capture_path"] = str(capture_path)
-    report = analyse_capture(capture)
+    report = (
+        analyse_queue_peak_capture(capture)
+        if args.sector_only
+        else analyse_capture(capture)
+    )
     report["created_at"] = now.isoformat()
     report_path.write_text(
         json.dumps(report, indent=2, ensure_ascii=False) + "\n",
@@ -417,7 +483,11 @@ def main() -> int:
     )
     print(f"capture={capture_path}")
     print(f"analysis={report_path}")
-    print(f"verdict={report['verdict']} recommended={report['recommended_block']}")
+    recommendation = report.get(
+        "recommended_block",
+        report.get("selected_queue_capacity"),
+    )
+    print(f"verdict={report['verdict']} recommended={recommendation}")
     return 0
 
 

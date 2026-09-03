@@ -44,7 +44,8 @@ def test_stabilizer_records_snapshots_without_direct_flash_access() -> None:
     assert '#include "app_flight_log.h"' in freertos
     assert "APP_FlightLog_Observe(flight_log_should_record ? &flog_snapshot : NULL" in freertos
     assert "DRV_COAX_CTRL_GetLastDebug(&flog_snapshot.ctrl_debug);" in freertos
-    assert "flight_log_divider ^= 1U;" in freertos
+    assert "(ctx->flight_log_divider & 0x03U) == 0U" in freertos
+    assert "ctx->flight_log_divider = (uint8_t)((uint32_t)(ctx->flight_log_divider + 1U) & 0x03U);" in freertos
     assert "STABILIZER_FLIGHT_LOG_TAIL_RECORDS" in freertos
     assert "flog_snapshot.motor_output_reason" in freertos
     assert "APP_FLIGHT_LOG_MOTOR_REASON_RC_LOSS_DISABLE" in freertos
