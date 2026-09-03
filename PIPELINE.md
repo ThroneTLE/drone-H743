@@ -49,6 +49,7 @@ flowchart TB
         S4["⏸ S4 滤波器重新整定<br/>保持现有采集数据和滤波参数"]
         S5["⏸ S5 PID、控制律优化与新飞行功能<br/>底层验收完成后再恢复"]
         S6["✅ S6 巨型文件拆分<br/>panel 11446→5443 行 / app_control 6257→4131 行；两项存量拆分均已收官，新功能一律新模块（持续生效）"]
+        S7["🟡 S7 舵机硬件抽象：PWM/总线双类型支持<br/>不涉及PID/控制律，作者裁决不受S5冻结约束（2026-09-02）"]
     end
 
     M0 -.约束.-> S1
@@ -96,6 +97,12 @@ flowchart TB
 | R-F1b | 待定 | 〔码〕legacy gyro 反射修正（det=−1 与 accel 不自洽，F1 只钉未改） | 仅当掩码完成后决定保留 legacy 分支才执行；改动影响 legacy yaw 可观测输出，须单独实机 A/B | ⏸（待 legacy 分支去留决策） |
 | R-S6-1 | S6 | 〔码〕panel 拆分为 tools/panel_lib/ 包（spec §11） | 每次搬一页；行为零变更；全量绿 | ✅（增量1~11 全部完成 2026-08-30；panel 11446→5443 行） |
 | R-S6-2 | S6 | 〔码〕app_control 按命令域拆分（spec §11，路径已裁决见 §11.1） | 每域 ≤800 行；host 装置照编；构建零警告；函数体逐字节搬移 | ✅ 2026-08-30（A~D4 全过审；app_control.c 6257→4131；命令面实机冒烟并入六 seam 合并场次） |
+| R-S7-1 | S7 | 〔码〕固件新增舵机类型选择器（PWM/总线，持久化，仿 RCMAP/SERVOCAL 的 `?`/APPLY/REVERT/COMMIT） | 走既有 `SVC_Param` blob 机制；`?`回读含 active/persisted/dirty/generation；重启回读一致；不改 SERVOCAL 数据模型 | 待做 |
+| R-S7-2 | S7 | 〔码〕`stabilizer_control_commit()` 按 R-S7-1 选择结果分支输出（`BSP_PWM_SetServoPulse` vs `BSP_BusServo_MoveManyAsync`），PWM 模式下不跑总线时隙调度/死区判断/反馈轮询（依赖 R-S7-1） | 两种模式下`SERVO JOG`/`SERVOCAL`行为不变；contract 测试覆盖分支选择；不改 `drv_coax_ctrl.c`/`app_servo_jog.c` | 待做 |
+| R-S7-3 | S7 | 〔码〕PWM 模式下绕过总线专属逻辑：`app_servo_cal.c` 手势松力矩流程、`app_control.c` 的 `SERVO MOVE/ID/MODE/RAW/BAUDRATE` 调试命令族、`SERVO FB` 反馈台架（依赖 R-S7-1） | PWM 模式下上述路径拒绝/no-op 且不崩溃、不误报；总线模式行为逐字节不变 | 待做 |
+| R-S7-4 | S7 | 〔码〕`tools/panel_lib/pages/servo_debug.py` 按舵机类型隐藏/禁用总线专属控件（ID/改ID/17指令按钮含ULK/ULR/波特率/RAW），PWM模式仅保留"目标位置us"核心控件（依赖 R-S7-1 的协议） | 总线模式UI/行为零回归；PWM模式下不发送总线专属子命令；`mechanical.py`不改动 | 待做 |
+| R-S7-5 | S7 | 〔码〕上位机新增舵机类型选择控件，仿 RCMAP/SERVOCAL 单值 `?`/APPLY/COMMIT 模式（依赖 R-S7-1） | 读回状态含 dirty/valid/generation；不照搬 IMUFRAME 多步向导 | 待做 |
+| R-S7-6 | S7 | 〔码〕`tools/flight_acceptance_v2.py` 的 `SERVO_ALPHA/BETA_POSITIVE/NEGATIVE` 四阶段在 PWM 模式下跳过（依赖 R-S7-1 的类型可读取） | PWM模式下四阶段标记 skip 而非 fail；总线模式判据（valid_fraction≥0.95、误差≤20µs）不变 | 待做 |
 
 ## 最近验证证据
 
