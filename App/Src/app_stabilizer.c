@@ -40,6 +40,7 @@
 #include "app_messages.h"
 #include "app_servo_cal.h"
 #include "app_servo_jog.h"
+#include "app_servo_type.h"
 #include "app_servo_feedback.h"
 #include "app_servo_feedback_bench.h"
 #include "app_acceptance.h"
@@ -2159,13 +2160,16 @@ static void stabilizer_control_compute(StabilizerContext *ctx,
 static void stabilizer_control_commit(StabilizerContext *ctx,
                                       StabilizerControlFrame *frame)
 {
-  BSP_BusServo_Service(frame->now_ms);
+  const APP_ServoType servo_type = APP_ServoType_GetActive();
+
+  if (servo_type == APP_SERVO_TYPE_BUS) {
+    BSP_BusServo_Service(frame->now_ms);
+  }
   if (frame->servo_cal_active != 0U) {
     /* 手势标定已释放扭矩，地面点动必须立即让位。 */
     APP_ServoJog_ForceRelease("servo_cal");
   }
   if (frame->servo_cal_active == 0U) {
-    uint8_t servo_command_slot_due;
     uint16_t acceptance_alpha_us;
     uint16_t acceptance_beta_us;
     uint8_t acceptance_override;
@@ -2192,31 +2196,47 @@ static void stabilizer_control_commit(StabilizerContext *ctx,
                        &frame->moves[0].pulse_us,
                        &frame->moves[1].pulse_us);
     stabilizer_servo_record_target(frame->moves);
-    servo_command_slot_due = stabilizer_servo_command_slot_due(frame->now_ms);
 
-    if ((servo_command_slot_due != 0U) &&
-        ((stabilizer_servo_should_send(frame->moves, frame->now_ms) != 0U) ||
-         (APP_ServoFeedbackBench_MoveRefreshDue(
-            frame->now_ms, stabilizer_last_servo_send_ms) != 0U))) {
-      DRV_SERVO_Status servo_move_status =
-        BSP_BusServo_MoveManyAsync(frame->moves, 2U,
-                                   STABILIZER_SERVO_MOVE_TIME_MS);
+    /* 仲裁后的最终目标按类型落到硬件；PWM 不进入总线时隙/死区/反馈路径。 */
+    if (servo_type == APP_SERVO_TYPE_PWM) {
+      BSP_PWM_Status pwm_alpha_status;
+      BSP_PWM_Status pwm_beta_status;
 
-      stabilizer_servo_bus_diag.move_attempt_count++;
-      APP_ServoFeedbackBench_RecordMoveResult(servo_move_status);
-      if (servo_move_status == DRV_SERVO_OK) {
-        stabilizer_servo_bus_diag.move_sent_count++;
+      pwm_alpha_status = BSP_PWM_SetServoPulse(1U, frame->moves[0].pulse_us);
+      pwm_beta_status = BSP_PWM_SetServoPulse(2U, frame->moves[1].pulse_us);
+      if ((pwm_alpha_status == BSP_PWM_OK) &&
+          (pwm_beta_status == BSP_PWM_OK)) {
         stabilizer_servo_commit_sent(frame->moves, frame->now_ms);
-      } else if (servo_move_status == DRV_SERVO_BUSY) {
-        stabilizer_servo_bus_diag.move_busy_count++;
-      } else {
-        stabilizer_servo_bus_diag.move_error_count++;
       }
+    } else {
+      uint8_t servo_command_slot_due;
+
+      servo_command_slot_due = stabilizer_servo_command_slot_due(frame->now_ms);
+      if ((servo_command_slot_due != 0U) &&
+          ((stabilizer_servo_should_send(frame->moves, frame->now_ms) != 0U) ||
+           (APP_ServoFeedbackBench_MoveRefreshDue(
+              frame->now_ms, stabilizer_last_servo_send_ms) != 0U))) {
+        DRV_SERVO_Status servo_move_status =
+          BSP_BusServo_MoveManyAsync(frame->moves, 2U,
+                                     STABILIZER_SERVO_MOVE_TIME_MS);
+
+        stabilizer_servo_bus_diag.move_attempt_count++;
+        APP_ServoFeedbackBench_RecordMoveResult(servo_move_status);
+        if (servo_move_status == DRV_SERVO_OK) {
+          stabilizer_servo_bus_diag.move_sent_count++;
+          stabilizer_servo_commit_sent(frame->moves, frame->now_ms);
+        } else if (servo_move_status == DRV_SERVO_BUSY) {
+          stabilizer_servo_bus_diag.move_busy_count++;
+        } else {
+          stabilizer_servo_bus_diag.move_error_count++;
+        }
+      }
+
+      APP_ServoFeedbackBench_Step(frame->now_ms, frame->moves);
+      APP_ServoFeedback_Service(
+        frame->now_ms, frame->moves,
+        (APP_ServoFeedbackBench_IsActive() == 0U) ? 1U : 0U);
     }
-    APP_ServoFeedbackBench_Step(frame->now_ms, frame->moves);
-    APP_ServoFeedback_Service(
-      frame->now_ms, frame->moves,
-      (APP_ServoFeedbackBench_IsActive() == 0U) ? 1U : 0U);
   }
 
   if (APP_Acceptance_IsActive() != 0U) {

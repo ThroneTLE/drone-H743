@@ -11,10 +11,9 @@ def read(path: str) -> str:
 def test_stabilizer_uses_nonblocking_servo_dma_path() -> None:
     freertos = read("Core/Src/freertos.c") + read("App/Src/app_stabilizer.c")
 
-    assert "BSP_BusServo_MoveManyAsync(frame->moves, 2U,\n                                   STABILIZER_SERVO_MOVE_TIME_MS)" in freertos
+    assert "BSP_BusServo_MoveManyAsync(frame->moves, 2U," in freertos
     assert "BSP_BusServo_MoveMany(moves, 2U" not in freertos
     assert "DRV_SERVO_MoveCmd moves[2]" in freertos
-    assert "BSP_PWM_SetServoPulse" not in freertos
     assert "stabilizer_servo_should_send" in freertos
     assert "stabilizer_servo_command_slot_due" in freertos
     assert "stabilizer_servo_record_target(frame->moves);" in freertos
@@ -30,6 +29,51 @@ def test_stabilizer_uses_nonblocking_servo_dma_path() -> None:
     assert "stabilizer_servo_bus_diag.move_attempt_count++;" in freertos
     assert "stabilizer_servo_bus_diag.move_busy_count++;" in freertos
     assert "== DRV_SERVO_OK" in freertos
+
+
+def test_stabilizer_selects_pwm_or_bus_without_running_bus_only_services() -> None:
+    source = read("App/Src/app_stabilizer.c")
+    start = source.index("static void stabilizer_control_commit(StabilizerContext *ctx,")
+    end = source.index("\n}\n", start) + 2
+    commit = source[start:end]
+
+    assert '#include "app_servo_type.h"' in source
+    assert "const APP_ServoType servo_type = APP_ServoType_GetActive();" in commit
+    assert "if (servo_type == APP_SERVO_TYPE_BUS)" in commit
+    assert "BSP_BusServo_Service(frame->now_ms);" in commit
+    assert "if (servo_type == APP_SERVO_TYPE_PWM)" in commit
+    assert "BSP_PWM_Status pwm_alpha_status;" in commit
+    assert "BSP_PWM_Status pwm_beta_status;" in commit
+    assert "BSP_PWM_SetServoPulse(1U, frame->moves[0].pulse_us);" in commit
+    assert "BSP_PWM_SetServoPulse(2U, frame->moves[1].pulse_us);" in commit
+
+    pwm = commit[commit.index("if (servo_type == APP_SERVO_TYPE_PWM)"):]
+    pwm = pwm[:pwm.index("    } else {")]
+    assert "stabilizer_servo_command_slot_due" not in pwm
+    assert "stabilizer_servo_should_send" not in pwm
+    assert "APP_ServoFeedback_Service" not in pwm
+    assert "if ((pwm_alpha_status == BSP_PWM_OK) &&" in pwm
+    assert "(pwm_beta_status == BSP_PWM_OK))" in pwm
+    assert "stabilizer_servo_commit_sent(frame->moves, frame->now_ms);" in pwm
+
+    bus = commit[commit.index("    } else {", commit.index("if (servo_type == APP_SERVO_TYPE_PWM)")):]
+    assert "stabilizer_servo_command_slot_due" in bus
+    assert "stabilizer_servo_should_send" in bus
+    assert "BSP_BusServo_MoveManyAsync(frame->moves, 2U," in bus
+    assert "APP_ServoFeedback_Service(" in bus
+
+
+def test_servo_arbitration_precedes_both_hardware_outputs() -> None:
+    source = read("App/Src/app_stabilizer.c")
+    start = source.index("static void stabilizer_control_commit(StabilizerContext *ctx,")
+    end = source.index("\n}\n", start) + 2
+    commit = source[start:end]
+
+    record = commit.index("stabilizer_servo_record_target(frame->moves);")
+    pwm = commit.index("BSP_PWM_SetServoPulse(1U, frame->moves[0].pulse_us);")
+    bus = commit.index("BSP_BusServo_MoveManyAsync(frame->moves, 2U,")
+    assert record < pwm
+    assert record < bus
 
 
 def test_stabilizer_keeps_direct_servo_debug_switch_with_controller_path() -> None:
