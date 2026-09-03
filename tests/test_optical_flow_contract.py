@@ -280,6 +280,7 @@ def test_velocity_source_uses_flow_dominant_ekf_without_imu_velocity_fallback() 
     freertos = read("Core/Src/freertos.c") + read("App/Src/app_stabilizer.c")
     app_flow = read("App/Src/app_optical_flow.c")
     app_flow_header = read("App/Inc/app_optical_flow.h")
+    service_c = read("Services/Src/svc_flow_nav.c")
 
     # R-F2 routes the nav velocity through the temporary seam 2/3 boundary
     # adapter, so pin the whole chain: it must still originate in
@@ -290,12 +291,13 @@ def test_velocity_source_uses_flow_dominant_ekf_without_imu_velocity_fallback() 
     )
     assert "ctx->velocity_imu_x_m_s = nav_vel_legacy[0];" in freertos
     assert "APP_OpticalFlow_GetVelocitySample(&flow_vx_m_s," in freertos
-    assert "stabilizer_velocity_estimator_step(&ctx->vel_estimator," in freertos
-    assert "DRV_NAV_EKF_Predict(&state->ekf, acc_x_m_s2, acc_y_m_s2, dt_sec);" in freertos
-    assert "DRV_NAV_EKF_FuseFlow(&state->ekf," in freertos
-    assert "DRV_NAV_EKF_GetDiagnostics(&state->ekf, &state->diagnostics);" in freertos
-    assert "flow_accepted = stabilizer_velocity_estimator_step(&ctx->vel_estimator," in freertos
-    assert "ctx->velocity_state_x_m_s = ctx->vel_estimator.vel_m_s[0];" in freertos
+    # R-M5-5：融合本体搬到 svc_flow_nav.c，稳定环只喂输入取输出。下面几条与搬家前
+    # 的断言一一对应，只是换了归属文件。
+    assert "flow_accepted = SVC_FlowNav_Fuse(&fuse_input);" in freertos
+    assert "SVC_FlowNav_GetVelocity(&nav_vx_m_s, &nav_vy_m_s);" in freertos
+    assert "DRV_NAV_EKF_Predict(&flow_nav_ctx.ekf," in service_c
+    assert "DRV_NAV_EKF_FuseFlow(&flow_nav_ctx.ekf," in service_c
+    assert "DRV_NAV_EKF_GetDiagnostics(&flow_nav_ctx.ekf, &flow_nav_ctx.diagnostics);" in service_c
     assert "APP_OpticalFlow_SetVelocitySource(APP_OPTICAL_FLOW_VEL_SOURCE_IMU);" not in freertos
     assert "APP_OpticalFlow_SetVelocitySource(APP_OPTICAL_FLOW_VEL_SOURCE_NONE);" in freertos
     assert "APP_OpticalFlow_SetVelocitySource(APP_OPTICAL_FLOW_VEL_SOURCE_FLOW);" in freertos
@@ -303,14 +305,16 @@ def test_velocity_source_uses_flow_dominant_ekf_without_imu_velocity_fallback() 
     assert "APP_OpticalFlow_GetVelocitySample" in app_flow_header
     assert "uint32_t *sample_ms" in app_flow_header
     assert "return APP_OpticalFlow_GetVelocitySample(vx_m_s, vy_m_s, &sample_ms);" in app_flow
-    assert "*sample_ms = flow_ctx.velocity_sample_ms;" in app_flow
+    assert "*sample_ms = flow_nav_ctx.velocity_sample_ms;" in service_c
     assert "flow_ctx.velocity_source = APP_OPTICAL_FLOW_VEL_SOURCE_FLOW;" in app_flow
     assert "flow_ctx.velocity_source = APP_OPTICAL_FLOW_VEL_SOURCE_NONE;" in app_flow
     assert 'return "none";' in app_flow
-    assert "frame->valid != DRV_OPTICAL_FLOW_VALID" in app_flow
-    assert "(now_ms - frame->distance_received_ms) > APP_FLOW_TIMEOUT_MS" in app_flow
-    assert "(now_ms - frame->flow_received_ms) > APP_FLOW_TIMEOUT_MS" in app_flow
-    assert "flow_ctx.height_valid == 0U" in app_flow
+    # 时效门与“必须先有有效高度”这两条判决跟着搬进 Service，语义不变。
+    assert "sample->frame_valid == 0U" in service_c
+    assert "(now_ms - sample->distance_received_ms) > SVC_FLOW_NAV_TIMEOUT_MS" in service_c
+    assert "(now_ms - sample->flow_received_ms) > SVC_FLOW_NAV_TIMEOUT_MS" in service_c
+    assert "flow_nav_ctx.height_valid == 0U" in service_c
+    assert "frame->valid == DRV_OPTICAL_FLOW_VALID" in app_flow
 
 
 def test_optical_flow_fault_recovery_runs_outside_sensor_step() -> None:
@@ -332,35 +336,43 @@ def test_optical_flow_fault_recovery_runs_outside_sensor_step() -> None:
     assert "status->recovery_count = flow_ctx.recovery_count;" in app_flow
 
 
-def test_micolink_height_and_unrotated_velocity_are_applied_in_app_layer() -> None:
+def test_micolink_height_and_unrotated_velocity_are_applied_in_the_flow_nav_service() -> None:
+    """R-M5-5：高度 LPF 与未旋转速度换算从 App 搬到 Service，公式逐条不变。"""
     app_flow = read("App/Src/app_optical_flow.c")
     header = read("App/Inc/app_optical_flow.h")
     freertos = read("Core/Src/freertos.c") + read("App/Src/app_stabilizer.c")
+    service_h = read("Services/Inc/svc_flow_nav.h")
+    service_c = read("Services/Src/svc_flow_nav.c")
 
-    assert "APP_FLOW_MOUNT_COS_45" not in app_flow
-    assert "APP_FLOW_MOUNT_SIN_45" not in app_flow
-    assert "body_vx_m_s" not in app_flow
-    assert "body_vy_m_s" not in app_flow
-    assert "gyro_x_rad_s" not in app_flow
+    # 安装角 / 旋转补偿既不属于取数层，也不属于 Service。
+    for owner in (app_flow, service_c):
+        assert "APP_FLOW_MOUNT_COS_45" not in owner
+        assert "APP_FLOW_MOUNT_SIN_45" not in owner
+        assert "body_vx_m_s" not in owner
+        assert "gyro_x_rad_s" not in owner
     assert "stabilizer_compensate_flow_rotation(" in freertos
-    assert "#define APP_FLOW_MEDIAN_WINDOW       5U" in app_flow
-    assert "#define APP_FLOW_MEDIAN_MIN_SAMPLES  3U" in app_flow
-    assert "app_flow_update_median_filter(frame);" in app_flow
-    assert "flow_ctx.flow_filter_ready == 0U" in app_flow
-    assert "sensor_vx_m_s =\n            (float)flow_ctx.filtered_flow_vel_x * 0.01f * flow_ctx.height_m;" in app_flow
-    assert "sensor_vy_m_s =\n            (float)flow_ctx.filtered_flow_vel_y * 0.01f * flow_ctx.height_m;" in app_flow
-    assert "app_flow_velocity_plausible(sensor_vx_m_s, sensor_vy_m_s)" in app_flow
-    assert "flow_ctx.vx_m_s = sensor_vx_m_s;" in app_flow
-    assert "flow_ctx.vy_m_s = sensor_vy_m_s;" in app_flow
-    assert "APP_FLOW_HEIGHT_LPF_ALPHA" in app_flow
-    assert "#define APP_FLOW_MAX_HEIGHT_STEP_M   0.18f" in app_flow
-    assert "raw_height_m = (float)frame->distance_mm * 0.001f;" in app_flow
-    assert "fabsf(raw_height_m - flow_ctx.height_m)" in app_flow
-    assert "APP_FLOW_MAX_HEIGHT_STEP_M" in app_flow
-    assert "frame->distance_received_ms == flow_ctx.previous_height_sample_ms" in app_flow
-    assert "frame->flow_received_ms != flow_ctx.processed_flow_ms" in app_flow
-    assert "flow_ctx.height_valid = 1U;" in app_flow
+
+    assert "#define SVC_FLOW_NAV_MEDIAN_WINDOW            5U" in service_h
+    assert "#define SVC_FLOW_NAV_MEDIAN_MIN_SAMPLES       3U" in service_h
+    assert "flow_nav_update_median_filter(sample);" in service_c
+    assert "flow_nav_ctx.flow_filter_ready == 0U" in service_c
+    assert "sensor_vx_m_s = (float)flow_nav_ctx.filtered_flow_vel_x * 0.01f *" in service_c
+    assert "sensor_vy_m_s = (float)flow_nav_ctx.filtered_flow_vel_y * 0.01f *" in service_c
+    assert "flow_nav_velocity_plausible(sensor_vx_m_s, sensor_vy_m_s)" in service_c
+    assert "flow_nav_ctx.vx_m_s = sensor_vx_m_s;" in service_c
+    assert "flow_nav_ctx.vy_m_s = sensor_vy_m_s;" in service_c
+    assert "SVC_FLOW_NAV_HEIGHT_LPF_ALPHA" in service_c
+    assert "#define SVC_FLOW_NAV_MAX_HEIGHT_STEP_M        0.18f" in service_h
+    assert "raw_height_m = (float)sample->distance_mm * 0.001f;" in service_c
+    assert "fabsf(raw_height_m - flow_nav_ctx.height_m)" in service_c
+    assert "SVC_FLOW_NAV_MAX_HEIGHT_STEP_M" in service_c
+    assert "flow_nav_ctx.previous_height_sample_ms" in service_c
+    assert "sample->flow_received_ms == flow_nav_ctx.processed_flow_ms" in service_c
+    assert "flow_nav_ctx.height_valid = 1U;" in service_c
+
+    # App 层只剩透传出口，报告字段一个不少。
     assert "APP_OpticalFlow_GetHeightSample" in header
+    assert "SVC_FlowNav_GetHeight(height_m, vertical_velocity_m_s, sample_ms," in app_flow
     assert "APP_OpticalFlow_GetHeightSample(&frame->range_height_m," in freertos
     assert "APP_Rangefinder_GetHeightSample" not in freertos
     assert "APP_OpticalFlow_UpdateHeightFromRange" not in app_flow
@@ -375,19 +387,22 @@ def test_optical_flow_requires_high_quality_before_control_use() -> None:
     app_flow = read("App/Src/app_optical_flow.c")
     header = read("App/Inc/app_optical_flow.h")
     freertos = read("Core/Src/freertos.c") + read("App/Src/app_stabilizer.c")
+    service_h = read("Services/Inc/svc_flow_nav.h")
+    service_c = read("Services/Src/svc_flow_nav.c")
 
-    assert "#define APP_OPTICAL_FLOW_MIN_QUALITY 80U" in header
-    assert "#define APP_FLOW_MIN_QUALITY         APP_OPTICAL_FLOW_MIN_QUALITY" in app_flow
-    assert "#define APP_FLOW_FILTER_RESET_MS     250U" in app_flow
-    assert "frame->flow_quality < APP_FLOW_MIN_QUALITY" in app_flow
-    assert "flow_ctx.processed_flow_ms = frame->flow_received_ms;" in app_flow
-    assert "static void app_flow_mark_velocity_invalid(void)" in app_flow
-    assert "app_flow_reject_velocity_sample();" in app_flow
-    assert "app_flow_mark_velocity_invalid();" in app_flow
-    assert "flow_ctx.velocity_sample_ms = 0U;" in app_flow
-    assert "((now - flow_ctx.last_good_ms) > APP_FLOW_FILTER_RESET_MS)" in app_flow
+    # R-M5-5：门限数值不变（80），唯一定义点从 app_optical_flow.h 移到 Service。
+    assert "#define SVC_FLOW_NAV_MIN_QUALITY              80U" in service_h
+    assert "APP_OPTICAL_FLOW_MIN_QUALITY" not in header
+    assert "#define SVC_FLOW_NAV_FILTER_RESET_MS          250U" in service_h
+    assert "sample->flow_quality < SVC_FLOW_NAV_MIN_QUALITY" in service_c
+    assert "flow_nav_ctx.processed_flow_ms = sample->flow_received_ms;" in service_c
+    assert "static void flow_nav_mark_velocity_invalid(void)" in service_c
+    assert "flow_nav_reject_velocity_sample();" in service_c
+    assert "flow_nav_mark_velocity_invalid();" in service_c
+    assert "flow_nav_ctx.velocity_sample_ms = 0U;" in service_c
+    assert "SVC_FLOW_NAV_FILTER_RESET_MS)" in service_c
     assert "quality=%u min_q=%u flow_st=%u" in app_flow
-    assert "flow_status.flow_quality >= APP_OPTICAL_FLOW_MIN_QUALITY" in freertos
+    assert "flow_status.flow_quality >= SVC_FLOW_NAV_MIN_QUALITY" in freertos
     assert "flow_status.flow_quality != 0U" not in freertos
     assert "flow_vel_x_filtered" in header
     assert "flow_filter_ready" in header
@@ -397,11 +412,13 @@ def test_optical_flow_requires_high_quality_before_control_use() -> None:
 def test_optical_flow_rejects_implausible_velocity_before_ekf() -> None:
     app_flow = read("App/Src/app_optical_flow.c")
     header = read("App/Inc/app_optical_flow.h")
+    service_h = read("Services/Inc/svc_flow_nav.h")
+    service_c = read("Services/Src/svc_flow_nav.c")
 
-    assert "#define APP_FLOW_MAX_SPEED_M_S       2.50f" in app_flow
-    assert "#define APP_FLOW_MAX_SPEED_STEP_M_S  1.20f" in app_flow
+    assert "#define SVC_FLOW_NAV_MAX_SPEED_M_S            2.50f" in service_h
+    assert "#define SVC_FLOW_NAV_MAX_SPEED_STEP_M_S       1.20f" in service_h
     assert "uint32_t velocity_reject_count;" in header
-    assert "flow_ctx.velocity_reject_count++;" in app_flow
+    assert "flow_nav_ctx.velocity_reject_count++;" in service_c
     assert "vel_rej=%lu" in app_flow
 
 

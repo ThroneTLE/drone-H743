@@ -3,8 +3,6 @@
 
 #include <stdint.h>
 
-#define APP_OPTICAL_FLOW_MIN_QUALITY 80U
-
 #ifdef __cplusplus
 extern "C" {
 #endif

@@ -66,6 +66,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Driver/Src/drv_attitude_fusion.c
     ThirdParty/Fusion/FusionAhrs.c
     # Services layer
+    Services/Src/svc_flow_nav.c
     Services/Src/svc_param.c
     Services/Src/svc_timestamp.c
     # BSP layer

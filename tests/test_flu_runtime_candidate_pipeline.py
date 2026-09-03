@@ -39,7 +39,7 @@ def test_frame_change_resets_state_and_selects_nwu_for_canonical_flu() -> None:
     assert "DRV_ATTITUDE_FUSION_CONVENTION_NWU" in reset
     assert "DRV_ATTITUDE_FUSION_CONVENTION_NED" in reset
     assert "DRV_IMU_NAV_Reset(&ctx->nav_state);" in reset
-    assert "stabilizer_velocity_estimator_reset(&ctx->vel_estimator);" in reset
+    assert "SVC_FlowNav_ResetEstimator();" in reset
     assert "ctx->attitude_zero_ready = 0U;" in reset
     assert "ctx->last_gyro_ready = 0U;" in reset
 

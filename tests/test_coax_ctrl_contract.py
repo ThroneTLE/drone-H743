@@ -217,7 +217,11 @@ def test_controller_wrapper_exposes_velocity_first_vector_control_inputs() -> No
     assert "frame->reference.dt_sec = frame->ctrl_dt_sec;" in freertos
     assert "velocity_loop_enabled = (vel_loop_enable >= 0.5f) ? 1U : 0U;" in freertos
     assert "frame->reference.horizontal_velocity_valid = velocity_loop_enabled;" in freertos
-    assert "ctx->position_state_x_m +\n                               velocity_control_x_m_s * frame->ctrl_dt_sec" in freertos
+    # R-M5-5：位置积分搬进 svc_flow_nav.c（按传感器时间轴变步长），稳定环只取成品。
+    # 保留同一条约束的等价形式：位置状态确实进了控制器的 attitude 输入。
+    assert "SVC_FlowNav_GetPosition(&position_state_x_m, &position_state_y_m);" in freertos
+    assert "frame->attitude.x_m = position_state_x_m;" in freertos
+    assert "frame->attitude.y_m = position_state_y_m;" in freertos
     assert "ctx->position_ref_x_m += frame->reference.vx_m_s * frame->ctrl_dt_sec;" in freertos
     assert "frame->reference.x_m = ctx->position_ref_x_m;" in freertos
     assert "frame->reference.y_m = ctx->position_ref_y_m;" in freertos

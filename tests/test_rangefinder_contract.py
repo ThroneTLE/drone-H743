@@ -106,13 +106,16 @@ def test_rangefinder_no_longer_feeds_flow_or_altitude_control() -> None:
     rangefinder = read("App/Src/app_rangefinder.c")
     flow = read("App/Src/app_optical_flow.c")
     freertos = read("Core/Src/freertos.c") + read("App/Src/app_stabilizer.c")
+    service = read("Services/Src/svc_flow_nav.c")
 
     assert "APP_OpticalFlow_UpdateHeightFromRange" not in rangefinder
     assert "APP_OpticalFlow_UpdateHeightFromRange" not in flow
     assert "APP_Rangefinder_GetHeightSample" not in freertos
     assert "APP_OpticalFlow_GetHeightSample(&frame->range_height_m," in freertos
-    assert "raw_height_m = (float)frame->distance_mm * 0.001f;" in flow
-    assert "flow_ctx.height_valid = 1U;" in flow
+    # R-M5-5：高度仍旧只来自光流模块内的组合测距，只是换算搬进了 Service。
+    assert "raw_height_m = (float)sample->distance_mm * 0.001f;" in service
+    assert "raw_height_m" not in flow
+    assert "flow_nav_ctx.height_valid = 1U;" in service
     assert "frame->relative_height_m = frame->range_height_m - ctx->height_origin_m;" in freertos
     assert "frame->attitude.z_m = -frame->relative_height_m;" in freertos
     assert "frame->attitude.vz_m_s = -frame->range_velocity_m_s;" in freertos

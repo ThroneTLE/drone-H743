@@ -3,184 +3,32 @@
 #include "app_control.h"
 #include "bsp_optical_flow.h"
 #include "drv_optical_flow.h"
+#include "svc_flow_nav.h"
 
-#include <math.h>
 #include <string.h>
 
-#define APP_FLOW_TIMEOUT_MS          100U
+/*
+ * R-M5-5：本文件只剩设备生命周期（初始化 / 健康 / 恢复）与报告组装。
+ * 高度 LPF、光流中值与速度换算、质量门控、速度合理性门全部搬到
+ * Services/Src/svc_flow_nav.c，这里不再保留任何一份副本，只做透传。
+ */
 #define APP_FLOW_STARTUP_GRACE_MS    1500U
 #define APP_FLOW_RETRY_INTERVAL_MS   1000U
 #define APP_FLOW_FAILED_RETRY_MS     5000U
 #define APP_FLOW_FAST_RETRY_LIMIT    5U
-#define APP_FLOW_HEIGHT_LPF_ALPHA    0.35f
-#define APP_FLOW_VELOCITY_LPF_ALPHA  0.20f
-#define APP_FLOW_MIN_QUALITY         APP_OPTICAL_FLOW_MIN_QUALITY
-#define APP_FLOW_MAX_HEIGHT_M        12.0f
-#define APP_FLOW_MAX_HEIGHT_STEP_M   0.18f
-#define APP_FLOW_MAX_VERTICAL_VELOCITY_M_S 5.0f
-#define APP_FLOW_MAX_SPEED_M_S       2.50f
-#define APP_FLOW_MAX_SPEED_STEP_M_S  1.20f
-#define APP_FLOW_MEDIAN_WINDOW       5U
-#define APP_FLOW_MEDIAN_MIN_SAMPLES  3U
-#define APP_FLOW_FILTER_RESET_MS     250U
 
 typedef struct {
     uint8_t initialized;
     int32_t init_status;
     APP_OPTICAL_FLOW_VelSource velocity_source;
-    float height_m;
-    float height_raw_m;
-    uint8_t height_valid;
-    float vertical_velocity_m_s;
-    uint32_t height_sample_ms;
-    float previous_height_m;
-    uint32_t previous_height_sample_ms;
-    float vx_m_s;
-    float vy_m_s;
-    uint8_t velocity_valid;
-    uint32_t velocity_sample_ms;
     APP_OPTICAL_FLOW_Health health;
     uint32_t init_attempts;
     uint32_t recovery_count;
-    uint32_t velocity_reject_count;
-    uint32_t processed_frames;
-    uint32_t processed_flow_ms;
-    int16_t flow_vel_x_window[APP_FLOW_MEDIAN_WINDOW];
-    int16_t flow_vel_y_window[APP_FLOW_MEDIAN_WINDOW];
-    uint8_t flow_median_count;
-    uint8_t flow_median_pos;
-    int16_t filtered_flow_vel_x;
-    int16_t filtered_flow_vel_y;
-    uint8_t flow_filter_ready;
     uint32_t last_init_attempt_ms;
-    uint32_t last_good_ms;
-    float last_accept_vx_m_s;
-    float last_accept_vy_m_s;
     BSP_OPTICAL_FLOW_Status bsp_status;
 } APP_OpticalFlow_Context;
 
 static APP_OpticalFlow_Context flow_ctx;
-
-static float app_flow_square(float value)
-{
-    return value * value;
-}
-
-static float app_flow_clamp(float value, float lo, float hi)
-{
-    if (value < lo) {
-        return lo;
-    }
-    if (value > hi) {
-        return hi;
-    }
-    return value;
-}
-
-static void app_flow_reset_median_filter(void)
-{
-    memset(flow_ctx.flow_vel_x_window, 0, sizeof(flow_ctx.flow_vel_x_window));
-    memset(flow_ctx.flow_vel_y_window, 0, sizeof(flow_ctx.flow_vel_y_window));
-    flow_ctx.flow_median_count = 0U;
-    flow_ctx.flow_median_pos = 0U;
-    flow_ctx.filtered_flow_vel_x = 0;
-    flow_ctx.filtered_flow_vel_y = 0;
-    flow_ctx.flow_filter_ready = 0U;
-}
-
-static void app_flow_clear_velocity_sample(void)
-{
-    flow_ctx.velocity_source = APP_OPTICAL_FLOW_VEL_SOURCE_NONE;
-    flow_ctx.vx_m_s = 0.0f;
-    flow_ctx.vy_m_s = 0.0f;
-    flow_ctx.velocity_valid = 0U;
-    flow_ctx.velocity_sample_ms = 0U;
-    flow_ctx.last_good_ms = 0U;
-    flow_ctx.last_accept_vx_m_s = 0.0f;
-    flow_ctx.last_accept_vy_m_s = 0.0f;
-}
-
-static void app_flow_mark_velocity_invalid(void)
-{
-    flow_ctx.velocity_source = APP_OPTICAL_FLOW_VEL_SOURCE_NONE;
-    flow_ctx.velocity_valid = 0U;
-    flow_ctx.velocity_sample_ms = 0U;
-}
-
-static void app_flow_reject_velocity_sample(void)
-{
-    flow_ctx.velocity_reject_count++;
-    app_flow_mark_velocity_invalid();
-}
-
-static void app_flow_reset_samples(void)
-{
-    flow_ctx.height_m = 0.0f;
-    flow_ctx.height_raw_m = 0.0f;
-    flow_ctx.height_valid = 0U;
-    flow_ctx.vertical_velocity_m_s = 0.0f;
-    flow_ctx.height_sample_ms = 0U;
-    flow_ctx.previous_height_m = 0.0f;
-    flow_ctx.previous_height_sample_ms = 0U;
-    app_flow_reset_median_filter();
-    app_flow_clear_velocity_sample();
-    flow_ctx.processed_frames = 0U;
-    flow_ctx.processed_flow_ms = 0U;
-}
-
-static int16_t app_flow_median_i16(const int16_t *values, uint8_t count)
-{
-    int16_t sorted[APP_FLOW_MEDIAN_WINDOW];
-
-    if ((values == NULL) || (count == 0U)) {
-        return 0;
-    }
-    if (count > APP_FLOW_MEDIAN_WINDOW) {
-        count = APP_FLOW_MEDIAN_WINDOW;
-    }
-
-    for (uint8_t i = 0U; i < count; ++i) {
-        sorted[i] = values[i];
-    }
-    for (uint8_t i = 1U; i < count; ++i) {
-        int16_t key = sorted[i];
-        uint8_t j = i;
-        while ((j > 0U) && (sorted[j - 1U] > key)) {
-            sorted[j] = sorted[j - 1U];
-            j--;
-        }
-        sorted[j] = key;
-    }
-
-    return sorted[count / 2U];
-}
-
-static void app_flow_update_median_filter(const BSP_OPTICAL_FLOW_Frame *frame)
-{
-    if (frame == NULL) {
-        app_flow_reset_median_filter();
-        return;
-    }
-
-    flow_ctx.flow_vel_x_window[flow_ctx.flow_median_pos] = frame->flow_vel_x;
-    flow_ctx.flow_vel_y_window[flow_ctx.flow_median_pos] = frame->flow_vel_y;
-    flow_ctx.flow_median_pos++;
-    if (flow_ctx.flow_median_pos >= APP_FLOW_MEDIAN_WINDOW) {
-        flow_ctx.flow_median_pos = 0U;
-    }
-    if (flow_ctx.flow_median_count < APP_FLOW_MEDIAN_WINDOW) {
-        flow_ctx.flow_median_count++;
-    }
-
-    flow_ctx.filtered_flow_vel_x =
-        app_flow_median_i16(flow_ctx.flow_vel_x_window,
-                            flow_ctx.flow_median_count);
-    flow_ctx.filtered_flow_vel_y =
-        app_flow_median_i16(flow_ctx.flow_vel_y_window,
-                            flow_ctx.flow_median_count);
-    flow_ctx.flow_filter_ready =
-        (flow_ctx.flow_median_count >= APP_FLOW_MEDIAN_MIN_SAMPLES) ? 1U : 0U;
-}
 
 static void app_optical_flow_try_init(uint32_t now_ms)
 {
@@ -194,7 +42,8 @@ static void app_optical_flow_try_init(uint32_t now_ms)
     flow_ctx.init_status = (int32_t)status;
     flow_ctx.bsp_status = bsp_status;
     flow_ctx.initialized = bsp_status.initialized;
-    app_flow_reset_samples();
+    flow_ctx.velocity_source = APP_OPTICAL_FLOW_VEL_SOURCE_NONE;
+    SVC_FlowNav_Reset();
     if (status == DRV_OPTICAL_FLOW_OK) {
         flow_ctx.health = APP_OPTICAL_FLOW_HEALTH_STARTING;
     } else {
@@ -204,92 +53,27 @@ static void app_optical_flow_try_init(uint32_t now_ms)
     }
 }
 
-static uint8_t app_flow_velocity_plausible(float vx_m_s, float vy_m_s)
+/* Driver 帧 → Service 输入。这里只是搬字段，没有任何判决。 */
+static void app_flow_fill_sample(const BSP_OPTICAL_FLOW_Frame *frame,
+                                 SVC_FLOW_NAV_Sample *sample)
 {
-    float speed_sq = app_flow_square(vx_m_s) + app_flow_square(vy_m_s);
-    float dvx;
-    float dvy;
-    float step_sq;
-
-    if (speed_sq > app_flow_square(APP_FLOW_MAX_SPEED_M_S)) {
-        return 0U;
-    }
-
-    if (flow_ctx.last_good_ms == 0U) {
-        return 1U;
-    }
-
-    dvx = vx_m_s - flow_ctx.last_accept_vx_m_s;
-    dvy = vy_m_s - flow_ctx.last_accept_vy_m_s;
-    step_sq = app_flow_square(dvx) + app_flow_square(dvy);
-    return (step_sq <= app_flow_square(APP_FLOW_MAX_SPEED_STEP_M_S)) ? 1U : 0U;
-}
-
-static void app_flow_update_height(const BSP_OPTICAL_FLOW_Frame *frame)
-{
-    float raw_height_m;
-    float filtered_height_m;
-
-    if ((frame == NULL) || (frame->distance_valid == 0U) ||
-        (frame->distance_mm == 0UL) || (frame->distance_received_ms == 0UL) ||
-        (frame->distance_received_ms == flow_ctx.previous_height_sample_ms)) {
+    memset(sample, 0, sizeof(*sample));
+    if (frame == NULL) {
         return;
     }
 
-    raw_height_m = (float)frame->distance_mm * 0.001f;
-    if ((raw_height_m <= 0.0f) || (raw_height_m > APP_FLOW_MAX_HEIGHT_M)) {
-        return;
-    }
-    if ((flow_ctx.height_valid != 0U) &&
-        (fabsf(raw_height_m - flow_ctx.height_m) >
-         APP_FLOW_MAX_HEIGHT_STEP_M)) {
-        return;
-    }
-
-    if (flow_ctx.previous_height_sample_ms == 0U) {
-        filtered_height_m = raw_height_m;
-        flow_ctx.vertical_velocity_m_s = 0.0f;
-    } else {
-        uint32_t dt_ms =
-            frame->distance_received_ms - flow_ctx.previous_height_sample_ms;
-        filtered_height_m = flow_ctx.height_m +
-            APP_FLOW_HEIGHT_LPF_ALPHA * (raw_height_m - flow_ctx.height_m);
-        if ((dt_ms >= 2U) && (dt_ms <= APP_FLOW_TIMEOUT_MS)) {
-            float vz_m_s = (filtered_height_m - flow_ctx.previous_height_m) /
-                           ((float)dt_ms * 0.001f);
-            vz_m_s = app_flow_clamp(vz_m_s,
-                                    -APP_FLOW_MAX_VERTICAL_VELOCITY_M_S,
-                                     APP_FLOW_MAX_VERTICAL_VELOCITY_M_S);
-            flow_ctx.vertical_velocity_m_s += APP_FLOW_VELOCITY_LPF_ALPHA *
-                (vz_m_s - flow_ctx.vertical_velocity_m_s);
-        }
-    }
-
-    flow_ctx.height_raw_m = raw_height_m;
-    flow_ctx.height_m = filtered_height_m;
-    flow_ctx.height_valid = 1U;
-    flow_ctx.height_sample_ms = frame->distance_received_ms;
-    flow_ctx.previous_height_m = flow_ctx.height_m;
-    flow_ctx.previous_height_sample_ms = frame->distance_received_ms;
-}
-
-static uint8_t app_flow_frame_usable(const BSP_OPTICAL_FLOW_Frame *frame,
-                                     uint32_t now_ms)
-{
-    if ((frame == NULL) ||
-        (frame->valid != DRV_OPTICAL_FLOW_VALID) ||
-        (frame->distance_valid == 0U) ||
-        (frame->flow_valid == 0U) ||
-        (frame->distance_received_ms == 0UL) ||
-        (frame->flow_received_ms == 0UL) ||
-        ((now_ms - frame->distance_received_ms) > APP_FLOW_TIMEOUT_MS) ||
-        ((now_ms - frame->flow_received_ms) > APP_FLOW_TIMEOUT_MS) ||
-        (frame->flow_quality < APP_FLOW_MIN_QUALITY) ||
-        (flow_ctx.height_valid == 0U)) {
-        return 0U;
-    }
-
-    return 1U;
+    sample->frame_valid =
+        (frame->valid == DRV_OPTICAL_FLOW_VALID) ? 1U : 0U;
+    sample->distance_valid = frame->distance_valid;
+    sample->flow_valid = frame->flow_valid;
+    sample->distance_mm = frame->distance_mm;
+    sample->distance_received_ms = frame->distance_received_ms;
+    sample->flow_received_ms = frame->flow_received_ms;
+    sample->sensor_time_ms = frame->time_ms;
+    sample->sample_interval_us = frame->sample_interval_us;
+    sample->flow_vel_x = frame->flow_vel_x;
+    sample->flow_vel_y = frame->flow_vel_y;
+    sample->flow_quality = frame->flow_quality;
 }
 
 void APP_OpticalFlow_Init(void)
@@ -298,14 +82,16 @@ void APP_OpticalFlow_Init(void)
 
     memset(&flow_ctx, 0, sizeof(flow_ctx));
     flow_ctx.health = APP_OPTICAL_FLOW_HEALTH_STARTING;
+    SVC_FlowNav_Init();
     app_optical_flow_try_init(now);
 }
 
 void APP_OpticalFlow_Step(void)
 {
     uint32_t now = HAL_GetTick();
-    const BSP_OPTICAL_FLOW_Frame *frame;
-    uint8_t new_flow = 0U;
+    SVC_FLOW_NAV_Sample sample;
+    SVC_FLOW_NAV_SampleResult result;
+    uint32_t last_good_ms;
 
     if (flow_ctx.initialized == 0U) {
         flow_ctx.health =
@@ -317,88 +103,31 @@ void APP_OpticalFlow_Step(void)
 
     BSP_OPTICAL_FLOW_Service();
     BSP_OPTICAL_FLOW_GetStatus(&flow_ctx.bsp_status);
-    frame = &flow_ctx.bsp_status.latest;
+    app_flow_fill_sample(&flow_ctx.bsp_status.latest, &sample);
 
-    if (flow_ctx.height_sample_ms != 0U) {
-        if ((now - flow_ctx.height_sample_ms) > APP_FLOW_TIMEOUT_MS) {
-            flow_ctx.height_valid = 0U;
-            flow_ctx.vertical_velocity_m_s = 0.0f;
-            app_flow_mark_velocity_invalid();
-            if ((flow_ctx.last_good_ms == 0U) ||
-                ((now - flow_ctx.last_good_ms) > APP_FLOW_FILTER_RESET_MS)) {
-                app_flow_reset_median_filter();
-            }
-        }
-    }
+    SVC_FlowNav_Age(now);
+    result = SVC_FlowNav_PushSample(&sample, now);
 
-    if (flow_ctx.bsp_status.frames != flow_ctx.processed_frames) {
-        flow_ctx.processed_frames = flow_ctx.bsp_status.frames;
-        app_flow_update_height(frame);
-        if ((frame->flow_received_ms != 0UL) &&
-            (frame->flow_received_ms != flow_ctx.processed_flow_ms)) {
-            new_flow = 1U;
-        }
-    }
-
-    if (new_flow != 0U) {
-        float sensor_vx_m_s;
-        float sensor_vy_m_s;
-
-        flow_ctx.processed_flow_ms = frame->flow_received_ms;
-        if (app_flow_frame_usable(frame, now) == 0U) {
-            app_flow_reject_velocity_sample();
-            if ((flow_ctx.last_good_ms == 0U) ||
-                ((now - flow_ctx.last_good_ms) > APP_FLOW_FILTER_RESET_MS)) {
-                app_flow_reset_median_filter();
-            }
-            flow_ctx.health = APP_OPTICAL_FLOW_HEALTH_STARTING;
-            return;
-        }
-
-        app_flow_update_median_filter(frame);
-        if (flow_ctx.flow_filter_ready == 0U) {
-            app_flow_mark_velocity_invalid();
-            flow_ctx.health = APP_OPTICAL_FLOW_HEALTH_STARTING;
-            return;
-        }
-
-        sensor_vx_m_s =
-            (float)flow_ctx.filtered_flow_vel_x * 0.01f * flow_ctx.height_m;
-        sensor_vy_m_s =
-            (float)flow_ctx.filtered_flow_vel_y * 0.01f * flow_ctx.height_m;
-
-        if (app_flow_velocity_plausible(sensor_vx_m_s, sensor_vy_m_s) == 0U) {
-            app_flow_reject_velocity_sample();
-            if ((flow_ctx.last_good_ms == 0U) ||
-                ((now - flow_ctx.last_good_ms) > APP_FLOW_FILTER_RESET_MS)) {
-                app_flow_reset_median_filter();
-            }
-            flow_ctx.health = APP_OPTICAL_FLOW_HEALTH_STARTING;
-            return;
-        }
-
-        flow_ctx.vx_m_s = sensor_vx_m_s;
-        flow_ctx.vy_m_s = sensor_vy_m_s;
-        flow_ctx.velocity_valid = 1U;
-        flow_ctx.velocity_sample_ms = frame->flow_received_ms;
-        flow_ctx.last_good_ms = frame->flow_received_ms;
-        flow_ctx.last_accept_vx_m_s = flow_ctx.vx_m_s;
-        flow_ctx.last_accept_vy_m_s = flow_ctx.vy_m_s;
+    switch (result) {
+    case SVC_FLOW_NAV_SAMPLE_ACCEPTED:
+    case SVC_FLOW_NAV_SAMPLE_HOLD:
         flow_ctx.health = APP_OPTICAL_FLOW_HEALTH_OK;
         return;
-    }
-
-    if ((flow_ctx.last_good_ms != 0U) &&
-        ((now - flow_ctx.last_good_ms) <= APP_FLOW_TIMEOUT_MS)) {
-        flow_ctx.velocity_valid = 1U;
-        flow_ctx.health = APP_OPTICAL_FLOW_HEALTH_OK;
+    case SVC_FLOW_NAV_SAMPLE_REJECTED:
+    case SVC_FLOW_NAV_SAMPLE_WARMUP:
+        flow_ctx.velocity_source = APP_OPTICAL_FLOW_VEL_SOURCE_NONE;
+        flow_ctx.health = APP_OPTICAL_FLOW_HEALTH_STARTING;
         return;
+    case SVC_FLOW_NAV_SAMPLE_STALE:
+    default:
+        break;
     }
 
-    flow_ctx.velocity_valid = 0U;
+    flow_ctx.velocity_source = APP_OPTICAL_FLOW_VEL_SOURCE_NONE;
+    last_good_ms = SVC_FlowNav_GetLastGoodMs();
     {
-        uint32_t good_age_ms = (flow_ctx.last_good_ms != 0U) ?
-                               (now - flow_ctx.last_good_ms) :
+        uint32_t good_age_ms = (last_good_ms != 0U) ?
+                               (now - last_good_ms) :
                                (now - flow_ctx.last_init_attempt_ms);
         if (good_age_ms > APP_FLOW_STARTUP_GRACE_MS) {
             flow_ctx.health =
@@ -446,24 +175,12 @@ uint8_t APP_OpticalFlow_GetVelocitySample(float *vx_m_s,
                                           float *vy_m_s,
                                           uint32_t *sample_ms)
 {
-    uint32_t now = HAL_GetTick();
-
-    if ((flow_ctx.velocity_valid == 0U) ||
-        (flow_ctx.velocity_sample_ms == 0U) ||
-        ((now - flow_ctx.velocity_sample_ms) > APP_FLOW_TIMEOUT_MS)) {
+    if (SVC_FlowNav_GetSensorVelocity(vx_m_s, vy_m_s, sample_ms,
+                                      HAL_GetTick()) == 0U) {
         flow_ctx.velocity_source = APP_OPTICAL_FLOW_VEL_SOURCE_NONE;
         return 0U;
     }
 
-    if (vx_m_s != NULL) {
-        *vx_m_s = flow_ctx.vx_m_s;
-    }
-    if (vy_m_s != NULL) {
-        *vy_m_s = flow_ctx.vy_m_s;
-    }
-    if (sample_ms != NULL) {
-        *sample_ms = flow_ctx.velocity_sample_ms;
-    }
     flow_ctx.velocity_source = APP_OPTICAL_FLOW_VEL_SOURCE_FLOW;
     return 1U;
 }
@@ -472,24 +189,8 @@ uint8_t APP_OpticalFlow_GetHeightSample(float *height_m,
                                         float *vertical_velocity_m_s,
                                         uint32_t *sample_ms)
 {
-    uint32_t now = HAL_GetTick();
-
-    if ((flow_ctx.height_valid == 0U) ||
-        (flow_ctx.height_sample_ms == 0U) ||
-        ((now - flow_ctx.height_sample_ms) > APP_FLOW_TIMEOUT_MS)) {
-        return 0U;
-    }
-
-    if (height_m != NULL) {
-        *height_m = flow_ctx.height_m;
-    }
-    if (vertical_velocity_m_s != NULL) {
-        *vertical_velocity_m_s = flow_ctx.vertical_velocity_m_s;
-    }
-    if (sample_ms != NULL) {
-        *sample_ms = flow_ctx.height_sample_ms;
-    }
-    return 1U;
+    return SVC_FlowNav_GetHeight(height_m, vertical_velocity_m_s, sample_ms,
+                                 HAL_GetTick());
 }
 
 void APP_OpticalFlow_SetVelocitySource(APP_OPTICAL_FLOW_VelSource source)
@@ -512,6 +213,7 @@ void APP_OpticalFlow_GetStatus(APP_OPTICAL_FLOW_Status *status)
 {
     uint32_t now = HAL_GetTick();
     const BSP_OPTICAL_FLOW_Frame *frame;
+    SVC_FLOW_NAV_State nav;
 
     if (status == NULL) {
         return;
@@ -519,6 +221,7 @@ void APP_OpticalFlow_GetStatus(APP_OPTICAL_FLOW_Status *status)
 
     BSP_OPTICAL_FLOW_GetStatus(&flow_ctx.bsp_status);
     frame = &flow_ctx.bsp_status.latest;
+    SVC_FlowNav_GetState(&nav);
 
     memset(status, 0, sizeof(*status));
     status->initialized = flow_ctx.initialized;
@@ -526,9 +229,9 @@ void APP_OpticalFlow_GetStatus(APP_OPTICAL_FLOW_Status *status)
     status->health = flow_ctx.health;
     status->init_attempts = flow_ctx.init_attempts;
     status->recovery_count = flow_ctx.recovery_count;
-    status->velocity_reject_count = flow_ctx.velocity_reject_count;
+    status->velocity_reject_count = nav.velocity_reject_count;
     status->valid = frame->valid;
-    status->velocity_valid = flow_ctx.velocity_valid;
+    status->velocity_valid = nav.velocity_valid;
     status->velocity_source = flow_ctx.velocity_source;
     status->bytes = flow_ctx.bsp_status.bytes;
     status->frames = flow_ctx.bsp_status.frames;
@@ -564,11 +267,11 @@ void APP_OpticalFlow_GetStatus(APP_OPTICAL_FLOW_Status *status)
     status->tof_status = frame->tof_status;
     status->flow_vel_x = frame->flow_vel_x;
     status->flow_vel_y = frame->flow_vel_y;
-    status->flow_vel_x_filtered = flow_ctx.filtered_flow_vel_x;
-    status->flow_vel_y_filtered = flow_ctx.filtered_flow_vel_y;
+    status->flow_vel_x_filtered = nav.flow_vel_x_filtered;
+    status->flow_vel_y_filtered = nav.flow_vel_y_filtered;
     status->flow_quality = frame->flow_quality;
     status->flow_status = frame->flow_status;
-    status->flow_filter_ready = flow_ctx.flow_filter_ready;
+    status->flow_filter_ready = nav.flow_filter_ready;
     status->sample_interval_us = frame->sample_interval_us;
     status->raw_count = flow_ctx.bsp_status.raw_stats.count;
     status->flow_vel_x_mean = flow_ctx.bsp_status.raw_stats.flow_vel_x_mean;
@@ -587,13 +290,13 @@ void APP_OpticalFlow_GetStatus(APP_OPTICAL_FLOW_Status *status)
         flow_ctx.bsp_status.raw_stats.sample_interval_peak_to_peak_us;
     status->distance_peak_to_peak_mm =
         flow_ctx.bsp_status.raw_stats.distance_peak_to_peak_mm;
-    status->height_valid = flow_ctx.height_valid;
-    status->height_m = flow_ctx.height_m;
-    status->height_raw_m = flow_ctx.height_raw_m;
-    status->vertical_velocity_m_s = flow_ctx.vertical_velocity_m_s;
-    status->height_filter_alpha = APP_FLOW_HEIGHT_LPF_ALPHA;
-    status->vx_m_s = flow_ctx.vx_m_s;
-    status->vy_m_s = flow_ctx.vy_m_s;
+    status->height_valid = nav.height_valid;
+    status->height_m = nav.height_m;
+    status->height_raw_m = nav.height_raw_m;
+    status->vertical_velocity_m_s = nav.vertical_velocity_m_s;
+    status->height_filter_alpha = nav.height_filter_alpha;
+    status->vx_m_s = nav.vx_m_s;
+    status->vy_m_s = nav.vy_m_s;
 }
 
 void APP_OpticalFlow_Report(void)
@@ -642,7 +345,7 @@ void APP_OpticalFlow_Report(void)
                           (int)status.flow_vel_y_filtered,
                           (unsigned int)status.flow_filter_ready,
                           (unsigned int)status.flow_quality,
-                          (unsigned int)APP_FLOW_MIN_QUALITY,
+                          (unsigned int)SVC_FLOW_NAV_MIN_QUALITY,
                           (unsigned int)status.flow_status,
                           (unsigned long)status.flow_age_ms,
                           (unsigned int)status.sample_interval_us);
@@ -673,4 +376,29 @@ void APP_OpticalFlow_Report(void)
                           (int)status.flow_vel_y_peak_to_peak,
                           (unsigned int)status.sample_interval_peak_to_peak_us,
                           (unsigned long)status.distance_peak_to_peak_mm);
+    /*
+     * R-M5-5 新增行，纯追加：既有 FLOW ok/mico/data/raw 四行一个字段没动，
+     * 键名也与上位机校准页 / 监控页在用的键全部错开，不影响 R-S1-2。
+     */
+    {
+        float pos_x_m = 0.0f;
+        float pos_y_m = 0.0f;
+        float disp_x_m = 0.0f;
+        float disp_y_m = 0.0f;
+        float vel_x_m_s = 0.0f;
+        float vel_y_m_s = 0.0f;
+
+        SVC_FlowNav_GetPosition(&pos_x_m, &pos_y_m);
+        SVC_FlowNav_GetDisplacement(&disp_x_m, &disp_y_m);
+        SVC_FlowNav_GetVelocity(&vel_x_m_s, &vel_y_m_s);
+        APP_Control_QueueText("FLOW nav pos_x_mm=%ld pos_y_mm=%ld disp_x_mm=%ld disp_y_mm=%ld vel_x_mm_s=%ld vel_y_mm_s=%ld steps=%lu dt_us=%lu\r\n",
+                              (long)(pos_x_m * 1000.0f),
+                              (long)(pos_y_m * 1000.0f),
+                              (long)(disp_x_m * 1000.0f),
+                              (long)(disp_y_m * 1000.0f),
+                              (long)(vel_x_m_s * 1000.0f),
+                              (long)(vel_y_m_s * 1000.0f),
+                              (unsigned long)SVC_FlowNav_GetIntegratedStepCount(),
+                              (unsigned long)SVC_FlowNav_GetLastIntegrationDtUs());
+    }
 }

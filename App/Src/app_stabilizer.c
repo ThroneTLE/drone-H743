@@ -53,7 +53,7 @@
 #include "drv_frame_contract.h"
 #include "drv_imu_calibration.h"
 #include "drv_imu_nav.h"
-#include "drv_nav_ekf.h"
+#include "svc_flow_nav.h"
 #include "drv_servo.h"
 
 /* ============================================================================
@@ -62,28 +62,12 @@
 #define STABILIZER_SERVO_MOVE_TIME_MS 0U
 #define STABILIZER_NAV_ACCEL_LPF_ALPHA 0.94f
 #define STABILIZER_NAV_VEL_LEAK_HZ 0.25f
-#define STABILIZER_NAV_USE_FLOW_EKF 1U
-#define STABILIZER_NAV_EKF_FLOW_NOISE_M_S 0.25f
-#define STABILIZER_NAV_EKF_FLOW_NOISE_MIN_M_S 0.04f
-#define STABILIZER_NAV_EKF_FLOW_NOISE_MAX_M_S 0.45f
-#define STABILIZER_NAV_EKF_FLOW_QUALITY_HIGH 180U
-#define STABILIZER_NAV_EKF_IMU_BRIDGE_TIMEOUT_MS 80U
-#define STABILIZER_NAV_EKF_FLOW_SOFT_HOLD_MS 150U
-#define STABILIZER_NAV_EKF_FLOW_STALE_RESET_MS 250U
-#define STABILIZER_NAV_EKF_FLOW_LOST_DECAY_HZ 1.0f
-#define STABILIZER_NAV_EKF_FLOW_STALE_DECAY_HZ 12.0f
-#define STABILIZER_NAV_EKF_CONTROL_TIMEOUT_MS 150U
-#define STABILIZER_NAV_EKF_CONTROL_MAX_SPEED_M_S 1.50f
-#define STABILIZER_NAV_EKF_ZERO_FLOW_SPEED_M_S 0.035f
-#define STABILIZER_NAV_EKF_ZERO_ACCEL_M_S2 0.30f
-#define STABILIZER_NAV_EKF_ZERO_FLOW_COUNT 8U
+/* 速度估计的全部整定量已归 Services/Inc/svc_flow_nav.h，此处不留副本。 */
 #define STABILIZER_FLOW_ROT_COMP_ENABLE 1U
 #define STABILIZER_FLOW_ROT_COMP_GAIN 1.0f
 #define STABILIZER_FLOW_SENSOR_OFFSET_X_M 0.20f
 #define STABILIZER_FLOW_SENSOR_OFFSET_Y_M 0.0f
 #define STABILIZER_FLOW_SENSOR_OFFSET_Z_M 0.22f
-#define STABILIZER_FLOW_ONLY_MAX_ACCEL_M_S2 30.0f
-#define STABILIZER_FLOW_ONLY_MIN_STEP_M_S 0.30f
 #define STABILIZER_IMU_LEVER_ARM_X_M 0.0f
 #define STABILIZER_IMU_LEVER_ARM_Y_M 0.0f
 #define STABILIZER_IMU_LEVER_ARM_Z_M (-0.10f)
@@ -121,7 +105,6 @@
 #define STABILIZER_YAW_RATE_REF_MAX_RAD_S 1.04719758f /* CH4 偏航参考累加最大速率 [rad/s] */
 #define STABILIZER_XY_VEL_REF_MAX_M_S  0.40f     /* CH1/CH2 水平速度目标最大值 [m/s]    */
 #define STABILIZER_VELOCITY_MEAS_Y_SIGN (1.0f)   /* 光流/融合速度 Y 轴映射到机体系右正 */
-#define STABILIZER_XY_POS_LIMIT_M      2.00f     /* 水平相对位置积分安全限幅 [m]        */
 #define STABILIZER_XY_POS_ERR_MAX_M    0.50f     /* 水平位置外环单次误差限幅 [m]        */
 #define STABILIZER_Z_REF_RATE_MAX_M_S  0.30f     /* CH3 满杆高度目标积分速度 [m/s]       */
 #define STABILIZER_Z_REF_MAX_M         0.40f     /* 上电光流测高基准以上高度上限 [m]     */
@@ -311,27 +294,6 @@
   static float stabilizer_square_f32(float value)
   {
     return value * value;
-  }
-
-  static float stabilizer_flow_noise_from_quality(uint8_t quality)
-  {
-    float quality_norm;
-    float weak;
-    const float q_min = (float)APP_OPTICAL_FLOW_MIN_QUALITY;
-    const float q_high = (float)STABILIZER_NAV_EKF_FLOW_QUALITY_HIGH;
-
-    if (quality <= APP_OPTICAL_FLOW_MIN_QUALITY) {
-      return STABILIZER_NAV_EKF_FLOW_NOISE_MAX_M_S;
-    }
-    if (quality >= STABILIZER_NAV_EKF_FLOW_QUALITY_HIGH) {
-      return STABILIZER_NAV_EKF_FLOW_NOISE_MIN_M_S;
-    }
-
-    quality_norm = ((float)quality - q_min) / (q_high - q_min);
-    weak = 1.0f - stabilizer_clamp_f32(quality_norm, 0.0f, 1.0f);
-    return STABILIZER_NAV_EKF_FLOW_NOISE_MIN_M_S +
-           (STABILIZER_NAV_EKF_FLOW_NOISE_MAX_M_S -
-            STABILIZER_NAV_EKF_FLOW_NOISE_MIN_M_S) * weak * weak;
   }
 
   static void stabilizer_cross3(const float a[3],
@@ -567,47 +529,7 @@
   }
 
 
-  typedef struct {
-    float vel_m_s[2];
-    DRV_NAV_EKF_State ekf;
-    DRV_NAV_EKF_Diagnostics diagnostics;
-    uint8_t zero_flow_count;
-  } StabilizerVelocityEstimatorState;
-
   static StabilizerVofaDebug stabilizer_vofa_debug;
-
-  static void stabilizer_velocity_estimator_reset(StabilizerVelocityEstimatorState *state)
-  {
-    DRV_NAV_EKF_Config config;
-
-    if (state == NULL) {
-      return;
-    }
-    state->zero_flow_count = 0U;
-
-    DRV_NAV_EKF_DefaultConfig(&config);
-    config.flow_noise_m_s = STABILIZER_NAV_EKF_FLOW_NOISE_M_S;
-    config.flow_gate_nis = 0.0f;
-    DRV_NAV_EKF_Reset(&state->ekf, &config);
-    DRV_NAV_EKF_GetDiagnostics(&state->ekf, &state->diagnostics);
-    APP_NavEstimator_PublishVelocityEKF(&state->diagnostics);
-  }
-
-  static void stabilizer_velocity_estimator_zero_horizontal(
-    StabilizerVelocityEstimatorState *state)
-  {
-    if (state == NULL) {
-      return;
-    }
-
-    state->vel_m_s[0] = 0.0f;
-    state->vel_m_s[1] = 0.0f;
-    state->zero_flow_count = 0U;
-    state->ekf.vel_m_s[0] = 0.0f;
-    state->ekf.vel_m_s[1] = 0.0f;
-    state->ekf.accel_bias_m_s2[0] = 0.0f;
-    state->ekf.accel_bias_m_s2[1] = 0.0f;
-  }
 
   static void stabilizer_compensate_flow_rotation(float *flow_vx_m_s,
                                                    float *flow_vy_m_s,
@@ -652,159 +574,6 @@
     debug->corrected_velocity_m_s[1] = body_vy_m_s;
     *flow_vx_m_s = body_vx_m_s;
     *flow_vy_m_s = STABILIZER_VELOCITY_MEAS_Y_SIGN * body_vy_m_s;
-  }
-
-  static uint8_t stabilizer_flow_velocity_plausible(
-    const StabilizerVelocityEstimatorState *state,
-    float flow_vx_m_s,
-    float flow_vy_m_s,
-    uint32_t flow_sample_ms)
-  {
-    float speed_sq;
-
-    if ((state == NULL) || (flow_sample_ms == 0U)) {
-      return 0U;
-    }
-
-    speed_sq = (flow_vx_m_s * flow_vx_m_s) + (flow_vy_m_s * flow_vy_m_s);
-    if (speed_sq >
-        (STABILIZER_NAV_EKF_CONTROL_MAX_SPEED_M_S *
-         STABILIZER_NAV_EKF_CONTROL_MAX_SPEED_M_S)) {
-      return 0U;
-    }
-
-    if ((state->diagnostics.last_flow_update_ms != 0U) &&
-        (flow_sample_ms > state->diagnostics.last_flow_update_ms)) {
-      const float dt_sec =
-        (float)(flow_sample_ms - state->diagnostics.last_flow_update_ms) * 0.001f;
-      float max_step_m_s = STABILIZER_FLOW_ONLY_MAX_ACCEL_M_S2 * dt_sec;
-      const float dvx = flow_vx_m_s - state->vel_m_s[0];
-      const float dvy = flow_vy_m_s - state->vel_m_s[1];
-      const float step_sq = (dvx * dvx) + (dvy * dvy);
-
-      if (max_step_m_s < STABILIZER_FLOW_ONLY_MIN_STEP_M_S) {
-        max_step_m_s = STABILIZER_FLOW_ONLY_MIN_STEP_M_S;
-      }
-      if (step_sq > (max_step_m_s * max_step_m_s)) {
-        return 0U;
-      }
-    }
-
-    return 1U;
-  }
-
-  static uint8_t stabilizer_velocity_estimator_step(StabilizerVelocityEstimatorState *state,
-                                                    float acc_x_m_s2,
-                                                    float acc_y_m_s2,
-                                                    float imu_vx_m_s,
-                                                    float imu_vy_m_s,
-                                                    float flow_vx_m_s,
-                                                    float flow_vy_m_s,
-                                                    uint8_t flow_valid,
-                                                    uint8_t flow_quality,
-                                                    uint32_t flow_sample_ms,
-                                                    float dt_sec)
-  {
-    uint8_t flow_accepted;
-    uint8_t imu_bridge_ok = 0U;
-    uint32_t now_ms = HAL_GetTick();
-    uint32_t flow_age_ms = 0xFFFFFFFFUL;
-    uint8_t new_flow_sample = 0U;
-    float flow_noise_m_s;
-
-    if (state == NULL) {
-      return 0U;
-    }
-
-
-    if (dt_sec <= 0.0f) {
-      dt_sec = SENSOR_IMU_DEFAULT_DT_SEC;
-    }
-
-    (void)imu_vx_m_s;
-    (void)imu_vy_m_s;
-    if (state->diagnostics.last_flow_update_ms != 0U) {
-      flow_age_ms = now_ms - state->diagnostics.last_flow_update_ms;
-    }
-    new_flow_sample =
-      ((flow_valid != 0U) &&
-       (flow_sample_ms != 0U) &&
-       (flow_sample_ms != state->ekf.last_flow_sample_ms)) ? 1U : 0U;
-
-    if ((new_flow_sample == 0U) &&
-        (state->diagnostics.last_flow_update_ms != 0U) &&
-        (flow_age_ms > STABILIZER_NAV_EKF_FLOW_STALE_RESET_MS)) {
-      stabilizer_velocity_estimator_zero_horizontal(state);
-      DRV_NAV_EKF_GetDiagnostics(&state->ekf, &state->diagnostics);
-      APP_NavEstimator_PublishVelocityEKF(&state->diagnostics);
-      return 0U;
-    }
-
-    if ((state->diagnostics.flow_update_count != 0U) &&
-        (state->diagnostics.last_flow_update_ms != 0U) &&
-        (flow_age_ms <= STABILIZER_NAV_EKF_IMU_BRIDGE_TIMEOUT_MS)) {
-      imu_bridge_ok = 1U;
-    }
-
-    if (imu_bridge_ok != 0U) {
-      DRV_NAV_EKF_Predict(&state->ekf, acc_x_m_s2, acc_y_m_s2, dt_sec);
-    } else {
-      float decay_hz = STABILIZER_NAV_EKF_FLOW_LOST_DECAY_HZ;
-      float decay;
-      if ((state->diagnostics.last_flow_update_ms != 0U) &&
-          (flow_age_ms > STABILIZER_NAV_EKF_FLOW_SOFT_HOLD_MS)) {
-        decay_hz = STABILIZER_NAV_EKF_FLOW_STALE_DECAY_HZ;
-      }
-      decay = 1.0f - (decay_hz * dt_sec);
-      decay = stabilizer_clamp_f32(decay, 0.0f, 1.0f);
-      state->ekf.vel_m_s[0] *= decay;
-      state->ekf.vel_m_s[1] *= decay;
-      state->ekf.accel_bias_m_s2[0] = 0.0f;
-      state->ekf.accel_bias_m_s2[1] = 0.0f;
-    }
-    flow_noise_m_s = stabilizer_flow_noise_from_quality(flow_quality);
-    if ((new_flow_sample != 0U) &&
-        (stabilizer_flow_velocity_plausible(state,
-                                            flow_vx_m_s,
-                                            flow_vy_m_s,
-                                            flow_sample_ms) == 0U)) {
-      state->zero_flow_count = 0U;
-      state->ekf.flow_skip_count++;
-      state->ekf.last_flow_sample_ms = flow_sample_ms;
-      DRV_NAV_EKF_GetDiagnostics(&state->ekf, &state->diagnostics);
-      APP_NavEstimator_PublishVelocityEKF(&state->diagnostics);
-      state->vel_m_s[0] = state->diagnostics.vel_m_s[0];
-      state->vel_m_s[1] = state->diagnostics.vel_m_s[1];
-      return 0U;
-    }
-    flow_accepted = DRV_NAV_EKF_FuseFlow(&state->ekf,
-                                         flow_vx_m_s,
-                                         flow_vy_m_s,
-                                         flow_valid,
-                                         flow_sample_ms,
-                                         flow_noise_m_s);
-    DRV_NAV_EKF_GetDiagnostics(&state->ekf, &state->diagnostics);
-    if ((flow_accepted != 0U) &&
-        (((flow_vx_m_s * flow_vx_m_s) + (flow_vy_m_s * flow_vy_m_s)) <=
-         (STABILIZER_NAV_EKF_ZERO_FLOW_SPEED_M_S *
-          STABILIZER_NAV_EKF_ZERO_FLOW_SPEED_M_S)) &&
-        (((acc_x_m_s2 * acc_x_m_s2) + (acc_y_m_s2 * acc_y_m_s2)) <=
-         (STABILIZER_NAV_EKF_ZERO_ACCEL_M_S2 *
-          STABILIZER_NAV_EKF_ZERO_ACCEL_M_S2))) {
-      if (state->zero_flow_count < STABILIZER_NAV_EKF_ZERO_FLOW_COUNT) {
-        state->zero_flow_count++;
-      }
-      if (state->zero_flow_count >= STABILIZER_NAV_EKF_ZERO_FLOW_COUNT) {
-        stabilizer_velocity_estimator_zero_horizontal(state);
-        DRV_NAV_EKF_GetDiagnostics(&state->ekf, &state->diagnostics);
-      }
-    } else if (new_flow_sample != 0U) {
-      state->zero_flow_count = 0U;
-    }
-    APP_NavEstimator_PublishVelocityEKF(&state->diagnostics);
-    state->vel_m_s[0] = state->diagnostics.vel_m_s[0];
-    state->vel_m_s[1] = state->diagnostics.vel_m_s[1];
-    return flow_accepted;
   }
 
   static void stabilizer_vofa_debug_publish(const StabilizerVofaDebug *debug)
@@ -898,12 +667,8 @@ typedef struct
   uint32_t last_out_ms;
   uint8_t has_imu_sample;
   DRV_AttitudeFusionOutput attitude_fusion;
-  float velocity_state_x_m_s;
-  float velocity_state_y_m_s;
   float velocity_imu_x_m_s;
   float velocity_imu_y_m_s;
-  float position_state_x_m;
-  float position_state_y_m;
   float position_ref_x_m;
   float position_ref_y_m;
   uint8_t position_ref_xy_ready;
@@ -915,7 +680,6 @@ typedef struct
   float yaw_ref_rad;
   uint8_t yaw_ref_ready;
   DRV_IMU_NAV_State nav_state;
-  StabilizerVelocityEstimatorState vel_estimator;
   StabilizerVofaDebug vofa_debug;
   uint32_t last_ctrl_model_ms;
   uint8_t flight_log_divider;
@@ -1201,7 +965,7 @@ static void stabilizer_init(StabilizerContext *ctx)
   stabilizer_validation_imu_reset();
   DRV_AttitudeFusion_Init();
   DRV_IMU_NAV_Reset(&ctx->nav_state);
-  stabilizer_velocity_estimator_reset(&ctx->vel_estimator);
+  SVC_FlowNav_ResetEstimator();
   DRV_COAX_CTRL_ResetState();
 }
 
@@ -1231,12 +995,9 @@ static void stabilizer_reset_for_imu_frame(
   ctx->last_imu_timestamp_us = 0ULL;
   ctx->has_imu_sample = 0U;
   memset(&ctx->attitude_fusion, 0, sizeof(ctx->attitude_fusion));
-  ctx->velocity_state_x_m_s = 0.0f;
-  ctx->velocity_state_y_m_s = 0.0f;
   ctx->velocity_imu_x_m_s = 0.0f;
   ctx->velocity_imu_y_m_s = 0.0f;
-  ctx->position_state_x_m = 0.0f;
-  ctx->position_state_y_m = 0.0f;
+  SVC_FlowNav_ResetEstimator();
   ctx->position_ref_x_m = 0.0f;
   ctx->position_ref_y_m = 0.0f;
   ctx->position_ref_xy_ready = 0U;
@@ -1257,7 +1018,7 @@ static void stabilizer_reset_for_imu_frame(
     (flu_active != 0U) ? DRV_ATTITUDE_FUSION_CONVENTION_NWU :
                          DRV_ATTITUDE_FUSION_CONVENTION_NED);
   DRV_IMU_NAV_Reset(&ctx->nav_state);
-  stabilizer_velocity_estimator_reset(&ctx->vel_estimator);
+  SVC_FlowNav_ResetEstimator();
   DRV_COAX_CTRL_ResetState();
   stabilizer_rc_arm_latched = 0U;
   stabilizer_validation_imu_reset();
@@ -1661,19 +1422,22 @@ static void stabilizer_imu_step(StabilizerContext *ctx,
         msg->imu_frame_orientation_code,
         flow_valid);
 
-      flow_accepted = stabilizer_velocity_estimator_step(&ctx->vel_estimator,
-                                                         imu_accel_x_m_s2,
-                                                         imu_accel_y_m_s2,
-                                                         ctx->velocity_imu_x_m_s,
-                                                         ctx->velocity_imu_y_m_s,
-                                                         flow_vx_m_s,
-                                                         flow_vy_m_s,
-                                                         flow_valid,
-                                                         flow_status.flow_quality,
-                                                         flow_sample_ms,
-                                                         dt_sec);
-      ctx->velocity_state_x_m_s = ctx->vel_estimator.vel_m_s[0];
-      ctx->velocity_state_y_m_s = ctx->vel_estimator.vel_m_s[1];
+      {
+        SVC_FLOW_NAV_FuseInput fuse_input;
+
+        memset(&fuse_input, 0, sizeof(fuse_input));
+        fuse_input.accel_x_m_s2 = imu_accel_x_m_s2;
+        fuse_input.accel_y_m_s2 = imu_accel_y_m_s2;
+        fuse_input.flow_vx_m_s = flow_vx_m_s;
+        fuse_input.flow_vy_m_s = flow_vy_m_s;
+        fuse_input.flow_valid = flow_valid;
+        fuse_input.flow_quality = flow_status.flow_quality;
+        fuse_input.flow_sample_ms = flow_sample_ms;
+        fuse_input.dt_sec = dt_sec;
+        fuse_input.now_ms = HAL_GetTick();
+        flow_accepted = SVC_FlowNav_Fuse(&fuse_input);
+      }
+      APP_NavEstimator_PublishVelocityEKF();
       if (flow_accepted != 0U) {
         APP_OpticalFlow_SetVelocitySource(APP_OPTICAL_FLOW_VEL_SOURCE_FLOW);
       } else {
@@ -1684,9 +1448,15 @@ static void stabilizer_imu_step(StabilizerContext *ctx,
       (void)imu_accel_weight;
     }
     ctx->vofa_debug.acc_nav_m_s2[2] = nav_acc_legacy[2];
-    ctx->vofa_debug.vel_est_m_s[0] = ctx->velocity_state_x_m_s;
-    ctx->vofa_debug.vel_est_m_s[1] =
-      STABILIZER_VELOCITY_MEAS_Y_SIGN * ctx->velocity_state_y_m_s;
+    {
+      float nav_vx_m_s = 0.0f;
+      float nav_vy_m_s = 0.0f;
+
+      SVC_FlowNav_GetVelocity(&nav_vx_m_s, &nav_vy_m_s);
+      ctx->vofa_debug.vel_est_m_s[0] = nav_vx_m_s;
+      ctx->vofa_debug.vel_est_m_s[1] =
+        STABILIZER_VELOCITY_MEAS_Y_SIGN * nav_vy_m_s;
+    }
     ctx->vofa_debug.vel_est_m_s[2] = nav_vel_legacy[2];
     ctx->vofa_debug.nav_accel_lpf_alpha = ctx->nav_state.accel_lpf_alpha;
     ctx->vofa_debug.nav_velocity_leak_hz = ctx->nav_state.velocity_leak_rate_hz;
@@ -1857,10 +1627,6 @@ static void stabilizer_control_compute(StabilizerContext *ctx,
      * motion cannot move the airframe before the test is intentionally
      * brought into the active range.
      */
-    ctx->velocity_state_x_m_s = 0.0f;
-    ctx->velocity_state_y_m_s = 0.0f;
-    ctx->position_state_x_m = 0.0f;
-    ctx->position_state_y_m = 0.0f;
     ctx->position_ref_x_m = 0.0f;
     ctx->position_ref_y_m = 0.0f;
     ctx->position_ref_xy_ready = 0U;
@@ -1869,7 +1635,7 @@ static void stabilizer_control_compute(StabilizerContext *ctx,
     ctx->position_ref_z_ready = 0U;
     ctx->yaw_ref_ready = 0U;
     DRV_IMU_NAV_Reset(&ctx->nav_state);
-    stabilizer_velocity_estimator_reset(&ctx->vel_estimator);
+    SVC_FlowNav_ResetEstimator();
     DRV_COAX_CTRL_ResetState();
     ctx->last_gyro_ready = 0U;
     ctx->position_ref_z_ready = 0U;
@@ -1905,10 +1671,24 @@ static void stabilizer_control_compute(StabilizerContext *ctx,
     }
     {
       uint8_t velocity_loop_enabled = 0U;
-      float velocity_control_x_m_s = ctx->velocity_state_x_m_s;
-      float velocity_control_y_m_s =
-        STABILIZER_VELOCITY_MEAS_Y_SIGN * ctx->velocity_state_y_m_s;
+      float nav_vx_m_s = 0.0f;
+      float nav_vy_m_s = 0.0f;
+      float position_state_x_m = 0.0f;
+      float position_state_y_m = 0.0f;
+      float velocity_control_x_m_s;
+      float velocity_control_y_m_s;
       float vel_loop_enable = 0.0f;
+
+      /*
+       * 速度与位置都直接取 Service 的成品估计：位置在 Service 里已经按传感器
+       * 自己的时间轴积分好了，这里不再自己积一遍，只做机体系符号映射——沿用
+       * 原来"位置由带符号速度积出"的关系，SIGN 提到积分外面等价。
+       */
+      SVC_FlowNav_GetVelocity(&nav_vx_m_s, &nav_vy_m_s);
+      SVC_FlowNav_GetPosition(&position_state_x_m, &position_state_y_m);
+      velocity_control_x_m_s = nav_vx_m_s;
+      velocity_control_y_m_s = STABILIZER_VELOCITY_MEAS_Y_SIGN * nav_vy_m_s;
+      position_state_y_m *= STABILIZER_VELOCITY_MEAS_Y_SIGN;
 
       frame->attitude.roll_rad = ctx->roll_control * STABILIZER_DEG_TO_RAD;
       frame->attitude.pitch_rad = ctx->pitch_control * STABILIZER_DEG_TO_RAD;
@@ -1959,51 +1739,41 @@ static void stabilizer_control_compute(StabilizerContext *ctx,
       frame->reference.dt_sec = frame->ctrl_dt_sec;
 
       if (velocity_loop_enabled != 0U) {
-        ctx->position_state_x_m =
-          stabilizer_clamp_f32(ctx->position_state_x_m +
-                               velocity_control_x_m_s * frame->ctrl_dt_sec,
-                               -STABILIZER_XY_POS_LIMIT_M,
-                                STABILIZER_XY_POS_LIMIT_M);
-        ctx->position_state_y_m =
-          stabilizer_clamp_f32(ctx->position_state_y_m +
-                               velocity_control_y_m_s * frame->ctrl_dt_sec,
-                               -STABILIZER_XY_POS_LIMIT_M,
-                                STABILIZER_XY_POS_LIMIT_M);
         if (ctx->position_ref_xy_ready == 0U) {
-          ctx->position_ref_x_m = ctx->position_state_x_m;
-          ctx->position_ref_y_m = ctx->position_state_y_m;
+          ctx->position_ref_x_m = position_state_x_m;
+          ctx->position_ref_y_m = position_state_y_m;
           ctx->position_ref_xy_ready = 1U;
         }
         ctx->position_ref_x_m += frame->reference.vx_m_s * frame->ctrl_dt_sec;
         ctx->position_ref_y_m += frame->reference.vy_m_s * frame->ctrl_dt_sec;
         ctx->position_ref_x_m =
           stabilizer_clamp_f32(ctx->position_ref_x_m,
-                               ctx->position_state_x_m - STABILIZER_XY_POS_ERR_MAX_M,
-                               ctx->position_state_x_m + STABILIZER_XY_POS_ERR_MAX_M);
+                               position_state_x_m - STABILIZER_XY_POS_ERR_MAX_M,
+                               position_state_x_m + STABILIZER_XY_POS_ERR_MAX_M);
         ctx->position_ref_y_m =
           stabilizer_clamp_f32(ctx->position_ref_y_m,
-                               ctx->position_state_y_m - STABILIZER_XY_POS_ERR_MAX_M,
-                               ctx->position_state_y_m + STABILIZER_XY_POS_ERR_MAX_M);
+                               position_state_y_m - STABILIZER_XY_POS_ERR_MAX_M,
+                               position_state_y_m + STABILIZER_XY_POS_ERR_MAX_M);
         ctx->position_ref_x_m =
           stabilizer_clamp_f32(ctx->position_ref_x_m,
-                               -STABILIZER_XY_POS_LIMIT_M,
-                                STABILIZER_XY_POS_LIMIT_M);
+                               -SVC_FLOW_NAV_POSITION_LIMIT_M,
+                                SVC_FLOW_NAV_POSITION_LIMIT_M);
         ctx->position_ref_y_m =
           stabilizer_clamp_f32(ctx->position_ref_y_m,
-                               -STABILIZER_XY_POS_LIMIT_M,
-                                STABILIZER_XY_POS_LIMIT_M);
+                               -SVC_FLOW_NAV_POSITION_LIMIT_M,
+                                SVC_FLOW_NAV_POSITION_LIMIT_M);
       } else {
-        ctx->position_ref_x_m = ctx->position_state_x_m;
-        ctx->position_ref_y_m = ctx->position_state_y_m;
+        ctx->position_ref_x_m = position_state_x_m;
+        ctx->position_ref_y_m = position_state_y_m;
         ctx->position_ref_xy_ready = 0U;
       }
 
-      frame->attitude.x_m = ctx->position_state_x_m;
-      frame->attitude.y_m = ctx->position_state_y_m;
+      frame->attitude.x_m = position_state_x_m;
+      frame->attitude.y_m = position_state_y_m;
       frame->reference.x_m = ctx->position_ref_x_m;
       frame->reference.y_m = ctx->position_ref_y_m;
-      ctx->vofa_debug.pos_est_m[0] = ctx->position_state_x_m;
-      ctx->vofa_debug.pos_est_m[1] = ctx->position_state_y_m;
+      ctx->vofa_debug.pos_est_m[0] = position_state_x_m;
+      ctx->vofa_debug.pos_est_m[1] = position_state_y_m;
       ctx->vofa_debug.vel_ref_m_s[0] = frame->reference.vx_m_s;
       ctx->vofa_debug.vel_ref_m_s[1] = frame->reference.vy_m_s;
       ctx->vofa_debug.vel_err_m_s[0] = frame->reference.vx_m_s - frame->attitude.vx_m_s;
@@ -2124,10 +1894,8 @@ static void stabilizer_control_compute(StabilizerContext *ctx,
   } else if (ctx->has_imu_sample == 0U) {
     DRV_COAX_CTRL_ServoCalibration servo_calibration;
     DRV_IMU_NAV_Reset(&ctx->nav_state);
-    stabilizer_velocity_estimator_reset(&ctx->vel_estimator);
+    SVC_FlowNav_ResetEstimator();
     DRV_COAX_CTRL_ResetState();
-    ctx->position_state_x_m = 0.0f;
-    ctx->position_state_y_m = 0.0f;
     ctx->position_ref_x_m = 0.0f;
     ctx->position_ref_y_m = 0.0f;
     ctx->position_ref_xy_ready = 0U;
@@ -2292,8 +2060,8 @@ static void stabilizer_control_commit(StabilizerContext *ctx,
     observation.timestamp_us = ctx->last_msg.base.timestamp_us;
     observation.sequence = ctx->last_msg.base.sequence;
     observation.calibration_generation = ctx->imu_calibration_generation;
-    observation.nav_velocity_m_s[0] = ctx->velocity_state_x_m_s;
-    observation.nav_velocity_m_s[1] = ctx->velocity_state_y_m_s;
+    SVC_FlowNav_GetVelocity(&observation.nav_velocity_m_s[0],
+                            &observation.nav_velocity_m_s[1]);
     observation.angle_deg[0] = ctx->roll_control;
     observation.angle_deg[1] = ctx->pitch_control;
     observation.rate_dps[0] = ctx->last_msg.imu.gyro_x_dps;
@@ -2411,7 +2179,7 @@ static void stabilizer_control_commit(StabilizerContext *ctx,
     flog_snapshot.flow_valid =
       ((flow_status.valid != 0U) &&
        (flow_status.flow_status == 1U) &&
-       (flow_status.flow_quality >= APP_OPTICAL_FLOW_MIN_QUALITY)) ?
+       (flow_status.flow_quality >= SVC_FLOW_NAV_MIN_QUALITY)) ?
       1U : 0U;
     flog_snapshot.flow_velocity_valid = flow_status.velocity_valid;
     flog_snapshot.flow_height_valid = flow_status.height_valid;
