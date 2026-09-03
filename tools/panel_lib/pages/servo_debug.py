@@ -1,4 +1,4 @@
-"""Bus-servo debug page builders and handlers."""
+"""Servo output debug page and the BUS/PWM host controls."""
 
 from __future__ import annotations
 
@@ -17,10 +17,15 @@ from ..proto import (
     parse_kv,
     safe_int,
 )
+from .servo_type_controls import ServoTypeControlsMixin
 
 
-class ServoDebugPageMixin:
+class ServoDebugPageMixin(ServoTypeControlsMixin):
     def _build_servo_page(self, parent: ttk.Frame) -> None:
+        self._servo_bus_widgets: list[tk.Widget] = []
+        self._servo_raw_widgets: list[tk.Widget] = []
+        self._build_servo_type_controls(parent)
+
         servo_notebook = ttk.Notebook(parent)
         servo_notebook.pack(fill=tk.BOTH, expand=True)
         for index in range(2):

@@ -125,6 +125,7 @@ PROTO_REQ_IMU_CAL = _panel_proto.PROTO_REQ_IMU_CAL
 PROTO_REQ_ACCEPTANCE = _panel_proto.PROTO_REQ_ACCEPTANCE
 PROTO_REQ_RC = _panel_proto.PROTO_REQ_RC
 PROTO_REQ_RCMAP = _panel_proto.PROTO_REQ_RCMAP
+PROTO_REQ_SERVOTYPE = _panel_proto.PROTO_REQ_SERVOTYPE
 PROTO_REQ_SERVO_CAL = _panel_proto.PROTO_REQ_SERVO_CAL
 PROTO_MSG_CMD_LINE = _panel_proto.PROTO_MSG_CMD_LINE
 PROTO_MSG_TEXT_LINE = _panel_proto.PROTO_MSG_TEXT_LINE
@@ -167,6 +168,7 @@ PROTO_MSG_AIRFRAME_RECORD = _panel_proto.PROTO_MSG_AIRFRAME_RECORD
 PROTO_MSG_RC_LIVE = _panel_proto.PROTO_MSG_RC_LIVE
 PROTO_MSG_RC_MAP = _panel_proto.PROTO_MSG_RC_MAP
 PROTO_MSG_SERVO_CAL = _panel_proto.PROTO_MSG_SERVO_CAL
+PROTO_MSG_SERVO_TYPE = _panel_proto.PROTO_MSG_SERVO_TYPE
 ProtocolLineMixin = _panel_proto.ProtocolLineMixin
 first_float = _panel_proto.first_float
 first_value = _panel_proto.first_value
@@ -3626,6 +3628,7 @@ class DronePanel(ValidationV0PageMixin, EvidenceMixin, AcceptanceV2PageMixin, Vi
             PROTO_MSG_LOAD_RESULT: self._handle_board_line,
             PROTO_MSG_DEFAULTS_RESULT: self._handle_board_line,
             PROTO_MSG_SERVO_RESULT: self._handle_board_line,
+            PROTO_MSG_SERVO_TYPE: self._update_servo_type_line,
             PROTO_MSG_WIFI_RECORD: self._update_wifi_line,
             PROTO_MSG_GPS_RECORD: self._handle_board_line,
             PROTO_MSG_MAG_RECORD: self._handle_board_line,
@@ -3765,6 +3768,8 @@ class DronePanel(ValidationV0PageMixin, EvidenceMixin, AcceptanceV2PageMixin, Vi
             self._v1_sync_target_state(line)
         elif line.startswith("SERVOCAL "):
             self._mechanical_handle_target_line(line)
+        elif line.startswith("SERVOTYPE "):
+            self._update_servo_type_line(line)
         elif line.startswith("HW "):
             self._update_hardware_line(line)
         elif line.startswith("STATUS "):

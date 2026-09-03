@@ -46,6 +46,8 @@ PROTO_REQ_IMU_CAL = 0x1020
 PROTO_REQ_ACCEPTANCE = 0x1021
 PROTO_REQ_RC = 0x1022
 PROTO_REQ_RCMAP = 0x1023
+# SERVOTYPE has its own S7 request slot; SERVO_CAL remains at 0x1024.
+PROTO_REQ_SERVOTYPE = 0x1025
 PROTO_REQ_SERVO_CAL = 0x1024
 PROTO_MSG_CMD_LINE = 0x2000
 PROTO_MSG_TEXT_LINE = 0x2001
@@ -88,6 +90,7 @@ PROTO_MSG_AIRFRAME_RECORD = 0x221F
 PROTO_MSG_RC_LIVE = 0x2223
 PROTO_MSG_RC_MAP = 0x2224
 PROTO_MSG_SERVO_CAL = 0x2225
+PROTO_MSG_SERVO_TYPE = 0x2226
 
 
 def parse_kv(line: str) -> dict[str, str]:
@@ -184,6 +187,7 @@ class ProtocolLineMixin:
             PROTO_MSG_RTOS_RECORD: "RTOS",
             PROTO_MSG_FLASH_BENCH: "FLASH",
             PROTO_MSG_AIRFRAME_RECORD: "AIRFRAME",
+            PROTO_MSG_SERVO_TYPE: "SERVOTYPE",
         }
         prefix = prefix_map.get(function)
         if prefix is None:
