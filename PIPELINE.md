@@ -50,6 +50,7 @@ flowchart TB
         S5["⏸ S5 PID、控制律优化与新飞行功能<br/>底层验收完成后再恢复"]
         S6["✅ S6 巨型文件拆分<br/>panel 11446→5443 行 / app_control 6257→4131 行；两项存量拆分均已收官，新功能一律新模块（持续生效）"]
         S7["🟡 S7 舵机硬件抽象：PWM/总线双类型支持<br/>不涉及PID/控制律，作者裁决不受S5冻结约束（2026-09-02）"]
+        S8["🟡 S8 遥测流 v2 + 上位机示波器<br/>自描述掩码帧、参数按变回显、Tk Canvas 高帧率波形；设计见 doc/telemetry-scope-plan.md（2026-09-03）"]
     end
 
     M0 -.约束.-> S1
@@ -107,6 +108,13 @@ flowchart TB
 | R-S7-7 | S7 | 〔码〕修bug：R-S7-4遗留缺陷——PWM模式下`servo_debug.py`"移动此舵机"误接`SERVO JOG`（500µs/s慢速斜坡，为`mechanical.py`标定设计），导致调试页从总线模式的近瞬间响应退化为爬行 | 新增PWM即时移动通路（不经JOG斜坡）供`servo_debug.py`专用；`mechanical.py`标定按钮的JOG行为逐字节不变；总线模式`SERVO MOVE`不变；契约测试覆盖两条路径互不干扰 | 待审核 |
 | R-S1-1 | S1 | 〔码〕上位机把气压计 / IMU 监视（旧链）/ GPS·磁力计三页收进新建的顶层“传感器”分组（仿“校准”的嵌套 Notebook“点击展开”范式），并新增一个空的“光流”占位子页 | 顶层 Notebook 不再直接持有这三个标签页；`sensor_notebook.tabs()` 顺序精确等于 气压计 / IMU 监视（旧链）/ GPS · 磁力计 / 光流；`_build_baro_page`/`_build_imu_page`/`_build_gps_page` 函数体逐字节不变（只改容器归属）；必须真实构造 `DronePanel()` 断言而非仅源码文本匹配；“光流”页只有占位说明文字；不碰“校准”分组及其“光流与测距”标定页 | 待审核 |
 | R-S1-2 | S1 | 〔码〕上位机把 R-S1-1 的“光流”占位子页做成真实监控页：质量与激光高度实时读数、vx/vy 速度曲线、上位机侧按真实时间积分的累计位移（可清零） | 监控页有自己的可见性门控轮询（只在该子页选中时发 `FLOW?`），不寄生标定页的 `flow_cal_collecting`；`flow_ranging.py` 的轮询/解析/UI 逐字节不变；速度是有限长缓冲 + 节流重绘的曲线；累计位移用真实墙钟 dt 积分且必须用上 `valid`/`vel_valid`/`height_valid`，无效时明确标出并不进积分；“重置”只清本地状态、不发协议帧；不改固件与协议；必须真实构造 `DronePanel()` 驱动轮询断言 | 待审核 |
+| R-T1-1 | S8 | 〔码〕固件遥测流 v2：新建 `app_telem_stream.c/h` + `app_cmd_telem.c`，实现规划 §2.2 掩码帧、§2.3 脏位回显、§2.4 命令族；`VOFA_task` 填充体搬出 `freertos.c`；`app_telemetry` 加 `param` 字段、schema v2；`APP_Proto_BuildFrame` 解禁；`app_vofa.c` 退为 `jf` 后端；`TELEM SINK`（usb、uart、auto）两个出口同帧、USB 拔出自动关流、与 IMUCAP/FLOG 互斥。类别模式：protocol-telemetry | host 装置覆盖黄金向量/脏位/刷新/超限 ERR/双出口选择/拔出关流；`freertos.c` USER CODE 净减少；`app_control.c` 不增；`cmake --build --preset Debug` 零警告；`pytest tests -q` 全绿 | 待做 |
+| R-T1-2 | S8 | 〔码〕上位机解码：`transport.py` 二进制分支（唯一改动）；新建 `panel_lib/telem_stream.py`（schema 装配+hash 复算、解码器、seq/drop 统计、numpy 环形缓冲、收线程写入）。类别模式：protocol-telemetry | 黄金向量与固件逐字节一致；模糊测试永不错位；hash 不符触发重拉；不改 `drone_tcp_panel.py` | 待做 |
+| R-T1-3 | S8 | 〔码〕示波器页：新建 `panel_lib/scope.py`（Tk Canvas，min/max 抽稀）与 `pages/scope.py`（通道勾选→MASK、滑块三态、统计条、CSV 录制、可见性门控 STREAM on/off）。依赖 R-T1-2。类别模式：protocol-telemetry | 真实 `DronePanel()` 端到端断言规划 §4 全部条目；重绘基准 ≤5 ms；`drone_tcp_panel.py` 改动 ≤5 行且净不增 | 待做 |
+| R-T1-4 | S8 | 〔机〕双链路实机验收：数传 40 Hz 与 USB 40 Hz 各跑一遍 | 规划 §4 实机前三条，两条链路各一次 | 待做 |
+| R-T2-1 | S8 | 〔码〕USB 高速批量档：count>1、dt_us、USB 出口 `RATE ≤1000`、`APP_TELEM_FRAME_MAX_PAYLOAD 1024`。依赖 R-T1-1。类别模式：protocol-telemetry | 装置覆盖批量编码与 USB/UART 上限差异；UART 出口超限仍 ERR；构建零警告 | 待做 |
+| R-T2-2 | S8 | 〔机〕USB 档 500 Hz 验收 | 规划 §4 实机第四条 | 待做 |
+| R-T3 | S8 | 〔码〕可选：本地 UDP 镜像 + `tools/telem_scope_qt.py`（pyqtgraph 只读） | 不影响 R-T1 任何测试 | ⏸ |
 
 ## 最近验证证据
 

@@ -81,6 +81,7 @@
 ## 类别层：已有的类别模式
 
 - 算法验证：[modes/algorithm-validation.md](modes/algorithm-validation.md)
+- 协议 / 遥测改动：[modes/protocol-telemetry.md](modes/protocol-telemetry.md)
 
 新类别由派发者按 [dispatcher-prompt.md](dispatcher-prompt.md) 的模板补充，
 补充后在上面这张表里加一行。

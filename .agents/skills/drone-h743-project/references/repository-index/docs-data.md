@@ -4,7 +4,7 @@
 
 Read this shard only when the task needs architecture rationale, controller math, historical evidence, captures, datasets, or agent-support documentation.
 
-Document snapshot: `3cda337a8e0a`; aggregate snapshot: `bce40fdbb9f9`. Covered files: 319.
+Document snapshot: `97bcc83f54ec`; aggregate snapshot: `bce40fdbb9f9`. Covered files: 321.
 
 ## Documents and agent support
 
@@ -16,6 +16,7 @@ Document snapshot: `3cda337a8e0a`; aggregate snapshot: `bce40fdbb9f9`. Covered f
 | `.agents/skills/drone-h743-project/references/flu-coordinate-contract.md` | FLU Coordinate Contract | `Authority`, `Adapter Rules`, `Current Migration Status`, `Required Validation`, `Staged Physical Acceptance` |
 | `.agents/skills/drone-h743-project/references/h7-memory-domains.md` | STM32H743 Memory And Domain Notes For This Project | `先记住的结论`, `当前工程 `.ioc` 已暴露的主要内存区`, `项目内推荐的四区分工`, `1. ITCM`, `2. DTCM`, `3. D1 / AXI SRAM` (+5) |
 | `.agents/skills/drone-h743-project/references/modes/algorithm-validation.md` | 类别模式：算法验证 | `授权`, `判据（验收看这几条，不看"测试绿不绿"）`, `禁止（未经作者单独批准）`, `交付物` |
+| `.agents/skills/drone-h743-project/references/modes/protocol-telemetry.md` | 类别模式：协议 / 遥测改动 | `授权`, `判据`, `禁止（未经作者单独批准）`, `交付物` |
 | `.agents/skills/drone-h743-project/references/progress-notes.md` | drone-H743 Current Bring-Up Notes | `FLASH / GD25Q32`, `Other Bring-Up Facts`, `IMU Frame V0`, `USB DFU / V1 / V2A`, `Ground Calibration Subsystems (2026-08-29 wave)` |
 | `.agents/skills/drone-h743-project/references/runtime-services.md` | Runtime Services And Background Work | `Ownership`, `Focused Validation` |
 | `.agents/skills/drone-h743-project/references/work-modes.md` | 执行者工作模式 | `三层结构`, `默认层：常规 REQ 执行`, `横切层：修 bug 模式`, `进入条件（满足任一）`, `不进入`, `流程（顺序不可省）` (+2) |
@@ -39,6 +40,7 @@ Document snapshot: `3cda337a8e0a`; aggregate snapshot: `bce40fdbb9f9`. Covered f
 | `doc/m1-baseline-runbook.md` | M1 底层与原始数据健康 · 实机作业单 | `1. 烧录当前固件`, `2. 连接工作台`, `3. M1 证据采集清单（对照 PIPELINE M1 门）`, `4. 收尾（强制）`, `备忘（后续节点的坑，提前知道）` |
 | `doc/nonlinear_balance_controller.md` | 非线性平衡式同轴倾转控制器 | `1. 控制目标`, `2. 坐标与已知物理量`, `3. 速度参考模型`, `4. 期望推力方向`, `5. 舵机与期望机体姿态耦合`, `6. SO(3) 姿态力矩` (+4) |
 | `doc/technical-spec.md` | drone-H743 技术规范与代码落地方案 | `1. 最终目的与范围`, `2. 角色与工作流`, `3. 架构与代码规范`, `4. 坐标与单位契约`, `5. 通信协议规范`, `6. 持久化规范` (+8) |
+| `doc/telemetry-scope-plan.md` | 遥测流 v2 与上位机示波器规划（派工稿） | `1. 现状与约束（改之前必须知道的）`, `2. 设计裁决`, `2.1 一个机制解决三个问题：**自描述掩码帧**`, `2.2 帧格式（`$X` 帧，function `APP_PROTO_MSG_TELEM_FRAME = 0x2230`，payload 小端）`, `2.3 参数回显与滑块三态`, `2.4 命令面（文本，沿用 `TELEM` 族）` (+8) |
 | `doc/飞控.drawio` | Project documentation for 飞控 | — |
 
 ## Aggregated datasets and captures
