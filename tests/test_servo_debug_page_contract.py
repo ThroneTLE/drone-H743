@@ -42,9 +42,10 @@ class DummyPanel(ServoDebugPageMixin):
 
 
 def test_pwm_jog_has_no_bus_command_and_bus_move_is_unchanged() -> None:
+    # R-S7-7：PWM 走即时通路（NOW），不再是标定页的 500µs/s 慢速斜坡。
     pwm = DummyPanel("pwm")
     pwm._servo_move(0)
-    assert pwm.sent == [(0x1010, "SERVO JOG 0 1600", "SERVO JOG 0 1600", True)]
+    assert pwm.sent == [(0x1010, "SERVO JOG 0 1600 NOW", "SERVO JOG 0 1600 NOW", True)]
 
     bus = DummyPanel("bus")
     bus._servo_move(0)
@@ -62,7 +63,9 @@ def test_active_pwm_stays_gated_when_candidate_is_changed_to_bus() -> None:
     host._servo_set_physical_id(0)
     host._servo_cmd(0, "ULK")
     host._servo_baud(0)
-    assert host.sent == [(0x1010, "SERVO JOG 0 1600", "SERVO JOG 0 1600", True)]
+    # 只剩两个 PWM 允许的动作（单路移动 + 同时移动两路），总线子命令一条都不发。
+    immediate = (0x1010, "SERVO JOG 0 1600 NOW", "SERVO JOG 0 1600 NOW", True)
+    assert host.sent == [immediate, immediate]
 
 
 def test_pwm_page_keeps_bus_surfaces_disabled_and_does_not_add_bus_subcommands() -> None:
@@ -70,4 +73,4 @@ def test_pwm_page_keeps_bus_surfaces_disabled_and_does_not_add_bus_subcommands()
     for command in ("ULK", "ULR", "DPT", "DCT", "DST", "BD", "SERVO RAW"):
         assert command in source
     assert 'state = "disabled" if pwm else "normal"' in source
-    assert 'payload = f"SERVO JOG {index} {values[\'pulse\']}"' in source
+    assert 'payload = f"SERVO JOG {index} {pulse_us} NOW"' in source

@@ -42,13 +42,15 @@ VIBRATION_AST_SHA256 = {
 }
 SERVO_DEBUG_AST_SHA256 = {
     "_build_servo_page": "cdbca905951b7c69996a5f2c4093367c915ba16d76b45072cb605b249f7f8640",
-    "_build_servo_tab": "4223d9b21a2cfe5abdf4b6d902be487231bb4533450780eedf395e1188f407e0",
+    "_build_servo_tab": "8c939df106d33a9912c12315b036d8ec94b446f4057ee82f5c8b5c8076553345",
     "_servo_spin": "f7a1c49d31771e45a0e931da512d6a19fb5130701f5822fd1a29b6bef22e6733",
     "_refresh_servo_output_controls": "6f5c31f85e094d2cd5bc2c61626a44125db36241a8d08550fb8d5cd94f6c604b",
     "_send_raw": "bce3e02d68ff9b9ad4c69fa3b70c456fb18f203f0d0771471fab834663873b47",
     "_servo_values": "eb8e3632a5b07df9a26a46cc73ddd8c6ee40cc1c0ac2e0da8d514bff69b65484",
-    "_servo_move": "a20ce9b9cb7dc061413251305be82492bf8b323749541004a2650939adc61f85",
-    "_servo_move_all": "769fc0d0500cef04a1dd5a6e7af975a58359fd0aaa4f32666eff33795fd99950",
+    # R-S7-7：PWM 调试页改走即时通路（NOW），三个方法随之重钉。
+    "_servo_move_pwm_immediate": "f4bbc9011fc0b91bd29c0a216f9dd34a4cf47194e74ac8b3b19120802922eeec",
+    "_servo_move": "0222f52f9f85c0e765f64fa88de8415165f0164d11fc35785302dc006e6d51a8",
+    "_servo_move_all": "0111acb759e4d9cb51590a10a22ac483edf72477950db636e68329278a9e2c16",
     "_servo_mode": "605e3b441cf7618211518224f57c82dc257a916b550bd69ab1ac5f0f0cc9a429",
     "_servo_enable": "81171cf844bac2fedf76e0698446397ae18a9924552ce6a046d59cc75aa6e206",
     "_servo_set_id": "feecd52bcb00bc07d6af187071c26811cf227eb261cfc307510f22b0332def84",
@@ -272,7 +274,7 @@ def test_s6_increment8_page_owners_ast_forwarding() -> None:
     assert (set(vibration) | set(servo_debug)).isdisjoint(legacy)
     assert len(vibration["_build_vibration_filter_page"].body) == 10
     assert len(servo_debug["_build_servo_page"].body) == 15
-    assert len(servo_debug["_build_servo_tab"].body) == 43
+    assert len(servo_debug["_build_servo_tab"].body) == 42
     assert legacy_panel.VibrationPageMixin is vibration_page.VibrationPageMixin
     assert legacy_panel.ServoDebugPageMixin is servo_debug_page.ServoDebugPageMixin
     for owner, hashes in (

@@ -4,7 +4,7 @@
 
 Read this shard only when you need existing behavioral/architecture coverage or must choose focused regression tests.
 
-Source snapshot: `9442a26e5a68`. Indexed files: 98.
+Source snapshot: `c8ff9441b258`. Indexed files: 99.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -97,6 +97,7 @@ Source snapshot: `9442a26e5a68`. Indexed files: 98.
 | `tests/test_servo_feedback_runtime_contract.py` | — | `test_runtime_feedback_uses_deterministic_50_hz_per_servo_slots`, `test_runtime_feedback_snapshot_carries_quality_metadata` |
 | `tests/test_servo_jog_contract.py` | SERVO JOG（保持型地面点动）契约测试。 背景（M4 台架实测缺陷）：稳定环 commit 以 3µs 死区 + 500ms 强制刷新持续流式 下发舵机目标，一次性 SERVO MOVE 慢移会在下一次强制刷新被拉回中点。修复后的… | `test_servo_jog_runtime_behaviour`, `test_stabilizer_commit_arbitrates_jog_after_higher_priority_owners`, `test_control_dispatches_jog_and_flushes_notice`, `test_jog_module_keeps_control_loop_context_contract` (+1) |
 | `tests/test_servo_mechanical_calibration.py` | Persistent servo-mechanical calibration and flow-compensation evidence | `test_servo_mechanical_fields_reuse_fcal_reserved_space_without_abi_growth`, `test_servocal_protocol_has_preview_revert_commit_and_param_confirmation`, `test_runtime_consumers_use_the_same_servo_calibration`, `test_flow_compensation_snapshot_is_coherent_and_exported_as_flu` (+1) |
+| `tests/test_servo_pwm_immediate_move_contract.py` | R-S7-7：PWM 调试页即时移动通路 与 标定页慢速点动 的解耦契约。 缺陷背景（R-S7-4 遗留）：PWM 模式下 servo_debug.py 的「移动此舵机」下发裸 `SERVO JOG <ch> <us>`，而该命令的斜坡速… | `test_pwm_debug_move_uses_immediate_path_not_the_calibration_slew`, `test_pwm_debug_move_all_sends_immediate_for_every_slot`, `test_bus_mode_move_and_move_all_are_unchanged`, `test_mechanical_page_jog_call_sites_are_byte_identical` (+3) |
 | `tests/test_servo_type_panel_contract.py` | R-S7-5 host contracts for servo type controls and transactions | `test_servo_type_protocol_ids_are_unique_and_forwarded`, `test_type_transaction_buttons_send_only_frozen_commands`, `test_type_readback_updates_active_candidate_and_status_fields`, `test_type_controls_are_owned_by_new_module_and_debug_page_calls_builder` |
 | `tests/test_servo_type_protocol.py` | S7 servo output type persistence and command protocol contracts | `test_servo_type_reuses_reserved_fcal_byte_without_abi_growth`, `test_servo_type_runtime_module_defaults_legacy_records_to_bus`, `test_servotype_protocol_is_single_value_apply_revert_commit`, `test_servotype_uses_param_blob_and_has_stable_protocol_ids` (+2) |
 | `tests/test_stationary_drift.py` | 静止漂移自检。 背景：六面标定解的是"摆在六个姿态下读数对不对"，但用户真正在意的是"放着不动会 不会自己飘"。这两件事不等价。飞机不动时真实角速度就是 0、真实比力就是 1 g，所以 这个检查不需要转台 —— 读数偏多少就是误差多少，也… | `test_a_still_aircraft_reports_no_drift_and_one_g`, `test_the_window_must_be_long_enough_to_show_a_trend`, `test_yaw_is_allowed_to_drift_more_than_roll_and_pitch`, `test_a_big_yaw_drift_points_at_leftover_gyro_bias` (+10) |

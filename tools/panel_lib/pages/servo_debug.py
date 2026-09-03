@@ -76,13 +76,13 @@ class ServoDebugPageMixin(ServoTypeControlsMixin):
         ttk.Button(parent, text="移动此舵机", command=lambda i=index: self._servo_move(i)).grid(
             row=row, column=0, pady=6, sticky=tk.EW
         )
+        # PWM 模式下走 _servo_move_pwm_immediate 逐路即时下发，不再是总线专属控件。
         move_all = ttk.Button(
             parent,
             text="按配置同时移动两路",
             command=self._servo_move_all,
         )
         move_all.grid(row=row, column=1, pady=6, sticky=tk.EW)
-        self._servo_bus_widgets.append(move_all)
         row += 1
 
         id_box = ttk.LabelFrame(parent, text="修改实体舵机 ID", padding=8)
@@ -162,17 +162,24 @@ class ServoDebugPageMixin(ServoTypeControlsMixin):
         widgets = self.servo_widgets[index]
         return {key: int(var.get()) for key, var in widgets.items()}
 
+    def _servo_move_pwm_immediate(self, index: int, pulse_us: int) -> None:
+        # 裸 `SERVO JOG` 是 mechanical.py 拆桨标定的 500µs/s 慢速斜坡（1000µs 行程要 2s），
+        # 调试页要的是与总线 SERVO MOVE 同量级的响应，因此走 NOW 即时变体。
+        payload = f"SERVO JOG {index} {pulse_us} NOW"
+        self._send_proto(PROTO_REQ_SERVO_MOVE, payload, payload)
+
     def _servo_move(self, index: int) -> None:
         values = self._servo_values(index)
         if self._servo_output_is_pwm():
-            payload = f"SERVO JOG {index} {values['pulse']}"
-            self._send_proto(PROTO_REQ_SERVO_MOVE, payload, payload)
+            self._servo_move_pwm_immediate(index, values["pulse"])
             return
         payload = f"SERVO MOVE {index} {values['pulse']} {values['time']}"
         self._send_proto(PROTO_REQ_SERVO_MOVE, payload, payload)
 
     def _servo_move_all(self) -> None:
         if self._servo_output_is_pwm():
+            for index in range(len(self.servo_widgets)):
+                self._servo_move_pwm_immediate(index, self._servo_values(index)["pulse"])
             return
         self._send_proto(PROTO_REQ_SERVO_MOVE_ALL, "SERVO MOVEALL")
 
