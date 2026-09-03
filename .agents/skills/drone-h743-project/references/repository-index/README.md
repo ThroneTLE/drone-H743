@@ -2,7 +2,7 @@
 
 # drone-H743 Repository Index
 
-Snapshot: `54feb9030fab`. Covered non-index working files: 7335. Scope: Git-tracked plus non-ignored untracked files; ignored build outputs, caches, and local logs are intentionally excluded.
+Snapshot: `ebe96f663bbc`. Covered non-index working files: 7342. Scope: Git-tracked plus non-ignored untracked files; ignored build outputs, caches, and local logs are intentionally excluded.
 
 ## Use this index
 
@@ -17,10 +17,10 @@ Freshness check: `python .agents/skills/drone-h743-project/scripts/update_reposi
 
 | Read this shard | When it matches | Covered files |
 |---|---|---:|
-| [firmware-app-services.md](firmware-app-services.md) | App behavior, tasks, control, commands, diagnostics, application services | 98 |
+| [firmware-app-services.md](firmware-app-services.md) | App behavior, tasks, control, commands, diagnostics, application services | 104 |
 | [firmware-driver-bsp.md](firmware-driver-bsp.md) | Device/algorithm drivers, buses, GPIO, DMA callbacks, cache or board binding | 76 |
 | [platform-build.md](platform-build.md) | CubeMX/Core, pins/clocks/peripherals, RTOS objects, linker/startup, USB, build, HAL/vendor internals | 1426 |
-| [tests.md](tests.md) | Existing regression/contract coverage and focused test selection | 101 |
+| [tests.md](tests.md) | Existing regression/contract coverage and focused test selection | 102 |
 | [host-tools.md](host-tools.md) | Serial/TCP tools, capture, calibration, identification, log analysis and desktop UIs | 5313 |
 | [docs-data.md](docs-data.md) | Architecture/controller documents, agent references, datasets, captures and experimental evidence | 321 |
 

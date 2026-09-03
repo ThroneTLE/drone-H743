@@ -4,7 +4,7 @@
 
 Read this shard only when you need existing behavioral/architecture coverage or must choose focused regression tests.
 
-Source snapshot: `8303f20e863a`. Indexed files: 101.
+Source snapshot: `0d0702f5fb0d`. Indexed files: 102.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -103,7 +103,8 @@ Source snapshot: `8303f20e863a`. Indexed files: 101.
 | `tests/test_servo_type_panel_contract.py` | R-S7-5 host contracts for servo type controls and transactions | `test_servo_type_protocol_ids_are_unique_and_forwarded`, `test_type_transaction_buttons_send_only_frozen_commands`, `test_type_readback_updates_active_candidate_and_status_fields`, `test_type_controls_are_owned_by_new_module_and_debug_page_calls_builder` |
 | `tests/test_servo_type_protocol.py` | S7 servo output type persistence and command protocol contracts | `test_servo_type_reuses_reserved_fcal_byte_without_abi_growth`, `test_servo_type_runtime_module_defaults_legacy_records_to_bus`, `test_servotype_protocol_is_single_value_apply_revert_commit`, `test_servotype_uses_param_blob_and_has_stable_protocol_ids` (+2) |
 | `tests/test_stationary_drift.py` | 静止漂移自检。 背景：六面标定解的是"摆在六个姿态下读数对不对"，但用户真正在意的是"放着不动会 不会自己飘"。这两件事不等价。飞机不动时真实角速度就是 0、真实比力就是 1 g，所以 这个检查不需要转台 —— 读数偏多少就是误差多少，也… | `test_a_still_aircraft_reports_no_drift_and_one_g`, `test_the_window_must_be_long_enough_to_show_a_trend`, `test_yaw_is_allowed_to_drift_more_than_roll_and_pitch`, `test_a_big_yaw_drift_points_at_leftover_gyro_bias` (+10) |
-| `tests/test_telemetry_schema_contract.py` | Contract tests for the VOFA telemetry channel schema (``TELEM?``). The schema exists so the ground station never has to… | `test_header_reports_version_count_rate_and_hash`, `test_every_channel_reported_exactly_once_in_fill_order`, `test_wire_order_is_unchanged_from_the_pre_table_layout`, `test_channel_fields_are_wire_safe` (+8) |
+| `tests/test_telem_stream_contract.py` | R-T1-1：遥测流 v2（固件侧）契约测试。 三部分： 1. **黄金向量**：宿主 gcc 真编译 `app_telem_frame.c` + `app_proto.c`，让固件 自己的编码器把一组给定的 mask/values 编出… | `test_encoder_matches_the_golden_vectors_byte_for_byte`, `test_golden_vector_file_is_in_sync_with_the_firmware`, `test_golden_frames_are_self_describing`, `test_stream_policy_on_host_gcc` (+8) |
+| `tests/test_telemetry_schema_contract.py` | Contract tests for the VOFA telemetry channel schema (``TELEM?``). The schema exists so the ground station never has to… | `test_header_reports_version_count_rate_and_hash`, `test_every_channel_reported_exactly_once_in_fill_order`, `test_wire_order_is_unchanged_from_the_pre_table_layout`, `test_channel_fields_are_wire_safe` (+10) |
 | `tests/test_usb_v0_transport_contract.py` | — | `test_usb_route`, `test_mirror`, `test_export_guard`, `test_serial_select` |
 | `tests/test_v0_guidance_flow.py` | V0 引导可达性回归测试。 V0 页的四项准备清单（连接/快照/零偏/安全输出）与 A/B/C 按钮全部由 _validation_refresh_readiness 依据实时 stabilizer snapshot 解锁，页面文案也明确… | `test_v0_page_polls_as_soon_as_it_is_visible`, `test_v0_page_does_not_poll_while_disconnected`, `test_v0_page_yields_usb_to_v1_capture`, `test_v0_page_yields_usb_to_firmware_update` (+4) |
 | `tests/test_v1_evidence_table.py` | V1 采集页的证据表格。 背景：2026-08-29 的会话里同时躺着三条 50 Hz 的降级采集和两条重复的 accel_pos_x， 表格是平铺的，既看不出哪些步骤还没采、也删不掉，点"分析"只会抛一句不知道说的是谁 的 "采样率仅… | `test_every_planned_step_gets_a_row_even_before_it_is_captured`, `test_a_degraded_capture_is_flagged_before_the_user_clicks_analyse`, `test_a_short_capture_is_warned_but_not_treated_as_corrupt`, `test_duplicate_captures_of_one_step_are_shown_and_flagged` (+13) |

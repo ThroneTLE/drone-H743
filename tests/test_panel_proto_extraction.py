@@ -73,7 +73,8 @@ def test_proto_module_owns_the_protocol_table_and_parsing_helpers() -> None:
     proto_names = {name for name in vars(proto) if name.startswith("PROTO_")}
     legacy_names = {name for name in vars(legacy_panel) if name.startswith("PROTO_")}
 
-    assert len(proto_names) == 84
+    # 85 = 84 + PROTO_MSG_TELEM_FRAME（S8 / R-T1-1 的遥测掩码帧）。
+    assert len(proto_names) == 85
     assert legacy_names == proto_names
     assert proto_names == owned_proto_assignments(PROTO_PATH)
     assert not owned_proto_assignments(LEGACY_PANEL_PATH)

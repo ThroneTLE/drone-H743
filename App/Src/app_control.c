@@ -30,7 +30,6 @@
 #include "app_nav_estimator.h"
 #include "app_proto.h"
 #include "app_tasks.h"
-#include "app_telemetry.h"
 #include "app_uart.h"
 #include "app_usb_cdc.h"
 #include "bsp_bus_servo.h"
@@ -3860,49 +3859,6 @@ static void app_control_tick_common(uint8_t emit_heartbeat)
         }
     }
 #endif
-}
-
-/*
- * TELEM —— 遥测通道 schema 查询。
- *
- *   TELEM?              -> 一行表头（版本/通道数/速率/分页大小/指纹）
- *   TELEM CH from=<n>   -> 至多 APP_TELEM_PAGE_SIZE 条通道行 + 一行页脚
- *
- * 分页而非一次性回全表：uartTxQueue 深度 32 且满时丢最旧的一条，28 条通道
- * 一次推进队列在慢链路上会静默丢掉开头几条，而 schema 丢一条就会让上位机
- * 建错表。分页把单次回包压到 7 条，并且天然可重试。
- */
-static void app_control_handle_telem(char **tokens, uint32_t count)
-{
-    const char *from_text;
-    uint32_t    from;
-
-    if (tokens == NULL) {
-        return;
-    }
-
-    if (strcmp(tokens[0], "TELEM?") == 0) {
-        if (count != 1U) {
-            APP_Control_QueueText("ERR usage TELEM?\r\n");
-            return;
-        }
-        APP_Telemetry_ReportHeader();
-        return;
-    }
-
-    if ((count < 2U) || (strcmp(tokens[1], "CH") != 0)) {
-        APP_Control_QueueText("ERR usage TELEM CH from=<n>\r\n");
-        return;
-    }
-
-    from_text = app_control_token_value(tokens, count, "from");
-    if ((count != 3U) || (from_text == NULL) ||
-        (app_control_parse_u32(from_text, &from) == 0U)) {
-        APP_Control_QueueText("ERR usage TELEM CH from=<n>\r\n");
-        return;
-    }
-
-    APP_Telemetry_ReportPage(from);
 }
 
 static void app_control_dispatch_tokens(char **tokens, uint32_t count, uint8_t emit_ack)

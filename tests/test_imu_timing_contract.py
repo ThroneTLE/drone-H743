@@ -84,11 +84,14 @@ def test_vofa_stream_reports_imu_rate_and_interrupt_vs_poll_counts() -> None:
     assert "msg.imu_poll_ready_count = imu_poll_ready_count;" in freertos
     assert "msg.imu_irq_sample_rate_hz  = APP_SensorRateMeter_Update(&imu_irq_rate_meter," in freertos
     assert "msg.imu_poll_sample_rate_hz = APP_SensorRateMeter_Update(&imu_poll_rate_meter," in freertos
-    assert "#define VOFA_SEND_PERIOD_MS            APP_TELEM_PERIOD_MS" in freertos
-    assert "#define VOFA_DATA_SIZE                 ((uint8_t)APP_TELEM_CH_COUNT)" in freertos
-    assert "vofa_data[APP_TELEM_CH_TIME] = (float)(SVC_Timestamp_Us() / 1000ULL) * 0.001f;" in freertos
-    assert "vofa_data[APP_TELEM_CH_FUSION_ACC_ERR] = msg.fusion_acceleration_error_deg;" in freertos
-    assert "vofa_data[APP_TELEM_CH_FUSION_ACC_NORM_REJECTED] = (float)msg.fusion_accel_norm_rejected;" in freertos
+    # R-T1-1：通道装配从 freertos.c 搬到 App/Src/app_telem_port.c，速率默认值搬到
+    # app_telem_stream.c。断言跟着搬，语义不变——这几条通道必须还在遥测里。
+    port = read("App/Src/app_telem_port.c")
+    stream = read("App/Src/app_telem_stream.c")
+    assert "app_telem_stream.rate_hz           = APP_TELEM_RATE_HZ;" in stream
+    assert "vofa_data[APP_TELEM_CH_TIME] = (float)(SVC_Timestamp_Us() / 1000ULL) * 0.001f;" in port
+    assert "vofa_data[APP_TELEM_CH_FUSION_ACC_ERR] = msg.fusion_acceleration_error_deg;" in port
+    assert "vofa_data[APP_TELEM_CH_FUSION_ACC_NORM_REJECTED] = (float)msg.fusion_accel_norm_rejected;" in port
 
 
 def test_message_task_does_not_consume_sensor_sample_queue() -> None:

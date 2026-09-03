@@ -51,12 +51,22 @@ typedef enum {
     APP_TELEM_CH_COUNT
 } APP_TelemChannelId;
 
-/* VOFA 帧发送周期与标称速率。freertos.c 用编译期断言校验二者一致。 */
+/*
+ * 通道号是掩码帧里的位号（doc/telemetry-scope-plan.md §2.2 的 u64 mask），
+ * 所以表长有硬上限。超过 64 路要先升帧格式版本，不是悄悄加一条。
+ */
+_Static_assert((int)APP_TELEM_CH_COUNT <= 64,
+               "telemetry mask is u64: adding a 65th channel needs a frame version bump");
+
+/* 遥测帧的标称周期与速率。app_telem_stream.c 用它做上电默认值。 */
 #define APP_TELEM_PERIOD_MS 25U
 #define APP_TELEM_RATE_HZ   (1000U / APP_TELEM_PERIOD_MS)
 
-/* 协议版本。改动 TELEM 回包格式（而非通道内容）时递增。 */
-#define APP_TELEM_SCHEMA_VERSION 1U
+/*
+ * 协议版本。改动 TELEM 回包格式（而非通道内容）时递增。
+ * v2（R-T1-1）：通道行新增 `param=`，SchemaHash 覆盖该字段。
+ */
+#define APP_TELEM_SCHEMA_VERSION 2U
 
 /* 单次 TELEM CH 请求最多回几条通道行。
  *
@@ -71,7 +81,16 @@ typedef struct {
     const char *group;  /* 上位机分组标题 */
     float       min;    /* 标称量程下限，供仪表盘刻度使用 */
     float       max;    /* 标称量程上限 */
+    /*
+     * 该通道回显的是哪个参数（`DRV_COAX_CTRL_*Param` 的键），没有参数的通道写 "-"。
+     * 两件事靠它：上位机据此**数据驱动**地生成滑块（不再在上位机里硬编一张增益表），
+     * 遥测流据此判定"这条通道要按变化回显、平时不占带宽"。
+     */
+    const char *param;
 } APP_TelemChannel;
+
+/* 该通道是否为参数回显通道（param 非空且不是 "-"）。 */
+uint8_t APP_Telemetry_ChannelHasParam(uint32_t index);
 
 /* 通道数量（等于 APP_TELEM_CH_COUNT，供不便包含枚举的调用方使用）。 */
 uint32_t APP_Telemetry_ChannelCount(void);

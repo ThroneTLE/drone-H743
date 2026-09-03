@@ -71,6 +71,9 @@ int32_t app_control_internal_acceptance_milli(float value);
 void app_control_handle_flow(char **tokens, uint32_t count);
 void app_control_report_flow(void);
 
+/* TELEM 命令族（App/Src/app_cmd_telem.c）。 */
+void app_control_handle_telem(char **tokens, uint32_t count);
+
 void app_control_report_caps(void);
 void app_control_report_wifi(void);
 void app_control_report_rtos(void);

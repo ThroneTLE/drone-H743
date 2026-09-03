@@ -1,6 +1,7 @@
 #include "app_usb_cdc.h"
 
 #include "app_control.h"
+#include "app_telem_stream.h"
 #include "main.h"
 #include "usbd_cdc_if.h"
 
@@ -107,6 +108,8 @@ static void app_usb_cdc_process_line(void)
 
     app_usb_cdc_line[app_usb_cdc_line_used] = '\0';
     APP_Control_Init();
+    /* `TELEM SINK auto` 靠这条记录决定 `TELEM STREAM on` 之后往哪条链路发帧。 */
+    APP_TelemStream_NoteCommandSource(APP_TELEM_SINK_USB);
     APP_Control_ProcessLine(app_usb_cdc_line);
     app_usb_cdc_line_used = 0U;
     app_usb_cdc_rx_lines++;

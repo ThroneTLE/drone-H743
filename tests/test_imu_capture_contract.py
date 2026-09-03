@@ -84,21 +84,24 @@ def test_export_only_sees_timestamp_matched_completed_samples() -> None:
 
 def test_export_runs_off_the_sampling_path() -> None:
     source = read("Core/Src/freertos.c")
+    port = read("App/Src/app_telem_port.c")
 
-    # The blocking USB export must be driven from a low-priority task, never
-    # from Sensor_Task where the samples are produced. Locate the export call
-    # and confirm the enclosing task entry point is not Sensor_Task.
-    export_at = source.index("APP_IMU_Capture_ExportStep")
-    task_starts = [
-        (source.index(sig + "(void *argument)\n{"), sig)
-        for sig in ("void Sensor_Task", "void StabilizerTask", "void BackgroundTask")
-        if (sig + "(void *argument)\n{") in source
-    ]
-    enclosing = max((pos, sig) for pos, sig in task_starts if pos < export_at)
-    assert enclosing[1] != "void Sensor_Task", (
-        f"ExportStep is called from {enclosing[1]}, which produces samples")
-    assert enclosing[1] != "void StabilizerTask", (
-        "ExportStep must not block the stabilizer loop")
+    # R-T1-1 起搬运循环从 freertos.c 的 VOFA_task 搬到了遥测流的 Port 实现里，
+    # 但驱动它的仍然只有那个低优先级任务：阻塞式 USB 导出绝不能进采样或稳定环。
+    assert "APP_IMU_Capture_ExportStep" not in source
+    assert "APP_IMU_Capture_ExportStep();" in port
+
+    for producer in ("void Sensor_Task", "void StabilizerTask"):
+        task = source[source.index(producer + "(void *argument)\n{"):]
+        task = task[: task.index("\n}\n")]
+        assert "APP_TelemStream_Tick" not in task, (
+            f"{producer} must not drive the telemetry/export tick")
+
+    vofa_task = source[source.index("void VOFA_task(void *argument)\n{"):]
+    assert "APP_TelemStream_Tick();" in vofa_task[: vofa_task.index("\n}\n")]
+
+    attributes = source[source.index("VOFA_Task_attributes = {"):]
+    assert "osPriorityLow" in attributes[: attributes.index("};")]
 
 
 def test_sample_layout_matches_host_decoder() -> None:

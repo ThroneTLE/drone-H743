@@ -4,13 +4,13 @@
 
 Read this shard only when the task touches CubeMX output, pins/clocks/peripherals, startup/linker layout, USB, build configuration, HAL, FreeRTOS internals, or vendor code.
 
-Source snapshot: `bd6354db520e`; aggregate snapshot: `13fc4f243386`. Covered files: 1426.
+Source snapshot: `fb5f97ad9734`; aggregate snapshot: `13fc4f243386`. Covered files: 1426.
 
 | File/module or scope | Content outline | Key entry points / size |
 |---|---|---|
 | `Core/Inc/FreeRTOSConfig.h` | CubeMX/HAL platform module for FreeRTOSConfig | — |
 | `Core/Inc/dma.h`<br>`Core/Src/dma.c` | CubeMX/HAL platform module for dma | `MX_DMA_Init` |
-| `Core/Src/freertos.c` | CubeMX-owned FreeRTOS objects and task entry wiring | `BSP_IMU_Init`, `APP_IMU_ReadDataReadyTimestamp`, `BSP_IMU_IsDataReady`, `BSP_IMU_ReadRaw`, `APP_Sensor_CalibrateGyroBias`, `BSP_BARO_ReadRawRegisters` (+3) |
+| `Core/Src/freertos.c` | CubeMX-owned FreeRTOS objects and task entry wiring | `BSP_IMU_Init`, `APP_IMU_ReadDataReadyTimestamp`, `BSP_IMU_IsDataReady`, `BSP_IMU_ReadRaw`, `APP_Sensor_CalibrateGyroBias`, `BSP_BARO_ReadRawRegisters` (+1) |
 | `Core/Inc/gpio.h`<br>`Core/Src/gpio.c` | CubeMX/HAL platform module for gpio | `MX_GPIO_Init` |
 | `Core/Inc/i2c.h`<br>`Core/Src/i2c.c` | CubeMX/HAL platform module for i2c | `MX_I2C1_Init`, `MX_I2C2_Init` |
 | `Core/Inc/main.h`<br>`Core/Src/main.c` | CubeMX-owned board pin names and shared MCU declarations | `Error_Handler` |

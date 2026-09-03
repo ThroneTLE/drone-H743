@@ -35,7 +35,7 @@
  *   app_sensor.h     — 传感器数据处理（零偏校准、坐标系对齐、低通滤波）
  *   app_messages.h   — 消息协议编解码（JSON / 二进制帧封装）
  *   app_tasks.h      — 各任务 Init/Step 函数声明
- *   app_vofa.h       — VOFA 上位机通信（浮点数组帧发送）
+ *   app_telem_stream.h — 遥测流 v2（通道装配、掩码帧、双出口）
  *   app_elrs.h       — ELRS 遥控器链路（通道值读取）
  *
  * BSP 层（板级支持包——硬件抽象）：
@@ -66,7 +66,7 @@
 #include <math.h>
 #include <string.h>
 
-#include "app_vofa.h"
+#include "app_telem_stream.h"
 #include "app_elrs.h"
 #include "app_optical_flow.h"
 #include "bsp_baro.h"
@@ -101,14 +101,7 @@
 #define SENSOR_IMU_READ_FAIL_LIMIT     25U      /* 连续读失败次数，超过后锁存故障      */
 #define SENSOR_MAG_PERIOD_US           50000ULL /* 磁力计步进间隔 50ms = 20Hz          */
 /* 稳定器/导航/舵机常量已移至 App/Src/app_stabilizer.c */
-/*
- * VOFA 帧的周期与长度都取自 app_telemetry.h，使通道表成为唯一事实源：
- * 往表里加一个通道，帧长自动跟随；改发送周期，TELEM? 上报的 rate 自动跟随。
- */
-#define VOFA_SEND_PERIOD_MS            APP_TELEM_PERIOD_MS
-/* 原始 IMU 采集导出每个周期搬运的块数，见 vofa 任务中的说明。 */
-#define IMU_CAPTURE_EXPORT_BLOCKS_PER_TICK 16U
-#define VOFA_DATA_SIZE                 ((uint8_t)APP_TELEM_CH_COUNT)
+/* 遥测帧的周期、长度、通道装配已移至 App/Src/app_telem_stream.c + app_telem_port.c */
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -126,11 +119,9 @@
  *   消费者：StabilizerTask（acquire 后开始消费 SensorSampleQueue）
  *   初始值 0，最大值 1（二进制信号量，只做事件通知不做计数）
  *
- * vofaStreamActive — VOFA 数据流开关
- *   由上位机通过消息系统远程控制，置 0 时暂停 VOFA 发送
+ * 遥测流开关 vofaStreamActive 已移至 App/Src/app_telem_stream.c。
  */
 osSemaphoreId_t imuDataReadySemaphore;
-volatile uint8_t vofaStreamActive = 0U;  /* 默认关闭，发 Sensor_Data:1 开启 */
 
 /* USER CODE END Variables */
 /* Definitions for Stabilizer */
@@ -803,122 +794,23 @@ void BackgroundTask(void *argument)
 
 /* USER CODE BEGIN Header_VOFA_task */
 /**
-  * @brief  VOFA_Task —— VOFA 上位机数据发送（50Hz 定时）
+  * @brief  VOFA_Task —— 遥测流发送任务
   * @param  argument: Not used
   * @retval None
   *
-  * 功能：
-  *   从 vofaLogQueue 取出姿态/传感器数据，按固定格式打包后
-  *   通过 WiFi 透传发送到 VOFA 上位机进行实时可视化。
-  *
-  * 发送数据帧（APP_TELEM_CH_COUNT 个 float + 4 字节帧尾）。
-  *
-  * 通道清单不在此处重复列出 —— 它曾经列在这里，并且已经和代码漂移过
-  * （旧注释缺了 [22] vel_z_kd）。唯一事实源是 App/Inc/app_telemetry.h 的
-  * APP_TELEM_CH_* 枚举与 App/Src/app_telemetry.c 的元数据表；上位机用
-  * TELEM? / TELEM CH from=<n> 拉取同一张表自动建图。
-  *
-  * vofaStreamActive 标志可由上位机远程控制，方便暂停 / 恢复数据流。
+  * 任务体整体位于 App/Src/app_telem_stream.c（策略）与 app_telem_port.c
+  * （平台实现）。这里只剩调用：通道装配、掩码帧编码、出口选择、导出互斥
+  * 都不再写在 CubeMX 生成的文件里。
   *
   * 优先级 Low：可视化数据允许延迟或丢帧，不影响飞行安全。
-  * 周期 40Hz（osDelay(25)）：116 字节帧约占 4640 B/s，保留命令响应余量。
   */
 /* USER CODE END Header_VOFA_task */
 void VOFA_task(void *argument)
 {
   /* USER CODE BEGIN VOFA_task */
-
-  APP_Sensor_SampleMessage msg;
-  float vofa_data[VOFA_DATA_SIZE];
-  StabilizerVofaDebug vofa_debug;
-  APP_OPTICAL_FLOW_Status flow_status;
-
   for(;;)
   {
-    /*
-     * VOFA 诊断降频发送，避免 WiFi/USART1 调试流量影响实时任务调度。
-     */
-    osDelay(VOFA_SEND_PERIOD_MS);
-
-    /*
-     * 原始 IMU 采集导出：放在这个低优先级任务里搬运，采样钩子只写 RAM，
-     * 因此 USB 阻塞不会影响 1kHz 采样或稳定环。导出期间跳过 VOFA 发送，
-     * 避免两个数据流争用同一条 CDC 链路。
-     */
-    if (APP_IMU_Capture_IsExportActive() != 0U) {
-      /*
-       * 一次搬多块：单块 25ms 会让整段导出拖到 ~50s。APP_USB_CDC_Write 自身
-       * 会等待 USB 完成，所以这里的循环由链路速度自然限流，不会空转。
-       */
-      uint32_t burst;
-      for (burst = 0U; burst < IMU_CAPTURE_EXPORT_BLOCKS_PER_TICK; burst++) {
-        if (APP_IMU_Capture_IsExportActive() == 0U) {
-          break;
-        }
-        APP_IMU_Capture_ExportStep();
-      }
-      continue;
-    }
-
-    if (!vofaStreamActive) {
-      continue;
-    }
-    if (APP_FlightLog_IsExportActive() != 0U) {
-      continue;
-    }
-
-    if (osMessageQueueGet(vofaLogQueueHandle, &msg, 0U, 0U) == osOK) {
-      /* ---- 组装 VOFA 数据帧 ---- */
-
-      APP_OpticalFlow_GetStatus(&flow_status);
-
-      APP_Stabilizer_ReadVofaDebug(&vofa_debug);
-
-      /*
-       * 下标一律用 APP_TELEM_CH_* 枚举名，不写裸数字：通道含义的唯一事实源是
-       * App/Inc/app_telemetry.h 的枚举与 app_telemetry.c 的元数据表，上位机
-       * 通过 TELEM? 拉取同一张表自动建图。改动通道请同时改枚举与表。
-       */
-      vofa_data[APP_TELEM_CH_ROLL] = msg.roll_deg;
-      vofa_data[APP_TELEM_CH_PITCH] = msg.pitch_deg;
-      vofa_data[APP_TELEM_CH_YAW] = msg.yaw_deg;
-
-      /* 二合一光流测距高度 [m]；失效或超时立即输出 0，避免保留陈旧值。 */
-      vofa_data[APP_TELEM_CH_FLOW_HEIGHT] = (flow_status.height_valid != 0U) ?
-                                            flow_status.height_m : 0.0f;
-
-      vofa_data[APP_TELEM_CH_TIME] = (float)(SVC_Timestamp_Us() / 1000ULL) * 0.001f;
-      vofa_data[APP_TELEM_CH_VEL_EST_X] = vofa_debug.vel_est_m_s[0];
-      vofa_data[APP_TELEM_CH_VEL_EST_Y] = vofa_debug.vel_est_m_s[1];
-      (void)DRV_COAX_CTRL_GetParam("coax.roll_rate_kd", &vofa_data[APP_TELEM_CH_ROLL_RATE_KD]);
-      (void)DRV_COAX_CTRL_GetParam("coax.pitch_rate_kd", &vofa_data[APP_TELEM_CH_PITCH_RATE_KD]);
-      (void)DRV_COAX_CTRL_GetParam("coax.yaw_angle_kp", &vofa_data[APP_TELEM_CH_YAW_ANGLE_KP]);
-      (void)DRV_COAX_CTRL_GetParam("coax.yaw_rate_kd", &vofa_data[APP_TELEM_CH_YAW_RATE_KD]);
-      (void)DRV_COAX_CTRL_GetParam("coax.pos_x_kp", &vofa_data[APP_TELEM_CH_POS_X_KP]);
-      (void)DRV_COAX_CTRL_GetParam("coax.pos_y_kp", &vofa_data[APP_TELEM_CH_POS_Y_KP]);
-      (void)DRV_COAX_CTRL_GetParam("coax.vel_x_kd", &vofa_data[APP_TELEM_CH_VEL_X_KD]);
-      (void)DRV_COAX_CTRL_GetParam("coax.vel_y_kd", &vofa_data[APP_TELEM_CH_VEL_Y_KD]);
-      vofa_data[APP_TELEM_CH_POS_EST_X] = vofa_debug.pos_est_m[0];
-      vofa_data[APP_TELEM_CH_POS_EST_Y] = vofa_debug.pos_est_m[1];
-      (void)DRV_COAX_CTRL_GetParam("coax.vel_loop_enable", &vofa_data[APP_TELEM_CH_VEL_LOOP_ENABLE]);
-      (void)DRV_COAX_CTRL_GetParam("coax.roll_angle_kp", &vofa_data[APP_TELEM_CH_ROLL_ANGLE_KP]);
-      (void)DRV_COAX_CTRL_GetParam("coax.pitch_angle_kp", &vofa_data[APP_TELEM_CH_PITCH_ANGLE_KP]);
-      (void)DRV_COAX_CTRL_GetParam("coax.pos_z_kp", &vofa_data[APP_TELEM_CH_POS_Z_KP]);
-      (void)DRV_COAX_CTRL_GetParam("coax.pos_z_ki", &vofa_data[APP_TELEM_CH_POS_Z_KI]);
-      (void)DRV_COAX_CTRL_GetParam("coax.vel_z_kd", &vofa_data[APP_TELEM_CH_VEL_Z_KD]);
-      vofa_data[APP_TELEM_CH_FUSION_ACC_ERR] = msg.fusion_acceleration_error_deg;
-      vofa_data[APP_TELEM_CH_FUSION_ACC_IGNORED] = (float)msg.fusion_accelerometer_ignored;
-      vofa_data[APP_TELEM_CH_FUSION_ACC_RECOVERY] = msg.fusion_acceleration_recovery_trigger;
-      vofa_data[APP_TELEM_CH_FUSION_ACC_CORRECTIONS] = (float)msg.fusion_accel_correction_count;
-      vofa_data[APP_TELEM_CH_FUSION_ACC_NORM_REJECTED] = (float)msg.fusion_accel_norm_rejected;
-      /* Present operator-facing gains as positive values; controller internals keep the tested signs. */
-      vofa_data[APP_TELEM_CH_YAW_ANGLE_KP] = -vofa_data[APP_TELEM_CH_YAW_ANGLE_KP];
-      vofa_data[APP_TELEM_CH_YAW_RATE_KD] = -vofa_data[APP_TELEM_CH_YAW_RATE_KD];
-      vofa_data[APP_TELEM_CH_ROLL_ANGLE_KP] = -vofa_data[APP_TELEM_CH_ROLL_ANGLE_KP];
-      vofa_data[APP_TELEM_CH_PITCH_ANGLE_KP] = -vofa_data[APP_TELEM_CH_PITCH_ANGLE_KP];
-      /* 28 floats + VOFA tail = 116 bytes. */
-      APP_VOFA_SendFloats(vofa_data, VOFA_DATA_SIZE);
-    }
+    APP_TelemStream_Tick();
   }
   /* USER CODE END VOFA_task */
 }

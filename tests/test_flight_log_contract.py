@@ -138,7 +138,8 @@ def test_flog_commands_and_vofa_export_gate_are_reachable() -> None:
     assert "APP_FlightLog_TestFill(sectors)" in control
     assert '(strcmp(line, "FLOG?") == 0)' in aiwb2
     assert '(aiwb2_starts_with(line, "FLOG ") != 0U)' in aiwb2
-    assert "APP_FlightLog_IsExportActive() != 0U" in freertos
+    # R-T1-1：导出互斥判定随任务体搬到 App/Src/app_telem_port.c。
+    assert "APP_FlightLog_IsExportActive() != 0U" in read("App/Src/app_telem_port.c")
     assert "vofaStreamActive = 0U;" in read("App/Src/app_flight_log.c")
     assert "Sensor_Data:0\\r\\n" in script
     assert "FLOG DUMP\\r\\n" in script

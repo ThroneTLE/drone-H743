@@ -149,9 +149,10 @@ def test_rangefinder_filters_weak_samples_without_step_change_gating() -> None:
 
 
 def test_vofa_channel_three_reports_combo_flow_height() -> None:
-    freertos = read("Core/Src/freertos.c")
+    # R-T1-1：通道装配搬到 App/Src/app_telem_port.c（逐条赋值语句未改）。
+    freertos = read("App/Src/app_telem_port.c")
 
-    assert "#define VOFA_DATA_SIZE                 ((uint8_t)APP_TELEM_CH_COUNT)" in freertos
+    assert "(values == NULL) || (count != (uint32_t)APP_TELEM_CH_COUNT)" in freertos
     assert "APP_OpticalFlow_GetStatus(&flow_status);" in freertos
     assert "vofa_data[APP_TELEM_CH_FLOW_HEIGHT] = (flow_status.height_valid != 0U) ?" in freertos
     assert "flow_status.height_m : 0.0f;" in freertos
@@ -159,8 +160,8 @@ def test_vofa_channel_three_reports_combo_flow_height() -> None:
 
 
 def test_vofa_compact_frame_keeps_dashboard_velocity_channels() -> None:
-    freertos = read("Core/Src/freertos.c") + read("App/Src/app_stabilizer.c")
+    freertos = read("App/Src/app_telem_port.c") + read("App/Src/app_stabilizer.c")
 
-    assert "#define VOFA_DATA_SIZE                 ((uint8_t)APP_TELEM_CH_COUNT)" in freertos
+    assert "(values == NULL) || (count != (uint32_t)APP_TELEM_CH_COUNT)" in freertos
     assert "vofa_data[APP_TELEM_CH_VEL_EST_X] = vofa_debug.vel_est_m_s[0];" in freertos
     assert "vofa_data[APP_TELEM_CH_VEL_EST_Y] = vofa_debug.vel_est_m_s[1];" in freertos

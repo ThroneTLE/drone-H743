@@ -15,38 +15,38 @@
  * 实测符号。此处登记的是"上位机看到的值"的量程，与该约定一致。
  */
 static const APP_TelemChannel app_telem_channels[APP_TELEM_CH_COUNT] = {
-    [APP_TELEM_CH_ROLL]        = {"roll",        "deg",   "attitude", -180.0f, 180.0f},
-    [APP_TELEM_CH_PITCH]       = {"pitch",       "deg",   "attitude",  -90.0f,  90.0f},
-    [APP_TELEM_CH_YAW]         = {"yaw",         "deg",   "attitude", -180.0f, 180.0f},
-    [APP_TELEM_CH_FLOW_HEIGHT] = {"flow_height", "m",     "nav",         0.0f,   5.0f},
-    [APP_TELEM_CH_TIME]        = {"uptime",      "s",     "system",      0.0f, 3600.0f},
-    [APP_TELEM_CH_VEL_EST_X]   = {"vel_est_x",   "m/s",   "nav",        -5.0f,   5.0f},
-    [APP_TELEM_CH_VEL_EST_Y]   = {"vel_est_y",   "m/s",   "nav",        -5.0f,   5.0f},
+    [APP_TELEM_CH_ROLL]        = {"roll",        "deg",   "attitude", -180.0f, 180.0f, "-"},
+    [APP_TELEM_CH_PITCH]       = {"pitch",       "deg",   "attitude",  -90.0f,  90.0f, "-"},
+    [APP_TELEM_CH_YAW]         = {"yaw",         "deg",   "attitude", -180.0f, 180.0f, "-"},
+    [APP_TELEM_CH_FLOW_HEIGHT] = {"flow_height", "m",     "nav",         0.0f,   5.0f, "-"},
+    [APP_TELEM_CH_TIME]        = {"uptime",      "s",     "system",      0.0f, 3600.0f, "-"},
+    [APP_TELEM_CH_VEL_EST_X]   = {"vel_est_x",   "m/s",   "nav",        -5.0f,   5.0f, "-"},
+    [APP_TELEM_CH_VEL_EST_Y]   = {"vel_est_y",   "m/s",   "nav",        -5.0f,   5.0f, "-"},
 
-    [APP_TELEM_CH_ROLL_RATE_KD]    = {"roll_rate_kd",    "-", "gain", 0.0f, 10.0f},
-    [APP_TELEM_CH_PITCH_RATE_KD]   = {"pitch_rate_kd",   "-", "gain", 0.0f, 10.0f},
-    [APP_TELEM_CH_YAW_ANGLE_KP]    = {"yaw_angle_kp",    "-", "gain", 0.0f, 10.0f},
-    [APP_TELEM_CH_YAW_RATE_KD]     = {"yaw_rate_kd",     "-", "gain", 0.0f, 10.0f},
-    [APP_TELEM_CH_POS_X_KP]        = {"pos_x_kp",        "-", "gain", 0.0f, 10.0f},
-    [APP_TELEM_CH_POS_Y_KP]        = {"pos_y_kp",        "-", "gain", 0.0f, 10.0f},
-    [APP_TELEM_CH_VEL_X_KD]        = {"vel_x_kd",        "-", "gain", 0.0f, 10.0f},
-    [APP_TELEM_CH_VEL_Y_KD]        = {"vel_y_kd",        "-", "gain", 0.0f, 10.0f},
+    [APP_TELEM_CH_ROLL_RATE_KD]    = {"roll_rate_kd",    "-", "gain", 0.0f, 10.0f, "coax.roll_rate_kd"},
+    [APP_TELEM_CH_PITCH_RATE_KD]   = {"pitch_rate_kd",   "-", "gain", 0.0f, 10.0f, "coax.pitch_rate_kd"},
+    [APP_TELEM_CH_YAW_ANGLE_KP]    = {"yaw_angle_kp",    "-", "gain", 0.0f, 10.0f, "coax.yaw_angle_kp"},
+    [APP_TELEM_CH_YAW_RATE_KD]     = {"yaw_rate_kd",     "-", "gain", 0.0f, 10.0f, "coax.yaw_rate_kd"},
+    [APP_TELEM_CH_POS_X_KP]        = {"pos_x_kp",        "-", "gain", 0.0f, 10.0f, "coax.pos_x_kp"},
+    [APP_TELEM_CH_POS_Y_KP]        = {"pos_y_kp",        "-", "gain", 0.0f, 10.0f, "coax.pos_y_kp"},
+    [APP_TELEM_CH_VEL_X_KD]        = {"vel_x_kd",        "-", "gain", 0.0f, 10.0f, "coax.vel_x_kd"},
+    [APP_TELEM_CH_VEL_Y_KD]        = {"vel_y_kd",        "-", "gain", 0.0f, 10.0f, "coax.vel_y_kd"},
 
-    [APP_TELEM_CH_POS_EST_X] = {"pos_est_x", "m", "nav", -10.0f, 10.0f},
-    [APP_TELEM_CH_POS_EST_Y] = {"pos_est_y", "m", "nav", -10.0f, 10.0f},
+    [APP_TELEM_CH_POS_EST_X] = {"pos_est_x", "m", "nav", -10.0f, 10.0f, "-"},
+    [APP_TELEM_CH_POS_EST_Y] = {"pos_est_y", "m", "nav", -10.0f, 10.0f, "-"},
 
-    [APP_TELEM_CH_VEL_LOOP_ENABLE] = {"vel_loop_enable", "-", "gain", 0.0f,  1.0f},
-    [APP_TELEM_CH_ROLL_ANGLE_KP]   = {"roll_angle_kp",   "-", "gain", 0.0f, 10.0f},
-    [APP_TELEM_CH_PITCH_ANGLE_KP]  = {"pitch_angle_kp",  "-", "gain", 0.0f, 10.0f},
-    [APP_TELEM_CH_POS_Z_KP]        = {"pos_z_kp",        "-", "gain", 0.0f, 10.0f},
-    [APP_TELEM_CH_POS_Z_KI]        = {"pos_z_ki",        "-", "gain", 0.0f, 10.0f},
-    [APP_TELEM_CH_VEL_Z_KD]        = {"vel_z_kd",        "-", "gain", 0.0f, 10.0f},
+    [APP_TELEM_CH_VEL_LOOP_ENABLE] = {"vel_loop_enable", "-", "gain", 0.0f,  1.0f, "coax.vel_loop_enable"},
+    [APP_TELEM_CH_ROLL_ANGLE_KP]   = {"roll_angle_kp",   "-", "gain", 0.0f, 10.0f, "coax.roll_angle_kp"},
+    [APP_TELEM_CH_PITCH_ANGLE_KP]  = {"pitch_angle_kp",  "-", "gain", 0.0f, 10.0f, "coax.pitch_angle_kp"},
+    [APP_TELEM_CH_POS_Z_KP]        = {"pos_z_kp",        "-", "gain", 0.0f, 10.0f, "coax.pos_z_kp"},
+    [APP_TELEM_CH_POS_Z_KI]        = {"pos_z_ki",        "-", "gain", 0.0f, 10.0f, "coax.pos_z_ki"},
+    [APP_TELEM_CH_VEL_Z_KD]        = {"vel_z_kd",        "-", "gain", 0.0f, 10.0f, "coax.vel_z_kd"},
 
-    [APP_TELEM_CH_FUSION_ACC_ERR]           = {"fusion_acc_err",         "deg",   "fusion", 0.0f,  180.0f},
-    [APP_TELEM_CH_FUSION_ACC_IGNORED]       = {"fusion_acc_ignored",     "-",     "fusion", 0.0f,    1.0f},
-    [APP_TELEM_CH_FUSION_ACC_RECOVERY]      = {"fusion_acc_recovery",    "-",     "fusion", 0.0f,    1.0f},
-    [APP_TELEM_CH_FUSION_ACC_CORRECTIONS]   = {"fusion_acc_corrections", "count", "fusion", 0.0f, 1000.0f},
-    [APP_TELEM_CH_FUSION_ACC_NORM_REJECTED] = {"fusion_acc_norm_rej",    "count", "fusion", 0.0f, 1000.0f},
+    [APP_TELEM_CH_FUSION_ACC_ERR]           = {"fusion_acc_err",         "deg",   "fusion", 0.0f,  180.0f, "-"},
+    [APP_TELEM_CH_FUSION_ACC_IGNORED]       = {"fusion_acc_ignored",     "-",     "fusion", 0.0f,    1.0f, "-"},
+    [APP_TELEM_CH_FUSION_ACC_RECOVERY]      = {"fusion_acc_recovery",    "-",     "fusion", 0.0f,    1.0f, "-"},
+    [APP_TELEM_CH_FUSION_ACC_CORRECTIONS]   = {"fusion_acc_corrections", "count", "fusion", 0.0f, 1000.0f, "-"},
+    [APP_TELEM_CH_FUSION_ACC_NORM_REJECTED] = {"fusion_acc_norm_rej",    "count", "fusion", 0.0f, 1000.0f, "-"},
 };
 
 _Static_assert((sizeof(app_telem_channels) / sizeof(app_telem_channels[0])) ==
@@ -125,10 +125,23 @@ const APP_TelemChannel *APP_Telemetry_GetChannel(uint32_t index)
     return &app_telem_channels[index];
 }
 
+uint8_t APP_Telemetry_ChannelHasParam(uint32_t index)
+{
+    const APP_TelemChannel *channel = APP_Telemetry_GetChannel(index);
+
+    if ((channel == NULL) || (channel->param == NULL)) {
+        return 0U;
+    }
+
+    return ((channel->param[0] != '\0') && (channel->param[0] != '-')) ? 1U : 0U;
+}
+
 /*
  * 指纹覆盖版本、通道数、速率与每条通道的全部元数据。
  * 规范化文本为 "v<ver>|<count>|<rate>\n" 后接每通道
- * "<idx>|<name>|<unit>|<min>|<max>|<group>\n"，与 tests 中的复算实现一致。
+ * "<idx>|<name>|<unit>|<min>|<max>|<group>|<param>\n"，与 tests 中的复算实现一致。
+ * v2 起把 param 也纳进来：上位机的滑块是按 param 数据驱动生成的，param 变了
+ * 而 hash 不变，滑块就会绑到错的参数上而且没有任何人报错。
  */
 uint32_t APP_Telemetry_SchemaHash(void)
 {
@@ -170,6 +183,8 @@ uint32_t APP_Telemetry_SchemaHash(void)
         hash = app_telem_hash_bytes(hash, "|");
 
         hash = app_telem_hash_bytes(hash, channel->group);
+        hash = app_telem_hash_bytes(hash, "|");
+        hash = app_telem_hash_bytes(hash, channel->param);
         hash = app_telem_hash_bytes(hash, "\n");
     }
 
@@ -215,13 +230,14 @@ void APP_Telemetry_ReportPage(uint32_t from)
         app_telem_format_float(channel->max, max_text, (uint32_t)sizeof(max_text));
 
         APP_Control_QueueText(
-            "TELEM CH idx=%lu name=%s unit=%s min=%s max=%s grp=%s\r\n",
+            "TELEM CH idx=%lu name=%s unit=%s min=%s max=%s grp=%s param=%s\r\n",
             (unsigned long)index,
             channel->name,
             channel->unit,
             min_text,
             max_text,
-            channel->group);
+            channel->group,
+            channel->param);
     }
 
     /* next=-1 表示已到表尾，上位机据此结束翻页循环。 */

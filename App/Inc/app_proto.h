@@ -92,8 +92,27 @@
 #define APP_PROTO_MSG_RC_MAP            0x2224U
 #define APP_PROTO_MSG_SERVO_CAL         0x2225U
 #define APP_PROTO_MSG_SERVO_TYPE        0x2226U
+/*
+ * 遥测流 v2 的自描述掩码帧（S8 / R-T1-1）。payload 布局见
+ * App/Inc/app_telem_frame.h 与 doc/telemetry-scope-plan.md §2.2。
+ * 上位机侧同名登记在 tools/panel_lib/proto.py::PROTO_MSG_TELEM_FRAME。
+ */
+#define APP_PROTO_MSG_TELEM_FRAME       0x2230U
 
-/* Temporarily disabled for VOFA migration
+/*
+ * 成帧器（FC -> PC 方向）在 R-T1-1 重新启用：遥测流 v2 用它把掩码帧包进
+ * $X 头 + CRC8-DVB-S2。**解析器（PC -> FC）继续禁用**——上行仍然是文本行，
+ * 放开解析器等于同时打开一条没人测过的输入路径。
+ */
+uint8_t APP_Proto_BuildFrame(uint8_t direction,
+                             uint16_t function,
+                             const uint8_t *payload,
+                             uint16_t payload_length,
+                             uint8_t *out_buffer,
+                             uint16_t out_capacity,
+                             uint16_t *out_length);
+
+/* Parser side remains disabled for VOFA migration
 typedef struct {
     uint8_t direction;
     uint16_t function;
@@ -104,13 +123,6 @@ typedef struct {
 void APP_Proto_Init(void);
 uint8_t APP_Proto_IsReceiving(void);
 uint8_t APP_Proto_ConsumeByte(uint8_t byte, APP_ProtoFrame *out_frame);
-uint8_t APP_Proto_BuildFrame(uint8_t direction,
-                             uint16_t function,
-                             const uint8_t *payload,
-                             uint16_t payload_length,
-                             uint8_t *out_buffer,
-                             uint16_t out_capacity,
-                             uint16_t *out_length);
 */
 
 #endif

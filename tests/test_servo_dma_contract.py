@@ -24,7 +24,8 @@ def test_stabilizer_uses_nonblocking_servo_dma_path() -> None:
     assert "#define STABILIZER_SERVO_BUS_FRAME_MS 10U" in freertos
     assert "#define STABILIZER_SERVO_MOVE_TIME_MS 0U" in freertos
     assert "#define STABILIZER_SERVO_REFRESH_MS    500U" in freertos
-    assert "#define VOFA_SEND_PERIOD_MS            APP_TELEM_PERIOD_MS" in freertos
+    # 遥测周期在 R-T1-1 之后由 app_telem_stream.c 按 TELEM RATE 算，不再是 freertos.c 的常量。
+    assert "telem_stream_period_ms" in read("App/Src/app_telem_stream.c")
     assert "stabilizer_servo_commit_sent(frame->moves, frame->now_ms);" in freertos
     assert "stabilizer_servo_bus_diag.move_attempt_count++;" in freertos
     assert "stabilizer_servo_bus_diag.move_busy_count++;" in freertos
@@ -130,9 +131,10 @@ def test_uart_callbacks_route_uart7_to_servo_dma_diagnostics() -> None:
 
 
 def test_vofa_stream_sends_compact_dashboard_channels() -> None:
-    freertos = read("Core/Src/freertos.c") + read("App/Src/app_stabilizer.c")
+    # R-T1-1：通道装配搬到 App/Src/app_telem_port.c，逐条赋值语句未改。
+    freertos = read("App/Src/app_telem_port.c") + read("App/Src/app_stabilizer.c")
 
-    assert "#define VOFA_DATA_SIZE                 ((uint8_t)APP_TELEM_CH_COUNT)" in freertos
+    assert "(values == NULL) || (count != (uint32_t)APP_TELEM_CH_COUNT)" in freertos
     assert "DRV_SERVO_Diag servo_diag;" not in freertos
     assert "BSP_BusServo_GetDiag(&servo_diag);" not in freertos
     assert "vofa_data[APP_TELEM_CH_TIME] = (float)(SVC_Timestamp_Us() / 1000ULL) * 0.001f;" in freertos
@@ -145,14 +147,15 @@ def test_vofa_stream_sends_compact_dashboard_channels() -> None:
     assert '(void)DRV_COAX_CTRL_GetParam("coax.pos_z_kp", &vofa_data[APP_TELEM_CH_POS_Z_KP]);' in freertos
     assert '(void)DRV_COAX_CTRL_GetParam("coax.pos_z_ki", &vofa_data[APP_TELEM_CH_POS_Z_KI]);' in freertos
     assert '(void)DRV_COAX_CTRL_GetParam("coax.vel_z_kd", &vofa_data[APP_TELEM_CH_VEL_Z_KD]);' in freertos
-    assert "osDelay(VOFA_SEND_PERIOD_MS);" in freertos
+    assert "osDelay(ms);" in freertos
 
 
 def test_vofa_runtime_frames_drop_instead_of_queueing_stale_samples() -> None:
     source = read("App/Src/app_vofa.c")
 
     assert "osMessageQueueGetCount(uartTxQueueHandle) != 0U" in source
-    assert "return;" in source
+    # 队列里还压着别的东西就整帧丢弃：实时曲线要新样本，不要排在旧文本后面的历史。
+    assert "return 0U;" in source
 
 
 def test_vofa_capture_parser_uses_compact_runtime_count() -> None:

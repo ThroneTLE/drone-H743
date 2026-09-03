@@ -7,6 +7,7 @@
 #include "app_maint_uart.h"
 #include "app_optical_flow.h"
 #include "app_rangefinder.h"
+#include "app_telem_stream.h"
 #include "app_usb_cdc.h"
 #include "bsp_optical_flow.h"
 #include "bsp_rangefinder.h"
@@ -440,6 +441,13 @@ static void app_uart_handle_line(char *line, uint16_t length)
     if (*normalized == '\0') {
         return;
     }
+
+    /*
+     * `TELEM SINK auto` 靠这条记录决定 `TELEM STREAM on` 之后往哪条链路发帧。
+     * 放在这里而不是每个分支里：数传直连、AiWB2 透传、legacy ASCII 三条路
+     * 都从这个漏斗过，漏一条就会出现"命令从数传进来、帧却发去了 USB"。
+     */
+    APP_TelemStream_NoteCommandSource(APP_TELEM_SINK_UART);
 
 #if (APP_UART_DIRECT_SERIAL_MODE != 0U)
     /* 数传直连模式：所有 RX 数据直接送控制处理，不经过 WiFi 状态机 */

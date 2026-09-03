@@ -1,13 +1,83 @@
 /*
  * app_proto.c — Custom $X framed protocol
- * Temporarily disabled for VOFA migration.
- * Kept as reference; will be removed after VOFA is stable.
+ *
+ * 现状（R-T1-1 起）：
+ *   - **成帧器**（`APP_Proto_BuildFrame` + CRC8-DVB-S2）已启用，遥测流 v2 用它
+ *     发自描述掩码帧。函数体一字未改，线上字节与历史 $X 帧完全一致。
+ *   - **解析器**（`APP_Proto_ConsumeByte` 状态机）仍关在 `#if 0` 里：PC -> FC
+ *     方向依旧只走文本行，放开它等于打开一条没有任何测试覆盖的输入路径。
  */
-#if 0
 
 #include "app_proto.h"
 
 #include <string.h>
+
+static uint8_t app_proto_crc8_dvb_s2_update(uint8_t crc, uint8_t data)
+{
+    crc ^= data;
+    for (uint32_t bit = 0U; bit < 8U; ++bit) {
+        if ((crc & 0x80U) != 0U) {
+            crc = (uint8_t)((crc << 1U) ^ 0xD5U);
+        } else {
+            crc <<= 1U;
+        }
+    }
+    return crc;
+}
+
+uint8_t APP_Proto_BuildFrame(uint8_t direction,
+                             uint16_t function,
+                             const uint8_t *payload,
+                             uint16_t payload_length,
+                             uint8_t *out_buffer,
+                             uint16_t out_capacity,
+                             uint16_t *out_length)
+{
+    uint8_t crc = 0U;
+    uint16_t offset = 0U;
+
+    if ((out_buffer == NULL) || (out_length == NULL)) {
+        return 0U;
+    }
+
+    if ((payload_length > 0U) && (payload == NULL)) {
+        return 0U;
+    }
+
+    if (payload_length > APP_PROTO_MAX_PAYLOAD) {
+        return 0U;
+    }
+
+    if (out_capacity < (uint16_t)(9U + payload_length)) {
+        return 0U;
+    }
+
+    out_buffer[offset++] = (uint8_t)'$';
+    out_buffer[offset++] = (uint8_t)'X';
+    out_buffer[offset++] = direction;
+    out_buffer[offset++] = 0U;
+
+    crc = app_proto_crc8_dvb_s2_update(crc, 0U);
+    out_buffer[offset++] = (uint8_t)(function & 0xFFU);
+    crc = app_proto_crc8_dvb_s2_update(crc, out_buffer[offset - 1U]);
+    out_buffer[offset++] = (uint8_t)((function >> 8U) & 0xFFU);
+    crc = app_proto_crc8_dvb_s2_update(crc, out_buffer[offset - 1U]);
+    out_buffer[offset++] = (uint8_t)(payload_length & 0xFFU);
+    crc = app_proto_crc8_dvb_s2_update(crc, out_buffer[offset - 1U]);
+    out_buffer[offset++] = (uint8_t)((payload_length >> 8U) & 0xFFU);
+    crc = app_proto_crc8_dvb_s2_update(crc, out_buffer[offset - 1U]);
+
+    for (uint16_t index = 0U; index < payload_length; ++index) {
+        out_buffer[offset++] = payload[index];
+        crc = app_proto_crc8_dvb_s2_update(crc, payload[index]);
+    }
+
+    out_buffer[offset++] = crc;
+    *out_length = offset;
+    return 1U;
+}
+
+#if 0 /* 解析器：PC -> FC 仍走文本行，保持禁用 */
 
 typedef enum {
     APP_PROTO_PARSE_IDLE = 0,
@@ -31,19 +101,6 @@ typedef struct {
 } APP_ProtoParser;
 
 static APP_ProtoParser app_proto_parser;
-
-static uint8_t app_proto_crc8_dvb_s2_update(uint8_t crc, uint8_t data)
-{
-    crc ^= data;
-    for (uint32_t bit = 0U; bit < 8U; ++bit) {
-        if ((crc & 0x80U) != 0U) {
-            crc = (uint8_t)((crc << 1U) ^ 0xD5U);
-        } else {
-            crc <<= 1U;
-        }
-    }
-    return crc;
-}
 
 static void app_proto_reset(void)
 {
@@ -163,56 +220,4 @@ uint8_t APP_Proto_ConsumeByte(uint8_t byte, APP_ProtoFrame *out_frame)
     }
 }
 
-uint8_t APP_Proto_BuildFrame(uint8_t direction,
-                             uint16_t function,
-                             const uint8_t *payload,
-                             uint16_t payload_length,
-                             uint8_t *out_buffer,
-                             uint16_t out_capacity,
-                             uint16_t *out_length)
-{
-    uint8_t crc = 0U;
-    uint16_t offset = 0U;
-
-    if ((out_buffer == NULL) || (out_length == NULL)) {
-        return 0U;
-    }
-
-    if ((payload_length > 0U) && (payload == NULL)) {
-        return 0U;
-    }
-
-    if (payload_length > APP_PROTO_MAX_PAYLOAD) {
-        return 0U;
-    }
-
-    if (out_capacity < (uint16_t)(9U + payload_length)) {
-        return 0U;
-    }
-
-    out_buffer[offset++] = (uint8_t)'$';
-    out_buffer[offset++] = (uint8_t)'X';
-    out_buffer[offset++] = direction;
-    out_buffer[offset++] = 0U;
-
-    crc = app_proto_crc8_dvb_s2_update(crc, 0U);
-    out_buffer[offset++] = (uint8_t)(function & 0xFFU);
-    crc = app_proto_crc8_dvb_s2_update(crc, out_buffer[offset - 1U]);
-    out_buffer[offset++] = (uint8_t)((function >> 8U) & 0xFFU);
-    crc = app_proto_crc8_dvb_s2_update(crc, out_buffer[offset - 1U]);
-    out_buffer[offset++] = (uint8_t)(payload_length & 0xFFU);
-    crc = app_proto_crc8_dvb_s2_update(crc, out_buffer[offset - 1U]);
-    out_buffer[offset++] = (uint8_t)((payload_length >> 8U) & 0xFFU);
-    crc = app_proto_crc8_dvb_s2_update(crc, out_buffer[offset - 1U]);
-
-    for (uint16_t index = 0U; index < payload_length; ++index) {
-        out_buffer[offset++] = payload[index];
-        crc = app_proto_crc8_dvb_s2_update(crc, payload[index]);
-    }
-
-    out_buffer[offset++] = crc;
-    *out_length = offset;
-    return 1U;
-}
-
-#endif /* #if 0 — disabled for VOFA migration */
+#endif /* #if 0 — parser stays disabled */

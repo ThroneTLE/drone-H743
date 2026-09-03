@@ -117,7 +117,8 @@ def test_header_reports_version_count_rate_and_hash(schema_lines: list[str]) -> 
     assert header.startswith("TELEM ver="), header
 
     fields = parse_kv(header)
-    assert fields["ver"] == "1"
+    # v2（R-T1-1）：通道行新增 param=，SchemaHash 覆盖该字段。
+    assert fields["ver"] == "2"
     assert int(fields["n"]) > 0
     # 25 ms send period -> 40 Hz. Both come from APP_TELEM_PERIOD_MS.
     assert int(fields["rate"]) == 40
@@ -176,7 +177,7 @@ def test_channel_fields_are_wire_safe(schema_lines: list[str]) -> None:
     for channel in channels:
         # The reply is whitespace-tokenised key=value, so no field may contain
         # a space or the ground station's parser silently mis-splits the line.
-        for key in ("name", "unit", "grp"):
+        for key in ("name", "unit", "grp", "param"):
             assert " " not in channel[key]
             assert channel[key], f"{key} must not be empty"
         assert float(channel["min"]) < float(channel["max"]), channel["name"]
@@ -238,6 +239,60 @@ def test_schema_hash_changes_when_channel_metadata_changes(tmp_path: Path) -> No
     )
 
 
+PARAM_CHANNELS = {
+    "roll_rate_kd": "coax.roll_rate_kd",
+    "pitch_rate_kd": "coax.pitch_rate_kd",
+    "yaw_angle_kp": "coax.yaw_angle_kp",
+    "yaw_rate_kd": "coax.yaw_rate_kd",
+    "pos_x_kp": "coax.pos_x_kp",
+    "pos_y_kp": "coax.pos_y_kp",
+    "vel_x_kd": "coax.vel_x_kd",
+    "vel_y_kd": "coax.vel_y_kd",
+    "vel_loop_enable": "coax.vel_loop_enable",
+    "roll_angle_kp": "coax.roll_angle_kp",
+    "pitch_angle_kp": "coax.pitch_angle_kp",
+    "pos_z_kp": "coax.pos_z_kp",
+    "pos_z_ki": "coax.pos_z_ki",
+    "vel_z_kd": "coax.vel_z_kd",
+}
+
+
+def test_gain_channels_advertise_the_parameter_they_echo(
+    schema_lines: list[str],
+) -> None:
+    """滑块由 param 数据驱动生成，所以 param 必须是真实的参数键。
+
+    上位机不再自己维护一张"哪条通道是哪个增益"的表——那张表就是上一版
+    通道映射漂移的老路。
+    """
+    channels = {
+        parse_kv(line)["name"]: parse_kv(line)
+        for line in schema_lines
+        if line.startswith("TELEM CH ")
+    }
+
+    for name, param in PARAM_CHANNELS.items():
+        assert channels[name]["param"] == param, name
+        assert channels[name]["grp"] == "gain", name
+
+    for name, channel in channels.items():
+        if name not in PARAM_CHANNELS:
+            assert channel["param"] == "-", name
+
+
+def test_schema_hash_changes_when_a_param_binding_changes(tmp_path: Path) -> None:
+    """param 变了 hash 必须变：否则滑块会静静地绑到错的参数上。"""
+    baseline = build_and_run(tmp_path / "param_base")
+
+    source = read("App/Src/app_telemetry.c")
+    assert '"coax.roll_rate_kd"' in source
+    mutated = source.replace('"coax.roll_rate_kd"}', '"coax.pitch_rate_kd"}', 1)
+    assert mutated != source
+
+    changed = build_and_run(tmp_path / "param_mutated", telemetry_source=mutated)
+    assert parse_kv(baseline[0])["hash"] != parse_kv(changed[0])["hash"]
+
+
 def test_schema_hash_is_stable_across_runs(tmp_path: Path) -> None:
     first = build_and_run(tmp_path / "a")
     second = build_and_run(tmp_path / "b")
@@ -245,8 +300,9 @@ def test_schema_hash_is_stable_across_runs(tmp_path: Path) -> None:
 
 
 def test_fill_code_indexes_by_channel_enum(schema_lines: list[str]) -> None:
-    source = read("Core/Src/freertos.c")
-    task = source[source.index("void VOFA_task") :]
+    # R-T1-1：填充代码从 Core/Src/freertos.c 的 VOFA_task 搬到遥测流的 Port 实现。
+    source = read("App/Src/app_telem_port.c")
+    task = source[source.index("uint8_t APP_TelemStream_PortSample") :]
 
     # A bare numeric index is exactly how the mapping drifted before; the enum
     # is what ties the fill order to the advertised schema.
@@ -261,12 +317,15 @@ def test_fill_code_indexes_by_channel_enum(schema_lines: list[str]) -> None:
 
 
 def test_frame_length_and_period_derive_from_the_channel_table() -> None:
-    source = read("Core/Src/freertos.c")
+    port = read("App/Src/app_telem_port.c")
+    stream = read("App/Src/app_telem_stream.c")
 
     # If either of these is re-hardcoded, adding a channel silently truncates
     # the frame or de-syncs the advertised rate.
-    assert "#define VOFA_DATA_SIZE                 ((uint8_t)APP_TELEM_CH_COUNT)" in source
-    assert "#define VOFA_SEND_PERIOD_MS            APP_TELEM_PERIOD_MS" in source
+    assert "(values == NULL) || (count != (uint32_t)APP_TELEM_CH_COUNT)" in port
+    assert "app_telem_stream.rate_hz           = APP_TELEM_RATE_HZ;" in stream
+    # 掩码是 u64，表长超过 64 必须先升帧版本而不是悄悄加一条。
+    assert "_Static_assert((int)APP_TELEM_CH_COUNT <= 64," in read("App/Inc/app_telemetry.h")
 
 
 def test_channel_table_covers_every_enum_id() -> None:

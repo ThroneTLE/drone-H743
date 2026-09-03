@@ -104,6 +104,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     App/Src/app_cmd_imucal.c
     App/Src/app_cmd_rcmap.c
     App/Src/app_cmd_flow.c
+    App/Src/app_cmd_telem.c
     App/Src/app_cmd_system.c
     App/Src/app_cmd_diag.c
     App/Src/app_diag.c
@@ -135,6 +136,9 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     App/Src/app_proto.c
     App/Src/app_tasks.c
     App/Src/app_telemetry.c
+    App/Src/app_telem_frame.c
+    App/Src/app_telem_port.c
+    App/Src/app_telem_stream.c
     App/Src/app_uart.c
     App/Src/app_usb_cdc.c
     App/Src/app_elrs.c

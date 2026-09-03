@@ -418,9 +418,12 @@ def test_balance_controller_has_no_horizontal_velocity_integral_but_keeps_z_inte
 
 
 def test_vofa_exports_compact_slider_parameter_feedback() -> None:
-    freertos = read("Core/Src/freertos.c")
+    # R-T1-1：通道装配从 Core/Src/freertos.c 搬到 App/Src/app_telem_port.c，
+    # 逐条赋值语句一字未改，所以断言只换来源文件。
+    freertos = read("App/Src/app_telem_port.c")
 
-    assert "#define VOFA_DATA_SIZE                 ((uint8_t)APP_TELEM_CH_COUNT)" in freertos
+    # 帧长仍由通道表推出来：采样函数拒绝任何与表长不符的 count。
+    assert "(values == NULL) || (count != (uint32_t)APP_TELEM_CH_COUNT)" in freertos
     assert '(void)DRV_COAX_CTRL_GetParam("coax.roll_rate_kd", &vofa_data[APP_TELEM_CH_ROLL_RATE_KD]);' in freertos
     assert "vofa_data[APP_TELEM_CH_ROLL_RATE_KD] = -vofa_data[APP_TELEM_CH_ROLL_RATE_KD];" not in freertos
     assert "vofa_data[APP_TELEM_CH_PITCH_RATE_KD] = -vofa_data[APP_TELEM_CH_PITCH_RATE_KD];" not in freertos
