@@ -4,7 +4,7 @@
 
 Read this shard only when you need existing behavioral/architecture coverage or must choose focused regression tests.
 
-Source snapshot: `0d0702f5fb0d`. Indexed files: 102.
+Source snapshot: `06fef257b3f6`. Indexed files: 103.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -83,6 +83,7 @@ Source snapshot: `0d0702f5fb0d`. Indexed files: 102.
 | `tests/test_panel_v1_page_extraction.py` | S6 V1-metrology page extraction ownership and compatibility contract | `test_v1_page_mixin_owns_the_builder_and_every_v1_handler`, `test_all_24_methods_match_the_post_increment4_ast`, `test_legacy_panel_forwards_v1_methods_without_wrappers`, `test_v1_page_keeps_the_extracted_drift_builder_composition` (+2) |
 | `tests/test_pipeline_contract.py` | — | `test_pipeline_exists_with_required_sections`, `test_mainline_nodes_match_between_diagram_and_gate_table`, `test_current_position_points_at_an_incomplete_mainline_node`, `test_flight_node_stays_frozen_until_runtime_flu_migration_completes` (+3) |
 | `tests/test_project_index_contract.py` | — | `test_repository_index_is_current`, `test_repository_index_has_hard_context_limits`, `test_large_vendor_and_data_trees_are_aggregated` |
+| `tests/test_proto_frame_resync.py` | 修 bug：`$X` 解析器有两处会永久停摆的重同步空洞。 发现于 2026-09-03，R-T1-2 的模糊测试。缺陷早于遥测流工作，命中的是所有 `$X` 帧共用的 `TransportBase._consume_buffer`，**… | `test_intact_stream_still_decodes_every_frame`, `test_a_corrupt_direction_byte_only_costs_its_own_frame`, `test_a_corrupt_length_high_byte_only_costs_its_own_frame`, `test_every_single_byte_flip_recovers_within_the_bounded_window` (+5) |
 | `tests/test_rangefinder_contract.py` | — | `test_tfmini_parser_accepts_documented_nine_byte_frame`, `test_tfmini_parser_resynchronizes_after_noise_and_bad_checksum`, `test_uart8_rangefinder_is_wired_through_project_layers`, `test_rangefinder_no_longer_feeds_flow_or_altitude_control` (+3) |
 | `tests/test_rc_mapping.py` | 遥控通道映射与端点标定。 背景：通道号原来是 app_stabilizer.c 里的 6 个 #define（CH1..CH6），端点是 1000/1500/2000 三个字面量。换发射机、改通道顺序、或者摇杆行程不标准，都得改代码 重烧… | `test_moving_one_stick_identifies_that_channel`, `test_a_still_transmitter_is_not_bound_to_anything`, `test_two_channels_moving_together_is_refused`, `test_a_barely_moved_channel_is_below_the_travel_floor` (+60) |
 | `tests/test_rc_mapping_contract.py` | — | `test_freertos_documents_fixed_elrs_channel_map`, `test_controller_uses_named_rc_channels_for_references`, `test_ch6_selects_true_attitude_debug_mode_with_twenty_degree_limit`, `test_arm_switch_gates_motor_output_but_not_controller_reference` (+5) |

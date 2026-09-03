@@ -11,6 +11,10 @@ PROTO_PROBE_SETTLE_MS = 900
 PROTO_HEADER = b"$X"
 PROTO_DIR_TO_FC = ord("<")
 PROTO_DIR_FROM_FC = ord(">")
+# $X 的 len 字段是 u16，但线上永远不会有这么长的帧：固件 APP_PROTO_MAX_PAYLOAD
+# 是 256，遥测流的 USB 高速档（R-T2）上限 1024。超过这个数的 len 一定是被打坏
+# 的字节，不是"还没收全"，接收端必须据此重新找帧头而不是继续等。
+PROTO_MAX_FRAME_PAYLOAD = 1024
 PROTO_REQ_PING = 0x1000
 PROTO_REQ_STATUS = 0x1001
 PROTO_REQ_CONFIG = 0x1002

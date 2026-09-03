@@ -176,6 +176,7 @@ PROTO_MSG_RC_MAP = _panel_proto.PROTO_MSG_RC_MAP
 PROTO_MSG_SERVO_CAL = _panel_proto.PROTO_MSG_SERVO_CAL
 PROTO_MSG_SERVO_TYPE = _panel_proto.PROTO_MSG_SERVO_TYPE
 PROTO_MSG_TELEM_FRAME = _panel_proto.PROTO_MSG_TELEM_FRAME
+PROTO_MAX_FRAME_PAYLOAD = _panel_proto.PROTO_MAX_FRAME_PAYLOAD
 ProtocolLineMixin = _panel_proto.ProtocolLineMixin
 first_float = _panel_proto.first_float
 first_value = _panel_proto.first_value

@@ -13,6 +13,7 @@ from .proto import (
     PROTO_DIR_FROM_FC,
     PROTO_DIR_TO_FC,
     PROTO_HEADER,
+    PROTO_MAX_FRAME_PAYLOAD,
     PROTO_MSG_CMD_LINE,
 )
 
@@ -280,8 +281,23 @@ class TransportBase(ABC):
 
     def _consume_buffer(self, buffer: bytearray) -> None:
         while buffer:
-            if len(buffer) >= 9 and buffer[0:2] == PROTO_HEADER and buffer[2] in (PROTO_DIR_TO_FC, PROTO_DIR_FROM_FC):
+            if len(buffer) >= 9 and buffer[0:2] == PROTO_HEADER:
+                if buffer[2] not in (PROTO_DIR_TO_FC, PROTO_DIR_FROM_FC):
+                    # `$X` 后面跟着非法方向字节：这两个字节只是碰巧长得像帧头。
+                    # 必须在这里丢掉一个字节重新找——否则下面的文本分支会算出
+                    # frame_index == 0，`if frame_index > 0` 不成立就 break，
+                    # 缓冲区永远以这个假帧头开头，整条链路就此静止。
+                    del buffer[0]
+                    continue
+
                 payload_length = buffer[6] | (buffer[7] << 8)
+                if payload_length > PROTO_MAX_FRAME_PAYLOAD:
+                    # len 被打坏成一个不可能的长度。当成"还没收全"去等的话，
+                    # 要等到 65 KB 之后才会发现不对——57600 baud 上就是十几秒
+                    # 的黑屏，而且期间到达的每一帧好数据都被吞进这个假帧里。
+                    del buffer[0]
+                    continue
+
                 frame_length = 9 + payload_length
                 if len(buffer) < frame_length:
                     break
