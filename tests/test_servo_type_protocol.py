@@ -79,6 +79,8 @@ def test_servotype_uses_param_blob_and_has_stable_protocol_ids() -> None:
     assert "SVC_Param_RequestSaveBlob" in source
     assert "APP_FlightCalibration_Encode" in source
     assert "APP_PROTO_REQ_SERVOTYPE" in proto
+    assert "#define APP_PROTO_REQ_SERVO_CAL      0x1024U" in proto
+    assert "#define APP_PROTO_REQ_SERVOTYPE      0x1025U" in proto
     assert "APP_PROTO_MSG_SERVO_TYPE" in proto
     assert "App/Src/app_servo_type.c" in cmake
     assert "App/Src/app_cmd_servotype.c" in cmake
