@@ -15,7 +15,7 @@ from tools import drone_tcp_panel as legacy_panel
 from tools.flight_acceptance_v2 import (
     ACCEPTANCE_CAPTURE_SOURCE, ACCEPTANCE_PROVENANCE, AcceptanceStatus,
     PhysicalConfirmation, STAGE_DEFINITIONS, UNSUPPORTED_STAGES, V2Sample,
-    V2Stage, V2Thresholds, build_v2_report, report_from_dict,
+    ServoType, V2Stage, V2Thresholds, build_v2_report, report_from_dict,
     report_from_json, report_to_dict, report_to_json,
     validate_report_for_application,
 )
@@ -177,6 +177,76 @@ def test_rc_and_servo_sign_consistency() -> None:
     report = build_v2_report(evidence, physical_confirmations=confirmations())
     assert report.stage_result(V2Stage.RC_POSITIVE_ROLL).status is AcceptanceStatus.FAIL
     assert report.stage_result(V2Stage.SERVO_ALPHA_POSITIVE).status is AcceptanceStatus.FAIL
+
+
+def test_pwm_servo_stages_skip_without_feedback_and_preserve_type_context() -> None:
+    evidence = complete_samples()
+    for stage in (V2Stage.SERVO_ALPHA_POSITIVE, V2Stage.SERVO_ALPHA_NEGATIVE, V2Stage.SERVO_BETA_POSITIVE, V2Stage.SERVO_BETA_NEGATIVE):
+        evidence = replace_stage(
+            evidence,
+            stage,
+            lambda item, _i: replace(item, servo_alpha_feedback_valid=False, servo_alpha_feedback_us=None,
+                                     servo_beta_feedback_valid=False, servo_beta_feedback_us=None),
+        )
+    report = build_v2_report(evidence, servo_type="pwm")
+    assert report.status is AcceptanceStatus.PASS
+    assert report.context.servo_type is ServoType.PWM
+    for stage in (V2Stage.SERVO_ALPHA_POSITIVE, V2Stage.SERVO_ALPHA_NEGATIVE, V2Stage.SERVO_BETA_POSITIVE, V2Stage.SERVO_BETA_NEGATIVE):
+        result = report.stage_result(stage)
+        assert result.status is AcceptanceStatus.SKIPPED
+        assert any("SKIPPED" in finding and "PWM" in finding for finding in result.findings)
+    payload = report_to_dict(report)
+    assert payload["context"]["servo_type"] == "pwm"
+    assert report_from_dict(payload) == report
+    assert validate_report_for_application(report, evidence, ())
+
+
+def test_bus_bad_servo_feedback_remains_fail() -> None:
+    evidence = replace_stage(
+        complete_samples(),
+        V2Stage.SERVO_ALPHA_POSITIVE,
+        lambda item, index: replace(item, servo_alpha_feedback_valid=False, servo_alpha_feedback_us=None) if index < 2 else item,
+    )
+    report = build_v2_report(evidence, physical_confirmations=confirmations(), servo_type="bus")
+    assert report.stage_result(V2Stage.SERVO_ALPHA_POSITIVE).status is AcceptanceStatus.FAIL
+    assert report.status is AcceptanceStatus.FAIL
+
+
+def test_bus_servo_acceptance_thresholds_remain_frozen() -> None:
+    assert V2Thresholds().servo_feedback_valid_fraction_min == 0.95
+    assert V2Thresholds().servo_feedback_error_max_us == 20.0
+
+
+def test_legacy_bus_report_without_servo_type_is_readable_and_revalidated() -> None:
+    report = passing_report()
+    payload = report_to_dict(report)
+    del payload["context"]["servo_type"]
+    payload["integrity_sha256"] = hashlib.sha256(
+        json.dumps(
+            {key: value for key, value in payload.items() if key != "integrity_sha256"},
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        ).encode("utf-8")
+    ).hexdigest()
+    loaded = report_from_dict(payload)
+    assert loaded.context.servo_type is ServoType.BUS
+    assert validate_report_for_application(loaded, complete_samples(), confirmations())
+
+
+def test_bus_report_cannot_be_forged_with_skipped_servo_stage() -> None:
+    payload = report_to_dict(passing_report())
+    payload["stages"][9]["status"] = AcceptanceStatus.SKIPPED.value
+    payload["integrity_sha256"] = hashlib.sha256(
+        json.dumps(
+            {key: value for key, value in payload.items() if key != "integrity_sha256"},
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        ).encode("utf-8")
+    ).hexdigest()
+    with pytest.raises(ValueError, match="bus report cannot skip"):
+        report_from_dict(payload)
 
 
 def test_nav_cross_cancellation_and_tiny_restoring_rejected() -> None:

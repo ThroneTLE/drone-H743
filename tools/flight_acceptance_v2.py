@@ -27,7 +27,15 @@ class AcceptanceStatus(str, Enum):
     PASS = "PASS"
     FAIL = "FAIL"
     NOT_RUN = "NOT_RUN"
+    SKIPPED = "SKIPPED"
     UNSUPPORTED = "UNSUPPORTED"
+
+
+class ServoType(str, Enum):
+    """The actuator feedback contract selected for this acceptance report."""
+
+    BUS = "bus"
+    PWM = "pwm"
 
 
 class V2Stage(str, Enum):
@@ -426,6 +434,7 @@ class EvidenceContext:
     lease_id: str
     lease_issued_at_s: float
     lease_expires_at_s: float
+    servo_type: ServoType | str = ServoType.BUS
 
     def __post_init__(self) -> None:
         if self.frame_id != CANONICAL_FRAME_ID:
@@ -439,6 +448,7 @@ class EvidenceContext:
             _nonempty(getattr(self, name), name=name)
         if self.capture_source != ACCEPTANCE_CAPTURE_SOURCE or self.provenance != ACCEPTANCE_PROVENANCE:
             raise ValueError("context provenance is not exact V2 acceptance provenance")
+        object.__setattr__(self, "servo_type", _enum_value(ServoType, self.servo_type, name="servo_type"))
         issued = _finite(self.lease_issued_at_s, name="lease_issued_at_s")
         expires = _finite(self.lease_expires_at_s, name="lease_expires_at_s")
         if issued < 0.0 or expires <= issued:
@@ -513,6 +523,17 @@ class V2Report:
         for stage in UNSUPPORTED_STAGES:
             if self.stage_result(stage).status is not AcceptanceStatus.UNSUPPORTED:
                 raise ValueError(f"{stage.value} must remain explicitly UNSUPPORTED")
+        if self.context.servo_type is ServoType.PWM:
+            for stage in SERVO_STAGES:
+                result = self.stage_result(stage)
+                if result.status is not AcceptanceStatus.SKIPPED:
+                    raise ValueError(f"PWM report must explicitly SKIP {stage.value}")
+                if not any("SKIPPED" in finding.upper() and "PWM" in finding.upper() for finding in result.findings):
+                    raise ValueError(f"PWM {stage.value} skip reason must name PWM")
+        else:
+            for stage in SERVO_STAGES:
+                if self.stage_result(stage).status is AcceptanceStatus.SKIPPED:
+                    raise ValueError(f"bus report cannot skip {stage.value}")
         confirmation_by_stage = {item.stage: item for item in self.physical_confirmations}
         if len(confirmation_by_stage) != len(self.physical_confirmations):
             raise ValueError("physical confirmations must have unique stages")
@@ -529,7 +550,12 @@ class V2Report:
                 if duration is None or duration < self.thresholds.required_stage_min_duration_s:
                     raise ValueError(f"passing {stage.value} has insufficient duration")
         expected = AcceptanceStatus.PASS
-        if self.global_gate.status is not AcceptanceStatus.PASS or any(self.stage_result(stage).status is not AcceptanceStatus.PASS for stage in REQUIRED_STAGES):
+        required_ok = all(
+            self.stage_result(stage).status is AcceptanceStatus.PASS
+            or (self.context.servo_type is ServoType.PWM and stage in SERVO_STAGES and self.stage_result(stage).status is AcceptanceStatus.SKIPPED)
+            for stage in REQUIRED_STAGES
+        )
+        if self.global_gate.status is not AcceptanceStatus.PASS or not required_ok:
             expected = AcceptanceStatus.FAIL
         if status is not expected:
             raise ValueError(f"report status must be {expected.value}")
@@ -593,15 +619,21 @@ def _confirmation_matches(
     return matched
 
 
-def evaluate_global_gate(samples: Sequence[V2Sample], physical_confirmations: Sequence[PhysicalConfirmation] = ()) -> GlobalGateResult:
+def evaluate_global_gate(
+    samples: Sequence[V2Sample],
+    physical_confirmations: Sequence[PhysicalConfirmation] = (),
+    *,
+    servo_type: ServoType | str = ServoType.BUS,
+) -> GlobalGateResult:
     evidence = tuple(samples)
     if not evidence:
         return GlobalGateResult(AcceptanceStatus.FAIL, 0, ("no samples",))
+    servo_mode = _enum_value(ServoType, servo_type, name="servo_type")
     reasons = {reason for sample in evidence for reason in _sample_gate_reasons(sample)}
     context = _uniform_context(evidence)
     by_stage = {item.stage: item for item in physical_confirmations}
     grouped = {stage: tuple(sample for sample in evidence if sample.stage is stage) for stage in SERVO_STAGES}
-    if any(not _confirmation_matches(by_stage.get(stage), context, stage, grouped[stage]) for stage in SERVO_STAGES):
+    if servo_mode is ServoType.BUS and any(not _confirmation_matches(by_stage.get(stage), context, stage, grouped[stage]) for stage in SERVO_STAGES):
         reasons.add("physical_props_or_servo_confirmation")
     return GlobalGateResult(AcceptanceStatus.FAIL if reasons else AcceptanceStatus.PASS, len(evidence), tuple(sorted(reasons)))
 
@@ -705,7 +737,21 @@ def _analyze_restoring(stage: V2Stage, samples: Sequence[V2Sample], t: V2Thresho
     return StageResult(stage, AcceptanceStatus.PASS if passed else AcceptanceStatus.FAIL, len(samples), _with_duration(samples, metrics), ("restoring sign and magnitude distributions pass" if passed else "restoring angle/rate/sign/magnitude failed",))
 
 
-def _analyze_servo(stage: V2Stage, samples: Sequence[V2Sample], confirmation: PhysicalConfirmation | None, context: EvidenceContext, t: V2Thresholds) -> StageResult:
+def _analyze_servo(
+    stage: V2Stage,
+    samples: Sequence[V2Sample],
+    confirmation: PhysicalConfirmation | None,
+    context: EvidenceContext,
+    t: V2Thresholds,
+) -> StageResult:
+    if context.servo_type is ServoType.PWM:
+        return StageResult(
+            stage,
+            AcceptanceStatus.SKIPPED,
+            len(samples),
+            (),
+            ("SKIPPED: PWM servo type has no bus feedback; servo mechanical acceptance is not applicable",),
+        )
     blocked = _stage_precheck(stage, samples, t)
     if blocked:
         return blocked
@@ -761,14 +807,31 @@ def _uniform_context(samples: Sequence[V2Sample]) -> EvidenceContext:
     return EvidenceContext(*next(iter(keys)))
 
 
-def build_v2_report(samples: Sequence[V2Sample], *, physical_confirmations: Sequence[PhysicalConfirmation] = (), mechanical_confirmations: Sequence[PhysicalConfirmation] | None = None, thresholds: V2Thresholds = DEFAULT_THRESHOLDS, created_at: str | None = None, data_source: str = "v2a_host_evidence") -> V2Report:
+def build_v2_report(
+    samples: Sequence[V2Sample],
+    *,
+    physical_confirmations: Sequence[PhysicalConfirmation] = (),
+    mechanical_confirmations: Sequence[PhysicalConfirmation] | None = None,
+    thresholds: V2Thresholds = DEFAULT_THRESHOLDS,
+    created_at: str | None = None,
+    data_source: str = "v2a_host_evidence",
+    servo_type: ServoType | str = ServoType.BUS,
+) -> V2Report:
     evidence = tuple(samples)
     if any(not isinstance(sample, V2Sample) for sample in evidence):
         raise TypeError("samples must contain only V2Sample")
     if not isinstance(thresholds, V2Thresholds):
         raise TypeError("thresholds must be V2Thresholds")
+    servo_mode = _enum_value(ServoType, servo_type, name="servo_type")
     _validate_evidence_sequence(evidence)
     context = _uniform_context(evidence)
+    context = EvidenceContext(
+        context.frame_id, context.frame_contract_version, context.orientation_code,
+        context.calibration_generation, context.firmware_id, context.session_id,
+        context.capture_source, context.provenance, context.v0_record_id,
+        context.v1_record_id, context.lease_id, context.lease_issued_at_s,
+        context.lease_expires_at_s, servo_mode,
+    )
     if mechanical_confirmations is not None:
         if physical_confirmations:
             raise ValueError("use only physical_confirmations")
@@ -794,8 +857,12 @@ def build_v2_report(samples: Sequence[V2Sample], *, physical_confirmations: Sequ
         elif definition.kind == "failsafe": result = _analyze_failsafe(stage_samples, thresholds)
         else: result = StageResult(stage, AcceptanceStatus.UNSUPPORTED, len(stage_samples), (), ("requires powered physical equipment; V2A cannot validate it",))
         results.append(result)
-    gate = evaluate_global_gate(evidence, confirmations)
-    status = AcceptanceStatus.PASS if gate.status is AcceptanceStatus.PASS and all(next(item for item in results if item.stage is stage).status is AcceptanceStatus.PASS for stage in REQUIRED_STAGES) else AcceptanceStatus.FAIL
+    gate = evaluate_global_gate(evidence, confirmations, servo_type=servo_mode)
+    status = AcceptanceStatus.PASS if gate.status is AcceptanceStatus.PASS and all(
+        next(item for item in results if item.stage is stage).status is AcceptanceStatus.PASS
+        or (servo_mode is ServoType.PWM and stage in SERVO_STAGES and next(item for item in results if item.stage is stage).status is AcceptanceStatus.SKIPPED)
+        for stage in REQUIRED_STAGES
+    ) else AcceptanceStatus.FAIL
     evidence_hash = _hash({"samples": evidence, "physical_confirmations": confirmations})
     return V2Report(
         created_at=created_at or datetime.now().astimezone().isoformat(), data_source=data_source,
@@ -860,15 +927,37 @@ def report_from_dict(payload: Mapping[str, Any]) -> V2Report:
             raise ValueError(f"unsafe or unsupported report field {name}: {row[name]!r}")
     threshold_row = _expect_fields(row["thresholds"], V2Thresholds, path="thresholds")
     thresholds = V2Thresholds(**threshold_row)
-    context_row = _expect_fields(row["context"], EvidenceContext, path="context")
-    context = EvidenceContext(**context_row)
+    context_value = row["context"]
+    if not isinstance(context_value, Mapping):
+        raise TypeError("context must be an object")
+    context_fields = {item.name for item in fields(EvidenceContext)}
+    legacy_context_fields = context_fields - {"servo_type"}
+    actual_context_fields = set(context_value)
+    legacy_context = "servo_type" not in actual_context_fields
+    if legacy_context:
+        if actual_context_fields != legacy_context_fields:
+            raise ValueError(
+                f"context fields mismatch; unknown={sorted(actual_context_fields - legacy_context_fields)}, "
+                f"missing={sorted(legacy_context_fields - actual_context_fields)}"
+            )
+        context_data = dict(context_value)
+        context_data["servo_type"] = ServoType.BUS.value
+        # A legacy payload's integrity covered the context without servo_type.
+        # Verify it before normalizing the in-memory context to explicit bus.
+        legacy_integrity = row["integrity_sha256"]
+        legacy_data = {name: row[name] for name in row if name != "integrity_sha256"}
+        if legacy_integrity != _hash(legacy_data):
+            raise ValueError("report integrity_sha256 mismatch")
+    else:
+        context_data = dict(_expect_fields(context_value, EvidenceContext, path="context"))
+    context = EvidenceContext(**context_data)
     gate_row = _expect_fields(row["global_gate"], GlobalGateResult, path="global_gate")
     gate = GlobalGateResult(gate_row["status"], gate_row["sample_count"], _strings(gate_row["reasons"], path="global_gate.reasons"))
     stage_rows = row["stages"]; confirmation_rows = row["physical_confirmations"]
     if isinstance(stage_rows, (str, bytes)) or not isinstance(stage_rows, Sequence) or isinstance(confirmation_rows, (str, bytes)) or not isinstance(confirmation_rows, Sequence):
         raise TypeError("stages and physical_confirmations must be arrays")
-    integrity = _nonempty(row["integrity_sha256"], name="integrity_sha256")
-    if integrity == "AUTO":
+    integrity = "AUTO" if legacy_context else _nonempty(row["integrity_sha256"], name="integrity_sha256")
+    if integrity == "AUTO" and not legacy_context:
         raise ValueError("serialized report cannot request automatic integrity")
     return V2Report(
         created_at=row["created_at"], data_source=row["data_source"], status=row["status"], thresholds=thresholds,
@@ -901,7 +990,14 @@ def report_from_json(text: str) -> V2Report:
 def validate_report_for_application(report: V2Report, raw_samples: Sequence[V2Sample], physical_confirmations: Sequence[PhysicalConfirmation]) -> bool:
     if not isinstance(report, V2Report):
         raise TypeError("report must be V2Report")
-    rebuilt = build_v2_report(raw_samples, physical_confirmations=physical_confirmations, thresholds=report.thresholds, created_at=report.created_at, data_source=report.data_source)
+    rebuilt = build_v2_report(
+        raw_samples,
+        physical_confirmations=physical_confirmations,
+        thresholds=report.thresholds,
+        created_at=report.created_at,
+        data_source=report.data_source,
+        servo_type=report.context.servo_type,
+    )
     if rebuilt != report:
         raise ValueError("report does not exactly match recomputed raw evidence")
     return True
@@ -916,7 +1012,7 @@ def load_report(path: Path | str) -> V2Report:
 
 
 __all__ = [
-    "ACCEPTANCE_CAPTURE_SOURCE", "ACCEPTANCE_PROVENANCE", "AcceptanceStatus", "CANONICAL_FRAME_ID",
+    "ACCEPTANCE_CAPTURE_SOURCE", "ACCEPTANCE_PROVENANCE", "AcceptanceStatus", "CANONICAL_FRAME_ID", "ServoType",
     "DEFAULT_THRESHOLDS", "EvidenceContext", "GlobalGateResult", "MechanicalConfirmation", "Metric",
     "PhysicalConfirmation", "REQUIRED_STAGES", "SAFE_FAILSAFE_MODE", "SERVO_STAGES", "STAGE_DEFINITIONS",
     "StageDefinition", "StageResult", "UNSUPPORTED_STAGES", "V2Report", "V2Sample", "V2Stage", "V2Thresholds",
