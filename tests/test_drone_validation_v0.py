@@ -933,7 +933,7 @@ def test_panel_builds_the_reordered_v0_layout_without_connecting(
     try:
         app.update_idletasks()
         labels = [app.notebook.tab(tab_id, "text") for tab_id in app.notebook.tabs()]
-        assert labels[:4] == ["总览", "校准", "维护 · 固件升级", "IMU 监视（旧链）"]
+        assert labels[:4] == ["总览", "校准", "维护 · 固件升级", "传感器"]
         calibration_labels = [
             app.calibration_notebook.tab(tab_id, "text")
             for tab_id in app.calibration_notebook.tabs()
@@ -942,6 +942,27 @@ def test_panel_builds_the_reordered_v0_layout_without_connecting(
             "坐标系与极性", "IMU 零偏与比例", "遥控器", "舵机机械中心与行程",
             "光流与测距", "无桨控制链验收", "振动检测与滤波",
         ]
+        # R-S1-1：四个传感器页收进“传感器”分组，顶层不再平铺它们。
+        sensor_labels = [
+            app.sensor_notebook.tab(tab_id, "text")
+            for tab_id in app.sensor_notebook.tabs()
+        ]
+        assert sensor_labels == ["气压计", "IMU 监视（旧链）", "GPS / 磁力计", "光流"]
+        assert "气压计" not in labels
+        assert "IMU 监视（旧链）" not in labels
+        assert "GPS / 磁力计" not in labels
+        assert str(app.baro_tab.master) == str(app.sensor_notebook)
+        assert str(app.imu_tab.master) == str(app.sensor_notebook)
+        assert str(app.gps_tab.master) == str(app.sensor_notebook)
+        assert str(app.flow_sensor_tab.master) == str(app.sensor_notebook)
+        # 总览的“打开气压计页/姿态页/GPS 页”跨两层跳转，直接 select 子页会抛 TclError。
+        app._open_gps_tab()
+        assert app.notebook.select() == str(app.sensor_group_tab)
+        assert app.sensor_notebook.select() == str(app.gps_tab)
+        app._open_imu_tab()
+        assert app.sensor_notebook.select() == str(app.imu_tab)
+        app._open_baro_tab()
+        assert app.sensor_notebook.select() == str(app.baro_tab)
         assert "诊断 / 命令" in labels
         assert app.firmware_image_var.get().endswith("build\\Debug\\drone-H743.elf")
         assert str(app.firmware_start_button["state"]) == "disabled"

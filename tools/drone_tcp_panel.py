@@ -1691,9 +1691,13 @@ class DronePanel(ValidationV0PageMixin, EvidenceMixin, AcceptanceV2PageMixin, Vi
         acceptance_v2 = acceptance_v2_scroll.content
         vibration = vibration_scroll.content
         firmware = firmware_scroll.content
-        baro = ttk.Frame(self.notebook, padding=14, style="Page.TFrame")
-        imu = ttk.Frame(self.notebook, padding=14, style="Page.TFrame")
-        gps = ttk.Frame(self.notebook, padding=14, style="Page.TFrame")
+        sensors = ttk.Frame(self.notebook, padding=8, style="Page.TFrame")
+        self.sensor_notebook = ttk.Notebook(sensors)
+        self.sensor_notebook.pack(fill=tk.BOTH, expand=True)
+        baro = ttk.Frame(self.sensor_notebook, padding=14, style="Page.TFrame")
+        imu = ttk.Frame(self.sensor_notebook, padding=14, style="Page.TFrame")
+        gps = ttk.Frame(self.sensor_notebook, padding=14, style="Page.TFrame")
+        flow_sensor = ttk.Frame(self.sensor_notebook, padding=14, style="Page.TFrame")
         ident = ttk.Frame(self.notebook, padding=14, style="Page.TFrame")
         params = ttk.Frame(self.notebook, padding=14, style="Page.TFrame")
         servos = ttk.Frame(self.notebook, padding=14, style="Page.TFrame")
@@ -1701,6 +1705,8 @@ class DronePanel(ValidationV0PageMixin, EvidenceMixin, AcceptanceV2PageMixin, Vi
         self.baro_tab = baro
         self.imu_tab = imu
         self.calibration_group_tab = calibration
+        self.sensor_group_tab = sensors
+        self.flow_sensor_tab = flow_sensor
         self.validation_tab = validation_scroll
         self.v1_tab = metrology_scroll
         self.rc_tab = rc_scroll
@@ -1722,9 +1728,11 @@ class DronePanel(ValidationV0PageMixin, EvidenceMixin, AcceptanceV2PageMixin, Vi
         self.calibration_notebook.add(acceptance_v2_scroll, text="无桨控制链验收")
         self.calibration_notebook.add(vibration_scroll, text="振动检测与滤波")
         self.notebook.add(firmware_scroll, text="维护 · 固件升级")
-        self.notebook.add(imu, text="IMU 监视（旧链）")
-        self.notebook.add(baro, text="气压计")
-        self.notebook.add(gps, text="GPS / 磁力计")
+        self.notebook.add(sensors, text="传感器")
+        self.sensor_notebook.add(baro, text="气压计")
+        self.sensor_notebook.add(imu, text="IMU 监视（旧链）")
+        self.sensor_notebook.add(gps, text="GPS / 磁力计")
+        self.sensor_notebook.add(flow_sensor, text="光流")
         self.notebook.add(servos, text="维护 · 舵机调试")
         self.notebook.add(params, text="参数 / PID")
         self.notebook.add(ident, text="系统辨识")
@@ -1742,6 +1750,7 @@ class DronePanel(ValidationV0PageMixin, EvidenceMixin, AcceptanceV2PageMixin, Vi
         self._build_baro_page(baro)
         self._build_imu_page(imu)
         self._build_gps_page(gps)
+        self._build_sensor_flow_placeholder_page(flow_sensor)
         self._build_ident_page(ident)
         self._build_params_page(params)
         self._build_servo_page(servos)
@@ -3091,6 +3100,16 @@ class DronePanel(ValidationV0PageMixin, EvidenceMixin, AcceptanceV2PageMixin, Vi
 
         info.columnconfigure(1, weight=1)
 
+    def _build_sensor_flow_placeholder_page(self, parent: ttk.Frame) -> None:
+        # 占位页：光流质量/高度/速度曲线/累计位移（含清零）的独立监控模块
+        # 后续单独实现，这里先只占住“传感器”分组下的位置。
+        ttk.Label(
+            parent,
+            text="光流传感器监控——建设中\n后续将展示质量、高度、速度曲线与累计位移（可清零）",
+            style="Muted.TLabel",
+            justify=tk.CENTER,
+        ).pack(expand=True)
+
     def _build_ident_page(self, parent: ttk.Frame) -> None:
         top = ttk.Frame(parent)
         top.pack(fill=tk.X)
@@ -3692,16 +3711,26 @@ class DronePanel(ValidationV0PageMixin, EvidenceMixin, AcceptanceV2PageMixin, Vi
             return
         self._send_proto(PROTO_REQ_STATUS, "STATUS?")
 
+    def _select_sensor_tab(self, tab: tk.Misc) -> None:
+        # 气压计/IMU/GPS 现在挂在二级“传感器” Notebook 下，顶层 notebook.select(子页)
+        # 会因为子页不是它的 tab 而抛 TclError，必须先选中分组再选子页。
+        sensor_group_tab = getattr(self, "sensor_group_tab", None)
+        if sensor_group_tab is not None and hasattr(self, "sensor_notebook"):
+            self.notebook.select(sensor_group_tab)
+            self.sensor_notebook.select(tab)
+            return
+        self.notebook.select(tab)
+
     def _open_baro_tab(self) -> None:
-        self.notebook.select(self.baro_tab)
+        self._select_sensor_tab(self.baro_tab)
         self._send_proto(PROTO_REQ_BARO, "BARO?")
 
     def _open_imu_tab(self) -> None:
-        self.notebook.select(self.imu_tab)
+        self._select_sensor_tab(self.imu_tab)
         self._send_proto(PROTO_REQ_IMU, "IMU?")
 
     def _open_gps_tab(self) -> None:
-        self.notebook.select(self.gps_tab)
+        self._select_sensor_tab(self.gps_tab)
         self._send_proto(PROTO_REQ_GPS, "GPS?")
 
     def _refresh_detail(self) -> None:
@@ -4424,7 +4453,16 @@ class DronePanel(ValidationV0PageMixin, EvidenceMixin, AcceptanceV2PageMixin, Vi
                 self.imu_vars["age"].set(age_text)
         now_ns = time.monotonic_ns()
         outer_selection = self.notebook.select()
-        imu_tab_visible = outer_selection == str(self.imu_tab)
+        sensor_group_tab = getattr(self, "sensor_group_tab", None)
+        if sensor_group_tab is not None and hasattr(self, "sensor_notebook"):
+            # IMU 监视页移进二级“传感器”分组后，顶层选中的是分组本身，
+            # 拿顶层 selection 比 imu_tab 会永远为假，轮询/重绘就此停摆。
+            sensor_visible = outer_selection == str(sensor_group_tab)
+            imu_tab_visible = sensor_visible and (
+                self.sensor_notebook.select() == str(self.imu_tab)
+            )
+        else:
+            imu_tab_visible = outer_selection == str(self.imu_tab)
         firmware_tab_visible = outer_selection == str(self.firmware_tab)
         calibration_group_tab = getattr(self, "calibration_group_tab", None)
         if calibration_group_tab is not None and hasattr(self, "calibration_notebook"):

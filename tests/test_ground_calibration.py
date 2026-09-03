@@ -88,6 +88,55 @@ def test_calibration_navigation_uses_function_names_instead_of_version_codes() -
         assert opaque_label not in build
 
 
+def test_sensor_group_collects_baro_imu_gps_flow_under_one_expandable_tab() -> None:
+    """R-S1-1：四个传感器页收进顶层“传感器”分组，顶层不再平铺它们。"""
+
+    build = function_body("_build_ui")
+    assert 'self.notebook.add(sensors, text="传感器")' in build
+    for label in ("气压计", "IMU 监视（旧链）", "GPS / 磁力计", "光流"):
+        assert f'self.sensor_notebook.add(' in build
+        assert f'text="{label}")' in build
+    # 顶层必须彻底交出这三页，否则会出现两个入口。
+    assert 'self.notebook.add(baro, text="气压计")' not in build
+    assert 'self.notebook.add(imu, text="IMU 监视（旧链）")' not in build
+    assert 'self.notebook.add(gps, text="GPS / 磁力计")' not in build
+    # 容器归属也必须真的改到二级 Notebook 上，不能只改 .add() 调用点。
+    for name in ("baro", "imu", "gps", "flow_sensor"):
+        assert f"{name} = ttk.Frame(self.sensor_notebook," in build
+    # “校准”分组及其子页与本次改动无关，必须原样保留。
+    assert 'self.notebook.add(calibration, text="校准")' in build
+    assert 'self.calibration_notebook.add(flow_range_scroll, text="光流与测距")' in build
+
+
+def test_sensor_pages_stay_container_agnostic_and_navigation_follows_the_new_nesting() -> None:
+    """页面实现只认 parent；跨层跳转与 IMU 轮询门必须跟着嵌套关系走。"""
+
+    for name in ("_build_baro_page", "_build_imu_page", "_build_gps_page"):
+        body = function_body(name)
+        assert "self.notebook" not in body
+        assert "sensor_notebook" not in body
+    # 顶层 notebook.select(子页) 在嵌套后会抛 TclError，三个入口必须先选分组。
+    select = function_body("_select_sensor_tab")
+    assert "self.notebook.select(sensor_group_tab)" in select
+    assert "self.sensor_notebook.select(tab)" in select
+    for opener in ("_open_baro_tab", "_open_imu_tab", "_open_gps_tab"):
+        body = function_body(opener)
+        assert "self._select_sensor_tab(" in body
+        assert "self.notebook.select(" not in body
+    # 顶层 selection 只会等于“传感器”分组，IMU 可见性必须查二级 selection。
+    tick = function_body("_imu_poll_tick")
+    assert "self.sensor_notebook.select() == str(self.imu_tab)" in tick
+
+
+def test_flow_sensor_tab_is_placeholder_only() -> None:
+    """光流监控内容是后续独立 REQ，这次只占位，不许提前写功能。"""
+
+    body = function_body("_build_sensor_flow_placeholder_page")
+    assert "建设中" in body
+    for forbidden in ("_send_proto", "Canvas", "Button", "after(", "self.flow_"):
+        assert forbidden not in body
+
+
 def test_mechanical_page_is_guarded_and_only_claims_a_matching_target_readback() -> None:
     page = function_body("_build_mechanical_calibration_page")
     values = function_body("_mechanical_row_values")
