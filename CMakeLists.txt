@@ -119,6 +119,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     App/Src/app_rc_config.c
     App/Src/app_ident.c
     App/Src/app_servo_cal.c
+    App/Src/app_servo_bus_guard.c
     App/Src/app_servo_type.c
     App/Src/app_servo_jog.c
     App/Src/app_servo_feedback.c

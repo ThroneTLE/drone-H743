@@ -16,6 +16,7 @@
 #include "app_optical_flow.h"
 #include "app_rangefinder.h"
 #include "app_servo_cal.h"
+#include "app_servo_bus_guard.h"
 #include "app_servo_jog.h"
 #include "app_servo_feedback.h"
 #include "app_servo_feedback_bench.h"
@@ -2506,6 +2507,13 @@ static void app_control_handle_servo(char **tokens, uint32_t count)
         return;
     }
 
+    if ((APP_ServoBusGuard_IsPwmMode() != 0U) &&
+        (APP_ServoBusGuard_IsBusOnlyCommand(tokens[1]) != 0U)) {
+        APP_Control_QueueText("ERR servo subcmd=%s unsupported mode=pwm\r\n",
+                              tokens[1]);
+        return;
+    }
+
     if (strcmp(tokens[1], "JOG") == 0) {
         /* 保持型地面点动，解析与回复归 app_servo_jog.c（通信上下文）。 */
         APP_ServoJog_HandleCommand(tokens, count, HAL_GetTick());
@@ -4036,6 +4044,9 @@ static void app_control_dispatch_tokens(char **tokens, uint32_t count, uint8_t e
         } else {
             APP_Control_QueueText("ERR usage PWM1..2:0..100\r\n");
         }
+    } else if ((strncmp(tokens[0], "Servor", 6) == 0) &&
+               (APP_ServoBusGuard_IsPwmMode() != 0U)) {
+        APP_Control_QueueText("ERR servo legacy vofa unsupported mode=pwm\r\n");
     } else if (strncmp(tokens[0], "Servor", 6) == 0) {
         unsigned int parsed_index;
         unsigned int parsed_angle;

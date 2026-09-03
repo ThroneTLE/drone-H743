@@ -1,6 +1,7 @@
 #include "app_servo_feedback_bench.h"
 
 #include "app_control.h"
+#include "app_servo_bus_guard.h"
 #include "bsp_bus_servo.h"
 
 #include <stddef.h>
@@ -88,6 +89,16 @@ static APP_ServoFeedbackBenchContext servo_fb_ctx;
 __attribute__((section(".ram_d1_noinit"), aligned(32)))
 static APP_ServoFeedbackStepSample
     servo_step_samples[APP_SERVO_FB_STEP_MAX_SAMPLES];
+
+static uint8_t servo_fb_pwm_blocked(void)
+{
+    if (APP_ServoBusGuard_IsPwmMode() == 0U) {
+        return 0U;
+    }
+    /* A type switch while a bench is active must not resume stale bus work. */
+    servo_fb_ctx.mode = APP_SERVO_FB_MODE_IDLE;
+    return 1U;
+}
 
 static uint8_t servo_fb_args_valid(uint32_t rate_hz,
                                    uint32_t duration_ms,
@@ -314,6 +325,9 @@ uint8_t APP_ServoFeedbackBench_Start(uint32_t rate_hz,
                                      uint32_t timeout_ms,
                                      uint32_t now_ms)
 {
+    if (servo_fb_pwm_blocked() != 0U) {
+        return 0U;
+    }
     if ((servo_fb_ctx.mode != APP_SERVO_FB_MODE_IDLE) ||
         (servo_fb_args_valid(rate_hz, duration_ms, timeout_ms) == 0U)) {
         return 0U;
@@ -332,6 +346,9 @@ uint8_t APP_ServoFeedbackBench_StartSweep(uint32_t duration_ms,
                                           uint32_t timeout_ms,
                                           uint32_t now_ms)
 {
+    if (servo_fb_pwm_blocked() != 0U) {
+        return 0U;
+    }
     if ((servo_fb_ctx.mode != APP_SERVO_FB_MODE_IDLE) ||
         (servo_fb_args_valid(servo_fb_sweep_rates_hz[0],
                              duration_ms,
@@ -360,7 +377,8 @@ uint8_t APP_ServoFeedbackBench_StartStep(uint32_t servo_index,
     uint32_t expected_samples =
         ((duration_ms * rate_hz) + 999U) / 1000U;
 
-    if ((servo_fb_ctx.mode != APP_SERVO_FB_MODE_IDLE) ||
+    if ((servo_fb_pwm_blocked() != 0U) ||
+        (servo_fb_ctx.mode != APP_SERVO_FB_MODE_IDLE) ||
         (servo_index >= 2U) ||
         (delta_us < APP_SERVO_FB_STEP_MIN_DELTA_US) ||
         (delta_us > APP_SERVO_FB_STEP_MAX_DELTA_US) ||
@@ -399,6 +417,9 @@ uint8_t APP_ServoFeedbackBench_StartStep(uint32_t servo_index,
 
 void APP_ServoFeedbackBench_Stop(const char *reason, uint32_t now_ms)
 {
+    if (servo_fb_pwm_blocked() != 0U) {
+        return;
+    }
     if (servo_fb_ctx.mode == APP_SERVO_FB_MODE_IDLE) {
         return;
     }
@@ -412,6 +433,10 @@ void APP_ServoFeedbackBench_Stop(const char *reason, uint32_t now_ms)
 
 void APP_ServoFeedbackBench_ReportStatus(uint32_t now_ms)
 {
+    if (servo_fb_pwm_blocked() != 0U) {
+        APP_Control_QueueText("ERR servo fb unsupported mode=pwm\r\n");
+        return;
+    }
     APP_Control_QueueText(
         "SERVO_FB status mode=%s active=%u segment=%lu rate_hz=%lu elapsed_ms=%lu duration_ms=%lu timeout_ms=%lu pending=%u\r\n",
         servo_fb_mode_name(servo_fb_ctx.mode),
@@ -434,7 +459,8 @@ void APP_ServoFeedbackBench_ApplyTargets(uint32_t now_ms,
     uint32_t second_end_ms;
     uint16_t target_us = APP_SERVO_FB_CENTER_US;
 
-    if ((moves == NULL) ||
+    if ((servo_fb_pwm_blocked() != 0U) ||
+        (moves == NULL) ||
         ((servo_fb_ctx.mode != APP_SERVO_FB_MODE_STEP) &&
          (servo_fb_ctx.mode != APP_SERVO_FB_MODE_STEP_HOLD))) {
         return;
@@ -469,6 +495,9 @@ void APP_ServoFeedbackBench_Step(uint32_t now_ms,
     uint32_t slot;
     DRV_SERVO_Status status;
 
+    if (servo_fb_pwm_blocked() != 0U) {
+        return;
+    }
     if ((servo_fb_ctx.mode == APP_SERVO_FB_MODE_IDLE) || (moves == NULL)) {
         return;
     }
@@ -551,7 +580,8 @@ void APP_ServoFeedbackBench_Step(uint32_t now_ms,
 
 void APP_ServoFeedbackBench_RecordMoveResult(DRV_SERVO_Status status)
 {
-    if (servo_fb_ctx.mode == APP_SERVO_FB_MODE_IDLE) {
+    if ((servo_fb_pwm_blocked() != 0U) ||
+        (servo_fb_ctx.mode == APP_SERVO_FB_MODE_IDLE)) {
         return;
     }
 
@@ -567,12 +597,18 @@ void APP_ServoFeedbackBench_RecordMoveResult(DRV_SERVO_Status status)
 
 uint8_t APP_ServoFeedbackBench_IsActive(void)
 {
+    if (servo_fb_pwm_blocked() != 0U) {
+        return 0U;
+    }
     return (servo_fb_ctx.mode != APP_SERVO_FB_MODE_IDLE) ? 1U : 0U;
 }
 
 uint8_t APP_ServoFeedbackBench_MoveRefreshDue(uint32_t now_ms,
                                               uint32_t last_move_ms)
 {
+    if (servo_fb_pwm_blocked() != 0U) {
+        return 0U;
+    }
     return ((servo_fb_ctx.mode != APP_SERVO_FB_MODE_IDLE) &&
             (servo_fb_ctx.mode != APP_SERVO_FB_MODE_STEP) &&
             (servo_fb_ctx.mode != APP_SERVO_FB_MODE_STEP_HOLD) &&

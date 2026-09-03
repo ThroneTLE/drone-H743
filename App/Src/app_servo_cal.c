@@ -5,6 +5,7 @@
 #include <string.h>
 
 #include "app_led.h"
+#include "app_servo_bus_guard.h"
 #include "bsp_bus_servo.h"
 
 #define APP_SERVO_CAL_CH_ROLL       0U
@@ -32,6 +33,7 @@ static uint32_t servo_cal_transient_start_ms;
  */
 static char servo_cal_notice_text[64];
 static volatile uint8_t servo_cal_notice_pending;
+static uint8_t servo_cal_pwm_notice_sent;
 
 static void servo_cal_post_notice(const char *format, ...)
 {
@@ -173,6 +175,7 @@ void APP_ServoCal_Init(void)
     servo_cal_save_hold_start_ms = 0U;
     servo_cal_transient_start_ms = 0U;
     servo_cal_notice_pending = 0U;
+    servo_cal_pwm_notice_sent = 0U;
     servo_cal_notice_text[0] = '\0';
     APP_LED_SetServoCalMode(APP_LED_SERVO_CAL_NONE);
 }
@@ -200,6 +203,31 @@ APP_ServoCalResult APP_ServoCal_Step(const uint16_t ch[16],
                                      uint8_t rc_arm_switch_high,
                                      uint32_t now_ms)
 {
+    if (APP_ServoBusGuard_IsPwmMode() != 0U) {
+        uint8_t state_active =
+            (servo_cal_state != APP_SERVO_CAL_STATE_IDLE) ? 1U : 0U;
+        uint8_t gesture_active = 0U;
+
+        servo_cal_release_hold_start_ms = 0U;
+        servo_cal_save_hold_start_ms = 0U;
+        if (servo_cal_state != APP_SERVO_CAL_STATE_IDLE) {
+            servo_cal_state = APP_SERVO_CAL_STATE_IDLE;
+            APP_LED_SetServoCalMode(APP_LED_SERVO_CAL_NONE);
+        }
+        if (servo_cal_safe_gate(ch, rc_link_ok, rc_arm_switch_high) != 0U) {
+            gesture_active = (uint8_t)((servo_cal_release_gesture(ch) != 0U) ||
+                                       (servo_cal_save_gesture(ch) != 0U));
+        }
+        if ((state_active == 0U) && (gesture_active == 0U)) {
+            servo_cal_pwm_notice_sent = 0U;
+        } else if (servo_cal_pwm_notice_sent == 0U) {
+            servo_cal_post_notice("ERR servo_cal unsupported mode=pwm\r\n");
+            servo_cal_pwm_notice_sent = 1U;
+        }
+        return APP_SERVO_CAL_RESULT_NONE;
+    }
+    servo_cal_pwm_notice_sent = 0U;
+
     if (servo_cal_state == APP_SERVO_CAL_STATE_SAVE_LOCK_ACK) {
         if ((now_ms - servo_cal_transient_start_ms) >= APP_SERVO_CAL_ACK_MS) {
             servo_cal_state = APP_SERVO_CAL_STATE_IDLE;
