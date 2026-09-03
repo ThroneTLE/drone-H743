@@ -4,6 +4,7 @@
 #include "app_acceptance.h"
 #include "app_flight_calibration.h"
 #include "app_proto.h"
+#include "app_servo_cal.h"
 #include "app_servo_type.h"
 #include "app_stabilizer.h"
 #include "svc_param.h"
@@ -59,6 +60,7 @@ static uint8_t app_servotype_transaction_available(void)
 {
     if ((APP_Stabilizer_IsArmed() != 0U) ||
         (APP_Acceptance_IsActive() != 0U) ||
+        (APP_ServoCal_IsActive() != 0U) ||
         (app_cmd_servocal_is_busy() != 0U) ||
         (app_control_internal_imucal_applied() != 0U) ||
         (app_control_internal_imucal_commit_pending() != 0U) ||

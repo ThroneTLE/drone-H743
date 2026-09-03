@@ -110,6 +110,19 @@ def test_servo_cal_pwm_gestures_only_clear_state_and_post_async_rejection() -> N
     assert "BSP_BusServo_" not in pwm_block
 
 
+def test_servotype_transaction_blocks_type_switch_while_servo_gesture_is_active() -> None:
+    source = read("App/Src/app_cmd_servotype.c")
+    transaction = _function_body(
+        source, "static uint8_t app_servotype_transaction_available(void)"
+    )
+
+    assert '#include "app_servo_cal.h"' in source
+    assert "APP_ServoCal_IsActive()" in transaction
+    # The guard remains part of the existing transaction rejection set; no
+    # separate PWM-only path can bypass it.
+    assert "app_cmd_servocal_is_busy()" in transaction
+
+
 def test_feedback_bench_rejects_pwm_before_every_bus_capable_entry() -> None:
     source = read("App/Src/app_servo_feedback_bench.c")
     for signature in (
