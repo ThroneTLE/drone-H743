@@ -421,6 +421,68 @@ static int test_stale_flow_holds_then_expires(void)
     return 0;
 }
 
+static int test_reject_gate_and_noise_curve_are_independent(void)
+{
+    SVC_FLOW_NAV_Sample sample;
+    DRV_NAV_EKF_Diagnostics diag;
+    uint32_t host_ms = 1000U;
+    uint32_t sensor_ms = 20000U;
+
+    SVC_FlowNav_Init();
+    warmup(&host_ms, &sensor_ms, 1000U);
+
+    /* q=60：老门限(80)会整帧丢弃，新门限(45)必须收下。 */
+    host_ms += 10U; sensor_ms += 10U;
+    sample = make_sample(host_ms, sensor_ms, 1000U, 20, 0, 60U, 10000U);
+    CHECK(SVC_FlowNav_PushSample(&sample, host_ms) ==
+          SVC_FLOW_NAV_SAMPLE_ACCEPTED, 500);
+
+    /* 但只能以最低信任度进来：R 取曲线最大值 0.45 m/s。 */
+    {
+        SVC_FLOW_NAV_FuseInput in;
+        memset(&in, 0, sizeof(in));
+        in.flow_vx_m_s = 0.05f;
+        in.flow_valid = 1U;
+        in.flow_quality = 60U;
+        in.flow_sample_ms = host_ms;
+        in.dt_sec = 0.001f;
+        in.now_ms = host_ms;
+        CHECK(SVC_FlowNav_Fuse(&in) == 1U, 501);
+        SVC_FlowNav_GetEkfDiagnostics(&diag);
+        CHECK(NEAR(diag.last_flow_noise_m_s,
+                   SVC_FLOW_NAV_EKF_FLOW_NOISE_MAX_M_S, 1e-6f), 502);
+    }
+
+    /* q=130 落在曲线上：数值必须与重构前逐一对应。
+       norm=(130-80)/(180-80)=0.5, weak=0.5, R=0.04+(0.45-0.04)*0.25=0.1425 */
+    {
+        SVC_FLOW_NAV_FuseInput in;
+        host_ms += 10U; sensor_ms += 10U;
+        sample = make_sample(host_ms, sensor_ms, 1000U, 20, 0, 130U, 10000U);
+        CHECK(SVC_FlowNav_PushSample(&sample, host_ms) ==
+              SVC_FLOW_NAV_SAMPLE_ACCEPTED, 510);
+        memset(&in, 0, sizeof(in));
+        in.flow_vx_m_s = 0.05f;
+        in.flow_valid = 1U;
+        in.flow_quality = 130U;
+        in.flow_sample_ms = host_ms;
+        in.dt_sec = 0.001f;
+        in.now_ms = host_ms;
+        CHECK(SVC_FlowNav_Fuse(&in) == 1U, 511);
+        SVC_FlowNav_GetEkfDiagnostics(&diag);
+        CHECK(NEAR(diag.last_flow_noise_m_s, 0.1425f, 1e-4f), 512);
+    }
+
+    /* q=44 仍在门下：整帧丢弃。遮挡镜头实测 <5，45 离地板有 9 倍余量。 */
+    host_ms += 10U; sensor_ms += 10U;
+    sample = make_sample(host_ms, sensor_ms, 1000U, 20, 0,
+                         SVC_FLOW_NAV_MIN_QUALITY - 1U, 10000U);
+    CHECK(SVC_FlowNav_PushSample(&sample, host_ms) ==
+          SVC_FLOW_NAV_SAMPLE_REJECTED, 520);
+
+    return 0;
+}
+
 int main(void)
 {
     int rc;
@@ -434,6 +496,8 @@ int main(void)
     rc = test_position_clamp_and_reset();
     if (rc != 0) { return rc; }
     rc = test_stale_flow_holds_then_expires();
+    if (rc != 0) { return rc; }
+    rc = test_reject_gate_and_noise_curve_are_independent();
     if (rc != 0) { return rc; }
 
     printf("svc_flow_nav harness ok\n");
@@ -561,6 +625,25 @@ def test_coax_control_law_is_untouched() -> None:
     ):
         assert expression in COAX, expression
     assert "SVC_FlowNav" not in COAX, "控制器不该直接依赖 Service，只吃 frame->attitude"
+
+
+def test_reject_gate_and_noise_anchor_are_separate_knobs() -> None:
+    """放宽硬拒门只能让原本被丢的帧低信任度进来，不能顺带抬高 q>=80 的信任度。"""
+    assert "#define SVC_FLOW_NAV_MIN_QUALITY              45U" in SERVICE_H
+    assert "#define SVC_FLOW_NAV_QUALITY_NOISE_LOW        80U" in SERVICE_H
+    # 噪声曲线必须锚在 NOISE_LOW 上，一处都不许再引用硬拒门。
+    curve = SERVICE_C[
+        SERVICE_C.index("static float flow_nav_noise_from_quality(uint8_t quality)"):
+        SERVICE_C.index("static uint8_t flow_nav_control_velocity_plausible(")
+    ]
+    assert "SVC_FLOW_NAV_QUALITY_NOISE_LOW" in curve
+    assert "SVC_FLOW_NAV_MIN_QUALITY" not in curve
+    # 硬拒门只出现在取帧判决里。
+    gate = SERVICE_C[
+        SERVICE_C.index("static uint8_t flow_nav_sample_usable("):
+        SERVICE_C.index("static uint32_t flow_nav_integration_dt_us(")
+    ]
+    assert "sample->flow_quality < SVC_FLOW_NAV_MIN_QUALITY" in gate
 
 
 def test_control_mode_reset_must_not_wipe_the_odometer() -> None:

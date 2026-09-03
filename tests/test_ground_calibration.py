@@ -166,14 +166,21 @@ def test_flow_monitor_poll_is_gated_by_its_own_tab_and_never_reuses_the_calibrat
     assert "self.flow_monitor_last_poll >= FLOW_MONITOR_POLL_PERIOD_S" in tick
 
 
-def test_flow_monitor_reset_stays_local_and_sends_no_protocol_frame() -> None:
-    """累计位移是上位机自己积出来的，归零只清本地状态——仿 _reset_imu_attitude。"""
+def test_flow_monitor_reset_clears_both_accumulators() -> None:
+    """R-M5-5 之后固件也有里程计：归零要两份一起清。
+
+    上位机那份直接清本地；固件那份只能由飞控自己清，所以发 FLOW ZERO——
+    该命令只动累计位移，不碰控制位置与速度估计，因此不属于会扰动飞行的帧。
+    """
 
     body = function_body("_flow_monitor_reset_displacement")
-    for forbidden in ("_send_proto", "send_line", "transport"):
-        assert forbidden not in body
     assert "self.flow_monitor_dx_m = 0.0" in body
     assert "self.flow_monitor_track.clear()" in body
+    assert 'self.transport.send_line("FLOW ZERO")' in body
+    # 仍然只走安全门允许的通路，且不得改用会动控制状态的命令。
+    assert '_validation_command_allowed("FLOW ZERO")' in body
+    for forbidden in ("SERVO", "ARM", "PARAM SET"):
+        assert forbidden not in body
 
 
 def test_flow_monitor_integration_uses_real_elapsed_time_and_pauses_on_invalid_velocity() -> None:

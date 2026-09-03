@@ -282,7 +282,9 @@ def test_reset_clears_local_state_only_and_sends_nothing(app) -> None:
     assert app.flow_monitor_anchor is None
     assert app.flow_monitor_vars["dx"].get() == "+0.000 m"
     assert app.flow_monitor_vars["dy"].get() == "+0.000 m"
-    assert app.transport.lines == sent_before, "归零是纯本地状态，不许发协议帧"
+    # 作者授权后新增：固件那份里程计只能由飞控自己清，所以补发一条 FLOW ZERO。
+    # 它只动累计位移，不碰控制位置 / 速度估计 / EKF 协方差。
+    assert app.transport.lines == sent_before + ["FLOW ZERO"]
 
 
 # ---------------------------------------------------------------- 绘图节流
@@ -375,9 +377,9 @@ def test_local_reset_does_not_touch_the_firmware_accumulator(app) -> None:
     app.flow_monitor_reset_button.invoke()
 
     assert app.flow_monitor_dx_m == 0.0
-    # 固件那份是只读的，本地归零动不了它，也不许为此发帧。
+    # 本地立刻清零；固件那份要等它自己处理完 FLOW ZERO 再回包，所以显示值不变。
     assert app.flow_monitor_vars["fw_dx"].get() == "+1.250 m"
-    assert app.transport.lines == sent_before
+    assert app.transport.lines == sent_before + ["FLOW ZERO"]
 
 
 def test_page_text_no_longer_claims_the_firmware_has_no_displacement() -> None:
@@ -387,3 +389,21 @@ def test_page_text_no_longer_claims_the_firmware_has_no_displacement() -> None:
     assert "固件并不保存这个量" not in source
     assert "累计位移（上位机按真实时间积分）" not in source
     assert "FLOW nav" in source
+
+
+def test_reset_falls_back_to_local_only_when_disconnected(app) -> None:
+    """没连上时本地照清，不能因为发不出去就整个不动。"""
+    app.clock.advance(0.2)
+    feed(app, vx_mm_s=1000)
+    app.clock.advance(0.2)
+    feed(app, vx_mm_s=1000)
+    assert app.flow_monitor_dx_m > 0.0
+
+    app.transport.is_connected = False
+    try:
+        app.flow_monitor_reset_button.invoke()
+    finally:
+        app.transport.is_connected = True
+
+    assert app.flow_monitor_dx_m == 0.0
+    assert app.transport.lines == []

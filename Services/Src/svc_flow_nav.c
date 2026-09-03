@@ -341,10 +341,14 @@ static float flow_nav_noise_from_quality(uint8_t quality)
 {
     float quality_norm;
     float weak;
-    const float q_min = (float)SVC_FLOW_NAV_MIN_QUALITY;
+    /*
+     * 锚点用 QUALITY_NOISE_LOW 而不是硬拒门：拒门放宽只应该让原本被丢弃的帧
+     * "以最低信任度进来"，不应该顺带抬高对 q>=80 那批数据的信任度。
+     */
+    const float q_min = (float)SVC_FLOW_NAV_QUALITY_NOISE_LOW;
     const float q_high = (float)SVC_FLOW_NAV_EKF_FLOW_QUALITY_HIGH;
 
-    if (quality <= SVC_FLOW_NAV_MIN_QUALITY) {
+    if (quality <= SVC_FLOW_NAV_QUALITY_NOISE_LOW) {
         return SVC_FLOW_NAV_EKF_FLOW_NOISE_MAX_M_S;
     }
     if (quality >= SVC_FLOW_NAV_EKF_FLOW_QUALITY_HIGH) {

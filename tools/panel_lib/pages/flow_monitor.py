@@ -4,7 +4,8 @@
 只服务于零偏/比例/旋转补偿的证据采集。本页是常驻监视——自己的可见性门控轮询、
 自己的解析状态、自己的缓冲，与标定页零耦合。
 
-数据全部来自既有文本命令 `FLOW?`，不新增任何协议。
+数据来自文本命令 `FLOW?`；里程计归零用 `FLOW ZERO`（R-M5-5 新增，只清累计位移，
+不碰控制位置与速度估计）。
 """
 
 from __future__ import annotations
@@ -74,8 +75,8 @@ class FlowMonitorPageMixin:
             text=(
                 "本页选中时才按 5 Hz 发 FLOW?，切走即停。质量、高度、速度直接来自固件回包。"
                 "累计位移有两份口径：上位机这份是对回包里的传感器系速度按墙钟时间做梯形积分，"
-                "可本地清零；固件那份（R-M5-5 起的 FLOW nav）积的是飞控真正在用的融合速度、"
-                "步长走传感器自己的时间轴，只读、清零要重启或估计器复位。"
+                "固件那份（R-M5-5 起的 FLOW nav）积的是飞控真正在用的融合速度、"
+                "步长走传感器自己的时间轴。“重置”把两份一起清。"
             ),
             style="Muted.TLabel", wraplength=1120,
         ).pack(fill=tk.X, pady=(4, 10))
@@ -143,7 +144,7 @@ class FlowMonitorPageMixin:
             self.flow_monitor_value_labels[key] = value
 
         self.flow_monitor_reset_button = ttk.Button(
-            box, text="重置累计位移（仅上位机）", command=self._flow_monitor_reset_displacement,
+            box, text="重置累计位移", command=self._flow_monitor_reset_displacement,
             style="Secondary.TButton",
         )
         self.flow_monitor_reset_button.grid(
@@ -155,7 +156,9 @@ class FlowMonitorPageMixin:
                 "上位机这份：速度无效的采样一律不参与积分，那段时间按“暂停”处理，"
                 "既不补 0 也不外推。\n"
                 "固件那份：只有被 EKF 采纳的光流样本才推进一步，所以“步数 0”意味着"
-                "没有可用量测，不是没动过。"
+                "没有可用量测，不是没动过。\n"
+                "“重置”两份一起清：本地直接清零，固件那份发 FLOW ZERO；该命令只动"
+                "里程计，不碰控制位置与速度估计，空中发也安全。"
             ),
             style="Muted.TLabel", wraplength=380, justify=tk.LEFT,
         ).grid(row=len(rows) + 1, column=0, columnspan=2, sticky=tk.W, pady=(6, 0))
@@ -262,10 +265,12 @@ class FlowMonitorPageMixin:
         self.flow_monitor_track.append((self.flow_monitor_dx_m, self.flow_monitor_dy_m))
 
     def _flow_monitor_reset_displacement(self) -> None:
-        """只清上位机自己的积分状态。
+        """两份口径一起清。
 
-        固件里没有“累计位移”这个量——它是本页拿 vx/vy 对时间积出来的，
-        所以归零不需要、也不该向飞控发任何帧。
+        上位机这份直接清本地累加；固件那份（R-M5-5 起的里程计）只能由飞控自己
+        清，所以发一条 `FLOW ZERO`。该命令只动里程计，不碰控制位置、速度估计和
+        EKF 协方差——里程计不参与任何控制律，清它对飞行没有影响。
+        没连上时本地照清，不因为发不出去就什么都不做。
         """
         self.flow_monitor_dx_m = 0.0
         self.flow_monitor_dy_m = 0.0
@@ -273,6 +278,8 @@ class FlowMonitorPageMixin:
         self.flow_monitor_anchor = None
         self.flow_monitor_frames = 0
         self.flow_monitor_invalid_frames = 0
+        if self._transport_connected() and self._validation_command_allowed("FLOW ZERO"):
+            self.transport.send_line("FLOW ZERO")
         self._flow_monitor_refresh_readouts()
         self.flow_monitor_last_render_ns = time.monotonic_ns()
         self._update_flow_monitor_track_plot()

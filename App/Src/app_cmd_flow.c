@@ -4,6 +4,7 @@
 #include "app_optical_flow.h"
 #include "app_stabilizer.h"
 #include "bsp_optical_flow.h"
+#include "svc_flow_nav.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -42,7 +43,25 @@ void app_control_handle_flow(char **tokens, uint32_t count)
     BSP_OPTICAL_FLOW_StatusCode status;
 
     if ((count == 1U) || ((count >= 2U) && (strcmp(tokens[1], "?") == 0))) {
-        APP_Control_QueueText("ERR usage FLOW TX hex... | FLOW RX [max] | FLOW XCV rx_len hex...\r\n");
+        APP_Control_QueueText("ERR usage FLOW ZERO | FLOW TX hex... | FLOW RX [max] | FLOW XCV rx_len hex...\r\n");
+        return;
+    }
+
+    if (strcmp(tokens[1], "ZERO") == 0) {
+        /*
+         * 只清里程计（累计位移 + 积分步数）。控制用的位置状态、速度估计、EKF
+         * 协方差一概不动——里程计不参与任何控制律，清它对飞行没有影响，
+         * 所以这条命令在空中发也是安全的。
+         */
+        float dx_m = 0.0f;
+        float dy_m = 0.0f;
+
+        SVC_FlowNav_ResetDisplacement();
+        SVC_FlowNav_GetDisplacement(&dx_m, &dy_m);
+        APP_Control_QueueText("FLOW ZERO ok disp_x_mm=%ld disp_y_mm=%ld steps=%lu\r\n",
+                              (long)(dx_m * 1000.0f),
+                              (long)(dy_m * 1000.0f),
+                              (unsigned long)SVC_FlowNav_GetIntegratedStepCount());
         return;
     }
 

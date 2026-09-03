@@ -4,7 +4,7 @@
 
 Read this shard only when the task uses serial/TCP diagnostics, log analysis, identification, capture, calibration, or desktop UIs.
 
-Source snapshot: `5da63ea0070a`; aggregate snapshot: `ce7def1f86a3`. Covered files: 5312.
+Source snapshot: `a8a315ffc115`; aggregate snapshot: `ce7def1f86a3`. Covered files: 5313.
 
 | File/module or scope | Content outline | Key entry points / size |
 |---|---|---|
@@ -32,6 +32,7 @@ Source snapshot: `5da63ea0070a`; aggregate snapshot: `ce7def1f86a3`. Covered fil
 | `tools/flight_log_waveform_ui.py` | H743 飞行日志通道波形查看器。 | `ChannelStats`, `discover_csv_files`, `human_size`, `choose_time_column`, `is_numeric_column`, `numeric_columns` (+8) |
 | `tools/flight_log_workbench.py` | H743 飞行日志 All-in-One 查看与 Rerun 回放工作台。 | `segment_label`, `available_preset_channels`, `make_rerun_wrapper_command`, `format_optional`, `time_axis_for_segment`, `FlightLogWorkbench` (+2) |
 | `tools/flight_validation.py` | Read-only V0 flight-sensor validation algorithms. This module deliberately has no transport, parameter, Flash, or firmw… | `ValidationStatus`, `ValidationStage`, `StageDefinition`, `ValidationThresholds`, `ImuSample`, `ValidationSession` (+22) |
+| `tools/flow_quality_probe.py` | 光流质量 vs 噪声扫描：为质量门限取值提供实测依据。 用法（传感器保持静止，真值速度恒为 0）： python tools/flow_quality_probe.py --seconds 100 --port COM31 采集期间人为改… | `parse_kv`, `collect`, `sigma_v_m_s`, `report`, `main` |
 | `tools/flow_velocity_filter_eval.py` | Evaluate optical-flow velocity robustness from H743 flight-log CSV files. 这个脚本用于对比旧的光流直通速度和当前固件里的抗离群思路： 1. 原始 Micolink… | `SeriesStats`, `ReplayResult`, `parse_float`, `parse_int`, `time_s`, `quality_to_noise` (+6) |
 | `tools/gesture_sign_check.py` | PIPELINE R-M2-2 · 粗符号手势验证（录制 + 自动分段判号，只读）。 作者按口令做三个小动作（机头下压回平 / 右翼下压回平 / 机头左转转回）， 本工具全程 ~12Hz 轮询 `IMU?` 录制原始数据，随后离线自动判定… | `record`, `segments`, `judge`, `main` |
 | `tools/ground_calibration.py` | Host-only analysis for ground calibration evidence. The functions in this module never write target parameters. They tu… | `GroundCalibrationError`, `FlowRangeSample`, `analyze_flow_zero`, `analyze_flow_axis`, `fit_range_two_point`, `analyze_rotation_compensation` (+1) |

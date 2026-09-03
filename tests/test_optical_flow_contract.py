@@ -390,8 +390,10 @@ def test_optical_flow_requires_high_quality_before_control_use() -> None:
     service_h = read("Services/Inc/svc_flow_nav.h")
     service_c = read("Services/Src/svc_flow_nav.c")
 
-    # R-M5-5：门限数值不变（80），唯一定义点从 app_optical_flow.h 移到 Service。
-    assert "#define SVC_FLOW_NAV_MIN_QUALITY              80U" in service_h
+    # 硬拒门与噪声曲线锚点是两个宏，不许再被同一个值兼任。
+    # 45 的依据见 PIPELINE：遮挡镜头 <5、暗处最低 50、一般 100~140、最好 190。
+    assert "#define SVC_FLOW_NAV_MIN_QUALITY              45U" in service_h
+    assert "#define SVC_FLOW_NAV_QUALITY_NOISE_LOW        80U" in service_h
     assert "APP_OPTICAL_FLOW_MIN_QUALITY" not in header
     assert "#define SVC_FLOW_NAV_FILTER_RESET_MS          250U" in service_h
     assert "sample->flow_quality < SVC_FLOW_NAV_MIN_QUALITY" in service_c

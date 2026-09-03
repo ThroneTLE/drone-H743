@@ -188,7 +188,9 @@ STEP_D2_PERSIST_HELPER_BODY = """{
 STEP_D3_PARENT_COMMIT = "aa538a1cbb0e68b8e232c42a2b7096528ba2547a"
 STEP_D3_BODY_SHA256 = {
     "app_control_parse_hex_byte": "822f7d5255be98c3cf3ef75a9fbbe59c94cfa0bf4e8a7b1105e78a0d2af318d4",
-    "app_control_handle_flow": "7b52901d414dacbe3a88faee468ba4aaafb52605674128df19915bd14493c163",
+    # R-M5-5：新增 FLOW ZERO 子命令（清里程计），是本次授权的功能改动而非 D3 搬家
+    # 走样，故重钉。其余两个函数体仍是 D3 父提交原样。
+    "app_control_handle_flow": "697d5ad0f1bbbb7091eaed46188a264be692720004a3d5ec10a22cf59f6136a9",
     "app_control_report_flow": "7be12a05196978c8655bbba1aeb15b5dfdeeb9f1ee2794814a4a6b6caef61e9f",
 }
 STEP_D3_ACCEPTANCE_BODY_SHA256 = (
@@ -938,6 +940,14 @@ def _write_flow_stubs(stub_dir: Path) -> None:
         "} StabilizerFlowCompensationSnapshot;\n"
         "uint8_t APP_Stabilizer_ReadFlowCompensationSnapshot("
         "StabilizerFlowCompensationSnapshot *);\n",
+        encoding="ascii",
+    )
+    # R-M5-5：FLOW ZERO 走 Service 的里程计归零接口，这里只需要它的三个符号。
+    (stub_dir / "svc_flow_nav.h").write_text(
+        "#include <stdint.h>\n"
+        "void SVC_FlowNav_ResetDisplacement(void);\n"
+        "void SVC_FlowNav_GetDisplacement(float *, float *);\n"
+        "uint32_t SVC_FlowNav_GetIntegratedStepCount(void);\n",
         encoding="ascii",
     )
     (stub_dir / "bsp_optical_flow.h").write_text(
