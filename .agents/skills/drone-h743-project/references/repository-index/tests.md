@@ -4,7 +4,7 @@
 
 Read this shard only when you need existing behavioral/architecture coverage or must choose focused regression tests.
 
-Source snapshot: `ce86f24dd715`. Indexed files: 92.
+Source snapshot: `d58f413872ff`. Indexed files: 93.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -27,6 +27,7 @@ Source snapshot: `ce86f24dd715`. Indexed files: 92.
 | `tests/test_firmware_build_gate.py` | 烧录前必须先编译，且编译失败绝不能继续烧录。 背景：USB DFU 一键烧录默认烧的是 build/Debug/drone-H743.elf。如果改完源码 忘了编译，就会把上一次的旧固件刷进飞控，而且现场很难看出来——固件"烧成功了"，… | `test_build_failure_raises_instead_of_returning_a_stale_elf`, `test_missing_cmake_is_reported_as_a_build_error`, `test_build_timeout_is_reported_as_a_build_error`, `test_successful_build_must_actually_produce_the_elf` (+17) |
 | `tests/test_flash_bdd.py` | — | `test_bdd_flash_diagnostics_flow_is_app_service_to_gd25q32_driver`, `test_bdd_h743_cache_setting_matches_runtime_cache_enable` |
 | `tests/test_flash_layering.py` | — | `test_app_uses_flash_service_not_bsp_flash_api`, `test_bsp_flash_bus_has_no_device_level_flash_api`, `test_gd25q32_driver_has_chip_specific_name`, `test_flash_service_is_public_app_boundary` (+1) |
+| `tests/test_flash_timing_measurement.py` | R-M1-3 block-erase timing measurement and throughput contracts | `test_firmware_probe_is_thin_and_keeps_normal_polling_default`, `test_page_program_count_matches_real_sector_layout_and_batching`, `test_throughput_uses_worst_samples_and_includes_background_waits`, `test_go_requires_twenty_percent_margin_not_merely_250hz` |
 | `tests/test_flight_acceptance_v2.py` | — | `test_complete_v2a_passes_but_never_releases_flight`, `test_thresholds_strict`, `test_thresholds_serialized_and_metric_integrity_protected`, `test_zero_sample_pass_semantically_impossible` (+8) |
 | `tests/test_flight_calibration_param_contract.py` | Versioned aggregate flight-calibration parameter contract | `test_fcal_schema_owns_v0_v1_and_reserved_v2_fields`, `test_imuframe_commit_updates_the_aggregate_instead_of_replacing_it`, `test_fcal_codec_and_migration_compile_and_run_on_host` |
 | `tests/test_flight_log_contract.py` | — | `test_flight_log_region_leaves_reserved_flash_sectors`, `test_flight_log_uses_app_flash_service_only`, `test_stabilizer_records_snapshots_without_direct_flash_access`, `test_flight_log_v7_records_flow_servo_bus_attitude_ident_and_z_integral` (+4) |

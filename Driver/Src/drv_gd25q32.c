@@ -1,4 +1,5 @@
 #include "drv_gd25q32.h"
+#include "drv_gd25q32_timing_probe.h"
 
 #include "cmsis_os2.h"
 
@@ -172,7 +173,9 @@ static DRV_GD25Q32_Status gd25q32_wait_while_busy(DRV_GD25Q32_Device *dev,
         status = DRV_GD25Q32_ReadStatus1(dev, &status1);
         if (status != DRV_GD25Q32_OK) { return status; }
         if ((status1 & GD25Q32_STATUS1_BUSY) == 0U) { return DRV_GD25Q32_OK; }
-        gd25q32_delay_ms(dev, GD25Q32_BUSY_POLL_DELAY_MS);
+        if (DRV_GD25Q32_TimingProbe_TightPollEnabled() == 0U) {
+            gd25q32_delay_ms(dev, GD25Q32_BUSY_POLL_DELAY_MS);
+        }
     } while ((HAL_GetTick() - start_tick) < timeout_ms);
 
     return DRV_GD25Q32_TIMEOUT;
@@ -572,6 +575,7 @@ static DRV_GD25Q32_Status gd25q32_block_erase(DRV_GD25Q32_Device *dev,
                                             uint32_t timeout_ms)
 {
     uint8_t command[4];
+    uint32_t start_cycles;
     DRV_GD25Q32_Status status;
 
     if (dev == NULL) { return DRV_GD25Q32_INVALID_ARG; }
@@ -583,6 +587,8 @@ static DRV_GD25Q32_Status gd25q32_block_erase(DRV_GD25Q32_Device *dev,
     if (!gd25q32_addr_aligned(address, align_size)) {
         return DRV_GD25Q32_INVALID_ARG;
     }
+
+    start_cycles = DRV_GD25Q32_TimingProbe_StartCycles();
 
     status = gd25q32_wait_while_busy(dev, GD25Q32_DEFAULT_TIMEOUT_MS);
     if (status != DRV_GD25Q32_OK) { return status; }
@@ -598,7 +604,13 @@ static DRV_GD25Q32_Status gd25q32_block_erase(DRV_GD25Q32_Device *dev,
     status = gd25q32_spi_blocking_tx(dev, command, sizeof(command));
     if (status != DRV_GD25Q32_OK) { return status; }
 
-    return gd25q32_wait_while_busy(dev, timeout_ms);
+    status = gd25q32_wait_while_busy(dev, timeout_ms);
+    if (status == DRV_GD25Q32_OK) {
+        DRV_GD25Q32_TimingProbe_RecordBlock(
+            align_size,
+            DRV_GD25Q32_TimingProbe_ElapsedUs(start_cycles));
+    }
+    return status;
 }
 
 DRV_GD25Q32_Status DRV_GD25Q32_EraseSector(DRV_GD25Q32_Device *dev, uint32_t address)
@@ -626,6 +638,7 @@ DRV_GD25Q32_Status DRV_GD25Q32_PageProgram(DRV_GD25Q32_Device *dev, uint32_t add
 {
     DRV_GD25Q32_Status status;
     uint32_t page_remaining;
+    uint32_t start_cycles;
 
     if ((dev == NULL) || (data == NULL) || (length == 0U) ||
         (length > DRV_GD25Q32_PAGE_SIZE)) {
@@ -642,6 +655,8 @@ DRV_GD25Q32_Status DRV_GD25Q32_PageProgram(DRV_GD25Q32_Device *dev, uint32_t add
     if (dev->dma_state != DRV_GD25Q32_DMA_IDLE) {
         return DRV_GD25Q32_BUSY;
     }
+
+    start_cycles = DRV_GD25Q32_TimingProbe_StartCycles();
 
     status = gd25q32_wait_while_busy(dev, GD25Q32_DEFAULT_TIMEOUT_MS);
     if (status != DRV_GD25Q32_OK) { return status; }
@@ -668,7 +683,12 @@ DRV_GD25Q32_Status DRV_GD25Q32_PageProgram(DRV_GD25Q32_Device *dev, uint32_t add
         return gd25q32_from_hal_status(hal_status);
     }
 
-    return gd25q32_wait_while_busy(dev, GD25Q32_PROGRAM_TIMEOUT_MS);
+    status = gd25q32_wait_while_busy(dev, GD25Q32_PROGRAM_TIMEOUT_MS);
+    if (status == DRV_GD25Q32_OK) {
+        DRV_GD25Q32_TimingProbe_RecordPage(
+            DRV_GD25Q32_TimingProbe_ElapsedUs(start_cycles));
+    }
+    return status;
 }
 
 DRV_GD25Q32_Status DRV_GD25Q32_WriteData(DRV_GD25Q32_Device *dev, uint32_t address,

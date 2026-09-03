@@ -29,6 +29,7 @@ Readers search category roots recursively. Files with no trustworthy date token 
 | `calibration/flow_range/YYYY-MM-DD/` | 光流/组合测距坐标、比例、零偏与旋转补偿的地面采样证据 | Ground-station 光流/测距校准页 |
 | `telemetry/YYYY-MM-DD/` | Ad-hoc barometer/GPS exports | Ground-station panel |
 | `analysis/.../YYYY-MM-DD/` | Derived reports and Rerun artifacts | Offline analysis tools |
+| `analysis/flight_log_flash_timing/YYYY-MM-DD/` | GD25Q32 page-program/block-erase timing captures and throughput decisions | R-M1-3 Flash timing probe |
 | `logs/.../YYYY-MM-DD/` | Miscellaneous local runtime logs | Manual diagnostics |
 | `firmware_updates/YYYY-MM-DD/` | USB ROM DFU programming/verification logs | Ground-station firmware-update page |
 

@@ -52,6 +52,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Driver/Src/drv_imu_calibration.c
     Driver/Src/drv_baro.c
     Driver/Src/drv_gd25q32.c
+    Driver/Src/drv_gd25q32_timing_probe.c
     Driver/Src/drv_mag.c
     Driver/Src/drv_gps.c
     Driver/Src/drv_servo.c
