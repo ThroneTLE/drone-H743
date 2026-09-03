@@ -56,22 +56,33 @@ def _send_command(
     timeout_s: float,
     transcript: list[dict[str, Any]],
 ) -> list[str]:
-    reader.transport.reset_input()
     reader.transport.write_line(command)
-    deadline = time.monotonic() + timeout_s
+    started_at = time.monotonic()
+    deadline = started_at + timeout_s
+    nudge_at = started_at + min(0.5, timeout_s / 2.0)
     lines: list[str] = []
     matched_at: float | None = None
+    flush_sent = False
 
-    while time.monotonic() < deadline:
+    while True:
         for line in reader.poll():
             lines.append(line)
             if line.startswith(prefixes):
                 matched_at = time.monotonic()
         if matched_at is not None and time.monotonic() - matched_at >= 0.15:
             break
+        if not flush_sent and matched_at is None and time.monotonic() >= nudge_at:
+            # Some CDC sessions release a queued reply only after the next
+            # received line.  PING is non-mutating and avoids repeating a
+            # destructive scratch command whose first execution may have
+            # completed successfully.
+            reader.transport.write_line("PING")
+            flush_sent = True
+        if time.monotonic() >= deadline:
+            break
 
     matched = [line for line in lines if line.startswith(prefixes)]
-    transcript.append({"command": command, "lines": matched})
+    transcript.append({"command": command, "lines": matched, "flush_sent": flush_sent})
     if not matched:
         raise RuntimeError(f"no {prefixes!r} response for {command!r}")
     return matched

@@ -2,6 +2,7 @@
 
 from pathlib import Path
 import importlib.util
+import sys
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -10,6 +11,18 @@ ROOT = Path(__file__).resolve().parents[1]
 def _load_analysis():
     path = ROOT / "tools/flash_timing_analysis.py"
     spec = importlib.util.spec_from_file_location("flash_timing_analysis", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _load_capture():
+    tools = str(ROOT / "tools")
+    if tools not in sys.path:
+        sys.path.insert(0, tools)
+    path = ROOT / "tools/flash_timing_capture.py"
+    spec = importlib.util.spec_from_file_location("flash_timing_capture_test", path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -190,3 +203,54 @@ def test_queue_peak_model_includes_unaligned_region_fringe_and_startup() -> None
     assert result["comfort_limit"] == 24
     assert result["peak_records"] > 0
     assert result["overflow_records"] >= 0
+
+
+def test_capture_nudges_delayed_reply_without_repeating_destructive_command(monkeypatch) -> None:
+    capture = _load_capture()
+
+    class FakeTime:
+        now = 0.0
+
+        @classmethod
+        def monotonic(cls):
+            cls.now += 0.1
+            return cls.now
+
+    class FakeTransport:
+        def __init__(self):
+            self.writes = []
+
+        def write_line(self, line):
+            self.writes.append(line)
+
+        def reset_input(self):
+            raise AssertionError("a delayed valid reply must not be discarded")
+
+    class FakeReader:
+        def __init__(self):
+            self.transport = FakeTransport()
+            self.delivered = False
+
+        def poll(self):
+            if "PING" in self.transport.writes and not self.delivered:
+                self.delivered = True
+                return ["FLASH scratch_test erase_st=0 match=1"]
+            return []
+
+    monkeypatch.setattr(capture, "time", FakeTime)
+    reader = FakeReader()
+    transcript = []
+    lines = capture._send_command(
+        reader,
+        "FLASH SCRATCH TEST 0x010000 4",
+        ("FLASH scratch_test",),
+        2.0,
+        transcript,
+    )
+
+    assert reader.transport.writes == [
+        "FLASH SCRATCH TEST 0x010000 4",
+        "PING",
+    ]
+    assert lines == ["FLASH scratch_test erase_st=0 match=1"]
+    assert transcript[0]["flush_sent"] is True
