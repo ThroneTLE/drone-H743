@@ -580,6 +580,31 @@ def test_param_card_refresh_drives_the_state_from_telemetry(app) -> None:
     assert "2.5" in card.value_var.get()
 
 
+def test_param_card_refresh_survives_a_tcl_only_combobox_popdown_focus(
+    app, monkeypatch,
+) -> None:
+    """打开 ttk 下拉框时，内部 popdown 没有对应的 Tkinter Widget。"""
+    card = param_card(app, "roll_rate_kd")
+    tracker = card.tracker
+    assert tracker is not None
+    tracker.note_echo(2.5, time.monotonic())
+
+    combo = app._serial_port_combo
+    popdown = str(app.tk.call("ttk::combobox::PopdownWindow", str(combo)))
+    listbox = f"{popdown}.f.l"
+    assert "popdown" not in combo.children
+    with pytest.raises(KeyError, match="popdown"):
+        app.nametowidget(listbox)
+
+    def tcl_only_focus_get():
+        raise KeyError("popdown")
+
+    monkeypatch.setattr(card.frame, "focus_get", tcl_only_focus_get)
+    card.refresh()
+
+    assert card.entry_var.get() == "2.5"
+
+
 def test_param_card_marks_only_a_flight_controller_echo_green(app) -> None:
     """绿色只能由遥测回显触发，不能由本机 send_param 成功触发。"""
     card = param_card(app, "roll_rate_kd")

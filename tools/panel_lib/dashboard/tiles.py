@@ -683,7 +683,12 @@ class ParamTile(DashboardTile):
             PARAM_STATE_CONFIRMED: DASH_METRIC_PASS_STYLE,
             PARAM_STATE_DIVERGED: DASH_METRIC_FAIL_STYLE,
         }.get(state, DASH_METRIC_STYLE))
-        if value is not None and self.entry is not self.frame.focus_get():
+        # ttk 的下拉列表是 Tcl 内部窗口（路径含 ``popdown``），不在
+        # Tkinter 的 children 表里；focus_get() 会尝试反解成 Python Widget
+        # 并抛 KeyError。这里只需判断输入框自身是否持有焦点，比较原始 Tcl
+        # 路径既保留“编辑中不覆盖”，也能安全容纳所有 Tcl-only 窗口。
+        focused_path = str(self.frame.tk.call("focus"))
+        if value is not None and focused_path != str(self.entry):
             self.entry_var.set(f"{value:.6g}")
 
 
