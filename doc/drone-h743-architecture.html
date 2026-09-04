@@ -1,0 +1,1268 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>drone-H743 架构学习与调试地图</title>
+  <!-- 工程内长期入口：doc/drone-h743-architecture.html -->
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #07100f;
+      --panel: #0d1917;
+      --panel-2: #12211e;
+      --ink: #e7f0e9;
+      --muted: #91a49d;
+      --line: #263a35;
+      --cyan: #62e6d0;
+      --amber: #ffbd62;
+      --green: #8bdc7b;
+      --red: #ff7979;
+      --blue: #72a8ff;
+      --violet: #c297ff;
+      --shadow: 0 18px 50px rgba(0,0,0,.32);
+      --radius: 18px;
+      font-family: "Bahnschrift", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      min-width: 320px;
+      background:
+        linear-gradient(rgba(98,230,208,.035) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(98,230,208,.035) 1px, transparent 1px),
+        radial-gradient(circle at 15% -10%, rgba(98,230,208,.14), transparent 32%),
+        radial-gradient(circle at 95% 5%, rgba(255,189,98,.11), transparent 26%),
+        var(--bg);
+      background-size: 28px 28px, 28px 28px, auto, auto, auto;
+      color: var(--ink);
+    }
+    button, input { font: inherit; }
+    button { color: inherit; }
+    .app { min-height: 100vh; }
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      display: grid;
+      grid-template-columns: minmax(260px, 1fr) auto;
+      gap: 24px;
+      align-items: end;
+      padding: 22px clamp(18px, 3vw, 42px) 16px;
+      border-bottom: 1px solid rgba(98,230,208,.16);
+      background: rgba(7,16,15,.9);
+      backdrop-filter: blur(18px);
+    }
+    .eyebrow {
+      color: var(--cyan);
+      font: 500 12px/1.2 Consolas, monospace;
+      letter-spacing: .16em;
+      text-transform: uppercase;
+    }
+    h1 { margin: 5px 0 4px; font-size: clamp(24px, 3.1vw, 42px); line-height: 1.05; font-weight: 500; letter-spacing: -.035em; }
+    .subtitle { margin: 0; color: var(--muted); font-size: 14px; }
+    .snapshot { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      min-height: 30px;
+      padding: 5px 9px;
+      border: 1px solid var(--line);
+      background: rgba(13,25,23,.82);
+      border-radius: 999px;
+      color: var(--muted);
+      font: 400 12px/1 Consolas, monospace;
+    }
+    .chip::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--cyan); box-shadow: 0 0 12px rgba(98,230,208,.7); }
+    .chip.warn::before { background: var(--amber); box-shadow: 0 0 12px rgba(255,189,98,.7); }
+    .shell { display: grid; grid-template-columns: 220px minmax(0,1fr); }
+    .nav {
+      position: sticky;
+      top: 105px;
+      align-self: start;
+      height: calc(100vh - 105px);
+      padding: 24px 16px 32px 24px;
+      border-right: 1px solid rgba(98,230,208,.12);
+    }
+    .nav-label { margin: 0 10px 10px; color: var(--muted); font: 500 11px/1.2 Consolas, monospace; letter-spacing: .12em; }
+    .nav button {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-height: 44px;
+      padding: 9px 11px;
+      border: 0;
+      border-radius: 10px;
+      background: transparent;
+      text-align: left;
+      cursor: pointer;
+    }
+    .nav button:hover { background: rgba(98,230,208,.07); }
+    .nav button.active { color: #05110f; background: var(--cyan); }
+    .nav-num { font: 500 11px/1 Consolas, monospace; opacity: .7; }
+    .nav-help { margin: 24px 10px 0; padding-top: 18px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; line-height: 1.55; }
+    main { min-width: 0; padding: 28px clamp(18px,3vw,44px) 70px; }
+    .view { display: none; animation: reveal .35s ease; }
+    .view.active { display: block; }
+    @keyframes reveal { from { opacity: 0; transform: translateY(7px); } to { opacity: 1; transform: none; } }
+    .section-head { display: flex; justify-content: space-between; gap: 18px; align-items: end; margin-bottom: 20px; }
+    .section-head h2 { margin: 0 0 5px; font-size: clamp(22px, 2.4vw, 32px); font-weight: 500; letter-spacing: -.025em; }
+    .section-head p { max-width: 780px; margin: 0; color: var(--muted); line-height: 1.6; }
+    .legend { display: flex; flex-wrap: wrap; gap: 12px; color: var(--muted); font-size: 12px; }
+    .legend span { display: inline-flex; align-items: center; gap: 6px; }
+    .dot { width: 8px; height: 8px; border-radius: 2px; background: var(--cyan); }
+    .dot.sensing { background: #4fe0c1; }
+    .dot.estimate { background: #63b3ff; }
+    .dot.control { background: #ffbd62; }
+    .dot.actuation { background: #ff7979; }
+    .dot.comms { background: #ad8cff; }
+    .dot.storage { background: #f09be0; }
+    .dot.platform { background: #8bdc7b; }
+    .dot.ground { background: #f3df78; }
+    .notice {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 12px;
+      margin-bottom: 22px;
+      padding: 14px 16px;
+      border-left: 3px solid var(--amber);
+      background: linear-gradient(90deg, rgba(255,189,98,.1), transparent);
+      color: #e9d3ad;
+      line-height: 1.55;
+    }
+    .notice strong { color: var(--amber); font-weight: 500; }
+    .system-controls { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+    .system-controls button {
+      min-height: 38px;
+      padding: 8px 12px;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      background: var(--panel);
+      cursor: pointer;
+    }
+    .system-controls button { --path-color: var(--cyan); }
+    .system-controls button[data-system-path="main"] { --path-color: #f3df78; }
+    .system-controls button[data-system-path="estimate"] { --path-color: #63b3ff; }
+    .system-controls button[data-system-path="control"] { --path-color: #ffbd62; }
+    .system-controls button[data-system-path="comms"] { --path-color: #ad8cff; }
+    .system-controls button[data-system-path="storage"] { --path-color: #f09be0; }
+    .system-controls button.active { color: #05110f; background: var(--path-color); border-color: var(--path-color); }
+    .category-legend { display: flex; flex-wrap: wrap; gap: 8px 15px; margin: -4px 0 17px; color: var(--muted); font-size: 11px; }
+    .category-legend span { display: inline-flex; align-items: center; gap: 6px; }
+    .px4-map {
+      position: relative;
+      padding: 18px;
+      border: 1px solid rgba(98,230,208,.2);
+      border-radius: 16px;
+      background: rgba(5,13,12,.72);
+      box-shadow: inset 0 0 60px rgba(98,230,208,.025);
+    }
+    .system-zone { position: relative; padding: 14px; border: 1px solid var(--line); border-radius: 13px; }
+    .system-zone + .system-arrow { margin: 8px 0; }
+    .zone-external { background: linear-gradient(90deg, rgba(255,189,98,.065), transparent); }
+    .zone-flight-controller { padding-top: 42px; background: linear-gradient(180deg, rgba(98,230,208,.045), transparent); }
+    .zone-title {
+      position: absolute;
+      left: 14px;
+      top: 11px;
+      color: var(--cyan);
+      font: 500 11px/1.2 Consolas, monospace;
+      letter-spacing: .13em;
+      text-transform: uppercase;
+    }
+    .system-row { display: grid; grid-template-columns: 122px minmax(0,1fr); gap: 12px; align-items: stretch; }
+    .system-row + .system-arrow, .system-arrow + .system-row { margin-top: 9px; }
+    .row-label {
+      display: flex;
+      align-items: center;
+      color: var(--muted);
+      font: 500 11px/1.45 Consolas, "Microsoft YaHei", sans-serif;
+      letter-spacing: .06em;
+    }
+    .row-nodes { display: grid; grid-template-columns: repeat(var(--cols, 4), minmax(0,1fr)); gap: 8px; }
+    .sys-node {
+      --kind-color: var(--line);
+      min-height: 66px;
+      padding: 10px;
+      border: 1px solid color-mix(in srgb, var(--kind-color) 40%, var(--line));
+      border-left: 3px solid var(--kind-color);
+      border-radius: 10px;
+      background: linear-gradient(90deg, color-mix(in srgb, var(--kind-color) 8%, transparent), rgba(13,25,23,.92) 38%);
+      text-align: left;
+      cursor: pointer;
+      transition: opacity .18s ease, border-color .18s ease, background .18s ease, transform .18s ease;
+    }
+    .sys-node[data-kind="sensing"] { --kind-color: #4fe0c1; }
+    .sys-node[data-kind="estimate"] { --kind-color: #63b3ff; }
+    .sys-node[data-kind="control"] { --kind-color: #ffbd62; }
+    .sys-node[data-kind="actuation"] { --kind-color: #ff7979; }
+    .sys-node[data-kind="comms"] { --kind-color: #ad8cff; }
+    .sys-node[data-kind="storage"] { --kind-color: #f09be0; }
+    .sys-node[data-kind="platform"] { --kind-color: #8bdc7b; }
+    .sys-node[data-kind="ground"] { --kind-color: #f3df78; }
+    .sys-node:hover { transform: translateY(-2px); border-color: var(--kind-color); }
+    .sys-node b { display: block; margin-bottom: 4px; font: 500 12px/1.3 Consolas, "Microsoft YaHei", sans-serif; }
+    .sys-node small { display: block; color: var(--muted); font-size: 11px; line-height: 1.35; }
+    .sys-node.sys-active { border-color: var(--kind-color); background: color-mix(in srgb, var(--kind-color) 17%, var(--panel)); box-shadow: 0 0 22px color-mix(in srgb, var(--kind-color) 14%, transparent); }
+    .sys-node.sys-dim { opacity: .2; }
+    .system-arrow {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 10px;
+      min-height: 25px;
+      color: var(--cyan);
+      font: 500 11px/1.3 Consolas, "Microsoft YaHei", sans-serif;
+      text-align: center;
+    }
+    .system-arrow::before, .system-arrow::after { content: ""; width: min(90px,12vw); height: 1px; background: currentColor; opacity: .45; }
+    .system-arrow.async { color: var(--blue); }
+    .system-arrow.command { color: var(--amber); }
+    .fabric {
+      display: grid;
+      grid-template-columns: 122px minmax(0,1fr);
+      gap: 12px;
+      align-items: center;
+      margin: 11px 0;
+    }
+    .fabric-line {
+      display: grid;
+      grid-template-columns: repeat(4,minmax(0,1fr));
+      gap: 8px;
+      padding: 9px;
+      border: 1px dashed rgba(114,168,255,.55);
+      border-radius: 10px;
+      background: rgba(114,168,255,.055);
+    }
+    .fabric-line button { min-height: 45px; padding: 7px; border: 0; border-left: 2px solid #8bdc7b; background: rgba(139,220,123,.035); color: #b9cff6; font: 500 11px/1.35 Consolas, "Microsoft YaHei", sans-serif; cursor: pointer; }
+    .fabric-line button:hover { color: var(--ink); background: rgba(114,168,255,.08); border-radius: 7px; }
+    .system-note { margin: 14px 2px 0; color: var(--muted); font-size: 12px; line-height: 1.55; }
+    .system-note strong { color: var(--amber); font-weight: 500; }
+    .px4-map { display: none; }
+    .logic-graph-wrap {
+      position: relative;
+      overflow-x: auto;
+      border: 1px solid rgba(98,230,208,.2);
+      border-radius: 15px;
+      background:
+        linear-gradient(rgba(98,230,208,.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(98,230,208,.03) 1px, transparent 1px),
+        rgba(5,13,12,.82);
+      background-size: 24px 24px;
+      box-shadow: inset 0 0 80px rgba(98,230,208,.025);
+    }
+    .logic-graph { display: block; width: clamp(1180px, 100%, 1580px); height: auto; margin: 0 auto; }
+    .graph-zone { fill: rgba(13,25,23,.46); stroke: rgba(98,230,208,.18); stroke-width: 1; }
+    .graph-zone.ground { fill: rgba(243,223,120,.025); stroke: rgba(243,223,120,.18); }
+    .graph-zone.hardware { fill: rgba(255,121,121,.02); stroke: rgba(255,121,121,.16); }
+    .graph-zone-title { fill: #91a49d; font: 500 12px Consolas, monospace; letter-spacing: 1.5px; }
+    .graph-node { cursor: pointer; transition: opacity .18s ease; }
+    .graph-node rect { fill: #0d1917; stroke: var(--node-color); stroke-width: 1.4; rx: 9; }
+    .graph-node .node-accent { fill: var(--node-color); stroke: none; }
+    .graph-node .node-kind { fill: var(--node-color); font: 500 9px Consolas, monospace; letter-spacing: 1px; }
+    .graph-node .node-title { fill: #e7f0e9; font: 500 13px Consolas, "Microsoft YaHei", sans-serif; }
+    .graph-node .node-sub { fill: #91a49d; font: 400 10px Consolas, "Microsoft YaHei", sans-serif; }
+    .graph-node:hover rect, .graph-node.graph-active rect { stroke-width: 2.4; filter: drop-shadow(0 0 8px color-mix(in srgb, var(--node-color) 42%, transparent)); }
+    .graph-node.graph-dim { opacity: .13; }
+    .graph-edge { fill: none; stroke: var(--edge-color); stroke-width: 1.7; opacity: .72; transition: opacity .18s ease, stroke-width .18s ease; }
+    .graph-edge.async { stroke-dasharray: 7 5; }
+    .graph-edge.observe { stroke-dasharray: 2 5; }
+    .graph-edge.graph-active { opacity: 1; stroke-width: 3; }
+    .graph-edge.graph-dim, .edge-label.graph-dim { opacity: .08; }
+    .edge-label { fill: #aebdb8; font: 500 9px Consolas, "Microsoft YaHei", sans-serif; paint-order: stroke; stroke: #07100f; stroke-width: 5px; stroke-linejoin: round; transition: opacity .18s ease; }
+    .graph-legend-line { width: 26px; height: 0; border-top: 2px solid var(--cyan); }
+    .graph-legend-line.async { border-top-style: dashed; border-color: var(--blue); }
+    .graph-legend-line.observe { border-top-style: dotted; border-color: var(--violet); }
+    .graph-callout { fill: #ffbd62; font: 500 10px Consolas, "Microsoft YaHei", sans-serif; }
+    .flow-toolbar, .filters { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 20px; }
+    .flow-toolbar button, .filters button, .action-btn {
+      min-height: 38px;
+      padding: 8px 12px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--panel);
+      cursor: pointer;
+    }
+    .flow-toolbar button:hover, .filters button:hover, .action-btn:hover { border-color: var(--cyan); }
+    .flow-toolbar button.active, .filters button.active { background: var(--cyan); border-color: var(--cyan); color: #05110f; }
+    .architecture {
+      position: relative;
+      display: grid;
+      grid-template-columns: repeat(7, minmax(145px, 1fr));
+      gap: 14px;
+      align-items: stretch;
+    }
+    .layer-column {
+      position: relative;
+      min-width: 0;
+      padding: 0 0 12px;
+      border-top: 3px solid var(--layer-color);
+      background: linear-gradient(180deg, color-mix(in srgb, var(--layer-color) 10%, transparent), transparent 145px);
+    }
+    .layer-column::after {
+      content: "→";
+      position: absolute;
+      z-index: 0;
+      top: 30px;
+      right: -14px;
+      color: var(--line);
+      font: 500 18px/1 Consolas, monospace;
+    }
+    .layer-column:last-child::after { display: none; }
+    .layer-head {
+      width: 100%;
+      min-height: 74px;
+      padding: 13px 10px 11px;
+      border: 0;
+      background: transparent;
+      text-align: left;
+      cursor: pointer;
+    }
+    .layer-kicker { color: var(--layer-color); font: 500 10px/1.2 Consolas, monospace; letter-spacing: .12em; }
+    .layer-title { display: block; margin: 5px 0 3px; font-size: 18px; font-weight: 500; }
+    .layer-rule { display: block; color: var(--muted); font-size: 11px; line-height: 1.3; }
+    .module-stack { display: grid; gap: 8px; }
+    .module-node {
+      position: relative;
+      min-height: 64px;
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: rgba(13,25,23,.88);
+      text-align: left;
+      cursor: pointer;
+      transition: transform .18s ease, border-color .18s ease, opacity .18s ease, background .18s ease;
+    }
+    .module-node:hover { transform: translateY(-2px); border-color: var(--layer-color); background: var(--panel-2); }
+    .module-node b { display: block; margin-bottom: 4px; font: 500 12px/1.25 Consolas, "Microsoft YaHei", sans-serif; color: var(--ink); overflow-wrap: anywhere; }
+    .module-node small { display: block; color: var(--muted); font-size: 11px; line-height: 1.35; }
+    .module-node.highlight { border-color: var(--layer-color); box-shadow: 0 0 0 1px color-mix(in srgb, var(--layer-color) 24%, transparent), 0 9px 28px rgba(0,0,0,.2); background: color-mix(in srgb, var(--layer-color) 10%, var(--panel)); }
+    .module-node.dim { opacity: .22; }
+    .flow-story {
+      display: grid;
+      grid-template-columns: minmax(0, 1.4fr) minmax(280px,.6fr);
+      gap: 18px;
+      margin-top: 20px;
+      padding-top: 18px;
+      border-top: 1px solid var(--line);
+    }
+    .flow-steps { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .flow-step { display: inline-flex; align-items: center; gap: 8px; color: var(--ink); }
+    .flow-step button { padding: 7px 9px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: inherit; cursor: pointer; }
+    .flow-step::after { content: "→"; color: var(--amber); }
+    .flow-step:last-child::after { content: ""; }
+    .flow-explain { color: var(--muted); font-size: 13px; line-height: 1.55; }
+    .task-board { display: grid; gap: 10px; }
+    .task-row {
+      display: grid;
+      grid-template-columns: minmax(145px, .7fr) minmax(210px, 1.2fr) minmax(250px, 2.2fr);
+      gap: 16px;
+      align-items: center;
+      padding: 13px 0;
+      border-bottom: 1px solid var(--line);
+    }
+    .task-name button { padding: 0; border: 0; background: transparent; color: var(--cyan); font-weight: 500; cursor: pointer; text-align: left; }
+    .task-meta { color: var(--muted); font: 12px/1.5 Consolas, monospace; }
+    .rate-track { position: relative; height: 36px; background: rgba(145,164,157,.08); border-radius: 7px; overflow: hidden; }
+    .rate-fill { position: absolute; inset: 0 auto 0 0; width: var(--w); background: linear-gradient(90deg, rgba(98,230,208,.25), rgba(98,230,208,.85)); }
+    .rate-text { position: relative; z-index: 1; display: flex; justify-content: space-between; gap: 10px; align-items: center; height: 100%; padding: 0 10px; font: 500 12px/1 Consolas, monospace; }
+    .handoff-map { margin-top: 28px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+    .handoff { padding: 14px; border-left: 2px solid var(--blue); background: linear-gradient(90deg, rgba(114,168,255,.09), transparent); }
+    .handoff b { display: block; margin-bottom: 5px; font-weight: 500; }
+    .handoff p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+    .search-row { display: grid; grid-template-columns: minmax(220px, 430px) 1fr; gap: 16px; align-items: center; margin-bottom: 18px; }
+    .search-row input {
+      width: 100%;
+      min-height: 44px;
+      padding: 10px 13px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--panel);
+      color: var(--ink);
+      outline: none;
+    }
+    .search-row input:focus { border-color: var(--cyan); box-shadow: 0 0 0 3px rgba(98,230,208,.12); }
+    .index-snapshot {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 14px;
+      align-items: center;
+      margin: -2px 0 16px;
+      padding: 11px 13px;
+      border-left: 2px solid var(--cyan);
+      background: linear-gradient(90deg, rgba(98,230,208,.09), transparent 72%);
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+    .index-snapshot b { color: var(--ink); font-weight: 500; }
+    .index-snapshot code { color: var(--cyan); }
+    .index-mode { display: inline-flex; gap: 4px; padding: 4px; border: 1px solid var(--line); border-radius: 10px; background: rgba(7,16,14,.72); }
+    .index-mode button { min-height: 34px; padding: 7px 11px; border: 0; border-radius: 7px; background: transparent; color: var(--muted); cursor: pointer; }
+    .index-mode button.active { background: var(--cyan); color: #07100e; }
+    .module-index { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 12px; }
+    .index-item {
+      min-height: 128px;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 13px;
+      background: rgba(13,25,23,.72);
+      cursor: pointer;
+      text-align: left;
+      transition: border-color .18s ease, transform .18s ease;
+    }
+    .index-item:hover { transform: translateY(-2px); border-color: var(--item-color); }
+    .index-layer { color: var(--item-color); font: 500 10px/1.2 Consolas, monospace; letter-spacing: .12em; }
+    .index-item h3 { margin: 8px 0 7px; font: 500 15px/1.3 Consolas, "Microsoft YaHei", sans-serif; overflow-wrap: anywhere; }
+    .index-item p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+    .source-index { display: grid; gap: 14px; }
+    .source-group { border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: rgba(8,18,16,.55); }
+    .source-group-head { display: flex; justify-content: space-between; gap: 12px; align-items: center; padding: 12px 14px; border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--group-color) 8%, transparent); }
+    .source-group-head b { color: var(--group-color); font: 500 13px/1.2 Consolas, "Microsoft YaHei", sans-serif; }
+    .source-group-head span { color: var(--muted); font: 11px/1 Consolas, monospace; }
+    .source-list { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); }
+    .source-item { position: relative; display: grid; grid-template-columns: minmax(150px,.78fr) minmax(0,1.5fr); gap: 14px; min-height: 84px; padding: 13px 14px; border: 0; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); background: transparent; color: var(--ink); text-align: left; cursor: pointer; }
+    .source-item:nth-child(2n) { border-right: 0; }
+    .source-item:hover { background: color-mix(in srgb, var(--group-color) 7%, transparent); }
+    .source-item b { display: block; margin-bottom: 5px; color: var(--group-color); font: 500 13px/1.3 Consolas, "Microsoft YaHei", sans-serif; overflow-wrap: anywhere; }
+    .source-item code { color: #b8cac4; font: 10px/1.45 Consolas, monospace; overflow-wrap: anywhere; }
+    .source-item p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.55; }
+    .source-change { display: inline-block; margin-top: 6px; padding: 3px 6px; border: 1px solid color-mix(in srgb, var(--group-color) 35%, var(--line)); border-radius: 999px; color: var(--group-color); font: 10px/1 Consolas, monospace; }
+    .debug-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 12px; }
+    .symptom {
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: rgba(13,25,23,.75);
+      cursor: pointer;
+      text-align: left;
+    }
+    .symptom:hover { border-color: var(--amber); }
+    .symptom b { display: block; font-size: 16px; font-weight: 500; margin-bottom: 7px; }
+    .symptom span { color: var(--muted); font-size: 12px; line-height: 1.5; }
+    .debug-route { margin-top: 22px; padding-top: 20px; border-top: 1px solid var(--line); }
+    .debug-route h3 { margin: 0 0 6px; font-size: 21px; font-weight: 500; }
+    .debug-route > p { margin: 0 0 18px; color: var(--muted); }
+    .debug-step {
+      display: grid;
+      grid-template-columns: 38px minmax(150px,.7fr) minmax(0,2fr);
+      gap: 12px;
+      align-items: start;
+      padding: 13px 0;
+      border-bottom: 1px solid var(--line);
+    }
+    .debug-step .n { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: var(--amber); color: #171006; font: 500 12px/1 Consolas, monospace; }
+    .debug-step button { padding: 0; border: 0; background: transparent; color: var(--cyan); text-align: left; cursor: pointer; }
+    .debug-step p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.55; }
+    .drawer-backdrop { position: fixed; inset: 0; z-index: 40; background: rgba(0,0,0,.55); opacity: 0; pointer-events: none; transition: opacity .2s ease; }
+    .drawer-backdrop.open { opacity: 1; pointer-events: auto; }
+    .drawer {
+      position: fixed;
+      z-index: 41;
+      top: 0;
+      right: 0;
+      width: min(560px, 94vw);
+      height: 100vh;
+      overflow-y: auto;
+      padding: 24px clamp(20px,3vw,34px) 48px;
+      border-left: 1px solid var(--line);
+      background: #0a1513;
+      box-shadow: var(--shadow);
+      transform: translateX(102%);
+      transition: transform .25s ease;
+    }
+    .drawer.open { transform: none; }
+    .drawer-close { float: right; width: 42px; height: 42px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); cursor: pointer; }
+    .drawer-kicker { margin-top: 45px; color: var(--drawer-color, var(--cyan)); font: 500 11px/1.2 Consolas, monospace; letter-spacing: .13em; }
+    .drawer h2 { margin: 8px 0 9px; font: 500 clamp(24px,4vw,36px)/1.1 Consolas, "Microsoft YaHei", sans-serif; overflow-wrap: anywhere; }
+    .drawer-summary { margin: 0; color: #c8d7d1; font-size: 15px; line-height: 1.65; }
+    .meta-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; margin: 18px 0 22px; }
+    .meta { padding: 11px; background: var(--panel); border-radius: 9px; }
+    .meta span { display: block; color: var(--muted); font-size: 10px; letter-spacing: .08em; }
+    .meta b { display: block; margin-top: 5px; font: 500 12px/1.4 Consolas, monospace; overflow-wrap: anywhere; }
+    .drawer h3 { margin: 23px 0 8px; color: var(--drawer-color, var(--amber)); font-size: 13px; font-weight: 500; letter-spacing: .08em; }
+    .drawer ul { margin: 0; padding-left: 19px; color: #c7d4cf; line-height: 1.65; font-size: 13px; }
+    .io-list { display: flex; flex-wrap: wrap; gap: 7px; }
+    .io-list span { padding: 6px 8px; border: 1px solid var(--line); border-radius: 7px; color: var(--muted); font: 12px/1.2 Consolas, "Microsoft YaHei", sans-serif; }
+    .files { padding: 11px 12px; border-left: 2px solid var(--drawer-color, var(--cyan)); background: color-mix(in srgb, var(--drawer-color, var(--cyan)) 6%, transparent); color: #b8cac4; font: 12px/1.65 Consolas, monospace; overflow-wrap: anywhere; white-space: pre-line; }
+    .submods { display: grid; gap: 8px; }
+    .submod { width: 100%; padding: 11px 12px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel); text-align: left; cursor: pointer; }
+    .submod b { display: block; font: 500 12px/1.3 Consolas, "Microsoft YaHei", sans-serif; }
+    .submod span { display: block; margin-top: 4px; color: var(--muted); font-size: 12px; line-height: 1.45; }
+    .empty { grid-column: 1/-1; padding: 30px 0; color: var(--muted); }
+    footer { margin-top: 42px; padding-top: 18px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; line-height: 1.55; }
+    @media (max-width: 1180px) {
+      .architecture { grid-template-columns: repeat(3, minmax(180px,1fr)); }
+      .layer-column::after { display: none; }
+      .module-index { grid-template-columns: repeat(2,minmax(0,1fr)); }
+      .handoff-map { grid-template-columns: repeat(2,1fr); }
+    }
+    @media (max-width: 820px) {
+      .topbar { grid-template-columns: 1fr; }
+      .snapshot { justify-content: flex-start; }
+      .shell { display: block; }
+      .nav { position: sticky; top: 130px; z-index: 12; height: auto; padding: 8px 14px; border-right: 0; border-bottom: 1px solid var(--line); background: rgba(7,16,15,.94); overflow-x: auto; display: flex; gap: 5px; }
+      .nav-label, .nav-help { display: none; }
+      .nav button { width: auto; min-width: max-content; }
+      .flow-story { grid-template-columns: 1fr; }
+      .task-row { grid-template-columns: 1fr; gap: 7px; }
+      .debug-grid { grid-template-columns: 1fr; }
+      .system-row, .fabric { grid-template-columns: 1fr; }
+      .row-label { padding-top: 4px; }
+    }
+    @media (max-width: 620px) {
+      .architecture, .module-index, .handoff-map { grid-template-columns: 1fr; }
+      .source-list { grid-template-columns: 1fr; }
+      .source-item { border-right: 0; }
+      .section-head, .search-row { display: block; }
+      .legend, .filters { margin-top: 12px; }
+      .debug-step { grid-template-columns: 34px 1fr; }
+      .debug-step p { grid-column: 2; }
+      .meta-grid { grid-template-columns: 1fr; }
+      main { padding-top: 22px; }
+      .row-nodes, .fabric-line { grid-template-columns: 1fr 1fr; }
+    }
+    @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; animation: none !important; transition: none !important; } }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div>
+        <div class="eyebrow">STM32H743 · 系统架构图 / 当前工作树快照</div>
+        <h1>飞控架构学习与调试地图</h1>
+        <p class="subtitle">从硬件信号到控制输出：点开任意层和模块，沿真实调用链理解“数据从哪来、在哪里变、出了问题先查哪”。</p>
+      </div>
+      <div class="snapshot" aria-label="当前架构快照摘要">
+        <span class="chip">IMU 1 kHz</span>
+        <span class="chip">控制 500 Hz</span>
+        <span class="chip">遥测默认 40 Hz</span>
+        <span class="chip warn">主线 M5</span>
+        <span class="chip warn">FLU 迁移边界 0 / 6</span>
+      </div>
+    </header>
+
+    <div class="shell">
+      <nav class="nav" aria-label="页面视图">
+        <div class="nav-label">学习视图</div>
+        <button class="active" data-view="system"><span class="nav-num">01</span>PX4 式整体架构</button>
+        <button data-view="overview"><span class="nav-num">02</span>分层与数据流</button>
+        <button data-view="tasks"><span class="nav-num">03</span>任务与速率</button>
+        <button data-view="modules"><span class="nav-num">04</span>目录索引</button>
+        <button data-view="debug"><span class="nav-num">05</span>调试路线</button>
+        <p class="nav-help">建议顺序：先看全景，再选一条数据流；遇到问题时直接进调试路线，逐层排除，不要从算法参数开始猜。</p>
+      </nav>
+
+      <main>
+        <section id="view-system" class="view active">
+          <div class="section-head">
+            <div>
+              <h2>整体闭环：输入 → 状态估计 → 控制 → 执行器分配 → 物理执行器</h2>
+              <p>默认只保留主飞行闭环；通信、参数、日志与 RTOS 支路按上方按钮单独展开。模块全部对应 drone-H743 当前实现，点击节点继续下钻。</p>
+            </div>
+            <div class="legend"><span>方块左侧色条 = 模块类别</span></div>
+          </div>
+          <div class="system-controls" id="systemControls" aria-label="整体架构链路高亮">
+            <button class="active" data-system-path="main">主飞行闭环</button>
+            <button data-system-path="estimate">感知与估计</button>
+            <button data-system-path="control">控制闭环</button>
+            <button data-system-path="comms">通信与观测</button>
+            <button data-system-path="storage">参数与日志</button>
+            <button data-system-path="all">全部连接</button>
+          </div>
+          <div class="category-legend" aria-label="模块类别颜色图例">
+            <span><i class="dot sensing"></i>感知/传感器</span><span><i class="dot estimate"></i>状态估计</span><span><i class="dot control"></i>控制/安全</span><span><i class="dot actuation"></i>执行器</span><span><i class="dot comms"></i>通信</span><span><i class="dot storage"></i>存储/证据</span><span><i class="dot platform"></i>平台/运行时</span><span><i class="dot ground"></i>上位机工具</span>
+          </div>
+          <div class="category-legend" aria-label="箭头语义图例">
+            <span><i class="graph-legend-line"></i>实线：同步数据/调用</span><span><i class="graph-legend-line async"></i>虚线：队列/信号量/异步请求</span><span><i class="graph-legend-line observe"></i>点线：旁路观测/记录</span>
+          </div>
+          <div class="logic-graph-wrap">
+            <svg id="logicGraph" class="logic-graph" viewBox="0 0 1580 940" role="img" aria-labelledby="logicGraphTitle logicGraphDesc">
+              <title id="logicGraphTitle">drone-H743 节点与箭头整体架构图</title>
+              <desc id="logicGraphDesc">从地面站、遥控器和传感器，经过通信、传感处理、姿态与导航估计、参考和安全门、外环、SO3 姿态控制、保护与执行器分配，到电机和舵机的有向数据流；并包含参数、日志和后台存储旁路。</desc>
+            </svg>
+          </div>
+          <div class="px4-map">
+            <section class="system-zone zone-external">
+              <div class="zone-title" style="color:var(--amber)">GROUND / OPERATOR SIDE</div>
+              <div class="system-row" style="margin-top:28px">
+                <div class="row-label">地面与操作者</div>
+                <div class="row-nodes" style="--cols:4">
+                  <button class="sys-node" data-kind="ground" data-module="host-panel" data-system-tags="comms control storage"><b>Python Panel / Dashboard</b><small>校准、状态监视、命令、参数回显</small></button>
+                  <button class="sys-node" data-kind="control" data-module="hw-rc" data-system-tags="control"><b>ELRS 发射机 / 接收机</b><small>人工摇杆、模式与解锁意图</small></button>
+                  <button class="sys-node" data-kind="storage" data-module="host-analysis" data-system-tags="storage estimate control"><b>日志与离线分析</b><small>回放、系统辨识、同数据算法比较</small></button>
+                  <button class="sys-node" data-kind="platform" data-module="host-tests" data-system-tags="estimate control comms storage"><b>测试与构建门</b><small>pytest 契约 + Debug 固件构建</small></button>
+                </div>
+              </div>
+            </section>
+            <div class="system-arrow command">ASCII 命令 / $X 遥测 / CRSF RC / 日志导出</div>
+
+            <section class="system-zone zone-flight-controller">
+              <div class="zone-title">STM32H743 FLIGHT CONTROLLER</div>
+
+              <div class="system-row">
+                <div class="row-label">通信与系统管理<br>Middleware services</div>
+                <div class="row-nodes" style="--cols:4">
+                  <button class="sys-node" data-kind="comms" data-module="app-comms" data-system-tags="comms"><b>UART / USB / Telemetry</b><small>链路、限速、帧编码、出口选择</small></button>
+                  <button class="sys-node" data-kind="comms" data-module="app-control" data-system-tags="comms control storage"><b>Command Router</b><small>命令解析、协议分派、固件端拒绝</small></button>
+                  <button class="sys-node" data-kind="storage" data-module="svc-param" data-system-tags="storage control"><b>Parameter Service</b><small>RAM 镜像、dirty、generation、双槽保存</small></button>
+                  <button class="sys-node" data-kind="storage" data-module="app-log" data-system-tags="storage estimate control"><b>Logging / Evidence</b><small>高频捕获、飞行日志、后台导出</small></button>
+                </div>
+              </div>
+
+              <div class="fabric">
+                <div class="row-label">RTOS 数据交接<br>不是 uORB</div>
+                <div class="fabric-line">
+                  <button data-module="core-rtos">SensorQueue[8] + IMU semaphore</button>
+                  <button data-module="app-stabilizer">Seqlock / latest snapshots</button>
+                  <button data-module="app-log">Background req / resp queues</button>
+                  <button data-module="app-comms">uartTxQueue + thread flags</button>
+                </div>
+              </div>
+
+              <div class="system-row">
+                <div class="row-label">输入整形与状态估计<br>Estimation</div>
+                <div class="row-nodes" style="--cols:4">
+                  <button class="sys-node" data-kind="sensing" data-module="app-sensor" data-system-tags="estimate control"><b>Sensor Pipeline · 1 kHz</b><small>缩放、V0/V1、LPF、健康与时间戳</small></button>
+                  <button class="sys-node" data-kind="estimate" data-module="drv-fusion" data-system-tags="estimate control"><b>Attitude Estimator · ≈1 kHz</b><small>Fusion AHRS → quaternion / RPY</small></button>
+                  <button class="sys-node" data-kind="estimate" data-module="svc-flow" data-system-tags="estimate control"><b>Flow Navigation · 100 Hz / EKF</b><small>质量门、滤波、速度、位置与位移</small></button>
+                  <button class="sys-node" data-kind="control" data-module="app-rc" data-system-tags="control"><b>RC Mapping · 500 Hz</b><small>通道 → 归一化意图 / link freshness</small></button>
+                </div>
+              </div>
+              <div class="system-arrow async">状态快照 + RC 意图 + 校准参数</div>
+
+              <div class="system-row">
+                <div class="row-label">飞行控制栈<br>Guidance / Control</div>
+                <div class="row-nodes" style="--cols:4">
+                  <button class="sys-node" data-kind="control" data-module="app-stabilizer" data-system-tags="control estimate"><b>Reference & Safety</b><small>解锁四门、模式、位置/高度/偏航参考</small></button>
+                  <button class="sys-node" data-kind="control" data-module="drv-control" data-system-tags="control"><b>Outer Loops</b><small>位置/速度误差 → 加速度与目标姿态</small></button>
+                  <button class="sys-node" data-kind="control" data-module="drv-control" data-system-tags="control"><b>SO(3) Attitude</b><small>e_R / e_ω → 三轴期望力矩 M_d</small></button>
+                  <button class="sys-node" data-kind="control" data-module="drv-control" data-system-tags="control"><b>Protection & Allocation</b><small>推力/力矩缩放 → 电机差动 + 倾转反解</small></button>
+                </div>
+              </div>
+              <div class="system-arrow command">motor_upper/lower_us + servo_alpha/beta_us</div>
+
+              <div class="system-row">
+                <div class="row-label">执行器管理<br>Actuator layer</div>
+                <div class="row-nodes" style="--cols:4">
+                  <button class="sys-node" data-kind="actuation" data-module="app-output" data-system-tags="control"><b>Owner Arbitration</b><small>normal / calibration / jog / bench / acceptance</small></button>
+                  <button class="sys-node" data-kind="actuation" data-module="app-output" data-system-tags="control"><b>Mechanical Adapter</b><small>center / min / max / pulse_sign</small></button>
+                  <button class="sys-node" data-kind="actuation" data-module="bsp-output" data-system-tags="control"><b>PWM Output</b><small>ESC + PWM servo timers</small></button>
+                  <button class="sys-node" data-kind="actuation" data-module="bsp-uart" data-system-tags="control comms"><b>Bus Servo Output</b><small>UART4 half-duplex, ≤100 Hz</small></button>
+                </div>
+              </div>
+
+              <div class="system-arrow async">Driver API → BSP board binding → HAL peripheral</div>
+              <div class="system-row">
+                <div class="row-label">平台与设备抽象<br>Platform</div>
+                <div class="row-nodes" style="--cols:4">
+                  <button class="sys-node" data-kind="platform" data-module="drv-imu" data-system-tags="estimate"><b>Sensor Drivers</b><small>IMU / baro / mag / optical flow protocols</small></button>
+                  <button class="sys-node" data-kind="platform" data-module="drv-io" data-system-tags="control comms storage"><b>I/O Drivers</b><small>ELRS / servo / motor / GD25Q32</small></button>
+                  <button class="sys-node" data-kind="platform" data-module="bsp-sensors" data-system-tags="estimate control comms storage"><b>BSP + DMA / Cache</b><small>具体总线、GPIO、回调与 H7 一致性</small></button>
+                  <button class="sys-node" data-kind="platform" data-module="core-init" data-system-tags="estimate control comms storage"><b>CubeMX / HAL / FreeRTOS</b><small>时钟、引脚、外设、任务与中断</small></button>
+                </div>
+              </div>
+            </section>
+
+            <div class="system-arrow">SPI / I²C / UART / PWM / GPIO / EXTI</div>
+            <section class="system-zone zone-external">
+              <div class="zone-title" style="color:var(--amber)">PHYSICAL AIRFRAME</div>
+              <div class="system-row" style="margin-top:28px">
+                <div class="row-label">传感器与执行器</div>
+                <div class="row-nodes" style="--cols:4">
+                  <button class="sys-node" data-kind="sensing" data-module="hw-imu" data-system-tags="estimate control"><b>IMU / Baro / Mag</b><small>惯性、气压与磁场</small></button>
+                  <button class="sys-node" data-kind="sensing" data-module="hw-flow" data-system-tags="estimate control"><b>Optical Flow / Range</b><small>地面相对速度与高度</small></button>
+                  <button class="sys-node" data-kind="actuation" data-module="hw-actuator" data-system-tags="control"><b>Coaxial Motors</b><small>总推力 + 上下桨差动偏航</small></button>
+                  <button class="sys-node" data-kind="actuation" data-module="hw-actuator" data-system-tags="control"><b>Tilt Servos</b><small>α / β 倾转 → roll / pitch 力矩</small></button>
+                </div>
+              </div>
+            </section>
+          </div>
+          <p class="system-note"><strong>与 PX4 最关键的区别：</strong>本项目没有 uORB 发布订阅总线，而是使用明确的 CMSIS-RTOS2 队列、二值信号量、线程标志和 seqlock 快照。图中的“RTOS 数据交接”是调试并发、丢帧和延迟时最该先看的中枢。</p>
+        </section>
+
+        <section id="view-overview" class="view">
+          <div class="section-head">
+            <div>
+              <h2>全景：职责分层，不是文件夹堆叠</h2>
+              <p>每一层都回答不同的问题。越靠左越接近电信号与芯片，越靠右越接近飞行行为；依赖方向原则上从 App / Service 向 Driver、BSP、HAL 下沉。</p>
+            </div>
+            <div class="legend"><span><i class="dot"></i>当前层</span><span><i class="dot call"></i>所选数据流</span><span><i class="dot async"></i>队列/中断交接</span></div>
+          </div>
+
+          <div class="notice"><strong>读图前先记住</strong><span>这是 2026-09-04 未提交工作树的架构快照。源码中仍有过期注释，例如稳定环尾部写“50 Hz”，但真正的控制周期常量是 2 ms（500 Hz）；FLU 规范已经建立，但运行时迁移掩码仍是 0，不能把“某个出口已经是 FLU”理解成全链完成。</span></div>
+
+          <div class="flow-toolbar" id="flowToolbar" aria-label="关键数据流选择"></div>
+          <div class="architecture" id="architecture"></div>
+          <div class="flow-story">
+            <div class="flow-steps" id="flowSteps" aria-live="polite"></div>
+            <div class="flow-explain" id="flowExplain"></div>
+          </div>
+        </section>
+
+        <section id="view-tasks" class="view">
+          <div class="section-head">
+            <div>
+              <h2>任务与速率：谁必须准时，谁可以慢一点</h2>
+              <p>速率不是“越高越好”。先保护 1 kHz 采样和 500 Hz 控制，再让通信、日志和 Flash 在低优先级或队列另一端慢慢完成。</p>
+            </div>
+          </div>
+          <div class="task-board" id="taskBoard"></div>
+          <div class="handoff-map">
+            <div class="handoff"><b>中断 → SensorTask</b><p>IMU DRDY 在 EXTI 中断里只置线程标志；真正 SPI 读取和滤波在任务上下文完成。</p></div>
+            <div class="handoff"><b>SensorTask → Stabilizer</b><p>先写深度 8 的 SensorSampleQueue，再释放二值信号量。队列满时丢旧保新。</p></div>
+            <div class="handoff"><b>控制/命令 → Background</b><p>Flash 请求走 backgroundReqQueue；控制环不得直接擦写，也不得同步阻塞 USB 文本。</p></div>
+            <div class="handoff"><b>Stabilizer → Telemetry</b><p>深度 1 的最新值队列天然降采样；低优先级任务按默认 40 Hz 编码并发送。</p></div>
+          </div>
+        </section>
+
+        <section id="view-modules" class="view">
+          <div class="section-head">
+            <div>
+              <h2>目录 / 模块索引：按职责找代码</h2>
+              <p>源码目录对应当前工作树；架构职责把相关文件合成便于理解和调试的功能模块。两种视图可以互相跳转。</p>
+            </div>
+          </div>
+          <div class="index-snapshot">
+            <b>已同步到 2026-09-04 当前工作树</b>
+            <span>仓库索引快照 <code>ee3410198a4e</code></span>
+            <span>已移除：独立 TFmini 测距、纯 IMU 积分导航</span>
+            <span>已纳入：三轴 SO(3) 偏航、遥测流、舵机类型与安全仲裁</span>
+          </div>
+          <div class="search-row">
+            <input id="moduleSearch" type="search" placeholder="搜索模块名、职责、文件或调试关键词…" aria-label="搜索架构模块">
+            <div>
+              <div class="index-mode" id="indexMode" aria-label="选择索引视图">
+                <button class="active" data-index-mode="source">源码目录</button>
+                <button data-index-mode="architecture">架构职责</button>
+              </div>
+              <div class="filters" id="layerFilters" aria-label="按软件层筛选" style="margin-top:8px"></div>
+            </div>
+          </div>
+          <div class="module-index" id="moduleIndex" aria-live="polite"></div>
+        </section>
+
+        <section id="view-debug" class="view">
+          <div class="section-head">
+            <div>
+              <h2>调试路线：按数据链排，不要随机改增益</h2>
+              <p>选择症状后，从最靠近事实源的一层开始验证。只有上游数据、坐标、时序和安全门都正确，才轮到控制参数。</p>
+            </div>
+          </div>
+          <div class="debug-grid" id="debugGrid"></div>
+          <div class="debug-route" id="debugRoute" aria-live="polite"></div>
+        </section>
+
+        <footer>
+          事实来源：当前工作树中的 <code>Core/Src/freertos.c</code>、<code>App/Src/app_stabilizer.c</code>、各层公开头文件、<code>doc/current-architecture.md</code> 与 <code>doc/technical-spec.md</code>。本页是学习/导航视图，不替代源码、契约测试或 PIPELINE 验收状态。
+        </footer>
+      </main>
+    </div>
+  </div>
+
+  <div class="drawer-backdrop" id="drawerBackdrop"></div>
+  <aside class="drawer" id="drawer" aria-label="模块详情" aria-hidden="true">
+    <button class="drawer-close" id="drawerClose" aria-label="关闭详情">×</button>
+    <div id="drawerContent"></div>
+  </aside>
+
+  <script>
+    const layers = [
+      {id:'hardware', order:'L0', name:'硬件 / 信号', rule:'真实世界与电信号', color:'#ffbd62', summary:'传感器、接收机、存储器和执行器。这里产生原始事实，也承受最终控制输出。', beginner:'软件最终只能读取电信号、发出电信号。排查任何问题时，先确认“硬件有没有真的产生/执行这件事”，再往上看软件。', modules:['hw-imu','hw-flow','hw-rc','hw-flash','hw-actuator']},
+      {id:'core', order:'L1', name:'CORE / HAL 平台层', rule:'CubeMX 所有：时钟、引脚、RTOS 对象', color:'#72a8ff', summary:'MCU 平台启动、外设初始化、中断入口和 FreeRTOS 对象。', beginner:'这一层像房屋的水电和总配电箱。它不决定“怎么飞”，只负责让 SPI、UART、定时器、DMA 和任务真正存在。', modules:['core-init','core-rtos','core-isr']},
+      {id:'bsp', order:'L2', name:'BSP 板级层', rule:'把通用驱动绑定到这块板', color:'#8bdc7b', summary:'指定某个设备究竟使用哪路 SPI/UART、哪个 GPIO、怎样维护缓存和 DMA。', beginner:'DRIVER 知道“怎样和一类芯片说话”，BSP 告诉它“这块板上具体接在哪”。', modules:['bsp-sensors','bsp-uart','bsp-output','bsp-storage']},
+      {id:'driver', order:'L3', name:'DRIVER 驱动层', rule:'器件协议 + 可复用算法', color:'#62e6d0', summary:'读取芯片协议、执行姿态融合、导航 EKF、三轴控制与执行器换算。', beginner:'DRIVER 是可复用的专业零件：懂 ICM42688、光流帧、SO(3)、EKF 或电机推力模型，但不负责整个飞行流程。', modules:['drv-imu','drv-fusion','drv-flow','drv-nav','drv-control','drv-io']},
+      {id:'service', order:'L4', name:'SERVICES 服务层', rule:'同步、无任务的领域服务', color:'#c297ff', summary:'维护共享领域状态：光流导航、参数镜像、统一微秒时间戳。', beginner:'SERVICE 没有自己的线程。别人调用它时，它在调用者的任务里立即完成工作；它负责跨模块的一致规则和状态。', modules:['svc-flow','svc-param','svc-time']},
+      {id:'app', order:'L5', name:'APP 应用与任务层', rule:'任务、行为、安全、装配、通信', color:'#ff7979', summary:'把传感器、算法、控制、安全、通信和后台操作装成一台会运行的飞控。', beginner:'APP 是“总导演”：什么时候采、什么时候算、能不能解锁、输出给谁、慢操作交给哪个任务，都在这里决定。', modules:['app-sensor','app-stabilizer','app-control','app-nav','app-rc','app-output','app-comms','app-log','app-cal']},
+      {id:'host', order:'L6', name:'HOST 上位机工具', rule:'学习、诊断、证据与回放', color:'#f09be0', summary:'PC 上的 Python 面板、日志分析工具、测试和构建门；它们观察与配置飞控，但不是飞行安全的最终裁决者。', beginner:'上位机帮助人理解飞控、发送命令和保存证据。即使上位机崩溃或断开，危险动作也必须由固件自己的超时和安全门停止。', modules:['host-panel','host-analysis','host-tests']},
+    ];
+
+    const modules = [
+      {id:'hw-imu', layer:'hardware', name:'ICM42688 + SPL06 + QMC5883L', short:'惯性、气压与磁场事实源', summary:'IMU 以 1 kHz DRDY 驱动主采样；气压计约 31.25 Hz 降采样；磁力计以 20 Hz 步进。', beginner:'ICM42688 告诉软件“机体正在怎样加速和旋转”；SPL06 给压力/温度；QMC5883L 给磁场方向。它们的原始值不能直接当姿态，必须经过缩放、安装方向校正、标定和融合。', context:'硬件 / 中断', rate:'IMU 1 kHz；Baro ≈31.25 Hz；MAG 20 Hz', inputs:['真实运动','重力','气压','地磁'], outputs:['原始 ADC/寄存器','DRDY 中断','压力/温度','磁场'], calls:['bsp-sensors','core-isr'], responsibilities:['产生最原始的可测数据','IMU INT1 在 PC0 触发 EXTI','硬件抗混叠必须匹配 1 kHz ODR'], debug:['先查供电、器件 ID、总线错误和 DRDY 频率','若采样降到 50 Hz，轮询兜底虽然还能读到数据，但控制链前提已经失效','振动问题要看 1 kHz 原始捕获，不能只看 40 Hz 遥测'], files:['doc/hardware-reference.md','Core/Src/freertos.c']},
+      {id:'hw-flow', layer:'hardware', name:'MTF-01P 光流 + 组合测距', short:'地面相对速度与高度', summary:'通过串口输出 MicoLink/MSP 帧，当前实测采样周期约 10 ms（100 Hz）。', beginner:'它像向下看的鼠标：图像纹理移动可以估算水平速度，同时组合测距提供离地高度。光照、纹理、距离和旋转都会影响结果。', context:'硬件 / UART DMA', rate:'传感器时间轴约 100 Hz', inputs:['地面纹理','光照','高度','机体旋转'], outputs:['flow_vel_x/y','quality','distance_mm','sensor_time_ms'], calls:['bsp-sensors','drv-flow'], responsibilities:['输出原始光流和高度帧','提供独立传感器时间轴','质量值只代表可用程度，不是速度本身'], debug:['先看帧率、校验错误、quality、distance_valid','质量低时不要先改 EKF；先检查表面纹理、距离、镜头和供电','旋转时出现假平移要继续查稳定环的旋转补偿'], files:['Driver/Inc/drv_optical_flow.h','BSP/Inc/bsp_optical_flow.h','Services/Inc/svc_flow_nav.h']},
+      {id:'hw-rc', layer:'hardware', name:'ELRS 接收机', short:'操作者意图输入', summary:'CRSF/ELRS 串口帧提供 16 通道、链路统计和最近有效帧时间。', beginner:'遥控器给出的只是通道脉宽。它还不是“向前飞”这种机体意图，必须先经过通道映射、端点标定、反向与死区处理。', context:'UART DMA + Stabilizer 高频步进', rate:'接收机帧率决定；状态机约 1 kHz 被服务', inputs:['发射机摇杆/开关'], outputs:['16 通道 μs','链路新鲜度','链路统计'], calls:['bsp-uart','drv-io','app-rc'], responsibilities:['提供原始 RC 通道','链路丢失时提供明确的时间戳事实'], debug:['先看是否收到帧和 last_rc_ms','再查 RCMAP 映射与 calibrated 标志','不要用发射机 reversed 补偿机体系极性错误'], files:['Driver/Inc/drv_elrs.h','App/Inc/app_elrs.h','App/Inc/app_rc_config.h']},
+      {id:'hw-flash', layer:'hardware', name:'GD25Q32 外部 Flash', short:'参数与飞行日志的非易失存储', summary:'SPI Flash 保存参数双槽记录、飞行日志、导出数据和维护操作。', beginner:'Flash 写入慢、擦除更慢，所以不能在 500 Hz 控制环里直接做。正确做法是投递请求给后台任务。', context:'BackgroundTask 独占慢操作', rate:'事件驱动；擦写为毫秒级慢操作', inputs:['参数记录','飞行日志块','维护请求'], outputs:['持久化记录','读取/校验结果'], calls:['bsp-storage','drv-io','svc-param','app-log'], responsibilities:['断电后保存数据','扇区擦除与页写入','通过版本和 CRC 区分有效记录'], debug:['查 JEDEC ID、bus mutex、CRC 和版本迁移','参数 RAM 生效不等于 Flash 已提交','日志丢包优先查擦除时机和后台队列，不要怪 IMU'], files:['Driver/Inc/drv_gd25q32.h','App/Inc/app_flash_service.h','App/Inc/app_flight_log.h']},
+      {id:'hw-actuator', layer:'hardware', name:'双电机 + 双倾转舵机', short:'把力矩命令变成真实运动', summary:'上下同轴桨提供总推力与差动偏航力矩；α/β 倾转机构提供 roll/pitch 力矩。', beginner:'控制器只算“想要多少力和力矩”；执行器分配器再决定两个电机、两个舵机各自该动多少。两者不能混为一谈。', context:'500 Hz 控制决策；舵机总线≤100 Hz', rate:'ESC PWM；舵机命令最多 100 Hz', inputs:['motor_upper/lower_us','servo_alpha/beta_us'], outputs:['总推力','偏航反扭矩差','倾转 roll/pitch 力矩'], calls:['bsp-output','drv-control','app-output'], responsibilities:['执行最终控制命令','受机械中心/方向/行程和饱和限制'], debug:['先拆桨确认输出方向和安全门','偏航弱时同时看总推力余量、上下桨差动和 yaw utilization','舵机方向错要查 pulse_sign，不能靠负控制增益补偿'], files:['Driver/Inc/drv_airframe_model.h','Driver/Inc/drv_motor.h','Driver/Inc/drv_servo.h']},
+
+      {id:'core-init', layer:'core', name:'main / 外设初始化', short:'启动 MCU 和所有外设', summary:'CubeMX 生成时钟、GPIO、SPI、I2C、UART、TIM、DMA、NVIC 初始化。', beginner:'如果某个串口、DMA 或定时器从根上没配对，上层代码再正确也不会工作。此层由 .ioc/CubeMX 管理，禁止手工把生成代码当普通源码维护。', context:'上电启动', rate:'一次性初始化', inputs:['drone-H743.ioc'], outputs:['HAL handles','时钟/引脚/外设状态'], calls:['bsp-sensors','bsp-uart','bsp-output'], responsibilities:['完成芯片级资源配置','建立 HAL 外设句柄'], debug:['核对 .ioc 是硬件配置真源','引脚/时钟/DMA/NVIC 变更必须回 CubeMX','检查生成后 USER CODE 区是否仍正确'], files:['drone-H743.ioc','Core/Src/main.c','Core/Src/*_init.c']},
+      {id:'core-rtos', layer:'core', name:'freertos.c / RTOS 对象', short:'创建任务、队列、信号量和互斥锁', summary:'创建 6 个任务、4 个消息队列、IMU 就绪信号量，以及后台和 Flash 同步对象。', beginner:'RTOS 把不同速度、不同实时性的工作拆开。关键原则是：快任务不能等待慢任务；它们通过队列、信号量和只读快照交接。', context:'启动后创建；任务永久运行', rate:'见“任务与速率”视图', inputs:['CMSIS-RTOS2 配置'], outputs:['线程句柄','队列','信号量','互斥锁'], calls:['app-sensor','app-stabilizer','app-comms','app-log'], responsibilities:['定义任务优先级和栈','建立传感器→稳定控制与后台请求/响应通道'], debug:['用 RTOS? 查栈剩余量、堆、队列占用和故障锁存','队列满时分清“丢旧保新”与“必须可靠交付”两类语义'], files:['Core/Src/freertos.c','App/Inc/app_tasks.h']},
+      {id:'core-isr', layer:'core', name:'IRQ / HAL 回调', short:'只记录事件并唤醒任务', summary:'EXTI、UART DMA/IDLE、定时器溢出等回调把硬件事件交给任务或 BSP/Driver。', beginner:'中断像门铃：应该只通知“有人来了”，不能站在门口做完整业务。耗时解析、Flash、USB 输出都必须移到任务。', context:'中断上下文', rate:'由硬件事件触发', inputs:['EXTI','UART RX/TX','TIM17 overflow'], outputs:['thread flags','DMA 事件','64 位时间高字'], calls:['app-sensor','app-comms','svc-time'], responsibilities:['保持极短执行时间','唤醒对应任务','将回调路由到所属模块'], debug:['中断不来先查 NVIC/GPIO/DMA 配置','中断频繁但任务不醒，查线程句柄与 flag','禁止在 ISR 里 printf 或阻塞'], files:['Core/Src/stm32h7xx_it.c','Core/Src/freertos.c','App/Src/app_sensor.c','App/Src/app_uart.c']},
+
+      {id:'bsp-sensors', layer:'bsp', name:'bsp_imu / baro / mag / optical_flow', short:'板上总线绑定与设备生命周期', summary:'把 IMU、气压计、磁力计和光流驱动绑定到实际 SPI/I2C/UART 与 GPIO。', beginner:'同一颗芯片可以焊在不同板子的不同总线上。BSP 就是那张“本板接线表 + 总线操作适配器”。', context:'由 SensorTask / UART 回调调用', rate:'随各传感器', inputs:['HAL SPI/I2C/UART handles','CS/INT 引脚'], outputs:['Driver bus API','设备状态'], calls:['core-init','drv-imu','drv-flow'], responsibilities:['绑定外设实例','做 DMA/Cache 必要维护','转发 UART 回调'], debug:['核对总线实例和片选','H7 DMA 缓冲要检查内存域与 DCache','设备协议解析问题再进入 Driver'], files:['BSP/Src/bsp_imu.c','BSP/Src/bsp_baro.c','BSP/Src/bsp_mag.c','BSP/Src/bsp_optical_flow.c']},
+      {id:'bsp-uart', layer:'bsp', name:'bsp_uart / bus_servo', short:'通信与舵机串口绑定', summary:'绑定 USART1 数传、UART7 ELRS、UART4 半双工舵机，以及相关 DMA/回调。', beginner:'它解决“哪路 UART 给谁用、怎样发、回调交给谁”的板级问题，不解析飞行命令含义。', context:'UARTTask / ISR', rate:'事件驱动；UARTTask 最长等待 20 ms', inputs:['TX 队列','DMA RX 事件'], outputs:['字节流','完成/错误事件'], calls:['core-isr','drv-io','app-comms'], responsibilities:['串口发送与接收绑定','舵机半双工总线服务'], debug:['先分清 USART1/UART4/UART7/UART8 的用途','查 DMA 缓冲 Cache clean/invalidate','舵机 busy/timeout 要看总线状态机'], files:['BSP/Src/bsp_uart.c','BSP/Src/bsp_bus_servo.c','BSP/Src/bsp_board.c']},
+      {id:'bsp-output', layer:'bsp', name:'bsp_pwm / 板级输出', short:'电机和 PWM 舵机的硬件出口', summary:'把微秒脉宽写入定时器通道，支持 ESC 禁用与安全最小输出。', beginner:'这是软件到真实执行器的最后一道门。控制器输出的数值如果在这里被禁用、限幅或映射错，飞机不会按预期动作。', context:'StabilizerTask 控制提交阶段', rate:'控制决策 500 Hz', inputs:['电机/舵机脉宽'], outputs:['TIM CCR / GPIO'], calls:['core-init','hw-actuator'], responsibilities:['真正写硬件寄存器','提供 ESC 明确禁用语义'], debug:['无输出先看解锁状态、安全互锁和输出原因','再看 CCR/脉宽是否变化','机械方向问题回到舵机标定 / pulse_sign'], files:['BSP/Src/bsp_pwm.c','BSP/Src/bsp_board.c']},
+      {id:'bsp-storage', layer:'bsp', name:'bsp_flash_bus / cache', short:'Flash SPI、锁和 H7 Cache 边界', summary:'为 GD25Q32 提供板级 SPI、片选、总线互斥和 Cache 维护。', beginner:'H743 有多个内存域和数据缓存。DMA 看不到某些内存，CPU 缓存也可能让 DMA 看到旧数据，所以这一层必须显式维护一致性。', context:'BackgroundTask；部分 ISR/DMA', rate:'事件驱动', inputs:['Flash 读写事务','DMA 缓冲'], outputs:['可靠 SPI 传输'], calls:['core-init','drv-io'], responsibilities:['序列化 Flash 总线','Cache clean/invalidate','绑定片选和 SPI'], debug:['查缓冲是否位于 DMA 可达内存','查 mutex 是否被持有','读回旧数据时优先怀疑 Cache/时序'], files:['BSP/Src/bsp_flash_bus.c','BSP/Src/bsp_cache.c']},
+
+      {id:'drv-imu', layer:'driver', name:'drv_imu + drv_imu_calibration', short:'寄存器、缩放与 V1 标定数学', summary:'配置 ICM42688 ODR/AAF，读取原始数据，并应用温度相关零偏、比例和非正交校准。', beginner:'原始寄存器值只是整数。Driver 把它变成 g 和 dps，再按校准矩阵修正传感器本身的偏差；安装方向则由 App 的 frame 边界处理。', context:'SensorTask / StabilizerTask', rate:'1 kHz 热路径', inputs:['IMU 寄存器','校准参数','温度'], outputs:['ScaledData','校准后的 accel/gyro'], calls:['bsp-sensors','app-sensor'], responsibilities:['器件配置与原始读取','传感器固有误差校准','不拥有整机安装方向'], debug:['原始值错查寄存器/量程；物理量错查缩放','六面残差查 V1 标定，不要混到姿态融合','AAF 与 ODR 必须一起看'], files:['Driver/Src/drv_imu.c','Driver/Src/drv_imu_calibration.c','Driver/Inc/drv_imu.h']},
+      {id:'drv-fusion', layer:'driver', name:'drv_attitude_fusion', short:'加速度 + 陀螺 → 姿态', summary:'包装 x-io Fusion AHRS，支持 NED/NWU 约定，输出四元数、欧拉角和融合健康指标。', beginner:'陀螺短时间很灵敏但会漂，加速度长期能指出重力方向但会受运动干扰。姿态融合把两者取长补短。', context:'StabilizerTask 的 IMU step', rate:'每个有效 IMU 样本，约 1 kHz', inputs:['校准后 accel/gyro','dt','frame convention'], outputs:['quaternion','roll/pitch/yaw','acceleration_error','recovery flags'], calls:['drv-imu','app-stabilizer'], responsibilities:['姿态传播与加速度修正','动态加速度拒绝和恢复','明确四元数方向与坐标约定'], debug:['姿态跳变先核对 dt、单位和坐标约定','静止漂移查 gyro bias/温度，不先改姿态控制器','高动力时 accel ignored 可能是正确保护行为'], files:['Driver/Src/drv_attitude_fusion.c','Driver/Inc/drv_attitude_fusion.h']},
+      {id:'drv-flow', layer:'driver', name:'drv_optical_flow', short:'只解析光流协议帧', summary:'负责 MicoLink/MSP 字节流、校验和帧字段，不做质量门、滤波或 EKF。', beginner:'Driver 只回答“设备这帧说了什么、帧是不是完整”。至于这帧值不值得信、怎样滤波，属于 Service。', context:'UART 回调 + SensorTask service', rate:'约 100 Hz 新帧', inputs:['UART 字节流'], outputs:['原始 flow frame'], calls:['bsp-sensors','svc-flow'], responsibilities:['协议同步与校验','维护最近完整帧','统计 frame/checksum 错误'], debug:['frame_err/checksum 错先查串口与协议','数据能解析但不被采用，转查 svc_flow_nav 的门控'], files:['Driver/Src/drv_optical_flow.c','Driver/Inc/drv_optical_flow.h']},
+      {id:'drv-nav', layer:'driver', name:'drv_nav_ekf', short:'可复用水平速度 EKF 内核', summary:'提供预测、光流速度更新、协方差与诊断；门控策略由 svc_flow_nav 统一拥有。', beginner:'EKF 用 IMU 加速度预测速度，再用光流测量拉回漂移。它像一个“带不确定度的融合器”，不是传感器驱动。', context:'由 svc_flow_nav 在 StabilizerTask 中调用', rate:'predict 约 1 kHz；控制相关更新约 500 Hz', inputs:['水平加速度','光流速度','量测噪声','dt'], outputs:['vx/vy','covariance','innovation diagnostics'], calls:['svc-flow'], responsibilities:['状态与协方差传播','量测更新','提供算法诊断'], debug:['速度发散先看输入单位/frame/dt','p_u 很大说明不确定度高，不等于代码崩溃','量测被拒要回到 Service 的质量/时效/步长门'], files:['Driver/Src/drv_nav_ekf.c','Driver/Inc/drv_nav_ekf.h']},
+      {id:'drv-control', layer:'driver', name:'drv_coax_ctrl + airframe_model', short:'位置/速度外环、三轴 SO(3)、执行器分配', summary:'把状态和参考变成总推力、三轴力矩、两电机推力和两舵机目标；当前工作树中 yaw 已同构进入 SO(3)。', beginner:'控制器先算“机体应该产生什么力和力矩”，再按同轴机构物理结构分配：roll/pitch 走倾转，yaw 走上下桨差动。', context:'StabilizerTask control compute', rate:'500 Hz', inputs:['姿态/角速度','位置/速度','RC 参考','机体质量/惯量/力臂'], outputs:['M_d[3]','总推力','电机/舵机脉宽','utilization/protection_flags'], calls:['app-stabilizer','bsp-output','hw-actuator'], responsibilities:['外环加速度与目标姿态','SO(3) e_R/e_ω 三轴力矩','物理分配与饱和保护','机械 pulse_sign 在控制分配之后应用'], debug:['先看 attitude/reference 是否同坐标同单位','再看 e_R/e_ω 和 moment_cmd','最后看 thrust/moment utilization、保护缩放和执行器限幅','偏航权限紧，必须同时观察 yaw moment limit 与上下桨余量'], files:['Driver/Src/drv_coax_ctrl.c','Driver/Inc/drv_coax_ctrl.h','Driver/Inc/drv_airframe_model.h']},
+      {id:'drv-io', layer:'driver', name:'drv_elrs / servo / motor / gd25q32', short:'RC、执行器与存储协议', summary:'一组面向器件/协议的可复用驱动：CRSF、串行舵机、电机换算、外部 Flash。', beginner:'它们各自只懂自己的协议或数学，不决定什么时候解锁、什么时候保存参数。时序与安全由 App 负责。', context:'UARTTask / BackgroundTask / StabilizerTask', rate:'按事件或调用者节拍', inputs:['字节流','脉宽/角度','Flash 操作'], outputs:['RC 通道','舵机命令','Flash 状态'], calls:['bsp-uart','bsp-storage','app-rc','app-output','svc-param'], responsibilities:['隔离器件协议细节','提供可复用、可测试 API'], debug:['协议层出错看 CRC/帧状态','生命周期或安全问题回 App，不要塞回 Driver'], files:['Driver/Src/drv_elrs.c','Driver/Src/drv_servo.c','Driver/Src/drv_motor.c','Driver/Src/drv_gd25q32.c']},
+
+      {id:'svc-flow', layer:'service', name:'svc_flow_nav', short:'光流导航数据的唯一数学出口', summary:'统一拥有高度 LPF、速度中值、质量/时效/合理性门、EKF、位置和累计位移。', beginner:'这里把“协议解析出的原始帧”加工成“控制器可以相信的导航量”。同一个判据只放这里，避免 App、面板和控制器各算一份。', context:'无任务；SensorTask push + Stabilizer fuse', rate:'新帧约 100 Hz；融合约 1 kHz/500 Hz', inputs:['原始 flow frame','姿态补偿后加速度','旋转补偿后速度'], outputs:['height','sensor velocity','EKF velocity','position','displacement','diagnostics'], calls:['drv-flow','drv-nav','app-nav','app-stabilizer'], responsibilities:['质量门 45；45–80 低信任度','传感器时间轴积分位置/里程','控制模式 reset 与里程 reset 生命周期分离'], debug:['先看 sample result：hold/stale/rejected/warmup/accepted','再看质量、时效、高度步长和速度步长','位置积分必须使用 sensor_time，不使用主机轮询时间'], files:['Services/Src/svc_flow_nav.c','Services/Inc/svc_flow_nav.h']},
+      {id:'svc-param', layer:'service', name:'svc_param', short:'RAM 参数镜像与双槽持久化', summary:'维护当前参数 blob、dirty/generation 状态，加载 Flash，并请求 BackgroundTask 异步保存。', beginner:'改参数通常先改 RAM，所以会立刻影响运行；只有后台成功写入 Flash，断电后才会保留。generation 用来判断是不是同一代配置。', context:'无任务；启动/命令/后台调用', rate:'事件驱动', inputs:['参数 blob','save 请求'], outputs:['RAM snapshot','dirty','generation','Flash record'], calls:['app-control','app-log','drv-io'], responsibilities:['参数版本与双槽事务','把慢保存交给后台','向实时环提供稳定快照'], debug:['区分 active、persisted、dirty、generation','保存失败查 Background 队列和 Flash，不要误判为 SetParam 无效'], files:['Services/Src/svc_param.c','Services/Inc/svc_param.h']},
+      {id:'svc-time', layer:'service', name:'svc_timestamp', short:'TIM17 扩展成 64 位微秒时钟', summary:'TIM17 1 MHz 计数，溢出 ISR 维护高字，为采样、日志和性能测量提供统一时间。', beginner:'不同模块必须共享同一把时钟，才能判断样本间隔、延迟、超时和日志对齐，否则“看起来同时”的数据其实无法比较。', context:'任意任务读取；TIM17 ISR 更新', rate:'1 μs tick；65.536 ms 溢出', inputs:['TIM17 counter/overflow'], outputs:['uint64_t microseconds'], calls:['core-isr','app-sensor','app-log','app-comms'], responsibilities:['统一单调时间基准','避免 32 位短周期回绕'], debug:['dt 异常先查 TIM17 prescaler/period 与溢出回调','不要混用 sensor_time、HAL_GetTick 和主机墙钟'], files:['Services/Src/svc_timestamp.c','Services/Inc/svc_timestamp.h']},
+
+      {id:'app-sensor', layer:'app', name:'SensorTask + app_sensor + imu_health', short:'1 kHz 数据源与预处理流水线', summary:'等待 DRDY，读取 IMU，缩放、启动期 gyro bias、安装方向映射、二阶 LPF、健康评估，再投递采样队列。', beginner:'这是飞控的“感官输入流水线”。任何姿态和控制都依赖它准时、同单位、同坐标地产出新鲜样本。', context:'SensorTask / Normal priority', rate:'1 kHz 中断驱动；20 ms 超时轮询兜底', inputs:['BSP IMU raw','V0 orientation','baro/mag/flow service'], outputs:['SensorSampleQueue','imuDataReadySemaphore','raw capture'], calls:['drv-imu','bsp-sensors','svc-time','app-stabilizer'], responsibilities:['先队列 Put，再 semaphore Release','队列满时丢最旧帧保最新','LPF gyro 80 Hz / accel 40 Hz','100 ms 窗口健康评估'], debug:['先看 irq_rate、poll_rate、read_fail、sample age','若 DRDY 丢失，不能把 50 Hz 兜底当健康','这里的旧注释可能仍写 NED，要以 frame contract 和实际 adapter 为准'], files:['Core/Src/freertos.c','App/Src/app_sensor.c','App/Src/app_imu_health.c','App/Inc/app_messages.h']},
+      {id:'app-stabilizer', layer:'app', name:'app_stabilizer', short:'姿态、导航、控制与安全的实时装配器', summary:'消费传感器队列；约 1 kHz 做姿态/导航更新，2 ms 一次做 control prepare → compute → commit。', beginner:'它不是单一算法，而是实时“总装线”：把最新姿态、RC、导航和参数拼成控制器输入，再经过安全仲裁决定能否真正写执行器。', context:'StabilizerTask / Normal priority', rate:'IMU step≈1 kHz；control=500 Hz', inputs:['SensorSampleQueue','RC snapshot','flow/nav state','calibration snapshot'], outputs:['controller reference','actuator targets','VOFA latest sample','flight log snapshot','validation snapshots'], calls:['drv-fusion','svc-flow','drv-control','app-rc','app-output','app-log'], responsibilities:['prepare：RC/安全/参考/模式','compute：导航参考与控制器','commit：舵机仲裁、电机安全输出、日志观察','保持控制热路径无阻塞 I/O'], debug:['按 prepare→compute→commit 分段查','有控制量但没动作先看 commit 的安全门和仲裁','实时问题查 sample age、control dt、队列覆盖和阻塞调用'], files:['App/Src/app_stabilizer.c','App/Inc/app_stabilizer.h']},
+      {id:'app-control', layer:'app', name:'app_control + app_cmd_*', short:'文本命令、参数与诊断控制面', summary:'解析 USB/UART ASCII 命令，分派 IMUCAL、SERVOCAL、RCMAP、FLOW、TELEM、系统诊断等命令族。', beginner:'这是“操作员控制台”的固件端，不是飞行控制器。它修改配置、查询状态、启动安全动作，但不能绕过固件内的安全门。', context:'UARTTask / USB 通信任务上下文', rate:'事件驱动；UARTTask 最长 20 ms tick', inputs:['ASCII line','$X binary frame','command source'], outputs:['结构化文本回复','参数/动作请求','遥测配置'], calls:['app-comms','svc-param','app-cal','svc-flow'], responsibilities:['协议 ID 与命令分派','危险操作在固件端二次拒绝','控制环事件文本由通信任务补发'], debug:['命令无回复先分链路、解析、分派、回包队列四段','控制环里禁止直接 APP_Control_QueueText','新增命令要同步 CAPS、协议 ID 和上位机允许清单'], files:['App/Src/app_control.c','App/Src/app_control_core.c','App/Src/app_cmd_*.c','App/Inc/app_proto.h']},
+      {id:'app-nav', layer:'app', name:'app_optical_flow + app_nav_estimator', short:'设备生命周期、坐标补偿与诊断发布', summary:'管理光流初始化/恢复和健康；把 Service 状态组装成 App 快照，并在 Stabilizer 中完成姿态/旋转补偿。', beginner:'Service 负责数学，App 负责“设备现在是否在线、这份数据在哪个坐标系、怎样交给控制器和诊断”。', context:'SensorTask + StabilizerTask', rate:'service 每 IMU 循环；新帧约 100 Hz', inputs:['BSP flow frame','attitude/gyro','svc_flow_nav state'], outputs:['补偿后速度','height sample','EKF diagnostics','FLOW? 报告'], calls:['bsp-sensors','svc-flow','app-stabilizer'], responsibilities:['初始化重试和掉线恢复','机体旋转补偿','发布速度来源与健康状态'], debug:['设备离线看 App lifecycle；帧坏看 Driver；估计坏看 Service','旋转补偿必须带 frame 与姿态来源'], files:['App/Src/app_optical_flow.c','App/Src/app_nav_estimator.c','App/Src/app_stabilizer.c']},
+      {id:'app-rc', layer:'app', name:'app_elrs + app_rc_config', short:'RC 字节流 → 归一化操作者意图', summary:'高频推进 ELRS 状态机，读取 16 通道，并按持久化 RCMAP 解析 throttle/roll/pitch/yaw/arm/mode。', beginner:'原始 CH1/CH2 没有固定含义。RCMAP 决定哪个通道是什么、端点多大、是否反向；稳定环再把归一化摇杆变成姿态/速度参考。', context:'StabilizerTask 高频调用；命令任务更新配置', rate:'ELRS step≈1 kHz；resolve=500 Hz', inputs:['CRSF bytes','RCMAP snapshot'], outputs:['normalized RC inputs','link freshness','arm/mode intent'], calls:['drv-io','svc-param','app-stabilizer'], responsibilities:['单一映射与端点校准','500 ms RC loss timeout','低油门上升沿参与解锁'], debug:['先看 raw channel，再看 mapped us/norm，最后看 reference','摇杆正确但动作反向，查“摇杆空间→机体意图”唯一符号点'], files:['App/Src/app_elrs.c','App/Src/app_rc_config.c','App/Inc/app_rc_config.h']},
+      {id:'app-output', layer:'app', name:'舵机类型 / 点动 / 标定 / 反馈', short:'执行器类型选择与安全仲裁', summary:'在总线/PWM 两类舵机间选择出口，管理机械标定、保持点动、反馈台架和命令节流。', beginner:'控制器算出的目标不能直接写舵机。这里先决定“谁现在拥有舵机”：标定、验收、反馈台架、正常控制或点动，并保证超时后归还。', context:'StabilizerTask 提交阶段 + UARTTask 命令', rate:'仲裁 500 Hz；总线发送≤100 Hz；反馈每舵机约50 Hz', inputs:['控制器舵机目标','标定候选','点动/台架请求'], outputs:['PWM 脉宽或总线移动','反馈样本','事件通告'], calls:['drv-io','bsp-output','app-stabilizer'], responsibilities:['明确仲裁优先级','机械 pulse_sign/center/min/max','500 μs/s 标定点动与 120 s 超时','控制环只缓存事件，通信任务发送文本'], debug:['目标正确但舵机不动：查当前所有者、舵机类型、总线忙碌、脉宽限位','标定和正常控制互相抢占时查优先级和释放原因'], files:['App/Src/app_servo_type.c','App/Src/app_servo_jog.c','App/Src/app_servo_cal.c','App/Src/app_servo_feedback.c']},
+      {id:'app-comms', layer:'app', name:'UARTTask + USB CDC + 遥测', short:'命令与观测出口', summary:'UARTTask 统一轮询收发、维护串口、USB CDC 和命令；VOFA_Task 独立按默认 40 Hz 发送遥测。', beginner:'命令是“你想让飞控做什么”，遥测是“飞控告诉你现在怎样”。两者可共用链路，但必须防止高频遥测挤掉关键回复。', context:'UARTTask 普通优先级；VOFA_Task 低优先级', rate:'UART 事件驱动/最长等待20 ms；遥测40 Hz；全量刷新1 Hz', inputs:['USB/UART 字节','最新样本','通道掩码'], outputs:['文本回复','$X 二进制遥测','CSV 上位机数据流'], calls:['app-control','app-stabilizer','drv-control','svc-time'], responsibilities:['RX DMA 与行缓冲','遥测掩码/帧编码/出口选择','导出时独占 CDC，暂停普通遥测','57600 baud 默认带宽≤60%'], debug:['无数据先分接收、解析器、发送队列、物理出口','遥测卡顿不应影响控制；若影响说明发生了上下文越界','USB 拔出会自动关闭遥测流，不是假装继续发送'], files:['App/Src/app_uart.c','App/Src/app_usb_cdc.c','App/Src/app_telem_stream.c','App/Src/app_telem_port.c','App/Src/app_telemetry.c']},
+      {id:'app-log', layer:'app', name:'飞行日志 / IMU 捕获 / 后台存储', short:'高频观测与慢速存储分离', summary:'控制/采样热路径只写 RAM 快照或缓冲，BackgroundTask 负责 Flash 扇区/块操作，低优先级任务负责 USB 导出。', beginner:'记录系统不能为了“保存证据”破坏被观察的实时系统。正确结构是快端只复制，慢端异步落盘和导出。', context:'Sensor/Stabilizer 生产；Background/VOFA 消费', rate:'IMU 捕获1 kHz；飞行日志约125 Hz；后台事件驱动', inputs:['原始/滤波后 IMU','姿态','控制调试量','执行器输出'], outputs:['Flash 日志','USB 导出','解析用版本化记录'], calls:['hw-flash','svc-time','app-comms'], responsibilities:['日志格式版本与坐标来源标记','预擦除/块写避免控制期阻塞','旧版本日志保持可解析'], debug:['丢记录看 dropped_records/sequence/扇区切换','回放方向异常先看头部坐标来源标记','高频频谱只能用原始 IMU 捕获'], files:['App/Src/app_flight_log.c','App/Src/app_imu_capture.c','App/Src/app_background.c','tools/flight_log_receive.py']},
+      {id:'app-cal', layer:'app', name:'飞行校准 / 验收 / 动作管理', short:'校准事务、验收动作与安全生命周期', summary:'管理 V0/V1/V2 RAM 候选、COMMIT/回读、动作超时、心跳和执行器验收模式。', beginner:'校准不是“算出一个数字就结束”，而是候选预览、锁定危险动作、人工确认、写入 Flash、重启回读和证据留存的一整套事务。', context:'通信任务发起；控制/后台任务推进', rate:'事件驱动 + 500 Hz 安全服务', inputs:['操作者命令','传感器样本','机械确认'], outputs:['活动/持久化标定','解锁阻断','验收观测'], calls:['svc-param','app-stabilizer','app-output','app-control'], responsibilities:['RAM 预览与 Flash 提交分开','候选期间禁止解锁','动作必须有固件端超时/心跳','审核状态只由 PIPELINE 证据推进'], debug:['先区分候选/活动/持久化状态','面板退出不能留下危险动作','实机验收不能由上位机测试代替'], files:['App/Src/app_flight_calibration.c','App/Src/app_acceptance.c','App/Src/app_action.c','App/Src/app_servo_cal.c']},
+      {id:'host-panel', layer:'host', name:'drone_tcp_panel + panel_lib', short:'校准、状态监视与命令交互工作台', summary:'Python/Tk 上位机通过 USB CDC、UART 或 TCP 与飞控通信，提供校准向导、状态页、可编排仪表盘和参数回显。', beginner:'面板是“仪表与操作台”，不是飞控本体。它可以建议、显示和发命令，但解锁、危险动作拒绝与超时必须由固件最终决定。', context:'PC Python 进程', rate:'UI/协议各自限速；仪表按遥测流更新', inputs:['文本回复','$X telemetry','用户操作'], outputs:['ASCII command','CSV/界面状态','校准工作流'], calls:['app-comms','app-control','app-cal'], responsibilities:['传输层与页面逻辑分离','解析固件真实输出格式','危险命令经过允许清单和新鲜状态门','浏览历史证据时保持只读'], debug:['连接失败先查 USB 指纹和当前端口，不猜 COM 号','页面无值先查 firmware stream、parser、state binding','上位机显示不能替代固件安全判断'], files:['tools/drone_tcp_panel.py','tools/panel_lib/transport.py','tools/panel_lib/pages/','tools/panel_lib/dashboard/']},
+      {id:'host-analysis', layer:'host', name:'采集 / 回放 / 系统辨识工具', short:'把实录数据变成可比较证据', summary:'负责飞行日志接收、版本化解析、Rerun 回放、系统辨识、IMU 振动与校准数据分析。', beginner:'这些工具回答“真实运行时发生了什么”。算法结论必须在同一份实录数据上和基线比较，自己编的输入只能证明程序能跑。', context:'PC 离线或串口采集进程', rate:'按采集协议或离线批处理', inputs:['Flash 日志','遥测 CSV','捕获数据','元数据'], outputs:['报告','图表','候选参数','回放场景'], calls:['app-log','host-panel'], responsibilities:['保持日志版本向后兼容','按坐标来源标记选择解释','数据和派生报告统一放在 data/','同数据基线对比'], debug:['解析失败先看版本/头部/记录尺寸/CRC','回放方向异常先看坐标来源标记','不要用重采后的另一份数据冒充 A/B'], files:['tools/flight_log_receive.py','tools/flight_log_rerun_replay.py','tools/flight_log_sysid.py','tools/vofa_serial_capture.py']},
+      {id:'host-tests', layer:'host', name:'pytest + CMake Debug 构建门', short:'把架构边界和行为约束变成可执行检查', summary:'源码契约测试、上位机 gcc 真逻辑装置和固件 Debug 构建共同防止分层、坐标、安全与协议回退。', beginner:'测试不只是检查某个函数答案。这里很多测试在守“谁能调用谁、字段有没有版本、控制环有没有阻塞、旧路径会不会复活”。', context:'PC 构建 / CI', rate:'每项变更后全量运行', inputs:['源码','契约测试数据','上位机测试装置'], outputs:['pytest 结果','固件 ELF','警告/错误'], calls:['core-init','app-stabilizer','drv-control','svc-flow'], responsibilities:['行为改动必须有契约测试','全量 pytest + Debug 构建零警告','软件测试不能代替需要实机的验收门'], debug:['测试红先判断是行为回归、契约更新还是工作树中另一项未完成改动','不要通过删除判据或放宽安全门制造绿色'], files:['tests/','CMakeLists.txt','CMakePresets.json']},
+    ];
+
+    // 由 2026-09-04 当前工作树的生成索引整理。这里按“可独立理解的源码单元”聚合 .c/.h，
+    // 不再列出已删除的 app_rangefinder / bsp_rangefinder / drv_tfmini / drv_imu_nav。
+    const sourceModules = [
+      {layer:'app', owner:'app-sensor', name:'传感器采样流水线', short:'读取 IMU、缩放、方向映射、滤波并发布 1 kHz 样本；健康模块独立判断能否解锁。', files:['App/Src/app_sensor.c','App/Inc/app_sensor.h','App/Src/app_imu_health.c','App/Inc/app_imu_health.h']},
+      {layer:'app', owner:'app-stabilizer', name:'稳定控制总装', short:'消费传感器队列，把姿态、导航、RC、安全和控制器按 prepare → compute → commit 串起来。', files:['App/Src/app_stabilizer.c','App/Inc/app_stabilizer.h'], change:'最新：删除纯 IMU 积分导航支路'},
+      {layer:'app', owner:'app-nav', name:'光流设备与导航发布', short:'管理光流设备生命周期、恢复、状态快照和 EKF 速度发布；高度来自光流模块自带的组合测距。', files:['App/Src/app_optical_flow.c','App/Inc/app_optical_flow.h','App/Src/app_nav_estimator.c','App/Inc/app_nav_estimator.h'], change:'最新：不再保留独立 TFmini 路径'},
+      {layer:'app', owner:'app-rc', name:'ELRS 与 RC 映射', short:'推进 ELRS 状态机，并把 16 路原始通道映射为油门、横滚、俯仰、偏航、解锁和模式意图。', files:['App/Src/app_elrs.c','App/Inc/app_elrs.h','App/Src/app_rc_config.c','App/Inc/app_rc_config.h']},
+      {layer:'app', owner:'app-control', name:'命令入口与分派内核', short:'接收文本行、识别命令族并分派；核心公共回包与定时补发逻辑和大入口分离。', files:['App/Src/app_control.c','App/Inc/app_control.h','App/Src/app_control_core.c','App/Inc/app_control_internal.h']},
+      {layer:'app', owner:'app-control', name:'诊断与系统命令', short:'承载 IMU/RTOS/Flash 等诊断查询、系统状态与启动维护类命令。', files:['App/Src/app_cmd_diag.c','App/Src/app_cmd_system.c']},
+      {layer:'app', owner:'app-nav', name:'光流命令', short:'读取光流补偿快照，处理 FLOW 查询、归零和校准相关控制面。', files:['App/Src/app_cmd_flow.c']},
+      {layer:'app', owner:'app-cal', name:'IMU / RC / 舵机校准命令', short:'把 IMUCAL、RCMAP、SERVOCAL、SERVOTYPE 拆成独立命令域，避免继续膨胀 app_control.c。', files:['App/Src/app_cmd_imucal.c','App/Src/app_cmd_rcmap.c','App/Src/app_cmd_servocal.c','App/Src/app_cmd_servotype.c'], change:'最新：新增舵机类型命令域'},
+      {layer:'app', owner:'app-comms', name:'遥测命令与二进制帧', short:'处理遥测开关、速率、掩码与通道表查询，并将样本编码为 $X 帧。', files:['App/Src/app_cmd_telem.c','App/Src/app_telem_frame.c','App/Inc/app_telem_frame.h']},
+      {layer:'app', owner:'app-comms', name:'遥测流、通道表与出口', short:'通道表提供 schema；流模块定时采样；端口模块在 USB/UART 之间选择出口并处理导出互斥。', files:['App/Src/app_telemetry.c','App/Inc/app_telemetry.h','App/Src/app_telem_stream.c','App/Inc/app_telem_stream.h','App/Src/app_telem_port.c','App/Src/app_vofa.c','App/Inc/app_vofa.h'], change:'最新：正式遥测流链路'},
+      {layer:'app', owner:'app-comms', name:'UART、USB CDC 与协议帧', short:'处理 DMA/IDLE 接收、发送队列、USB CDC 状态及统一协议帧组装；业务命令不放在传输层。', files:['App/Src/app_uart.c','App/Inc/app_uart.h','App/Src/app_usb_cdc.c','App/Inc/app_usb_cdc.h','App/Src/app_proto.c','App/Inc/app_proto.h']},
+      {layer:'app', owner:'app-output', name:'舵机类型与总线命令守卫', short:'保存当前 PWM/总线类型，并在 PWM 模式下拒绝只对总线舵机有意义的命令。', files:['App/Src/app_servo_type.c','App/Inc/app_servo_type.h','App/Src/app_servo_bus_guard.c','App/Inc/app_servo_bus_guard.h'], change:'最新：PWM / 总线双类型'},
+      {layer:'app', owner:'app-output', name:'舵机点动、标定与反馈', short:'管理保持点动、即时移动、机械标定、反馈采样和反馈台架，所有权在稳定环提交点仲裁。', files:['App/Src/app_servo_jog.c','App/Inc/app_servo_jog.h','App/Src/app_servo_cal.c','App/Inc/app_servo_cal.h','App/Src/app_servo_feedback.c','App/Inc/app_servo_feedback.h','App/Src/app_servo_feedback_bench.c','App/Inc/app_servo_feedback_bench.h']},
+      {layer:'app', owner:'app-cal', name:'飞行校准、验收与动作生命周期', short:'管理 RAM 候选、活动值、Flash 提交、验收阶段、心跳和危险动作超时。', files:['App/Src/app_flight_calibration.c','App/Inc/app_flight_calibration.h','App/Src/app_acceptance.c','App/Inc/app_acceptance.h','App/Src/app_action.c','App/Inc/app_action.h']},
+      {layer:'app', owner:'app-log', name:'后台请求与 Flash 应用服务', short:'后台任务串行处理参数保存和 Flash 慢操作；应用服务提供带状态与安全边界的诊断接口。', files:['App/Src/app_background.c','App/Inc/app_background.h','App/Src/app_flash.c','App/Inc/app_flash.h','App/Src/app_flash_service.c','App/Inc/app_flash_service.h']},
+      {layer:'app', owner:'app-log', name:'飞行日志与全速 IMU 捕获', short:'把控制与传感热路径中的观测先写入 RAM，再由后台落盘或经 USB 导出；格式保持版本兼容。', files:['App/Src/app_flight_log.c','App/Inc/app_flight_log.h','App/Src/app_imu_capture.c','App/Inc/app_imu_capture.h'], change:'最新：日志 v9 / 512 B 记录'},
+      {layer:'app', owner:'app-sensor', name:'气压计、磁力计与 GPS 应用状态', short:'管理各低速传感器的初始化、周期服务、健康状态和诊断报告，不参与姿态融合器内部数学。', files:['App/Src/app_baro.c','App/Inc/app_baro.h','App/Src/app_mag.c','App/Inc/app_mag.h','App/Src/app_gps.c','App/Inc/app_gps.h']},
+      {layer:'app', owner:'app-control', name:'启动、安全诊断与固件身份', short:'负责 ROM DFU 安全判定、RTOS 故障锁存以及固件 CRC/身份信息。', files:['App/Src/app_boot.c','App/Inc/app_boot.h','App/Src/app_diag.c','App/Inc/app_diag.h','App/Src/app_firmware_identity.c','App/Inc/app_firmware_identity.h']},
+      {layer:'app', owner:'app-comms', name:'Ai-WB2 网络链路', short:'管理无线模块电源、AT/透传状态和套接字连接，为 TCP/UDP 上位机链路提供固件端适配。', files:['App/Src/app_aiwb2.c','App/Inc/app_aiwb2.h']},
+      {layer:'app', owner:'app-cal', name:'系统辨识动作', short:'管理辨识动作的解锁、分段、参数、状态和采样生命周期，仍受固件安全门约束。', files:['App/Src/app_ident.c','App/Inc/app_ident.h']},
+      {layer:'app', owner:'app-control', name:'维护串口、LED 与预留消息任务', short:'维护 UART8 独立通道、LED 状态表现和当前低负载的消息任务外壳。', files:['App/Src/app_maint_uart.c','App/Inc/app_maint_uart.h','App/Src/app_led.c','App/Inc/app_led.h','App/Src/app_message.c','App/Inc/app_message.h']},
+      {layer:'app', owner:'app-stabilizer', name:'应用启动与任务门面', short:'集中执行 App 初始化，并为 CubeMX 创建的任务提供窄的 Init/Step 接口。', files:['App/Src/app.c','App/Inc/app.h','App/Src/app_tasks.c','App/Inc/app_tasks.h','App/Inc/app_messages.h']},
+
+      {layer:'service', owner:'svc-flow', name:'光流导航服务', short:'高度/速度滤波、质量门、时效门、EKF、位置和累计位移的唯一数学拥有者。', files:['Services/Src/svc_flow_nav.c','Services/Inc/svc_flow_nav.h']},
+      {layer:'service', owner:'svc-param', name:'参数服务', short:'维护参数 blob、dirty/generation、双槽加载和异步保存请求，为实时环提供稳定快照。', files:['Services/Src/svc_param.c','Services/Inc/svc_param.h']},
+      {layer:'service', owner:'svc-time', name:'统一微秒时间戳', short:'用 TIM17 低位计数加溢出高字提供单调 64 位微秒时间，统一采样、日志和延迟测量。', files:['Services/Src/svc_timestamp.c','Services/Inc/svc_timestamp.h']},
+
+      {layer:'driver', owner:'drv-imu', name:'ICM42688 驱动', short:'配置 ODR、量程和 AAF，读取寄存器并把原始整数换算成物理量。', files:['Driver/Src/drv_imu.c','Driver/Inc/drv_imu.h']},
+      {layer:'driver', owner:'drv-imu', name:'IMU 标定数学', short:'应用零偏、比例、非正交和温度补偿；不拥有整机安装方向。', files:['Driver/Src/drv_imu_calibration.c','Driver/Inc/drv_imu_calibration.h']},
+      {layer:'driver', owner:'drv-fusion', name:'姿态融合适配器', short:'封装 x-io Fusion AHRS，处理约定、更新与健康诊断；加速度方向拒绝阈值当前为 10°。', files:['Driver/Src/drv_attitude_fusion.c','Driver/Inc/drv_attitude_fusion.h'], change:'最新：加速度拒绝阈值 10°'},
+      {layer:'driver', owner:'drv-flow', name:'光流协议驱动', short:'只负责 MicoLink/MSP 字节流、校验和字段，不做滤波、质量判定或状态估计。', files:['Driver/Src/drv_optical_flow.c','Driver/Inc/drv_optical_flow.h']},
+      {layer:'driver', owner:'drv-nav', name:'水平导航 EKF 内核', short:'预测水平速度、融合光流量测并输出协方差与新息诊断；采用策略由服务层决定。', files:['Driver/Src/drv_nav_ekf.c','Driver/Inc/drv_nav_ekf.h']},
+      {layer:'driver', owner:'drv-control', name:'同轴控制器与机体模型', short:'位置/速度外环、三轴 SO(3) 姿态力矩、保护缩放和电机/倾转舵机分配。', files:['Driver/Src/drv_coax_ctrl.c','Driver/Inc/drv_coax_ctrl.h','Driver/Inc/drv_airframe_model.h'], change:'最新：偏航并入三轴 SO(3)'},
+      {layer:'driver', owner:'drv-imu', name:'机体系契约', short:'机器可读的唯一 FLU 坐标定义与转换入口；当前运行时迁移掩码仍为 0。', files:['Driver/Inc/drv_frame_contract.h']},
+      {layer:'driver', owner:'drv-io', name:'ELRS / CRSF 驱动', short:'解析接收机字节帧、CRC、16 通道和链路统计，不决定通道业务含义。', files:['Driver/Src/drv_elrs.c','Driver/Inc/drv_elrs.h']},
+      {layer:'driver', owner:'drv-io', name:'串行舵机驱动', short:'实现总线舵机原始帧、读写、移动、反馈、ID 和波特率等器件协议。', files:['Driver/Src/drv_servo.c','Driver/Inc/drv_servo.h']},
+      {layer:'driver', owner:'drv-io', name:'电机输出换算', short:'把百分比转换为 ESC 脉宽，并提供停止、读取与边界处理。', files:['Driver/Src/drv_motor.c','Driver/Inc/drv_motor.h']},
+      {layer:'driver', owner:'drv-io', name:'GD25Q32 驱动', short:'实现 JEDEC、状态寄存器、读写、擦除与忙状态轮询，具体 SPI 资源由 BSP 提供。', files:['Driver/Src/drv_gd25q32.c','Driver/Inc/drv_gd25q32.h']},
+      {layer:'driver', owner:'app-log', name:'Flash 时序探针', short:'仅在显式测量模式记录页编程、块擦除和挂起/恢复耗时，不属于正常飞行逻辑。', files:['Driver/Src/drv_gd25q32_timing_probe.c','Driver/Inc/drv_gd25q32_timing_probe.h']},
+      {layer:'driver', owner:'app-sensor', name:'气压计、磁力计与 GPS 驱动', short:'封装 SPL06/QMC5883L/M9N 等器件或协议细节，向 App 返回无业务含义的设备数据与状态。', files:['Driver/Src/drv_baro.c','Driver/Inc/drv_baro.h','Driver/Src/drv_mag.c','Driver/Inc/drv_mag.h','Driver/Src/drv_gps.c','Driver/Inc/drv_gps.h']},
+
+      {layer:'bsp', owner:'bsp-sensors', name:'IMU 与器件级板上绑定', short:'把 ICM42688 与 IMU 抽象绑定到实际 SPI、片选和数据就绪引脚。', files:['BSP/Src/bsp_imu.c','BSP/Inc/bsp_imu.h','BSP/Src/bsp_icm42688.c','BSP/Inc/bsp_icm42688.h']},
+      {layer:'bsp', owner:'bsp-sensors', name:'气压、磁力、GPS、光流板上绑定', short:'为低速传感器和光流/GPS 串口提供本板总线、回调和状态转发。', files:['BSP/Src/bsp_baro.c','BSP/Inc/bsp_baro.h','BSP/Src/bsp_spl06.c','BSP/Inc/bsp_spl06.h','BSP/Src/bsp_mag.c','BSP/Inc/bsp_mag.h','BSP/Src/bsp_gps.c','BSP/Inc/bsp_gps.h','BSP/Src/bsp_optical_flow.c','BSP/Inc/bsp_optical_flow.h']},
+      {layer:'bsp', owner:'bsp-uart', name:'UART 板级通道', short:'绑定各 UART 实例、DMA 回调和发送路径；协议解释留给 Driver/App。', files:['BSP/Src/bsp_uart.c','BSP/Inc/bsp_uart.h','BSP/Src/bsp_board.c','BSP/Inc/bsp_board.h']},
+      {layer:'bsp', owner:'bsp-uart', name:'总线舵机板级适配', short:'把通用舵机协议接到 UART4 半双工硬件，并承载异步移动与反馈轮询。', files:['BSP/Src/bsp_bus_servo.c','BSP/Inc/bsp_bus_servo.h']},
+      {layer:'bsp', owner:'bsp-output', name:'PWM 与定时器输出', short:'把电机和 PWM 舵机的微秒目标写入具体 TIM 通道，并提供 ESC 禁用语义。', files:['BSP/Src/bsp_pwm.c','BSP/Inc/bsp_pwm.h']},
+      {layer:'bsp', owner:'bsp-storage', name:'Flash 总线与缓存边界', short:'绑定 GD25Q32 SPI/片选/互斥，并维护 H7 DCache 与 DMA 缓冲一致性。', files:['BSP/Src/bsp_flash_bus.c','BSP/Inc/bsp_flash_bus.h','BSP/Src/bsp_cache.c','BSP/Inc/bsp_cache.h']},
+      {layer:'bsp', owner:'bsp-sensors', name:'通用 SPI / I2C 板级适配', short:'为各器件驱动提供统一收发接口，隔离具体 HAL handle。', files:['BSP/Src/bsp_spi.c','BSP/Inc/bsp_spi.h','BSP/Src/bsp_i2c.c','BSP/Inc/bsp_i2c.h']},
+      {layer:'bsp', owner:'core-init', name:'GPIO、LED、系统与无线电源', short:'绑定基础 GPIO/LED、系统钩子和 Ai-WB2 电源/按钮到当前电路板。', files:['BSP/Src/bsp_gpio.c','BSP/Inc/bsp_gpio.h','BSP/Src/bsp_led.c','BSP/Inc/bsp_led.h','BSP/Src/bsp_system.c','BSP/Inc/bsp_system.h','BSP/Src/bsp_aiwb2_power.c','BSP/Inc/bsp_aiwb2_power.h','BSP/Src/bsp.c','BSP/Inc/bsp.h']},
+
+      {layer:'core', owner:'core-init', name:'MCU 启动与外设初始化', short:'CubeMX 生成时钟、GPIO、DMA、SPI、I2C、UART 和定时器初始化；硬件配置以 .ioc 为准。', files:['drone-H743.ioc','Core/Src/main.c','Core/Src/gpio.c','Core/Src/dma.c','Core/Src/spi.c','Core/Src/i2c.c','Core/Src/usart.c','Core/Src/tim.c']},
+      {layer:'core', owner:'core-rtos', name:'FreeRTOS 任务与对象', short:'创建 6 个任务、消息队列、信号量和互斥锁，并把任务体接到 App 门面。', files:['Core/Src/freertos.c','Core/Inc/FreeRTOSConfig.h','Core/Inc/rtos_objects.h']},
+      {layer:'core', owner:'core-isr', name:'中断、HAL 底座与系统入口', short:'提供 IRQ、MSP、HAL 时间基准、系统启动和链接运行时；中断只路由事件，不承载业务。', files:['Core/Src/stm32h7xx_it.c','Core/Inc/stm32h7xx_it.h','Core/Src/stm32h7xx_hal_msp.c','Core/Src/stm32h7xx_hal_timebase_tim.c','Core/Src/system_stm32h7xx.c']},
+      {layer:'core', owner:'app-comms', name:'USB CDC 设备栈接线', short:'CubeMX 生成 USB 设备、描述符和 CDC 接口，把主机字节流交给 App USB 模块。', files:['USB_DEVICE/App/usb_device.c','USB_DEVICE/App/usbd_cdc_if.c','USB_DEVICE/App/usbd_desc.c','USB_DEVICE/Target/usbd_conf.c']},
+
+      {layer:'host', owner:'host-panel', name:'主工作台外壳与传输层', short:'Tk 主窗口只做装配；串口/TCP/USB 连接、自动重连和二进制旁路由独立模块负责。', files:['tools/drone_tcp_panel.py','tools/panel_lib/transport.py','tools/panel_lib/proto.py','tools/panel_lib/state.py']},
+      {layer:'host', owner:'host-panel', name:'状态监视工作台', short:'12 列可编排仪表盘、编辑器、通道选择、拖动缩放和多种 tile 均拆入 dashboard 包。', files:['tools/panel_lib/pages/dashboard.py','tools/panel_lib/dashboard/layout.py','tools/panel_lib/dashboard/editor.py','tools/panel_lib/dashboard/resize.py','tools/panel_lib/dashboard/tiles.py','tools/panel_lib/dashboard/tiles_extra.py']},
+      {layer:'host', owner:'host-panel', name:'传感、校准与验收页面', short:'各页面独立拥有 UI 与轮询门，避免把光流监视、标定、RC 向导和机械操作重新塞回主面板。', files:['tools/panel_lib/pages/flow_monitor.py','tools/panel_lib/pages/flow_ranging.py','tools/panel_lib/pages/rc_wizard.py','tools/panel_lib/pages/mechanical.py','tools/panel_lib/pages/servo_debug.py','tools/panel_lib/pages/servo_type_controls.py','tools/panel_lib/pages/validation_v0.py','tools/panel_lib/pages/v1_metrology.py','tools/panel_lib/pages/acceptance_v2.py','tools/panel_lib/pages/vibration.py','tools/panel_lib/pages/drift.py']},
+      {layer:'host', owner:'host-panel', name:'遥测解码与示波器控件', short:'按固件 schema 解码 $X 帧、统计序号/丢帧并写环形缓冲；Tk Canvas 做抽稀绘制。', files:['tools/panel_lib/telem_stream.py','tools/panel_lib/scope.py','tools/panel_lib/plotting.py']},
+      {layer:'host', owner:'host-analysis', name:'飞行日志接收、回放与系统辨识', short:'解析多版本日志、导出 CSV/JSON、按逐文件坐标溯源回放，并在同一份实录数据上评估控制表现。', files:['tools/flight_log_receive.py','tools/flight_log_rerun_replay.py','tools/flight_log_sysid.py','tools/flight_log_workbench.py','tools/flight_log_waveform_ui.py','tools/flight_log_sysid_ui.py']},
+      {layer:'host', owner:'host-analysis', name:'IMU、光流与基础验收工具', short:'采集全速 IMU、分析振动/漂移/标定，执行 M1、手势符号和光流质量/滤波评估。', files:['tools/imu_vibration_capture.py','tools/imu_filter_report.py','tools/imu_metrology.py','tools/stationary_drift.py','tools/m1_baseline_check.py','tools/gesture_sign_check.py','tools/flow_quality_probe.py','tools/flow_velocity_filter_eval.py','tools/ground_calibration.py']},
+      {layer:'host', owner:'host-analysis', name:'硬件辨识与总线工具', short:'用于电机推力、压力传感器、Saleae SPI、Flash 时序、无线链路和舵机总线专项验证。', files:['tools/fit_motor_hammerstein.py','tools/pressure_rs485_test.py','tools/decode_saleae_spi_csv.py','tools/saleae_imu_spi_capture.py','tools/flash_timing_capture.py','tools/flash_timing_analysis.py','tools/servo_baud_sweep.py','tools/aiwb2_net_tool.py']},
+      {layer:'host', owner:'host-tests', name:'契约测试与固件构建', short:'tests/ 锁定分层、坐标、安全、协议和已删除路径不会复活；CMake Debug 构建检查目标固件。', files:['tests/','CMakeLists.txt','CMakePresets.json']},
+    ];
+
+    const flows = [
+      {id:'imu', name:'IMU → 姿态 → 控制', desc:'最高实时性主链：中断只唤醒，SensorTask 产生新鲜样本，Stabilizer 先更新姿态/导航，再以 500 Hz 算控制和提交执行器。', path:['hw-imu','core-isr','bsp-sensors','drv-imu','app-sensor','drv-fusion','app-stabilizer','drv-control','app-output','bsp-output','hw-actuator']},
+      {id:'rc', name:'RC → 解锁 → 执行器', desc:'操作者意图链：原始通道必须经过协议解析、RCMAP 和安全门，才会形成参考或允许电机输出。', path:['hw-rc','bsp-uart','drv-io','app-rc','app-stabilizer','drv-control','app-output','bsp-output','hw-actuator']},
+      {id:'flow', name:'光流 → EKF → 水平控制', desc:'光流协议、设备生命周期、数学服务和控制坐标补偿分层。出问题时按这一顺序定位，不要在四处复制过滤逻辑。', path:['hw-flow','bsp-sensors','drv-flow','app-nav','svc-flow','drv-nav','app-stabilizer','drv-control']},
+      {id:'param', name:'命令 → 参数 → Flash', desc:'实时参数先进入 RAM；慢速保存请求过后台队列进入 Flash。控制环只读快照，不等待擦写。', path:['app-comms','app-control','svc-param','app-log','bsp-storage','drv-io','hw-flash']},
+      {id:'telemetry', name:'状态 → 遥测 → 上位机', desc:'Stabilizer 发布最新快照，低优先级遥测任务按掩码采样、编码，经 USB/UART 发出；导出期间会暂停普通遥测。', path:['app-stabilizer','app-comms','bsp-uart','core-isr']},
+      {id:'log', name:'热路径 → 日志 → 导出', desc:'热路径只写 RAM/队列，后台再写 Flash，导出走低优先级通信；这样记录不会改变被记录对象的实时节奏。', path:['hw-imu','app-sensor','app-stabilizer','app-log','svc-time','bsp-storage','hw-flash','app-comms']},
+    ];
+
+    const tasks = [
+      {module:'app-sensor', name:'传感器任务（SensorTask）', priority:'普通', stack:'2 KiB', rate:'≈1000 Hz', width:100, behavior:'IMU DRDY 事件驱动；20 ms 超时仅作轮询兜底', work:'SPI 读取 → 缩放/方向/LPF → 写队列 → 释放信号量'},
+      {module:'app-stabilizer', name:'稳定控制任务（Stabilizer）', priority:'普通', stack:'8 KiB', rate:'IMU≈1000 / 控制 500 Hz', width:100, behavior:'等待 IMU 信号量，清空深度 8 队列；控制周期 2 ms', work:'姿态融合 / 光流融合 → 准备 → 计算 → 提交'},
+      {module:'app-comms', name:'通信任务（UARTTask）', priority:'普通', stack:'4 KiB', rate:'事件驱动 / 最长等待 20 ms', width:57, behavior:'最长 20 ms 等待 RX/TX/KICK/ERROR 线程标志', work:'UART 收发、USB CDC、命令步进、光流恢复、LED'},
+      {module:'app-log', name:'后台任务（backgroundTask）', priority:'低于普通', stack:'4 KiB', rate:'事件驱动', width:34, behavior:'请求队列等待间隙持续推进飞行日志后台状态机', work:'参数加载/保存、Flash 读写擦除、日志块落盘'},
+      {module:'app-comms', name:'遥测任务（VOFA_Task）', priority:'低', stack:'2 KiB', rate:'默认 40 Hz', width:46, behavior:'每拍先延时 25 ms；导出独占 CDC 时暂停普通遥测', work:'采样最新快照 → 掩码编码 → USB/UART 发送'},
+      {module:'app-control', name:'消息预留任务（messageTask）', priority:'低于普通', stack:'4 KiB', rate:'10 Hz 空闲步进', width:26, behavior:'当前单步仅 osDelay(100 ms)，属于预留/低负载任务', work:'启动报告关闭；现阶段不承载主命令链'},
+    ];
+
+    const debugRoutes = [
+      {id:'attitude', title:'姿态漂移、跳变或方向不对', hint:'先证明输入、时间和坐标正确，再看 Fusion。', steps:[['hw-imu','查原始 accel/gyro、温度、供电、振动和 DRDY'],['app-sensor','查安装方向、V0/V1 应用、LPF 与实际采样率'],['svc-time','查 dt 是否来自同一微秒时钟且无异常跳变'],['drv-fusion','查 convention、四元数、accel rejection/recovery'],['app-stabilizer','查 zero offset、sample age 与发布快照']]},
+      {id:'control', title:'有姿态数据，但控制方向或响应异常', hint:'把“状态、参考、误差、力矩、分配、硬件输出”六段拆开看。', steps:[['app-stabilizer','确认 attitude 与 reference 的 frame、单位、符号和新鲜度'],['drv-control','依次看 e_R、e_ω、moment_cmd 和保护 scale'],['drv-control','检查 thrust/moment/yaw utilization 与分配残差'],['app-output','检查当前执行器 owner、pulse_sign、center/min/max'],['bsp-output','最后确认实际 PWM/总线命令和物理动作']]},
+      {id:'rc', title:'遥控器有信号但不能解锁/无动作', hint:'RC 数据“收到”不等于已经变成合法控制意图。', steps:[['hw-rc','确认接收机帧、链路质量和 last_rc 时间'],['drv-io','确认 CRSF 解析、CRC 和通道值'],['app-rc','确认 RCMAP、端点、deadband、reversed 与归一化值'],['app-stabilizer','逐项查 IMU frame、IMU health、RC fresh、低油门上升沿四门'],['app-output','确认没有 calibration/acceptance/bench 占用执行器']]},
+      {id:'yaw', title:'偏航很弱、饱和或表现怪异', hint:'偏航靠上下桨差动，权限受总推力余量强烈限制。', steps:[['app-stabilizer','查 yaw/yaw_ref/yaw_rate_ref 是否同一 FLU 语义'],['drv-control','查 e_R[2]、e_ω[2]、M_d[2] 与 Izz/增益'],['drv-control','查 yaw_limit、moment_utilization 和 protection_flags'],['hw-actuator','查上下桨总推力与差动推力是否已到单桨上限'],['app-log','用同一份实录数据对比指令、限幅前后与实际角速度']]},
+      {id:'flow', title:'光流速度跳、静止漂或 EKF 不收', hint:'先判断帧是否存在，再判断它为何不被信任。', steps:[['hw-flow','查纹理、光照、距离、镜头和 100 Hz 传感器时间'],['drv-flow','查 frame/checksum 错误和原始字段'],['app-nav','查设备 lifecycle、height valid 和旋转补偿'],['svc-flow','查 quality 45、噪声锚点 80、时效/步长门和中值窗'],['drv-nav','查 innovation、noise、covariance、stale/decay 状态']]},
+      {id:'telemetry', title:'命令没回复或遥测断了', hint:'把接收、解析、排队、发送和上位机解析分成五段。', steps:[['bsp-uart','确认物理 UART/USB 与 DMA 事件'],['app-comms','查 RX bytes/lines/overflow、stream active 和 active sink'],['app-control','确认命令被正确分派并生成回复'],['app-comms','查 uartTxQueue、USB ready、带宽和导出互斥'],['core-rtos','用 RTOS? 查队列占用、栈与 fault']]},
+      {id:'flash', title:'参数改了但重启丢失', hint:'RAM 生效与 Flash 提交是两件事。', steps:[['app-control','确认 Set/Apply 成功且参数名映射正确'],['svc-param','看 dirty、generation、active/persisted'],['app-log','确认 save 请求进入 backgroundReqQueue 并得到 response'],['bsp-storage','查 mutex、SPI、Cache 和操作超时'],['hw-flash','查记录版本、CRC、双槽选择和断电恢复']]},
+      {id:'log', title:'飞行日志丢包或回放方向不对', hint:'丢包查写入节奏；方向查日志溯源，二者不是同一问题。', steps:[['app-log','查 record rate、sequence、dropped_records 和 RAM 缓冲'],['app-log','查扇区预擦、块擦除与 BackgroundTask 是否跟得上'],['hw-flash','查 Flash 时序和坏块/写入错误'],['app-log','回放前读取 version、record_size、frame provenance、firmware CRC'],['app-stabilizer','对照同一时刻的姿态、控制 debug 与执行器输出']]},
+    ];
+
+    const graphKind = {
+      sensing:{color:'#4fe0c1', label:'感知'}, estimate:{color:'#63b3ff', label:'估计'},
+      control:{color:'#ffbd62', label:'控制'}, actuation:{color:'#ff7979', label:'执行'},
+      comms:{color:'#ad8cff', label:'通信'}, storage:{color:'#f09be0', label:'存储'},
+      platform:{color:'#8bdc7b', label:'平台'}, ground:{color:'#f3df78', label:'上位机'}
+    };
+    const graphNodes = [
+      {id:'g-panel',module:'host-panel',kind:'ground',layer:'HOST',title:'面板 / 仪表盘',sub:'命令 · 校准 · 状态监视',x:35,y:30,w:190,h:60,tags:'comms control storage'},
+      {id:'g-analysis',module:'host-analysis',kind:'storage',layer:'HOST',title:'日志 / 回放 / 系统辨识',sub:'实录证据与离线分析',x:1350,y:30,w:195,h:60,tags:'storage estimate control'},
+      {id:'g-rc',module:'hw-rc',kind:'control',layer:'HARDWARE',title:'ELRS RC',sub:'摇杆 · 模式 · 解锁开关',x:35,y:160,w:190,h:60,tags:'control'},
+      {id:'g-imu',module:'hw-imu',kind:'sensing',layer:'硬件',title:'IMU / 气压计 / 磁力计',sub:'1 kHz / 31.25 Hz / 20 Hz',x:35,y:320,w:190,h:64,tags:'estimate control'},
+      {id:'g-flowhw',module:'hw-flow',kind:'sensing',layer:'硬件',title:'光流 / 组合测距',sub:'约 100 Hz 传感器时间轴',x:35,y:500,w:190,h:64,tags:'estimate control'},
+      {id:'g-link',module:'app-comms',kind:'comms',layer:'APP',title:'UART / USB 链路',sub:'ASCII + $X · 收发队列',x:260,y:30,w:195,h:60,tags:'comms storage'},
+      {id:'g-command',module:'app-control',kind:'comms',layer:'APP',title:'命令路由',sub:'解析 · 分派 · 固件端拒绝',x:495,y:30,w:195,h:60,tags:'comms control storage'},
+      {id:'g-param',module:'svc-param',kind:'storage',layer:'SERVICES',title:'参数服务',sub:'RAM · 待保存 · 配置代数',x:730,y:30,w:195,h:60,tags:'storage control'},
+      {id:'g-telem',module:'app-comms',kind:'comms',layer:'APP',title:'遥测流',sub:'默认 40 Hz · USB/UART',x:1010,y:30,w:195,h:60,tags:'comms estimate control'},
+      {id:'g-elrs',module:'drv-io',kind:'platform',layer:'DRIVER/BSP',title:'ELRS 驱动 + UART7',sub:'CRSF 解析 · 链路新鲜度',x:260,y:160,w:195,h:60,tags:'control'},
+      {id:'g-rcmap',module:'app-rc',kind:'control',layer:'APP',title:'RC 通道映射',sub:'通道 → 归一化操作者意图',x:495,y:160,w:195,h:60,tags:'control'},
+      {id:'g-ref',module:'app-stabilizer',kind:'control',layer:'APP',title:'参考生成与安全门',sub:'四门解锁 · 模式 · 参考量',x:830,y:160,w:205,h:66,tags:'control'},
+      {id:'g-sensorio',module:'bsp-sensors',kind:'platform',layer:'BSP/DRIVER',title:'传感器 I/O',sub:'SPI/I²C · DRDY · DMA/缓存',x:260,y:320,w:195,h:64,tags:'estimate control'},
+      {id:'g-sensorpipe',module:'app-sensor',kind:'sensing',layer:'APP',title:'传感器流水线',sub:'缩放 · V0/V1 · LPF · 健康',x:495,y:320,w:195,h:64,tags:'estimate control'},
+      {id:'g-fusion',module:'drv-fusion',kind:'estimate',layer:'DRIVER',title:'姿态融合',sub:'加速度 + 陀螺 → 四元数 / RPY',x:730,y:320,w:195,h:64,tags:'estimate control'},
+      {id:'g-flowdrv',module:'drv-flow',kind:'platform',layer:'DRIVER/BSP',title:'光流协议',sub:'UART 帧 · 校验和 · 原始字段',x:260,y:500,w:195,h:64,tags:'estimate control'},
+      {id:'g-flowapp',module:'app-nav',kind:'sensing',layer:'APP',title:'光流生命周期',sub:'初始化 · 健康 · 旋转补偿',x:495,y:500,w:195,h:64,tags:'estimate control'},
+      {id:'g-flownav',module:'svc-flow',kind:'estimate',layer:'SERVICES',title:'光流导航 + EKF',sub:'质量门 · 速度 · 位置 · 位移',x:730,y:500,w:195,h:64,tags:'estimate control'},
+      {id:'g-state',module:'app-stabilizer',kind:'estimate',layer:'APP 快照',title:'飞行器状态',sub:'姿态 · 角速度 · 高度 · vxy · pxy',x:970,y:360,w:190,h:78,tags:'estimate control comms storage'},
+      {id:'g-outer',module:'drv-control',kind:'control',layer:'DRIVER',title:'位置 / 速度外环',sub:'位置 / 速度 → 加速度',x:1185,y:250,w:175,h:64,tags:'control'},
+      {id:'g-so3',module:'drv-control',kind:'control',layer:'DRIVER',title:'SO(3) 姿态控制',sub:'e_R / e_ω → M_d[3]',x:1185,y:360,w:175,h:64,tags:'control'},
+      {id:'g-alloc',module:'drv-control',kind:'control',layer:'DRIVER',title:'保护与执行器分配',sub:'利用率 · 缩放 · 差动/倾转',x:1185,y:470,w:175,h:70,tags:'control'},
+      {id:'g-owner',module:'app-output',kind:'actuation',layer:'APP',title:'执行器仲裁',sub:'正常 / 点动 / 标定 / 台架',x:1185,y:590,w:175,h:66,tags:'control'},
+      {id:'g-output',module:'bsp-output',kind:'actuation',layer:'BSP',title:'PWM / 总线输出',sub:'ESC · PWM 舵机 · UART4',x:1185,y:700,w:175,h:64,tags:'control'},
+      {id:'g-actuator',module:'hw-actuator',kind:'actuation',layer:'硬件',title:'电机 + 倾转舵机',sub:'总推力 · 偏航差动 · 横滚/俯仰',x:1380,y:700,w:170,h:76,tags:'control'},
+      {id:'g-log',module:'app-log',kind:'storage',layer:'APP',title:'飞行日志 / IMU 捕获',sub:'旁路复制 · 坐标来源标记',x:970,y:560,w:190,h:66,tags:'storage estimate control'},
+      {id:'g-bg',module:'app-log',kind:'storage',layer:'APP 任务',title:'后台任务',sub:'异步擦写 · 参数保存',x:730,y:690,w:195,h:64,tags:'storage'},
+      {id:'g-flashbus',module:'bsp-storage',kind:'platform',layer:'DRIVER/BSP',title:'GD25Q32 + Flash 总线',sub:'SPI · 互斥锁 · CRC · 版本',x:970,y:790,w:190,h:64,tags:'storage'},
+      {id:'g-flash',module:'hw-flash',kind:'storage',layer:'硬件',title:'外部 Flash',sub:'参数双槽 + 飞行日志',x:1380,y:820,w:170,h:64,tags:'storage'},
+      {id:'g-rtos',module:'core-rtos',kind:'platform',layer:'CORE',title:'CMSIS-RTOS2 数据交接',sub:'队列 · 信号量 · 标志 · seqlock',x:495,y:690,w:195,h:64,tags:'estimate control comms storage'},
+      {id:'g-time',module:'svc-time',kind:'platform',layer:'SERVICES',title:'64 位时间戳',sub:'TIM17 · 1 μs 单调时间',x:260,y:690,w:195,h:64,tags:'estimate storage'},
+    ];
+    const graphEdges = [
+      {from:'g-panel',to:'g-link',label:'命令 ↔ 回复 / 遥测',kind:'comms',tags:'comms control storage'},
+      {from:'g-link',to:'g-command',label:'完整文本行',kind:'comms',tags:'comms control storage'},
+      {from:'g-command',to:'g-param',label:'GET / SET / SAVE',kind:'storage',tags:'storage'},
+      {from:'g-telem',to:'g-link',label:'$X 帧',kind:'comms',tags:'comms',fromSide:'left',toSide:'right'},
+      {from:'g-rc',to:'g-elrs',label:'CRSF 字节',kind:'control',tags:'control'},
+      {from:'g-elrs',to:'g-rcmap',label:'16 通道 μs + 新鲜度',kind:'control',tags:'control'},
+      {from:'g-rcmap',to:'g-ref',label:'归一化意图',kind:'control',tags:'control'},
+      {from:'g-command',to:'g-ref',label:'标定 / 验收 / 模式',kind:'comms',tags:'comms control',type:'async',fromSide:'bottom',toSide:'top',via:[[592,120],[932,120]]},
+      {from:'g-imu',to:'g-sensorio',label:'SPI + DRDY',kind:'sensing',tags:'estimate control'},
+      {from:'g-sensorio',to:'g-sensorpipe',label:'原始寄存器值',kind:'sensing',tags:'estimate control'},
+      {from:'g-sensorpipe',to:'g-fusion',label:'队列[8] + 信号量',kind:'estimate',tags:'estimate control',type:'async'},
+      {from:'g-fusion',to:'g-state',label:'四元数 / RPY / 陀螺',kind:'estimate',tags:'estimate control'},
+      {from:'g-flowhw',to:'g-flowdrv',label:'UART 帧',kind:'sensing',tags:'estimate control'},
+      {from:'g-flowdrv',to:'g-flowapp',label:'原始光流 + 测距',kind:'sensing',tags:'estimate control'},
+      {from:'g-flowapp',to:'g-flownav',label:'补偿后样本',kind:'estimate',tags:'estimate control'},
+      {from:'g-flownav',to:'g-state',label:'高度 / vxy / pxy',kind:'estimate',tags:'estimate control',fromSide:'right',toSide:'bottom',via:[[945,532],[1065,532]]},
+      {from:'g-ref',to:'g-outer',label:'位置 / 速度参考',kind:'control',tags:'control'},
+      {from:'g-state',to:'g-outer',label:'估计状态',kind:'estimate',tags:'estimate control',fromSide:'right',toSide:'left',via:[[1170,399],[1170,282]]},
+      {from:'g-outer',to:'g-so3',label:'加速度 → 目标姿态',kind:'control',tags:'control',fromSide:'bottom',toSide:'top'},
+      {from:'g-state',to:'g-so3',label:'R / ω 反馈',kind:'estimate',tags:'estimate control'},
+      {from:'g-so3',to:'g-alloc',label:'F_d + M_d[3]',kind:'control',tags:'control',fromSide:'bottom',toSide:'top'},
+      {from:'g-alloc',to:'g-owner',label:'电机 + 舵机目标',kind:'control',tags:'control',fromSide:'bottom',toSide:'top'},
+      {from:'g-owner',to:'g-output',label:'安全仲裁后的胜出目标',kind:'actuation',tags:'control',fromSide:'bottom',toSide:'top'},
+      {from:'g-output',to:'g-actuator',label:'PWM / UART4',kind:'actuation',tags:'control'},
+      {from:'g-param',to:'g-sensorpipe',label:'标定参数快照',kind:'storage',tags:'storage estimate',type:'async',fromSide:'bottom',toSide:'top',via:[[827,270],[592,270]]},
+      {from:'g-param',to:'g-ref',label:'RC / 安全配置',kind:'storage',tags:'storage control',type:'async',fromSide:'bottom',toSide:'top'},
+      {from:'g-param',to:'g-so3',label:'控制器参数',kind:'storage',tags:'storage control',type:'async',fromSide:'right',toSide:'top',via:[[1100,60],[1272,60]]},
+      {from:'g-state',to:'g-telem',label:'最新快照',kind:'comms',tags:'comms estimate',type:'observe',fromSide:'top',toSide:'bottom'},
+      {from:'g-sensorpipe',to:'g-log',label:'原始 / 滤波后 IMU',kind:'storage',tags:'storage estimate',type:'observe',fromSide:'bottom',toSide:'left',via:[[592,610],[950,610]]},
+      {from:'g-state',to:'g-log',label:'姿态 / 导航',kind:'storage',tags:'storage estimate',type:'observe',fromSide:'bottom',toSide:'top'},
+      {from:'g-alloc',to:'g-log',label:'M_d / utilization',kind:'storage',tags:'storage control',type:'observe',fromSide:'left',toSide:'right'},
+      {from:'g-owner',to:'g-log',label:'实际输出原因',kind:'storage',tags:'storage control',type:'observe',fromSide:'left',toSide:'right'},
+      {from:'g-log',to:'g-bg',label:'RAM 块 / 写请求',kind:'storage',tags:'storage',type:'async',fromSide:'left',toSide:'right'},
+      {from:'g-bg',to:'g-flashbus',label:'擦除 / 写入 / 读取',kind:'storage',tags:'storage',fromSide:'bottom',toSide:'left',via:[[827,822],[950,822]]},
+      {from:'g-flashbus',to:'g-flash',label:'SPI 事务',kind:'storage',tags:'storage'},
+      {from:'g-flashbus',to:'g-analysis',label:'按版本导出',kind:'storage',tags:'storage',fromSide:'top',toSide:'bottom',via:[[1065,120],[1447,120]]},
+      {from:'g-time',to:'g-sensorpipe',label:'样本时间戳',kind:'platform',tags:'estimate storage',type:'async',fromSide:'top',toSide:'bottom',via:[[357,650],[592,650]]},
+      {from:'g-time',to:'g-log',label:'记录时间',kind:'platform',tags:'storage',type:'async'},
+      {from:'g-rtos',to:'g-fusion',label:'任务唤醒 / 队列所有权',kind:'platform',tags:'estimate control',type:'async',fromSide:'top',toSide:'bottom'},
+      {from:'g-rtos',to:'g-link',label:'线程标志 / uartTxQueue',kind:'platform',tags:'comms',type:'async',fromSide:'top',toSide:'bottom',via:[[592,665],[357,665],[357,110]]},
+      {from:'g-rtos',to:'g-bg',label:'后台请求 / 响应',kind:'platform',tags:'storage',type:'async'},
+    ];
+    const graphMainNodes = new Set([
+      'g-rc','g-elrs','g-rcmap','g-ref',
+      'g-imu','g-sensorio','g-sensorpipe','g-fusion',
+      'g-flowhw','g-flowdrv','g-flowapp','g-flownav','g-state',
+      'g-outer','g-so3','g-alloc','g-owner','g-output','g-actuator'
+    ]);
+    const graphMainEdges = new Set([
+      'g-rc>g-elrs','g-elrs>g-rcmap','g-rcmap>g-ref',
+      'g-imu>g-sensorio','g-sensorio>g-sensorpipe','g-sensorpipe>g-fusion','g-fusion>g-state',
+      'g-flowhw>g-flowdrv','g-flowdrv>g-flowapp','g-flowapp>g-flownav','g-flownav>g-state',
+      'g-ref>g-outer','g-state>g-outer','g-outer>g-so3','g-state>g-so3',
+      'g-so3>g-alloc','g-alloc>g-owner','g-owner>g-output','g-output>g-actuator'
+    ]);
+    const layerMap = Object.fromEntries(layers.map(x => [x.id,x]));
+    const moduleMap = Object.fromEntries(modules.map(x => [x.id,x]));
+    const sourceMap = Object.fromEntries(sourceModules.map((x,i) => [`source-${i}`, {...x,id:`source-${i}`} ]));
+    let selectedFlow = 'imu';
+    let layerFilter = 'all';
+    let indexView = 'source';
+
+    function esc(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+    function graphAnchor(node, side) {
+      if (side==='left') return [node.x, node.y + node.h/2];
+      if (side==='top') return [node.x + node.w/2, node.y];
+      if (side==='bottom') return [node.x + node.w/2, node.y + node.h];
+      return [node.x + node.w, node.y + node.h/2];
+    }
+    function graphPoints(edge) {
+      const from = graphNodes.find(n=>n.id===edge.from), to = graphNodes.find(n=>n.id===edge.to);
+      const fromSide=edge.fromSide||'right', toSide=edge.toSide||'left';
+      const start=graphAnchor(from,fromSide), end=graphAnchor(to,toSide);
+      if (edge.via) return [start,...edge.via,end];
+      if ((Math.abs(start[0]-end[0])<1) || (Math.abs(start[1]-end[1])<1)) return [start,end];
+      if ((fromSide==='right'||fromSide==='left') && (toSide==='right'||toSide==='left')) {
+        const midX=(start[0]+end[0])/2;
+        return [start,[midX,start[1]],[midX,end[1]],end];
+      }
+      const midY=(start[1]+end[1])/2;
+      return [start,[start[0],midY],[end[0],midY],end];
+    }
+    function graphMidpoint(points) {
+      const seg=[]; let total=0;
+      for(let i=1;i<points.length;i++){const d=Math.hypot(points[i][0]-points[i-1][0],points[i][1]-points[i-1][1]);seg.push(d);total+=d;}
+      let target=total/2;
+      for(let i=0;i<seg.length;i++){if(target<=seg[i]){const t=seg[i]?target/seg[i]:0;return [points[i][0]+(points[i+1][0]-points[i][0])*t,points[i][1]+(points[i+1][1]-points[i][1])*t-7];}target-=seg[i];}
+      return points[Math.floor(points.length/2)];
+    }
+    function renderGraph() {
+      const svg=document.getElementById('logicGraph');
+      const defs=`<defs>${Object.entries(graphKind).map(([id,k])=>`<marker id="arrow-${id}" markerWidth="6" markerHeight="6" refX="5.6" refY="3" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L5.6,3 L0,6 Z" fill="${k.color}"></path></marker>`).join('')}</defs>`;
+      const zones=`
+        <rect class="graph-zone hardware" x="14" y="12" width="220" height="914" rx="14"></rect>
+        <text class="graph-zone-title" x="28" y="134">外部输入 / 上位机</text>
+        <rect class="graph-zone" x="244" y="12" width="1108" height="914" rx="14"></rect>
+        <text class="graph-zone-title" x="260" y="134">STM32H743 飞行控制器 · APP / SERVICES / DRIVER / BSP / CORE</text>
+        <rect class="graph-zone hardware" x="1366" y="12" width="199" height="914" rx="14"></rect>
+        <text class="graph-zone-title" x="1380" y="134">物理输出 / 存储</text>
+        <text class="graph-callout" x="260" y="682">RTOS / 时间 / 后台支撑 — 虚线表示异步交接，不是直接函数调用</text>`;
+      const edgeMarkup=graphEdges.map((e,i)=>{
+        const pts=graphPoints(e), mid=graphMidpoint(pts), kind=graphKind[e.kind];
+        const d=pts.map((p,j)=>`${j?'L':'M'} ${p[0]} ${p[1]}`).join(' ');
+        return `<path class="graph-edge ${e.type||''}" data-edge="${i}" data-tags="${e.tags}" style="--edge-color:${kind.color}" d="${d}" marker-end="url(#arrow-${e.kind})"></path><text class="edge-label" data-edge-label="${i}" data-tags="${e.tags}" x="${mid[0]}" y="${mid[1]}" text-anchor="middle">${esc(e.label)}</text>`;
+      }).join('');
+      const nodeMarkup=graphNodes.map(n=>{
+        const k=graphKind[n.kind];
+        return `<g class="graph-node" data-graph-node="${n.id}" data-module="${n.module}" data-tags="${n.tags}" style="--node-color:${k.color}" role="button" aria-label="${esc(n.title)}：${esc(n.sub)}">
+          <rect x="${n.x}" y="${n.y}" width="${n.w}" height="${n.h}"></rect><rect class="node-accent" x="${n.x}" y="${n.y}" width="4" height="${n.h}" rx="2"></rect>
+          <text class="node-kind" x="${n.x+12}" y="${n.y+14}">${esc(n.layer)} · ${k.label}</text><text class="node-title" x="${n.x+12}" y="${n.y+34}">${esc(n.title)}</text><text class="node-sub" x="${n.x+12}" y="${n.y+51}">${esc(n.sub)}</text></g>`;
+      }).join('');
+      svg.innerHTML=defs+zones+`<g class="graph-edges">${edgeMarkup}</g><g class="graph-nodes">${nodeMarkup}</g>`;
+    }
+    function renderArchitecture() {
+      const host = document.getElementById('architecture');
+      host.innerHTML = layers.map(layer => `
+        <section class="layer-column" style="--layer-color:${layer.color}">
+          <button class="layer-head" data-layer-detail="${layer.id}">
+            <span class="layer-kicker">${layer.order}</span><span class="layer-title">${layer.name}</span><span class="layer-rule">${layer.rule}</span>
+          </button>
+          <div class="module-stack">${layer.modules.map(id => {
+            const m = moduleMap[id];
+            return `<button class="module-node" data-module="${id}"><b>${m.name}</b><small>${m.short}</small></button>`;
+          }).join('')}</div>
+        </section>`).join('');
+      host.querySelectorAll('[data-module]').forEach(b => b.addEventListener('click', () => openModule(b.dataset.module)));
+      host.querySelectorAll('[data-layer-detail]').forEach(b => b.addEventListener('click', () => openLayer(b.dataset.layerDetail)));
+    }
+    function renderFlows() {
+      const toolbar = document.getElementById('flowToolbar');
+      toolbar.innerHTML = flows.map(f => `<button class="${f.id===selectedFlow?'active':''}" data-flow="${f.id}">${f.name}</button>`).join('');
+      toolbar.querySelectorAll('button').forEach(b => b.addEventListener('click', () => { selectedFlow=b.dataset.flow; renderFlows(); applyFlow(); }));
+      applyFlow();
+    }
+    function applyFlow() {
+      const flow = flows.find(f => f.id===selectedFlow);
+      const ids = new Set(flow.path);
+      document.querySelectorAll('.module-node').forEach(node => {
+        node.classList.toggle('highlight', ids.has(node.dataset.module));
+        node.classList.toggle('dim', !ids.has(node.dataset.module));
+      });
+      document.getElementById('flowSteps').innerHTML = flow.path.map(id => `<span class="flow-step"><button data-module="${id}">${moduleMap[id].name}</button></span>`).join('');
+      document.getElementById('flowExplain').innerHTML = `<b style="color:var(--amber);font-weight:500">${flow.name}</b><br>${flow.desc}`;
+      document.querySelectorAll('#flowSteps [data-module]').forEach(b => b.addEventListener('click', () => openModule(b.dataset.module)));
+    }
+    function renderTasks() {
+      document.getElementById('taskBoard').innerHTML = tasks.map(t => `
+        <div class="task-row">
+          <div class="task-name"><button data-module="${t.module}">${t.name}</button><div class="task-meta">${t.priority} · stack ${t.stack}</div></div>
+          <div><div style="font-size:13px;margin-bottom:4px">${t.behavior}</div><div class="task-meta">${t.work}</div></div>
+          <div class="rate-track"><div class="rate-fill" style="--w:${t.width}%"></div><div class="rate-text"><span>${t.rate}</span><span>${t.priority}</span></div></div>
+        </div>`).join('');
+      document.querySelectorAll('#taskBoard [data-module]').forEach(b => b.addEventListener('click', () => openModule(b.dataset.module)));
+    }
+    function renderFilters() {
+      const visibleLayers = indexView==='source' ? layers.filter(l=>l.id!=='hardware') : layers;
+      if (layerFilter!=='all' && !visibleLayers.some(l=>l.id===layerFilter)) layerFilter='all';
+      const items = [{id:'all',name:'全部'},...visibleLayers.map(l=>({id:l.id,name:l.name}))];
+      document.getElementById('layerFilters').innerHTML = items.map(x => `<button class="${x.id===layerFilter?'active':''}" data-filter="${x.id}">${x.name}</button>`).join('');
+      document.querySelectorAll('[data-filter]').forEach(b => b.addEventListener('click', () => {layerFilter=b.dataset.filter;renderFilters();renderIndex();}));
+    }
+    function renderIndex() {
+      const q = document.getElementById('moduleSearch').value.trim().toLowerCase();
+      const host = document.getElementById('moduleIndex');
+      if (indexView==='source') {
+        const filtered = Object.values(sourceMap).filter(m => {
+          if (layerFilter!=='all' && m.layer!==layerFilter) return false;
+          const owner=moduleMap[m.owner];
+          const hay=[m.name,m.short,m.change||'',...m.files,owner?.name||'',owner?.short||''].join(' ').toLowerCase();
+          return !q || hay.includes(q);
+        });
+        const groups = layers.filter(l=>l.id!=='hardware').map(l => ({layer:l,items:filtered.filter(m=>m.layer===l.id)})).filter(g=>g.items.length);
+        host.className='source-index';
+        host.innerHTML = groups.length ? groups.map(g => `<section class="source-group" style="--group-color:${g.layer.color}">
+          <div class="source-group-head"><b>${g.layer.name}</b><span>${g.items.length} 个源码单元</span></div>
+          <div class="source-list">${g.items.map(m=>`<button class="source-item" data-source="${m.id}">
+            <span><b>${esc(m.name)}</b><code>${esc(m.files[0])}${m.files.length>1?`<br>+ ${m.files.length-1} 个相关文件`:''}</code>${m.change?`<em class="source-change">${esc(m.change)}</em>`:''}</span>
+            <p>${esc(m.short)}</p>
+          </button>`).join('')}</div>
+        </section>`).join('') : '<div class="empty">没有匹配源码。可搜索“偏航”“servotype”“遥测”“Flash”或准确文件名。</div>';
+        document.querySelectorAll('#moduleIndex [data-source]').forEach(b => b.addEventListener('click', () => openSourceModule(b.dataset.source)));
+        return;
+      }
+      const filtered = modules.filter(m => {
+        if (layerFilter!=='all' && m.layer!==layerFilter) return false;
+        const hay = [m.name,m.short,m.summary,m.beginner,m.context,m.rate,...m.inputs,...m.outputs,...m.responsibilities,...m.debug,...m.files].join(' ').toLowerCase();
+        return !q || hay.includes(q);
+      });
+      host.className='module-index';
+      host.innerHTML = filtered.length ? filtered.map(m => {
+        const l=layerMap[m.layer];
+        return `<button class="index-item" style="--item-color:${l.color}" data-module="${m.id}"><span class="index-layer">${l.order} · ${l.name}</span><h3>${m.name}</h3><p>${m.short} · ${m.rate}</p></button>`;
+      }).join('') : '<div class="empty">没有匹配模块。试试“偏航”“队列”“Flash”“坐标”或“100 Hz”。</div>';
+      document.querySelectorAll('#moduleIndex [data-module]').forEach(b => b.addEventListener('click', () => openModule(b.dataset.module)));
+    }
+    function renderDebug() {
+      document.getElementById('debugGrid').innerHTML = debugRoutes.map(r => `<button class="symptom" data-debug="${r.id}"><b>${r.title}</b><span>${r.hint}</span></button>`).join('');
+      document.querySelectorAll('[data-debug]').forEach(b => b.addEventListener('click', () => renderDebugRoute(b.dataset.debug)));
+      renderDebugRoute(debugRoutes[0].id);
+    }
+    function renderDebugRoute(id) {
+      const r = debugRoutes.find(x => x.id===id);
+      document.getElementById('debugRoute').innerHTML = `<h3>${r.title}</h3><p>${r.hint}</p>${r.steps.map((s,i)=>`<div class="debug-step"><span class="n">${i+1}</span><button data-module="${s[0]}">${moduleMap[s[0]].name}</button><p>${s[1]}</p></div>`).join('')}`;
+      document.querySelectorAll('#debugRoute [data-module]').forEach(b => b.addEventListener('click', () => openModule(b.dataset.module)));
+      document.querySelectorAll('[data-debug]').forEach(b => b.style.borderColor = b.dataset.debug===id ? 'var(--amber)' : '');
+    }
+    function bindSystemMap() {
+      document.querySelectorAll('#view-system [data-module]').forEach(b => b.addEventListener('click', () => openModule(b.dataset.module)));
+      const applySystemPath = (path, button) => {
+        document.querySelectorAll('[data-system-path]').forEach(x => x.classList.toggle('active', x===button));
+        document.querySelectorAll('#view-system .sys-node').forEach(node => {
+          const active = path==='all' || path==='main' || (node.dataset.systemTags || '').split(' ').includes(path);
+          node.classList.toggle('sys-active', path!=='all' && active);
+          node.classList.toggle('sys-dim', !active);
+        });
+        document.querySelectorAll('#logicGraph .graph-node').forEach(node => {
+          const active = path==='all' ||
+            (path==='main' ? graphMainNodes.has(node.dataset.graphNode) : (node.dataset.tags || '').split(' ').includes(path));
+          node.classList.toggle('graph-active', path!=='all' && active);
+          node.classList.toggle('graph-dim', !active);
+        });
+        document.querySelectorAll('#logicGraph .graph-edge, #logicGraph .edge-label').forEach(edge => {
+          const index=Number(edge.dataset.edge ?? edge.dataset.edgeLabel);
+          const item=graphEdges[index];
+          const active = path==='all' ||
+            (path==='main' ? graphMainEdges.has(`${item.from}>${item.to}`) : (edge.dataset.tags || '').split(' ').includes(path));
+          edge.classList.toggle('graph-active', path!=='all' && active);
+          edge.classList.toggle('graph-dim', !active);
+        });
+      };
+      document.querySelectorAll('[data-system-path]').forEach(b => b.addEventListener('click', () => applySystemPath(b.dataset.systemPath,b)));
+      const initial=document.querySelector('[data-system-path].active');
+      if(initial) applySystemPath(initial.dataset.systemPath,initial);
+    }
+    function list(items) { return `<ul>${items.map(x=>`<li>${esc(x)}</li>`).join('')}</ul>`; }
+    function tags(items) { return `<div class="io-list">${items.map(x=>`<span>${esc(x)}</span>`).join('')}</div>`; }
+    function openModule(id) {
+      const m = moduleMap[id], l = layerMap[m.layer];
+      const siblings = l.modules.filter(x=>x!==id).map(x=>moduleMap[x]);
+      document.getElementById('drawer').style.setProperty('--drawer-color', l.color);
+      document.getElementById('drawerContent').innerHTML = `
+        <div class="drawer-kicker">${l.order} · ${l.name}</div>
+        <h2>${m.name}</h2><p class="drawer-summary">${m.summary}</p>
+        <div class="meta-grid"><div class="meta"><span>运行上下文</span><b>${m.context}</b></div><div class="meta"><span>典型速率</span><b>${m.rate}</b></div></div>
+        <h3>给刚入门的你</h3><p class="drawer-summary" style="font-size:13px">${m.beginner}</p>
+        <h3>它负责什么</h3>${list(m.responsibilities)}
+        <h3>输入</h3>${tags(m.inputs)}<h3>输出</h3>${tags(m.outputs)}
+        <h3>上下游关系</h3>${tags(m.calls.map(x=>moduleMap[x]?.name || x))}
+        <h3>调试检查点</h3>${list(m.debug)}
+        <h3>代码入口</h3><div class="files">${m.files.map(esc).join('\n')}</div>
+        <h3>同层其他模块</h3><div class="submods">${siblings.map(s=>`<button class="submod" data-module="${s.id}"><b>${s.name}</b><span>${s.short}</span></button>`).join('')}</div>`;
+      document.querySelectorAll('#drawerContent [data-module]').forEach(b => b.addEventListener('click', () => openModule(b.dataset.module)));
+      openDrawer();
+    }
+    function openSourceModule(id) {
+      const s=sourceMap[id], m=moduleMap[s.owner], l=layerMap[s.layer];
+      document.getElementById('drawer').style.setProperty('--drawer-color', l.color);
+      document.getElementById('drawerContent').innerHTML = `
+        <div class="drawer-kicker">${l.order} · 当前源码目录 / ${l.name}</div>
+        <h2>${esc(s.name)}</h2><p class="drawer-summary">${esc(s.short)}</p>
+        ${s.change?`<div class="index-snapshot" style="margin:18px 0 0"><b>${esc(s.change)}</b><span>已按当前工作树更新</span></div>`:''}
+        <div class="meta-grid"><div class="meta"><span>所属架构职责</span><b>${esc(m.name)}</b></div><div class="meta"><span>典型运行上下文</span><b>${esc(m.context)}</b></div></div>
+        <h3>源码入口</h3><div class="files">${s.files.map(esc).join('\n')}</div>
+        <h3>放在整个系统里怎样理解</h3><p class="drawer-summary" style="font-size:13px">${esc(m.beginner)}</p>
+        <h3>这一职责的输入</h3>${tags(m.inputs)}<h3>输出</h3>${tags(m.outputs)}
+        <h3>调试检查点</h3>${list(m.debug)}
+        <h3>继续查看架构职责</h3><div class="submods"><button class="submod" data-module="${m.id}"><b>${m.name}</b><span>${m.short} · ${m.rate}</span></button></div>`;
+      document.querySelectorAll('#drawerContent [data-module]').forEach(b => b.addEventListener('click', () => openModule(b.dataset.module)));
+      openDrawer();
+    }
+    function openLayer(id) {
+      const l=layerMap[id];
+      document.getElementById('drawer').style.setProperty('--drawer-color', l.color);
+      document.getElementById('drawerContent').innerHTML = `
+        <div class="drawer-kicker">${l.order} · 软件架构层</div><h2>${l.name}</h2><p class="drawer-summary">${l.summary}</p>
+        <h3>给刚入门的你</h3><p class="drawer-summary" style="font-size:13px">${l.beginner}</p>
+        <h3>这一层的边界</h3>${list([
+          id==='core'?'CubeMX 生成区只通过 .ioc 变更，不把硬件配置散落到 App。':`模块只处理“${l.rule}”范围内的问题。`,
+          id==='app'?'允许组织任务和行为，但实时热路径不得阻塞 Flash/USB。':'被上层调用时提供窄接口，不反向依赖上层业务。',
+          id==='service'?'Service 没有自己的任务；调用发生在哪个线程，就在哪个线程执行。':'坐标、单位、生命周期和错误语义必须在边界上写清。'
+        ])}<h3>子模块（继续点进去）</h3><div class="submods">${l.modules.map(mid=>{const m=moduleMap[mid];return `<button class="submod" data-module="${mid}"><b>${m.name}</b><span>${m.short} · ${m.rate}</span></button>`}).join('')}</div>`;
+      document.querySelectorAll('#drawerContent [data-module]').forEach(b => b.addEventListener('click', () => openModule(b.dataset.module)));
+      openDrawer();
+    }
+    function openDrawer() { document.getElementById('drawer').classList.add('open'); document.getElementById('drawerBackdrop').classList.add('open'); document.getElementById('drawer').setAttribute('aria-hidden','false'); document.body.style.overflow='hidden'; }
+    function closeDrawer() { document.getElementById('drawer').classList.remove('open'); document.getElementById('drawerBackdrop').classList.remove('open'); document.getElementById('drawer').setAttribute('aria-hidden','true'); document.body.style.overflow=''; }
+    document.querySelectorAll('.nav button').forEach(b => b.addEventListener('click', () => {
+      document.querySelectorAll('.nav button').forEach(x=>x.classList.toggle('active',x===b));
+      document.querySelectorAll('.view').forEach(v=>v.classList.toggle('active',v.id===`view-${b.dataset.view}`));
+      window.scrollTo({top:0,behavior:'smooth'});
+    }));
+    document.querySelectorAll('[data-index-mode]').forEach(b => b.addEventListener('click', () => {
+      indexView=b.dataset.indexMode;
+      document.querySelectorAll('[data-index-mode]').forEach(x=>x.classList.toggle('active',x===b));
+      document.getElementById('moduleSearch').placeholder = indexView==='source'
+        ? '搜索源码名、文件路径、职责或最新变更…'
+        : '搜索架构模块、职责、输入输出或调试关键词…';
+      renderFilters();
+      renderIndex();
+    }));
+    document.getElementById('moduleSearch').addEventListener('input', renderIndex);
+    document.getElementById('drawerClose').addEventListener('click', closeDrawer);
+    document.getElementById('drawerBackdrop').addEventListener('click', closeDrawer);
+    document.addEventListener('keydown', e => { if(e.key==='Escape') closeDrawer(); });
+    renderGraph(); bindSystemMap(); renderArchitecture(); renderFlows(); renderTasks(); renderFilters(); renderIndex(); renderDebug();
+  </script>
+</body>
+</html>
