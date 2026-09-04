@@ -2,7 +2,7 @@
 
 # drone-H743 Repository Index
 
-Snapshot: `deeeb6037490`. Covered non-index working files: 7358. Scope: Git-tracked plus non-ignored untracked files; ignored build outputs, caches, and local logs are intentionally excluded.
+Snapshot: `66ece72208f0`. Covered non-index working files: 7351. Scope: Git-tracked plus non-ignored untracked files; ignored build outputs, caches, and local logs are intentionally excluded.
 
 ## Use this index
 
@@ -19,10 +19,10 @@ Freshness check: `python .agents/skills/drone-h743-project/scripts/update_reposi
 |---|---|---:|
 | [firmware-app-services.md](firmware-app-services.md) | App behavior, tasks, control, commands, diagnostics, application services | 104 |
 | [firmware-driver-bsp.md](firmware-driver-bsp.md) | Device/algorithm drivers, buses, GPIO, DMA callbacks, cache or board binding | 76 |
-| [platform-build.md](platform-build.md) | CubeMX/Core, pins/clocks/peripherals, RTOS objects, linker/startup, USB, build, HAL/vendor internals | 1426 |
-| [tests.md](tests.md) | Existing regression/contract coverage and focused test selection | 108 |
-| [host-tools.md](host-tools.md) | Serial/TCP tools, capture, calibration, identification, log analysis and desktop UIs | 5323 |
-| [docs-data.md](docs-data.md) | Architecture/controller documents, agent references, datasets, captures and experimental evidence | 321 |
+| [platform-build.md](platform-build.md) | CubeMX/Core, pins/clocks/peripherals, RTOS objects, linker/startup, USB, build, HAL/vendor internals | 1427 |
+| [tests.md](tests.md) | Existing regression/contract coverage and focused test selection | 109 |
+| [host-tools.md](host-tools.md) | Serial/TCP tools, capture, calibration, identification, log analysis and desktop UIs | 5322 |
+| [docs-data.md](docs-data.md) | Architecture/controller documents, agent references, datasets, captures and experimental evidence | 313 |
 
 ## Ownership map
 

@@ -4,7 +4,7 @@
 
 Read this shard only when the task uses serial/TCP diagnostics, log analysis, identification, capture, calibration, or desktop UIs.
 
-Source snapshot: `cc2058887eb0`; aggregate snapshot: `6456f3f920d8`. Covered files: 5323.
+Source snapshot: `85a6db485217`; aggregate snapshot: `6456f3f920d8`. Covered files: 5322.
 
 | File/module or scope | Content outline | Key entry points / size |
 |---|---|---|
@@ -37,8 +37,7 @@ Source snapshot: `cc2058887eb0`; aggregate snapshot: `6456f3f920d8`. Covered fil
 | `tools/gesture_sign_check.py` | PIPELINE R-M2-2 · 粗符号手势验证（录制 + 自动分段判号，只读）。 作者按口令做三个小动作（机头下压回平 / 右翼下压回平 / 机头左转转回）， 本工具全程 ~12Hz 轮询 `IMU?` 录制原始数据，随后离线自动判定… | `record`, `segments`, `judge`, `main` |
 | `tools/ground_calibration.py` | Host-only analysis for ground calibration evidence. The functions in this module never write target parameters. They tu… | `GroundCalibrationError`, `FlowRangeSample`, `analyze_flow_zero`, `analyze_flow_axis`, `fit_range_two_point`, `analyze_rotation_compensation` (+1) |
 | `tools/ground_station/drone_simulator.py` | Drone-H743 High-Fidelity Flight Telemetry Simulator & Test Server for Serial-Studio. Simulates: - 3D Attitude (Roll, Pi… | `DroneSimulator` |
-| `tools/ground_station/README.md` | drone-H743 专属上位机与飞控自检架构 | `0. 先读这一节：当前真实状态`, ``Drone-H743-GCS.ssproj` 是对着仿真器做的，不是对着固件`, ``.ssproj` 还有 16 个无效的控件 id`, `1. 核心工程思想：上位机不持有危险动作的时间轴`, `反模式：时间轴在上位机手里`, `这两行之间进程被杀 / USB 被拔 / 用户 Ctrl+C` (+25) |
-| `tools/ground_station/ROADMAP.md` | 上位机与飞控自检体系 —— 框架与推进记录 | `一、整体框架`, `贯穿全层的两条原则`, `二、进度总览`, `三、已完成事项明细`, `2026-08-29 · Serial-Studio 能力探底（L3）`, `2026-08-29 · 遥测通道 schema（L1）· `c3b163f`` (+16) |
+| `tools/ground_station/README.md` | Serial Studio / Qt 上位机资料 | `当前可确认的内容`, `当前不应假设的内容`, `Agent 使用历史信息的规则` |
 | `tools/ground_station/ss-api-schema-gpl3.json` | Host-side utility for ss api schema gpl3 | — |
 | `tools/imu_attitude_tuner.py` | Record IMU samples and analyse x-io Fusion rejection/recovery diagnostics | `OpenOcdTelnet`, `decode_message`, `resolve_symbol_address`, `quality_summary`, `record_openocd`, `analyze_capture` (+2) |
 | `tools/imu_filter_report.py` | Visualise the vibration spectrum and the 1st- vs 2nd-order filter tradeoff. Reads the throttle-sweep captures produced… | `biquad_coeffs`, `apply_biquad`, `apply_iir1`, `response_db`, `group_delay_ms`, `spectrum` (+5) |
@@ -59,7 +58,7 @@ Source snapshot: `cc2058887eb0`; aggregate snapshot: `6456f3f920d8`. Covered fil
 | `tools/pressure_rs485_gui.py` | Tkinter GUI for the RS485 Modbus pressure/weight transmitter | `IdentPoint`, `IdentRun`, `LossRow`, `motor_name`, `is_esp_controller`, `percent_to_pulse` (+10) |
 | `tools/pressure_rs485_test.py` | RS485 Modbus-RTU test tool for the 4-channel weighing/pressure transmitter. Manual notes used here: - Protocol: Modbus… | `ReadResult`, `crc16_modbus`, `add_crc`, `check_crc`, `dip_to_addr`, `parse_u16` (+8) |
 | `tools/project_paths.py` | Canonical repository paths for captures, logs, calibration, and analysis data | `ensure_directory`, `date_from_name`, `dated_directory`, `dated_directory_for_name`, `latest_dated_directory` |
-| `tools/README.md` | drone-H743 PC Tools | `飞行器传感器验收 V0`, `IMU 传感器计量 V1`, `控制链路安全验收 V2A`, `USB ROM DFU 一键固件升级`, `振动频谱采集（IMU 原始满速率）`, `采集约 6 秒并立即分析（--tag 用于标注油门档位）` (+12) |
+| `tools/README.md` | drone-H743 PC 工具 | `主工作台`, `数据位置`, `常用离线工具`, `Rerun 隔离环境`, `Serial Studio` |
 | `tools/rom_dfu.py` | Safe host-side helpers for STM32 ROM USB DFU firmware updates. V0 deliberately delegates device programming to STM32Cub… | `RomDfuError`, `DfuToolNotFoundError`, `FirmwareImageError`, `DfuEnumerationTimeoutError`, `DfuCancelledError`, `FlashResult` (+15) |
 | `tools/run_flight_log_rerun_replay.ps1` | Host-side utility for run flight log rerun replay | — |
 | `tools/saleae_imu_spi_capture.py` | Capture the ICM42688 SPI bus with Saleae Logic 2 Automation. Default channel mapping follows the current Saleae hookup:… | `parse_args`, `add_spi_analyzer`, `export_capture`, `load_digital_csv`, `summarize_edges`, `main` |

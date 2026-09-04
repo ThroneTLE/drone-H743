@@ -1,5 +1,10 @@
 # Project Data Directory
 
+> **Agent rule for historical data:** when more than one dated run or firmware provenance is
+> available, ask the user which date, dataset, firmware commit and hardware configuration should
+> govern the task. Do not silently choose the newest file or reuse an old parameter as the current
+> baseline. Historical evidence remains immutable even when it is no longer the selected baseline.
+
 All project-owned captures, logs, calibration data, identification datasets, and derived reports live under this directory. Host tools obtain these paths from `tools/project_paths.py`; do not add new `tools/data`, root-level `captures*`, `saleae_capture*`, or `log` directories.
 
 Run artifacts use one sortable date bucket below their category:

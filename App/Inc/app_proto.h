@@ -94,7 +94,7 @@
 #define APP_PROTO_MSG_SERVO_TYPE        0x2226U
 /*
  * 遥测流 v2 的自描述掩码帧（S8 / R-T1-1）。payload 布局见
- * App/Inc/app_telem_frame.h 与 doc/telemetry-scope-plan.md §2.2。
+ * App/Inc/app_telem_frame.h 与 doc/telemetry-protocol.md。
  * 上位机侧同名登记在 tools/panel_lib/proto.py::PROTO_MSG_TELEM_FRAME。
  */
 #define APP_PROTO_MSG_TELEM_FRAME       0x2230U

@@ -1,7 +1,7 @@
 # 类别模式：协议 / 遥测改动
 
 适用于**改线上字节格式、命令族、通道表、上位机解码**的 REQ（R-T1-x、R-T2-x 及后续同类）。
-设计裁决在 [`doc/telemetry-scope-plan.md`](../../../../doc/telemetry-scope-plan.md)，本文只写授权与判据。
+线上格式在 [`doc/telemetry-protocol.md`](../../../../../doc/telemetry-protocol.md)，本文只写授权与判据。
 
 ## 授权
 

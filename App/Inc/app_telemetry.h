@@ -52,7 +52,7 @@ typedef enum {
 } APP_TelemChannelId;
 
 /*
- * 通道号是掩码帧里的位号（doc/telemetry-scope-plan.md §2.2 的 u64 mask），
+ * 通道号是掩码帧里的位号（doc/telemetry-protocol.md 的 u64 mask），
  * 所以表长有硬上限。超过 64 路要先升帧格式版本，不是悄悄加一条。
  */
 _Static_assert((int)APP_TELEM_CH_COUNT <= 64,

@@ -4,7 +4,7 @@
 #include <stdint.h>
 
 /*
- * 遥测流 v2 的自描述掩码帧编码器（doc/telemetry-scope-plan.md §2.2）。
+ * 自描述掩码帧编码器（doc/telemetry-protocol.md）。
  *
  * 为什么帧要自带掩码和 schema 指纹：旧的 VOFA JustFloat 帧是定长 28 float，
  * 接收端靠"第 N 个 float 是谁"这条**约定**解帧。往通道表里插一条，线上还是

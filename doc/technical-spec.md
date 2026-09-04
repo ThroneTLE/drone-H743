@@ -1,7 +1,7 @@
 # drone-H743 技术规范与代码落地方案
 
-> 版本 v1 · 2026-08-30 · 与 `PIPELINE.md` 配套：**清单在 PIPELINE（派什么）、规范在本文（怎么做）**。
-> 执行者（任何 AI 或人）开工前必须完整读完 PIPELINE.md 与本文；审核由验收会话（Claude，持有 COM31/ST-Link 实机）执行。
+> 稳定工程契约 · 更新于 2026-09-03 · 与 `PIPELINE.md` 配套：**清单在 PIPELINE（派什么）、规范在本文（怎么做）**。
+> 执行者开工前读取 PIPELINE 的状态图/验收门/REQ 和本次相关证据行，再读本文；不要加载完整历史证据表。审核由验收会话执行。
 
 ## 1. 最终目的与范围
 
@@ -16,33 +16,33 @@
 **派单提示词模板**（复制给执行 AI）：
 
 ```text
-你是 drone-H743 项目的执行工程师。开工前完整阅读仓库根目录 PIPELINE.md 与
-doc/technical-spec.md 并遵守全部规范。本次任务：完成 REQ-____。
+你是 drone-H743 项目的执行工程师。开工前阅读仓库根目录 PIPELINE.md 的当前状态、
+REQ 与本项证据，再读 doc/technical-spec.md。本次任务：完成 REQ-____。
 硬约束：①只做该 REQ 范围内的事；②新代码放新模块，禁止向 tools/drone_tcp_panel.py
 与 App/Src/app_control.c 追加内容；③每项行为改动必须带契约测试，并通过
-python -m pytest tests -q 全量（当前基线 696+ 项）与 cmake --build --preset Debug；
+python -m pytest tests -q 全量与 cmake --build --preset Debug；
 ④改任何非忽略文件后运行仓库索引再生成脚本；⑤完成后把 PIPELINE.md 中该 REQ 状态
 改为"待审核"并在证据表追加一行，不许自标完成；⑥不得触碰冻结节点、历史证据文件
-（data/calibration/**/2026-08-2*）与 CubeMX 生成代码。
+（data/calibration/** 全部历史证据）与 CubeMX 生成代码。
 交付物：变更说明、测试输出原文、证据文件路径。未过审不算完成。
 ```
 
 ## 3. 架构与代码规范
 
 - 分层（不可逆）：`App/*` 任务与行为 → `Services/*` 无任务域服务 → `Driver/*` 芯片/协议逻辑 → `BSP/*` 板级绑定 → `Core/*` CubeMX/HAL。芯片协议不进 BSP；CubeMX 拥有 `Core/Src/main.c、freertos.c、外设 init、USB_DEVICE/*`——改引脚/时钟/DMA/NVIC 必须走 CubeMX 重生成，禁止手改。
-- 文件规模：C 手写 ≤~1500 行、Python ≤~2000 行；超限 = 抽新模块。`drone_tcp_panel.py`（≈11.4k）与 `app_control.c`（≈6k）已冻结增长，只减不增（§11）。
+- 文件规模：C 手写 ≤~1500 行、Python ≤~2000 行；超限即抽新模块。`drone_tcp_panel.py` 与 `app_control.c` 已冻结增长，只减不增；当前行数从索引或工作树读取，不写入长期文档。
 - 命名：Driver 按器件/器件类命名；App 服务 `app_<domain>.c` + 对应 `App/Inc` 头；测试 `tests/test_<topic>.py`。
 - 注释密度与语言随文件现状（本仓库多中文注释）；解释"为什么"，不复述代码。
 
 ## 4. 坐标与单位契约
 
-- 唯一规范：`Driver/Inc/drv_frame_contract.h` —— 右手 FLU（+X前/+Y左/+Z上；+roll 右翼下沉、+pitch 机头下俯、+yaw 机头左转）。任何轴/符号工作先读 `.agents/.../references/flu-coordinate-contract.md`，改后必跑 `tests/test_flu_frame_contract.py`。
+- 唯一规范：`Driver/Inc/drv_frame_contract.h` —— 右手 FLU（+X前/+Y左/+Z上；+roll 右翼下沉、+pitch 机头下俯、+yaw 机头左转）。任何轴/符号工作先读 [`flu-coordinate-contract.md`](../.agents/skills/drone-h743-project/references/flu-coordinate-contract.md)，改后必跑 `tests/test_flu_frame_contract.py`。
 - 现状：`DRV_FRAME_RUNTIME_MIGRATION_DONE_MASK = 0x00`（6 个 seam 全 legacy）。**在掩码补全前禁止宣称运行时 FLU 达标或放飞**；对外导出若自称 FLU（如光流补偿快照），必须是显式适配转换并有配套测试。
 - 单位：遥测 `mg / mdps / cdeg`（IMU? 行内声明 units 字段）；内部控制律 SI（rad、m/s）。新增遥测必须自带 units 与 frame 标注。
 
 ## 5. 通信协议规范
 
-- 通道：USB CDC 与 UART 均为**裸 ASCII 文本行** → `APP_Control_ProcessLine`；结构化回复走 `app_control_queue_proto_text(function_id, ...)` 帧镜像。
+- 命令入口：USB CDC 与 UART 接收的命令是 ASCII 文本行 → `APP_Control_ProcessLine`；同一链路还可承载 `$X` 二进制遥测帧。结构化文本回复走 `app_control_queue_proto_text(function_id, ...)` 帧镜像，线上格式见 `doc/telemetry-protocol.md`。
 - ID 注册：所有 REQ/MSG function ID 必须在 `App/Inc/app_proto.h` 登记，主机侧常量与之同提交（历史教训：0x1022/0x1023 曾主机单方面定义）。
 - 上下文契约：`APP_Control_QueueText` / `queue_proto_text` **只允许通信任务上下文**调用（会同步阻塞 USB，最坏 3×10ms）。控制环（500Hz/1kHz）模块一律置事件标志由 `app_control_tick_common` 补发（先例：`APP_ServoCal_TakeNotice`；契约测试 `tests/test_control_loop_blocking_contract.py`）。
 - 命令族现状：`IMU? RTOS? FLASH? IMUFRAME IMUCAL SERVOCAL RCMAP RC? FLOW? RANGE? ACCEPT BOOT` 等；新增命令需同时更新 CAPS LIST 回复与面板 `VALIDATION_ALLOWED_COMMANDS`（若面板使用）。
@@ -75,43 +75,19 @@ python -m pytest tests -q 全量（当前基线 696+ 项）与 cmake --build --p
 - 全量 `python -m pytest tests -q` 必绿；固件 `cmake --build --preset Debug` 零警告；改文件后再生成仓库索引（索引新鲜度本身是测试）。
 - 实机证据只能由持硬件方（审核者/作者）出具；执行者产出的一律标「待实机」。
 
-## 10. 运行时 FLU 迁移方案（M7 硬前置，可派单）
+## 10. 运行时 FLU 与历史数据
 
-目标：把 `DRV_FRAME_RUNTIME_MIGRATION_DONE_MASK` 从 0x00 推到 0x3F。**顺序固定、一 seam 一 REQ 一提交**；每 seam 流程 = ①现状口径盘点写入测试（先红）→ ②实施基变换（完整四元数/矩阵，不许只翻显示欧拉角）→ ③host 契约 + 实机 A/B（disarmed 对比迁移前后姿态/导航输出一致性）→ ④翻掩码位（与测试同提交）→ ⑤回滚 = revert 单提交。
+`DRV_FRAME_RUNTIME_MIGRATION_DONE_MASK` 的当前值只从 `drv_frame_contract.h` 读取。任何 seam 迁移必须独立立项，以真实数据和拆桨物理方向验证；不得只翻显示符号或通过负增益掩盖问题。历史 NED/FRD 数据永不因当前源码变化而重解释。
 
-| 位 | seam | 现状（legacy） | 主要文件 | 关键风险 |
-|---|---|---|---|---|
-| 0 | SENSOR | 芯片轴→中间轴排列 | `App/Src/app_sensor.c` | 与 V0 orientation 映射叠加次序 |
-| 1 | ESTIMATOR | x-io Fusion NED 约定 | `Driver/Src/drv_attitude_fusion.c`、`app_stabilizer.c` 融合输入符号 | 四元数方向定义（body↔nav）必须显式写明并测全基变换 |
-| 2 | NAVIGATION | 本地水平系 Z-down | `Driver/Src/drv_imu_nav.c` | 重力符号、速度积分 |
-| 3 | CONTROLLER | 控制器 Y-右等混合口径 | `app_stabilizer.c` 控制装配、`drv_coax_ctrl.c` 力/角速率系 | 与舵机机械 pulse_sign 分层：机械极性不许进控制符号 |
-| 4 | RC/ACTUATOR | RC 意图与分配残留旧符号 | `app_stabilizer.c`、`app_rc_config.c` | 已部分现代化，需盘点残留 |
-| 5 | TELEMETRY/LOG | 面板地平仪、`flight_log_rerun_replay.py` X-fwd/Y-right/Z-down | `drone_tcp_panel.py`、日志工具 | 历史数据永不重释义，新数据带 frame 标注 |
+## 11. 巨文件永久约束
 
-迁移期间历史 NED/FRD 数据禁止按 FLU 重读（契约 §4）。每 seam 完成后审核者做一次实机静置+手势符号抽查。
-
-## 11. S6 巨文件拆分方案（可派单，绞杀者模式）
-
-**panel（Python）**：建 `tools/panel_lib/` 包：`transport.py`（TCP/UDP/串口+指纹重连）、`proto.py`（ID 表+帧编解码）、`state.py`（panel_state 持久化）、`pages/<domain>.py`（每页 builder+handlers）、`evidence.py`（会话/证据读写含只读保护）。一次只迁一页/一域：搬运→`drone_tcp_panel.py` 内改为 import 转发→现有源码契约测试同步改指向→全量绿。禁止行为变更混入搬运提交。
-
-**app_control.c（C）**：按命令域拆 `App/Src/app_cmd_imucal.c / app_cmd_servocal.c / app_cmd_rcmap.c / app_cmd_flow.c / app_cmd_system.c` + `app_control_core.c`（QueueText/tick/持久化）。分发表留在 app_control.c；新文件各 ≤800 行；每拆一域：CMake 登记→host 装置照编→固件构建零警告。QueueText 上下文契约与 §5 一致。
-
-### 11.1 app_control 拆分裁决（2026-08-30，审核者批准的唯一执行路径）
-
-两次打回（071264d5 删同步调用、9f21087e 复制实现+放宽安全门）确立两条铁律：**提取=搬移**（定义离开 app_control.c、全部调用点重定向，禁止并存副本）；**常量与时序逐字节不变**（`APP_CONTROL_IMUCAL_SNAPSHOT_MAX_AGE_US=100000ULL`、USB 文本超时 10ms 等安全参数任何改动都须单独立项）。跨域私有状态禁止手写 `extern`，只能经共享内部头 `App/Inc/app_control_internal.h` 声明的接口。
-
-步骤固定，一步一增量一 commit，函数体逐字节一致（唯一允许差异：static→外链的签名行、include 调整，逐条列出）；发现清单外耦合立即停并上报：
-
-- **步骤 A `app_control_core.c`**：只搬零私有状态耦合的纯函数——tokenize/token 取值/parse_u32/parse_i32/CRC32/`app_control_queue_proto_text`。契约测试须含 host gcc 编译执行装置（parser/CRC 真跑）+ app_control.c 零残留断言。
-- **步骤 B 标定快照访问器**：不搬实现，仅在 internal.h 为 `control_imucal_confirmed*` 镜像、`app_control_imuframe_sync_param()`、`app_control_imucal_safety()` 增加窄访问器（app_control.c 内实现），供后续域调用。
-- **步骤 C SERVOCAL 域**：整体搬移 7 函数至 `app_cmd_servocal.c`，**保留原函数首部的 `app_control_imuframe_sync_param()` 调用**（经步骤 B 访问器）；解析/发送用步骤 A 的 core，不得将原 static helper 升级为公共 API。
-- **步骤 D+**：IMUCAL → RCMAP → FLOW → SYSTEM 依同法，每域前先交耦合清单。
+S6 已完成并从现行实施计划中移除。永久规则仍有效：`drone_tcp_panel.py` 与 `app_control.c` 只减不增；新功能进入新模块。纯提取必须搬移而非复制，安全常量、调用时序和行为保持不变，跨模块私有状态只经窄接口暴露。
 
 ## 12. 工具链与环境
 
 - 构建 `cmake --build --preset Debug`；烧录（ST-Link）：`"D:/Program Files/OpenOCD-20240916-0.12.0/bin/openocd.exe" -f interface/stlink.cfg -f target/stm32h7x.cfg -c "program build/Debug/drone-H743.elf verify reset exit"`；复位同上 `-c "init; reset run; shutdown"`。
-- 飞控 CDC：STM VCP（VID 0x0483/PID 0x5740，序列号 335335763233，当前 COM31，会漂移——按指纹找）。
-- 实机基线：`python tools/m1_baseline_check.py --port COM31 --seconds 60`（只读）。工作台：`python tools/drone_tcp_panel.py`。
+- 飞控 CDC：STM VCP（VID 0x0483/PID 0x5740）；端口号会漂移，必须按 USB 指纹识别并向用户确认当前设备。
+- 历史 M1 工具仍可复查：`python tools/m1_baseline_check.py --port <COMx> --seconds 60`（只读）。主工作台：`python tools/drone_tcp_panel.py`。任何实机操作仍需当前 REQ 授权。
 
 ## 13. 审核清单（审核者逐项执行）
 

@@ -20,7 +20,7 @@ flowchart TB
         B1["✅ FLU 坐标系唯一规范<br/>+X前 / +Y左 / +Z上"]
         B2["✅ Python 校准上位机框架<br/>页面按功能命名"]
         B3["✅ 校准参数事务机制<br/>RAM应用 / 撤销 / Flash写入 / 回读"]
-        B4["✅ 软件回归基线<br/>696项测试通过"]
+        B4["✅ 软件回归机制<br/>全量 pytest + Debug 构建"]
     end
 
     subgraph MAIN["主线：从底层重新取得实机证据"]
@@ -48,9 +48,9 @@ flowchart TB
         S3["⏸ S3 精密陀螺比例、非正交与温漂<br/>等待旋转台和多温点实验条件"]
         S4["⏸ S4 滤波器重新整定<br/>保持现有采集数据和滤波参数"]
         S5["⏸ S5 PID、控制律优化与新飞行功能<br/>底层验收完成后再恢复"]
-        S6["✅ S6 巨型文件拆分<br/>panel 11446→5443 行 / app_control 6257→4131 行；两项存量拆分均已收官，新功能一律新模块（持续生效）"]
+        S6["✅ S6 巨型文件拆分<br/>存量拆分已收官；超限入口只减不增，新功能一律新模块"]
         S7["🟡 S7 舵机硬件抽象：PWM/总线双类型支持<br/>不涉及PID/控制律，作者裁决不受S5冻结约束（2026-09-02）"]
-        S8["🟡 S8 遥测流 v2 + 状态监视工作台<br/>自描述掩码帧、参数按变回显已实机通过（USB）；下一步：VOFA/Synex 式可编排 tile 首页（R-T1-5）；设计见 doc/telemetry-scope-plan.md"]
+        S8["🟡 S8 遥测流 + 状态监视工作台<br/>schema v3/FLU、可编排 tile 与参数回显软件面待审核；协议见 doc/telemetry-protocol.md"]
     end
 
     M0 -.约束.-> S1
@@ -94,11 +94,12 @@ flowchart TB
 | R-M5-5 | M5 | 〔码〕光流与测距数据链路架构重构：新增 `Services/svc_flow_nav`，把散在 `app_optical_flow.c` + `app_stabilizer.c` 的高度/速度 LPF、质量门控、位置与速度估计统一收进该 Service，并新增固件内位移积分 | Driver 保持纯取帧不含判决；App 侧对应逻辑整体删除或退化为透传，不允许新旧并存；`position_state_*`/`velocity_state_*`/`DRV_NAV_EKF_*` 在稳定环整体移除，且 `frame->attitude.x_m/y_m/vx/vy`、`nav_velocity_m_s[]`、VOFA `POS_EST/VEL_EST` 在同一改动内全部改接 Service（无空窗期）；位移积分必须用传感器自身 `time_ms`/`sample_interval_us` 变步长；`drv_coax_ctrl.c` 的 P/D 公式与增益一字不改；宿主 gcc 单测覆盖 LPF/质量门/位移积分边界；既有 nav/flow/VOFA 契约测试等价更新、不得静默删除；实机测出 `dt_avg` 换算 Hz 并记录静态位置/速度误差 | 待审核 |
 | R-M6-1 | M6 | 〔人+机〕RCMAP 向导标定并 COMMIT | 12 步向导完成，重启回读一致 | 待做 |
 | R-M6-2..4 | M6 | 〔人+机〕V2A 无桨端到端 + 失控保护 | ACCEPT 全阶段通过；断链进入安全态；方向一致性表全对 | 待做 |
-| R-F0~F5 | M7前置 | 〔码〕运行时 FLU 迁移六 seam（spec §10，顺序固定） | 每 seam：先红测试→实施→host 绿→实机 A/B→翻掩码位 | ✅ 2026-08-30（六 seam 契约与证据基线交付完成，合并场次实机通过；**掩码维持 0x00**——F0/F1/F3~F5 为钉契约型、F2 边界仍适配回 legacy，运行时表述迁移须待 M6 后另立 R-F6） |
+| R-F0~F5 | M7前置 | 〔码〕FLU 六 seam 契约与证据基线（不是运行时迁移完成） | 每 seam 的现状口径、适配边界、测试和实机基线可追溯 | ✅ 2026-08-30（基线交付完成；**运行时掩码仍为 0x00**，不得解读成全链 FLU） |
+| R-F6 | M7前置 | 〔码+机〕控制器/RC/导航/日志剩余运行时表述迁移到 FLU | M6 后单独设计；逐 seam 可执行测试、拆桨物理方向 A/B、历史数据不重解释，最终掩码与事实一致 | ⏸（等待 M6 与作者批准的迁移方案） |
 | R-F5b | M7前置 | 〔人+机〕（码面已完成）飞行日志坐标溯源字段 + 回放逐文件选口径（格式改动已获批） | 记录版本升级且旧版本永远可读（§6）；含 frame/契约版本/fw_crc32；回放按文件溯源选口径，无溯源按 legacy FRD 渲染并标注 | 进行中（软件面过审、v8 头与 fw_crc32 实机确认 2026-08-30；余「已填充溯源」需真实录制会话，顺延 M6 带 RC 场次） |
 | R-F1b | 待定 | 〔码〕legacy gyro 反射修正（det=−1 与 accel 不自洽，F1 只钉未改） | 仅当掩码完成后决定保留 legacy 分支才执行；改动影响 legacy yaw 可观测输出，须单独实机 A/B | ⏸（待 legacy 分支去留决策） |
 | R-S6-1 | S6 | 〔码〕panel 拆分为 tools/panel_lib/ 包（spec §11） | 每次搬一页；行为零变更；全量绿 | ✅（增量1~11 全部完成 2026-08-30；panel 11446→5443 行） |
-| R-S6-2 | S6 | 〔码〕app_control 按命令域拆分（spec §11，路径已裁决见 §11.1） | 每域 ≤800 行；host 装置照编；构建零警告；函数体逐字节搬移 | ✅ 2026-08-30（A~D4 全过审；app_control.c 6257→4131；命令面实机冒烟并入六 seam 合并场次） |
+| R-S6-2 | S6 | 〔码〕app_control 按命令域拆分（历史工作已完成；永久巨文件约束见 technical-spec §11） | 每域 ≤800 行；host 装置照编；构建零警告；函数体逐字节搬移 | ✅ 2026-08-30（A~D4 全过审；命令面实机冒烟并入六 seam 合并场次） |
 | R-S7-1 | S7 | 〔码〕固件新增舵机类型选择器（PWM/总线，持久化，仿 RCMAP/SERVOCAL 的 `?`/APPLY/REVERT/COMMIT） | 走既有 `SVC_Param` blob 机制；`?`回读含 active/persisted/dirty/generation；重启回读一致；不改 SERVOCAL 数据模型 | 待审核 |
 | R-S7-2 | S7 | 〔码〕`stabilizer_control_commit()` 按 R-S7-1 选择结果分支输出（`BSP_PWM_SetServoPulse` vs `BSP_BusServo_MoveManyAsync`），PWM 模式下不跑总线时隙调度/死区判断/反馈轮询（依赖 R-S7-1） | 两种模式下`SERVO JOG`/`SERVOCAL`行为不变；contract 测试覆盖分支选择；不改 `drv_coax_ctrl.c`/`app_servo_jog.c` | 待审核 |
 | R-S7-3 | S7 | 〔码〕PWM 模式下绕过总线专属逻辑：`app_servo_cal.c` 手势松力矩流程、`app_control.c` 的 `SERVO MOVE/ID/MODE/RAW/BAUDRATE` 调试命令族、`SERVO FB` 反馈台架（依赖 R-S7-1） | PWM 模式下上述路径拒绝/no-op 且不崩溃、不误报；总线模式行为逐字节不变 | 待审核 |
@@ -108,14 +109,14 @@ flowchart TB
 | R-S7-7 | S7 | 〔码〕修bug：R-S7-4遗留缺陷——PWM模式下`servo_debug.py`"移动此舵机"误接`SERVO JOG`（500µs/s慢速斜坡，为`mechanical.py`标定设计），导致调试页从总线模式的近瞬间响应退化为爬行 | 新增PWM即时移动通路（不经JOG斜坡）供`servo_debug.py`专用；`mechanical.py`标定按钮的JOG行为逐字节不变；总线模式`SERVO MOVE`不变；契约测试覆盖两条路径互不干扰 | 待审核 |
 | R-S1-1 | S1 | 〔码〕上位机把气压计 / IMU 监视（旧链）/ GPS·磁力计三页收进新建的顶层“传感器”分组（仿“校准”的嵌套 Notebook“点击展开”范式），并新增一个空的“光流”占位子页 | 顶层 Notebook 不再直接持有这三个标签页；`sensor_notebook.tabs()` 顺序精确等于 气压计 / IMU 监视（旧链）/ GPS · 磁力计 / 光流；`_build_baro_page`/`_build_imu_page`/`_build_gps_page` 函数体逐字节不变（只改容器归属）；必须真实构造 `DronePanel()` 断言而非仅源码文本匹配；“光流”页只有占位说明文字；不碰“校准”分组及其“光流与测距”标定页 | 待审核 |
 | R-S1-2 | S1 | 〔码〕上位机把 R-S1-1 的“光流”占位子页做成真实监控页：质量与激光高度实时读数、vx/vy 速度曲线、上位机侧按真实时间积分的累计位移（可清零） | 监控页有自己的可见性门控轮询（只在该子页选中时发 `FLOW?`），不寄生标定页的 `flow_cal_collecting`；`flow_ranging.py` 的轮询/解析/UI 逐字节不变；速度是有限长缓冲 + 节流重绘的曲线；累计位移用真实墙钟 dt 积分且必须用上 `valid`/`vel_valid`/`height_valid`，无效时明确标出并不进积分；“重置”只清本地状态、不发协议帧；不改固件与协议；必须真实构造 `DronePanel()` 驱动轮询断言 | 待审核 |
-| R-T1-1 | S8 | 〔码〕固件遥测流 v2：新建 `app_telem_stream.c/h` + `app_cmd_telem.c`，实现规划 §2.2 掩码帧、§2.3 脏位回显、§2.4 命令族；`VOFA_task` 填充体搬出 `freertos.c`；`app_telemetry` 加 `param` 字段、schema v2；`APP_Proto_BuildFrame` 解禁；`app_vofa.c` 退为 `jf` 后端；`TELEM SINK`（usb、uart、auto）两个出口同帧、USB 拔出自动关流、与 IMUCAP/FLOG 互斥。类别模式：protocol-telemetry | host 装置覆盖黄金向量/脏位/刷新/超限 ERR/双出口选择/拔出关流；`freertos.c` USER CODE 净减少；`app_control.c` 不增；`cmake --build --preset Debug` 零警告；`pytest tests -q` 全绿 | ✅ 2026-09-03（审核者实机复核 USB 出口；审核中修正一处挡路缺陷：遥测对四个角度增益的显示取反与 `PARAM?` 口径不一致，见证据表） |
+| R-T1-1 | S8 | 〔码〕固件遥测流：新建 `app_telem_stream.c/h` + `app_cmd_telem.c`，实现 `doc/telemetry-protocol.md` 的掩码帧、脏位回显与命令族；`VOFA_task` 填充体搬出 `freertos.c`；`app_telemetry` 提供 schema；`APP_Proto_BuildFrame` 解禁；`app_vofa.c` 退为 `jf` 后端；两个出口同帧、USB 拔出关流、与 IMUCAP/FLOG 互斥。类别模式：protocol-telemetry | host 装置覆盖黄金向量/脏位/刷新/超限 ERR/双出口选择/拔出关流；`freertos.c` USER CODE 净减少；`app_control.c` 不增；构建和全量回归通过 | ✅ 2026-09-03（USB 出口已复核；当前对外 schema 已演进到 v3/FLU，见证据表） |
 | R-T1-2 | S8 | 〔码〕上位机解码：`transport.py` 二进制分支（唯一改动）；新建 `panel_lib/telem_stream.py`（schema 装配+hash 复算、解码器、seq/drop 统计、numpy 环形缓冲、收线程写入）。类别模式：protocol-telemetry | 黄金向量与固件逐字节一致；模糊测试永不错位；hash 不符触发重拉；不改 `drone_tcp_panel.py` | ✅ 2026-09-03（审核者复核；`set_binary_sink` 回调替代 rx_queue 投递的偏离已接受） |
-| R-T1-3 | S8 | 〔码〕示波器页：新建 `panel_lib/scope.py`（Tk Canvas，min/max 抽稀）与 `pages/scope.py`（通道勾选→MASK、滑块三态、统计条、CSV 录制、可见性门控 STREAM on/off）。依赖 R-T1-2。类别模式：protocol-telemetry | 真实 `DronePanel()` 端到端断言规划 §4 全部条目；重绘基准 ≤5 ms；`drone_tcp_panel.py` 改动 ≤5 行且净不增 | ✅ 2026-09-03（功能与判据通过；审核中修两处链路生命周期缺陷 + 回显竞态；**布局不满足作者需求，另立 R-T1-5 重做页面**） |
-| R-T1-4 | S8 | 〔机〕双链路实机验收：数传 40 Hz 与 USB 40 Hz 各跑一遍 | 规划 §4 实机前三条，两条链路各一次 | 进行中（USB 链路 ✅ 2026-09-03：60 s 2321 帧 0 缺口 0 拒帧、38.5 Hz、3173 B/s，滑块往返 31 ms 协议层 / 125 ms 面板层，SINK 切换与 ERR 路径全过；数传链路待做——PC 侧无数传地面端 COM，作者接上后复跑） |
-| R-T1-5 | S8 | 〔码〕**状态监视工作台**（作者 2026-09-03 裁决，取代 R-T1-3 的单窗口示波器页并成为默认首页）：VOFA/Synex 式可自由编排的 tile 面板——用户把遥测通道绑到不同形式的组件上。第一批组件：波形（1~4 通道、独立 Y、图例带当前值、时间刻度，复用 `ScopeCanvas`）、数值卡（大字 + 单位，光流高度/速度这类直接读数）、参数滑块卡（滑块 + 数值输入框 + 大字回显 + 三态，复用 R-T1-3 逻辑）。12 列网格布局，编辑模式下拖动/缩放（吸附网格），多工作区（内置“飞行监控”“控制器调参”两套预设），布局 JSON 持久化。规格见规划文档 §2.8。类别模式：protocol-telemetry | 页签位于首位且启动默认选中；三种组件均可增删、改绑通道、拖动缩放并持久化往返；波形每窗独立通道与量程；滑块卡输入框回车发送且节流规则同滑块；掩码为全部组件绑定通道并集 + 参数通道；两套预设开箱可用；真实 `DronePanel()` 端到端测试；4 波形 × 4 曲线 + 20 张卡一次总重绘 ≤10 ms；`pages/scope.py` 退役、其测试迁移；`drone_tcp_panel.py` 净不增（挂载行替换） | 待审核 |
+| R-T1-3 | S8 | 〔码〕示波器页：新建 `panel_lib/scope.py`（Tk Canvas，min/max 抽稀）与页面组件，覆盖 `doc/telemetry-protocol.md` 的 Dashboard 契约。依赖 R-T1-2。类别模式：protocol-telemetry | 真实 `DronePanel()` 端到端断言；重绘基准 ≤5 ms；`drone_tcp_panel.py` 净不增 | ✅ 2026-09-03（功能与判据通过；布局需求由 R-T1-5 取代） |
+| R-T1-4 | S8 | 〔机〕双链路实机验收：数传 40 Hz 与 USB 40 Hz 各跑一遍 | `doc/telemetry-protocol.md`「实机验证门」前三项，两条链路各一次 | 进行中（USB 链路 ✅ 2026-09-03：60 s 2321 帧 0 缺口 0 拒帧、38.5 Hz、3173 B/s，滑块往返 31 ms 协议层 / 125 ms 面板层；数传链路待做） |
+| R-T1-5 | S8 | 〔码〕**状态监视工作台**：可自由编排 tile 首页；第一批为波形、数值卡、参数滑块卡，12 列网格、编辑模式、多工作区和 JSON 持久化，遵守 `doc/telemetry-protocol.md` Dashboard 契约。类别模式：protocol-telemetry | 页签首位；组件可增删/改绑/拖动缩放并持久化；两套预设；真实 `DronePanel()` 端到端测试；总重绘 ≤10 ms；旧 scope 页面退役；超限入口净不增 | 待审核 |
 | R-T1-5b | S8 | 〔码〕状态监视工作台第二批组件（依赖 R-T1-5）：仪表盘（弧形表，量程取通道表 min/max）、命令按钮/开关（绑定文本命令，如 `FLOW ZERO`、`TELEM STREAM on/off`，走 `_validation_command_allowed` 门）、2D 姿态指示（roll/pitch 地平仪 + yaw 罗盘）、全通道实时值列表、布局导入/导出 JSON。类别模式：protocol-telemetry | 每种组件可增删/改绑/持久化；按钮组件不绕过任何安全门；真实 `DronePanel()` 端到端测试；`drone_tcp_panel.py` 净不增 | 待审核 |
 | R-T2-1 | S8 | 〔码〕USB 高速批量档：count>1、dt_us、USB 出口 `RATE ≤1000`、`APP_TELEM_FRAME_MAX_PAYLOAD 1024`。依赖 R-T1-1。类别模式：protocol-telemetry | 装置覆盖批量编码与 USB/UART 上限差异；UART 出口超限仍 ERR；构建零警告 | 待做 |
-| R-T2-2 | S8 | 〔机〕USB 档 500 Hz 验收 | 规划 §4 实机第四条 | 待做 |
+| R-T2-2 | S8 | 〔机〕USB 档 500 Hz 验收 | `doc/telemetry-protocol.md`「实机验证门」高速档条目 | 待做 |
 | R-T3 | S8 | 〔码〕可选：本地 UDP 镜像 + `tools/telem_scope_qt.py`（pyqtgraph 只读） | 不影响 R-T1 任何测试 | ⏸ |
 
 ## 最近验证证据
@@ -124,6 +125,7 @@ flowchart TB
 
 | 日期 | 范围 | 证据 | 结果 | 对状态的影响 |
 |---|---|---|---|---|
+| 2026-09-03 | **文档上下文清理（作者明确授权删除过时/已完成文档）** | 删除旧 `doc/architecture.md`、1462 行旧控制器图解及 5 张 SVG、已完成 M1 作业单、旧 `progress-notes`、旧 telemetry 派工稿、Serial Studio ROADMAP 与旧 drawio/备份；两份仍有复用价值的辨识/非线性控制资料及两份 PDF 移入 `doc/history/`。新增根 `README.md`、`doc/current-architecture.md`、`hardware-reference.md`、`telemetry-protocol.md` 和历史资料规则；`tools/README.md`/ground_station README 收敛为当前短入口。历史目录与 `data/README.md` 强制 Agent 在使用旧数值前询问用户选定日期、数据集、固件和硬件配置。AGENTS/SKILL 改为只读 PIPELINE 当前状态、REQ 与相关证据，不再为普通任务加载整张历史表；易变测试数/行数从长期规则移除。新增 `tests/test_documentation_contract.py` 锁定现行入口、退休文档不复活、历史提问门、当前架构、可解析链接与工作树/实机状态边界。独立无上下文读者测试两轮，修正不存在工具、退休章节引用、COM 号固化、证据保护范围与 R-F6 缺口后通过。最终全量 `996 passed in 83.19s`；Debug 实际重编链接零警告（FLASH 381668B），最终复跑 `ninja: no work to do.`；索引从约 81.0KiB 降至 79.2KiB并保持 current | 现行文档与历史资料边界已收敛，待审核 | 不改变主线/S1~S8验收状态；新增冻结 R-F6 只显式记录既有迁移缺口；保留 Git/data 历史 |
 | 2026-09-03 | **R-T1-5 横切修复：状态监视 `vel_est_y/pos_est_y` 泄漏控制器 Y右正口径，与校准页 FLU Y左正不一致（作者明确要求纠正）** | 现场截图显示左移时 `vel_est_y<0`；同源历史 M5 实录 `flow_range_20260830_200716.json` 的 FLU 左移 17 样本为 `observed_distance=+0.4723m/sign_ok=true`。根因链：校准 `FLOW comp` 已将 `controller_legacy_x_forward_y_right` 的 Y 显式取反后导出 `canonical_flu`，但 T1 状态流把 `vofa_debug.vel_est_m_s[1]/pos_est_m[1]` 原样装入通用 Y 通道，schema v2 又没有 frame，旧测试分别锁定两端却未做跨出口一致性断言。先加 5 条红灯，原文为缺 `drv_frame_contract.h`、schema `2 != 3`、缺 frame 宏与主机 `body_frame` 属性。修复在 `app_telem_port.c` 仅对观察出口的速度/位置调用 `DRV_FRAME_FrdToFlu()`，控制器内部不改；schema v3 表头携带 `frame=body_flu contract=1` 并纳入 FNV 指纹，真实 host 固件输出 `hash=DFCDEC91`；主机对 v3 缺/错来源整表拒绝，v1/v2 保守标为 `legacy_unspecified`；Dashboard 明示 `FLU v1（X前 / Y左 / Z上）`。`$X` 帧布局、28 路编号/顺序、function ID、默认 12 路 40Hz 的 3240B/s 均不变。聚焦 `128 passed`；首次全量的 3 个旧锚点准确拦住 legacy 直出要求，等价升级为 FLU 来源与禁止 Y 直出后，最终全量 `972 passed, 15 skipped in 102.64s`，相关 GUI 模块另跑 `16 passed`；Debug 实际重编链接零警告（FLASH 382588B）；索引已重建，未接触实机 | 软件纠错与回归完成，待审核者烧录后复核左移 `vel_est_y>0/pos_est_y>0` 与 schema v3 回读 | R-T1-5 保持**待审核**；运行时迁移掩码仍 0x00，S8 保持 🟡，不宣称控制器/全链 FLU 已迁移 |
 | 2026-09-03 | **R-T1-5 横切修复：打开 ttk 下拉框时状态监视刷新连续抛 `KeyError: 'popdown'`** | 用户截图与既有 `data/logs/panel_crash.log` 固定同一调用链；日志累计 330 次：`ParamTile._render()` 每 33 ms 调 `focus_get()`，而 ttk 下拉列表是 Tcl 内部 `popdown` 窗口，不在 Tkinter `children` 表，名称反解必抛 `KeyError`。既有测试只在无焦点/普通 Tkinter 控件焦点下刷新参数卡，未覆盖 Tcl-only 焦点。新增真实 `DronePanel()` 回归用例，以真实 `ttk::combobox::PopdownWindow` 路径证明该窗口不可由 `nametowidget()` 解析，并在同一调用点复现异常；红灯原文：`KeyError: 'popdown'`。修复仅把“参数输入框是否持有焦点”改为比较原始 Tcl 焦点路径，保留编辑中不覆盖输入的行为。聚焦回归 `4 passed`；Dashboard/resize/scope 联合回归 `59 passed`；首次全量 `980 passed, 1 skipped`，唯一失败为改动后索引按设计报 stale；刷新索引后最终全量 `982 passed in 97.52s`；固件构建 `ninja: no work to do.`；未接触实机、协议与超限入口文件 | 根因修复与软件回归完成；待审核者真实下拉交互复核 | R-T1-5 保持**待审核**；S8 保持 🟡 |
 | 2026-09-03 | **R-T1-5 状态监视工作台：窗口 resize 抗卡顿（S8，作者指定优先做 1/2/3）** | 诊断装置以真实 `DronePanel()` 构造 24 卡/4 波形/填满环形数据：原连续窗口尺寸事件的尾部可达 111.72 ms，波形重绘与卡片重排共用 Tk 主线程。新增 `dashboard/resize.py`（66 行）：按 12 列整数格宽跳过像素级无效重排、连续 `<Configure>` 最多每 16 ms 合并一次、150 ms 安静窗口前暂停 tile 绘图但不暂停收线程/环形缓冲；恢复后用最新快照绘制。`ValueTile` 缓存不变文本/样式，避免 20 卡每拍重复 Tcl 写入，原 ≤10 ms 重绘判据不放宽。新增 `tests/test_dashboard_resize.py`（3 条，无显示环境）锁定去重/合并/停绘恢复；真实页面聚焦回归 `54 passed`；`drone_tcp_panel.py` 未改，未接触实机。验证：`python -m pytest tests -q` **981 passed**；`cmake --build --preset Debug` → `ninja: no work to do.`；索引已重建 | 软件实现补充完成；需审核者在真实窗口拖拽与实时流同开时复核体感 | R-T1-5 保持**待审核**；S8 保持 🟡 |
@@ -213,7 +215,7 @@ flowchart TB
 | 2026-08-30 | M3 离线重分析（R-M3-1） | 8-28 六面+静止陀螺会话按当前判据重分析：WARN 可用（RMS 0.0268g，超 PASS 线约1.5°；六面残差 0.020~0.033g、1.0~4.7°，全部远低于 0.075g FAIL 线） | 通过 | 免徒手重采；M3 余静止漂移 A/B |
 | 2026-08-30 | 执行者入口打通 | 新建根目录 `AGENTS.md`（Codex/GPT 每会话自动加载）：强制先读 SKILL/PIPELINE/spec 三件套、REQ 领取规则、六条硬约束（含"实机默认归审核者"——GPT 环境配有 OpenOCD MCP 但未派单不得碰板）、完成协议 | 生效 | GPT 执行链路与本清单对接完成 |
 | 2026-08-30 | 治理升级：执行/审核分工 | 新增本文件「执行需求清单」+ `doc/technical-spec.md`（13 章规范：架构/协议/持久化/安全/测试/FLU迁移方案/巨文件拆分方案/派单模板/审核清单） | 生效 | 执行者只能置"待审核"，✅ 由审核会话落 |
-| 2026-08-30 | M0 归零基线审计收口 | 三个并行只读审计报告（固件C/上位机/测试文档数据）；工作区 58 个文件拆成 7 个主题提交；全量 `696 passed`；Debug 构建零警告 | 通过 | **M0 置 ✅，当前位置移至 M1**；M1 作业单 `doc/m1-baseline-runbook.md` |
+| 2026-08-30 | M0 归零基线审计收口 | 三个并行只读审计报告（固件C/上位机/测试文档数据）；工作区 58 个文件拆成 7 个主题提交；全量 `696 passed`；Debug 构建零警告 | 通过 | **M0 置 ✅，当前位置移至 M1**；已完成 M1 作业单后按文档清理规则删除，原文保留在 Git 历史 |
 | 2026-08-30 | 审计发现的缺陷修复 | ①历史验收证据被面板 autosave 覆盖（`target_state_at_save`→`{}`）：已还原并加只读守卫+回归测试；②500Hz 控制环内 4 处同步 USB 阻塞写（最坏~30ms）：改事件通告由通信任务补发+契约测试；③协议 ID 0x1022/0x1023 补登记；④反向通道阈值边界改严格镜像；⑤RC 配置发布前读取回退出厂默认；⑥App/Driver 舵机判据副本加锁步契约测试 | 通过 | 不改变节点状态；提高 M1 一次跑通概率 |
 | 2026-08-30 | 治理约束新增 | 作者要求限制单文件规模：新功能一律新模块，panel/app_control 拆分立为副线 S6（SKILL.md 已写入守则） | 生效 | 新增 S6 🟡；对巨文件的追加自即日起被守则禁止 |
 | 2026-08-29 | 治理文档实证复核 | 全量回归复跑 `682 passed`；证据表原引用的 `quick_validate.py` 证实全仓不存在，已移除该虚假引用；迁移掩码引用与 `drv_frame_contract.h:54` 核对一致；契约测试并入并刷新索引后全量 `688 passed` | 通过 | 新增 `tests/test_pipeline_contract.py` 机械校验本文件（节点/验收门/当前指针/证据日期/M7 冻结联动）；M0 保持当前节点 |

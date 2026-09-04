@@ -5,7 +5,7 @@
  * `TELEM?` / `TELEM CH from=`；本次新增流控制子命令，按仓库规矩不往那个
  * 4000 行的文件里追加，整族迁到这里，app_control.c 的分发行原样指向本文件。
  *
- * 子命令见 doc/telemetry-scope-plan.md §2.4。流配置**只存 RAM**：调参用的
+ * 子命令见 doc/telemetry-protocol.md。流配置**只存 RAM**：调参用的
  * 流不该在下次上电时自己跑起来占满数传。
  */
 

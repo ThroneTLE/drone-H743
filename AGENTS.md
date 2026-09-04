@@ -1,12 +1,12 @@
 # drone-H743 执行工程师常驻指令（AGENTS.md）
 
-你（本会话的 AI）在本仓库的身份是**执行工程师**。本工程由验收会话（Claude，持有实机 COM31/ST-Link）担任**审核者**，作者做最终决策。你做的任何工作未经审核者过审都不算完成。
+你（本会话的 AI）在本仓库的身份是**执行工程师**。本工程由验收会话（Claude，持有实机/ST-Link）担任**审核者**，作者做最终决策。COM 号会变化，必须按 USB 指纹与用户确认。你做的任何工作未经审核者过审都不算完成。
 
 ## 开工前必读（每次会话，顺序固定）
 
 1. `.agents/skills/drone-h743-project/SKILL.md` —— 仓库约定：索引工作流、分层边界、FLU 坐标契约、CubeMX 归属、文件规模守则。
-2. `PIPELINE.md` —— 唯一进度事实：主线/副线状态图、验收门、**执行需求清单（你的任务来源）**、证据表。
-3. `doc/technical-spec.md` —— 全部技术规范与落地方案（协议、持久化、安全、测试、FLU 迁移六 seam、巨文件拆分、审核清单）。
+2. `PIPELINE.md` —— 读取状态图、验收门、**执行需求清单**，再只读本次 REQ 对应的证据行；不要为普通任务加载整份历史证据表。
+3. `doc/technical-spec.md` —— 稳定工程契约（协议、持久化、安全、测试、审核清单）。具体架构与协议再按需读 `doc/current-architecture.md` / `doc/telemetry-protocol.md`。
 
 ## 任务领取
 
@@ -27,8 +27,8 @@
 
 ## 硬约束（违反任意一条 = 打回重做）
 
-1. 新代码放新模块。S6 拆分虽已收官，但 `tools/drone_tcp_panel.py`（5449 行）与 `App/Src/app_control.c`（4131 行）**仍是 2~3 倍超预算**，因此**禁止**向这两个文件追加内容（只减不增）。
-2. 每项行为改动必须带契约测试；交付前全量通过 `python -m pytest tests -q`（基线 782+）与 `cmake --build --preset Debug`（零警告）。
+1. 新代码放新模块。S6 拆分虽已收官，但 `tools/drone_tcp_panel.py` 与 `App/Src/app_control.c` 仍超预算，因此**禁止**向这两个文件追加内容（只减不增）；不要在文档里固化易过期行数。
+2. 每项行为改动必须带契约测试；交付前全量通过 `python -m pytest tests -q` 与 `cmake --build --preset Debug`（零警告），不要把测试数量写成长期基线。
 3. 改任何非忽略文件后运行 `python .agents/skills/drone-h743-project/scripts/update_repository_index.py`。
 4. **禁止**：修改/删除 `data/calibration/**` 历史证据；手改 CubeMX 生成代码（`Core/Src/main.c`、`freertos.c`、外设 init、`USB_DEVICE/*`）；削弱任何安全门/判据/坐标符号（此类变更即使"顺手"也必须单独立项经作者批准）。
 5. **实机默认归审核者**：即便你的环境配有 OpenOCD MCP / 串口，未经 REQ 明文授权不得烧录、复位、发送任何目标板命令。

@@ -4,7 +4,7 @@
 
 Read this shard only when you need existing behavioral/architecture coverage or must choose focused regression tests.
 
-Source snapshot: `5ce7dcba287a`. Indexed files: 108.
+Source snapshot: `ddf209c947a1`. Indexed files: 109.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -25,6 +25,7 @@ Source snapshot: `5ce7dcba287a`. Indexed files: 108.
 | `tests/test_dashboard_page.py` | R-T1-5：“状态监视”工作台页（`panel_lib/pages/dashboard.py` + `dashboard/`）。 全部用真实的 `DronePanel()` + FakeTransport 驱动，照 `test_flow… | `test_the_workbench_is_the_first_tab_and_selected_by_default`, `test_panel_entry_point_only_carries_the_mount`, `test_presets_are_available_out_of_the_box` (+50) |
 | `tests/test_dashboard_resize.py` | 状态监视工作台的窗口 resize 合并器。 这个层不能靠肉眼判“似乎顺了一点”：Tk 拖动窗口时会连续发出大量 Configure 事件。这里用无 Tk 的假调度器钉住三件事：同一个 12 列格宽的像素抖动不重排、 多个事件合成一次布局… | `test_resize_skips_pixel_events_that_do_not_change_a_grid_cell`, `test_resize_coalesces_multiple_grid_changes_into_one_layout_pass`, `test_rendering_resumes_only_after_the_resize_quiet_window` |
 | `tests/test_data_organization.py` | — | `test_date_directory_helpers_are_sortable_and_validate_dates`, `test_organizer_groups_dated_and_undated_items`, `test_canonical_categories_have_only_date_or_classification_children` |
+| `tests/test_documentation_contract.py` | Current documentation stays small, routed, and distinct from history | `test_current_document_map_has_one_small_human_entry`, `test_retired_guides_do_not_return`, `test_historical_measurements_force_a_user_choice` (+6) |
 | `tests/test_drone_validation_v0.py` | — | `test_snapshot_parser_requires_provenance_and_never_invents_zeroes`, `test_snapshot_parser_normalizes_target_units_without_claiming_flu`, `test_post_apply_gate_compares_canonical_accel_tilt_with_fusion` (+36) |
 | `tests/test_evidence_write_protection.py` | 历史验收证据不可变性契约。 2026-08-29 实际发生过一次证据破坏：面板启动时自动加载了 2026-08-28 的历史 验收会话，随后自动保存把 workflow.json 的 target_state_at_save（14 个键的… | `test_session_autosave_refuses_to_write_while_browsing_history`, `test_workflow_autosave_refuses_to_write_while_browsing_history`, `test_provenance_flag_lifecycle_backs_the_guard` (+1) |
 | `tests/test_firmware_build_gate.py` | 烧录前必须先编译，且编译失败绝不能继续烧录。 背景：USB DFU 一键烧录默认烧的是 build/Debug/drone-H743.elf。如果改完源码 忘了编译，就会把上一次的旧固件刷进飞控，而且现场很难看出来——固件"烧成功了"，… | `test_build_failure_raises_instead_of_returning_a_stale_elf`, `test_missing_cmake_is_reported_as_a_build_error`, `test_build_timeout_is_reported_as_a_build_error` (+18) |

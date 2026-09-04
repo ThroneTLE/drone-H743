@@ -4,7 +4,7 @@
 
 Read this shard only when the task touches CubeMX output, pins/clocks/peripherals, startup/linker layout, USB, build configuration, HAL, FreeRTOS internals, or vendor code.
 
-Source snapshot: `1f8e25e9d0dd`; aggregate snapshot: `13fc4f243386`. Covered files: 1426.
+Source snapshot: `43e8652d36bf`; aggregate snapshot: `13fc4f243386`. Covered files: 1427.
 
 | File/module or scope | Content outline | Key entry points / size |
 |---|---|---|
@@ -43,6 +43,7 @@ Source snapshot: `1f8e25e9d0dd`; aggregate snapshot: `13fc4f243386`. Covered fil
 | `MDK-ARM/drone-H743.uvprojx` | Project configuration for drone H743 | — |
 | `MDK-ARM/startup_stm32h743xx.s` | Project configuration for startup stm32h743xx | — |
 | `PIPELINE.md` | drone-H743 归零检查 Pipeline | `状态定义`, `主线、副线与当前状态`, `主线验收门`, `执行需求清单（派单用）`, `最近验证证据`, `推进与更新规则` |
+| `README.md` | drone-H743 | `当前事实从哪里读`, `常用命令` |
 | `startup_stm32h743xx.s` | GCC startup, vector table, and reset entry | — |
 | `STM32H743XX_FLASH.ld` | STM32H743 flash/RAM regions and linker section placement | — |
 | `temp_sizecheck.c` | Project configuration for temp sizecheck | — |

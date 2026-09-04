@@ -4,7 +4,7 @@
 
 Read this shard only when the task needs architecture rationale, controller math, historical evidence, captures, datasets, or agent-support documentation.
 
-Document snapshot: `7d7c005736a5`; aggregate snapshot: `bce40fdbb9f9`. Covered files: 321.
+Document snapshot: `45ae25abc565`; aggregate snapshot: `bce40fdbb9f9`. Covered files: 313.
 
 ## Documents and agent support
 
@@ -17,7 +17,6 @@ Document snapshot: `7d7c005736a5`; aggregate snapshot: `bce40fdbb9f9`. Covered f
 | `.agents/skills/drone-h743-project/references/h7-memory-domains.md` | STM32H743 Memory And Domain Notes For This Project | `先记住的结论`, `当前工程 `.ioc` 已暴露的主要内存区`, `项目内推荐的四区分工`, `1. ITCM`, `2. DTCM`, `3. D1 / AXI SRAM` (+5) |
 | `.agents/skills/drone-h743-project/references/modes/algorithm-validation.md` | 类别模式：算法验证 | `授权`, `判据（验收看这几条，不看"测试绿不绿"）`, `禁止（未经作者单独批准）`, `交付物` |
 | `.agents/skills/drone-h743-project/references/modes/protocol-telemetry.md` | 类别模式：协议 / 遥测改动 | `授权`, `判据`, `禁止（未经作者单独批准）`, `交付物` |
-| `.agents/skills/drone-h743-project/references/progress-notes.md` | drone-H743 Current Bring-Up Notes | `FLASH / GD25Q32`, `Other Bring-Up Facts`, `IMU Frame V0`, `USB DFU / V1 / V2A`, `Ground Calibration Subsystems (2026-08-29 wave)` |
 | `.agents/skills/drone-h743-project/references/runtime-services.md` | Runtime Services And Background Work | `Ownership`, `Focused Validation` |
 | `.agents/skills/drone-h743-project/references/work-modes.md` | 执行者工作模式 | `三层结构`, `默认层：常规 REQ 执行`, `横切层：修 bug 模式`, `进入条件（满足任一）`, `不进入`, `流程（顺序不可省）` (+2) |
 | `.agents/skills/drone-h743-project/scripts/update_repository_index.py` | Build the compact, task-routed repository index used by the project skill | `git_working_files`, `read_bytes`, `read_text`, `compact`, `human_topic`, `c_symbols` (+21) |
@@ -26,22 +25,15 @@ Document snapshot: `7d7c005736a5`; aggregate snapshot: `bce40fdbb9f9`. Covered f
 | `.claude/skills/drone-h743-project.md` | Project documentation for drone h743 project | — |
 | `.codex/config.toml` | Repository-local Codex configuration | — |
 | `data/README.md` | Project Data Directory | — |
-| `doc/.$飞控.drawio.bkp` | Project documentation for .$飞控.drawio | — |
-| `doc/2024050116133964(1)(1).pdf` | Project documentation for 2024050116133964(1)(1) | — |
-| `doc/architecture.md` | Drone-H743 飞控架构 | `1. 总体架构`, `2. 硬件与驱动层`, `2.1 传感器`, `2.2 存储`, `2.3 执行器与 IO`, `2.4 BSP / HAL` (+13) |
-| `doc/assets/controller_walkthrough/control_cycle.svg` | Project documentation for control cycle | — |
-| `doc/assets/controller_walkthrough/control_modes.svg` | Project documentation for control modes | — |
-| `doc/assets/controller_walkthrough/controller_overview.svg` | Project documentation for controller overview | — |
-| `doc/assets/controller_walkthrough/motor_pwm.svg` | Project documentation for motor pwm | — |
-| `doc/assets/controller_walkthrough/parameter_map.svg` | Project documentation for parameter map | — |
-| `doc/coaxial_drone_controller_comparison.pdf` | Project documentation for coaxial drone controller comparison | — |
-| `doc/controller_walkthrough.md` | 当前飞行控制器图解 | `先看结论`, `一张总流程图`, `控制循环的节拍`, `第一步：遥控器不是直接控制姿态角`, `第二步：状态估计把传感器变成“当前状态”`, `姿态与角速度` (+62) |
-| `doc/identification_tether_geometry.md` | 系统辨识参数与结果记录 | `用户原话记录`, `坐标系与对称假设`, `质量与重心`, `舵机与推力矢量几何`, `关键点 z 坐标（原点 = 电路板中心，z+ 向上）`, `倾转机构` (+42) |
-| `doc/m1-baseline-runbook.md` | M1 底层与原始数据健康 · 实机作业单 | `1. 烧录当前固件`, `2. 连接工作台`, `3. M1 证据采集清单（对照 PIPELINE M1 门）`, `4. 收尾（强制）`, `备忘（后续节点的坑，提前知道）` |
-| `doc/nonlinear_balance_controller.md` | 非线性平衡式同轴倾转控制器 | `1. 控制目标`, `2. 坐标与已知物理量`, `3. 速度参考模型`, `4. 期望推力方向`, `5. 舵机与期望机体姿态耦合`, `6. SO(3) 姿态力矩` (+4) |
-| `doc/technical-spec.md` | drone-H743 技术规范与代码落地方案 | `1. 最终目的与范围`, `2. 角色与工作流`, `3. 架构与代码规范`, `4. 坐标与单位契约`, `5. 通信协议规范`, `6. 持久化规范` (+8) |
-| `doc/telemetry-scope-plan.md` | 遥测流 v2 与上位机状态监视工作台规划（派工稿） | `1. 现状与约束（改之前必须知道的）`, `2. 设计裁决`, `2.1 一个机制解决三个问题：**自描述掩码帧**`, `2.2 帧格式（`$X` 帧，function `APP_PROTO_MSG_TELEM_FRAME = 0x2230`，payload 小端）`, `2.3 参数回显与滑块三态`, `2.4 命令面（文本，沿用 `TELEM` 族）` (+9) |
-| `doc/飞控.drawio` | Project documentation for 飞控 | — |
+| `doc/current-architecture.md` | drone-H743 当前软件架构 | `分层`, `主要运行链`, `IMU 与姿态`, `光流与水平导航`, `RC、控制器与执行器`, `参数与慢操作` (+3) |
+| `doc/hardware-reference.md` | drone-H743 硬件参考 | `权威边界`, `已登记器件`, `主机连接` |
+| `doc/history/2024050116133964(1)(1).pdf` | Project documentation for 2024050116133964(1)(1) | — |
+| `doc/history/coaxial_drone_controller_comparison.pdf` | Project documentation for coaxial drone controller comparison | — |
+| `doc/history/identification-and-tether-geometry-2026-07-25.md` | 系统辨识参数与结果记录 | `用户原话记录`, `坐标系与对称假设`, `质量与重心`, `舵机与推力矢量几何`, `关键点 z 坐标（原点 = 电路板中心，z+ 向上）`, `倾转机构` (+42) |
+| `doc/history/nonlinear-balance-controller-2026-07-25.md` | 非线性平衡式同轴倾转控制器 | `1. 控制目标`, `2. 坐标与已知物理量`, `3. 速度参考模型`, `4. 期望推力方向`, `5. 舵机与期望机体姿态耦合`, `6. SO(3) 姿态力矩` (+4) |
+| `doc/history/README.md` | 历史资料使用规则 | `保留内容` |
+| `doc/technical-spec.md` | drone-H743 技术规范与代码落地方案 | `1. 最终目的与范围`, `2. 角色与工作流`, `3. 架构与代码规范`, `4. 坐标与单位契约`, `5. 通信协议规范`, `6. 持久化规范` (+7) |
+| `doc/telemetry-protocol.md` | drone-H743 遥测协议 | `事实源`, `Schema v3`, ``$X` 遥测帧`, `坐标与单位`, `命令`, `Dashboard 契约` (+2) |
 
 ## Aggregated datasets and captures
 

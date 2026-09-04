@@ -2,7 +2,7 @@
 
 对应固件的 `App/Src/app_telem_frame.c`（帧格式）与 `App/Src/app_telemetry.c`
 （通道表与 FNV-1a 指纹）。帧格式的唯一事实源是
-`doc/telemetry-scope-plan.md` §2.2；本模块不重新解释它，只实现它。
+`doc/telemetry-protocol.md`；本模块不重新解释它，只实现它。
 
 三件事分开放：
 

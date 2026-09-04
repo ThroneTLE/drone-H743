@@ -29,7 +29,7 @@ Do not restore these legacy names or boundaries:
 - `BSP_FLASH_*`
 - `BSP_GD25Q32_*`
 
-For the current chip, pins, UART commands, and host diagnostic tool, also read [progress-notes.md](progress-notes.md).
+For board-level facts, read [`doc/hardware-reference.md`](../../../../doc/hardware-reference.md) and verify against `drone-H743.ioc`.
 
 ## Focused Validation
 

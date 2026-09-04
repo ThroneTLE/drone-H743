@@ -22,7 +22,7 @@ After adding, changing, moving, or deleting a non-ignored repository file, regen
 
 ## Pipeline Governance
 
-`PIPELINE.md` at the repository root is the authoritative mainline/sideline status map for bring-up work. After checking the repository index, read `PIPELINE.md` completely before planning or acting on every project task. Work is dispatched through its 执行需求清单 (REQ checklist) under the executor/reviewer protocol in `doc/technical-spec.md`: executors may only set a REQ to 待审核; only the reviewing session marks ✅ after verifying evidence.
+`PIPELINE.md` at the repository root is the authoritative mainline/sideline status map for bring-up work. After checking the repository index, read its status graph, gates, and REQ checklist, then only the evidence rows matching the current REQ or blocker. Do not load the complete historical evidence table for an ordinary task. Work is dispatched under the executor/reviewer protocol in `doc/technical-spec.md`: executors may only set a REQ to 待审核; only the reviewing session marks ✅ after verifying evidence.
 
 - Classify the request against a named mainline or sideline node before changing files.
 - Default to the current mainline node or a direct blocker revealed by it. Do not silently skip prerequisites.
@@ -79,7 +79,7 @@ Do not put chip protocols in BSP or reverse the Driver-to-BSP dependency. Before
 
 The author requires bounded file sizes: giant files defeat AI context loading, hunk-level commit splitting, and human review. Guideline ceilings for hand-written code: roughly 1500 lines per C file and 2000 per Python file; when a change would exceed them, extract a module instead of adding a section (follow the `App/Src/app_stabilizer.c` extraction precedent).
 
-Sideline S6 finished the scheduled split (panel 11446→5449, `app_control.c` 6257→4131), but **both files are still 2–3× over ceiling**. The append ban therefore stands: never add new features to `tools/drone_tcp_panel.py` or `App/Src/app_control.c` — create a new module and wire it in. Further shrinking of either file is opportunistic, not scheduled; do not start a new extraction mid-bring-up without the author's go-ahead.
+Sideline S6 finished the scheduled split, but `tools/drone_tcp_panel.py` and `App/Src/app_control.c` remain over the guideline ceiling. The append ban therefore stands: never add new features to either file—create a new module and wire it in. Do not store volatile line counts here; use the repository index or measure the current tree.
 
 ## STM32H743 And FreeRTOS
 
@@ -103,6 +103,9 @@ Read only the references relevant to the current request:
 - FLASH/GD25Q32 APIs, ownership, naming, or tests: [references/flash-architecture.md](references/flash-architecture.md)
 - `Param`, `backgroundTask`, slow operations, or service/task ownership: [references/runtime-services.md](references/runtime-services.md)
 - DMA/cache, memory domains, linker/MPU, buffers, or task stacks: [references/h7-memory-domains.md](references/h7-memory-domains.md)
-- Current wiring, diagnostic commands, and board bring-up observations: [references/progress-notes.md](references/progress-notes.md)
+- Current software boundaries and data flow: [`doc/current-architecture.md`](../../../doc/current-architecture.md)
+- Board-level facts and confirmation rules: [`doc/hardware-reference.md`](../../../doc/hardware-reference.md)
+- Telemetry schema, frame, and Dashboard contract: [`doc/telemetry-protocol.md`](../../../doc/telemetry-protocol.md)
+- Historical measurements or design records: [`doc/history/README.md`](../../../doc/history/README.md); ask the user which dataset/date/firmware to use before relying on any historical value.
 
 Repository code and `.ioc` configuration override stale reference text except for the canonical body-frame definition: during FLU migration, `drv_frame_contract.h` remains normative and legacy runtime code only describes incomplete implementation. When an intentional change makes a reference inaccurate, update that reference in the same task.

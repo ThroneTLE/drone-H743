@@ -42,7 +42,7 @@ Known legacy boundaries include:
 - `Driver/Src/drv_coax_ctrl.c`: force-frame, rate-frame, and 90-degree servo mount adapters; servo polarity and travel now come from the runtime `ServoCalibration` (`pulse_sign`/`center_us`/`min_us`/`max_us`), not compile-time sign macros.
 - `tools/drone_tcp_panel.py`: artificial-horizon integration and accelerometer-angle display.
 - `tools/flight_log_rerun_replay.py`: current X-forward/Y-right/Z-down replay geometry.
-- `doc/controller_walkthrough.md`: as-implemented descriptions that may still use legacy FRD/local-frame terminology.
+- Historical design documents under `doc/history/` may use legacy FRD/local-frame terminology; ask the user which dataset and firmware revision applies before using their values.
 
 Live status telemetry is an explicit observation-boundary exception: schema v3 declares
 `frame=body_flu` plus the frame-contract version, and converts controller legacy X-forward/Y-right
