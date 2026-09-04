@@ -103,9 +103,9 @@ HARNESS = r"""
 
 #define CHECK(condition, code) do { if (!(condition)) return (code); } while (0)
 
-/* The validator only takes sizeof() of the record, so an opaque block of the
- * asserted size is enough and keeps drv_imu.h (which needs main.h) out. */
-typedef struct __attribute__((packed)) { uint8_t raw[528]; } APP_FlightLogRecord;
+/* The validator only takes sizeof() of the current record, so an opaque block
+ * keeps drv_imu.h (which needs main.h) out of this host harness. */
+typedef struct __attribute__((packed)) { uint8_t raw[512]; } APP_FlightLogRecord;
 
 #define APP_FLASH_SERVICE_SECTOR_SIZE 4096UL
 
@@ -123,6 +123,7 @@ int main(void)
     header.header_size = APP_FLIGHT_LOG_SECTOR_HEADER_SIZE;
     header.sector_size = APP_FLASH_SERVICE_SECTOR_SIZE;
     header.record_size = sizeof(APP_FlightLogRecord);
+    header.params_size = sizeof(header.params);
     header.region_start = APP_FLIGHT_LOG_REGION_START;
     header.region_end_excl = APP_FLIGHT_LOG_REGION_END_EXCL;
     header.frame_provenance_valid = 1U;
@@ -139,28 +140,40 @@ int main(void)
     CHECK(header.firmware_crc32 == 0xF12AD9F5UL, 13);
     CHECK(header.calibration_generation == 3UL, 14);
 
-    /*
-     * A v7 sector predates the provenance block: its bytes are zero there, it
-     * must still validate against its own CRC, and it must read back as "no
-     * provenance" rather than as a bogus orientation code.
-     */
+    /* V8 used the larger parameter/record layout and must remain exportable. */
     memset(&header, 0, sizeof(header));
     header.magic = APP_FLIGHT_LOG_SECTOR_MAGIC;
-    header.version = APP_FLIGHT_LOG_VERSION_V7;
+    header.version = APP_FLIGHT_LOG_VERSION_V8;
     header.header_size = APP_FLIGHT_LOG_SECTOR_HEADER_SIZE;
     header.sector_size = APP_FLASH_SERVICE_SECTOR_SIZE;
-    header.record_size = sizeof(APP_FlightLogRecord);
+    header.record_size = APP_FLIGHT_LOG_LEGACY_RECORD_SIZE;
+    header.params_size = APP_FLIGHT_LOG_LEGACY_PARAMS_SIZE;
     header.region_start = APP_FLIGHT_LOG_REGION_START;
     header.region_end_excl = APP_FLIGHT_LOG_REGION_END_EXCL;
     header.header_crc32 = 0U;
     crc = flight_log_crc32((const uint8_t *)&header, sizeof(header));
     header.header_crc32 = crc;
     CHECK(flight_log_sector_header_valid(&header) == 1U, 20);
-    CHECK(header.frame_provenance_valid == 0U, 21);
+
+    /* V7 predates provenance but shares V8's record/parameter sizes. */
+    memset(&header, 0, sizeof(header));
+    header.magic = APP_FLIGHT_LOG_SECTOR_MAGIC;
+    header.version = APP_FLIGHT_LOG_VERSION_V7;
+    header.header_size = APP_FLIGHT_LOG_SECTOR_HEADER_SIZE;
+    header.sector_size = APP_FLASH_SERVICE_SECTOR_SIZE;
+    header.record_size = APP_FLIGHT_LOG_LEGACY_RECORD_SIZE;
+    header.params_size = APP_FLIGHT_LOG_LEGACY_PARAMS_SIZE;
+    header.region_start = APP_FLIGHT_LOG_REGION_START;
+    header.region_end_excl = APP_FLIGHT_LOG_REGION_END_EXCL;
+    header.header_crc32 = 0U;
+    crc = flight_log_crc32((const uint8_t *)&header, sizeof(header));
+    header.header_crc32 = crc;
+    CHECK(flight_log_sector_header_valid(&header) == 1U, 30);
+    CHECK(header.frame_provenance_valid == 0U, 31);
 
     /* A corrupted CRC must still be rejected in both versions. */
     header.header_crc32 = crc ^ 0x1U;
-    CHECK(flight_log_sector_header_valid(&header) == 0U, 30);
+    CHECK(flight_log_sector_header_valid(&header) == 0U, 40);
 
     /* An unknown version must be rejected, not guessed at. */
     memset(&header, 0, sizeof(header));
@@ -169,12 +182,13 @@ int main(void)
     header.header_size = APP_FLIGHT_LOG_SECTOR_HEADER_SIZE;
     header.sector_size = APP_FLASH_SERVICE_SECTOR_SIZE;
     header.record_size = sizeof(APP_FlightLogRecord);
+    header.params_size = sizeof(header.params);
     header.region_start = APP_FLIGHT_LOG_REGION_START;
     header.region_end_excl = APP_FLIGHT_LOG_REGION_END_EXCL;
     header.header_crc32 = 0U;
     crc = flight_log_crc32((const uint8_t *)&header, sizeof(header));
     header.header_crc32 = crc;
-    CHECK(flight_log_sector_header_valid(&header) == 0U, 40);
+    CHECK(flight_log_sector_header_valid(&header) == 0U, 50);
 
     puts("ok");
     return 0;
@@ -200,6 +214,7 @@ def test_sector_header_migration_runs_on_host(tmp_path: Path) -> None:
         for line in source.splitlines()
         if line.startswith("#define APP_FLIGHT_LOG_SECTOR_MAGIC")
         or line.startswith("#define APP_FLIGHT_LOG_VERSION")
+        or line.startswith("#define APP_FLIGHT_LOG_LEGACY")
     )
     struct_source = slice_between(
         source,

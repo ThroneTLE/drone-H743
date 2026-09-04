@@ -27,7 +27,10 @@
  * 读出来 frame_provenance_valid==0 天然表示「无溯源」。
  */
 #define APP_FLIGHT_LOG_VERSION            9U
+#define APP_FLIGHT_LOG_VERSION_V8         8U
 #define APP_FLIGHT_LOG_VERSION_V7         7U
+#define APP_FLIGHT_LOG_LEGACY_RECORD_SIZE 528U
+#define APP_FLIGHT_LOG_LEGACY_PARAMS_SIZE (sizeof(DRV_COAX_CTRL_Params) + (6U * sizeof(float)))
 #define APP_FLIGHT_LOG_EXPORT_VERSION     1U
 #define APP_FLIGHT_LOG_REGION_SIZE \
     (APP_FLIGHT_LOG_REGION_END_EXCL - APP_FLIGHT_LOG_REGION_START)
@@ -374,16 +377,23 @@ static uint8_t flight_log_sector_header_valid(APP_FlightLogSectorHeader *header)
 {
     uint32_t expected_crc;
     uint32_t saved_crc;
+    uint8_t layout_valid;
 
     if (header == NULL) {
         return 0U;
     }
+    layout_valid =
+        (((header->version == APP_FLIGHT_LOG_VERSION) &&
+          (header->record_size == sizeof(APP_FlightLogRecord)) &&
+          (header->params_size == sizeof(header->params))) ||
+         (((header->version == APP_FLIGHT_LOG_VERSION_V8) ||
+           (header->version == APP_FLIGHT_LOG_VERSION_V7)) &&
+          (header->record_size == APP_FLIGHT_LOG_LEGACY_RECORD_SIZE) &&
+          (header->params_size == APP_FLIGHT_LOG_LEGACY_PARAMS_SIZE))) ? 1U : 0U;
     if ((header->magic != APP_FLIGHT_LOG_SECTOR_MAGIC) ||
-        ((header->version != APP_FLIGHT_LOG_VERSION) &&
-         (header->version != APP_FLIGHT_LOG_VERSION_V7)) ||
+        (layout_valid == 0U) ||
         (header->header_size != APP_FLIGHT_LOG_SECTOR_HEADER_SIZE) ||
         (header->sector_size != APP_FLASH_SERVICE_SECTOR_SIZE) ||
-        (header->record_size != sizeof(APP_FlightLogRecord)) ||
         (header->region_start != APP_FLIGHT_LOG_REGION_START) ||
         (header->region_end_excl != APP_FLIGHT_LOG_REGION_END_EXCL)) {
         return 0U;
