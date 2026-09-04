@@ -4,7 +4,7 @@
 
 Read this shard only when the task needs architecture rationale, controller math, historical evidence, captures, datasets, or agent-support documentation.
 
-Document snapshot: `31cf8b509f16`; aggregate snapshot: `bce40fdbb9f9`. Covered files: 321.
+Document snapshot: `116d8ebb9303`; aggregate snapshot: `bce40fdbb9f9`. Covered files: 321.
 
 ## Documents and agent support
 
@@ -40,7 +40,7 @@ Document snapshot: `31cf8b509f16`; aggregate snapshot: `bce40fdbb9f9`. Covered f
 | `doc/m1-baseline-runbook.md` | M1 底层与原始数据健康 · 实机作业单 | `1. 烧录当前固件`, `2. 连接工作台`, `3. M1 证据采集清单（对照 PIPELINE M1 门）`, `4. 收尾（强制）`, `备忘（后续节点的坑，提前知道）` |
 | `doc/nonlinear_balance_controller.md` | 非线性平衡式同轴倾转控制器 | `1. 控制目标`, `2. 坐标与已知物理量`, `3. 速度参考模型`, `4. 期望推力方向`, `5. 舵机与期望机体姿态耦合`, `6. SO(3) 姿态力矩` (+4) |
 | `doc/technical-spec.md` | drone-H743 技术规范与代码落地方案 | `1. 最终目的与范围`, `2. 角色与工作流`, `3. 架构与代码规范`, `4. 坐标与单位契约`, `5. 通信协议规范`, `6. 持久化规范` (+8) |
-| `doc/telemetry-scope-plan.md` | 遥测流 v2 与上位机示波器规划（派工稿） | `1. 现状与约束（改之前必须知道的）`, `2. 设计裁决`, `2.1 一个机制解决三个问题：**自描述掩码帧**`, `2.2 帧格式（`$X` 帧，function `APP_PROTO_MSG_TELEM_FRAME = 0x2230`，payload 小端）`, `2.3 参数回显与滑块三态`, `2.4 命令面（文本，沿用 `TELEM` 族）` (+8) |
+| `doc/telemetry-scope-plan.md` | 遥测流 v2 与上位机状态监视工作台规划（派工稿） | `1. 现状与约束（改之前必须知道的）`, `2. 设计裁决`, `2.1 一个机制解决三个问题：**自描述掩码帧**`, `2.2 帧格式（`$X` 帧，function `APP_PROTO_MSG_TELEM_FRAME = 0x2230`，payload 小端）`, `2.3 参数回显与滑块三态`, `2.4 命令面（文本，沿用 `TELEM` 族）` (+9) |
 | `doc/飞控.drawio` | Project documentation for 飞控 | — |
 
 ## Aggregated datasets and captures

@@ -1,4 +1,4 @@
-# 遥测流 v2 与上位机示波器规划（派工稿）
+# 遥测流 v2 与上位机状态监视工作台规划（派工稿）
 
 目标：在自己的上位机（`tools/drone_tcp_panel.py` 体系）里实现 Synex 那种"高帧率波形 + 滑块调参实时回显"，
 同时解决 Synex/JustFloat 方案的三个硬伤：**参数不变也在回显、包长不能变、变了就错位**。
@@ -119,6 +119,54 @@ pyqtgraph 性能更高，但 Qt 事件循环进不了 Tk 进程；只能开独�
 的量级下完全够用，且能用现有 `DronePanel()` 真实构造做端到端测试。留作 R-T3 可选项：面板一行 `sendto` 把二进制帧镜像到
 `127.0.0.1:6670`，`tools/telem_scope_qt.py` 用 pyqtgraph 只读显示。
 
+### 2.8 状态监视工作台（R-T1-5 / R-T1-5b，2026-09-03 作者裁决）
+
+作者看过 R-T1-3 的实机截图后的裁决，原话要点：**这页不该叫示波器，而是"飞控状态监视页"，应作为默认主页面**；
+波形只是其中一种展示形式，光流速度、高度这类量应该直接显示数值而不是画曲线；调参滑块要和波形同屏，边调边看；
+总目标是一个**像 VOFA / Synex 那样可以自由地把数据用不同形式展示出来**的上位机。
+
+R-T1-3 的问题（截图证据）：单画布把 8 条曲线（含 uptime≈600 s）压在同一 Y 轴，其余曲线全成直线；滑块区只露 4 个、没有数值输入；
+通道勾选树占了大半屏；两者不在一个视野里。R-T1-3 的**解码、环形缓冲、`ScopeCanvas`、滑块三态判定**都保留复用，重做的是页面本身。
+
+对照 Synex（`E:/User/Desk/Synex_v3.0.5/config.ini` 的 `[PlotSettings]`，2026-09-03 解析）：96 列网格 tile 布局；
+tile 类型：0 波形、1 滑块、2 开关、3 模式、5 仪表、6 3D 姿态、7 图片、8 数值卡、13 控制台；
+"飞行监控"工作区 = 3 波形 + 3D 姿态 + 1 仪表 + 4 数值卡 + 1 开关 + 控制台；"控制器调参" = 11 滑块 + 2 波形 + 2 开关；
+右侧常驻全通道实时值栏；`PlotRefreshFps=40`、`PlotSampleTimeMs=25`、`GlobalDynamicYEnabled=true`。
+
+#### 架构（新模块，`pages/scope.py` 退役）
+
+- `tools/panel_lib/dashboard/layout.py`：**布局模型**。12 列网格，tile = {type, col, row, colspan, rowspan, bindings, options}；
+  工作区 = tile 列表 + 名称；JSON 序列化；内置两套预设（"飞行监控"、"控制器调参"）作为出厂布局；用户布局随面板状态持久化（走 `panel_lib/state.py` 既有机制）。
+- `tools/panel_lib/dashboard/tiles.py`：**组件基类与第一批组件**。每个组件实现 `bind(channels)`, `update(snapshot)`, `configure()`；
+  数据只来自遥测通道（`TelemSchema` 数据驱动，绑定用通道名而不是索引，换表后按名重绑）。
+- `tools/panel_lib/dashboard/editor.py`：**编辑模式**。切换后 tile 显示边框与右下角手柄；拖动移动、拖手柄缩放，吸附网格，越界/重叠拒绝；
+  右键/齿轮打开属性对话框（类型、绑定通道、选项）；"添加组件"菜单；删除。非编辑模式下组件只响应各自交互（拖滑块、点按钮）。
+- `tools/panel_lib/pages/dashboard.py`（Mixin）：挂载（`notebook.insert(0, …)` 放首位并默认选中）、可见性门控 STREAM on/off、
+  收线程帧 → 环形缓冲、Tk 线程 33 ms 一次把快照分发给所有 tile、掩码 = 全部组件绑定通道并集 + 参数通道、工作区页签、统计条。
+- 每文件 ≤800 行；`drone_tcp_panel.py` 只把 `_scope_mount/_scope_poll_tick/_scope_handle_line` 三处调用改名，净不增。
+
+#### 第一批组件（R-T1-5）
+
+| 组件 | 绑定 | 表现 |
+|---|---|---|
+| 波形 | 1~4 通道 | 复用 `ScopeCanvas`：独立自动 Y（可锁定）、图例（名称 + 当前值同色）、时间刻度（相对秒 ≥5 格）、时间窗口 |
+| 数值卡 | 1 通道 | 大字当前值 + 单位 + 名称；可选上下限着色（超限变黄/红）；光流高度、速度、姿态角默认用它 |
+| 参数滑块卡 | 1 个 `param!=-` 通道 | 大字固件回显值 + 滑块（量程取表）+ 数值输入框（回车/失焦发送，1e-4 精度）+ 三态着色；节流与松手规则同 R-T1-3 |
+
+预设"飞行监控"：波形×3（姿态 roll/pitch/yaw；速度 vel_est_x/y；位置 pos_est_x/y）+ 数值卡×4（flow_height、vel_est_x、vel_est_y、fusion_acc_err）。
+预设"控制器调参"：全部 14 张参数滑块卡 + 波形×2（姿态；速度）。
+
+#### 第二批组件（R-T1-5b）
+
+仪表盘（弧形，量程取通道表）、命令按钮 / 开关（绑定文本命令，走 `_validation_command_allowed` 门，不得绕过任何安全门）、
+2D 姿态指示（地平仪 + 罗盘）、全通道实时值列表（颜色点 + 名称 + 值 + 单位，10 Hz）、布局导入 / 导出 JSON。
+
+#### 判据补充
+
+- 性能：4 波形 × 4 曲线 × 10 k 点 + 20 张卡，一次总重绘 ≤10 ms（无显示环境自动 skip）。
+- 端到端（真实 `DronePanel()`）：首位页签且默认选中；增删/改绑/拖动缩放/持久化往返；掩码并集；输入框发送；预设开箱；换表后按名重绑、找不到的通道卡片标"通道不存在"而不是静默消失。
+- 光流质量等尚未进遥测表的量，本期不加固件通道；需要时按"只追加不重排"另立 REQ。
+
 ---
 
 ## 3. 数传与 USB：同一帧、两个出口，第一期就都要通
@@ -194,6 +242,8 @@ R-T1-1 与 R-T1-2 可以派给两个会话并行：帧格式以本文 §2.2 为�
 | R-T1-2 | S8 | 〔码〕上位机解码：`transport.py` 二进制分支（唯一改动）；新建 `panel_lib/telem_stream.py`（schema 装配+hash 复算、解码器、seq/drop 统计、numpy 环形缓冲、收线程写入）。类别模式：protocol-telemetry | 黄金向量与固件逐字节一致；模糊测试永不错位；hash 不符触发重拉；不改 `drone_tcp_panel.py` | 待做 |
 | R-T1-3 | S8 | 〔码〕示波器页：新建 `panel_lib/scope.py`（Tk Canvas，min/max 抽稀）与 `pages/scope.py`（通道勾选→MASK、滑块三态、统计条、CSV 录制、可见性门控 STREAM on/off）。依赖 R-T1-2。类别模式：protocol-telemetry | 真实 `DronePanel()` 端到端断言 §4 全部条目；重绘基准 ≤5 ms；`drone_tcp_panel.py` 改动 ≤5 行且净不增 | 待做 |
 | R-T1-4 | S8 | 〔机〕双链路实机验收：数传 40 Hz 与 USB 40 Hz 各跑一遍 | §4 实机前三条，两条链路各一次 | 待做 |
+| R-T1-5 | S8 | 〔码〕状态监视工作台（§2.8）：可编排 tile 首页 + 第一批组件（波形/数值卡/参数滑块卡）+ 编辑模式 + 两套预设 + 持久化；`pages/scope.py` 退役。类别模式：protocol-telemetry | §2.8 判据；真实 `DronePanel()` 端到端；总重绘 ≤10 ms；`drone_tcp_panel.py` 净不增 | 待做 |
+| R-T1-5b | S8 | 〔码〕第二批组件：仪表、命令按钮/开关、2D 姿态、实时值列表、布局导入导出（依赖 R-T1-5） | 每种组件可增删/改绑/持久化；按钮不绕过安全门 | 待做 |
 | R-T2-1 | S8 | 〔码〕USB 高速批量档：count>1、dt_us、USB 出口 `RATE ≤1000`、`APP_TELEM_FRAME_MAX_PAYLOAD 1024`。依赖 R-T1-1。类别模式：protocol-telemetry | 装置覆盖批量编码与 USB/UART 上限差异；UART 出口超限仍 ERR；构建零警告 | 待做 |
 | R-T2-2 | S8 | 〔机〕USB 档 500 Hz 验收 | §4 实机第四条 | 待做 |
 | R-T3 | S8 | 〔码〕可选：本地 UDP 镜像 + `tools/telem_scope_qt.py`（pyqtgraph 只读） | 不影响 R-T1 任何测试 | ⏸ |
