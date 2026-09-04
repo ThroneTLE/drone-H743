@@ -7,9 +7,9 @@
  *
  * 本文件里的采样函数 APP_TelemStream_PortSample 的函数体，是从
  * Core/Src/freertos.c 的 `VOFA_task` USER CODE 段整段搬过来的（R-T1-1）。
- * 逐条赋值语句保持原样，局部数组仍叫 vofa_data。唯一的例外是删掉了旧代码里
- * 对四个角度增益的显示取反（原因见采样函数末尾的注释）：遥测回显与 `PARAM?`
- * 必须是同一口径。
+ * 局部数组仍叫 vofa_data。相对旧 VOFA 路径的两处有据变更：四个角度增益取消
+ * 显示取反以便与 `PARAM?` 同口径；速度/位置在本文件出口从控制器 legacy FRD
+ * 显式适配为规范 FLU，避免状态监视把 Y 右正冒充为通用 `vel_est_y`。
  */
 
 #include "app_telem_stream.h"
@@ -25,6 +25,7 @@
 #include "app_vofa.h"
 
 #include "drv_coax_ctrl.h"
+#include "drv_frame_contract.h"
 #include "svc_timestamp.h"
 
 #include "cmsis_os2.h"
@@ -87,6 +88,8 @@ uint8_t APP_TelemStream_PortSample(float *values, uint32_t count)
     APP_Sensor_SampleMessage msg;
     StabilizerVofaDebug      vofa_debug;
     APP_OPTICAL_FLOW_Status  flow_status;
+    DRV_FRAME_Vector3f       velocity_flu;
+    DRV_FRAME_Vector3f       position_flu;
     float                   *vofa_data = values;
 
     if ((values == NULL) || (count != (uint32_t)APP_TELEM_CH_COUNT)) {
@@ -106,6 +109,15 @@ uint8_t APP_TelemStream_PortSample(float *values, uint32_t count)
     APP_Stabilizer_ReadVofaDebug(&vofa_debug);
 
     /*
+     * 控制器尚保留 X 前/Y 右的 legacy 口径；遥测是对外契约，必须在这里
+     * 显式转成规范机体 FLU。只改观察边界，不改变控制器内部反馈符号。
+     */
+    velocity_flu = DRV_FRAME_FrdToFlu((DRV_FRAME_Vector3f){
+        vofa_debug.vel_est_m_s[0], vofa_debug.vel_est_m_s[1], 0.0f});
+    position_flu = DRV_FRAME_FrdToFlu((DRV_FRAME_Vector3f){
+        vofa_debug.pos_est_m[0], vofa_debug.pos_est_m[1], 0.0f});
+
+    /*
      * 下标一律用 APP_TELEM_CH_* 枚举名，不写裸数字：通道含义的唯一事实源是
      * App/Inc/app_telemetry.h 的枚举与 app_telemetry.c 的元数据表，上位机
      * 通过 TELEM? 拉取同一张表自动建图。改动通道请同时改枚举与表。
@@ -119,8 +131,8 @@ uint8_t APP_TelemStream_PortSample(float *values, uint32_t count)
                                           flow_status.height_m : 0.0f;
 
     vofa_data[APP_TELEM_CH_TIME] = (float)(SVC_Timestamp_Us() / 1000ULL) * 0.001f;
-    vofa_data[APP_TELEM_CH_VEL_EST_X] = vofa_debug.vel_est_m_s[0];
-    vofa_data[APP_TELEM_CH_VEL_EST_Y] = vofa_debug.vel_est_m_s[1];
+    vofa_data[APP_TELEM_CH_VEL_EST_X] = velocity_flu.x;
+    vofa_data[APP_TELEM_CH_VEL_EST_Y] = velocity_flu.y;
     (void)DRV_COAX_CTRL_GetParam("coax.roll_rate_kd", &vofa_data[APP_TELEM_CH_ROLL_RATE_KD]);
     (void)DRV_COAX_CTRL_GetParam("coax.pitch_rate_kd", &vofa_data[APP_TELEM_CH_PITCH_RATE_KD]);
     (void)DRV_COAX_CTRL_GetParam("coax.yaw_angle_kp", &vofa_data[APP_TELEM_CH_YAW_ANGLE_KP]);
@@ -129,8 +141,8 @@ uint8_t APP_TelemStream_PortSample(float *values, uint32_t count)
     (void)DRV_COAX_CTRL_GetParam("coax.pos_y_kp", &vofa_data[APP_TELEM_CH_POS_Y_KP]);
     (void)DRV_COAX_CTRL_GetParam("coax.vel_x_kd", &vofa_data[APP_TELEM_CH_VEL_X_KD]);
     (void)DRV_COAX_CTRL_GetParam("coax.vel_y_kd", &vofa_data[APP_TELEM_CH_VEL_Y_KD]);
-    vofa_data[APP_TELEM_CH_POS_EST_X] = vofa_debug.pos_est_m[0];
-    vofa_data[APP_TELEM_CH_POS_EST_Y] = vofa_debug.pos_est_m[1];
+    vofa_data[APP_TELEM_CH_POS_EST_X] = position_flu.x;
+    vofa_data[APP_TELEM_CH_POS_EST_Y] = position_flu.y;
     (void)DRV_COAX_CTRL_GetParam("coax.vel_loop_enable", &vofa_data[APP_TELEM_CH_VEL_LOOP_ENABLE]);
     (void)DRV_COAX_CTRL_GetParam("coax.roll_angle_kp", &vofa_data[APP_TELEM_CH_ROLL_ANGLE_KP]);
     (void)DRV_COAX_CTRL_GetParam("coax.pitch_angle_kp", &vofa_data[APP_TELEM_CH_PITCH_ANGLE_KP]);

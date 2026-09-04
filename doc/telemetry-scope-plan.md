@@ -74,11 +74,23 @@ off 24  f32  data[count × popcount(mask)]   按通道索引升序、再按样�
   拖动节流：拖动中 ≤5 Hz、松手必发；写入仍走现有 `PROTO_REQ_PARAM_SET`，不新增写入命令。
 - 固件对每次 `PARAM SET` 仍回 `PARAM` 记录 + `PID` legacy 文本（现有行为，本期不改）；节流后带宽可接受。裁掉 legacy 回显另立 REQ。
 
+#### 2.3.1 坐标来源（schema v3，2026-09-03 作者纠错）
+
+- `TELEM?` 表头增加 `frame=body_flu contract=1`，且两项都进入 `SchemaHash`；
+  `frame` 或契约版本变化时，上位机必须重拉表，不能沿用旧解释。
+- `roll/pitch/yaw`、`vel_est_x/y`、`pos_est_x/y` 对外统一采用规范机体 FLU：
+  `+X` 前、`+Y` 左、`+Z` 上。控制器内部暂存的 X 前/Y 右口径只允许留在控制边界，
+  `app_telem_port.c` 必须通过 `DRV_FRAME_FrdToFlu()` 显式适配后再发布速度和位置。
+- 既有 schema v1/v2 没有坐标来源，主机只按 `legacy_unspecified` 兼容读取，绝不倒推为 FLU；
+  schema v3 缺 `frame`/`contract` 则整张表拒绝，不静默猜测。
+- `$X` 二进制帧布局、通道编号和通道顺序均不变；本次仅纠正既有 Y 通道语义并让
+  schema 指纹携带口径。状态监视页必须把 `FLU v1（X前 / Y左 / Z上）` 显示给操作者。
+
 ### 2.4 命令面（文本，沿用 `TELEM` 族）
 
 | 命令 | 语义 |
 |---|---|
-| `TELEM?` | 现有表头 + 新增流状态：`stream=<0/1> rate=<hz> mask=<hex16> refresh=<s> fmt=<bin/jf> sink=<usb/uart/auto> active=<usb/uart/-> seq=<n> drop=<n>` |
+| `TELEM?` | schema v3 表头含 `frame=body_flu contract=1`；另含流状态：`stream=<0/1> rate=<hz> mask=<hex16> refresh=<s> fmt=<bin/jf> sink=<usb/uart/auto> active=<usb/uart/-> seq=<n> drop=<n>` |
 | `TELEM CH from=<n>` | 现有分页，行内新增 `param=` |
 | `TELEM STREAM on` / `off` | 开/关；`Sensor_Data:1/0` 保留为别名（Synex 兼容） |
 | `TELEM RATE <hz>` | 1..40（R-T1）；USB 出口在 R-T2 放宽到 1000 |

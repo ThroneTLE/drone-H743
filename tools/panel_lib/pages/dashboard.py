@@ -592,8 +592,16 @@ class DashboardPageMixin:
         for tile in self.dashboard_tiles:
             tile.rebind()
         missing = sorted({name for tile in self.dashboard_tiles for name in tile.missing})
+        if self.dashboard_schema.body_frame == "body_flu":
+            frame_text = (
+                f"；坐标 FLU v{self.dashboard_schema.frame_contract}"
+                "（X前 / Y左 / Z上）"
+            )
+        else:
+            frame_text = "；坐标未声明（legacy schema）"
         self.dashboard_hint_var.set(
             f"通道表 {self.dashboard_schema.channel_count} 路"
+            + frame_text
             + (f"；本工作区有 {len(missing)} 个绑定找不到通道：{', '.join(missing)}"
                if missing else "")
         )

@@ -163,5 +163,6 @@ def test_vofa_compact_frame_keeps_dashboard_velocity_channels() -> None:
     freertos = read("App/Src/app_telem_port.c") + read("App/Src/app_stabilizer.c")
 
     assert "(values == NULL) || (count != (uint32_t)APP_TELEM_CH_COUNT)" in freertos
-    assert "vofa_data[APP_TELEM_CH_VEL_EST_X] = vofa_debug.vel_est_m_s[0];" in freertos
-    assert "vofa_data[APP_TELEM_CH_VEL_EST_Y] = vofa_debug.vel_est_m_s[1];" in freertos
+    assert "vofa_data[APP_TELEM_CH_VEL_EST_X] = velocity_flu.x;" in freertos
+    assert "vofa_data[APP_TELEM_CH_VEL_EST_Y] = velocity_flu.y;" in freertos
+    assert "DRV_FRAME_FrdToFlu(" in freertos

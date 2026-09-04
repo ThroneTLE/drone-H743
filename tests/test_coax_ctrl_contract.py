@@ -419,7 +419,7 @@ def test_balance_controller_has_no_horizontal_velocity_integral_but_keeps_z_inte
 
 def test_vofa_exports_compact_slider_parameter_feedback() -> None:
     # R-T1-1：通道装配从 Core/Src/freertos.c 搬到 App/Src/app_telem_port.c，
-    # 逐条赋值语句一字未改，所以断言只换来源文件。
+    # 参数回显保持原口径；坐标通道由 2026-09-03 作者授权统一为 FLU。
     freertos = read("App/Src/app_telem_port.c")
 
     # 帧长仍由通道表推出来：采样函数拒绝任何与表长不符的 count。
@@ -436,8 +436,9 @@ def test_vofa_exports_compact_slider_parameter_feedback() -> None:
     assert '(void)DRV_COAX_CTRL_GetParam("coax.pos_y_kp", &vofa_data[APP_TELEM_CH_POS_Y_KP]);' in freertos
     assert '(void)DRV_COAX_CTRL_GetParam("coax.vel_x_kd", &vofa_data[APP_TELEM_CH_VEL_X_KD]);' in freertos
     assert '(void)DRV_COAX_CTRL_GetParam("coax.vel_y_kd", &vofa_data[APP_TELEM_CH_VEL_Y_KD]);' in freertos
-    assert "vofa_data[APP_TELEM_CH_POS_EST_X] = vofa_debug.pos_est_m[0];" in freertos
-    assert "vofa_data[APP_TELEM_CH_POS_EST_Y] = vofa_debug.pos_est_m[1];" in freertos
+    assert "vofa_data[APP_TELEM_CH_POS_EST_X] = position_flu.x;" in freertos
+    assert "vofa_data[APP_TELEM_CH_POS_EST_Y] = position_flu.y;" in freertos
+    assert "APP_TELEM_CH_POS_EST_Y] = vofa_debug.pos_est_m[1]" not in freertos
     assert '(void)DRV_COAX_CTRL_GetParam("coax.vel_loop_enable", &vofa_data[APP_TELEM_CH_VEL_LOOP_ENABLE]);' in freertos
     assert '(void)DRV_COAX_CTRL_GetParam("coax.roll_angle_kp", &vofa_data[APP_TELEM_CH_ROLL_ANGLE_KP]);' in freertos
     assert '(void)DRV_COAX_CTRL_GetParam("coax.pitch_angle_kp", &vofa_data[APP_TELEM_CH_PITCH_ANGLE_KP]);' in freertos

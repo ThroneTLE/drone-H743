@@ -89,6 +89,7 @@ def build_and_run(tmp_path: Path, telemetry_source: str | None = None) -> list[s
             "-Wextra",
             "-Werror",
             f"-I{ROOT / 'App' / 'Inc'}",
+            f"-I{ROOT / 'Driver' / 'Inc'}",
             str(source),
             str(harness),
             "-o",
@@ -117,8 +118,10 @@ def test_header_reports_version_count_rate_and_hash(schema_lines: list[str]) -> 
     assert header.startswith("TELEM ver="), header
 
     fields = parse_kv(header)
-    # v2（R-T1-1）：通道行新增 param=，SchemaHash 覆盖该字段。
-    assert fields["ver"] == "2"
+    # v3：状态监视的轴向数据统一为机体 FLU，并携带契约版本。
+    assert fields["ver"] == "3"
+    assert fields["frame"] == "body_flu"
+    assert fields["contract"] == "1"
     assert int(fields["n"]) > 0
     # 25 ms send period -> 40 Hz. Both come from APP_TELEM_PERIOD_MS.
     assert int(fields["rate"]) == 40
@@ -237,6 +240,39 @@ def test_schema_hash_changes_when_channel_metadata_changes(tmp_path: Path) -> No
         "renaming a channel must change the schema hash, otherwise the ground "
         "station keeps a stale dashboard after a firmware update"
     )
+
+
+def test_schema_hash_covers_frame_provenance(tmp_path: Path) -> None:
+    baseline = build_and_run(tmp_path / "frame_base")
+    source = read("App/Src/app_telemetry.c")
+    assert "APP_TELEM_BODY_FRAME_NAME" in source
+    frame_mutated = source.replace(
+        '#define APP_TELEM_BODY_FRAME_NAME "body_flu"',
+        '#define APP_TELEM_BODY_FRAME_NAME "body_frd"',
+        1,
+    )
+    assert frame_mutated != source
+    contract_mutated = source.replace(
+        "#define APP_TELEM_FRAME_CONTRACT_VERSION DRV_FRAME_CONTRACT_VERSION",
+        "#define APP_TELEM_FRAME_CONTRACT_VERSION 2U",
+        1,
+    )
+    assert contract_mutated != source
+
+    changed_frame = build_and_run(
+        tmp_path / "frame_mutated", telemetry_source=frame_mutated
+    )
+    changed_contract = build_and_run(
+        tmp_path / "contract_mutated", telemetry_source=contract_mutated
+    )
+    assert parse_kv(changed_frame[0])["frame"] == "body_frd"
+    assert parse_kv(changed_contract[0])["contract"] == "2"
+    hashes = {
+        parse_kv(baseline[0])["hash"],
+        parse_kv(changed_frame[0])["hash"],
+        parse_kv(changed_contract[0])["hash"],
+    }
+    assert len(hashes) == 3
 
 
 PARAM_CHANNELS = {

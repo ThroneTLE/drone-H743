@@ -65,8 +65,10 @@ _Static_assert((int)APP_TELEM_CH_COUNT <= 64,
 /*
  * 协议版本。改动 TELEM 回包格式（而非通道内容）时递增。
  * v2（R-T1-1）：通道行新增 `param=`，SchemaHash 覆盖该字段。
+ * v3（坐标纠错）：表头新增 `frame=body_flu contract=<version>`，轴向通道
+ * 统一为规范 FLU，并把坐标来源纳入 SchemaHash。
  */
-#define APP_TELEM_SCHEMA_VERSION 2U
+#define APP_TELEM_SCHEMA_VERSION 3U
 
 /* 单次 TELEM CH 请求最多回几条通道行。
  *

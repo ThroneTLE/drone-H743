@@ -44,6 +44,11 @@ Known legacy boundaries include:
 - `tools/flight_log_rerun_replay.py`: current X-forward/Y-right/Z-down replay geometry.
 - `doc/controller_walkthrough.md`: as-implemented descriptions that may still use legacy FRD/local-frame terminology.
 
+Live status telemetry is an explicit observation-boundary exception: schema v3 declares
+`frame=body_flu` plus the frame-contract version, and converts controller legacy X-forward/Y-right
+velocity and position through `DRV_FRAME_FrdToFlu()` before publishing. This does not migrate the
+controller/RC runtime representation or reinterpret historical logs, so it does not complete seam 5.
+
 `DRV_FRAME_RUNTIME_MIGRATION_DONE_MASK` tracks sensor, estimator, navigation, controller, RC/actuator, and telemetry/log seams independently. Completion is derived from that mask; do not set a bit without its matching test. Do not claim runtime FLU compliance or authorize free-flight testing while `DRV_FRAME_RUNTIME_MIGRATION_COMPLETE` evaluates to `0`.
 
 Telemetry, captures, calibration records, and flight logs created after migration must carry `DRV_FRAME_CONTRACT_VERSION` plus an explicit frame identifier. Never reinterpret historical NED/FRD data as FLU merely because the current source has migrated.

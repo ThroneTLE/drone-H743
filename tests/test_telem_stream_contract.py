@@ -28,6 +28,7 @@ GOLDEN_FRAMES = GOLDEN_DIR / "telem_frames_v1.bin"
 
 APP_INC = ROOT / "App" / "Inc"
 APP_SRC = ROOT / "App" / "Src"
+DRIVER_INC = ROOT / "Driver" / "Inc"
 
 
 def read(path: str) -> str:
@@ -225,6 +226,7 @@ def compile_harness(tmp_path: Path, harness: str, sources: list[Path]) -> Path:
         [
             compiler, "-std=c11", "-Wall", "-Wextra", "-Werror",
             f"-I{APP_INC}",
+            f"-I{DRIVER_INC}",
             *[str(source) for source in sources],
             str(harness_path), "-o", str(executable),
         ],

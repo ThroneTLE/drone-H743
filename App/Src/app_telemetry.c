@@ -1,9 +1,13 @@
 #include "app_telemetry.h"
 
 #include "app_control.h"
+#include "drv_frame_contract.h"
 
 #include <stdio.h>
 #include <stdlib.h>
+
+#define APP_TELEM_BODY_FRAME_NAME "body_flu"
+#define APP_TELEM_FRAME_CONTRACT_VERSION DRV_FRAME_CONTRACT_VERSION
 
 /*
  * 通道表 —— 顺序必须与 Core/Src/freertos.c 中 VOFA_task 的填充顺序一致。
@@ -137,8 +141,8 @@ uint8_t APP_Telemetry_ChannelHasParam(uint32_t index)
 }
 
 /*
- * 指纹覆盖版本、通道数、速率与每条通道的全部元数据。
- * 规范化文本为 "v<ver>|<count>|<rate>\n" 后接每通道
+ * 指纹覆盖版本、通道数、速率、坐标来源与每条通道的全部元数据。
+ * 规范化文本为 "v<ver>|<count>|<rate>|<frame>|<contract>\n" 后接每通道
  * "<idx>|<name>|<unit>|<min>|<max>|<group>|<param>\n"，与 tests 中的复算实现一致。
  * v2 起把 param 也纳进来：上位机的滑块是按 param 数据驱动生成的，param 变了
  * 而 hash 不变，滑块就会绑到错的参数上而且没有任何人报错。
@@ -149,7 +153,7 @@ uint32_t APP_Telemetry_SchemaHash(void)
     static uint8_t  hash_is_valid = 0U;
 
     uint32_t hash = 0x811C9DC5UL;
-    char     scratch[32];
+    char     scratch[64];
     uint32_t index;
 
     if (hash_is_valid != 0U) {
@@ -158,10 +162,12 @@ uint32_t APP_Telemetry_SchemaHash(void)
 
     (void)snprintf(scratch,
                    sizeof(scratch),
-                   "v%u|%u|%u\n",
+                   "v%u|%u|%u|%s|%u\n",
                    (unsigned int)APP_TELEM_SCHEMA_VERSION,
                    (unsigned int)APP_TELEM_CH_COUNT,
-                   (unsigned int)APP_TELEM_RATE_HZ);
+                   (unsigned int)APP_TELEM_RATE_HZ,
+                   APP_TELEM_BODY_FRAME_NAME,
+                   (unsigned int)APP_TELEM_FRAME_CONTRACT_VERSION);
     hash = app_telem_hash_bytes(hash, scratch);
 
     for (index = 0U; index < (uint32_t)APP_TELEM_CH_COUNT; ++index) {
@@ -195,12 +201,15 @@ uint32_t APP_Telemetry_SchemaHash(void)
 
 void APP_Telemetry_ReportHeader(void)
 {
-    APP_Control_QueueText("TELEM ver=%u n=%u rate=%u page=%u hash=%08lX\r\n",
+    APP_Control_QueueText("TELEM ver=%u n=%u rate=%u page=%u hash=%08lX "
+                          "frame=%s contract=%u\r\n",
                           (unsigned int)APP_TELEM_SCHEMA_VERSION,
                           (unsigned int)APP_TELEM_CH_COUNT,
                           (unsigned int)APP_TELEM_RATE_HZ,
                           (unsigned int)APP_TELEM_PAGE_SIZE,
-                          (unsigned long)APP_Telemetry_SchemaHash());
+                          (unsigned long)APP_Telemetry_SchemaHash(),
+                          APP_TELEM_BODY_FRAME_NAME,
+                          (unsigned int)APP_TELEM_FRAME_CONTRACT_VERSION);
 }
 
 void APP_Telemetry_ReportPage(uint32_t from)

@@ -87,6 +87,8 @@ class TelemSchema:
         self.channel_count = 0
         self.rate_hz = 0
         self.page_size = 0
+        self.body_frame = "legacy_unspecified"
+        self.frame_contract = 0
         self.reported_hash: int | None = None
         self.channels: dict[int, TelemChannel] = {}
         self.next_page: int | None = 0
@@ -109,13 +111,26 @@ class TelemSchema:
     def _feed_header(self, line: str) -> bool:
         values = parse_kv(line)
         try:
-            self.version = int(values["ver"])
-            self.channel_count = int(values["n"])
-            self.rate_hz = int(values["rate"])
-            self.page_size = int(values["page"])
-            self.reported_hash = int(values["hash"], 16)
+            version = int(values["ver"])
+            channel_count = int(values["n"])
+            rate_hz = int(values["rate"])
+            page_size = int(values["page"])
+            reported_hash = int(values["hash"], 16)
+            body_frame = values.get("frame", "legacy_unspecified")
+            frame_contract = int(values.get("contract", "0"))
         except (KeyError, ValueError):
             return False
+        if version >= 3 and (
+            body_frame != "body_flu" or frame_contract <= 0
+        ):
+            return False
+        self.version = version
+        self.channel_count = channel_count
+        self.rate_hz = rate_hz
+        self.page_size = page_size
+        self.reported_hash = reported_hash
+        self.body_frame = body_frame
+        self.frame_contract = frame_contract
         # 表头到达即重新开始装配：上一轮的残表不能和新表混在一起。
         self.channels = {}
         self.next_page = 0
@@ -168,7 +183,13 @@ class TelemSchema:
         v2 起 param 也进指纹：滑块是按 param 数据驱动生成的，param 变了而
         hash 不变，滑块就会绑到错的参数上，而且没有任何人会报错。
         """
-        text = f"v{self.version}|{self.channel_count}|{self.rate_hz}\n"
+        if self.version >= 3:
+            text = (
+                f"v{self.version}|{self.channel_count}|{self.rate_hz}|"
+                f"{self.body_frame}|{self.frame_contract}\n"
+            )
+        else:
+            text = f"v{self.version}|{self.channel_count}|{self.rate_hz}\n"
         for channel in self.ordered():
             text += (
                 f"{channel.index}|{channel.name}|{channel.unit}|"

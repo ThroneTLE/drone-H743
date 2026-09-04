@@ -4,7 +4,7 @@
 
 Read this shard only when the task touches application behavior, RTOS task bodies, control flow, diagnostics, commands, or synchronous services.
 
-Source snapshot: `954d489df008`. Indexed files: 104.
+Source snapshot: `a295b7ca2f66`. Indexed files: 104.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -57,7 +57,7 @@ Source snapshot: `954d489df008`. Indexed files: 104.
 | `App/Inc/app_stabilizer.h`<br>`App/Src/app_stabilizer.c` | Application behavior and task-facing logic for stabilizer | `APP_Stabilizer_LatchImuFault`, `APP_Stabilizer_ClearImuFault`, `APP_Stabilizer_MarkImuSample`, `APP_Stabilizer_ReadVofaDebug`, `APP_Stabilizer_ReadValidationImuSnapshot`, `APP_Stabilizer_ReadFlowCompensationSnapshot` (+7) |
 | `App/Inc/app_tasks.h`<br>`App/Src/app_tasks.c` | Application behavior and task-facing logic for tasks | `APP_Task_LED_Init`, `APP_Task_LED_Step`, `APP_Task_GPS_Init`, `APP_Task_GPS_Step`, `APP_Task_OpticalFlow_Init`, `APP_Task_OpticalFlow_Step` (+10) |
 | `App/Inc/app_telem_frame.h`<br>`App/Src/app_telem_frame.c` | Application behavior and task-facing logic for telem frame | `APP_TelemFrame_PopCount`, `APP_TelemFrame_PayloadLength`, `APP_TelemFrame_Encode` |
-| `App/Src/app_telem_port.c` | Application behavior and task-facing logic for telem port | `APP_TelemStream_PortNowUs`, `APP_TelemStream_PortDelayMs`, `APP_TelemStream_PortServiceExports`, `APP_IMU_Capture_IsExportActive`, `APP_FlightLog_IsExportActive`, `APP_TelemStream_PortUsbReady` (+6) |
+| `App/Src/app_telem_port.c` | Application behavior and task-facing logic for telem port | `APP_TelemStream_PortNowUs`, `APP_TelemStream_PortDelayMs`, `APP_TelemStream_PortServiceExports`, `APP_IMU_Capture_IsExportActive`, `APP_FlightLog_IsExportActive`, `APP_TelemStream_PortUsbReady` (+7) |
 | `App/Inc/app_telem_stream.h`<br>`App/Src/app_telem_stream.c` | Application behavior and task-facing logic for telem stream | `APP_TelemStream_Init`, `APP_TelemStream_Reset`, `APP_TelemStream_NoteCommandSource`, `APP_TelemStream_SetActive`, `APP_TelemStream_SetRate`, `APP_TelemStream_SetMask` (+17) |
 | `App/Inc/app_telemetry.h`<br>`App/Src/app_telemetry.c` | Application behavior and task-facing logic for telemetry | `APP_Telemetry_ChannelHasParam`, `APP_Telemetry_ChannelCount`, `APP_Telemetry_GetChannel`, `APP_Telemetry_SchemaHash`, `APP_Telemetry_ReportHeader`, `APP_Telemetry_ReportPage` |
 | `App/Inc/app_uart.h`<br>`App/Src/app_uart.c` | Application behavior and task-facing logic for uart | `APP_UART_GetStats`, `APP_UART_GetRxEventStats`, `APP_UART_Task_Init`, `APP_UART_Task_Step`, `APP_UART_NotifyTxPending`, `APP_UART_OnRxEvent` (+2) |

@@ -4,7 +4,7 @@
 
 Read this shard only when the task needs architecture rationale, controller math, historical evidence, captures, datasets, or agent-support documentation.
 
-Document snapshot: `203f84670447`; aggregate snapshot: `bce40fdbb9f9`. Covered files: 321.
+Document snapshot: `7d7c005736a5`; aggregate snapshot: `bce40fdbb9f9`. Covered files: 321.
 
 ## Documents and agent support
 

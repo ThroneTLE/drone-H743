@@ -92,6 +92,39 @@ def test_transport_delivers_telemetry_payloads_as_bytes() -> None:
     assert transport.rx_queue.empty()
 
 
+def test_v3_schema_preserves_body_frame_provenance() -> None:
+    schema = TelemSchema()
+    assert schema.feed_line(
+        "TELEM ver=3 n=1 rate=40 page=1 hash=00000000 "
+        "frame=body_flu contract=1"
+    )
+    assert schema.feed_line(
+        "TELEM CH idx=0 name=vel_est_y unit=m/s min=-5.000 max=5.000 "
+        "grp=nav param=-"
+    )
+    assert schema.feed_line("TELEM PAGE from=0 count=1 next=-1")
+
+    assert schema.body_frame == "body_flu"
+    assert schema.frame_contract == 1
+    assert schema.canonical_text().startswith("v3|1|40|body_flu|1\n")
+
+
+def test_v3_schema_rejects_missing_frame_but_v2_stays_legacy_compatible() -> None:
+    schema = TelemSchema()
+    assert not schema.feed_line("TELEM ver=3 n=1 rate=40 page=1 hash=00000000")
+    assert not schema.feed_line(
+        "TELEM ver=3 n=1 rate=40 page=1 hash=00000000 frame=body_frd contract=1"
+    )
+    assert not schema.feed_line(
+        "TELEM ver=3 n=1 rate=40 page=1 hash=00000000 frame=body_flu contract=0"
+    )
+
+    assert schema.feed_line("TELEM ver=2 n=1 rate=40 page=1 hash=00000000")
+    assert schema.body_frame == "legacy_unspecified"
+    assert schema.frame_contract == 0
+    assert schema.canonical_text().startswith("v2|1|40\n")
+
+
 def test_decoder_reproduces_exactly_what_the_firmware_encoded() -> None:
     transport = CollectingTransport()
     feed_bytes(transport, GOLDEN_FRAMES.read_bytes())
@@ -322,7 +355,9 @@ def test_schema_assembles_from_the_real_firmware_reply(tmp_path) -> None:
 
     assert schema.complete
     assert schema.next_page is None
-    assert schema.version == 2
+    assert schema.version == 3
+    assert schema.body_frame == "body_flu"
+    assert schema.frame_contract == 1
     assert schema.rate_hz == 40
     # 独立复算，不照抄回包里的 hash=。
     assert schema.hash_matches(), (

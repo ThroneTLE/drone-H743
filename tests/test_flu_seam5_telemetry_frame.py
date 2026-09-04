@@ -1,10 +1,12 @@
 """R-F5 seam 5 telemetry/log frame contract."""
 
-# Author ruling 2026-08-30: seam 5 is the same shape as seam 3/4 -- pin the
-# contract and name the frame, do not migrate the representation.
+# Author ruling 2026-09-03: live status telemetry is an external observation
+# boundary and must publish canonical body FLU even while the controller keeps
+# its legacy X-forward/Y-right representation.  Schema v3 carries the frame and
+# contract version, and app_telem_port performs the explicit adapter.
 #
-# The residue spec section 10 names is real and this module pins it rather than
-# hiding it:
+# The remaining seam-5 residue is still real and this module pins it rather
+# than hiding it:
 #
 #   * app_stabilizer.c logs ctx->roll_control / pitch_control / yaw_control,
 #     which are canonical FLU Euler angles after seams 0/1.
@@ -12,14 +14,11 @@
 #     rpy_body_to_local_down(), which assumes X-forward / Y-right / Z-down.
 #     FLU and FRD disagree on pitch and yaw sign for the same number, so the
 #     replay renders those two channels under the older convention.
-#   * The log record carries no frame identifier, version or firmware CRC, so
-#     a reader cannot tell which convention a given file was recorded under.
-#
-# Fixing this properly means adding frame provenance to the log format, which
-# is an observable format change and needs its own author-approved item.  What
-# seam 5 may do now is make the assumption explicit and freeze the geometry, so
-# that neither the replay silently switches convention nor historical FRD logs
-# get reinterpreted as FLU (spec section 10: 历史数据永不重释义).
+#   * R-F5b added per-file provenance, but historical logs legitimately have
+#     none and must remain legacy FRD.
+#   * Full runtime migration still depends on the controller/RC representation
+#     and M6 physical direction verification; a canonical live display alone
+#     cannot flip the global completion mask.
 
 from __future__ import annotations
 
@@ -31,6 +30,7 @@ REPLAY = ROOT / "tools" / "flight_log_rerun_replay.py"
 CONTRACT = ROOT / "Driver" / "Inc" / "drv_frame_contract.h"
 STABILIZER = ROOT / "App" / "Src" / "app_stabilizer.c"
 LOG_HEADER = ROOT / "App" / "Inc" / "app_flight_log.h"
+TELEMETRY_PORT = ROOT / "App" / "Src" / "app_telem_port.c"
 
 
 def read(path: Path) -> str:
@@ -89,8 +89,21 @@ def test_logged_attitude_source_is_pinned() -> None:
     assert "flog_snapshot.yaw_deg = ctx->yaw_control;" in source
 
 
+def test_live_nav_telemetry_adapts_controller_legacy_xy_to_body_flu() -> None:
+    """状态监视的 X/Y 必须遵守 X前、Y左，不能泄漏控制器的 Y右口径。"""
+    source = read(TELEMETRY_PORT)
+    assert '#include "drv_frame_contract.h"' in source
+    assert source.count("DRV_FRAME_FrdToFlu(") >= 2
+    assert "vofa_data[APP_TELEM_CH_VEL_EST_X] = velocity_flu.x;" in source
+    assert "vofa_data[APP_TELEM_CH_VEL_EST_Y] = velocity_flu.y;" in source
+    assert "vofa_data[APP_TELEM_CH_POS_EST_X] = position_flu.x;" in source
+    assert "vofa_data[APP_TELEM_CH_POS_EST_Y] = position_flu.y;" in source
+    assert "APP_TELEM_CH_VEL_EST_Y] = vofa_debug.vel_est_m_s[1]" not in source
+    assert "APP_TELEM_CH_POS_EST_Y] = vofa_debug.pos_est_m[1]" not in source
+
+
 def test_telemetry_seam_cannot_be_declared_done() -> None:
-    """Seam 5 stays unmigrated until the log format carries its frame."""
+    """A canonical live display alone cannot declare full runtime migration."""
     contract = read(CONTRACT)
     assert "#define DRV_FRAME_RUNTIME_MIGRATION_DONE_MASK               0U" in contract
 

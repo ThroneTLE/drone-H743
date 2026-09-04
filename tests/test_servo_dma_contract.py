@@ -131,15 +131,16 @@ def test_uart_callbacks_route_uart7_to_servo_dma_diagnostics() -> None:
 
 
 def test_vofa_stream_sends_compact_dashboard_channels() -> None:
-    # R-T1-1：通道装配搬到 App/Src/app_telem_port.c，逐条赋值语句未改。
+    # R-T1-1：通道装配搬到 App/Src/app_telem_port.c；坐标出口现统一为 FLU。
     freertos = read("App/Src/app_telem_port.c") + read("App/Src/app_stabilizer.c")
 
     assert "(values == NULL) || (count != (uint32_t)APP_TELEM_CH_COUNT)" in freertos
     assert "DRV_SERVO_Diag servo_diag;" not in freertos
     assert "BSP_BusServo_GetDiag(&servo_diag);" not in freertos
     assert "vofa_data[APP_TELEM_CH_TIME] = (float)(SVC_Timestamp_Us() / 1000ULL) * 0.001f;" in freertos
-    assert "vofa_data[APP_TELEM_CH_VEL_EST_X] = vofa_debug.vel_est_m_s[0];" in freertos
-    assert "vofa_data[APP_TELEM_CH_VEL_EST_Y] = vofa_debug.vel_est_m_s[1];" in freertos
+    assert "vofa_data[APP_TELEM_CH_VEL_EST_X] = velocity_flu.x;" in freertos
+    assert "vofa_data[APP_TELEM_CH_VEL_EST_Y] = velocity_flu.y;" in freertos
+    assert "APP_TELEM_CH_VEL_EST_Y] = vofa_debug.vel_est_m_s[1]" not in freertos
     assert '(void)DRV_COAX_CTRL_GetParam("coax.roll_rate_kd", &vofa_data[APP_TELEM_CH_ROLL_RATE_KD]);' in freertos
     assert '(void)DRV_COAX_CTRL_GetParam("coax.vel_loop_enable", &vofa_data[APP_TELEM_CH_VEL_LOOP_ENABLE]);' in freertos
     assert '(void)DRV_COAX_CTRL_GetParam("coax.roll_angle_kp", &vofa_data[APP_TELEM_CH_ROLL_ANGLE_KP]);' in freertos

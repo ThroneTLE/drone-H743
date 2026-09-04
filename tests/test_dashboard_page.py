@@ -67,7 +67,7 @@ class SwitchableTransport(FakeTransport):
 
 # 一份最小但真实形状的通道表：预设用到的曲线通道 + 两条参数通道。
 SCHEMA_LINES = [
-    "TELEM ver=2 n=8 rate=40 page=8 hash=00000000",
+    "TELEM ver=3 n=8 rate=40 page=8 hash=00000000 frame=body_flu contract=1",
     "TELEM CH idx=0 name=roll unit=deg min=-180.000 max=180.000 grp=attitude param=-",
     "TELEM CH idx=1 name=pitch unit=deg min=-90.000 max=90.000 grp=attitude param=-",
     "TELEM CH idx=2 name=yaw unit=deg min=-180.000 max=180.000 grp=attitude param=-",
@@ -233,6 +233,14 @@ def test_schema_is_pulled_once_when_the_page_opens(app) -> None:
     before = list(app.transport.lines)
     app._dashboard_poll_tick(time.monotonic())
     assert app.transport.lines == before
+
+
+def test_dashboard_names_the_canonical_body_axes(app) -> None:
+    load_schema(app)
+    assert app.dashboard_schema.body_frame == "body_flu"
+    assert app.dashboard_schema.frame_contract == 1
+    assert "FLU v1" in app.dashboard_hint_var.get()
+    assert "X前 / Y左 / Z上" in app.dashboard_hint_var.get()
 
 
 def test_stream_starts_when_the_link_comes_up_after_the_page_is_open(app) -> None:
