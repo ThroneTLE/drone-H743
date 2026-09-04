@@ -375,11 +375,6 @@ def integrate_velocity_position(segment: "pd.DataFrame", time_s: "pd.Series") ->
 
 
 def position_columns(segment: "pd.DataFrame", time_s: "pd.Series") -> tuple["pd.Series", "pd.Series", "pd.Series"]:
-    if "ctrl_velocity_integral_m_0" in segment.columns and "ctrl_velocity_integral_m_1" in segment.columns:
-        x = series_float(segment, "ctrl_velocity_integral_m_0")
-        y = series_float(segment, "ctrl_velocity_integral_m_1")
-        if x.abs().max(skipna=True) > 1.0e-4 or y.abs().max(skipna=True) > 1.0e-4:
-            return x, y, height_column(segment)
     x, y = integrate_velocity_position(segment, time_s)
     return x, y, height_column(segment)
 

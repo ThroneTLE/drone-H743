@@ -4,7 +4,7 @@
 
 Read this shard only when the task touches CubeMX output, pins/clocks/peripherals, startup/linker layout, USB, build configuration, HAL, FreeRTOS internals, or vendor code.
 
-Source snapshot: `d91b4c115f13`; aggregate snapshot: `13fc4f243386`. Covered files: 1427.
+Source snapshot: `620d6476c083`; aggregate snapshot: `13fc4f243386`. Covered files: 1428.
 
 | File/module or scope | Content outline | Key entry points / size |
 |---|---|---|
@@ -33,6 +33,7 @@ Source snapshot: `d91b4c115f13`; aggregate snapshot: `13fc4f243386`. Covered fil
 | `.gitignore` | Repository ignore policy for generated artifacts and local data | — |
 | `.mcp.json` | Repository-local MCP server configuration | — |
 | `AGENTS.md` | drone-H743 执行工程师常驻指令（AGENTS.md） | `开工前必读（每次会话，顺序固定）`, `任务领取`, `工作模式`, `硬约束（违反任意一条 = 打回重做）`, `完成协议` |
+| `CLAUDE.md` | drone-H743 —— Claude 会话入口 | `每次会话按顺序读`, `两条最容易踩的硬约束` |
 | `cmake/gcc-arm-none-eabi.cmake` | Project configuration for gcc arm none eabi | — |
 | `cmake/starm-clang.cmake` | Project configuration for starm clang | — |
 | `cmake/stm32cubemx/CMakeLists.txt` | Project configuration for CMakeLists | — |

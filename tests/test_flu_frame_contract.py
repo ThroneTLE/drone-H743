@@ -68,7 +68,6 @@ def test_runtime_migration_cannot_be_declared_complete_yet() -> None:
         "App/Src/app_stabilizer.c",
         "Core/Src/freertos.c",
         "Driver/Src/drv_attitude_fusion.c",
-        "Driver/Src/drv_imu_nav.c",
         "Driver/Src/drv_coax_ctrl.c",
     ):
         assert legacy_path in reference

@@ -1,4 +1,5 @@
 #include "app_control.h"
+#include "app_control_config_compat.h"
 #include "app_control_internal.h"
 
 #include "app_aiwb2.h"
@@ -14,7 +15,6 @@
 #include "app_gps.h"
 #include "app_ident.h"
 #include "app_optical_flow.h"
-#include "app_rangefinder.h"
 #include "app_servo_cal.h"
 #include "app_servo_bus_guard.h"
 #include "app_servo_jog.h"
@@ -60,7 +60,8 @@
 #include <string.h>
 
 #define APP_CONTROL_CFG_MAGIC       0x44524346UL
-#define APP_CONTROL_CFG_VERSION     17U
+#define APP_CONTROL_CFG_VERSION     18U
+#define APP_CONTROL_CFG_VERSION_V17 17U
 #define APP_CONTROL_CFG_VERSION_V16 16U
 #define APP_CONTROL_CFG_VERSION_V15 15U
 #define APP_CONTROL_CFG_ADDRESS     (APP_FLASH_SERVICE_SIZE_BYTES - 4096UL)
@@ -97,30 +98,6 @@ typedef struct {
     float pos_x_kp;
     float pos_y_kp;
     float pos_z_kp;
-    float pos_z_ki;
-    float vel_x_kd;
-    float vel_y_kd;
-    float vel_z_kd;
-    float vel_loop_enable;
-    float vel_loop_x_kp;
-    float vel_loop_x_ki;
-    float vel_loop_x_kd;
-    float vel_loop_y_kp;
-    float vel_loop_y_ki;
-    float vel_loop_y_kd;
-    float roll_angle_kp;
-    float pitch_angle_kp;
-    float roll_rate_kd;
-    float pitch_rate_kd;
-    float tilt_limit_rad;
-    float yaw_angle_kp;
-    float yaw_rate_kd;
-} APP_ControlCoaxTunableParams;
-
-typedef struct {
-    float pos_x_kp;
-    float pos_y_kp;
-    float pos_z_kp;
     float vel_x_kd;
     float vel_y_kd;
     float vel_z_kd;
@@ -150,13 +127,24 @@ typedef struct {
     uint32_t checksum;
 } APP_ControlFlashRecord;
 
+/* V17 = 删除 vel_loop_* 六个增益之前的布局，仅用于迁移读取，不要再往里加字段。 */
+typedef struct {
+    uint32_t magic;
+    uint16_t version;
+    uint16_t size;
+    APP_ControlConfig config;
+    APP_ControlCoaxTunableParamsV17 coax_tunables;
+    APP_RcConfig rc_config;
+    uint32_t checksum;
+} APP_ControlFlashRecordV17;
+
 /* V16 = 加入 rc_config 之前的布局，仅用于迁移读取，不要再往里加字段。 */
 typedef struct {
     uint32_t magic;
     uint16_t version;
     uint16_t size;
     APP_ControlConfig config;
-    APP_ControlCoaxTunableParams coax_tunables;
+    APP_ControlCoaxTunableParamsV17 coax_tunables;
     uint32_t checksum;
 } APP_ControlFlashRecordV16;
 
@@ -1618,12 +1606,6 @@ static void app_control_capture_coax_tunables(APP_ControlCoaxTunableParams *out)
     out->vel_y_kd = params.vel_y_kd;
     out->vel_z_kd = params.vel_z_kd;
     out->vel_loop_enable = params.vel_loop_enable;
-    out->vel_loop_x_kp = params.vel_loop_x_kp;
-    out->vel_loop_x_ki = params.vel_loop_x_ki;
-    out->vel_loop_x_kd = params.vel_loop_x_kd;
-    out->vel_loop_y_kp = params.vel_loop_y_kp;
-    out->vel_loop_y_ki = params.vel_loop_y_ki;
-    out->vel_loop_y_kd = params.vel_loop_y_kd;
     out->roll_angle_kp = params.roll_angle_kp;
     out->pitch_angle_kp = params.pitch_angle_kp;
     out->roll_rate_kd = params.roll_rate_kd;
@@ -1650,12 +1632,6 @@ static void app_control_apply_coax_tunables(const APP_ControlCoaxTunableParams *
     params.vel_y_kd = in->vel_y_kd;
     params.vel_z_kd = in->vel_z_kd;
     params.vel_loop_enable = in->vel_loop_enable;
-    params.vel_loop_x_kp = in->vel_loop_x_kp;
-    params.vel_loop_x_ki = in->vel_loop_x_ki;
-    params.vel_loop_x_kd = in->vel_loop_x_kd;
-    params.vel_loop_y_kp = in->vel_loop_y_kp;
-    params.vel_loop_y_ki = in->vel_loop_y_ki;
-    params.vel_loop_y_kd = in->vel_loop_y_kd;
     params.roll_angle_kp = in->roll_angle_kp;
     params.pitch_angle_kp = in->pitch_angle_kp;
     params.roll_rate_kd = in->roll_rate_kd;
@@ -1689,12 +1665,6 @@ static void app_control_apply_coax_tunables_v15(
     params.vel_y_kd = in->vel_y_kd;
     params.vel_z_kd = in->vel_z_kd;
     params.vel_loop_enable = in->vel_loop_enable;
-    params.vel_loop_x_kp = in->vel_loop_x_kp;
-    params.vel_loop_x_ki = in->vel_loop_x_ki;
-    params.vel_loop_x_kd = in->vel_loop_x_kd;
-    params.vel_loop_y_kp = in->vel_loop_y_kp;
-    params.vel_loop_y_ki = in->vel_loop_y_ki;
-    params.vel_loop_y_kd = in->vel_loop_y_kd;
     params.roll_angle_kp = in->roll_angle_kp;
     params.pitch_angle_kp = in->pitch_angle_kp;
     params.roll_rate_kd = in->roll_rate_kd;
@@ -2370,10 +2340,12 @@ static APP_FlashService_Status app_control_load_config(void)
         control_config = record.config;
         app_control_apply_coax_tunables(&record.coax_tunables);
         app_cmd_rcmap_apply_config(&record.rc_config);
-    } else if ((record.version == APP_CONTROL_CFG_VERSION_V16) &&
+    } else if ((record.version == APP_CONTROL_CFG_VERSION_V17) &&
                (record.size == (sizeof(record.config) +
-                                sizeof(record.coax_tunables)))) {
-        APP_ControlFlashRecordV16 legacy_record;
+                                sizeof(APP_ControlCoaxTunableParamsV17) +
+                                sizeof(record.rc_config)))) {
+        APP_ControlFlashRecordV17 legacy_record;
+        APP_ControlCoaxTunableParams migrated_tunables;
 
         status = APP_FlashService_ReadData(APP_CONTROL_CFG_ADDRESS,
                                            (uint8_t *)&legacy_record,
@@ -2387,7 +2359,35 @@ static APP_FlashService_Status app_control_load_config(void)
             return APP_FLASH_SERVICE_ERROR;
         }
         control_config = legacy_record.config;
-        app_control_apply_coax_tunables(&legacy_record.coax_tunables);
+        if (APP_ControlConfigCompat_V17ToCurrent(
+                &legacy_record.coax_tunables, &migrated_tunables) == 0U) {
+            return APP_FLASH_SERVICE_ERROR;
+        }
+        app_control_apply_coax_tunables(&migrated_tunables);
+        app_cmd_rcmap_apply_config(&legacy_record.rc_config);
+    } else if ((record.version == APP_CONTROL_CFG_VERSION_V16) &&
+               (record.size == (sizeof(record.config) +
+                                sizeof(APP_ControlCoaxTunableParamsV17)))) {
+        APP_ControlFlashRecordV16 legacy_record;
+        APP_ControlCoaxTunableParams migrated_tunables;
+
+        status = APP_FlashService_ReadData(APP_CONTROL_CFG_ADDRESS,
+                                           (uint8_t *)&legacy_record,
+                                           sizeof(legacy_record));
+        if (status != APP_FLASH_SERVICE_OK) {
+            return status;
+        }
+        checksum = app_control_checksum((const uint8_t *)&legacy_record.config,
+                                        legacy_record.size);
+        if (checksum != legacy_record.checksum) {
+            return APP_FLASH_SERVICE_ERROR;
+        }
+        control_config = legacy_record.config;
+        if (APP_ControlConfigCompat_V17ToCurrent(
+                &legacy_record.coax_tunables, &migrated_tunables) == 0U) {
+            return APP_FLASH_SERVICE_ERROR;
+        }
+        app_control_apply_coax_tunables(&migrated_tunables);
         /* V16 没有遥控映射，装出厂默认 —— 与旧固件写死的 CH1..CH6 完全一致。 */
         app_cmd_rcmap_apply_config(NULL);
     } else if ((record.version == APP_CONTROL_CFG_VERSION_V15) &&
@@ -3920,8 +3920,6 @@ static void app_control_dispatch_tokens(char **tokens, uint32_t count, uint8_t e
         app_control_report_flow();
     } else if (strcmp(tokens[0], "FLOW") == 0) {
         app_control_handle_flow(tokens, count);
-    } else if (strcmp(tokens[0], "RANGE?") == 0) {
-        APP_Rangefinder_Report();
     } else if (strcmp(tokens[0], "GPS?") == 0) {
         APP_GPS_Report();
     } else if (strcmp(tokens[0], "MAG?") == 0) {

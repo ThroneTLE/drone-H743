@@ -282,14 +282,13 @@ def test_velocity_source_uses_flow_dominant_ekf_without_imu_velocity_fallback() 
     app_flow_header = read("App/Inc/app_optical_flow.h")
     service_c = read("Services/Src/svc_flow_nav.c")
 
-    # R-F2 routes the nav velocity through the temporary seam 2/3 boundary
-    # adapter, so pin the whole chain: it must still originate in
-    # ctx->nav_state.vel_m_s and reach velocity_imu_x_m_s unconditionally.
-    assert (
-        "stabilizer_nav_flu_to_legacy_fwd_right_down(ctx->nav_state.vel_m_s,"
-        in freertos
-    )
-    assert "ctx->velocity_imu_x_m_s = nav_vel_legacy[0];" in freertos
+    # 纯 IMU 积分的速度通路（drv_imu_nav）已删除：那是实验性质的加速度积分，
+    # 结果完全不可靠，且从不进控制律；留着只会让人误以为光流丢失时有备份可切。
+    # 水平速度只有 EKF 一个来源。
+    assert "DRV_IMU_NAV_" not in freertos
+    assert "ctx->nav_state" not in freertos
+    assert "stabilizer_nav_flu_to_legacy_fwd_right_down" not in freertos
+    assert "velocity_imu_x_m_s" not in freertos
     assert "APP_OpticalFlow_GetVelocitySample(&flow_vx_m_s," in freertos
     # R-M5-5：融合本体搬到 svc_flow_nav.c，稳定环只喂输入取输出。下面几条与搬家前
     # 的断言一一对应，只是换了归属文件。
@@ -374,7 +373,7 @@ def test_micolink_height_and_unrotated_velocity_are_applied_in_the_flow_nav_serv
     assert "APP_OpticalFlow_GetHeightSample" in header
     assert "SVC_FlowNav_GetHeight(height_m, vertical_velocity_m_s, sample_ms," in app_flow
     assert "APP_OpticalFlow_GetHeightSample(&frame->range_height_m," in freertos
-    assert "APP_Rangefinder_GetHeightSample" not in freertos
+    assert "APP_Rangefinder_" not in freertos
     assert "APP_OpticalFlow_UpdateHeightFromRange" not in app_flow
     assert "APP_OpticalFlow_UpdateHeightFromPressure" not in app_flow
     assert "powf(" not in app_flow

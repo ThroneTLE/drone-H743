@@ -72,7 +72,6 @@ int main(void)
     uint16_t servo_alpha_us;
     uint16_t servo_beta_us;
     float desired_body_r[3][3];
-    float integral_before;
 
     DRV_COAX_CTRL_Init();
 
@@ -268,13 +267,11 @@ int main(void)
         DRV_COAX_CTRL_Run(&attitude, &reference, &output);
     }
     DRV_COAX_CTRL_GetLastDebug(&debug);
-    integral_before = debug.velocity_integral_m[0];
-    CHECK(nearly_equal(integral_before, 0.0f, 1.0e-7f), 50);
     CHECK(debug.vel_d_m_s2[0] > 0.5f, 51);
     reference.horizontal_velocity_valid = 0U;
     DRV_COAX_CTRL_Run(&attitude, &reference, &output);
     DRV_COAX_CTRL_GetLastDebug(&debug);
-    CHECK(nearly_equal(debug.velocity_integral_m[0], 0.0f, 1.0e-7f), 52);
+    CHECK(nearly_equal(debug.horizontal_command_scale, 0.0f, 1.0e-6f), 52);
 
     reset_case(&attitude, &reference);
     DRV_COAX_CTRL_GetParams(&params);

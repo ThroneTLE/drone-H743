@@ -223,7 +223,7 @@ def write_metadata(
         "tuning_stats": {name: value.as_dict() for name, value in stats.items()},
         "notes": [
             "0/1/2 are roll, pitch, and yaw.",
-            "3 is filtered rangefinder height; 4 is FC time.",
+            "3 is filtered height from the optical-flow module; 4 is FC time.",
             "5/6 are fused X/Y velocity estimates.",
             "7-21 are dashboard slider parameter feedback channels.",
         ],

@@ -90,8 +90,8 @@ def test_sector_geometry_and_region_safety_contracts_stay_4k_friendly() -> None:
 
     assert "#define APP_FLIGHT_LOG_SECTOR_HEADER_SIZE 256U" in header
     assert "#define APP_FLIGHT_LOG_RATE_HZ            125U" in header
-    assert "#define APP_FLIGHT_LOG_VERSION            8U" in source
-    assert "_Static_assert(sizeof(APP_FlightLogRecord) == 528U" in source
+    assert "#define APP_FLIGHT_LOG_VERSION            9U" in source
+    assert "_Static_assert(sizeof(APP_FlightLogRecord) == 512U" in source
     assert "header->sector_size = APP_FLASH_SERVICE_SECTOR_SIZE;" in source
     assert "#define APP_FLASH_SERVICE_SECTOR_SIZE           DRV_GD25Q32_SECTOR_SIZE" in app_service
     assert "#define DRV_GD25Q32_SECTOR_SIZE           4096U" in flash_driver
@@ -108,7 +108,7 @@ def test_queue_peak_model_with_actual_125hz_parameters_stays_within_64_capacity_
         batch_records=4,
         sector_size=4096,
         header_size=256,
-        record_size=528,
+        record_size=512,
         page_size=256,
         page_program_us=1006,
         # 20-round on-device sector erase worst: 38_245 us (from
@@ -124,7 +124,7 @@ def test_queue_peak_model_with_actual_125hz_parameters_stays_within_64_capacity_
     assert result["comfort_limit"] == 48
     assert result["head_fringe_sectors"] == 6
     assert result["tail_fringe_sectors"] == 4
-    assert result["peak_records"] == 37
+    assert result["peak_records"] == 33
     assert result["worst_start_sector"] == 1007
     assert result["startup_worst_sector_erases"] == 17
     assert result["overflow_records"] == 0

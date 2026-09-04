@@ -4,14 +4,14 @@
 
 Read this shard only when you need existing behavioral/architecture coverage or must choose focused regression tests.
 
-Source snapshot: `fbb3fa3a0316`. Indexed files: 109.
+Source snapshot: `eb6b7e1217a7`. Indexed files: 108.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
 | `tests/data.txt` | — | — |
 | `tests/test_acceptance_v2_runtime_contract.py` | — | `test_v2a_lease_and_esc_fail_safe_are_target_owned`, `test_v2a_stage_names_match_offline_engine_and_servo_delta_is_bounded`, `test_v2a_protocol_is_explicit_and_panel_keeps_lease_alive` |
 | `tests/test_action_contract.py` | Contract tests for the Action safety state machine (``App/Src/app_action.c``). An Action is any task that spans time an… | `test_01_armed_interlock_refuses_to_start`, `test_02_hard_timeout_fires_after_the_link_dies`, `test_03_cancel_stops_and_makes_safe` (+14) |
-| `tests/test_airframe_model_contract.py` | — | `test_airframe_constants_capture_measured_tether_geometry`, `test_coax_defaults_use_airframe_model_not_old_placeholder_mass`, `test_flash_config_preserves_current_record_and_migrates_v15_coax_tunables` (+2) |
+| `tests/test_airframe_model_contract.py` | — | `test_airframe_constants_capture_measured_tether_geometry`, `test_coax_defaults_use_airframe_model_not_old_placeholder_mass`, `test_flash_config_preserves_current_record_and_migrates_v15_coax_tunables` (+3) |
 | `tests/test_aiwb2_prompt_contract.py` | — | `test_aiwb2_prompt_symbol_is_preserved_for_transparent_entry`, `test_wifi_diag_escapes_transparent_mode_before_at_queries`, `test_aiwb2_default_wifi_mode_is_softap_udp_server` (+2) |
 | `tests/test_attitude_fusion_contract.py` | — | `test_xio_fusion_is_vendored_and_replaces_height_gated_attitude`, `test_attitude_fusion_runtime` |
 | `tests/test_attitude_ident_pid.py` | — | `test_closed_loop_attitude_ident_script_fits_synthetic_prbs` |
@@ -20,6 +20,7 @@ Source snapshot: `fbb3fa3a0316`. Indexed files: 109.
 | `tests/test_baro_contract.py` | — | `test_baro_ok_requires_real_spl06_who_am_i_not_only_spi_success` |
 | `tests/test_coax_ctrl_contract.py` | — | `test_servo_output_compensates_90_degree_ccw_mounting`, `test_tilt_limit_is_twenty_eight_degrees_in_driver_controller`, `test_generated_controller_is_not_built_or_called` (+14) |
 | `tests/test_coax_sign_convention.py` | Sign-convention self-check for the coaxial attitude controller. This is a legacy runtime-adapter test, not the canonica… | `test_gains_are_positive_so_polarity_errors_cannot_be_masked`, `test_control_law_is_negative_feedback_by_structure`, `test_stick_polarity_lives_in_exactly_one_place` (+2) |
+| `tests/test_coax_yaw_so3_contract.py` | 偏航并入 SO(3) 控制律的契约。 偏航 PD（2026-07-24，`85a5cacb`）比 SO(3) 控制器（2026-07-25，`2d1d2cd2`）早一天， 当天的设计记录 §1 明写「Z 高度环、偏航控制和双电机推力分配保… | `test_yaw_is_produced_by_the_so3_law_not_a_separate_pd`, `test_yaw_so3_runtime_matches_legacy_pd_in_hover` |
 | `tests/test_control_loop_blocking_contract.py` | S6 control contracts | `test_no_blocking`, `test_notice_buffer`, `test_control_split` (+3) |
 | `tests/test_dashboard_layout.py` | R-T1-5：工作台布局模型（`panel_lib/dashboard/layout.py`）。 布局规则是纯数据变换，所以这一份**不需要显示环境**：吸附、越界钳制、重叠拒绝、 序列化往返、出厂预设，全部在没有 Tk 的情况下断言。页… | `test_clamp_pulls_a_tile_back_into_the_grid`, `test_overlap_is_rejected_rather_than_pushed_aside`, `test_out_of_grid_candidates_are_rejected` (+13) |
 | `tests/test_dashboard_page.py` | R-T1-5：“状态监视”工作台页（`panel_lib/pages/dashboard.py` + `dashboard/`）。 全部用真实的 `DronePanel()` + FakeTransport 驱动，照 `test_flow… | `test_the_workbench_is_the_first_tab_and_selected_by_default`, `test_panel_entry_point_only_carries_the_mount`, `test_presets_are_available_out_of_the_box` (+52) |
@@ -52,7 +53,6 @@ Source snapshot: `fbb3fa3a0316`. Indexed files: 109.
 | `tests/test_flu_runtime_candidate_pipeline.py` | — | `test_frame_candidate_is_applied_once_before_any_estimator_consumer`, `test_frame_change_resets_state_and_selects_nwu_for_canonical_flu`, `test_canonical_flu_fusion_branch_uses_one_unmodified_vector_contract` (+3) |
 | `tests/test_flu_seam0_sensor_frame.py` | R-F0 seam 0 sensor FLU contract | `test_persisted_code_descriptor`, `test_mounting_comment_matches_v0`, `test_sensor_publishes_flu` |
 | `tests/test_flu_seam1_estimator_frame.py` | R-F1 seam 1 estimator FLU contract | `test_convention_tracks_frame`, `test_flu_branch_no_sign_comp`, `test_legacy_transform_pinned` (+2) |
-| `tests/test_flu_seam2_navigation_frame.py` | R-F2 seam 2 (NAVIGATION) FLU migration contract | `test_nav_builds_local_level_flu`, `test_nav_header_names_frame`, `test_adapter_declares_removal` (+1) |
 | `tests/test_flu_seam3_controller_frame.py` | R-F3 seam 3 controller FLU boundary contract | `test_frame_signs_and_gains`, `test_mount_outside_control_law`, `test_stabilizer_feed_pinned` (+1) |
 | `tests/test_flu_seam4_rc_actuator_frame.py` | R-F4 seam 4 RC/actuator polarity contract | `test_stick_direction_has_exactly_one_decision_point`, `test_velocity_measurement_polarity_is_a_named_constant`, `test_yaw_stick_maps_to_a_rate_reference_without_a_hidden_sign` (+2) |
 | `tests/test_flu_seam5_telemetry_frame.py` | R-F5 seam 5 telemetry/log frame contract | `test_replay_geometry_is_frozen`, `test_replay_converts_to_flu_only_on_recorded_provenance`, `test_log_record_now_carries_frame_provenance` (+4) |
@@ -88,7 +88,6 @@ Source snapshot: `fbb3fa3a0316`. Indexed files: 109.
 | `tests/test_pipeline_contract.py` | — | `test_pipeline_exists_with_required_sections`, `test_mainline_nodes_match_between_diagram_and_gate_table`, `test_current_position_points_at_an_incomplete_mainline_node` (+4) |
 | `tests/test_project_index_contract.py` | — | `test_repository_index_is_current`, `test_repository_index_has_hard_context_limits`, `test_large_vendor_and_data_trees_are_aggregated` |
 | `tests/test_proto_frame_resync.py` | 修 bug：`$X` 解析器有两处会永久停摆的重同步空洞。 发现于 2026-09-03，R-T1-2 的模糊测试。缺陷早于遥测流工作，命中的是所有 `$X` 帧共用的 `TransportBase._consume_buffer`，**… | `test_intact_stream_still_decodes_every_frame`, `test_a_corrupt_direction_byte_only_costs_its_own_frame`, `test_a_corrupt_length_high_byte_only_costs_its_own_frame` (+6) |
-| `tests/test_rangefinder_contract.py` | — | `test_tfmini_parser_accepts_documented_nine_byte_frame`, `test_tfmini_parser_resynchronizes_after_noise_and_bad_checksum`, `test_uart8_rangefinder_is_wired_through_project_layers` (+4) |
 | `tests/test_rc_mapping.py` | 遥控通道映射与端点标定。 背景：通道号原来是 app_stabilizer.c 里的 6 个 #define（CH1..CH6），端点是 1000/1500/2000 三个字面量。换发射机、改通道顺序、或者摇杆行程不标准，都得改代码 重烧… | `test_moving_one_stick_identifies_that_channel`, `test_a_still_transmitter_is_not_bound_to_anything`, `test_two_channels_moving_together_is_refused` (+61) |
 | `tests/test_rc_mapping_contract.py` | — | `test_freertos_documents_fixed_elrs_channel_map`, `test_controller_uses_named_rc_channels_for_references`, `test_ch6_selects_true_attitude_debug_mode_with_twenty_degree_limit` (+6) |
 | `tests/test_rom_dfu_boot_contract.py` | Safety and reset-context contract for the STM32H743 factory USB DFU path | `test_boot_command_is_explicit_scheduled_and_safety_gated`, `test_reset_magic_moves_the_rom_jump_out_of_the_freertos_task`, `test_rom_entry_clears_interrupt_cache_and_mpu_state` (+1) |

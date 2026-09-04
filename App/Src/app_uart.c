@@ -6,11 +6,9 @@
 #include "app_led.h"
 #include "app_maint_uart.h"
 #include "app_optical_flow.h"
-#include "app_rangefinder.h"
 #include "app_telem_stream.h"
 #include "app_usb_cdc.h"
 #include "bsp_optical_flow.h"
-#include "bsp_rangefinder.h"
 #include "app_tasks.h"
 #include "bsp_aiwb2_power.h"
 #include "bsp_led.h"
@@ -385,7 +383,6 @@ void APP_UART_Task_Init(void)
     BSP_AiWB2_SetEnabled(0U);  /* 数传模式：关闭 WiFi 模块电源 */
 #endif
     APP_Task_MaintUART_Init();
-    APP_Rangefinder_Init();
     app_uart_prepare_tx_dma();
     app_uart_start_rx_dma();
 #endif
@@ -893,7 +890,6 @@ void APP_UART_Task_Step(void)
 
     app_uart_poll_rx();
     APP_Task_MaintUART_Step();
-    APP_Rangefinder_Step();
     now_ms = HAL_GetTick();
     app_uart_flush_idle_line(now_ms);
 #if (APP_UART_DIRECT_SERIAL_MODE == 0U)
@@ -1059,10 +1055,6 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
         BSP_OPTICAL_FLOW_OnUartRxEvent(huart, Size);
         return;
     }
-    if (huart->Instance == UART8) {
-        BSP_Rangefinder_OnUartRxEvent(huart, Size);
-        return;
-    }
     APP_UART_OnRxEvent(huart, Size);
 }
 
@@ -1101,6 +1093,5 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
     }
     APP_UART_OnError(huart);
     BSP_OPTICAL_FLOW_OnUartError(huart);
-    BSP_Rangefinder_OnUartError(huart);
     APP_MaintUART_OnError(huart);
 }

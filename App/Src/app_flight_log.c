@@ -26,7 +26,7 @@
  * v7 的那 12 个字节本就是清零的保留区，故其 header_crc32 无需重算即仍成立，
  * 读出来 frame_provenance_valid==0 天然表示「无溯源」。
  */
-#define APP_FLIGHT_LOG_VERSION            8U
+#define APP_FLIGHT_LOG_VERSION            9U
 #define APP_FLIGHT_LOG_VERSION_V7         7U
 #define APP_FLIGHT_LOG_EXPORT_VERSION     1U
 #define APP_FLIGHT_LOG_REGION_SIZE \
@@ -81,7 +81,7 @@ typedef struct __attribute__((packed)) {
     uint8_t  frame_reserved0;
     uint32_t firmware_crc32;
     uint32_t calibration_generation;
-    uint8_t reserved[72];
+    uint8_t reserved[96];
 } APP_FlightLogSectorHeader;
 
 typedef struct __attribute__((packed)) {
@@ -124,8 +124,8 @@ typedef struct __attribute__((packed)) {
     uint8_t arm_switch_prev_high;
     uint8_t imu_fault_latched;
     uint8_t imu_fault_reason;
-    float acc_nav_m_s2[3];
-    float vel_est_m_s[3];
+    float acc_nav_m_s2[2];
+    float vel_est_m_s[2];
     float vel_ref_m_s[2];
     float vel_err_m_s[2];
     float vel_pid_out_m_s2[2];
@@ -178,7 +178,7 @@ typedef struct __attribute__((packed)) {
 
 _Static_assert(sizeof(APP_FlightLogSectorHeader) == APP_FLIGHT_LOG_SECTOR_HEADER_SIZE,
                "flight log sector header must stay 256 bytes");
-_Static_assert(sizeof(APP_FlightLogRecord) == 528U,
+_Static_assert(sizeof(APP_FlightLogRecord) == 512U,
                "flight log record must match tools/flight_log_receive.py");
 _Static_assert(sizeof(APP_FlightLogExportBlockHeader) == 24U,
                "flight log export header must match tools/flight_log_receive.py");

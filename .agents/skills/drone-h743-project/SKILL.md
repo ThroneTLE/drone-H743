@@ -75,6 +75,8 @@ App tasks / application-facing services / Services
 
 Do not put chip protocols in BSP or reverse the Driver-to-BSP dependency. Before changing FLASH or runtime service boundaries, read the corresponding reference below.
 
+Before creating a module, refactoring, or optimizing existing code, read [references/decoupling-spec.md](references/decoupling-spec.md). It turns the layering, rate-separation, contract, and testability requirements into checkable rules and supplies the Contract/Boundary/Test-Seam template each work order must satisfy.
+
 ## File Size And AI Readability
 
 The author requires bounded file sizes: giant files defeat AI context loading, hunk-level commit splitting, and human review. Guideline ceilings for hand-written code: roughly 1500 lines per C file and 2000 per Python file; when a change would exceed them, extract a module instead of adding a section (follow the `App/Src/app_stabilizer.c` extraction precedent).
@@ -97,6 +99,7 @@ Two rules that a green test suite does not satisfy on its own. Any claim about a
 
 Read only the references relevant to the current request:
 
+- Decoupling rules for any new module, refactor, or optimization — layer isolation, rate/blocking separation, data-frame boundaries, contract placement, and host testability, plus the per-work-order Contract/Boundary/Test-Seam template: [references/decoupling-spec.md](references/decoupling-spec.md)
 - Executor work modes — the default layer, the cross-cutting bug-fix mode, and how a per-class mode under `references/modes/` is mounted: [references/work-modes.md](references/work-modes.md)
 - Planning and dispatching work orders, and authoring a new per-class mode before that class is dispatched for the first time: [references/dispatcher-prompt.md](references/dispatcher-prompt.md)
 - FLU body axes, IMU/Fusion/navigation transforms, controller/RC/actuator polarity: [references/flu-coordinate-contract.md](references/flu-coordinate-contract.md)

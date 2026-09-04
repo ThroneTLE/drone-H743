@@ -28,7 +28,7 @@ Core/HAL：CubeMX 生成的时钟、引脚、外设和 RTOS 对象
 ICM42688 Driver/BSP
   → app_sensor（采样、校准、机体方向发布）
   → app_stabilizer（Fusion 适配、状态装配、控制周期）
-  → drv_attitude_fusion / drv_imu_nav
+  → drv_attitude_fusion
 ```
 
 规范机体系由 `Driver/Inc/drv_frame_contract.h` 唯一定义。运行时仍存在具名 legacy

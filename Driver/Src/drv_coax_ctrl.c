@@ -73,7 +73,6 @@ typedef struct {
 } DRV_COAX_CTRL_ParamEntry;
 
 typedef struct {
-    float velocity_integral_m[2];
     float pos_z_i_m_s2;
 } DRV_COAX_CTRL_State;
 
@@ -112,12 +111,6 @@ static const DRV_COAX_CTRL_ParamEntry coax_ctrl_param_table[] = {
     DRV_COAX_CTRL_PARAM_ENTRY(vel_y_kd),
     DRV_COAX_CTRL_PARAM_ENTRY(vel_z_kd),
     DRV_COAX_CTRL_PARAM_ENTRY(vel_loop_enable),
-    DRV_COAX_CTRL_PARAM_ENTRY(vel_loop_x_kp),
-    DRV_COAX_CTRL_PARAM_ENTRY(vel_loop_x_ki),
-    DRV_COAX_CTRL_PARAM_ENTRY(vel_loop_x_kd),
-    DRV_COAX_CTRL_PARAM_ENTRY(vel_loop_y_kp),
-    DRV_COAX_CTRL_PARAM_ENTRY(vel_loop_y_ki),
-    DRV_COAX_CTRL_PARAM_ENTRY(vel_loop_y_kd),
     DRV_COAX_CTRL_PARAM_ENTRY(roll_angle_kp),
     DRV_COAX_CTRL_PARAM_ENTRY(pitch_angle_kp),
     DRV_COAX_CTRL_PARAM_ENTRY(roll_rate_kd),
@@ -155,17 +148,6 @@ static uint16_t coax_ctrl_clamp_u16(int32_t value, uint16_t lo, uint16_t hi)
     if (value < (int32_t)lo) { return lo; }
     if (value > (int32_t)hi) { return hi; }
     return (uint16_t)value;
-}
-
-static float coax_ctrl_wrap_pi(float angle_rad)
-{
-    while (angle_rad > DRV_COAX_CTRL_PI) {
-        angle_rad -= 2.0f * DRV_COAX_CTRL_PI;
-    }
-    while (angle_rad < -DRV_COAX_CTRL_PI) {
-        angle_rad += 2.0f * DRV_COAX_CTRL_PI;
-    }
-    return angle_rad;
 }
 
 /*
@@ -411,6 +393,22 @@ static void coax_ctrl_rotation_to_rpy(const float rotation[3][3],
     rpy_rad[0] = atan2f(rotation[2][1], rotation[2][2]);
     rpy_rad[1] = asinf(sin_pitch);
     rpy_rad[2] = atan2f(rotation[1][0], rotation[0][0]);
+}
+
+/*
+ * 差动推力能提供的偏航力矩上限，与 coax_ctrl_allocate_motor_thrust 的
+ * 钳位边界严格对偶：任一路推力越界都会让指令被静默削掉。
+ */
+static float coax_ctrl_yaw_limit_moment(float total_force_n)
+{
+    const float ku = coax_ctrl_params.yaw_torque_upper_m_per_n;
+    const float kl = coax_ctrl_params.yaw_torque_lower_m_per_n;
+    const float span = (ku + kl) * coax_ctrl_params.motor_single_max_thrust_n;
+    float limit = fminf(kl * total_force_n, ku * total_force_n);
+
+    limit = fminf(limit, span - (ku * total_force_n));
+    limit = fminf(limit, span - (kl * total_force_n));
+    return (limit > 0.0f) ? limit : 0.0f;
 }
 
 static float coax_ctrl_protection_scale(float value, float start, float end)
@@ -680,6 +678,16 @@ static void coax_ctrl_compute_balance_solution(
     const float kr_pitch = fabsf(coax_ctrl_params.pitch_angle_kp);
     const float kd_roll = fabsf(coax_ctrl_params.roll_rate_kd);
     const float kd_pitch = fabsf(coax_ctrl_params.pitch_rate_kd);
+    /*
+     * 偏航增益对外仍是加速度量纲的 yaw_angle_kp / yaw_rate_kd（上位机滑块与
+     * 遥测通道不变），在这里乘 yaw_inertia 换算成与 roll/pitch 同构的物理量纲
+     * K_R [N*m/rad] 与 K_w [N*m*s/rad]。这样悬停小角度下的力矩与旧 PD 逐值等价，
+     * 差异只来自 e_R / e_w 的正确语义（见下面的符号推导）。
+     */
+    const float kr_yaw =
+        fabsf(coax_ctrl_params.yaw_inertia * coax_ctrl_params.yaw_angle_kp);
+    const float kd_yaw =
+        fabsf(coax_ctrl_params.yaw_inertia * coax_ctrl_params.yaw_rate_kd);
     float force_scale = 1.0f;
     float target_pitch_rad;
     float target_roll_rad;
@@ -688,8 +696,10 @@ static void coax_ctrl_compute_balance_solution(
     float gyro_momentum_cross[3];
     float roll_limit_moment_n_m;
     float pitch_limit_moment_n_m;
+    float yaw_limit_moment_n_m;
     float roll_utilization;
     float pitch_utilization;
+    float yaw_utilization;
 
     memset(solution, 0, sizeof(*solution));
     solution->desired_force_local_n[0] =
@@ -793,7 +803,27 @@ static void coax_ctrl_compute_balance_solution(
         (-kr_pitch * solution->attitude_error[1]) -
         (kd_pitch * solution->rate_error_rad_s[1]) +
         gyro_momentum_cross[1];
-    solution->moment_cmd_n_m[2] = gyro_momentum_cross[2];
+    /*
+     * 偏航同构进入 SO(3)，不再单独走 PD。符号推导（纯偏航误差下）：
+     *   e_R[2] = 1/2 * (Rd^T R - R^T Rd)^v |_z = sin(psi - psi_d) ~ psi - psi_d
+     *   故 -K_R * e_R[2] ~ +K_R * (psi_d - psi)，与旧 PD 的 +Kp*yaw_err 同向；
+     *   e_w[2] = w_z - (R^T Rd w_d)_z = w_z - r_d
+     *   故 -K_w * e_w[2] = K_w * (r_d - w_z)，与旧 PD 的 +Kd*(rate_ref-w_z) 同向。
+     * 因此正增益 + 负反馈结构与 roll/pitch 完全一致，wrap_pi 由 e_R 的 sin 形式
+     * 天然承担。代价是大偏航误差下 e_R 按 sin 衰减而非线性增长（180 度处为零，
+     * 是 SO(3) 姿态误差的固有性质，roll/pitch 一直如此），悬停小角度区间不受影响。
+     */
+    solution->moment_cmd_n_m[2] =
+        (-kr_yaw * solution->attitude_error[2]) -
+        (kd_yaw * solution->rate_error_rad_s[2]) +
+        gyro_momentum_cross[2] +
+        (coax_ctrl_params.yaw_inertia * reference->yaw_accel_rad_s2);
+
+    /* 遥测口径不变：这两路仍是加速度量纲的 P/D 分量，只是改由 e_R / e_w 导出。 */
+    debug->yaw_angle_p_rad_s =
+        -fabsf(coax_ctrl_params.yaw_angle_kp) * solution->attitude_error[2];
+    debug->yaw_rate_d_rad_s =
+        -fabsf(coax_ctrl_params.yaw_rate_kd) * solution->rate_error_rad_s[2];
 
     solution->beta_rad = coax_ctrl_solve_roll_tilt_from_moment(
         solution->moment_cmd_n_m[0],
@@ -819,12 +849,28 @@ static void coax_ctrl_compute_balance_solution(
     if (pitch_limit_moment_n_m < DRV_COAX_CTRL_RATE_SCALE_EPS) {
         pitch_limit_moment_n_m = DRV_COAX_CTRL_RATE_SCALE_EPS;
     }
+    /*
+     * 偏航的可行力矩上限由差动推力分配决定，不是倾转限位。分配式
+     *   upper = (kl*F - Mz)/(ku+kl)，lower = (ku*F + Mz)/(ku+kl)
+     * 要求两路都落在 [0, T_max]，解出四个边界，取最紧的一个：
+     *   |Mz| <= min(kl*F, ku*F, (ku+kl)*T_max - ku*F, (ku+kl)*T_max - kl*F)
+     * 悬停 F=13.4N、T_max=10.2N、ku=kl=1e-4 时约束来自上桨推力上限，
+     * 上限只有 7e-4 N*m —— 偏航权限很紧，所以它必须参与保护缩放，
+     * 否则分配环节的 clamp 会静默削掉指令而保护层毫无感知。
+     */
+    yaw_limit_moment_n_m = coax_ctrl_yaw_limit_moment(solution->total_force_n);
+    if (yaw_limit_moment_n_m < DRV_COAX_CTRL_RATE_SCALE_EPS) {
+        yaw_limit_moment_n_m = DRV_COAX_CTRL_RATE_SCALE_EPS;
+    }
     roll_utilization =
         fabsf(solution->moment_cmd_n_m[0]) / roll_limit_moment_n_m;
     pitch_utilization =
         fabsf(solution->moment_cmd_n_m[1]) / pitch_limit_moment_n_m;
-    solution->moment_utilization = fmaxf(roll_utilization,
-                                         pitch_utilization);
+    yaw_utilization =
+        fabsf(solution->moment_cmd_n_m[2]) / yaw_limit_moment_n_m;
+    solution->moment_utilization = fmaxf(fmaxf(roll_utilization,
+                                               pitch_utilization),
+                                         yaw_utilization);
 
     coax_ctrl_local_down_to_body(attitude,
                                  solution->desired_force_local_n,
@@ -930,11 +976,6 @@ static void coax_ctrl_compute_balance_command(
 {
     float horizontal_scale;
 
-    if (coax_ctrl_params.vel_loop_enable < 0.5f) {
-        coax_ctrl_state.velocity_integral_m[0] = 0.0f;
-        coax_ctrl_state.velocity_integral_m[1] = 0.0f;
-    }
-
     coax_ctrl_compute_accel_cmd(attitude,
                                 reference,
                                 1.0f,
@@ -945,10 +986,8 @@ static void coax_ctrl_compute_balance_command(
                                                            solution,
                                                            &debug->protection_flags);
 
-    if (horizontal_scale >= 0.999f) {
-        coax_ctrl_state.velocity_integral_m[0] = 0.0f;
-        coax_ctrl_state.velocity_integral_m[1] = 0.0f;
-    } else {
+    /* 保护缩放介入时按缩放后的加速度指令重算一遍，让力矩与实际下发一致。 */
+    if (horizontal_scale < 0.999f) {
         coax_ctrl_compute_accel_cmd(attitude,
                                     reference,
                                     horizontal_scale,
@@ -958,30 +997,6 @@ static void coax_ctrl_compute_balance_command(
     }
 
     debug->horizontal_command_scale = horizontal_scale;
-    debug->velocity_integral_m[0] = coax_ctrl_state.velocity_integral_m[0];
-    debug->velocity_integral_m[1] = coax_ctrl_state.velocity_integral_m[1];
-}
-
-static float coax_ctrl_compute_yaw_torque_cmd(
-    const DRV_COAX_CTRL_AttitudeInput *attitude,
-    const DRV_COAX_CTRL_Reference *reference,
-    DRV_COAX_CTRL_Debug *debug)
-{
-    const float yaw_err = coax_ctrl_wrap_pi(reference->yaw_rad - attitude->yaw_rad);
-
-    /*
-     * yaw 用的误差方向是 (参考 - 实测)，与 roll/pitch 的 (实测 - 期望) 相反，
-     * 所以这里是 +K*err 而非 -K*err，同样只接受正增益。
-     */
-    debug->yaw_angle_p_rad_s = fabsf(coax_ctrl_params.yaw_angle_kp) * yaw_err;
-    debug->yaw_rate_d_rad_s =
-        fabsf(coax_ctrl_params.yaw_rate_kd) *
-        (reference->yaw_rate_rad_s - attitude->gyro_z_rad_s);
-
-    return coax_ctrl_params.yaw_inertia *
-           (reference->yaw_accel_rad_s2 +
-            debug->yaw_angle_p_rad_s +
-            debug->yaw_rate_d_rad_s);
 }
 
 static void coax_ctrl_allocate_motor_thrust(float total_force_n,
@@ -1037,12 +1052,6 @@ void DRV_COAX_CTRL_GetDefaultParams(DRV_COAX_CTRL_Params *params)
     params->vel_y_kd = 0.80f;
     params->vel_z_kd = 0.0f;
     params->vel_loop_enable = 1.0f;
-    params->vel_loop_x_kp = 0.0f;
-    params->vel_loop_x_ki = 0.0f;
-    params->vel_loop_x_kd = 0.0f;
-    params->vel_loop_y_kp = 0.0f;
-    params->vel_loop_y_ki = 0.0f;
-    params->vel_loop_y_kd = 0.0f;
     params->mass_kg = DRV_AIRFRAME_MASS_KG;
     params->gravity_m_s2 = DRV_AIRFRAME_GRAVITY_M_S2;
     params->pitch_tilt_lever_arm_m = DRV_AIRFRAME_PITCH_THRUST_LEVER_ARM_M;
@@ -1142,13 +1151,7 @@ uint8_t DRV_COAX_CTRL_SetParam(const char *name, float value)
         (entry->offset == offsetof(DRV_COAX_CTRL_Params, pos_z_ki)) ||
         (entry->offset == offsetof(DRV_COAX_CTRL_Params, vel_x_kd)) ||
         (entry->offset == offsetof(DRV_COAX_CTRL_Params, vel_y_kd)) ||
-        (entry->offset == offsetof(DRV_COAX_CTRL_Params, vel_z_kd)) ||
-        (entry->offset == offsetof(DRV_COAX_CTRL_Params, vel_loop_x_kp)) ||
-        (entry->offset == offsetof(DRV_COAX_CTRL_Params, vel_loop_x_ki)) ||
-        (entry->offset == offsetof(DRV_COAX_CTRL_Params, vel_loop_x_kd)) ||
-        (entry->offset == offsetof(DRV_COAX_CTRL_Params, vel_loop_y_kp)) ||
-        (entry->offset == offsetof(DRV_COAX_CTRL_Params, vel_loop_y_ki)) ||
-        (entry->offset == offsetof(DRV_COAX_CTRL_Params, vel_loop_y_kd))) {
+        (entry->offset == offsetof(DRV_COAX_CTRL_Params, vel_z_kd))) {
         DRV_COAX_CTRL_ResetState();
     }
     return 1U;
@@ -1396,9 +1399,8 @@ void DRV_COAX_CTRL_Run(const DRV_COAX_CTRL_AttitudeInput *attitude,
     memset(output, 0, sizeof(*output));
 
     coax_ctrl_compute_balance_command(attitude, reference, &debug, &solution);
-    yaw_torque_cmd =
-        coax_ctrl_compute_yaw_torque_cmd(attitude, reference, &debug);
-    debug.moment_cmd_n_m[2] = yaw_torque_cmd;
+    /* 三轴力矩同出一套 SO(3) 控制律；分配器才是分叉点（倾转 vs 差动推力）。 */
+    yaw_torque_cmd = solution.moment_cmd_n_m[2];
     coax_ctrl_allocate_motor_thrust(debug.total_force_n,
                                     yaw_torque_cmd,
                                     &thrust_upper_n,

@@ -492,7 +492,7 @@ def test_mapping_writes_are_blocked_while_armed() -> None:
 def test_flash_record_migrates_instead_of_discarding_old_config() -> None:
     """V16 记录里没有遥控映射；直接判无效会连舵机/PID 配置一起丢掉。"""
     control = read("App/Src/app_control.c")
-    assert "#define APP_CONTROL_CFG_VERSION     17U" in control
+    assert "#define APP_CONTROL_CFG_VERSION     18U" in control
     assert "#define APP_CONTROL_CFG_VERSION_V16 16U" in control
     assert "APP_ControlFlashRecordV16" in control
     load = control[control.index("record.version == APP_CONTROL_CFG_VERSION_V16"):]

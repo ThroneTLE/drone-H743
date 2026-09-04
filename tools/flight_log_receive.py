@@ -97,7 +97,7 @@ LEGACY_PARAM_NAMES = [
     "yaw_torque_lower_m_per_n",
 ]
 
-PARAM_NAMES = [
+V8_PARAM_NAMES = [
     *LEGACY_PARAM_NAMES[:3],
     "pos_z_ki",
     *LEGACY_PARAM_NAMES[3:15],
@@ -105,6 +105,17 @@ PARAM_NAMES = [
     "roll_tilt_lever_arm_m",
     *LEGACY_PARAM_NAMES[16:],
 ]
+
+# v9 起删除 vel_loop_x/y_kp/ki/kd：那六个增益从未接入控制律。
+VEL_LOOP_GAIN_NAMES = (
+    "vel_loop_x_kp",
+    "vel_loop_x_ki",
+    "vel_loop_x_kd",
+    "vel_loop_y_kp",
+    "vel_loop_y_ki",
+    "vel_loop_y_kd",
+)
+PARAM_NAMES = [name for name in V8_PARAM_NAMES if name not in VEL_LOOP_GAIN_NAMES]
 
 V6_PARAM_NAMES = [
     *LEGACY_PARAM_NAMES[:15],
@@ -115,6 +126,7 @@ V6_PARAM_NAMES = [
 
 SECTOR_HEADER_PREFIX = struct.Struct("<IHHIIIIIIIIQII")
 PARAMS_STRUCT = struct.Struct("<" + "f" * len(PARAM_NAMES))
+V8_PARAMS_STRUCT = struct.Struct("<" + "f" * len(V8_PARAM_NAMES))
 V6_PARAMS_STRUCT = struct.Struct("<" + "f" * len(V6_PARAM_NAMES))
 LEGACY_PARAMS_STRUCT = struct.Struct("<" + "f" * len(LEGACY_PARAM_NAMES))
 # 坐标溯源块（扇区头 v8 起），紧跟 params，占原 reserved 区的前 12 字节。
@@ -228,7 +240,7 @@ V6_RECORD_STRUCT = struct.Struct(
     + "I"
 )
 V6_RECORD_SIZE = V6_RECORD_STRUCT.size
-RECORD_STRUCT = struct.Struct(
+V8_RECORD_STRUCT = struct.Struct(
     "<IHHIIQII"
     + "h" * 7
     + "f" * 7
@@ -239,6 +251,32 @@ RECORD_STRUCT = struct.Struct(
     + "B" * 4
     + "B" * 12
     + "f" * 65
+    + "I"
+    + "f"
+    + "B" * 4
+    + "I"
+    + "f" * 2
+    + "I"
+    + "H" * 2
+    + "h" * 2
+    + "H" * 2
+    + "B" * 4
+    + "f" * 10
+    + "I" * 10
+    + "I"
+)
+V8_RECORD_SIZE = V8_RECORD_STRUCT.size
+RECORD_STRUCT = struct.Struct(
+    "<IHHIIQII"
+    + "h" * 7
+    + "f" * 7
+    + "f" * 3
+    + "H" * 8
+    + "H" * 5
+    + "H" * 6
+    + "B" * 4
+    + "B" * 12
+    + "f" * 61
     + "I"
     + "f"
     + "B" * 4
@@ -592,6 +630,9 @@ def parse_sector_header(data: bytes, offset: int) -> dict[str, object] | None:
     if params_size == PARAMS_STRUCT.size:
         param_names = PARAM_NAMES
         params_struct = PARAMS_STRUCT
+    elif params_size == V8_PARAMS_STRUCT.size:
+        param_names = V8_PARAM_NAMES
+        params_struct = V8_PARAMS_STRUCT
     elif params_size == V6_PARAMS_STRUCT.size:
         param_names = V6_PARAM_NAMES
         params_struct = V6_PARAMS_STRUCT
@@ -738,8 +779,16 @@ def parse_record(record_bytes: bytes) -> dict[str, object] | None:
         return _parse_record_v3(record_bytes)
     has_v6_diagnostics = False
     has_v7_z_integral = False
+    has_v9_layout = False
     if len(record_bytes) == RECORD_SIZE:
         record_struct = RECORD_STRUCT
+        has_servo_feedback = True
+        has_ident_att = True
+        has_v6_diagnostics = True
+        has_v7_z_integral = True
+        has_v9_layout = True
+    elif len(record_bytes) == V8_RECORD_SIZE:
+        record_struct = V8_RECORD_STRUCT
         has_servo_feedback = True
         has_ident_att = True
         has_v6_diagnostics = True
@@ -838,9 +887,10 @@ def parse_record(record_bytes: bytes) -> dict[str, object] | None:
     row["motor_output_reason_name"] = MOTOR_REASON_NAMES.get(
         int(row["motor_output_reason"]), "unknown"
     )
+    nav_axes = 2 if has_v9_layout else 3
     for prefix, count in (
-        ("acc_nav_m_s2", 3),
-        ("vel_est_m_s", 3),
+        ("acc_nav_m_s2", nav_axes),
+        ("vel_est_m_s", nav_axes),
         ("vel_ref_m_s", 2),
         ("vel_err_m_s", 2),
         ("vel_pid_out_m_s2", 2),
@@ -887,7 +937,7 @@ def parse_record(record_bytes: bytes) -> dict[str, object] | None:
     for prefix, count in (
         ("ctrl_motor_thrust_cmd_n", 2),
         ("ctrl_motor_cmd_us", 2),
-        ("ctrl_velocity_integral_m", 2),
+        ("ctrl_velocity_integral_m", 0 if has_v9_layout else 2),
         ("ctrl_desired_attitude_rpy_rad", 3),
         ("ctrl_attitude_error", 3),
         ("ctrl_rate_error_rad_s", 3),

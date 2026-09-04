@@ -27,7 +27,7 @@
 
 ## 硬约束（违反任意一条 = 打回重做）
 
-1. 新代码放新模块。S6 拆分虽已收官，但 `tools/drone_tcp_panel.py` 与 `App/Src/app_control.c` 仍超预算，因此**禁止**向这两个文件追加内容（只减不增）；不要在文档里固化易过期行数。
+1. 新代码放新模块。S6 拆分虽已收官，但 `tools/drone_tcp_panel.py` 与 `App/Src/app_control.c` 仍超预算，因此**禁止**向这两个文件追加内容（只减不增）；不要在文档里固化易过期行数。新建模块、重构或做优化前，先读 [`.agents/skills/drone-h743-project/references/decoupling-spec.md`](.agents/skills/drone-h743-project/references/decoupling-spec.md)（解耦规范 + 工单三件套 + 提交前自检）。
 2. 每项行为改动必须带契约测试；交付前全量通过 `python -m pytest tests -q` 与 `cmake --build --preset Debug`（零警告），不要把测试数量写成长期基线。
 3. 改任何非忽略文件后运行 `python .agents/skills/drone-h743-project/scripts/update_repository_index.py`。
 4. **禁止**：修改/删除 `data/calibration/**` 历史证据；手改 CubeMX 生成代码（`Core/Src/main.c`、`freertos.c`、外设 init、`USB_DEVICE/*`）；削弱任何安全门/判据/坐标符号（此类变更即使"顺手"也必须单独立项经作者批准）。

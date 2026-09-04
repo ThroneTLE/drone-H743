@@ -88,10 +88,14 @@ def test_coax_defaults_use_airframe_model_not_old_placeholder_mass() -> None:
 
 
 def test_flash_config_preserves_current_record_and_migrates_v15_coax_tunables() -> None:
-    source = read("App/Src/app_control.c")
+    source = (
+        read("App/Inc/app_control_config_compat.h")
+        + read("App/Src/app_control_config_compat.c")
+        + read("App/Src/app_control.c")
+    )
 
     # V17 = 加入遥控映射；V16/V15 都必须还能读回来，否则升级会连舵机/PID 一起丢。
-    assert "#define APP_CONTROL_CFG_VERSION     17U" in source
+    assert "#define APP_CONTROL_CFG_VERSION     18U" in source
     assert "#define APP_CONTROL_CFG_VERSION_V16 16U" in source
     assert "#define APP_CONTROL_CFG_VERSION_V15 15U" in source
     assert "APP_ControlFlashRecordV16" in source
@@ -125,6 +129,24 @@ def test_flash_config_preserves_current_record_and_migrates_v15_coax_tunables() 
     ):
         assert fixed_model_field not in tunable_struct
         assert fixed_model_field not in apply_tunables
+
+
+def test_v17_config_compatibility_is_extracted_from_the_oversize_entrypoint() -> None:
+    control = read("App/Src/app_control.c")
+    header = read("App/Inc/app_control_config_compat.h")
+    compat = read("App/Src/app_control_config_compat.c")
+    cmake = read("CMakeLists.txt")
+
+    assert '#include "app_control_config_compat.h"' in control
+    assert "APP_ControlCoaxTunableParamsV17" in header
+    assert "APP_ControlConfigCompat_V17ToCurrent" in compat
+    for dead_gain in (
+        "vel_loop_x_kp", "vel_loop_x_ki", "vel_loop_x_kd",
+        "vel_loop_y_kp", "vel_loop_y_ki", "vel_loop_y_kd",
+    ):
+        assert dead_gain in header
+        assert f"current->{dead_gain}" not in compat
+    assert "App/Src/app_control_config_compat.c" in cmake
 
 
 def test_airframe_query_is_text_control_payload() -> None:

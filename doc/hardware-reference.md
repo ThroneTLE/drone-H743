@@ -21,7 +21,7 @@ CubeMX 生成文件不得手改。硬件安装或接线与本文冲突时，先�
 | 气压计 | SPL06 | `Driver/Inc/drv_baro.h`、`BSP/Inc/bsp_baro.h` |
 | 外部 Flash | GD25Q32，JEDEC `C8 40 16` | `app_flash_service → drv_gd25q32 → bsp_flash_bus` |
 | 光流 | MicoLink 光流帧 | `drv_optical_flow → app_optical_flow → svc_flow_nav` |
-| 测距 | 光流组合测距与独立 rangefinder 路径 | 对应 App/Driver/BSP |
+| 测距 | 仅光流模块内的组合测距（独立 TFmini 路径已删除，硬件不再使用） | `drv_optical_flow → app_optical_flow → svc_flow_nav` |
 | 舵机 | 运行时选择 BUS 或 PWM | `app_servo_type`、`app_stabilizer` |
 | 电机 | 双 ESC PWM | `drv_motor`、`bsp_pwm` |
 

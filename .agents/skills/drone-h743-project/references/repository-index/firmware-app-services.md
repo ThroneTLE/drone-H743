@@ -4,7 +4,7 @@
 
 Read this shard only when the task touches application behavior, RTOS task bodies, control flow, diagnostics, commands, or synchronous services.
 
-Source snapshot: `a45f63721a08`. Indexed files: 104.
+Source snapshot: `a6b028ae3d60`. Indexed files: 104.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -24,6 +24,7 @@ Source snapshot: `a45f63721a08`. Indexed files: 104.
 | `App/Src/app_cmd_system.c` | Application behavior and task-facing logic for cmd system | `APP_Control_ReportUartStats` |
 | `App/Src/app_cmd_telem.c` | Application behavior and task-facing logic for cmd telem | — |
 | `App/Inc/app_control.h`<br>`App/Src/app_control.c` | Application behavior and task-facing logic for control | `APP_Control_Init`, `APP_Control_Tick`, `APP_Control_QueueText`, `APP_Control_ProcessLine`, `APP_Control_MaintTick`, `APP_Control_ProcessMaintLine` (+2) |
+| `App/Inc/app_control_config_compat.h`<br>`App/Src/app_control_config_compat.c` | Application behavior and task-facing logic for control config compat | `APP_ControlConfigCompat_V17ToCurrent` |
 | `App/Src/app_control_core.c` | Application behavior and task-facing logic for control core | `APP_IMU_Capture_IsExportActive` |
 | `App/Inc/app_control_internal.h` | Application behavior and task-facing logic for control internal | — |
 | `App/Inc/app_diag.h`<br>`App/Src/app_diag.c` | Application behavior and task-facing logic for diag | `APP_Diag_RecordStackOverflow`, `APP_Diag_RecordMallocFailed`, `APP_Diag_GetFaultInfo` |
@@ -45,7 +46,6 @@ Source snapshot: `a45f63721a08`. Indexed files: 104.
 | `App/Inc/app_nav_estimator.h`<br>`App/Src/app_nav_estimator.c` | Application behavior and task-facing logic for nav estimator | `APP_NavEstimator_PublishVelocityEKF`, `APP_NavEstimator_GetVelocityEKF` |
 | `App/Inc/app_optical_flow.h`<br>`App/Src/app_optical_flow.c` | Application behavior and task-facing logic for optical flow | `APP_OpticalFlow_Init`, `APP_OpticalFlow_Step`, `APP_OpticalFlow_ServiceRecovery`, `APP_OpticalFlow_GetVelocity`, `APP_OpticalFlow_GetVelocitySample`, `APP_OpticalFlow_GetHeightSample` (+4) |
 | `App/Inc/app_proto.h`<br>`App/Src/app_proto.c` | Application behavior and task-facing logic for proto | `APP_Proto_BuildFrame`, `APP_Proto_Init`, `APP_Proto_IsReceiving`, `APP_Proto_ConsumeByte` |
-| `App/Inc/app_rangefinder.h`<br>`App/Src/app_rangefinder.c` | Application behavior and task-facing logic for rangefinder | `APP_Rangefinder_Init`, `APP_Rangefinder_Step`, `APP_Rangefinder_GetHeightSample`, `APP_Rangefinder_GetStatus`, `APP_Rangefinder_Report` |
 | `App/Inc/app_rc_config.h`<br>`App/Src/app_rc_config.c` | Application behavior and task-facing logic for rc config | `APP_RcConfig_Defaults`, `APP_RcConfig_Validate`, `APP_RcConfig_FunctionName`, `APP_RcConfig_FunctionFromName`, `APP_RcConfig_Normalize`, `APP_RcConfig_Throttle01` (+5) |
 | `App/Inc/app_sensor.h`<br>`App/Src/app_sensor.c` | Application behavior and task-facing logic for sensor | `APP_IMU_RawToScaled`, `APP_IMU_ConvertBaro`, `APP_Sensor_LpfInit`, `APP_Sensor_LpfApply`, `APP_Sensor_LpfApply3f`, `APP_Sensor_CalibrateGyroBias` (+13) |
 | `App/Inc/app_servo_bus_guard.h`<br>`App/Src/app_servo_bus_guard.c` | Application behavior and task-facing logic for servo bus guard | `APP_ServoBusGuard_IsPwmMode`, `APP_ServoBusGuard_IsBusOnlyCommand` |

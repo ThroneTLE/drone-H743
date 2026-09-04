@@ -241,11 +241,14 @@ def test_attitude_zero_requires_completed_fusion_startup_and_static_window() -> 
 def test_nav_gravity_compensation_uses_absolute_attitude_not_boot_zero() -> None:
     freertos = read("Core/Src/freertos.c") + read("App/Src/app_stabilizer.c")
 
-    assert "nav_input.roll_rad = ctx->roll * STABILIZER_DEG_TO_RAD;" in freertos
-    assert "nav_input.pitch_rad = ctx->pitch * STABILIZER_DEG_TO_RAD;" in freertos
-    assert "nav_input.yaw_rad = ctx->yaw_control * STABILIZER_DEG_TO_RAD;" in freertos
-    assert "nav_input.roll_rad = roll_control * STABILIZER_DEG_TO_RAD;" not in freertos
-    assert "nav_input.pitch_rad = pitch_control * STABILIZER_DEG_TO_RAD;" not in freertos
+    # 纯 IMU 积分通路（drv_imu_nav）已删除：其速度输出是不可靠的实验数据。
+    # 水平加速度只剩喂 EKF 的这一路，
+    # 它必须继续用零点补偿后的姿态，而不是原始角。
+    assert "DRV_IMU_NAV_" not in freertos
+    assert "nav_input" not in freertos
+    assert "ctx->roll_control * STABILIZER_DEG_TO_RAD," in freertos
+    assert "ctx->pitch_control * STABILIZER_DEG_TO_RAD," in freertos
+    assert "ctx->yaw_control * STABILIZER_DEG_TO_RAD," in freertos
 
 
 def test_imu_spi_timeout_is_short_but_not_overly_aggressive() -> None:

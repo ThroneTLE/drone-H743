@@ -74,7 +74,7 @@ class FlowRangingPageMixin:
             parent,
             text=(
                 "依次做静止、机头方向 +X、机体左侧 +Y、近/远两点测距和原地偏航。"
-                "飞行高度当前来自光流模块内的组合测距，独立 RANGE? 只作旁路诊断。"
+                "飞行高度来自光流模块内的组合测距。"
                 "分析结果先保存为证据，不会直接改飞控参数。"
             ),
             style="Muted.TLabel", wraplength=1120,
@@ -86,7 +86,7 @@ class FlowRangingPageMixin:
         actions = ttk.Frame(live)
         actions.pack(fill=tk.X)
         ttk.Button(
-            actions, text="读取 FLOW / RANGE", command=self._flow_range_request_once,
+            actions, text="读取 FLOW", command=self._flow_range_request_once,
             style="Secondary.TButton",
         ).pack(side=tk.LEFT)
         ttk.Label(
@@ -162,7 +162,6 @@ class FlowRangingPageMixin:
 
     def _flow_range_request_once(self) -> None:
         self._send("FLOW?")
-        self._send("RANGE?")
         self._send_proto(PROTO_REQ_IMU, "IMU?")
 
     def _flow_cal_start(self) -> None:
@@ -339,8 +338,7 @@ class FlowRangingPageMixin:
             f"comp_flu=({self.flow_diag_values.get('corr_vx_mm_s', '-')},{self.flow_diag_values.get('corr_vy_mm_s', '-')})mm/s "
             f"orientation={self.flow_diag_values.get('orientation', '-')} "
             f"height_raw={self.flow_diag_values.get('height_raw_mm', '-')}mm "
-            f"height={self.flow_diag_values.get('height_mm', '-')}mm "
-            f"RANGE={getattr(self, 'range_diag_summary', '尚无回包')}"
+            f"height={self.flow_diag_values.get('height_mm', '-')}mm"
         )
         self.last_reply_rx = time.monotonic()
 
@@ -392,26 +390,6 @@ class FlowRangingPageMixin:
             f"正在采集“{FLOW_CALIBRATION_STAGES[self.flow_cal_active_stage]}”：{len(samples)} 个样本"
         )
         self._flow_cal_refresh_tree(self.flow_cal_active_stage, "采集中")
-
-    def _update_range_line(self, line: str) -> None:
-        values = parse_kv(line)
-        ok = values.get("ok") == "1"
-        strength = safe_int(values.get("strength"), 0)
-        minimum = safe_int(values.get("min_strength"), 80)
-        self.range_diag_summary = (
-            f"ok={int(ok)} raw={values.get('raw_mm', '-')}mm "
-            f"strength={strength}/{minimum} age={values.get('age_ms', '-')}ms"
-        )
-        self._update_module(
-            "RANGE",
-            state="正常" if ok else "等待有效数据",
-            stage="ready" if ok else "data",
-            value=f"raw={values.get('raw_mm', '-')} mm strength={strength}/{minimum}",
-            code=f"frames={values.get('frames', '-')} cksum={values.get('cksum', '-')} err={values.get('frame_err', '-')}",
-            hint="当前飞行高度不用此独立测距；这里只做旁路健康诊断",
-            line=line,
-        )
-        self.last_reply_rx = time.monotonic()
 
 
 __all__ = ["FLOW_CALIBRATION_STAGES", "FlowRangingPageMixin"]

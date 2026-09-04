@@ -4,13 +4,14 @@
 
 Read this shard only when the task needs architecture rationale, controller math, historical evidence, captures, datasets, or agent-support documentation.
 
-Document snapshot: `45ae25abc565`; aggregate snapshot: `bce40fdbb9f9`. Covered files: 313.
+Document snapshot: `6cfb44e25925`; aggregate snapshot: `bce40fdbb9f9`. Covered files: 315.
 
 ## Documents and agent support
 
 | File | Content outline | Headings / entry points |
 |---|---|---|
 | `.agents/skills/drone-h743-project/agents/openai.yaml` | Project documentation for openai | — |
+| `.agents/skills/drone-h743-project/references/decoupling-spec.md` | 解耦开发规范（新增模块 / 重构 / 优化前必读） | `0. 五个维度总览`, `1. 维度一：硬件与生命周期`, `2. 维度二：时间与节拍`, `3. 维度三：数据与控制流`, `4. 维度四：语义与契约`, `5. 维度五：可测性` (+3) |
 | `.agents/skills/drone-h743-project/references/dispatcher-prompt.md` | 派发者提示词 | `第一步：先判断这件事该不该派`, `第二步：认类别；新类别先写模式，再派单`, `第三步：写工单`, `第四步：批量与并发`, `第五步：交付回来之后` |
 | `.agents/skills/drone-h743-project/references/flash-architecture.md` | FLASH / GD25Q32 Architecture | `Required Layering`, `Focused Validation` |
 | `.agents/skills/drone-h743-project/references/flu-coordinate-contract.md` | FLU Coordinate Contract | `Authority`, `Adapter Rules`, `Current Migration Status`, `Required Validation`, `Staged Physical Acceptance` |
@@ -22,10 +23,11 @@ Document snapshot: `45ae25abc565`; aggregate snapshot: `bce40fdbb9f9`. Covered f
 | `.agents/skills/drone-h743-project/scripts/update_repository_index.py` | Build the compact, task-routed repository index used by the project skill | `git_working_files`, `read_bytes`, `read_text`, `compact`, `human_topic`, `c_symbols` (+21) |
 | `.agents/skills/drone-h743-project/SKILL.md` | drone-H743 Project Skill | `Repository Index Workflow`, `Pipeline Governance`, `Project Data Paths`, `Canonical FLU Body Frame`, `Core Boundaries`, `Layering` (+4) |
 | `.claude/settings.local.json` | Project documentation for settings.local | — |
-| `.claude/skills/drone-h743-project.md` | Project documentation for drone h743 project | — |
+| `.claude/skills/drone-h743-project/SKILL.md` | drone-H743 Project Skill (route) | — |
 | `.codex/config.toml` | Repository-local Codex configuration | — |
 | `data/README.md` | Project Data Directory | — |
 | `doc/current-architecture.md` | drone-H743 当前软件架构 | `分层`, `主要运行链`, `IMU 与姿态`, `光流与水平导航`, `RC、控制器与执行器`, `参数与慢操作` (+3) |
+| `doc/drone-h743-architecture.html` | Project documentation for drone h743 architecture | — |
 | `doc/hardware-reference.md` | drone-H743 硬件参考 | `权威边界`, `已登记器件`, `主机连接` |
 | `doc/history/2024050116133964(1)(1).pdf` | Project documentation for 2024050116133964(1)(1) | — |
 | `doc/history/coaxial_drone_controller_comparison.pdf` | Project documentation for coaxial drone controller comparison | — |

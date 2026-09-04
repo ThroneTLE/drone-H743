@@ -43,7 +43,6 @@ def test_gd25q32_driver_has_chip_specific_name() -> None:
     source = read("Driver/Src/drv_gd25q32.c")
 
     assert "Driver/Src/drv_gd25q32.c" in cmake
-    assert "Driver/Src/drv_imu_nav.c" in cmake
     assert "Driver/Src/drv_flash.c" not in cmake
     assert "DRV_GD25Q32_ReadData" in header
     assert "DRV_FLASH_ReadData" not in header

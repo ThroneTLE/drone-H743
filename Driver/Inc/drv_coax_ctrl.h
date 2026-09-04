@@ -142,7 +142,6 @@ typedef struct {
     float total_force_n;
     float motor_thrust_cmd_n[2];
     float motor_cmd_us[2];
-    float velocity_integral_m[2];
     float desired_attitude_rpy_rad[3];
     float attitude_error[3];
     float rate_error_rad_s[3];
@@ -162,12 +161,6 @@ typedef struct {
     float vel_y_kd;
     float vel_z_kd;
     float vel_loop_enable;
-    float vel_loop_x_kp;
-    float vel_loop_x_ki;
-    float vel_loop_x_kd;
-    float vel_loop_y_kp;
-    float vel_loop_y_ki;
-    float vel_loop_y_kd;
     float mass_kg;
     float gravity_m_s2;
     float pitch_tilt_lever_arm_m;

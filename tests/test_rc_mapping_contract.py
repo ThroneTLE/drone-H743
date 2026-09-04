@@ -223,7 +223,11 @@ def test_yaw_stick_integrates_reference_and_wraps_at_pi_boundary() -> None:
     assert "frame->reference.yaw_rad = ctx->yaw_ref_rad;" in freertos
     assert "frame->reference.yaw_rate_rad_s = yaw_rate_ref_rad_s;" in freertos
     assert "yaw_ref_ready = 0U;" in freertos
-    assert "const float yaw_err = coax_ctrl_wrap_pi(reference->yaw_rad - attitude->yaw_rad);" in wrapper
+    # 参考侧回绕仍在稳定环；驱动侧偏航已并入 SO(3)，回绕由 e_R 的 sin 形式天然承担，
+    # 参考角本身经 coax_ctrl_rpy_matrix 构造 R_d 进入控制律。
+    assert "coax_ctrl_wrap_pi" not in wrapper
+    assert "reference->yaw_rad," in wrapper
+    assert "solution->desired_body_r);" in wrapper
 
 
 def test_elrs_link_freshness_uses_valid_rc_frames_only() -> None:

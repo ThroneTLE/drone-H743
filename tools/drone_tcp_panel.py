@@ -586,7 +586,6 @@ MODULES = [
     ("SPL06", "SPL06 气压计", "STATUS?"),
     ("ICM42688", "ICM42688 IMU", "STATUS?"),
     ("FLOW", "光流 / 组合测距", "FLOW?"),
-    ("RANGE", "独立测距（诊断）", "RANGE?"),
     ("GPS", "M9N GPS", "GPS?"),
     ("MAG", "I2C1 Magnetometer", "MAG?"),
     ("UART1", "USART1 链路", "STATUS?"),
@@ -602,8 +601,6 @@ MODULE_ALIASES = {
     "IMU": "ICM42688",
     "FLOW": "FLOW",
     "OPTICAL_FLOW": "FLOW",
-    "RANGE": "RANGE",
-    "RANGEFINDER": "RANGE",
     "GPS": "GPS",
     "GPS_USART2": "GPS",
     "M9N": "GPS",
@@ -3448,7 +3445,7 @@ class DronePanel(ValidationV0PageMixin, EvidenceMixin, AcceptanceV2PageMixin, Vi
         self._append(f"> {line}")
         if not self.transport.send_line(line):
             self._append("[上位机] 发送失败")
-        elif line in {"PING", "STATUS?", "CONFIG?", "PARAM?", "PID?", "BARO?", "FLOW?", "RANGE?", "GPS?", "MAG?", "AIRFRAME?"}:
+        elif line in {"PING", "STATUS?", "CONFIG?", "PARAM?", "PID?", "BARO?", "FLOW?", "GPS?", "MAG?", "AIRFRAME?"}:
             sent_at = time.monotonic()
             self.after(CMD_REPLY_TIMEOUT_MS, lambda sent=line, start=sent_at: self._warn_if_no_reply(sent, start))
 
@@ -3701,9 +3698,6 @@ class DronePanel(ValidationV0PageMixin, EvidenceMixin, AcceptanceV2PageMixin, Vi
         if self.selected_module == "FLOW":
             self._send("FLOW?")
             return
-        if self.selected_module == "RANGE":
-            self._send("RANGE?")
-            return
         if self.selected_module == "GPS":
             self._send_proto(PROTO_REQ_GPS, "GPS?")
             return
@@ -3827,8 +3821,6 @@ class DronePanel(ValidationV0PageMixin, EvidenceMixin, AcceptanceV2PageMixin, Vi
             self._flow_monitor_handle_line(line)
         elif line.startswith("TELEM "):
             self._dashboard_handle_line(line)
-        elif line.startswith("RANGE "):
-            self._update_range_line(line)
         elif line.startswith("RCMAP "):
             self._rc_handle_map_line(line)
         elif line.startswith("RC "):
@@ -4549,8 +4541,6 @@ class DronePanel(ValidationV0PageMixin, EvidenceMixin, AcceptanceV2PageMixin, Vi
                 self.flow_cal_last_poll = now
                 if self._validation_command_allowed("FLOW?"):
                     self.transport.send_line("FLOW?")
-                if self._validation_command_allowed("RANGE?"):
-                    self.transport.send_line("RANGE?")
                 self._send_proto_silent(PROTO_REQ_IMU, "IMU?")
         # RC 页要看摇杆实时位置，10Hz 的 IMU 轮询节奏不够跟手；这里单独按 20Hz 拉。
         # 自动识别和行程标定都靠这条流采样，降频会直接让标定采不到端点。

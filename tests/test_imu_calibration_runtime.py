@@ -260,15 +260,15 @@ def test_v1_pipeline() -> None:
     apply_v0 = step.index("APP_Sensor_ApplyFrameCorrection(&msg->imu)")
     apply_v1 = step.index("DRV_IMU_Calibration_Apply(")
     fusion = step.index("DRV_AttitudeFusion_Update(")
-    navigation = step.index("DRV_IMU_NAV_Update(")
+    flow_fuse = step.index("SVC_FlowNav_Fuse(&fuse_input)")
 
-    assert apply_v0 < apply_v1 < fusion < navigation
+    assert apply_v0 < apply_v1 < fusion < flow_fuse
     assert "calibration_snapshot.generation !=" in step
     reset = source[source.index("static void stabilizer_reset_for_imu_frame(") :
                    source.index("static void stabilizer_imu_step(")]
     assert "calibration_generation" in reset
     assert "DRV_AttitudeFusion_InitForConvention(" in reset
-    assert "DRV_IMU_NAV_Reset(&ctx->nav_state);" in reset
+    assert "DRV_IMU_NAV_" not in reset
     assert "ctx->attitude_zero_ready = 0U;" in reset
 
 

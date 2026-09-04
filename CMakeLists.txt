@@ -59,9 +59,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Driver/Src/drv_motor.c
     Driver/Src/drv_elrs.c
     Driver/Src/drv_optical_flow.c
-    Driver/Src/drv_tfmini.c
     Driver/Src/drv_coax_ctrl.c
-    Driver/Src/drv_imu_nav.c
     Driver/Src/drv_nav_ekf.c
     Driver/Src/drv_attitude_fusion.c
     ThirdParty/Fusion/FusionAhrs.c
@@ -84,7 +82,6 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     BSP/Src/bsp_flash_bus.c
     BSP/Src/bsp_gps.c
     BSP/Src/bsp_optical_flow.c
-    BSP/Src/bsp_rangefinder.c
     BSP/Src/bsp_mag.c
     BSP/Src/bsp_pwm.c
     BSP/Src/bsp_bus_servo.c
@@ -99,6 +96,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     App/Src/app_acceptance.c
     App/Src/app_control.c
     App/Src/app_control_core.c
+    App/Src/app_control_config_compat.c
     App/Src/app_cmd_servocal.c
     App/Src/app_cmd_servotype.c
     App/Src/app_cmd_imucal.c
@@ -117,7 +115,6 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     App/Src/app_flash_service.c
     App/Src/app_gps.c
     App/Src/app_optical_flow.c
-    App/Src/app_rangefinder.c
     App/Src/app_rc_config.c
     App/Src/app_ident.c
     App/Src/app_servo_cal.c

@@ -53,10 +53,8 @@ DEFAULT_CHANNELS = (
     "gyro_z_dps",
     "acc_nav_m_s2_0",
     "acc_nav_m_s2_1",
-    "acc_nav_m_s2_2",
     "vel_est_m_s_0",
     "vel_est_m_s_1",
-    "vel_est_m_s_2",
     "vel_ref_m_s_0",
     "vel_ref_m_s_1",
     "vel_err_m_s_0",
@@ -1038,7 +1036,6 @@ def build_flags(
             "flow_height_m",
             "flow_height_raw_m",
             "z_est_m",
-            "rangefinder_m",
         )
     ):
         flags.append("no direct range/height channel found; Z position-loop identification is limited")

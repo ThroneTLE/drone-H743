@@ -52,7 +52,6 @@
 #include "drv_coax_ctrl.h"
 #include "drv_frame_contract.h"
 #include "drv_imu_calibration.h"
-#include "drv_imu_nav.h"
 #include "svc_flow_nav.h"
 #include "drv_servo.h"
 
@@ -60,8 +59,6 @@
  * 常量（从 freertos.c 搬入）
  * ========================================================================== */
 #define STABILIZER_SERVO_MOVE_TIME_MS 0U
-#define STABILIZER_NAV_ACCEL_LPF_ALPHA 0.94f
-#define STABILIZER_NAV_VEL_LEAK_HZ 0.25f
 /* 速度估计的全部整定量已归 Services/Inc/svc_flow_nav.h，此处不留副本。 */
 #define STABILIZER_FLOW_ROT_COMP_ENABLE 1U
 #define STABILIZER_FLOW_ROT_COMP_GAIN 1.0f
@@ -667,8 +664,6 @@ typedef struct
   uint32_t last_out_ms;
   uint8_t has_imu_sample;
   DRV_AttitudeFusionOutput attitude_fusion;
-  float velocity_imu_x_m_s;
-  float velocity_imu_y_m_s;
   float position_ref_x_m;
   float position_ref_y_m;
   uint8_t position_ref_xy_ready;
@@ -679,7 +674,6 @@ typedef struct
   uint8_t height_origin_ready;
   float yaw_ref_rad;
   uint8_t yaw_ref_ready;
-  DRV_IMU_NAV_State nav_state;
   StabilizerVofaDebug vofa_debug;
   uint32_t last_ctrl_model_ms;
   uint8_t flight_log_divider;
@@ -964,7 +958,6 @@ static void stabilizer_init(StabilizerContext *ctx)
   ctx->imu_frame_orientation_code = APP_SENSOR_FLU_ORIENTATION_LEGACY;
   stabilizer_validation_imu_reset();
   DRV_AttitudeFusion_Init();
-  DRV_IMU_NAV_Reset(&ctx->nav_state);
   SVC_FlowNav_ResetEstimator();
   DRV_COAX_CTRL_ResetState();
 }
@@ -995,8 +988,6 @@ static void stabilizer_reset_for_imu_frame(
   ctx->last_imu_timestamp_us = 0ULL;
   ctx->has_imu_sample = 0U;
   memset(&ctx->attitude_fusion, 0, sizeof(ctx->attitude_fusion));
-  ctx->velocity_imu_x_m_s = 0.0f;
-  ctx->velocity_imu_y_m_s = 0.0f;
   SVC_FlowNav_ResetEstimator();
   ctx->position_ref_x_m = 0.0f;
   ctx->position_ref_y_m = 0.0f;
@@ -1017,31 +1008,10 @@ static void stabilizer_reset_for_imu_frame(
   DRV_AttitudeFusion_InitForConvention(
     (flu_active != 0U) ? DRV_ATTITUDE_FUSION_CONVENTION_NWU :
                          DRV_ATTITUDE_FUSION_CONVENTION_NED);
-  DRV_IMU_NAV_Reset(&ctx->nav_state);
   SVC_FlowNav_ResetEstimator();
   DRV_COAX_CTRL_ResetState();
   stabilizer_rc_arm_latched = 0U;
   stabilizer_validation_imu_reset();
-}
-
-/*
- * 临时边界适配，seam 3/4 迁移后删除。
- *
- * seam 2 已把 drv_imu_nav 的导航系迁移为本地水平 FLU（前/左/上）。其下游
- * 尚未迁移：速度估计器、光流融合、VOFA 调试与飞行日志仍按旧的
- * （前/右/下）表述解释这些数值，且 App/Src/app_control.c 以
- * ekf_vx_mm_s / ekf_vy_mm_s 把它们送上遥测。本函数在消费边界把导航量
- * 转回旧表述，使全部可观测输出逐位不变。
- *
- * 这是坐标表述转换，不是极性修正：seam 3/4 迁移这些消费者后，本函数
- * 连同其全部调用点一并删除，不得改成带增益或符号常量的形式。
- */
-static void stabilizer_nav_flu_to_legacy_fwd_right_down(const float flu[3],
-                                                        float legacy[3])
-{
-  legacy[0] =  flu[0];
-  legacy[1] = -flu[1];
-  legacy[2] = -flu[2];
 }
 
 static void stabilizer_imu_step(StabilizerContext *ctx,
@@ -1334,36 +1304,6 @@ static void stabilizer_imu_step(StabilizerContext *ctx,
   }
 
   {
-    DRV_IMU_NAV_Input nav_input;
-    /* seam 2 导航量的旧表述副本，见 stabilizer_nav_flu_to_legacy_fwd_right_down */
-    float nav_vel_legacy[3];
-    float nav_acc_legacy[3];
-
-    nav_input.accel_x_g = msg->imu.accel_x_g;
-    nav_input.accel_y_g = msg->imu.accel_y_g;
-    nav_input.accel_z_g = msg->imu.accel_z_g;
-    nav_input.roll_rad = ctx->roll * STABILIZER_DEG_TO_RAD;
-    nav_input.pitch_rad = ctx->pitch * STABILIZER_DEG_TO_RAD;
-    nav_input.yaw_rad = ctx->yaw_control * STABILIZER_DEG_TO_RAD;
-    nav_input.dt_sec = dt_sec;
-    nav_input.gravity_m_s2 = DRV_AIRFRAME_GRAVITY_M_S2;
-    nav_input.accel_lpf_alpha = STABILIZER_NAV_ACCEL_LPF_ALPHA;
-    nav_input.velocity_leak_rate_hz = STABILIZER_NAV_VEL_LEAK_HZ;
-
-    if ((ctx->attitude_zero_ready != 0U) && (ctx->nav_state.bias_ready == 0U)) {
-      DRV_IMU_NAV_CaptureBias(&ctx->nav_state, &nav_input);
-    }
-    if (ctx->attitude_zero_ready != 0U) {
-      DRV_IMU_NAV_Update(&ctx->nav_state, &nav_input);
-    }
-
-    stabilizer_nav_flu_to_legacy_fwd_right_down(ctx->nav_state.vel_m_s,
-                                                nav_vel_legacy);
-    stabilizer_nav_flu_to_legacy_fwd_right_down(ctx->nav_state.acc_nav_m_s2,
-                                                nav_acc_legacy);
-
-    ctx->velocity_imu_x_m_s = nav_vel_legacy[0];
-    ctx->velocity_imu_y_m_s = nav_vel_legacy[1];
     {
       float imu_accel_x_m_s2 = 0.0f;
       float imu_accel_y_m_s2 = 0.0f;
@@ -1447,7 +1387,6 @@ static void stabilizer_imu_step(StabilizerContext *ctx,
       ctx->vofa_debug.acc_nav_m_s2[1] = imu_accel_y_m_s2;
       (void)imu_accel_weight;
     }
-    ctx->vofa_debug.acc_nav_m_s2[2] = nav_acc_legacy[2];
     {
       float nav_vx_m_s = 0.0f;
       float nav_vy_m_s = 0.0f;
@@ -1457,9 +1396,6 @@ static void stabilizer_imu_step(StabilizerContext *ctx,
       ctx->vofa_debug.vel_est_m_s[1] =
         STABILIZER_VELOCITY_MEAS_Y_SIGN * nav_vy_m_s;
     }
-    ctx->vofa_debug.vel_est_m_s[2] = nav_vel_legacy[2];
-    ctx->vofa_debug.nav_accel_lpf_alpha = ctx->nav_state.accel_lpf_alpha;
-    ctx->vofa_debug.nav_velocity_leak_hz = ctx->nav_state.velocity_leak_rate_hz;
     stabilizer_vofa_debug_publish(&ctx->vofa_debug);
   }
 
@@ -1634,7 +1570,6 @@ static void stabilizer_control_compute(StabilizerContext *ctx,
     /* 上电高度原点只在首次有效测高时锁存，低油门直通不重新归零。 */
     ctx->position_ref_z_ready = 0U;
     ctx->yaw_ref_ready = 0U;
-    DRV_IMU_NAV_Reset(&ctx->nav_state);
     SVC_FlowNav_ResetEstimator();
     DRV_COAX_CTRL_ResetState();
     ctx->last_gyro_ready = 0U;
@@ -1893,7 +1828,6 @@ static void stabilizer_control_compute(StabilizerContext *ctx,
     stabilizer_vofa_debug_publish(&ctx->vofa_debug);
   } else if (ctx->has_imu_sample == 0U) {
     DRV_COAX_CTRL_ServoCalibration servo_calibration;
-    DRV_IMU_NAV_Reset(&ctx->nav_state);
     SVC_FlowNav_ResetEstimator();
     DRV_COAX_CTRL_ResetState();
     ctx->position_ref_x_m = 0.0f;

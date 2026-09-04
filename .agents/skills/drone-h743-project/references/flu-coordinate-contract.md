@@ -38,7 +38,6 @@ Known legacy boundaries include:
 - `App/Src/app_stabilizer.c`: Fusion input signs, startup attitude zero, RC intent, and controller input assembly.
 - `Core/Src/freertos.c`: current sensor-task alignment and legacy NED/FRD comments; this file remains CubeMX-owned.
 - `Driver/Src/drv_attitude_fusion.c`: x-io Fusion NED convention.
-- `Driver/Src/drv_imu_nav.c`: current local-level acceleration basis and Z-down assumptions.
 - `Driver/Src/drv_coax_ctrl.c`: force-frame, rate-frame, and 90-degree servo mount adapters; servo polarity and travel now come from the runtime `ServoCalibration` (`pulse_sign`/`center_us`/`min_us`/`max_us`), not compile-time sign macros.
 - `tools/drone_tcp_panel.py`: artificial-horizon integration and accelerometer-angle display.
 - `tools/flight_log_rerun_replay.py`: current X-forward/Y-right/Z-down replay geometry.

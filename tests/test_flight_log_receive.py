@@ -137,16 +137,20 @@ def test_parse_record_and_csv_fields(tmp_path) -> None:
     assert row["servo_feedback_busy_count"] == 110
     assert row["servo_alpha_feedback_deg"] == pytest.approx(90.9)
     assert row["servo_beta_feedback_tilt_deg"] == pytest.approx(-0.9)
-    assert row["vel_pid_d_m_s2_1"] == 17.0
-    assert row["ctrl_pos_p_m_s2_0"] == 19.0
+    assert row["vel_pid_d_m_s2_1"] == 15.0
+    assert row["ctrl_pos_p_m_s2_0"] == 17.0
     assert row["ctrl_pos_z_i_m_s2"] == pytest.approx(-0.25)
-    assert row["ctrl_target_attitude_rp_rad_0"] == 31.0
-    assert row["ctrl_target_attitude_rp_rad_1"] == 32.0
-    assert row["ctrl_tilt_angle_p_rad_0"] == 33.0
-    assert row["ctrl_motor_cmd_us_1"] == 46.0
-    assert row["ctrl_velocity_integral_m_0"] == 47.0
-    assert row["ctrl_moment_cmd_n_m_0"] == 58.0
-    assert row["ctrl_horizontal_command_scale"] == 61.0
+    assert row["ctrl_target_attitude_rp_rad_0"] == 29.0
+    assert row["ctrl_target_attitude_rp_rad_1"] == 30.0
+    assert row["ctrl_tilt_angle_p_rad_0"] == 31.0
+    assert row["ctrl_motor_cmd_us_1"] == 44.0
+    # 纯 IMU 积分（不可靠的实验数据）的 Z 通道与 velocity_integral
+    # 已随 v9 记录一起删除。
+    assert "acc_nav_m_s2_2" not in row
+    assert "vel_est_m_s_2" not in row
+    assert "ctrl_velocity_integral_m_0" not in row
+    assert row["ctrl_moment_cmd_n_m_0"] == 54.0
+    assert row["ctrl_horizontal_command_scale"] == 57.0
     assert row["ctrl_protection_flags"] == 0x0A
     assert row["z_ref_m"] == 64.0
     assert row["ident_att_active"] == 1
@@ -176,8 +180,8 @@ def make_record() -> bytes:
     values.extend([1510, 1490, 3, 4, 10, 11])
     values.extend([0x03, 0, 0, 0])
     values.extend([1, 1, 1, 1, 5, 1, 1, 1, 1, 0, 0, 0])
-    debug_values = [float(i) for i in range(64)]
-    debug_values.insert(22, -0.25)
+    debug_values = [float(i) for i in range(60)]
+    debug_values.insert(20, -0.25)
     values.extend(debug_values)
     values.append(0x0A)
     values.append(64.0)

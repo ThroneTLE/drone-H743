@@ -14,7 +14,6 @@ static DRV_GD25Q32_Bus flash_bus;
 static DRV_MAG_Bus mag_bus;
 static DRV_GPS_Bus gps_bus;
 static DRV_OPTICAL_FLOW_Bus optical_flow_bus;
-static DRV_TFMINI_Bus rangefinder_bus;
 static DRV_SERVO_Bus servo_bus;
 
 #define BSP_IMU_SPI_TIMEOUT_MS 5U
@@ -63,10 +62,6 @@ void BSP_Board_Init(void)
     optical_flow_bus.delay_ms = BSP_DelayMs;
     optical_flow_bus.cache_invalidate = BSP_Cache_InvalidateDCache;
 
-    rangefinder_bus.huart = &huart8;
-    rangefinder_bus.baud_rate = DRV_TFMINI_BAUD_RATE;
-    rangefinder_bus.cache_invalidate = BSP_Cache_InvalidateDCache;
-
     servo_bus.huart      = &huart7;
     servo_bus.timeout_ms = 100U;
 }
@@ -77,5 +72,4 @@ const DRV_GD25Q32_Bus *BSP_Board_GetFlashBus(void) { return &flash_bus; }
 const DRV_MAG_Bus *BSP_Board_GetMagBus(void)     { return &mag_bus; }
 const DRV_GPS_Bus *BSP_Board_GetGpsBus(void)     { return &gps_bus; }
 const DRV_OPTICAL_FLOW_Bus *BSP_Board_GetOpticalFlowBus(void) { return &optical_flow_bus; }
-const DRV_TFMINI_Bus *BSP_Board_GetRangefinderBus(void) { return &rangefinder_bus; }
 const DRV_SERVO_Bus *BSP_Board_GetServoBus(void) { return &servo_bus; }

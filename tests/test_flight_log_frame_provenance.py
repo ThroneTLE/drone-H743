@@ -42,7 +42,7 @@ REPLAY = ROOT / "tools" / "flight_log_rerun_replay.py"
 
 SECTOR_MAGIC = 0x31534C46
 SECTOR_HEADER_SIZE = 256
-PARAMS_SIZE = 116
+PARAMS_SIZE = 92
 PREFIX_SIZE = 56
 
 
@@ -58,7 +58,7 @@ def slice_between(source: str, start: str, end: str) -> str:
 
 def test_sector_header_declares_provenance_in_reserved_area() -> None:
     source = read(LOG_SOURCE)
-    assert "#define APP_FLIGHT_LOG_VERSION            8U" in source
+    assert "#define APP_FLIGHT_LOG_VERSION            9U" in source
     # The previous version must remain a named, readable constant.
     assert "APP_FLIGHT_LOG_VERSION_V7" in source
     header = slice_between(
@@ -73,8 +73,8 @@ def test_sector_header_declares_provenance_in_reserved_area() -> None:
     ):
         assert field in header, field
     # 12 bytes taken out of the reserved area; the header stays 256 bytes.
-    assert "uint8_t reserved[72];" in header
-    assert "uint8_t reserved[84];" not in header
+    assert "uint8_t reserved[96];" in header
+    assert "uint8_t reserved[108];" not in header
 
 
 def test_stabilizer_fills_snapshot_provenance_from_existing_sources() -> None:
@@ -275,9 +275,9 @@ def build_sector_header(version: int, *, provenance: tuple | None = None) -> byt
     if provenance is not None:
         valid, orientation, contract, fw_crc, cal_gen = provenance
         body += struct.pack("<BBBBII", valid, orientation, contract, 0, fw_crc, cal_gen)
-        body += b"\x00" * 72
+        body += b"\x00" * 96
     else:
-        body += b"\x00" * 84
+        body += b"\x00" * 108
     assert len(body) == SECTOR_HEADER_SIZE
     import zlib
 

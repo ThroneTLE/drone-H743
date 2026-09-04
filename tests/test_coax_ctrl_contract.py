@@ -115,7 +115,7 @@ def test_mbd_controller_gains_are_runtime_coax_params() -> None:
     assert 'DRV_COAX_CTRL_PARAM_ENTRY(pitch_angle_kp)' in wrapper
     assert 'DRV_COAX_CTRL_PARAM_ENTRY(roll_rate_kd)' in wrapper
     assert 'DRV_COAX_CTRL_PARAM_ENTRY(pos_z_ki)' in wrapper
-    assert 'DRV_COAX_CTRL_PARAM_ENTRY(vel_loop_x_kp)' in wrapper
+    assert 'DRV_COAX_CTRL_PARAM_ENTRY(vel_loop_x_kp)' not in wrapper
     assert 'DRV_COAX_CTRL_PARAM_ENTRY(mass_kg)' not in wrapper
     assert 'DRV_COAX_CTRL_PARAM_ENTRY(gravity_m_s2)' not in wrapper
     assert 'DRV_COAX_CTRL_PARAM_ENTRY(tilt_lever_arm_m)' not in wrapper
@@ -129,10 +129,9 @@ def test_mbd_controller_gains_are_runtime_coax_params() -> None:
     assert "params->pos_z_ki = 0.25f;" in wrapper
     assert "params->vel_x_kd = 0.80f;" in wrapper
     assert "params->vel_y_kd = 0.80f;" in wrapper
-    assert "params->vel_loop_x_kp = 0.0f;" in wrapper
-    assert "params->vel_loop_x_ki = 0.0f;" in wrapper
-    assert "params->vel_loop_y_kp = 0.0f;" in wrapper
-    assert "params->vel_loop_y_ki = 0.0f;" in wrapper
+    # vel_loop_x/y_kp/ki/kd 从未接入控制律，已连同参数表一起删除。
+    assert "vel_loop_x" not in wrapper
+    assert "vel_loop_y" not in wrapper
     assert '"coax." #field' in wrapper
     assert "coax_tiltrotor_controller_codegen(" not in wrapper
     assert "DRV_COAX_CTRL_SetParam(name, value)" in app_control
@@ -194,9 +193,12 @@ def test_controller_wrapper_exposes_velocity_first_vector_control_inputs() -> No
     assert "coax_ctrl_params.gravity_m_s2 - debug->accel_out_m_s2[2]" in wrapper
     assert "debug->pos_z_i_m_s2" in wrapper
     assert "DRV_COAX_CTRL_POS_Z_I_ACCEL_LIMIT_M_S2" in wrapper
-    assert "reference->yaw_rate_rad_s - attitude->gyro_z_rad_s" in wrapper
-    assert "reference->yaw_accel_rad_s2 +" in wrapper
-    assert "coax_ctrl_wrap_pi(reference->yaw_rad - attitude->yaw_rad)" in wrapper
+    # 偏航已并入 SO(3)：yaw_rate 参考经 desired_omega 走 R^T Rd 变换进 e_w，
+    # yaw 参考经 coax_ctrl_rpy_matrix 进 R_d，不再有独立 PD 的裸差与 wrap_pi。
+    assert "desired_omega[3] = { 0.0f, 0.0f, reference->yaw_rate_rad_s }" in wrapper
+    assert "reference->yaw_accel_rad_s2" in wrapper
+    assert "coax_ctrl_wrap_pi" not in wrapper
+    assert "reference->yaw_rate_rad_s - attitude->gyro_z_rad_s" not in wrapper
     assert "debug->force_cmd_n[0]" in wrapper
     assert "debug->force_cmd_n[1]" in wrapper
     assert "STABILIZER_XY_VEL_REF_MAX_M_S" in freertos
@@ -409,10 +411,12 @@ def test_balance_controller_has_no_horizontal_velocity_integral_but_keeps_z_inte
     assert "(attitude->vx_m_s - reference->vx_m_s) * dt_sec" not in wrapper
     assert "coax_ctrl_update_z_integral" in wrapper
     assert "coax_ctrl_state.pos_z_i_m_s2" in wrapper
-    protected = wrapper.split("if (horizontal_scale >= 0.999f)", 1)[1]
+    # 水平通道没有积分器：velocity_integral_m 是从未被累加的残留状态，已删除。
+    # 保护缩放介入时按缩放后的指令重算一遍即可。
+    assert "velocity_integral_m" not in wrapper
+    protected = wrapper.split("if (horizontal_scale < 0.999f)", 1)[1]
     protected = protected.split("debug->horizontal_command_scale", 1)[0]
-    assert "coax_ctrl_state.velocity_integral_m[0] = 0.0f;" in protected
-    assert "coax_ctrl_state.velocity_integral_m," not in protected
+    assert "coax_ctrl_compute_accel_cmd(attitude," in protected
     assert "horizontal_scale" in protected
     assert "DRV_COAX_CTRL_ResetState();" in read("Core/Src/freertos.c") + read("App/Src/app_stabilizer.c")
 

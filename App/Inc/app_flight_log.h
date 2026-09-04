@@ -82,8 +82,8 @@ typedef struct {
     uint8_t arm_switch_prev_high;
     uint8_t imu_fault_latched;
     uint8_t imu_fault_reason;
-    float acc_nav_m_s2[3];
-    float vel_est_m_s[3];
+    float acc_nav_m_s2[2];
+    float vel_est_m_s[2];
     float vel_ref_m_s[2];
     float vel_err_m_s[2];
     float vel_pid_out_m_s2[2];

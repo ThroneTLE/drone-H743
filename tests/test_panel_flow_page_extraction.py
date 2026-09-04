@@ -29,16 +29,15 @@ PARENT_COMMIT = "925356ba"
 # 前八个是增量1 起就钉住的旧哈希，原样沿用；后两个是本次新搬的两个遥测行处理器，
 # 哈希取自父提交的 DronePanel，未作任何改动。
 METHOD_AST_SHA256 = {
-    "_build_flow_range_calibration_page": "4bab2f415bd4b626d333b9932a33cd6ae5a2dc19d7aee3b93fb16dcef1d00a96",
-    "_flow_range_request_once": "3aa7065643c685bde4882d0a04454beb1d35522080e84b348849c9e0d651719a",
+    "_build_flow_range_calibration_page": "8a3fec1fc473df0c739b94f836b97a46d6b3cc8c6eeda365b2622bc9953f66dd",
+    "_flow_range_request_once": "2ff7e3a41f240d644b4e729c14f68ef8f563784a0157d7f5c9908cb0c61c3428",
     "_flow_cal_start": "59f98967d8d888edbfb924652470a982f9428b45711c45c93ecc8329fbe30147",
     "_flow_cal_stop": "7f0514ad7a8b81f308c642468e4cfe6f8191b833ea4779a5aa0e292104355d9a",
     "_flow_cal_analyze_stage": "49fd8a48b303597d37b42694f58ddd861e1232b1af6ef6708676bd0357f1db69",
     "_flow_cal_result_summary": "7af89dde1f64b009dc2bba0988b26211734ed9e533ba1b1832e2bb639fe84f72",
     "_flow_cal_refresh_tree": "08aa97e663548e84313924767a17b976c148e61974fce1e58f5225a5f268e747",
     "_flow_cal_save_report": "5796e238f117707a1272c649853af1973dacaa8a9fdfd45d2da775c5432054f0",
-    "_update_flow_line": "28f4c27644b3e9d012b694f492e40e70c7a4bf2b169f4a7318eaaf01ff1ef239",
-    "_update_range_line": "462a7328141e4748e416f274164aeab27bb94ea5edac9c9f823484c0cd1fcb23",
+    "_update_flow_line": "3193096cf39f571ea02ffc5f44fb46405c287e279a4386d66b6763cf75fead44",
 }
 
 

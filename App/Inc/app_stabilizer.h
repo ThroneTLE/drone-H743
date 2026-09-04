@@ -22,8 +22,8 @@
   } StabilizerImuFaultReason;
 
   typedef struct {
-    float acc_nav_m_s2[3];
-    float vel_est_m_s[3];
+    float acc_nav_m_s2[2];
+    float vel_est_m_s[2];
     float pos_est_m[2];
     float vel_ref_m_s[2];
     float vel_err_m_s[2];
@@ -35,8 +35,6 @@
     float servo_beta_us;
     float motor_upper_us;
     float motor_lower_us;
-    float nav_accel_lpf_alpha;
-    float nav_velocity_leak_hz;
     float vel_loop_active;
     float range_vertical_velocity_m_s;
     float altitude_ref_m;
