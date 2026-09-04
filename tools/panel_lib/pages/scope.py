@@ -57,6 +57,10 @@ SCOPE_SLIDER_THROTTLE_S = 0.2
 # "固件收下了"和"固件钳位/拒绝了"。
 SCOPE_ECHO_TOLERANCE = 1e-4
 
+# 发送后多久之内的"不一致回显"不算 diverged。要盖住"发送前编码、发送后才到"
+# 的在线帧：数传上一帧全量刷新 137 B ≈ 24 ms，再加一个 25 ms 的遥测拍。
+SCOPE_ECHO_GRACE_S = 0.10
+
 SCOPE_STATE_IDLE = "idle"
 SCOPE_STATE_PENDING = "pending"
 SCOPE_STATE_CONFIRMED = "confirmed"
@@ -258,10 +262,18 @@ class ScopePageMixin:
         """本页自己的可见性门控（从 drone_tcp_panel._imu_poll_tick 搬出来的部分）。"""
         tab = getattr(self, "scope_tab", None)
         visible = tab is not None and self.notebook.select() == str(tab)
+        connected = self._transport_connected()
         if visible != self.scope_tab_visible:
             self.scope_tab_visible = visible
             self._scope_sync_stream(visible)
-        if not (visible and self._transport_connected()):
+        elif visible and connected and not self._scope_stream_attached():
+            # 可见性没变但链路变了：先开页再连线，或者拔插后重连。固件在 USB
+            # 出口下拔线会自己 stream=0，重连后不再发一次 STREAM on 就永远没波形；
+            # 光盯着可见性的翻转看不见这两种情况（审核复现：test_scope_page_link_lifecycle）。
+            self._scope_sync_stream(True)
+        if not (visible and connected):
+            if not connected:
+                self.scope_stream_requested = False
             return
         if not self.scope_schema.complete and self.scope_schema_pending_from is None:
             self._scope_request_schema()
@@ -269,6 +281,15 @@ class ScopePageMixin:
             # 固件通道表变了。继续解只会得到一堆错位的曲线，所以整表重拉。
             self.scope_schema_reload_requested = True
             self._scope_request_schema()
+
+    def _scope_stream_attached(self) -> bool:
+        """本页是否已在**当前** transport 上开了流并挂上二进制 sink。"""
+        if not self.scope_stream_requested:
+            return False
+        transport = getattr(self, "transport", None)
+        return getattr(transport, "_binary_sink", None) is not None or (
+            getattr(transport, "binary_sink", None) is not None
+        )
 
     def _scope_sync_stream(self, active: bool) -> None:
         if not self._transport_connected():
@@ -478,15 +499,21 @@ class ScopePageMixin:
         self._scope_refresh_slider_label(index, value)
         self.transport.send_frame(PROTO_REQ_PARAM_SET, payload.encode("utf-8"))
 
-    def _scope_note_param_echo(self, index: int, echoed: float) -> None:
+    def _scope_note_param_echo(self, index: int, echoed: float,
+                               now: float | None = None) -> None:
         """遥测帧带回来的参数值：判定 confirmed / diverged。"""
         variable = self.scope_slider_vars.get(index)
         if variable is None:
             return
+        if now is None:
+            now = time.monotonic()
         sent = self.scope_slider_sent.get(index)
         state = self.scope_slider_state.get(index, SCOPE_STATE_IDLE)
+        since_send = now - self.scope_slider_last_send.get(index, -1e9)
         if state != SCOPE_STATE_PENDING or sent is None:
-            if state != SCOPE_STATE_PENDING:
+            # 用户还在拖（节流窗口内刚发过）：这时把滑块拽回固件上一拍的值，
+            # 手感就是"滑块往回蹦"。等节流窗口过去、松手那一发出去再跟随。
+            if state != SCOPE_STATE_PENDING and since_send >= SCOPE_SLIDER_THROTTLE_S:
                 variable.set(echoed)
             self._scope_refresh_slider_label(index, echoed)
             return
@@ -494,6 +521,12 @@ class ScopePageMixin:
         scale = max(abs(sent), abs(echoed), 1.0)
         if abs(echoed - sent) <= SCOPE_ECHO_TOLERANCE * scale:
             self.scope_slider_state[index] = SCOPE_STATE_CONFIRMED
+        elif since_send < SCOPE_ECHO_GRACE_S:
+            # 刚发出去：这条旧值可能来自发送之前就已编码、还在线上的帧
+            # （数传 57600 上一帧全量刷新 137 B 要跑 24 ms）。宽限期内不判，
+            # 再等下一帧；宽限期过了还是旧值，才是固件真的拒了。
+            self._scope_refresh_slider_label(index, sent)
+            return
         else:
             # 固件钳位或拒绝了。滑块跳到固件的实际值——留在用户拖到的位置上
             # 等于让界面撒谎，而那个谎正好发生在参数没生效的时候。
@@ -648,6 +681,7 @@ class ScopePageMixin:
 
 
 __all__ = [
+    "SCOPE_ECHO_GRACE_S",
     "SCOPE_ECHO_TOLERANCE",
     "SCOPE_MAX_CURVES",
     "SCOPE_RING_CAPACITY",

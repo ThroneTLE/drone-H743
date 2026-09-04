@@ -342,7 +342,8 @@ def test_matching_echo_confirms_and_a_clamped_echo_diverges(app) -> None:
     # 固件钳位：滑块必须跳到固件的实际值，留在用户拖到的位置等于界面撒谎。
     app.scope_slider_vars[4].set(9.5)
     app._scope_send_param(4, time.monotonic())
-    app._scope_note_param_echo(4, 5.0)
+    # 宽限期（在线旧帧窗口）之后仍是旧值才判 diverged，见 test_scope_page_link_lifecycle。
+    app._scope_note_param_echo(4, 5.0, now=time.monotonic() + scope_page.SCOPE_ECHO_GRACE_S)
     assert app.scope_slider_state[4] == scope_page.SCOPE_STATE_DIVERGED
     assert app.scope_slider_vars[4].get() == pytest.approx(5.0)
 
