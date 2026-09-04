@@ -933,7 +933,10 @@ def test_panel_builds_the_reordered_v0_layout_without_connecting(
     try:
         app.update_idletasks()
         labels = [app.notebook.tab(tab_id, "text") for tab_id in app.notebook.tabs()]
-        assert labels[:4] == ["总览", "校准", "维护 · 固件升级", "传感器"]
+        # R-T1-5：状态监视工作台成为默认首页（作者裁决），排在“总览”之前。
+        assert labels[:5] == [
+            "状态监视", "总览", "校准", "维护 · 固件升级", "传感器",
+        ]
         calibration_labels = [
             app.calibration_notebook.tab(tab_id, "text")
             for tab_id in app.calibration_notebook.tabs()

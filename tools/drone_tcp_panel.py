@@ -22,7 +22,7 @@ try:
     from .panel_lib import evidence as _panel_evidence
     from .panel_lib.pages import acceptance_v2 as _panel_acceptance_v2
     from .panel_lib.pages import drift as _panel_drift
-    from .panel_lib.pages import flow_monitor as _panel_flow_monitor, scope as _panel_scope
+    from .panel_lib.pages import dashboard as _panel_dashboard, flow_monitor as _panel_flow_monitor
     from .panel_lib.pages import flow_ranging as _panel_flow
     from .panel_lib.pages import mechanical as _panel_mechanical
     from .panel_lib.pages import rc_wizard as _panel_rc
@@ -39,7 +39,7 @@ except ImportError:  # Allows direct import and: python tools/drone_tcp_panel.py
         from tools.panel_lib import evidence as _panel_evidence
         from tools.panel_lib.pages import acceptance_v2 as _panel_acceptance_v2
         from tools.panel_lib.pages import drift as _panel_drift
-        from tools.panel_lib.pages import flow_monitor as _panel_flow_monitor, scope as _panel_scope
+        from tools.panel_lib.pages import dashboard as _panel_dashboard, flow_monitor as _panel_flow_monitor
         from tools.panel_lib.pages import flow_ranging as _panel_flow
         from tools.panel_lib.pages import mechanical as _panel_mechanical
         from tools.panel_lib.pages import rc_wizard as _panel_rc
@@ -55,7 +55,7 @@ except ImportError:  # Allows direct import and: python tools/drone_tcp_panel.py
         from panel_lib import evidence as _panel_evidence
         from panel_lib.pages import acceptance_v2 as _panel_acceptance_v2
         from panel_lib.pages import drift as _panel_drift
-        from panel_lib.pages import flow_monitor as _panel_flow_monitor, scope as _panel_scope
+        from panel_lib.pages import dashboard as _panel_dashboard, flow_monitor as _panel_flow_monitor
         from panel_lib.pages import flow_ranging as _panel_flow
         from panel_lib.pages import mechanical as _panel_mechanical
         from panel_lib.pages import rc_wizard as _panel_rc
@@ -851,7 +851,7 @@ def enable_hidpi_awareness() -> float:
         return 1.0
 
 
-class DronePanel(ValidationV0PageMixin, EvidenceMixin, AcceptanceV2PageMixin, VibrationPageMixin, ServoDebugPageMixin, MechanicalPageMixin, RcWizardPageMixin, V1PageMixin, FlowRangingPageMixin, FlowMonitorPageMixin, _panel_scope.ScopePageMixin, DriftPageMixin, PanelStateMixin, ProtocolLineMixin, tk.Tk):
+class DronePanel(ValidationV0PageMixin, EvidenceMixin, AcceptanceV2PageMixin, VibrationPageMixin, ServoDebugPageMixin, MechanicalPageMixin, RcWizardPageMixin, V1PageMixin, FlowRangingPageMixin, FlowMonitorPageMixin, _panel_dashboard.DashboardPageMixin, DriftPageMixin, PanelStateMixin, ProtocolLineMixin, tk.Tk):
     def __init__(self) -> None:
         # 必须早于 super().__init__()：Tk 根窗口一旦创建，DPI 感知就无法再改。
         self.ui_dpi_scale = enable_hidpi_awareness()
@@ -1768,7 +1768,7 @@ class DronePanel(ValidationV0PageMixin, EvidenceMixin, AcceptanceV2PageMixin, Vi
         self._build_params_page(params)
         self._build_servo_page(servos)
         self._build_command_page(commands)
-        self._scope_mount(self.notebook)
+        self._dashboard_mount(self.notebook)
 
         self.log_box = ttk.LabelFrame(body, text="原始命令日志", padding=8)
         body.add(self.log_box, weight=1)
@@ -3826,7 +3826,7 @@ class DronePanel(ValidationV0PageMixin, EvidenceMixin, AcceptanceV2PageMixin, Vi
             # 监控页自己收一份：标定页那条解析是标定专用的，两边不共用状态。
             self._flow_monitor_handle_line(line)
         elif line.startswith("TELEM "):
-            self._scope_handle_line(line)
+            self._dashboard_handle_line(line)
         elif line.startswith("RANGE "):
             self._update_range_line(line)
         elif line.startswith("RCMAP "):
@@ -4537,7 +4537,7 @@ class DronePanel(ValidationV0PageMixin, EvidenceMixin, AcceptanceV2PageMixin, Vi
                 self.mechanical_last_poll = now
                 self._send_proto_silent(PROTO_REQ_SERVO_CAL, "SERVOCAL?")
         self._flow_monitor_poll_tick(now)
-        self._scope_poll_tick(now)
+        self._dashboard_poll_tick(now)
         if getattr(self, "flow_cal_collecting", False):
             if not self._transport_connected():
                 self.flow_cal_collecting = False

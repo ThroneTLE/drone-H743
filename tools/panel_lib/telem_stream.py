@@ -368,6 +368,21 @@ class TelemRing:
     def used(self, index: int) -> int:
         return int(self._used[index])
 
+    def latest(self, index: int) -> tuple[float, float] | None:
+        """最新一个样本 `(t_seconds, value)`，没有则 None。
+
+        数值卡这类只关心"现在是多少"的组件走这里，不走 `snapshot()`：后者要拷
+        整条环形缓冲（2400 个点），一屏二十张卡每 33 ms 拷一遍纯属浪费。
+        """
+        if not 0 <= index < self.channel_count:
+            return None
+        with self._lock:
+            used = int(self._used[index])
+            if used == 0:
+                return None
+            last = (int(self._head[index]) - 1) % self.capacity
+            return float(self._time[index, last]), float(self._value[index, last])
+
     def snapshot(self, index: int) -> tuple[np.ndarray, np.ndarray]:
         """按时间升序返回该通道的 (t_seconds, values) 拷贝。"""
         if not 0 <= index < self.channel_count:

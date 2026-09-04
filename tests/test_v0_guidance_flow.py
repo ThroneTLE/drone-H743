@@ -76,7 +76,7 @@ def poll_subject(
     # 需要它们存在；它们各自的行为由 test_flow_monitor_page / test_scope_page
     # 用真实 DronePanel 覆盖，不在这个纯逻辑桩里重复一遍。
     subject._flow_monitor_poll_tick = lambda _now: None
-    subject._scope_poll_tick = lambda _now: None
+    subject._dashboard_poll_tick = lambda _now: None
     return subject
 
 

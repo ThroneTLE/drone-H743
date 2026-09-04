@@ -4,7 +4,7 @@
 
 Read this shard only when you need existing behavioral/architecture coverage or must choose focused regression tests.
 
-Source snapshot: `3ff9e4adc5e7`. Indexed files: 106.
+Source snapshot: `372633095aa2`. Indexed files: 107.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -21,6 +21,8 @@ Source snapshot: `3ff9e4adc5e7`. Indexed files: 106.
 | `tests/test_coax_ctrl_contract.py` | — | `test_servo_output_compensates_90_degree_ccw_mounting`, `test_tilt_limit_is_twenty_eight_degrees_in_driver_controller`, `test_generated_controller_is_not_built_or_called` (+14) |
 | `tests/test_coax_sign_convention.py` | Sign-convention self-check for the coaxial attitude controller. This is a legacy runtime-adapter test, not the canonica… | `test_gains_are_positive_so_polarity_errors_cannot_be_masked`, `test_control_law_is_negative_feedback_by_structure`, `test_stick_polarity_lives_in_exactly_one_place` (+2) |
 | `tests/test_control_loop_blocking_contract.py` | S6 control contracts | `test_no_blocking`, `test_notice_buffer`, `test_control_split` (+3) |
+| `tests/test_dashboard_layout.py` | R-T1-5：工作台布局模型（`panel_lib/dashboard/layout.py`）。 布局规则是纯数据变换，所以这一份**不需要显示环境**：吸附、越界钳制、重叠拒绝、 序列化往返、出厂预设，全部在没有 Tk 的情况下断言。页… | `test_clamp_pulls_a_tile_back_into_the_grid`, `test_overlap_is_rejected_rather_than_pushed_aside`, `test_out_of_grid_candidates_are_rejected` (+13) |
+| `tests/test_dashboard_page.py` | R-T1-5：“状态监视”工作台页（`panel_lib/pages/dashboard.py` + `dashboard/`）。 全部用真实的 `DronePanel()` + FakeTransport 驱动，照 `test_flow… | `test_the_workbench_is_the_first_tab_and_selected_by_default`, `test_panel_entry_point_only_carries_the_mount`, `test_presets_are_available_out_of_the_box` (+37) |
 | `tests/test_data_organization.py` | — | `test_date_directory_helpers_are_sortable_and_validate_dates`, `test_organizer_groups_dated_and_undated_items`, `test_canonical_categories_have_only_date_or_classification_children` |
 | `tests/test_drone_validation_v0.py` | — | `test_snapshot_parser_requires_provenance_and_never_invents_zeroes`, `test_snapshot_parser_normalizes_target_units_without_claiming_flu`, `test_post_apply_gate_compares_canonical_accel_tilt_with_fusion` (+36) |
 | `tests/test_evidence_write_protection.py` | 历史验收证据不可变性契约。 2026-08-29 实际发生过一次证据破坏：面板启动时自动加载了 2026-08-28 的历史 验收会话，随后自动保存把 workflow.json 的 target_state_at_save（14 个键的… | `test_session_autosave_refuses_to_write_while_browsing_history`, `test_workflow_autosave_refuses_to_write_while_browsing_history`, `test_provenance_flag_lifecycle_backs_the_guard` (+1) |
@@ -89,8 +91,7 @@ Source snapshot: `3ff9e4adc5e7`. Indexed files: 106.
 | `tests/test_rc_mapping_contract.py` | — | `test_freertos_documents_fixed_elrs_channel_map`, `test_controller_uses_named_rc_channels_for_references`, `test_ch6_selects_true_attitude_debug_mode_with_twenty_degree_limit` (+6) |
 | `tests/test_rom_dfu_boot_contract.py` | Safety and reset-context contract for the STM32H743 factory USB DFU path | `test_boot_command_is_explicit_scheduled_and_safety_gated`, `test_reset_magic_moves_the_rom_jump_out_of_the_freertos_task`, `test_rom_entry_clears_interrupt_cache_and_mpu_state` (+1) |
 | `tests/test_rom_dfu_host.py` | — | `test_cli_discovery_prefers_path_and_finds_common_cubeclt_layout`, `test_v0_image_gate_accepts_only_nonempty_elf_or_hex`, `test_image_gate_rejects_wrong_elf_machine_and_out_of_flash_hex` (+8) |
-| `tests/test_scope_page.py` | R-T1-3：“示波器 / 调参”页（`panel_lib/scope.py` + `panel_lib/pages/scope.py`）。 全部用真实的 `DronePanel()` + FakeTransport 驱动，照 `test… | `test_the_page_is_mounted_as_a_real_notebook_tab`, `test_panel_entry_point_only_carries_the_mount`, `test_stream_follows_tab_visibility` (+19) |
-| `tests/test_scope_page_link_lifecycle.py` | 示波器页在链路生命周期上的两处缺陷（审核者实机复核前的复现测试）。 `test_scope_page.py` 的 FakeTransport 恒为 `is_connected = True`，所以"先开页再连线" 与"USB 拔插后重连"… | `test_stream_starts_when_the_link_comes_up_after_the_page_is_open`, `test_stream_is_re_requested_after_a_reconnect`, `test_a_stale_echo_right_after_sending_does_not_diverge` |
+| `tests/test_scope_canvas.py` | `panel_lib/scope.py` 的 `ScopeCanvas` 与 min/max 抽稀。 从 `tests/test_scope_page.py` 迁过来（R-T1-5 让 `pages/scope.py` 退役，但 **画布… | `test_min_max_decimation_keeps_the_extremes`, `test_short_series_are_not_decimated`, `test_decimation_is_safe_on_empty_input` (+1) |
 | `tests/test_sensor_biquad_contract.py` | Contract tests for the 2nd-order Butterworth sensor filter. The filter was upgraded from a 1st-order IIR because measur… | `test_filter_is_second_order_biquad`, `test_cutoffs_match_the_measured_blade_band`, `test_biquad_runtime_behaviour` (+2) |
 | `tests/test_sensor_orientation_runtime.py` | Runtime IMU orientation selection at the raw-to-airframe seam | `test_public_api_uses_one_byte_legacy_sentinel_and_stable_descriptors`, `test_runtime_applies_one_proper_rotation_after_legacy_mapping` |
 | `tests/test_service_param_background_contract.py` | — | `test_services_layer_contains_only_param_service`, `test_background_task_and_queues_are_named_as_background_not_storage`, `test_freertos_objects_are_synchronized_with_ioc` (+2) |
