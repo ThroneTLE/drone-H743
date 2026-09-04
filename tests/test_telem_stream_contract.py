@@ -731,12 +731,14 @@ def test_channel_assembly_moved_verbatim_into_the_port_module() -> None:
         "vofa_data[APP_TELEM_CH_ROLL] = msg.roll_deg;",
         "vofa_data[APP_TELEM_CH_TIME] = (float)(SVC_Timestamp_Us() / 1000ULL) * 0.001f;",
         '(void)DRV_COAX_CTRL_GetParam("coax.roll_rate_kd", &vofa_data[APP_TELEM_CH_ROLL_RATE_KD]);',
-        "vofa_data[APP_TELEM_CH_YAW_ANGLE_KP] = -vofa_data[APP_TELEM_CH_YAW_ANGLE_KP];",
+        '(void)DRV_COAX_CTRL_GetParam("coax.yaw_angle_kp", &vofa_data[APP_TELEM_CH_YAW_ANGLE_KP]);',
         "vofa_data[APP_TELEM_CH_FUSION_ACC_NORM_REJECTED] = (float)msg.fusion_accel_norm_rejected;",
     ):
         assert statement in port, statement
-    # 显示取反只对四个角度增益，速率增益不许跟着翻。
-    assert "vofa_data[APP_TELEM_CH_ROLL_RATE_KD] = -vofa_data[APP_TELEM_CH_ROLL_RATE_KD];" not in port
+    # 搬家后唯一允许的改动：删掉旧代码对四个角度增益的显示取反。遥测回显与
+    # `PARAM?`（app_control_param_to_ui_value，现为恒等）必须同口径——审核实机
+    # 复核见 test_coax_ctrl_contract.test_vofa_exports_compact_slider_parameter_feedback。
+    assert "= -vofa_data[" not in port
 
 
 def test_app_control_did_not_grow() -> None:

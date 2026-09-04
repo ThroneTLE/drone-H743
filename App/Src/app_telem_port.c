@@ -7,8 +7,9 @@
  *
  * 本文件里的采样函数 APP_TelemStream_PortSample 的函数体，是从
  * Core/Src/freertos.c 的 `VOFA_task` USER CODE 段整段搬过来的（R-T1-1）。
- * 逐条赋值语句保持原样，包括局部数组仍叫 vofa_data、以及发送前对四个增益取反
- * 让操作者看到正值这条约定——控制器内部保留实测符号，遥测只改显示。
+ * 逐条赋值语句保持原样，局部数组仍叫 vofa_data。唯一的例外是删掉了旧代码里
+ * 对四个角度增益的显示取反（原因见采样函数末尾的注释）：遥测回显与 `PARAM?`
+ * 必须是同一口径。
  */
 
 #include "app_telem_stream.h"
@@ -141,11 +142,15 @@ uint8_t APP_TelemStream_PortSample(float *values, uint32_t count)
     vofa_data[APP_TELEM_CH_FUSION_ACC_RECOVERY] = msg.fusion_acceleration_recovery_trigger;
     vofa_data[APP_TELEM_CH_FUSION_ACC_CORRECTIONS] = (float)msg.fusion_accel_correction_count;
     vofa_data[APP_TELEM_CH_FUSION_ACC_NORM_REJECTED] = (float)msg.fusion_accel_norm_rejected;
-    /* Present operator-facing gains as positive values; controller internals keep the tested signs. */
-    vofa_data[APP_TELEM_CH_YAW_ANGLE_KP] = -vofa_data[APP_TELEM_CH_YAW_ANGLE_KP];
-    vofa_data[APP_TELEM_CH_YAW_RATE_KD] = -vofa_data[APP_TELEM_CH_YAW_RATE_KD];
-    vofa_data[APP_TELEM_CH_ROLL_ANGLE_KP] = -vofa_data[APP_TELEM_CH_ROLL_ANGLE_KP];
-    vofa_data[APP_TELEM_CH_PITCH_ANGLE_KP] = -vofa_data[APP_TELEM_CH_PITCH_ANGLE_KP];
+    /*
+     * 增益通道回显的口径 = `PARAM?` 的口径 = app_control_param_to_ui_value()。
+     * 那个函数（app_control_ui_sign_for_param）如今对所有参数返回 +1：FLU 迁移后
+     * 控制器内部增益本身就是操作者看到的正值。旧 VOFA 填充里对四个角度增益取反
+     * 是更早一版符号约定的遗留，R-T1-1 逐字搬家时被一并带了过来；审核实机复核
+     * 发现 `PARAM?` 报 roll_angle_kp=+0.0671 而遥测回显 -0.0671，数据驱动的滑块
+     * （量程 0..10）拿到负值钳在 0，拖动后回显永远 diverged。两条路径必须同口径，
+     * 因此这里不再做任何符号处理（2026-09-03，审核者修复）。
+     */
 
     return 1U;
 }
