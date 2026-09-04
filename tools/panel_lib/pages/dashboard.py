@@ -128,6 +128,9 @@ class PanelTileContext(TileContext):
     def all_channels(self) -> list:
         return self.page.dashboard_schema.ordered()
 
+    def bindings_changed(self, _spec: TileSpec) -> None:
+        self.page._dashboard_bindings_changed()
+
 
 class DashboardPageMixin:
     # ------------------------------------------------------------------
@@ -463,6 +466,15 @@ class DashboardPageMixin:
 
     def _dashboard_apply_properties(self, _spec: TileSpec) -> None:
         self._dashboard_rebuild_tiles()
+        self._dashboard_send_mask()
+        self._dashboard_persist()
+
+    def _dashboard_bindings_changed(self) -> None:
+        """卡片顶部下拉直接改绑后的收敛点。
+
+        不重建整页：选择菜单正在执行时销毁它会让 Tk 丢事件。当前卡已自行 rebind，
+        页面这里只做两件必须全局一致的事——更新固件掩码和持久化用户布局。
+        """
         self._dashboard_send_mask()
         self._dashboard_persist()
 

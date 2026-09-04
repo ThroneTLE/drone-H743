@@ -409,6 +409,45 @@ def test_a_wave_tile_binds_at_most_four_channels(app) -> None:
     assert len(wave._curve_names) == 4
 
 
+def test_tile_header_pickers_choose_live_channels_update_mask_and_persist(app) -> None:
+    """不用进编辑模式：每张波形/数值卡在顶部直接按当前 schema 改绑定。"""
+    select_dashboard(app)
+    load_schema(app)
+    wave = tiles_of(app, dash_layout.TILE_WAVE)[0]
+    card = next(tile for tile in tiles_of(app, dash_layout.TILE_VALUE)
+                if tile.spec.bindings == ["flow_height"])
+
+    assert wave.channel_picker.selected == ("roll", "pitch", "yaw")
+    assert card.channel_picker.selected == ("flow_height",)
+    app.transport.lines.clear()
+
+    assert wave.channel_picker.choose(["vel_est_x", "vel_est_y", "flow_height"])
+    assert wave.spec.bindings == ["vel_est_x", "vel_est_y", "flow_height"]
+    assert set(wave._curve_names.values()) == {"vel_est_x", "vel_est_y", "flow_height"}
+    assert not wave.channel_picker.choose([
+        "roll", "pitch", "yaw", "vel_est_x", "vel_est_y",
+    ]), "波形一张最多四条，不能悄悄截断用户选择"
+    assert wave.spec.bindings == ["vel_est_x", "vel_est_y", "flow_height"]
+    assert [line for line in app.transport.lines if line.startswith("TELEM MASK ")]
+
+    app.transport.lines.clear()
+    assert card.channel_picker.choose(["yaw"])
+    assert card.spec.bindings == ["yaw"]
+    assert card.name_var.get() == "yaw"
+    assert card.unit_var.get() == "deg"
+    app._dashboard_on_binary_frame(0x2230, telem_frame({"yaw": 90.0}))
+    card.refresh()
+    assert "90" in card.value_var.get()
+    assert [line for line in app.transport.lines if line.startswith("TELEM MASK ")]
+
+    persisted = dash_layout.DashboardLayout.from_json(app._panel_state["dashboard"])
+    assert persisted is not None
+    assert persisted.workspaces[0].tiles[0].bindings == [
+        "vel_est_x", "vel_est_y", "flow_height",
+    ]
+    assert persisted.workspaces[0].tiles[3].bindings == ["yaw"]
+
+
 # ---------------------------------------------------------------- 参数滑块卡
 
 
@@ -491,7 +530,11 @@ def test_matching_echo_confirms_and_a_clamped_echo_diverges(app) -> None:
 
 
 def test_a_stale_echo_right_after_sending_does_not_diverge(app) -> None:
-    """审核者实机复现的缺陷 3：在线旧值帧把滑块拽回去。"""
+    """审核者实机复现的缺陷 3：在线旧值帧把滑块拽回去。
+
+    发送值不是飞控值。尚未有真实回显时，界面必须保持“未知”而不是拿上位机
+    刚发出去的值冒充已应用的参数。
+    """
     card = param_card(app, "roll_rate_kd")
     tracker = card.tracker
     now = time.monotonic()
@@ -499,7 +542,7 @@ def test_a_stale_echo_right_after_sending_does_not_diverge(app) -> None:
     tracker.note_sent(2.0, now)
     assert tracker.note_echo(0.5, now + 0.010) == "hold"
     assert tracker.state == dash_tiles.PARAM_STATE_PENDING
-    assert tracker.display == pytest.approx(2.0)
+    assert tracker.display is None
 
     assert tracker.note_echo(2.0, now + 0.040) == "follow"
     assert tracker.state == dash_tiles.PARAM_STATE_CONFIRMED
@@ -535,6 +578,46 @@ def test_param_card_refresh_drives_the_state_from_telemetry(app) -> None:
     card.refresh()
     assert card.state_var.get() == dash_tiles.PARAM_STATE_CONFIRMED
     assert "2.5" in card.value_var.get()
+
+
+def test_param_card_marks_only_a_flight_controller_echo_green(app) -> None:
+    """绿色只能由遥测回显触发，不能由本机 send_param 成功触发。"""
+    card = param_card(app, "roll_rate_kd")
+    app._dashboard_on_binary_frame(0x2230, telem_frame({"roll_rate_kd": 1.0}))
+    card.refresh()
+
+    card.scale_var.set(2.5)
+    card._on_release()
+    assert card.state_var.get() == dash_tiles.PARAM_STATE_PENDING
+    # 大字继续展示已回显的 1.0，不能展示刚发送、尚未证实的 2.5。
+    assert float(card.value_var.get()) == pytest.approx(1.0)
+    assert card.feedback_var.get() == "等待飞控回显"
+    assert card.feedback_dot.itemcget(card._feedback_dot, "fill") == (
+        dash_tiles.PARAM_FEEDBACK_PENDING_COLOUR
+    )
+
+    app._dashboard_on_binary_frame(0x2230, telem_frame({"roll_rate_kd": 2.5}))
+    card.refresh()
+    assert card.state_var.get() == dash_tiles.PARAM_STATE_CONFIRMED
+    assert card.feedback_var.get() == "飞控已回显"
+    assert card.feedback_dot.itemcget(card._feedback_dot, "fill") == (
+        dash_tiles.PARAM_FEEDBACK_CONFIRMED_COLOUR
+    )
+
+
+def test_param_card_marks_a_missing_echo_red_without_claiming_the_sent_value(app) -> None:
+    card = param_card(app, "roll_rate_kd")
+    tracker = card.tracker
+    assert tracker is not None
+    tracker.note_sent(2.5, time.monotonic() - dash_tiles.PARAM_ECHO_TIMEOUT_S - 0.01)
+
+    card.refresh()
+    assert card.state_var.get() == dash_tiles.PARAM_STATE_DIVERGED
+    assert card.feedback_var.get() == "未收到飞控回显"
+    assert card.feedback_dot.itemcget(card._feedback_dot, "fill") == (
+        dash_tiles.PARAM_FEEDBACK_DIVERGED_COLOUR
+    )
+    assert card.value_var.get() == "—"
 
 
 # ---------------------------------------------------------------- 编辑模式

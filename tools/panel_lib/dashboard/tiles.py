@@ -17,6 +17,7 @@ import tkinter.font as tkfont
 from tkinter import ttk
 
 from ..scope import SCOPE_PALETTE, SCOPE_WINDOW_CHOICES_S, ScopeCanvas
+from .channel_picker import ChannelPicker
 from .layout import (
     TILE_PARAM,
     TILE_VALUE,
@@ -38,10 +39,36 @@ PARAM_ECHO_TOLERANCE = 1e-4
 # 这条是审核者在实机上抓到的竞态（滑块被旧值拽回），不是理论余量。
 PARAM_ECHO_GRACE_S = 0.10
 
+# 若整整一段遥测窗口都没有拿到参数回显，不能继续把 pending 当成“可能已经
+# 应用”。这里取 0.75 s：远大于数传一帧+调度抖动，却足够让调参时的红灯及时提醒。
+PARAM_ECHO_TIMEOUT_S = 0.75
+
 PARAM_STATE_IDLE = "idle"
 PARAM_STATE_PENDING = "pending"
 PARAM_STATE_CONFIRMED = "confirmed"
 PARAM_STATE_DIVERGED = "diverged"
+
+# 不用只给文本染色：原生 ttk.Scale 在部分 Windows 主题下会忽略 trough 颜色，
+# 所以旁边的 Canvas 色点是确定可见的反馈证据。绿只代表收到匹配的飞控遥测回显，
+# 红代表不一致或超时无回显，黄是尚未判定。
+PARAM_FEEDBACK_IDLE_COLOUR = "#7c8b99"
+PARAM_FEEDBACK_PENDING_COLOUR = "#e0a84c"
+PARAM_FEEDBACK_CONFIRMED_COLOUR = "#57c78b"
+PARAM_FEEDBACK_DIVERGED_COLOUR = "#ef6b73"
+
+PARAM_FEEDBACK_TEXT = {
+    PARAM_STATE_IDLE: "等待飞控数据",
+    PARAM_STATE_PENDING: "等待飞控回显",
+    PARAM_STATE_CONFIRMED: "飞控已回显",
+    PARAM_STATE_DIVERGED: "未收到飞控回显",
+}
+
+PARAM_SCALE_STYLES = {
+    PARAM_STATE_IDLE: "DashParamIdle.Horizontal.TScale",
+    PARAM_STATE_PENDING: "DashParamPending.Horizontal.TScale",
+    PARAM_STATE_CONFIRMED: "DashParamConfirmed.Horizontal.TScale",
+    PARAM_STATE_DIVERGED: "DashParamDiverged.Horizontal.TScale",
+}
 
 WAVE_MAX_BINDINGS = 4
 
@@ -92,6 +119,14 @@ def ensure_dashboard_styles(widget: tk.Misc) -> None:
         if foreground:
             options["foreground"] = foreground
         style.configure(name, **options)
+    for state, colour in (
+        (PARAM_STATE_IDLE, PARAM_FEEDBACK_IDLE_COLOUR),
+        (PARAM_STATE_PENDING, PARAM_FEEDBACK_PENDING_COLOUR),
+        (PARAM_STATE_CONFIRMED, PARAM_FEEDBACK_CONFIRMED_COLOUR),
+        (PARAM_STATE_DIVERGED, PARAM_FEEDBACK_DIVERGED_COLOUR),
+    ):
+        # 色点负责跨主题的确定性可见性；这里同时尽力给滑块槽/拇指上色。
+        style.configure(PARAM_SCALE_STYLES[state], background=colour, troughcolor=colour)
     _STYLES_READY = True
 
 
@@ -118,6 +153,10 @@ class TileContext:
 
     def all_channels(self) -> list:
         """当前通道表的全部通道，按索引升序。"""
+        raise NotImplementedError
+
+    def bindings_changed(self, spec: TileSpec) -> None:
+        """组件从自身下拉框改绑后，由页面重算 MASK 并持久化布局。"""
         raise NotImplementedError
 
 
@@ -149,7 +188,18 @@ class ParamEchoTracker:
         self.sent = float(value)
         self.last_send = now
         self.state = PARAM_STATE_PENDING
-        self.display = float(value)
+        # 不把“PC 已发出”伪装成“飞控已应用”。display 只由 note_echo 写入，
+        # 因而大字始终是最后一条真实遥测回显（或尚未知的空值）。
+
+    def expire_if_needed(self, now: float) -> bool:
+        """回显超时后进入红色状态，返回本次是否刚发生状态翻转。"""
+        if (
+            self.state == PARAM_STATE_PENDING
+            and (now - self.last_send) >= PARAM_ECHO_TIMEOUT_S
+        ):
+            self.state = PARAM_STATE_DIVERGED
+            return True
+        return False
 
     def note_echo(self, echoed: float, now: float) -> str:
         """喂一个固件回显值，返回处理动作。
@@ -163,6 +213,12 @@ class ParamEchoTracker:
                 # 用户还在拖：这时把控件拽回固件上一拍的值，手感就是往回蹦。
                 return "hold"
             self.display = float(echoed)
+            # 一个迟到但匹配的真实回显可以把“超时未回显”翻回绿色；若还不匹配，
+            # 红色继续保留，显示的仍是飞控实际值而不是用户输入。
+            if self.state == PARAM_STATE_DIVERGED and self.sent is not None:
+                scale = max(abs(self.sent), abs(echoed), 1.0)
+                if abs(echoed - self.sent) <= PARAM_ECHO_TOLERANCE * scale:
+                    self.state = PARAM_STATE_CONFIRMED
             return "follow"
 
         scale = max(abs(self.sent), abs(echoed), 1.0)
@@ -236,6 +292,12 @@ class DashboardTile:
             return " / ".join(self.spec.bindings)
         return self.LABEL
 
+    def _set_bindings_from_picker(self, bindings: tuple[str, ...]) -> None:
+        """把卡片内下拉的选择原子写回布局，再让页面收敛掩码和持久化。"""
+        self.spec.bindings = list(bindings)
+        self.rebind()
+        self.context.bindings_changed(self.spec)
+
 
 class WaveTile(DashboardTile):
     """波形：1~4 通道共用一张画布，自己的 Y 量程与时间窗口。
@@ -257,6 +319,16 @@ class WaveTile(DashboardTile):
         header.pack(fill=tk.X)
         self.title_var = tk.StringVar(value=self.title())
         ttk.Label(header, textvariable=self.title_var, style="Eyebrow.TLabel").pack(side=tk.LEFT)
+
+        # 曲线选择留在卡片顶部：用户调试时无需进入编辑模式或翻属性对话框。菜单
+        # 是多选，但最大四条，沿用 ScopeCanvas 的可读性上限。
+        self.channel_picker = ChannelPicker(
+            header, bindings=self.spec.bindings, multiple=True,
+            min_selected=self.MIN_BINDINGS, max_selected=self.MAX_BINDINGS,
+            empty_text="选择数据", on_change=self._set_bindings_from_picker,
+            width=20,
+        )
+        self.channel_picker.pack(side=tk.RIGHT, padx=(0, 8))
 
         self.window_var = tk.StringVar(
             value=str(self.spec.options.get("window_s", 10))
@@ -300,6 +372,9 @@ class WaveTile(DashboardTile):
     def rebind(self) -> None:
         super().rebind()
         self.title_var.set(self.title())
+        self.channel_picker.set_channels(
+            self.context.all_channels(), selected=self.spec.bindings
+        )
         for child in self.legend.winfo_children():
             child.destroy()
         self.legend_vars = {}
@@ -362,7 +437,18 @@ class ValueTile(DashboardTile):
         self.name_var = tk.StringVar(value=self.title())
         self.value_var = tk.StringVar(value="—")
         self.unit_var = tk.StringVar(value="")
-        ttk.Label(self.frame, textvariable=self.name_var, style="Eyebrow.TLabel").pack(anchor=tk.W)
+        header = ttk.Frame(self.frame)
+        header.pack(fill=tk.X)
+        ttk.Label(header, textvariable=self.name_var, style="Eyebrow.TLabel").pack(side=tk.LEFT)
+        # 数值卡保留一个标量的大字号可读性，因此是单选；每张固定卡都能从当前
+        # schema 自由换成任意收到的通道。
+        self.channel_picker = ChannelPicker(
+            header, bindings=self.spec.bindings, multiple=False,
+            min_selected=self.MIN_BINDINGS, max_selected=self.MAX_BINDINGS,
+            empty_text="选择数据", on_change=self._set_bindings_from_picker,
+            width=16,
+        )
+        self.channel_picker.pack(side=tk.RIGHT)
         row = ttk.Frame(self.frame)
         row.pack(fill=tk.BOTH, expand=True)
         self.value_label = ttk.Label(row, textvariable=self.value_var, style=DASH_METRIC_STYLE)
@@ -374,6 +460,14 @@ class ValueTile(DashboardTile):
     def rebind(self) -> None:
         super().rebind()
         self.name_var.set(self.title())
+        self.channel_picker.set_channels(
+            self.context.all_channels(), selected=self.spec.bindings
+        )
+        if not self.spec.bindings:
+            self.value_var.set("选择数据")
+            self.unit_var.set("")
+            self.value_label.configure(style=DASH_METRIC_WARN_STYLE)
+            return
         if self.missing:
             self.value_var.set(MISSING_CHANNEL_TEXT)
             self.unit_var.set("")
@@ -430,6 +524,7 @@ class ParamTile(DashboardTile):
         self.name_var = tk.StringVar(value=self.title())
         self.value_var = tk.StringVar(value="—")
         self.state_var = tk.StringVar(value=PARAM_STATE_IDLE)
+        self.feedback_var = tk.StringVar(value=PARAM_FEEDBACK_TEXT[PARAM_STATE_IDLE])
         self.entry_var = tk.StringVar(value="")
         self.scale_var = tk.DoubleVar(value=0.0)
 
@@ -438,15 +533,30 @@ class ParamTile(DashboardTile):
         head.pack(fill=tk.X)
         self.value_label = ttk.Label(head, textvariable=self.value_var, style=DASH_METRIC_STYLE)
         self.value_label.pack(side=tk.LEFT)
-        ttk.Label(head, textvariable=self.state_var, style="Muted.TLabel").pack(
-            side=tk.LEFT, anchor=tk.S, padx=(6, 0)
+        feedback = ttk.Frame(head)
+        feedback.pack(side=tk.LEFT, anchor=tk.S, padx=(8, 0))
+        style = ttk.Style(self.frame)
+        background = (
+            style.lookup("Card.TFrame", "background")
+            or style.lookup("TFrame", "background")
+            or "#202733"
         )
+        self.feedback_dot = tk.Canvas(
+            feedback, width=10, height=10, highlightthickness=0, borderwidth=0,
+            background=background,
+        )
+        self._feedback_dot = self.feedback_dot.create_oval(
+            1, 1, 9, 9, fill=PARAM_FEEDBACK_IDLE_COLOUR, outline=""
+        )
+        self.feedback_dot.pack(side=tk.LEFT, padx=(0, 3))
+        ttk.Label(feedback, textvariable=self.feedback_var, style="Muted.TLabel").pack(side=tk.LEFT)
 
         row = ttk.Frame(self.frame)
         row.pack(fill=tk.X, pady=(2, 0))
         self.scale = ttk.Scale(
             row, from_=0.0, to=1.0, variable=self.scale_var, orient=tk.HORIZONTAL,
             command=lambda _value: self._on_drag(),
+            style=PARAM_SCALE_STYLES[PARAM_STATE_IDLE],
         )
         self.scale.pack(side=tk.LEFT, fill=tk.X, expand=True)
         self.scale.bind("<ButtonRelease-1>", lambda _event: self._on_release())
@@ -461,6 +571,8 @@ class ParamTile(DashboardTile):
         if self.missing or not self.spec.bindings:
             self.value_var.set(MISSING_CHANNEL_TEXT)
             self.value_label.configure(style=DASH_METRIC_FAIL_STYLE)
+            self.state_var.set(PARAM_STATE_DIVERGED)
+            self._set_feedback_visual(PARAM_STATE_DIVERGED, "通道不存在")
             self.scale.state(["disabled"])
             self.entry.state(["disabled"])
             return
@@ -468,9 +580,9 @@ class ParamTile(DashboardTile):
         self.scale.configure(from_=channel.minimum, to=channel.maximum)
         self.scale.state(["!disabled"])
         self.entry.state(["!disabled"])
-        self.value_label.configure(style=DASH_METRIC_STYLE)
         if self.value_var.get() == MISSING_CHANNEL_TEXT:
             self.value_var.set("—")
+        self._render()
 
     @property
     def tracker(self) -> ParamEchoTracker | None:
@@ -514,7 +626,7 @@ class ParamTile(DashboardTile):
         if not self.context.send_param(name, value):
             return
         tracker.note_sent(value, now)
-        self._render(value)
+        self._render()
 
     def _sync_entry(self) -> None:
         tracker = self.tracker
@@ -525,24 +637,39 @@ class ParamTile(DashboardTile):
         tracker = self.tracker
         if tracker is None:
             return
+        now = time.monotonic()
         latest = self.context.latest(self.spec.bindings[0])
         if latest is not None:
-            action = tracker.note_echo(latest, time.monotonic())
-            if action == "follow":
+            action = tracker.note_echo(latest, now)
+            if action == "follow" and tracker.display is not None:
                 self.scale_var.set(tracker.display)
-        if tracker.display is not None:
-            self._render(tracker.display)
+        else:
+            tracker.expire_if_needed(now)
+        self._render()
 
-    def _render(self, value: float) -> None:
+    def _set_feedback_visual(self, state: str, text: str | None = None) -> None:
+        colour = {
+            PARAM_STATE_IDLE: PARAM_FEEDBACK_IDLE_COLOUR,
+            PARAM_STATE_PENDING: PARAM_FEEDBACK_PENDING_COLOUR,
+            PARAM_STATE_CONFIRMED: PARAM_FEEDBACK_CONFIRMED_COLOUR,
+            PARAM_STATE_DIVERGED: PARAM_FEEDBACK_DIVERGED_COLOUR,
+        }.get(state, PARAM_FEEDBACK_IDLE_COLOUR)
+        self.feedback_dot.itemconfigure(self._feedback_dot, fill=colour)
+        self.feedback_var.set(text or PARAM_FEEDBACK_TEXT.get(state, "等待飞控数据"))
+        self.scale.configure(style=PARAM_SCALE_STYLES.get(state, PARAM_SCALE_STYLES[PARAM_STATE_IDLE]))
+
+    def _render(self) -> None:
         tracker = self.tracker
         state = tracker.state if tracker is not None else PARAM_STATE_IDLE
-        self.value_var.set(f"{value:.4g}")
+        value = tracker.display if tracker is not None else None
+        self.value_var.set("—" if value is None else f"{value:.4g}")
         self.state_var.set(state)
+        self._set_feedback_visual(state)
         self.value_label.configure(style={
             PARAM_STATE_CONFIRMED: DASH_METRIC_PASS_STYLE,
             PARAM_STATE_DIVERGED: DASH_METRIC_FAIL_STYLE,
         }.get(state, DASH_METRIC_STYLE))
-        if self.entry is not self.frame.focus_get():
+        if value is not None and self.entry is not self.frame.focus_get():
             self.entry_var.set(f"{value:.6g}")
 
 
@@ -574,7 +701,13 @@ __all__ = [
     "DASH_METRIC_WARN_STYLE",
     "MISSING_CHANNEL_TEXT",
     "PARAM_ECHO_GRACE_S",
+    "PARAM_ECHO_TIMEOUT_S",
     "PARAM_ECHO_TOLERANCE",
+    "PARAM_FEEDBACK_CONFIRMED_COLOUR",
+    "PARAM_FEEDBACK_DIVERGED_COLOUR",
+    "PARAM_FEEDBACK_IDLE_COLOUR",
+    "PARAM_FEEDBACK_PENDING_COLOUR",
+    "PARAM_FEEDBACK_TEXT",
     "PARAM_STATE_CONFIRMED",
     "PARAM_STATE_DIVERGED",
     "PARAM_STATE_IDLE",
