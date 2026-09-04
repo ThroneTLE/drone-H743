@@ -651,6 +651,188 @@ def test_restore_presets_puts_the_factory_layout_back(app) -> None:
     assert len(app.dashboard_tiles) == len(dash_layout.flight_monitor_workspace().tiles)
 
 
+# ---------------------------------------------------------------- R-T1-5b 第二批组件
+
+
+SECOND_BATCH_TYPES = (
+    dash_layout.TILE_GAUGE,
+    dash_layout.TILE_BUTTON,
+    dash_layout.TILE_ATTITUDE,
+    dash_layout.TILE_CHANNELS,
+)
+
+
+def add_dashboard_tile(app, tile_type: str, bindings: list[str] | None = None,
+                       options: dict | None = None):
+    """走真实页面的新增/改绑/重建路径，不手搓 widget。"""
+    spec = app._dashboard_add_tile(tile_type)
+    assert spec is not None
+    spec.bindings = list(bindings or [])
+    spec.options.update(options or {})
+    app._dashboard_apply_properties(spec)
+    return next(tile for tile in app.dashboard_tiles if tile.spec is spec)
+
+
+def test_second_batch_components_are_registered_and_appear_in_the_add_menu(app) -> None:
+    """未 import 就不会执行 register_tile，菜单会静默少掉整批组件。"""
+    assert set(SECOND_BATCH_TYPES) <= set(dash_tiles.TILE_CLASSES)
+    menu = app.dashboard_add_menu
+    labels = [menu.entrycget(index, "label") for index in range(menu.index("end") + 1)]
+    for tile_type in SECOND_BATCH_TYPES:
+        assert dash_tiles.TILE_CLASSES[tile_type].LABEL in labels
+
+
+def test_extra_tiles_add_bind_and_persist_through_the_real_dashboard(app) -> None:
+    """四种第二批 tile 都能新增、改绑（需要绑定的）并随面板状态往返。"""
+    load_schema(app)
+    gauge = add_dashboard_tile(app, dash_layout.TILE_GAUGE, ["flow_height"])
+    button = add_dashboard_tile(
+        app, dash_layout.TILE_BUTTON,
+        options={"label": "清零", "command": "FLOW ZERO"},
+    )
+    attitude = add_dashboard_tile(app, dash_layout.TILE_ATTITUDE, ["roll", "pitch", "yaw"])
+    channels = add_dashboard_tile(app, dash_layout.TILE_CHANNELS)
+
+    assert gauge.spec.colspan == 3 and gauge.spec.rowspan == 3
+    assert button.spec.colspan == 3 and button.spec.rowspan == 1
+    assert attitude.spec.colspan == 4 and attitude.spec.rowspan == 4
+    assert channels.spec.colspan == 4 and channels.spec.rowspan == 6
+
+    app._dashboard_persist()
+    restored = dash_layout.DashboardLayout.from_json(app._panel_state["dashboard"])
+    assert restored is not None
+    persisted = {tile.type: tile for tile in restored.workspaces[0].tiles}
+    assert persisted[dash_layout.TILE_GAUGE].bindings == ["flow_height"]
+    assert persisted[dash_layout.TILE_BUTTON].options["command"] == "FLOW ZERO"
+    assert persisted[dash_layout.TILE_ATTITUDE].bindings == ["roll", "pitch", "yaw"]
+    assert persisted[dash_layout.TILE_CHANNELS].bindings == []
+
+
+def test_gauge_uses_channel_table_range_and_accepts_an_empty_new_card(app) -> None:
+    load_schema(app)
+    # "添加组件"必然先创建空绑定卡；这里不能因为 `[0]` 崩掉，属性对话框才有机会
+    # 让用户选择通道。
+    gauge = add_dashboard_tile(app, dash_layout.TILE_GAUGE)
+    assert "请选择" in gauge.value_var.get()
+
+    gauge.spec.bindings = ["flow_height"]
+    app._dashboard_apply_properties(gauge.spec)
+    gauge = next(tile for tile in tiles_of(app, dash_layout.TILE_GAUGE))
+    assert gauge.canvas.itemcget(gauge._low, "text") == "0"
+    assert gauge.canvas.itemcget(gauge._high, "text") == "5"
+
+    app._dashboard_on_binary_frame(0x2230, telem_frame({"flow_height": 0.612}))
+    gauge.refresh()
+    assert "0.612" in gauge.value_var.get()
+    assert abs(float(gauge.canvas.itemcget(gauge._value_arc, "extent"))) > 0.0
+
+
+def test_command_button_uses_the_existing_validation_gate_for_push_and_toggle(app,
+                                                                                monkeypatch) -> None:
+    """组件绝不能直接拿 transport；拒绝时一条命令都不许出面板。"""
+    load_schema(app)
+    button = add_dashboard_tile(
+        app, dash_layout.TILE_BUTTON,
+        options={"label": "清零", "command": "FLOW ZERO"},
+    )
+    checks: list[str] = []
+    monkeypatch.setattr(
+        app, "_validation_command_allowed",
+        lambda command: checks.append(command) or command != "FLOW ZERO",
+    )
+    app.transport.lines.clear()
+    button._on_click()
+    assert checks == ["FLOW ZERO"]
+    assert app.transport.lines == []
+    assert button.state_var.get().startswith("已拦截")
+
+    button.spec.options.update({
+        "mode": "toggle", "command_on": "TELEM STREAM on", "command_off": "TELEM STREAM off",
+    })
+    app._dashboard_apply_properties(button.spec)
+    button = next(tile for tile in tiles_of(app, dash_layout.TILE_BUTTON))
+    monkeypatch.setattr(app, "_validation_command_allowed", lambda _command: True)
+    # 属性应用会按新工作区重发掩码；后面只核对按钮自身实际发送的两条命令。
+    app.transport.lines.clear()
+    button._on_click()
+    button._on_click()
+    assert app.transport.lines == ["TELEM STREAM on", "TELEM STREAM off"]
+
+
+def test_button_properties_expose_all_command_options(app) -> None:
+    """不能只在 TileSpec 里藏字段；用户必须能在真实属性框填写按钮/开关命令。"""
+    load_schema(app)
+    spec = dash_layout.TileSpec(dash_layout.TILE_BUTTON)
+    applied: list[dash_layout.TileSpec] = []
+    dialog = dashboard_page.TilePropertiesDialog(
+        app.dashboard_tab, spec, channels=app.dashboard_schema.ordered(),
+        tile_classes=dash_tiles.TILE_CLASSES, on_apply=applied.append,
+    )
+    dialog.update_idletasks()
+    assert {"label", "command", "command_on", "command_off", "mode"} <= set(dialog.option_vars)
+    dialog.option_vars["label"].set("光流清零")
+    dialog.option_vars["command"].set("FLOW ZERO")
+    dialog.option_vars["command_on"].set("TELEM STREAM on")
+    dialog.option_vars["command_off"].set("TELEM STREAM off")
+    dialog.option_vars["mode"].set("toggle")
+    dialog._apply()
+
+    assert applied == [spec]
+    assert spec.options == {
+        "label": "光流清零",
+        "command": "FLOW ZERO",
+        "command_on": "TELEM STREAM on",
+        "command_off": "TELEM STREAM off",
+        "mode": "toggle",
+    }
+
+
+def test_attitude_and_channel_list_render_live_schema_values(app) -> None:
+    load_schema(app)
+    add_dashboard_tile(app, dash_layout.TILE_ATTITUDE, ["roll", "pitch", "yaw"])
+    channels = add_dashboard_tile(app, dash_layout.TILE_CHANNELS)
+    # 第二次新增会整页重建，前一张卡的 Tk 控件已销毁；取回当前实例再刷新。
+    attitude = next(tile for tile in tiles_of(app, dash_layout.TILE_ATTITUDE))
+    assert channels.tree.item("roll", "text") == "roll"
+    assert channels.tree.item("roll", "image"), "每行需要带一个彩色点图片"
+    assert "roll" in channels._colour_dots, "必须持有图片引用，避免 Tk GC 后颜色点消失"
+
+    app._dashboard_on_binary_frame(
+        0x2230, telem_frame({"roll": 12.5, "pitch": -3.0, "yaw": 90.0})
+    )
+    attitude.refresh()
+    channels._last_refresh = 0.0
+    channels.refresh()
+    assert "roll +12.5" in attitude.readout_var.get()
+    assert channels.tree.set("roll", "value") == "+12.5"
+    assert len(attitude.canvas.coords(attitude._horizon)) == 4
+    assert len(attitude.canvas.coords(attitude._compass)) == 4
+
+
+def test_layout_json_import_export_round_trip_and_rejects_bad_input(app, tmp_path, monkeypatch) -> None:
+    """导入/导出走 UI 的文件选择路径，坏 JSON 不能毁掉当前工作区。"""
+    load_schema(app)
+    add_dashboard_tile(app, dash_layout.TILE_GAUGE, ["flow_height"])
+    layout_path = tmp_path / "状态监视布局.json"
+    monkeypatch.setattr(
+        dashboard_page.filedialog, "asksaveasfilename", lambda **_kwargs: str(layout_path)
+    )
+    app._dashboard_export_layout()
+    exported = layout_path.read_text(encoding="utf-8")
+    assert dash_layout.DashboardLayout.loads(exported) is not None
+
+    app.dashboard_layout.active_workspace().tiles.clear()
+    app._dashboard_rebuild_tiles()
+    monkeypatch.setattr(
+        dashboard_page.filedialog, "askopenfilename", lambda **_kwargs: str(layout_path)
+    )
+    app._dashboard_import_layout()
+    assert any(tile.spec.type == dash_layout.TILE_GAUGE for tile in app.dashboard_tiles)
+    before = app.dashboard_layout.dumps()
+    assert not app._dashboard_import_layout_text("{not json")
+    assert app.dashboard_layout.dumps() == before
+
+
 # ---------------------------------------------------------------- 统计与录制
 
 

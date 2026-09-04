@@ -24,11 +24,15 @@ import time
 import tkinter as tk
 from collections import deque
 from datetime import datetime
-from tkinter import ttk
+from pathlib import Path
+from tkinter import filedialog, ttk
 
 import numpy as np
 
 from ..dashboard.editor import DashboardEditor, TilePropertiesDialog
+# R-T1-5b 的组件通过注册表接入。把副作用 import 放在页面边界，而不是
+# dashboard 包的 __init__：layout.py 仍可在没有 Tk 的环境里单独使用和测试。
+from ..dashboard import tiles_extra as _tiles_extra  # noqa: F401
 from ..dashboard.layout import (
     CARD_COLSPAN,
     CARD_ROWSPAN,
@@ -120,6 +124,9 @@ class PanelTileContext(TileContext):
 
     def send_command(self, text: str) -> bool:
         return self.page._dashboard_send_command(text)
+
+    def all_channels(self) -> list:
+        return self.page.dashboard_schema.ordered()
 
 
 class DashboardPageMixin:
@@ -213,6 +220,10 @@ class DashboardPageMixin:
                    style="Secondary.TButton").pack(side=tk.RIGHT, padx=(6, 0))
         ttk.Button(bar, text="恢复预设", command=self._dashboard_restore_presets,
                    style="Secondary.TButton").pack(side=tk.RIGHT, padx=(6, 0))
+        ttk.Button(bar, text="导出布局", command=self._dashboard_export_layout,
+                   style="Secondary.TButton").pack(side=tk.RIGHT, padx=(6, 0))
+        ttk.Button(bar, text="导入布局", command=self._dashboard_import_layout,
+                   style="Secondary.TButton").pack(side=tk.RIGHT, padx=(6, 0))
         self.dashboard_add_button = ttk.Menubutton(bar, text="添加组件",
                                                    style="Secondary.TButton")
         menu = tk.Menu(self.dashboard_add_button, tearoff=False)
@@ -272,6 +283,59 @@ class DashboardPageMixin:
             self._save_panel_state()
         except Exception:       # pragma: no cover - 落盘失败不该带走界面
             pass
+
+    def _dashboard_export_layout_text(self) -> str:
+        """导出可读 JSON 的纯入口，便于测试且不把文件对话框混进模型。"""
+        return self.dashboard_layout.dumps()
+
+    def _dashboard_import_layout_text(self, text: str) -> bool:
+        """接收用户导出的 JSON；坏文件保持当前布局原样不动。"""
+        restored = DashboardLayout.loads(text)
+        if restored is None:
+            self.dashboard_hint_var.set("布局 JSON 无效，未导入")
+            return False
+        self.dashboard_layout = restored
+        self.dashboard_workspace_var.set(restored.active)
+        self._dashboard_rebuild_workspace_bar()
+        self._dashboard_rebuild_tiles()
+        # 导入可能换了工作区和绑定，必须立即收敛到新掩码，不能让旧布局继续
+        # 占数传带宽。
+        self._dashboard_send_mask()
+        self._dashboard_persist()
+        self.dashboard_hint_var.set("布局已导入")
+        return True
+
+    def _dashboard_export_layout(self) -> None:
+        """把布局写到用户明确选择的位置；不是证据数据，不落到 data/。"""
+        selected = filedialog.asksaveasfilename(
+            parent=self.dashboard_tab,
+            title="导出状态监视布局",
+            defaultextension=".json",
+            filetypes=(("JSON 布局", "*.json"), ("所有文件", "*.*")),
+        )
+        if not selected:
+            return
+        try:
+            Path(selected).write_text(self._dashboard_export_layout_text(), encoding="utf-8")
+        except OSError as exc:
+            self.dashboard_hint_var.set(f"布局导出失败：{exc}")
+            return
+        self.dashboard_hint_var.set(f"已导出布局：{Path(selected).name}")
+
+    def _dashboard_import_layout(self) -> None:
+        selected = filedialog.askopenfilename(
+            parent=self.dashboard_tab,
+            title="导入状态监视布局",
+            filetypes=(("JSON 布局", "*.json"), ("所有文件", "*.*")),
+        )
+        if not selected:
+            return
+        try:
+            text = Path(selected).read_text(encoding="utf-8")
+        except OSError as exc:
+            self.dashboard_hint_var.set(f"布局导入失败：{exc}")
+            return
+        self._dashboard_import_layout_text(text)
 
     def _dashboard_rebuild_workspace_bar(self) -> None:
         bar = self.dashboard_workspace_bar
@@ -372,7 +436,7 @@ class DashboardPageMixin:
         if factory is None:
             return None
         specs = self._dashboard_specs()
-        colspan, rowspan = (CARD_COLSPAN, CARD_ROWSPAN)
+        colspan, rowspan = getattr(factory, "DEFAULT_SPAN", (CARD_COLSPAN, CARD_ROWSPAN))
         col, row = find_free_slot(specs, colspan, rowspan)
         spec = TileSpec(tile_type, col, row, colspan, rowspan, [], {})
         specs.append(spec)

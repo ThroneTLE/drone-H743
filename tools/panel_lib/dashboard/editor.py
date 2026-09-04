@@ -17,6 +17,7 @@ from .layout import TileSpec, can_place, clamp_tile
 
 
 EDIT_HANDLE_SIZE = 14
+BUTTON_MODE_VALUES = ("push", "toggle")
 
 
 class TileOverlay:
@@ -205,6 +206,7 @@ class TilePropertiesDialog(tk.Toplevel):
 
         body = ttk.Frame(self, padding=12)
         body.pack(fill=tk.BOTH, expand=True)
+        body.columnconfigure(1, weight=1)
 
         ttk.Label(body, text="类型").grid(row=0, column=0, sticky=tk.W, pady=3)
         self.type_var = tk.StringVar(value=spec.type)
@@ -213,7 +215,7 @@ class TilePropertiesDialog(tk.Toplevel):
             values=sorted(tile_classes),
         )
         self.type_box.grid(row=0, column=1, sticky=tk.EW, pady=3)
-        self.type_box.bind("<<ComboboxSelected>>", lambda _e: self._refresh_channels())
+        self.type_box.bind("<<ComboboxSelected>>", self._on_type_changed)
 
         ttk.Label(body, text="标题").grid(row=1, column=0, sticky=tk.W, pady=3)
         self.title_var = tk.StringVar(value=str(spec.options.get("title", "")))
@@ -226,41 +228,128 @@ class TilePropertiesDialog(tk.Toplevel):
                                        exportselection=False)
         self.channel_list.grid(row=2, column=1, sticky=tk.EW, pady=3)
 
+        self.options_frame = ttk.Frame(body)
+        self.options_frame.grid(row=3, column=0, columnspan=2, sticky=tk.EW)
+        self.options_frame.columnconfigure(1, weight=1)
+        # 测试和调用方可以通过这个字典访问**当前类型**的可编辑选项；切换类型
+        # 时它会整体重建，旧类型的字段绝不会伪装成新类型的配置。
+        self.option_vars: dict[str, tk.StringVar] = {}
+        self.option_widgets: dict[str, tk.Widget] = {}
+
         self.hint_var = tk.StringVar(value="")
         ttk.Label(body, textvariable=self.hint_var, style="Muted.TLabel",
-                  wraplength=260).grid(row=3, column=0, columnspan=2, sticky=tk.W)
+                  wraplength=260).grid(row=4, column=0, columnspan=2, sticky=tk.W)
 
         buttons = ttk.Frame(body)
-        buttons.grid(row=4, column=0, columnspan=2, sticky=tk.E, pady=(10, 0))
+        buttons.grid(row=5, column=0, columnspan=2, sticky=tk.E, pady=(10, 0))
         ttk.Button(buttons, text="取消", command=self.destroy).pack(side=tk.RIGHT)
         ttk.Button(buttons, text="应用", command=self._apply).pack(side=tk.RIGHT, padx=(0, 6))
 
-        self._refresh_channels()
+        self._refresh_for_type()
+
+    def _factory(self):
+        return self.tile_classes.get(self.type_var.get())
+
+    @staticmethod
+    def _option_fields(factory) -> tuple[tuple[str, str], ...]:
+        """标准化 tile 声明的可编辑选项。
+
+        ``OPTION_FIELDS`` 是 tile 的唯一声明点。对话框不再维护一张会随组件增长
+        而过期的字段表；第二批组件或以后新增组件只要声明这个属性即可进入编辑器。
+        """
+        if factory is None:
+            return ()
+        return tuple(getattr(factory, "OPTION_FIELDS", ()))
+
+    @staticmethod
+    def _is_button_mode(factory, key: str) -> bool:
+        return key == "mode" and getattr(factory, "TYPE", None) == "button"
+
+    def _all_type_option_keys(self) -> set[str]:
+        """返回所有已知 tile 的类型专属键，保留通用 ``title``。"""
+        return {
+            key
+            for tile_class in self.tile_classes.values()
+            for key, _label in self._option_fields(tile_class)
+            if key != "title"
+        }
 
     def _selectable(self) -> list:
-        factory = self.tile_classes.get(self.type_var.get())
+        factory = self._factory()
         if factory is None:
             return self.channels
         if factory.PARAM_ONLY is None:
             return self.channels
         return [c for c in self.channels if c.is_parameter == factory.PARAM_ONLY]
 
+    def _on_type_changed(self, _event=None) -> None:
+        self._refresh_for_type()
+
+    def _refresh_for_type(self) -> None:
+        self._refresh_channels()
+        self._refresh_option_fields()
+
     def _refresh_channels(self) -> None:
+        # ``Listbox`` 处于 disabled 时不能清选择；重建前先解锁，末尾再按当前
+        # tile 的绑定契约决定是否禁用（命令按钮 / 全通道列表是 0~0）。
+        self.channel_list.configure(state=tk.NORMAL)
         self.channel_list.delete(0, tk.END)
         options = self._selectable()
         for channel in options:
             self.channel_list.insert(tk.END, channel.name)
-        for index, channel in enumerate(options):
-            if channel.name in self.spec.bindings:
-                self.channel_list.selection_set(index)
-        factory = self.tile_classes.get(self.type_var.get())
+        factory = self._factory()
+        # 类型切换后不沿用旧类型的绑定：Gauge -> Button 若留着一条选择，Button
+        # 永远过不了 0~0 校验；切回原类型时仍能从 spec 恢复原绑定。
+        if self.type_var.get() == self.spec.type:
+            for index, channel in enumerate(options):
+                if channel.name in self.spec.bindings:
+                    self.channel_list.selection_set(index)
         if factory is not None:
             self.hint_var.set(
                 f"{factory.LABEL}：可绑 {factory.MIN_BINDINGS}~{factory.MAX_BINDINGS} 个通道"
             )
+            if factory.MAX_BINDINGS == 0:
+                self.channel_list.configure(state=tk.DISABLED)
+
+    def _refresh_option_fields(self) -> None:
+        """按当前 tile class 的 ``OPTION_FIELDS`` 重建选项控件。"""
+        for child in self.options_frame.winfo_children():
+            child.destroy()
+        self.option_vars = {}
+        self.option_widgets = {}
+
+        factory = self._factory()
+        fields = self._option_fields(factory)
+        if not fields:
+            return
+
+        ttk.Label(self.options_frame, text="选项").grid(
+            row=0, column=0, columnspan=2, sticky=tk.W, pady=(5, 1)
+        )
+        for row, (key, label) in enumerate(fields, start=1):
+            ttk.Label(self.options_frame, text=label).grid(
+                row=row, column=0, sticky=tk.W, pady=3
+            )
+            value = self.spec.options.get(key, "")
+            text = "" if value is None else str(value)
+            if self._is_button_mode(factory, key) and text not in BUTTON_MODE_VALUES:
+                # 旧布局的脏值也不能从编辑器重新写回；ButtonTile 的运行期默认
+                # 同样是 push，因而归一化不会改变它的既有行为。
+                text = BUTTON_MODE_VALUES[0]
+            variable = tk.StringVar(value=text)
+            self.option_vars[key] = variable
+            if self._is_button_mode(factory, key):
+                widget: tk.Widget = ttk.Combobox(
+                    self.options_frame, textvariable=variable, width=18,
+                    state="readonly", values=BUTTON_MODE_VALUES,
+                )
+            else:
+                widget = ttk.Entry(self.options_frame, textvariable=variable, width=20)
+            widget.grid(row=row, column=1, sticky=tk.EW, pady=3)
+            self.option_widgets[key] = widget
 
     def _apply(self) -> None:
-        factory = self.tile_classes.get(self.type_var.get())
+        factory = self._factory()
         if factory is None:
             return
         options = self._selectable()
@@ -278,6 +367,21 @@ class TilePropertiesDialog(tk.Toplevel):
             self.spec.options["title"] = title
         else:
             self.spec.options.pop("title", None)
+
+        current_keys = {key for key, _label in self._option_fields(factory)}
+        # type=A -> type=B 时不能把 A 的私有 options 带给 B；否则导出的 JSON 会
+        # 留下无效命令或过期样式。未知键不碰，保障未来版本布局的前向兼容。
+        for key in self._all_type_option_keys() - current_keys:
+            self.spec.options.pop(key, None)
+        for key in current_keys:
+            variable = self.option_vars.get(key)
+            value = "" if variable is None else variable.get().strip()
+            if self._is_button_mode(factory, key):
+                value = value if value in BUTTON_MODE_VALUES else BUTTON_MODE_VALUES[0]
+            if value:
+                self.spec.options[key] = value
+            else:
+                self.spec.options.pop(key, None)
         self.on_apply(self.spec)
         self.destroy()
 

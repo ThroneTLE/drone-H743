@@ -116,6 +116,10 @@ class TileContext:
     def send_command(self, text: str) -> bool:
         raise NotImplementedError
 
+    def all_channels(self) -> list:
+        """当前通道表的全部通道，按索引升序。"""
+        raise NotImplementedError
+
 
 class ParamEchoTracker:
     """滑块三态引擎：pending / confirmed / diverged。
@@ -188,6 +192,10 @@ class DashboardTile:
     #: 属性对话框里能选的通道范围：True = 只能选参数通道，False = 只能选非参数
     #: 通道，None = 都行。
     PARAM_ONLY: bool | None = False
+    #: 新建时的默认格子尺寸 (colspan, rowspan)。
+    DEFAULT_SPAN: tuple[int, int] = (3, 2)
+    #: 属性对话框里额外可编辑的 options 字段：((键, 显示名), ...)。
+    OPTION_FIELDS: tuple[tuple[str, str], ...] = ()
 
     def __init__(self, parent: tk.Misc, spec: TileSpec, context: TileContext) -> None:
         self.spec = spec
@@ -242,6 +250,7 @@ class WaveTile(DashboardTile):
     MIN_BINDINGS = 1
     MAX_BINDINGS = WAVE_MAX_BINDINGS
     PARAM_ONLY = None
+    DEFAULT_SPAN = (6, 5)
 
     def _build(self) -> None:
         header = ttk.Frame(self.frame)
