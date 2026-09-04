@@ -1081,6 +1081,7 @@ def parse_flash_image(data: bytes) -> tuple[list[dict[str, object]], list[dict[s
                 continue
             if record_size not in (
                 RECORD_SIZE,
+                V8_RECORD_SIZE,
                 V6_RECORD_SIZE,
                 V5_RECORD_SIZE,
                 V4_RECORD_SIZE,

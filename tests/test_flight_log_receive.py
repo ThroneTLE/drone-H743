@@ -23,6 +23,51 @@ class FakePort:
         return self._rx.readline()
 
 
+def test_v8_528_byte_sector_is_accepted_by_flash_scanner() -> None:
+    """Regression for the real 2026-09-02 V7/V8 528-byte Flash image.
+
+    The captured image under data/flight_logs reported 996 unsupported-size
+    errors because parse_flash_image omitted the already-defined V8 size from
+    its allow-list.  Build the same firmware header layout here so the test is
+    portable without treating mutable historical evidence as a test fixture.
+    """
+    header = bytearray(flog.SECTOR_HEADER_SIZE)
+    flog.SECTOR_HEADER_PREFIX.pack_into(
+        header,
+        0,
+        flog.SECTOR_MAGIC,
+        8,
+        flog.SECTOR_HEADER_SIZE,
+        flog.SECTOR_SIZE,
+        flog.V8_RECORD_SIZE,
+        1,
+        0,
+        0,
+        125,
+        0x2000,
+        0x3FC000,
+        1,
+        flog.V8_PARAMS_STRUCT.size,
+        0,
+    )
+    flog.V8_PARAMS_STRUCT.pack_into(
+        header, flog.SECTOR_HEADER_PREFIX.size, *([0.0] * len(flog.V8_PARAM_NAMES))
+    )
+    header[52:56] = struct.pack("<I", flog.crc32(bytes(header)))
+    nonempty_v8_slot = b"\x01" + (b"\xFF" * (flog.V8_RECORD_SIZE - 1))
+    image = (
+        bytes(header)
+        + nonempty_v8_slot
+        + (b"\xFF" * (flog.SECTOR_SIZE - len(header) - len(nonempty_v8_slot)))
+    )
+
+    sectors, records, errors = flog.parse_flash_image(image)
+
+    assert len(sectors) == 1
+    assert records == []
+    assert errors == []
+
+
 def test_export_block_parser_validates_crc() -> None:
     payload = b"abc123"
     header = flog.EXPORT_HEADER.pack(
