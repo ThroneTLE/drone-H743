@@ -83,7 +83,7 @@ def test_stabilizer_keeps_direct_servo_debug_switch_with_controller_path() -> No
     # Direct-angle-servo debug switch permanently disabled; dead code removed.
     assert "#define STABILIZER_USE_DIRECT_ANGLE_SERVO 0U" in freertos
     assert "static void stabilizer_map_angle_direct_to_servo" not in freertos
-    assert "DRV_COAX_CTRL_Run(&frame->attitude, &frame->reference, &frame->ctrl_out);" in freertos
+    assert "DRV_COAX_CTRL_RunScheduled(&frame->attitude, &frame->reference," in freertos
     assert "frame->moves[0].pulse_us = frame->ctrl_out.servo_alpha_us;" in freertos
     assert "frame->moves[1].pulse_us = frame->ctrl_out.servo_beta_us;" in freertos
 
@@ -146,7 +146,7 @@ def test_vofa_stream_sends_compact_dashboard_channels() -> None:
     assert '(void)DRV_COAX_CTRL_GetParam("coax.roll_angle_kp", &vofa_data[APP_TELEM_CH_ROLL_ANGLE_KP]);' in freertos
     assert '(void)DRV_COAX_CTRL_GetParam("coax.pitch_angle_kp", &vofa_data[APP_TELEM_CH_PITCH_ANGLE_KP]);' in freertos
     assert '(void)DRV_COAX_CTRL_GetParam("coax.pos_z_kp", &vofa_data[APP_TELEM_CH_POS_Z_KP]);' in freertos
-    assert '(void)DRV_COAX_CTRL_GetParam("coax.pos_z_ki", &vofa_data[APP_TELEM_CH_POS_Z_KI]);' in freertos
+    assert "vofa_data[APP_TELEM_CH_POS_Z_KI] = 0.0f;" in freertos
     assert '(void)DRV_COAX_CTRL_GetParam("coax.vel_z_kd", &vofa_data[APP_TELEM_CH_VEL_Z_KD]);' in freertos
     assert "osDelay(ms);" in freertos
 

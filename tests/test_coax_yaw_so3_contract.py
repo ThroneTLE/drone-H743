@@ -58,6 +58,9 @@ static void reset_case(DRV_COAX_CTRL_AttitudeInput *attitude,
     memset(reference, 0, sizeof(*reference));
     reference->dt_sec = 0.02f;
     reference->horizontal_velocity_valid = 1U;
+    reference->navigation_position_valid = 1U;
+    reference->navigation_velocity_valid = 1U;
+    attitude->acceleration_valid = 1U;
 }
 
 /* Pre-migration yaw PD, transcribed verbatim from 85a5cacb. */
@@ -75,9 +78,9 @@ static float legacy_yaw_torque(const DRV_COAX_CTRL_Params *params,
     while (yaw_err > 3.141592654f) { yaw_err -= 2.0f * 3.141592654f; }
     while (yaw_err < -3.141592654f) { yaw_err += 2.0f * 3.141592654f; }
 
-    p_term = fabsf(params->yaw_angle_kp) * yaw_err;
-    d_term = fabsf(params->yaw_rate_kd) * (yaw_rate_ref_rad_s - gyro_z_rad_s);
-    return params->yaw_inertia * (yaw_accel_ref_rad_s2 + p_term + d_term);
+    p_term = params->rate.kp[2] * params->attitude.att_kp[2] * yaw_err;
+    d_term = params->rate.kp[2] * (yaw_rate_ref_rad_s - gyro_z_rad_s);
+    return (params->yaw_inertia * yaw_accel_ref_rad_s2) + p_term + d_term;
 }
 
 int main(void)
@@ -129,12 +132,11 @@ int main(void)
 
     /* Telemetry P/D terms stay in acceleration units; unchanged meaning. */
     CHECK(nearly_equal(debug.yaw_angle_p_rad_s,
-                       fabsf(params.yaw_angle_kp) *
+                       params.attitude.att_kp[2] *
                            (reference.yaw_rad - attitude.yaw_rad),
                        1.0e-6f), 12);
     CHECK(nearly_equal(debug.yaw_rate_d_rad_s,
-                       fabsf(params.yaw_rate_kd) *
-                           (reference.yaw_rate_rad_s - attitude.gyro_z_rad_s),
+                       debug.rate_error_rad_s[2],
                        1.0e-6f), 13);
 
     /* ---- 2. Sign: reference left of measured must split thrust as the old path did ---- */
@@ -163,7 +165,7 @@ int main(void)
     reference.direct_attitude_target_valid = 1U;
     DRV_COAX_CTRL_Run(&attitude, &reference, &output);
     DRV_COAX_CTRL_GetLastDebug(&debug);
-    naive_rate_error = attitude.gyro_z_rad_s - reference.yaw_rate_rad_s;
+    naive_rate_error = reference.yaw_rate_rad_s - attitude.gyro_z_rad_s;
     /* e_w = w - R^T Rd w_d; at nonzero tilt it must separate from the raw difference. */
     CHECK(!nearly_equal(debug.rate_error_rad_s[2], naive_rate_error, 1.0e-3f), 30);
     /* The transform couples the reference rate into all three axes, not just z. */
@@ -172,8 +174,8 @@ int main(void)
     /* ---- 4. Zeroed gains leave only the w x Jw feedforward (identically 0 when Ixx==Iyy) ---- */
     reset_case(&attitude, &reference);
     DRV_COAX_CTRL_GetParams(&params);
-    params.yaw_angle_kp = 0.0f;
-    params.yaw_rate_kd = 0.0f;
+    params.attitude.att_kp[2] = 0.0f;
+    params.rate.kp[2] = 0.0f;
     DRV_COAX_CTRL_SetParams(&params);
     attitude.yaw_rad = 0.5f;
     attitude.gyro_x_rad_s = 0.7f;
@@ -190,7 +192,8 @@ int main(void)
     /* ---- 5. Yaw saturation must feed the protection scale ---- */
     reset_case(&attitude, &reference);
     DRV_COAX_CTRL_GetParams(&params);
-    params.yaw_angle_kp = 6.0f;   /* large enough to exhaust differential-thrust authority */
+    params.attitude.att_kp[2] = 40.0f;
+    params.rate.kp[2] = 0.01f; /* deliberately exhaust differential authority */
     DRV_COAX_CTRL_SetParams(&params);
     attitude.yaw_rad = 0.0f;
     reference.yaw_rad = 1.2f;
@@ -224,15 +227,15 @@ def test_yaw_is_produced_by_the_so3_law_not_a_separate_pd() -> None:
     assert "coax_ctrl_wrap_pi" not in wrapper
     assert "reference->yaw_rad - attitude->yaw_rad" not in wrapper
 
-    # 三轴同出一套控制律。
-    assert "solution->moment_cmd_n_m[2] =" in wrapper
-    assert "(-kr_yaw * solution->attitude_error[2]) -" in wrapper
-    assert "(kd_yaw * solution->rate_error_rad_s[2]) +" in wrapper
+    # 三轴同出姿态 P -> 角速度 PID，分配器才分叉。
+    assert "DRV_AttitudeControl_Step" in wrapper
+    assert "DRV_RateControl_Step" in wrapper
+    assert "coax_ctrl_state.rate_output.moment_unsat" in wrapper
     assert "yaw_torque_cmd = solution.moment_cmd_n_m[2];" in wrapper
 
-    # 对外参数名与量纲不变，换算只发生在驱动内部。
-    assert "coax_ctrl_params.yaw_inertia * coax_ctrl_params.yaw_angle_kp" in wrapper
-    assert "coax_ctrl_params.yaw_inertia * coax_ctrl_params.yaw_rate_kd" in wrapper
+    # 旧参数名只作为显式换算 alias，不再冒充真实物理参数。
+    assert 'strcmp(name, "coax.yaw_angle_kp")' in wrapper
+    assert 'strcmp(name, "coax.yaw_rate_kd")' in wrapper
 
     # 偏航权限进入保护缩放。
     assert "coax_ctrl_yaw_limit_moment" in wrapper
@@ -268,6 +271,9 @@ def test_yaw_so3_runtime_matches_legacy_pd_in_hover(tmp_path: Path) -> None:
             f"-I{stub_dir}",
             f"-I{ROOT / 'Driver' / 'Inc'}",
             str(ROOT / "Driver" / "Src" / "drv_coax_ctrl.c"),
+            str(ROOT / "Driver" / "Src" / "drv_position_control.c"),
+            str(ROOT / "Driver" / "Src" / "drv_attitude_control.c"),
+            str(ROOT / "Driver" / "Src" / "drv_rate_control.c"),
             str(harness_path),
             "-lm",
             "-o",

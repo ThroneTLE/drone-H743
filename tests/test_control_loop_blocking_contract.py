@@ -878,8 +878,9 @@ def _check_app_control_step_d2(tmp_path: Path) -> None:
         legacy,
         "uint8_t app_control_internal_commit_config_persist(void)",
     ) == STEP_D2_PERSIST_HELPER_BODY
-    assert legacy.count("app_cmd_rcmap_apply_config(") == 5
-    assert legacy.count("app_cmd_rcmap_config()") == 1
+    config_store = (ROOT / "App/Src/app_control_config_store.c").read_text(encoding="utf-8")
+    assert (legacy + config_store).count("app_cmd_rcmap_apply_config(") == 6
+    assert (legacy + config_store).count("app_cmd_rcmap_config()") == 1
     assert "app_control_report_rc_live();" in legacy
     assert "app_control_handle_rc_map(tokens, count);" in legacy
     assert "App/Src/app_cmd_rcmap.c" in cmake

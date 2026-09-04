@@ -44,6 +44,7 @@
 #include "app_servo_feedback.h"
 #include "app_servo_feedback_bench.h"
 #include "app_acceptance.h"
+#include "app_control_scheduler.h"
 #include "bsp_aiwb2_power.h"
 #include "bsp_bus_servo.h"
 #include "bsp_pwm.h"
@@ -53,6 +54,7 @@
 #include "drv_frame_contract.h"
 #include "drv_imu_calibration.h"
 #include "svc_flow_nav.h"
+#include "svc_timestamp.h"
 #include "drv_servo.h"
 
 /* ============================================================================
@@ -675,7 +677,7 @@ typedef struct
   float yaw_ref_rad;
   uint8_t yaw_ref_ready;
   StabilizerVofaDebug vofa_debug;
-  uint32_t last_ctrl_model_ms;
+  APP_ControlSchedulerState control_scheduler;
   uint8_t flight_log_divider;
   uint16_t flight_log_tail_records;
   float last_gyro_rad_s[3];
@@ -691,6 +693,7 @@ typedef struct
 typedef struct
 {
   uint32_t now_ms;
+  uint64_t now_us;
   uint16_t ch[16];
   APP_RcConfig rc_config;
   APP_RcInputs rc;
@@ -714,6 +717,7 @@ typedef struct
   APP_LED_ArmBlockReason led_arm_block_reason;
   APP_FlightLogMotorOutputReason motor_output_reason;
   float ctrl_dt_sec;
+  APP_ControlSchedule cascade_schedule;
   DRV_SERVO_MoveCmd moves[2];
   uint8_t imu_control_valid;
   uint8_t ident_running;
@@ -960,6 +964,7 @@ static void stabilizer_init(StabilizerContext *ctx)
   DRV_AttitudeFusion_Init();
   SVC_FlowNav_ResetEstimator();
   DRV_COAX_CTRL_ResetState();
+  APP_ControlScheduler_Reset(&ctx->control_scheduler);
 }
 
 static void stabilizer_reset_for_imu_frame(
@@ -999,7 +1004,6 @@ static void stabilizer_reset_for_imu_frame(
   ctx->height_origin_ready = 0U;
   ctx->yaw_ref_rad = 0.0f;
   ctx->yaw_ref_ready = 0U;
-  ctx->last_ctrl_model_ms = 0U;
   memset(ctx->last_gyro_rad_s, 0, sizeof(ctx->last_gyro_rad_s));
   ctx->last_gyro_ready = 0U;
   ctx->imu_frame_orientation_code = orientation_code;
@@ -1010,6 +1014,7 @@ static void stabilizer_reset_for_imu_frame(
                          DRV_ATTITUDE_FUSION_CONVENTION_NED);
   SVC_FlowNav_ResetEstimator();
   DRV_COAX_CTRL_ResetState();
+  APP_ControlScheduler_Reset(&ctx->control_scheduler);
   stabilizer_rc_arm_latched = 0U;
   stabilizer_validation_imu_reset();
 }
@@ -1423,14 +1428,6 @@ static void stabilizer_control_prepare(StabilizerContext *ctx,
 {
   memset(&frame->attitude, 0, sizeof(frame->attitude));
   memset(&frame->reference, 0, sizeof(frame->reference));
-  if (ctx->last_ctrl_model_ms != 0U) {
-    uint32_t elapsed_ms = frame->now_ms - ctx->last_ctrl_model_ms;
-    if ((elapsed_ms > 0U) && (elapsed_ms <= STABILIZER_IMU_STALE_MS)) {
-      frame->ctrl_dt_sec = (float)elapsed_ms * 0.001f;
-    }
-  }
-  ctx->last_ctrl_model_ms = frame->now_ms;
-
   APP_ELRS_GetChannels(frame->ch);       /* 读取 ELRS 遥控器 16 通道             */
   /*
    * 每周期重读一次映射快照：上位机改绑定/标定后必须立刻生效，否则用户得重启飞控
@@ -1552,6 +1549,8 @@ static void stabilizer_control_compute(StabilizerContext *ctx,
     uint16_t ident_alpha_us;
     uint16_t ident_beta_us;
 
+    DRV_COAX_CTRL_ResetState();
+    APP_ControlScheduler_Reset(&ctx->control_scheduler);
     APP_Ident_GetServoTargets(&ident_alpha_us, &ident_beta_us);
     frame->moves[0].pulse_us = ident_alpha_us;
     frame->moves[1].pulse_us = ident_beta_us;
@@ -1572,6 +1571,7 @@ static void stabilizer_control_compute(StabilizerContext *ctx,
     ctx->yaw_ref_ready = 0U;
     SVC_FlowNav_ResetEstimator();
     DRV_COAX_CTRL_ResetState();
+    APP_ControlScheduler_Reset(&ctx->control_scheduler);
     ctx->last_gyro_ready = 0U;
     ctx->position_ref_z_ready = 0U;
     ctx->yaw_ref_ready = 0U;
@@ -1613,6 +1613,7 @@ static void stabilizer_control_compute(StabilizerContext *ctx,
       float velocity_control_x_m_s;
       float velocity_control_y_m_s;
       float vel_loop_enable = 0.0f;
+      SVC_FLOW_NAV_State nav_state;
 
       /*
        * 速度与位置都直接取 Service 的成品估计：位置在 Service 里已经按传感器
@@ -1621,6 +1622,7 @@ static void stabilizer_control_compute(StabilizerContext *ctx,
        */
       SVC_FlowNav_GetVelocity(&nav_vx_m_s, &nav_vy_m_s);
       SVC_FlowNav_GetPosition(&position_state_x_m, &position_state_y_m);
+      SVC_FlowNav_GetState(&nav_state);
       velocity_control_x_m_s = nav_vx_m_s;
       velocity_control_y_m_s = STABILIZER_VELOCITY_MEAS_Y_SIGN * nav_vy_m_s;
       position_state_y_m *= STABILIZER_VELOCITY_MEAS_Y_SIGN;
@@ -1639,6 +1641,10 @@ static void stabilizer_control_compute(StabilizerContext *ctx,
       frame->attitude.gyro_x_rad_s = ctx->last_msg.imu.gyro_x_dps * STABILIZER_DEG_TO_RAD;
       frame->attitude.gyro_y_rad_s = ctx->last_msg.imu.gyro_y_dps * STABILIZER_DEG_TO_RAD;
       frame->attitude.gyro_z_rad_s = ctx->last_msg.imu.gyro_z_dps * STABILIZER_DEG_TO_RAD;
+      frame->attitude.accel_m_s2[0] = ctx->vofa_debug.acc_nav_m_s2[0];
+      frame->attitude.accel_m_s2[1] = ctx->vofa_debug.acc_nav_m_s2[1];
+      frame->attitude.accel_m_s2[2] = 0.0f;
+      frame->attitude.acceleration_valid = nav_state.velocity_valid;
 
       (void)DRV_COAX_CTRL_GetParam("coax.vel_loop_enable", &vel_loop_enable);
       velocity_loop_enabled = (vel_loop_enable >= 0.5f) ? 1U : 0U;
@@ -1666,8 +1672,15 @@ static void stabilizer_control_compute(StabilizerContext *ctx,
         frame->reference.vy_m_s =
         frame->rc.norm[APP_RC_FUNC_ROLL] *
           STABILIZER_XY_VEL_REF_MAX_M_S;
-        frame->reference.horizontal_velocity_valid = velocity_loop_enabled;
+        frame->reference.horizontal_velocity_valid =
+          ((velocity_loop_enabled != 0U) &&
+           (nav_state.velocity_valid != 0U)) ? 1U : 0U;
       }
+      frame->reference.navigation_velocity_valid = nav_state.velocity_valid;
+      frame->reference.navigation_position_valid =
+        ((nav_state.velocity_valid != 0U) &&
+         (frame->range_height_valid != 0U)) ? 1U : 0U;
+      frame->reference.position_control_bypass = 0U;
       frame->reference.vz_m_s = 0.0f;
       frame->reference.ax_m_s2 = 0.0f;
       frame->reference.ay_m_s2 = 0.0f;
@@ -1785,7 +1798,29 @@ static void stabilizer_control_compute(StabilizerContext *ctx,
                        &frame->reference.ay_m_s2,
                        &frame->ident_att_log);
 
-    DRV_COAX_CTRL_Run(&frame->attitude, &frame->reference, &frame->ctrl_out);
+    {
+      DRV_COAX_CTRL_Schedule schedule = {0};
+      schedule.position_update = frame->cascade_schedule.position_due;
+      schedule.velocity_update = frame->cascade_schedule.velocity_due;
+      schedule.attitude_update = frame->cascade_schedule.attitude_due;
+      schedule.rate_update = frame->cascade_schedule.rate_due;
+      schedule.position_dt_s = frame->cascade_schedule.position_dt_s;
+      schedule.velocity_dt_s = frame->cascade_schedule.velocity_dt_s;
+      schedule.attitude_dt_s = frame->cascade_schedule.attitude_dt_s;
+      schedule.rate_dt_s = frame->cascade_schedule.rate_dt_s;
+      schedule.integrator_enable =
+        ((frame->rc_armed != 0U) && (frame->rc_link_ok != 0U) &&
+         (frame->imu_control_valid != 0U) &&
+         (frame->reference.direct_attitude_target_valid == 0U) &&
+         (frame->reference.manual_total_force_valid == 0U)) ? 1U : 0U;
+      schedule.integrator_freeze =
+        (schedule.integrator_enable == 0U) ? 1U : 0U;
+      schedule.integrator_reset =
+        ((schedule.integrator_enable == 0U) ||
+         (frame->cascade_schedule.timestamp_fault != 0U)) ? 1U : 0U;
+      DRV_COAX_CTRL_RunScheduled(&frame->attitude, &frame->reference,
+                                 &schedule, &frame->ctrl_out);
+    }
     {
       DRV_COAX_CTRL_Debug balance_debug;
       APP_IdentAttObserve ident_att_obs = {0};
@@ -1793,12 +1828,12 @@ static void stabilizer_control_compute(StabilizerContext *ctx,
       DRV_COAX_CTRL_GetLastDebug(&balance_debug);
       ctx->vofa_debug.vel_pid_out_m_s2[0] = balance_debug.accel_out_m_s2[0];
       ctx->vofa_debug.vel_pid_out_m_s2[1] = balance_debug.accel_out_m_s2[1];
-      ctx->vofa_debug.vel_pid_p_m_s2[0] = balance_debug.pos_p_m_s2[0];
-      ctx->vofa_debug.vel_pid_p_m_s2[1] = balance_debug.pos_p_m_s2[1];
-      ctx->vofa_debug.vel_pid_i_m_s2[0] = 0.0f;
-      ctx->vofa_debug.vel_pid_i_m_s2[1] = 0.0f;
-      ctx->vofa_debug.vel_pid_d_m_s2[0] = balance_debug.vel_d_m_s2[0];
-      ctx->vofa_debug.vel_pid_d_m_s2[1] = balance_debug.vel_d_m_s2[1];
+      ctx->vofa_debug.vel_pid_p_m_s2[0] = balance_debug.velocity_p_m_s2[0];
+      ctx->vofa_debug.vel_pid_p_m_s2[1] = balance_debug.velocity_p_m_s2[1];
+      ctx->vofa_debug.vel_pid_i_m_s2[0] = balance_debug.velocity_i_m_s2[0];
+      ctx->vofa_debug.vel_pid_i_m_s2[1] = balance_debug.velocity_i_m_s2[1];
+      ctx->vofa_debug.vel_pid_d_m_s2[0] = balance_debug.velocity_d_m_s2[0];
+      ctx->vofa_debug.vel_pid_d_m_s2[1] = balance_debug.velocity_d_m_s2[1];
       ident_att_obs.now_ms = frame->now_ms;
       ident_att_obs.roll_deg = ctx->roll_control;
       ident_att_obs.pitch_deg = ctx->pitch_control;
@@ -1830,6 +1865,7 @@ static void stabilizer_control_compute(StabilizerContext *ctx,
     DRV_COAX_CTRL_ServoCalibration servo_calibration;
     SVC_FlowNav_ResetEstimator();
     DRV_COAX_CTRL_ResetState();
+    APP_ControlScheduler_Reset(&ctx->control_scheduler);
     ctx->position_ref_x_m = 0.0f;
     ctx->position_ref_y_m = 0.0f;
     ctx->position_ref_xy_ready = 0U;
@@ -1841,6 +1877,11 @@ static void stabilizer_control_compute(StabilizerContext *ctx,
       servo_calibration.center_us[DRV_COAX_CTRL_SERVO_ALPHA_INDEX];
     frame->moves[1].pulse_us =
       servo_calibration.center_us[DRV_COAX_CTRL_SERVO_BETA_INDEX];
+  } else {
+    /* Runtime IMU stale/fault: hold the last actuator target but discard all
+     * controller derivative/integrator history before a future recovery. */
+    DRV_COAX_CTRL_ResetState();
+    APP_ControlScheduler_Reset(&ctx->control_scheduler);
   }
 
   if (frame->ident_running != 0U) {
@@ -2003,13 +2044,15 @@ static void stabilizer_control_commit(StabilizerContext *ctx,
     observation.moment_n_m[0] = debug.moment_cmd_n_m[0];
     observation.moment_n_m[1] = debug.moment_cmd_n_m[1];
     observation.restoring_moment_n_m[0] =
-      -params.roll_angle_kp * debug.attitude_error[0];
+      -params.rate.kp[0] * params.attitude.att_kp[0] *
+       debug.attitude_error[0];
     observation.restoring_moment_n_m[1] =
-      -params.pitch_angle_kp * debug.attitude_error[1];
+      -params.rate.kp[1] * params.attitude.att_kp[1] *
+       debug.attitude_error[1];
     observation.damping_moment_n_m[0] =
-      -params.roll_rate_kd * debug.rate_error_rad_s[0];
+      debug.rate_p_n_m[0] - observation.restoring_moment_n_m[0];
     observation.damping_moment_n_m[1] =
-      -params.pitch_rate_kd * debug.rate_error_rad_s[1];
+      debug.rate_p_n_m[1] - observation.restoring_moment_n_m[1];
     observation.rc_us[0] = frame->rc.us[APP_RC_FUNC_ROLL];
     observation.rc_us[1] = frame->rc.us[APP_RC_FUNC_PITCH];
     observation.rc_us[2] = frame->rc.us[APP_RC_FUNC_YAW];
@@ -2190,18 +2233,27 @@ static void stabilizer_control_commit(StabilizerContext *ctx,
 static void stabilizer_control_step(StabilizerContext *ctx)
 {
   StabilizerControlFrame frame;
+  SVC_FLOW_NAV_State navigation_state;
 
   memset(&frame, 0, sizeof(frame));
-  frame.now_ms = HAL_GetTick();
+  memset(&navigation_state, 0, sizeof(navigation_state));
+  frame.now_us = SVC_Timestamp_Us();
+  frame.now_ms = (uint32_t)(frame.now_us / 1000ULL);
+  SVC_FlowNav_GetState(&navigation_state);
+  APP_ControlScheduler_Step(&ctx->control_scheduler,
+                            frame.now_us,
+                            (uint64_t)navigation_state.velocity_sample_ms * 1000ULL,
+                            navigation_state.velocity_valid,
+                            &frame.cascade_schedule);
 
-  if ((frame.now_ms - ctx->last_out_ms) >= STABILIZER_CONTROL_PERIOD_MS) {
+  if (frame.cascade_schedule.rate_due != 0U) {
     ctx->last_out_ms = frame.now_ms;
 
     /* 声明里的非零初值，memset 后需显式恢复 */
     frame.rc_throttle_motor_us = BSP_PWM_ESC_MIN_US;
     frame.led_arm_block_reason = APP_LED_ARM_BLOCK_NO_RC;
     frame.motor_output_reason = APP_FLIGHT_LOG_MOTOR_REASON_UNKNOWN;
-    frame.ctrl_dt_sec = (float)STABILIZER_CONTROL_PERIOD_MS * 0.001f;
+    frame.ctrl_dt_sec = frame.cascade_schedule.rate_dt_s;
 
     stabilizer_control_prepare(ctx, &frame);
     stabilizer_control_compute(ctx, &frame);

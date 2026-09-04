@@ -28,14 +28,15 @@ def test_servo_output_compensates_90_degree_ccw_mounting() -> None:
 def test_tilt_limit_is_twenty_eight_degrees_in_driver_controller() -> None:
     source = read("Driver/Src/drv_coax_ctrl.c")
     app_control = read("App/Src/app_control.c")
+    config_store = read("App/Src/app_control_config_store.c")
 
     assert "DRV_COAX_CTRL_TILT_LIMIT_RAD 0.4886922f" in source
     assert "value <= DRV_COAX_CTRL_TILT_LIMIT_RAD" in source
     assert "#define APP_CONTROL_TILT_LIMIT_MAX_DEG 28.0f" in app_control
-    assert "#define APP_CONTROL_TILT_LIMIT_DEFAULT_RAD 0.4886922f" in app_control
-    assert "#define APP_CONTROL_TILT_LIMIT_LEGACY_18_RAD 0.31415927f" in app_control
-    assert "#define APP_CONTROL_TILT_LIMIT_LEGACY_25_RAD 0.43633231f" in app_control
-    assert "params.tilt_limit_rad = APP_CONTROL_TILT_LIMIT_DEFAULT_RAD;" in app_control
+    assert "#define APP_CONTROL_TILT_LIMIT_DEFAULT_RAD 0.4886922f" in config_store
+    assert "#define APP_CONTROL_TILT_LIMIT_LEGACY_18_RAD 0.31415927f" in config_store
+    assert "#define APP_CONTROL_TILT_LIMIT_LEGACY_25_RAD 0.43633231f" in config_store
+    assert "params.tilt_limit_rad = APP_CONTROL_TILT_LIMIT_DEFAULT_RAD;" in config_store
     assert "APP_CONTROL_SERVO_ANGLE_MAX_DEG" not in app_control
 
 
@@ -111,10 +112,10 @@ def test_mbd_controller_gains_are_runtime_coax_params() -> None:
 
     assert "DRV_COAX_CTRL_Params" in header
     assert "DRV_COAX_CTRL_SetParam" in header
-    assert 'DRV_COAX_CTRL_PARAM_ENTRY(roll_angle_kp)' in wrapper
-    assert 'DRV_COAX_CTRL_PARAM_ENTRY(pitch_angle_kp)' in wrapper
-    assert 'DRV_COAX_CTRL_PARAM_ENTRY(roll_rate_kd)' in wrapper
-    assert 'DRV_COAX_CTRL_PARAM_ENTRY(pos_z_ki)' in wrapper
+    assert 'DRV_COAX_CTRL_NAMED_PARAM_ENTRY("att_roll_kp"' in wrapper
+    assert 'DRV_COAX_CTRL_NAMED_PARAM_ENTRY("att_pitch_kp"' in wrapper
+    assert 'DRV_COAX_CTRL_NAMED_PARAM_ENTRY("rate_roll_kp"' in wrapper
+    assert 'DRV_COAX_CTRL_NAMED_PARAM_ENTRY("vel_z_ki"' in wrapper
     assert 'DRV_COAX_CTRL_PARAM_ENTRY(vel_loop_x_kp)' not in wrapper
     assert 'DRV_COAX_CTRL_PARAM_ENTRY(mass_kg)' not in wrapper
     assert 'DRV_COAX_CTRL_PARAM_ENTRY(gravity_m_s2)' not in wrapper
@@ -124,11 +125,11 @@ def test_mbd_controller_gains_are_runtime_coax_params() -> None:
     assert 'DRV_COAX_CTRL_PARAM_ENTRY(yaw_torque_upper_m_per_n)' not in wrapper
     assert 'DRV_COAX_CTRL_PARAM_ENTRY(yaw_torque_lower_m_per_n)' not in wrapper
     assert "params->vel_loop_enable = 1.0f;" in wrapper
-    assert "params->pos_x_kp = 0.30f;" in wrapper
-    assert "params->pos_y_kp = 0.30f;" in wrapper
-    assert "params->pos_z_ki = 0.25f;" in wrapper
-    assert "params->vel_x_kd = 0.80f;" in wrapper
-    assert "params->vel_y_kd = 0.80f;" in wrapper
+    assert "params->position.pos_kp[0] = 0.375f;" in wrapper
+    assert "params->position.pos_kp[1] = 0.375f;" in wrapper
+    assert "params->position.vel_ki[2]" not in wrapper
+    assert "params->position.vel_kp[0] = 0.80f;" in wrapper
+    assert "params->position.vel_kp[1] = 0.80f;" in wrapper
     # vel_loop_x/y_kp/ki/kd 从未接入控制律，已连同参数表一起删除。
     assert "vel_loop_x" not in wrapper
     assert "vel_loop_y" not in wrapper
@@ -140,7 +141,7 @@ def test_mbd_controller_gains_are_runtime_coax_params() -> None:
     assert "PARAM name=%s value=%s" in app_control
 
 
-def test_controller_limit_params_are_removed_except_tilt_angle() -> None:
+def test_controller_exposes_cascade_limits_with_physical_names() -> None:
     header = read("Driver/Inc/drv_coax_ctrl.h")
     wrapper = read("Driver/Src/drv_coax_ctrl.c")
     freertos = read("Core/Src/freertos.c") + read("App/Src/app_stabilizer.c")
@@ -149,22 +150,20 @@ def test_controller_limit_params_are_removed_except_tilt_angle() -> None:
     flight_log = read("tools/flight_log_receive.py")
 
     removed = [
-        "accel_xy_limit_m_s2",
-        "accel_z_limit_m_s2",
         "vel_loop_output_limit_m_s2",
         "vel_loop_i_limit_m_s2",
-        "yaw_rate_limit_rad_s",
         "min_total_force_n",
         "max_total_force_n",
     ]
     combined = "\n".join([header, wrapper, freertos, capture, flight_log])
     for name in removed:
         assert name not in combined
-    for name in removed[:5]:
-        assert name not in app_control
     assert "tilt_limit_rad" in header
     assert "DRV_COAX_CTRL_PARAM_ENTRY(tilt_limit_rad)" in wrapper
     assert "coax_ctrl_params.tilt_limit_rad" in wrapper
+    for name in ("accel_xy_max_m_s2", "accel_z_up_max_m_s2",
+                 "yaw_rate_limit_rad_s"):
+        assert name in wrapper
 
 
 def test_controller_wrapper_exposes_velocity_first_vector_control_inputs() -> None:
@@ -192,10 +191,12 @@ def test_controller_wrapper_exposes_velocity_first_vector_control_inputs() -> No
     assert "solution->desired_force_local_n," in wrapper
     assert "coax_ctrl_params.gravity_m_s2 - debug->accel_out_m_s2[2]" in wrapper
     assert "debug->pos_z_i_m_s2" in wrapper
-    assert "DRV_COAX_CTRL_POS_Z_I_ACCEL_LIMIT_M_S2" in wrapper
+    assert "vel_integrator_limit" in read("Driver/Inc/drv_position_control.h")
     # 偏航已并入 SO(3)：yaw_rate 参考经 desired_omega 走 R^T Rd 变换进 e_w，
     # yaw 参考经 coax_ctrl_rpy_matrix 进 R_d，不再有独立 PD 的裸差与 wrap_pi。
-    assert "desired_omega[3] = { 0.0f, 0.0f, reference->yaw_rate_rad_s }" in wrapper
+    assert "attitude_input.desired_rate_in_desired_frame[2]" in wrapper
+    assert "DRV_AttitudeControl_Step" in wrapper
+    assert "DRV_RateControl_Step" in wrapper
     assert "reference->yaw_accel_rad_s2" in wrapper
     assert "coax_ctrl_wrap_pi" not in wrapper
     assert "reference->yaw_rate_rad_s - attitude->gyro_z_rad_s" not in wrapper
@@ -218,7 +219,8 @@ def test_controller_wrapper_exposes_velocity_first_vector_control_inputs() -> No
     assert "stabilizer_velocity_pid_step" not in freertos
     assert "frame->reference.dt_sec = frame->ctrl_dt_sec;" in freertos
     assert "velocity_loop_enabled = (vel_loop_enable >= 0.5f) ? 1U : 0U;" in freertos
-    assert "frame->reference.horizontal_velocity_valid = velocity_loop_enabled;" in freertos
+    assert "frame->reference.horizontal_velocity_valid =" in freertos
+    assert "nav_state.velocity_valid" in freertos
     # R-M5-5：位置积分搬进 svc_flow_nav.c（按传感器时间轴变步长），稳定环只取成品。
     # 保留同一条约束的等价形式：位置状态确实进了控制器的 attitude 输入。
     assert "SVC_FlowNav_GetPosition(&position_state_x_m, &position_state_y_m);" in freertos
@@ -246,24 +248,12 @@ def test_controller_wrapper_exposes_velocity_first_vector_control_inputs() -> No
 
 def test_velocity_damping_has_independent_acceleration_limit() -> None:
     wrapper = read("Driver/Src/drv_coax_ctrl.c")
-    accel_cmd = wrapper.split("static void coax_ctrl_compute_accel_cmd", 1)[1]
-    accel_cmd = accel_cmd.split("static void coax_ctrl_compute_balance_solution", 1)[0]
-
-    assert "#define DRV_COAX_CTRL_HORIZONTAL_ACCEL_LIMIT_M_S2 3.70f" in wrapper
-    assert "#define DRV_COAX_CTRL_VEL_D_ACCEL_LIMIT_M_S2 3.70f" in wrapper
-    assert "coax_ctrl_params.vel_x_kd * (reference->vx_m_s - attitude->vx_m_s)" in accel_cmd
-    assert "coax_ctrl_params.vel_y_kd * (reference->vy_m_s - attitude->vy_m_s)" in accel_cmd
-    assert (
-        "coax_ctrl_clamp_f32(debug->vel_d_m_s2[0],\n"
-        "                            -DRV_COAX_CTRL_VEL_D_ACCEL_LIMIT_M_S2,"
-        in accel_cmd
-    )
-    assert (
-        "coax_ctrl_clamp_f32(debug->vel_d_m_s2[1],\n"
-        "                            -DRV_COAX_CTRL_VEL_D_ACCEL_LIMIT_M_S2,"
-        in accel_cmd
-    )
-    assert "DRV_COAX_CTRL_HORIZONTAL_ACCEL_LIMIT_M_S2 / horizontal_norm" in accel_cmd
+    velocity = read("Driver/Src/drv_position_control.c")
+    assert "DRV_POSITION_CONTROL_VelocityStep" in wrapper
+    assert "-params->vel_kd[axis]" in velocity
+    assert "state->accel_lpf_m_s2[axis]" in velocity
+    assert "params->xy_accel_limit_m_s2" in velocity
+    assert "drv_position_control_limit_acceleration" in velocity
 
 
 def test_manual_total_force_mode_bypasses_all_position_and_velocity_terms() -> None:
@@ -275,35 +265,27 @@ def test_manual_total_force_mode_bypasses_all_position_and_velocity_terms() -> N
     assert "float DRV_COAX_CTRL_MotorPulseToTotalThrust(uint16_t pulse_us);" in header
     assert "DRV_COAX_CTRL_MotorPulseToTotalThrust(uint16_t pulse_us)" in source
     assert "if (reference->manual_total_force_valid != 0U)" in source
-    assert "debug->pos_p_m_s2[2] = 0.0f;" in source
-    assert "debug->vel_d_m_s2[2] = 0.0f;" in source
+    assert "debug->pos_p_m_s2[axis] = 0.0f;" in source
+    assert "debug->vel_d_m_s2[axis] = 0.0f;" in source
     assert "solution->desired_force_local_n[2] =\n            coax_ctrl_clamp_f32(reference->manual_total_force_n," in source
 
 
 def test_roll_pitch_physical_moment_gains_are_runtime_params() -> None:
     wrapper = read("Driver/Src/drv_coax_ctrl.c")
 
-    assert "float roll_angle_kp;" in read("Driver/Inc/drv_coax_ctrl.h")
-    assert "float pitch_angle_kp;" in read("Driver/Inc/drv_coax_ctrl.h")
-    # Gains are now magnitudes only; negative feedback comes from the control
-    # law structure. See tests/test_coax_sign_convention.py for why: a stored
-    # negative gain used to absorb polarity errors, so the aircraft self-levelled
-    # while responding backwards to the stick.
-    assert "params->roll_angle_kp = 0.0671f;" in wrapper
-    assert "params->pitch_angle_kp = 0.0660f;" in wrapper
-    assert "params->roll_rate_kd = 0.1104f;" in wrapper
-    assert "params->pitch_rate_kd = 0.1138f;" in wrapper
-    assert "const float kr_roll = fabsf(coax_ctrl_params.roll_angle_kp);" in wrapper
-    assert "const float kr_pitch = fabsf(coax_ctrl_params.pitch_angle_kp);" in wrapper
-    assert "const float kd_roll = fabsf(coax_ctrl_params.roll_rate_kd);" in wrapper
-    assert "const float kd_pitch = fabsf(coax_ctrl_params.pitch_rate_kd);" in wrapper
-    assert "params->yaw_angle_kp = 1.0f;" in wrapper
-    assert "params->yaw_rate_kd = 0.15f;" in wrapper
+    header = read("Driver/Inc/drv_coax_ctrl.h")
+    assert "DRV_AttitudeControl_Params attitude;" in header
+    assert "DRV_RateControl_Params rate;" in header
+    assert "params->attitude.att_kp[0] = 0.0671f / 0.1104f;" in wrapper
+    assert "params->attitude.att_kp[1] = 0.0660f / 0.1138f;" in wrapper
+    assert "params->rate.kp[0] = 0.1104f;" in wrapper
+    assert "params->rate.kp[1] = 0.1138f;" in wrapper
+    assert "params->rate.kp[2] = DRV_AIRFRAME_IZZ_KGM2 * 0.15f;" in wrapper
+    assert 'strcmp(name, "coax.roll_angle_kp")' in wrapper
+    assert 'strcmp(name, "coax.yaw_rate_kd")' in wrapper
     assert "#define DRV_COAX_CTRL_PROP9047_YAW_M_PER_N 0.0001f" in wrapper
-    assert "params->vel_x_kd = 0.80f;" in wrapper
-    assert "params->vel_y_kd = 0.80f;" in wrapper
-    assert "params->vel_z_kd = 0.0f;" in wrapper
-    assert "params->pos_z_ki = 0.25f;" in wrapper
+    assert "params->position.vel_kp[0] = 0.80f;" in wrapper
+    assert "params->position.vel_kp[1] = 0.80f;" in wrapper
     assert "return (value >= 0.0f) ? 1U : 0U;" in wrapper
     assert "entry->offset == offsetof(DRV_COAX_CTRL_Params, vel_loop_enable)" in wrapper
 
@@ -361,11 +343,11 @@ def test_nonlinear_balance_controller_uses_so3_error_and_realtime_moment_arm_inv
     assert "reference->yaw_rad," in solve
     assert "solution->desired_body_r" in solve
     assert "coax_ctrl_attitude_error(solution->desired_body_r," in solve
-    assert "(-kr_roll * solution->attitude_error[0])" in solve
-    assert "(kd_roll * solution->rate_error_rad_s[0])" in solve
-    assert "DRV_AIRFRAME_IZZ_KGM2 - DRV_AIRFRAME_IYY_KGM2" in solve
-    assert "DRV_AIRFRAME_IXX_KGM2 - DRV_AIRFRAME_IZZ_KGM2" in solve
-    assert "DRV_AIRFRAME_IYY_KGM2 - DRV_AIRFRAME_IXX_KGM2" in solve
+    assert "DRV_AttitudeControl_Step" in solve
+    assert "DRV_RateControl_Step" in solve
+    rate = read("Driver/Src/drv_rate_control.c")
+    assert "omega x (J omega)" in rate
+    assert "output->moment_unsat[axis]" in rate
     assert "coax_ctrl_roll_moment_from_tilt" in wrapper
     assert "coax_ctrl_pitch_moment_from_tilt" in wrapper
     assert "sinf(beta_rad)" in wrapper
@@ -387,12 +369,13 @@ def test_nonlinear_balance_controller_uses_so3_error_and_realtime_moment_arm_inv
     assert "output->motor_upper_us = DRV_COAX_CTRL_ThrustToMotorPulse" in wrapper
 
 
-def test_balance_controller_has_no_horizontal_velocity_integral_but_keeps_z_integral() -> None:
+def test_balance_controller_has_full_velocity_and_rate_integrator_lifecycle() -> None:
     header = read("Driver/Inc/drv_coax_ctrl.h")
     wrapper = read("Driver/Src/drv_coax_ctrl.c")
 
     assert "float pos_z_i_m_s2;" in header
-    assert "float pos_z_ki;" in header
+    assert "DRV_POSITION_CONTROL_Params position;" in header
+    assert "DRV_RateControl_Params rate;" in header
     assert "DRV_COAX_CTRL_PROTECT_VELOCITY_INVALID" in header
     assert "DRV_COAX_CTRL_PROTECT_ATTITUDE" in header
     assert "DRV_COAX_CTRL_PROTECT_MOMENT" in header
@@ -407,13 +390,10 @@ def test_balance_controller_has_no_horizontal_velocity_integral_but_keeps_z_inte
     protection = protection.split("static void coax_ctrl_compute_balance_command", 1)[0]
     assert "solution->attitude_tilt_error_rad" in protection
     assert "solution->attitude_error_angle_rad" not in protection
-    assert "candidate_integral_m" not in wrapper
-    assert "(attitude->vx_m_s - reference->vx_m_s) * dt_sec" not in wrapper
-    assert "coax_ctrl_update_z_integral" in wrapper
-    assert "coax_ctrl_state.pos_z_i_m_s2" in wrapper
-    # 水平通道没有积分器：velocity_integral_m 是从未被累加的残留状态，已删除。
-    # 保护缩放介入时按缩放后的指令重算一遍即可。
-    assert "velocity_integral_m" not in wrapper
+    assert "DRV_POSITION_CONTROL_VelocityStep" in wrapper
+    assert "DRV_RateControl_Step" in wrapper
+    assert "downstream_saturation" in read("Driver/Inc/drv_position_control.h")
+    assert "saturation_positive_active" in read("Driver/Inc/drv_rate_control.h")
     protected = wrapper.split("if (horizontal_scale < 0.999f)", 1)[1]
     protected = protected.split("debug->horizontal_command_scale", 1)[0]
     assert "coax_ctrl_compute_accel_cmd(attitude," in protected
@@ -447,7 +427,7 @@ def test_vofa_exports_compact_slider_parameter_feedback() -> None:
     assert '(void)DRV_COAX_CTRL_GetParam("coax.roll_angle_kp", &vofa_data[APP_TELEM_CH_ROLL_ANGLE_KP]);' in freertos
     assert '(void)DRV_COAX_CTRL_GetParam("coax.pitch_angle_kp", &vofa_data[APP_TELEM_CH_PITCH_ANGLE_KP]);' in freertos
     assert '(void)DRV_COAX_CTRL_GetParam("coax.pos_z_kp", &vofa_data[APP_TELEM_CH_POS_Z_KP]);' in freertos
-    assert '(void)DRV_COAX_CTRL_GetParam("coax.pos_z_ki", &vofa_data[APP_TELEM_CH_POS_Z_KI]);' in freertos
+    assert "vofa_data[APP_TELEM_CH_POS_Z_KI] = 0.0f;" in freertos
     assert '(void)DRV_COAX_CTRL_GetParam("coax.vel_z_kd", &vofa_data[APP_TELEM_CH_VEL_Z_KD]);' in freertos
     assert "vofa_data[APP_TELEM_CH_ROLL_ANGLE_KP] = -vofa_data[APP_TELEM_CH_ROLL_ANGLE_KP];" not in freertos
     assert "vofa_data[APP_TELEM_CH_PITCH_ANGLE_KP] = -vofa_data[APP_TELEM_CH_PITCH_ANGLE_KP];" not in freertos

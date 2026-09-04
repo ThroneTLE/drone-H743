@@ -30,7 +30,7 @@ def test_ident_control_payload_and_decoupled_servo_takeover() -> None:
     assert 'aiwb2_starts_with(line, "IDENT ")' in app_aiwb2
     assert "ident_running = APP_Ident_IsRunning();" in freertos
     assert "APP_Ident_GetServoTargets(&ident_alpha_us, &ident_beta_us);" in freertos
-    assert "DRV_COAX_CTRL_Run(&frame->attitude, &frame->reference, &frame->ctrl_out);" in freertos
+    assert "DRV_COAX_CTRL_RunScheduled(&frame->attitude, &frame->reference," in freertos
     assert "BSP_PWM_SetEscPulse" not in ident
     assert "DRV_Motor" not in ident
     assert "if (ident_ctx.axis == APP_IDENT_AXIS_ROLL) {\n        alpha += offset *" in ident

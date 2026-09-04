@@ -4,7 +4,7 @@
 
 Read this shard only when the task uses serial/TCP diagnostics, log analysis, identification, capture, calibration, or desktop UIs.
 
-Source snapshot: `08720864e585`; aggregate snapshot: `0e77cd80966f`. Covered files: 5322.
+Source snapshot: `ba828c9240e4`; aggregate snapshot: `0e77cd80966f`. Covered files: 5323.
 
 | File/module or scope | Content outline | Key entry points / size |
 |---|---|---|
@@ -12,6 +12,7 @@ Source snapshot: `08720864e585`; aggregate snapshot: `0e77cd80966f`. Covered fil
 | `tools/aiwb2_net_tool.py` | PC-side helper for Ai-WB2-12F network bring-up. This tool keeps the computer side simple while the module is tested thr… | `env_int`, `local_ip_for`, `print_line`, `run_udp_server`, `run_udp_reply_console`, `run_udp_probe` (+6) |
 | `tools/aiwb2_tcp_loop_test.py` | End-to-end Ai-WB2 TCP transparent-mode loop test via CH340. This script treats the CH340 serial port as the MCU side an… | `env_int`, `read_idle`, `send_at`, `ensure_at_mode`, `configure_module`, `wait_for_client` (+3) |
 | `tools/attitude_ident_pid.py` | Analyze closed-loop attitude-identification FLOG CSVs and suggest PD gains. This tool is intentionally conservative: it… | `SegmentFit`, `split_segments`, `clean_segment`, `uniform_signal`, `simulate_second_order`, `fit_closed_loop` (+3) |
+| `tools/controller_cascade_analysis.py` | R-S5-1 evidence gate for same-recording controller cascade comparison. The tool deliberately refuses to compare an old/… | `inspect_candidate`, `build_report`, `main` |
 | `tools/decode_saleae_spi_csv.py` | Decode SPI bytes from a Saleae raw digital.csv export. Default mapping follows the current Saleae hookup: Channel 0 = C… | `parse_args`, `load_rows`, `decode`, `bits_to_bytes`, `fmt_bytes`, `main` |
 | `tools/drift_ab_check.py` | PIPELINE R-M3-2 · 静止漂移 A/B 采集与对比（只读）。 以 ~8Hz 轮询 `IMU?` 采集一段静止遥测，喂给 stationary_drift 分析器生成 DriftReport 并落盘，然后与最近一份历史基线（默… | `collect`, `main` |
 | `tools/drone_tcp_panel.py` | Ground-station panel for the drone-H743 Ai-WB2 transparent link | `firmware_update_link_gate`, `firmware_update_snapshot_advisory`, `airframe_record_from_line`, `ident_record_from_line`, `fit_ident_step`, `normalize_module_key` (+4) |

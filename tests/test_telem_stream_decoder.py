@@ -374,7 +374,7 @@ def test_schema_exposes_the_parameter_binding_for_sliders(tmp_path) -> None:
     assert not by_name["roll"].is_parameter
     # 滑块由通道表数据驱动生成，上位机不再自备一张增益表。
     sliders = [c.name for c in schema.ordered() if c.is_parameter]
-    assert len(sliders) == 14
+    assert len(sliders) == 13
 
 
 def test_changing_any_metadata_field_changes_the_computed_hash(tmp_path) -> None:

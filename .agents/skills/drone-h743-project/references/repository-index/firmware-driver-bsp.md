@@ -4,14 +4,15 @@
 
 Read this shard only when the task touches device protocols, reusable algorithms, buses, GPIO, DMA callbacks, cache hooks, or board bindings.
 
-Source snapshot: `1291ec624d3e`. Indexed files: 70.
+Source snapshot: `0bd86d4b2224`. Indexed files: 76.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
 | `Driver/Inc/drv_airframe_model.h` | Reusable device or algorithm driver for airframe model | — |
+| `Driver/Inc/drv_attitude_control.h`<br>`Driver/Src/drv_attitude_control.c` | Reusable device or algorithm driver for attitude control | `DRV_AttitudeControl_Step` |
 | `Driver/Inc/drv_attitude_fusion.h`<br>`Driver/Src/drv_attitude_fusion.c` | Reusable device or algorithm driver for attitude fusion | `DRV_AttitudeFusion_Init`, `DRV_AttitudeFusion_InitForConvention`, `DRV_AttitudeFusion_Update`, `DRV_AttitudeFusion_GetOutput` |
 | `Driver/Inc/drv_baro.h`<br>`Driver/Src/drv_baro.c` | Reusable device or algorithm driver for baro | `DRV_BARO_Init`, `DRV_BARO_ReadId`, `DRV_BARO_ReadIdTxRx`, `DRV_BARO_ReadRegister`, `DRV_BARO_ReadRegisters`, `DRV_BARO_WriteRegister` |
-| `Driver/Inc/drv_coax_ctrl.h`<br>`Driver/Src/drv_coax_ctrl.c` | Reusable device or algorithm driver for coax ctrl | `DRV_COAX_CTRL_Init`, `DRV_COAX_CTRL_ResetState`, `DRV_COAX_CTRL_Run`, `DRV_COAX_CTRL_GetLastDebug`, `DRV_COAX_CTRL_GetDefaultParams`, `DRV_COAX_CTRL_ResetParams` (+16) |
+| `Driver/Inc/drv_coax_ctrl.h`<br>`Driver/Src/drv_coax_ctrl.c` | Reusable device or algorithm driver for coax ctrl | `DRV_COAX_CTRL_Init`, `DRV_COAX_CTRL_ResetState`, `DRV_COAX_CTRL_Run`, `DRV_COAX_CTRL_RunScheduled`, `DRV_COAX_CTRL_GetLastDebug`, `DRV_COAX_CTRL_GetDefaultParams` (+17) |
 | `Driver/Inc/drv_elrs.h`<br>`Driver/Src/drv_elrs.c` | Reusable device or algorithm driver for elrs | `DRV_ELRS_Init`, `DRV_ELRS_ProcessByte`, `DRV_ELRS_Crc8`, `DRV_ELRS_GetChannels`, `DRV_ELRS_GetLinkStats`, `DRV_ELRS_MarkRcFrameTime` (+9) |
 | `Driver/Inc/drv_frame_contract.h` | Reusable device or algorithm driver for frame contract | `DRV_FRAME_FluToFrd` |
 | `Driver/Inc/drv_gd25q32.h`<br>`Driver/Src/drv_gd25q32.c` | Reusable device or algorithm driver for gd25q32 | `DRV_GD25Q32_Init`, `DRV_GD25Q32_ReleaseFromPowerDown`, `DRV_GD25Q32_ReadJedecId`, `DRV_GD25Q32_ReadStatus1`, `DRV_GD25Q32_ReadStatus2`, `DRV_GD25Q32_ReadStatus3` (+12) |
@@ -23,6 +24,8 @@ Source snapshot: `1291ec624d3e`. Indexed files: 70.
 | `Driver/Inc/drv_motor.h`<br>`Driver/Src/drv_motor.c` | Reusable device or algorithm driver for motor | `DRV_Motor_SetPercent`, `DRV_Motor_Stop`, `DRV_Motor_StopAll`, `DRV_Motor_GetPercent`, `DRV_Motor_GetPulse`, `DRV_Motor_PercentToPulse` (+1) |
 | `Driver/Inc/drv_nav_ekf.h`<br>`Driver/Src/drv_nav_ekf.c` | Reusable device or algorithm driver for nav ekf | `DRV_NAV_EKF_DefaultConfig`, `DRV_NAV_EKF_Reset`, `DRV_NAV_EKF_Predict`, `DRV_NAV_EKF_FuseFlow`, `DRV_NAV_EKF_GetVelocity`, `DRV_NAV_EKF_GetDiagnostics` |
 | `Driver/Inc/drv_optical_flow.h`<br>`Driver/Src/drv_optical_flow.c` | Reusable device or algorithm driver for optical flow | `DRV_OPTICAL_FLOW_Init`, `DRV_OPTICAL_FLOW_Service`, `DRV_OPTICAL_FLOW_OnUartRxCplt`, `DRV_OPTICAL_FLOW_OnUartRxEvent`, `DRV_OPTICAL_FLOW_OnUartError`, `DRV_OPTICAL_FLOW_Invalidate` (+4) |
+| `Driver/Inc/drv_position_control.h`<br>`Driver/Src/drv_position_control.c` | Reusable device or algorithm driver for position control | `DRV_POSITION_CONTROL_ResetState`, `DRV_POSITION_CONTROL_PositionStep`, `DRV_POSITION_CONTROL_VelocityStep` |
+| `Driver/Inc/drv_rate_control.h`<br>`Driver/Src/drv_rate_control.c` | Reusable device or algorithm driver for rate control | `DRV_RateControl_InitState`, `DRV_RateControl_Step`, `DRV_RateControl_Evaluate` |
 | `Driver/Inc/drv_servo.h`<br>`Driver/Src/drv_servo.c` | Reusable device or algorithm driver for servo | `DRV_SERVO_SendRaw`, `DRV_SERVO_ReadResponse`, `DRV_SERVO_GetBaudRate`, `DRV_SERVO_SetBaudRate`, `DRV_SERVO_PositionToPulse`, `DRV_SERVO_Move` (+31) |
 | `BSP/Inc/bsp.h`<br>`BSP/Src/bsp.c` | Board resource binding for bsp | `BSP_Init` |
 | `BSP/Inc/bsp_aiwb2_power.h`<br>`BSP/Src/bsp_aiwb2_power.c` | Board resource binding for aiwb2 power | `BSP_AiWB2_PowerInit`, `BSP_AiWB2_SetEnabled`, `BSP_AiWB2_UpdateButton`, `BSP_AiWB2_IsEnabled`, `BSP_AiWB2_GetLastWrittenState`, `BSP_AiWB2_GetWriteCount` |

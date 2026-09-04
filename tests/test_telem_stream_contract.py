@@ -625,8 +625,8 @@ static int test_limits_are_rejected_not_truncated(void)
     CHECK(APP_TelemStream_SetRate(1U) == APP_TELEM_STREAM_OK, 703);
 
     CHECK(APP_TelemStream_SetMask(0ULL) == APP_TELEM_STREAM_ERR_MASK, 704);
-    /* 表外通道：拒绝，不做"忽略高位"的宽容处理。 */
-    CHECK(APP_TelemStream_SetMask(1ULL << 63) == APP_TELEM_STREAM_ERR_MASK, 705);
+    /* R-S5-1 fills the final u64 slot; bit 63 is now a valid channel. */
+    CHECK(APP_TelemStream_SetMask(1ULL << 63) == APP_TELEM_STREAM_OK, 705);
     CHECK(APP_TelemStream_SetRefresh(61U) == APP_TELEM_STREAM_ERR_RANGE, 706);
 
     /* 出口装不下的配置：报 ERR，而且一帧都不发。 */

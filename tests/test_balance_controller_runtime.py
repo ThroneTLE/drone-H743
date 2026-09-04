@@ -59,6 +59,9 @@ static void reset_case(DRV_COAX_CTRL_AttitudeInput *attitude,
     memset(reference, 0, sizeof(*reference));
     reference->dt_sec = 0.02f;
     reference->horizontal_velocity_valid = 1U;
+    reference->navigation_position_valid = 1U;
+    reference->navigation_velocity_valid = 1U;
+    attitude->acceleration_valid = 1U;
 }
 
 int main(void)
@@ -124,9 +127,9 @@ int main(void)
 
     reset_case(&attitude, &reference);
     DRV_COAX_CTRL_GetParams(&params);
-    params.pos_z_kp = 0.0f;
-    params.vel_z_kd = 0.0f;
-    params.pos_z_ki = 0.50f;
+    params.position.pos_kp[2] = 1.0f;
+    params.position.vel_kp[2] = 0.0f;
+    params.position.vel_ki[2] = 0.50f;
     DRV_COAX_CTRL_SetParams(&params);
     attitude.z_m = -0.20f;
     reference.z_m = -0.40f;
@@ -170,7 +173,7 @@ int main(void)
     DRV_COAX_CTRL_Run(&attitude, &reference, &output);
     DRV_COAX_CTRL_GetLastDebug(&debug);
     CHECK(debug.pos_p_m_s2[0] > 0.05f, 28);
-    CHECK(debug.vel_d_m_s2[0] == 0.0f, 29);
+    CHECK(debug.velocity_p_m_s2[0] > 0.05f, 29);
     CHECK(output.alpha_rad < 0.0f, 30);
 
     reset_case(&attitude, &reference);
@@ -240,15 +243,15 @@ int main(void)
 
     reset_case(&attitude, &reference);
     DRV_COAX_CTRL_GetParams(&params);
-    params.roll_angle_kp = 0.0f;
-    params.pitch_angle_kp = 0.0f;
-    params.pitch_rate_kd = 0.0f;
+    params.attitude.att_kp[0] = 0.0f;
+    params.attitude.att_kp[1] = 0.0f;
+    params.rate.kp[1] = 0.0f;
     DRV_COAX_CTRL_SetParams(&params);
     /* APP attitude convention: increasing roll has gyro_x < 0. */
     attitude.gyro_x_rad_s = -0.70f;
     DRV_COAX_CTRL_Run(&attitude, &reference, &output);
     DRV_COAX_CTRL_GetLastDebug(&debug);
-    CHECK(debug.rate_error_rad_s[0] < 0.0f, 34);
+    CHECK(debug.rate_error_rad_s[0] > 0.0f, 34);
     CHECK(debug.moment_cmd_n_m[0] > 0.0f, 35);
     CHECK(output.beta_rad < 0.0f, 36);
 
@@ -267,7 +270,7 @@ int main(void)
         DRV_COAX_CTRL_Run(&attitude, &reference, &output);
     }
     DRV_COAX_CTRL_GetLastDebug(&debug);
-    CHECK(debug.vel_d_m_s2[0] > 0.5f, 51);
+    CHECK(debug.velocity_p_m_s2[0] > 0.3f, 51);
     reference.horizontal_velocity_valid = 0U;
     DRV_COAX_CTRL_Run(&attitude, &reference, &output);
     DRV_COAX_CTRL_GetLastDebug(&debug);
@@ -275,16 +278,16 @@ int main(void)
 
     reset_case(&attitude, &reference);
     DRV_COAX_CTRL_GetParams(&params);
-    params.pos_x_kp = 0.0f;
-    params.pos_y_kp = 0.0f;
-    params.vel_x_kd = 2.0f;
-    params.vel_y_kd = 2.0f;
+    params.position.pos_kp[0] = 0.0f;
+    params.position.pos_kp[1] = 0.0f;
+    params.position.vel_kp[0] = 2.0f;
+    params.position.vel_kp[1] = 2.0f;
     DRV_COAX_CTRL_SetParams(&params);
     attitude.vx_m_s = -2.0f;
     attitude.vy_m_s = 0.0f;
     DRV_COAX_CTRL_Run(&attitude, &reference, &output);
     DRV_COAX_CTRL_GetLastDebug(&debug);
-    CHECK(nearly_equal(debug.vel_d_m_s2[0], 3.70f, 1.0e-6f), 53);
+    CHECK(nearly_equal(debug.velocity_p_m_s2[0], 4.0f, 1.0e-6f), 53);
     CHECK(nearly_equal(debug.vel_d_m_s2[1], 0.0f, 1.0e-6f), 54);
     CHECK(nearly_equal(debug.accel_out_m_s2[0], 3.70f, 1.0e-6f), 55);
     CHECK(nearly_equal(debug.accel_out_m_s2[1], 0.0f, 1.0e-6f), 56);
@@ -334,10 +337,10 @@ int main(void)
 
     reset_case(&attitude, &reference);
     DRV_COAX_CTRL_GetParams(&params);
-    params.roll_angle_kp = 0.0f;
-    params.pitch_angle_kp = 0.0f;
-    params.roll_rate_kd = 0.0f;
-    params.pitch_rate_kd = 0.0f;
+    params.attitude.att_kp[0] = 0.0f;
+    params.attitude.att_kp[1] = 0.0f;
+    params.rate.kp[0] = 0.0f;
+    params.rate.kp[1] = 0.0f;
     DRV_COAX_CTRL_SetParams(&params);
     attitude.gyro_x_rad_s = 0.7f;
     attitude.gyro_y_rad_s = -0.4f;
@@ -410,6 +413,9 @@ def test_real_controller_runtime_math(tmp_path: Path) -> None:
             f"-I{stub_dir}",
             f"-I{ROOT / 'Driver' / 'Inc'}",
             str(ROOT / "Driver" / "Src" / "drv_coax_ctrl.c"),
+            str(ROOT / "Driver" / "Src" / "drv_position_control.c"),
+            str(ROOT / "Driver" / "Src" / "drv_attitude_control.c"),
+            str(ROOT / "Driver" / "Src" / "drv_rate_control.c"),
             str(harness_path),
             "-lm",
             "-o",

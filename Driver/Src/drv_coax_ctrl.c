@@ -73,7 +73,15 @@ typedef struct {
 } DRV_COAX_CTRL_ParamEntry;
 
 typedef struct {
-    float pos_z_i_m_s2;
+    DRV_POSITION_CONTROL_State position;
+    DRV_POSITION_CONTROL_PositionOutput position_output;
+    DRV_POSITION_CONTROL_VelocityOutput velocity_output;
+    DRV_AttitudeControl_Output attitude_output;
+    DRV_RateControl_State rate;
+    DRV_RateControl_Output rate_output;
+    DRV_POSITION_CONTROL_SaturationFeedback translation_saturation;
+    uint8_t moment_saturation_positive[3];
+    uint8_t moment_saturation_negative[3];
 } DRV_COAX_CTRL_State;
 
 typedef struct {
@@ -102,22 +110,56 @@ static DRV_COAX_CTRL_State coax_ctrl_state;
 #define DRV_COAX_CTRL_PARAM_ENTRY(field) \
     { "coax." #field, (uint16_t)offsetof(DRV_COAX_CTRL_Params, field) }
 
+#define DRV_COAX_CTRL_NAMED_PARAM_ENTRY(name, field) \
+    { "coax." name, (uint16_t)offsetof(DRV_COAX_CTRL_Params, field) }
+
 static const DRV_COAX_CTRL_ParamEntry coax_ctrl_param_table[] = {
-    DRV_COAX_CTRL_PARAM_ENTRY(pos_x_kp),
-    DRV_COAX_CTRL_PARAM_ENTRY(pos_y_kp),
-    DRV_COAX_CTRL_PARAM_ENTRY(pos_z_kp),
-    DRV_COAX_CTRL_PARAM_ENTRY(pos_z_ki),
-    DRV_COAX_CTRL_PARAM_ENTRY(vel_x_kd),
-    DRV_COAX_CTRL_PARAM_ENTRY(vel_y_kd),
-    DRV_COAX_CTRL_PARAM_ENTRY(vel_z_kd),
+    DRV_COAX_CTRL_NAMED_PARAM_ENTRY("pos_x_kp", position.pos_kp[0]),
+    DRV_COAX_CTRL_NAMED_PARAM_ENTRY("pos_y_kp", position.pos_kp[1]),
+    DRV_COAX_CTRL_NAMED_PARAM_ENTRY("pos_z_kp", position.pos_kp[2]),
+    DRV_COAX_CTRL_NAMED_PARAM_ENTRY("pos_xy_vel_max_m_s", position.xy_speed_limit_m_s),
+    DRV_COAX_CTRL_NAMED_PARAM_ENTRY("pos_z_vel_up_max_m_s", position.z_speed_limit_up_m_s),
+    DRV_COAX_CTRL_NAMED_PARAM_ENTRY("pos_z_vel_down_max_m_s", position.z_speed_limit_down_m_s),
+    DRV_COAX_CTRL_NAMED_PARAM_ENTRY("vel_x_kp", position.vel_kp[0]),
+    DRV_COAX_CTRL_NAMED_PARAM_ENTRY("vel_y_kp", position.vel_kp[1]),
+    DRV_COAX_CTRL_NAMED_PARAM_ENTRY("vel_z_kp", position.vel_kp[2]),
+    DRV_COAX_CTRL_NAMED_PARAM_ENTRY("vel_x_ki", position.vel_ki[0]),
+    DRV_COAX_CTRL_NAMED_PARAM_ENTRY("vel_y_ki", position.vel_ki[1]),
+    DRV_COAX_CTRL_NAMED_PARAM_ENTRY("vel_z_ki", position.vel_ki[2]),
+    DRV_COAX_CTRL_NAMED_PARAM_ENTRY("vel_x_kd", position.vel_kd[0]),
+    DRV_COAX_CTRL_NAMED_PARAM_ENTRY("vel_y_kd", position.vel_kd[1]),
+    DRV_COAX_CTRL_NAMED_PARAM_ENTRY("vel_z_kd", position.vel_kd[2]),
+    DRV_COAX_CTRL_NAMED_PARAM_ENTRY("vel_x_i_limit_m_s2", position.vel_integrator_limit[0]),
+    DRV_COAX_CTRL_NAMED_PARAM_ENTRY("vel_y_i_limit_m_s2", position.vel_integrator_limit[1]),
+    DRV_COAX_CTRL_NAMED_PARAM_ENTRY("vel_z_i_limit_m_s2", position.vel_integrator_limit[2]),
+    DRV_COAX_CTRL_NAMED_PARAM_ENTRY("accel_lpf_cutoff_hz", position.accel_lpf_cutoff_hz),
+    DRV_COAX_CTRL_NAMED_PARAM_ENTRY("accel_xy_max_m_s2", position.xy_accel_limit_m_s2),
+    DRV_COAX_CTRL_NAMED_PARAM_ENTRY("accel_z_up_max_m_s2", position.z_accel_limit_up_m_s2),
+    DRV_COAX_CTRL_NAMED_PARAM_ENTRY("accel_z_down_max_m_s2", position.z_accel_limit_down_m_s2),
+    DRV_COAX_CTRL_NAMED_PARAM_ENTRY("att_roll_kp", attitude.att_kp[0]),
+    DRV_COAX_CTRL_NAMED_PARAM_ENTRY("att_pitch_kp", attitude.att_kp[1]),
+    DRV_COAX_CTRL_NAMED_PARAM_ENTRY("att_yaw_kp", attitude.att_kp[2]),
+    DRV_COAX_CTRL_NAMED_PARAM_ENTRY("roll_rate_limit_rad_s", attitude.rate_limit_rad_s[0]),
+    DRV_COAX_CTRL_NAMED_PARAM_ENTRY("pitch_rate_limit_rad_s", attitude.rate_limit_rad_s[1]),
+    DRV_COAX_CTRL_NAMED_PARAM_ENTRY("yaw_rate_limit_rad_s", attitude.rate_limit_rad_s[2]),
+    DRV_COAX_CTRL_NAMED_PARAM_ENTRY("rate_roll_kp", rate.kp[0]),
+    DRV_COAX_CTRL_NAMED_PARAM_ENTRY("rate_pitch_kp", rate.kp[1]),
+    DRV_COAX_CTRL_NAMED_PARAM_ENTRY("rate_yaw_kp", rate.kp[2]),
+    DRV_COAX_CTRL_NAMED_PARAM_ENTRY("rate_roll_ki", rate.ki[0]),
+    DRV_COAX_CTRL_NAMED_PARAM_ENTRY("rate_pitch_ki", rate.ki[1]),
+    DRV_COAX_CTRL_NAMED_PARAM_ENTRY("rate_yaw_ki", rate.ki[2]),
+    DRV_COAX_CTRL_NAMED_PARAM_ENTRY("rate_roll_kd", rate.kd[0]),
+    DRV_COAX_CTRL_NAMED_PARAM_ENTRY("rate_pitch_kd", rate.kd[1]),
+    DRV_COAX_CTRL_NAMED_PARAM_ENTRY("rate_yaw_kd", rate.kd[2]),
+    DRV_COAX_CTRL_NAMED_PARAM_ENTRY("rate_roll_i_limit_n_m", rate.integrator_limit[0]),
+    DRV_COAX_CTRL_NAMED_PARAM_ENTRY("rate_pitch_i_limit_n_m", rate.integrator_limit[1]),
+    DRV_COAX_CTRL_NAMED_PARAM_ENTRY("rate_yaw_i_limit_n_m", rate.integrator_limit[2]),
+    DRV_COAX_CTRL_NAMED_PARAM_ENTRY("angular_accel_lpf_cutoff_rad_s", rate.alpha_lpf_cutoff_rad_s),
+    DRV_COAX_CTRL_NAMED_PARAM_ENTRY("rate_roll_ff", rate.ff_gain[0]),
+    DRV_COAX_CTRL_NAMED_PARAM_ENTRY("rate_pitch_ff", rate.ff_gain[1]),
+    DRV_COAX_CTRL_NAMED_PARAM_ENTRY("rate_yaw_ff", rate.ff_gain[2]),
     DRV_COAX_CTRL_PARAM_ENTRY(vel_loop_enable),
-    DRV_COAX_CTRL_PARAM_ENTRY(roll_angle_kp),
-    DRV_COAX_CTRL_PARAM_ENTRY(pitch_angle_kp),
-    DRV_COAX_CTRL_PARAM_ENTRY(roll_rate_kd),
-    DRV_COAX_CTRL_PARAM_ENTRY(pitch_rate_kd),
     DRV_COAX_CTRL_PARAM_ENTRY(tilt_limit_rad),
-    DRV_COAX_CTRL_PARAM_ENTRY(yaw_angle_kp),
-    DRV_COAX_CTRL_PARAM_ENTRY(yaw_rate_kd),
 };
 
 static const uint32_t coax_ctrl_param_count =
@@ -460,24 +502,9 @@ static uint8_t coax_ctrl_param_value_valid(const DRV_COAX_CTRL_ParamEntry *entry
     }
 
     if (entry->offset == offsetof(DRV_COAX_CTRL_Params, vel_loop_enable)) {
-        return (value >= 0.0f) ? 1U : 0U;
+        return ((value >= 0.0f) && (value <= 1.0f)) ? 1U : 0U;
     }
-
-    /*
-     * 姿态/角速率增益必须为非负。控制律用 fabsf 取幅值，所以负值本身不会让
-     * 飞机发散，但会让"存的值"和"实际生效的值"不一致——这正是极性错误藏身之
-     * 处。在入口处拒绝，比默默取绝对值更容易发现问题。
-     */
-    if ((entry->offset == offsetof(DRV_COAX_CTRL_Params, roll_angle_kp)) ||
-        (entry->offset == offsetof(DRV_COAX_CTRL_Params, pitch_angle_kp)) ||
-        (entry->offset == offsetof(DRV_COAX_CTRL_Params, roll_rate_kd)) ||
-        (entry->offset == offsetof(DRV_COAX_CTRL_Params, pitch_rate_kd)) ||
-        (entry->offset == offsetof(DRV_COAX_CTRL_Params, yaw_angle_kp)) ||
-        (entry->offset == offsetof(DRV_COAX_CTRL_Params, yaw_rate_kd))) {
-        return (value >= 0.0f) ? 1U : 0U;
-    }
-
-    return 1U;
+    return (value >= 0.0f) ? 1U : 0U;
 }
 
 static uint8_t coax_ctrl_params_valid(const DRV_COAX_CTRL_Params *params)
@@ -513,187 +540,162 @@ static void coax_ctrl_apply_fixed_model_params(DRV_COAX_CTRL_Params *params)
     params->yaw_torque_lower_m_per_n = DRV_COAX_CTRL_PROP9047_YAW_M_PER_N;
 }
 
-static float coax_ctrl_integrator_dt(float dt_sec)
-{
-    if ((!isfinite(dt_sec)) || (dt_sec <= 0.0f)) {
-        return 0.0f;
-    }
-
-    return coax_ctrl_clamp_f32(dt_sec, 0.0f, DRV_COAX_CTRL_DT_MAX_S);
-}
-
-static void coax_ctrl_update_z_integral(
-    const DRV_COAX_CTRL_AttitudeInput *attitude,
-    const DRV_COAX_CTRL_Reference *reference,
-    DRV_COAX_CTRL_Debug *debug)
-{
-    float dt_sec;
-    float z_error_m;
-
-    if (reference->manual_total_force_valid != 0U) {
-        coax_ctrl_state.pos_z_i_m_s2 = 0.0f;
-        debug->pos_z_i_m_s2 = 0.0f;
-        return;
-    }
-
-    dt_sec = coax_ctrl_integrator_dt(reference->dt_sec);
-    if ((dt_sec > 0.0f) && (coax_ctrl_params.pos_z_ki != 0.0f)) {
-        z_error_m = reference->z_m - attitude->z_m;
-        coax_ctrl_state.pos_z_i_m_s2 =
-            coax_ctrl_clamp_f32(coax_ctrl_state.pos_z_i_m_s2 +
-                                (coax_ctrl_params.pos_z_ki *
-                                 z_error_m *
-                                 dt_sec),
-                                -DRV_COAX_CTRL_POS_Z_I_ACCEL_LIMIT_M_S2,
-                                 DRV_COAX_CTRL_POS_Z_I_ACCEL_LIMIT_M_S2);
-    }
-
-    debug->pos_z_i_m_s2 = coax_ctrl_state.pos_z_i_m_s2;
-}
-
 static void coax_ctrl_compute_accel_cmd(
     const DRV_COAX_CTRL_AttitudeInput *attitude,
     const DRV_COAX_CTRL_Reference *reference,
+    const DRV_COAX_CTRL_Schedule *schedule,
     float horizontal_scale,
-    uint8_t update_z_integral,
     DRV_COAX_CTRL_Debug *debug)
 {
-    float horizontal_norm;
+    DRV_POSITION_CONTROL_PositionInput position_input;
+    DRV_POSITION_CONTROL_VelocityInput velocity_input;
+    const float position_sp[3] = { reference->x_m, reference->y_m, reference->z_m };
+    const float position_meas[3] = { attitude->x_m, attitude->y_m, attitude->z_m };
+    const float velocity_ff[3] = { reference->vx_m_s, reference->vy_m_s,
+                                   reference->vz_m_s };
+    const float velocity_meas[3] = { attitude->vx_m_s, attitude->vy_m_s,
+                                     attitude->vz_m_s };
+    const float accel_ff[3] = { reference->ax_m_s2, reference->ay_m_s2,
+                                reference->az_m_s2 };
+    const uint8_t translation_bypass =
+        ((reference->manual_total_force_valid != 0U) ||
+         (reference->direct_attitude_target_valid != 0U) ||
+         (coax_ctrl_params.vel_loop_enable < 0.5f)) ? 1U : 0U;
 
-    debug->pos_p_m_s2[0] =
-        coax_ctrl_params.pos_x_kp * (reference->x_m - attitude->x_m);
-    debug->pos_p_m_s2[1] =
-        coax_ctrl_params.pos_y_kp * (reference->y_m - attitude->y_m);
-    debug->pos_p_m_s2[2] =
-        coax_ctrl_params.pos_z_kp * (reference->z_m - attitude->z_m);
+    memset(&position_input, 0, sizeof(position_input));
+    memset(&velocity_input, 0, sizeof(velocity_input));
 
-    debug->vel_d_m_s2[0] =
-        coax_ctrl_params.vel_x_kd * (reference->vx_m_s - attitude->vx_m_s);
-    debug->vel_d_m_s2[1] =
-        coax_ctrl_params.vel_y_kd * (reference->vy_m_s - attitude->vy_m_s);
-    debug->vel_d_m_s2[2] =
-        coax_ctrl_params.vel_z_kd * (reference->vz_m_s - attitude->vz_m_s);
-
-    debug->vel_d_m_s2[0] =
-        coax_ctrl_clamp_f32(debug->vel_d_m_s2[0],
-                            -DRV_COAX_CTRL_VEL_D_ACCEL_LIMIT_M_S2,
-                            DRV_COAX_CTRL_VEL_D_ACCEL_LIMIT_M_S2);
-    debug->vel_d_m_s2[1] =
-        coax_ctrl_clamp_f32(debug->vel_d_m_s2[1],
-                            -DRV_COAX_CTRL_VEL_D_ACCEL_LIMIT_M_S2,
-                            DRV_COAX_CTRL_VEL_D_ACCEL_LIMIT_M_S2);
-
-    if (update_z_integral != 0U) {
-        coax_ctrl_update_z_integral(attitude, reference, debug);
-    } else {
-        debug->pos_z_i_m_s2 = coax_ctrl_state.pos_z_i_m_s2;
+    if ((translation_bypass == 0U) && (schedule->position_update != 0U)) {
+        position_input.position_sp_m[0] = reference->x_m;
+        position_input.position_sp_m[1] = reference->y_m;
+        position_input.position_sp_m[2] = reference->z_m;
+        position_input.position_meas_m[0] = attitude->x_m;
+        position_input.position_meas_m[1] = attitude->y_m;
+        position_input.position_meas_m[2] = attitude->z_m;
+        position_input.direct_velocity_m_s[0] = reference->vx_m_s;
+        position_input.direct_velocity_m_s[1] = reference->vy_m_s;
+        position_input.direct_velocity_m_s[2] = reference->vz_m_s;
+        memcpy(position_input.velocity_ff_m_s, velocity_ff,
+               sizeof(position_input.velocity_ff_m_s));
+        position_input.dt_sec = schedule->position_dt_s;
+        position_input.measurement_valid = reference->navigation_position_valid;
+        position_input.position_bypass = reference->position_control_bypass;
+        DRV_POSITION_CONTROL_PositionStep(&coax_ctrl_params.position,
+                                          &position_input,
+                                          &coax_ctrl_state.position_output);
     }
 
-    if (reference->manual_total_force_valid != 0U) {
-        debug->pos_p_m_s2[0] = 0.0f;
-        debug->pos_p_m_s2[1] = 0.0f;
-        debug->pos_p_m_s2[2] = 0.0f;
-        debug->pos_z_i_m_s2 = 0.0f;
-        debug->vel_d_m_s2[0] = 0.0f;
-        debug->vel_d_m_s2[1] = 0.0f;
-        debug->vel_d_m_s2[2] = 0.0f;
-        debug->accel_out_m_s2[0] = 0.0f;
-        debug->accel_out_m_s2[1] = 0.0f;
-        debug->accel_out_m_s2[2] = 0.0f;
-    } else if (reference->direct_attitude_target_valid != 0U) {
-        debug->pos_p_m_s2[0] = 0.0f;
-        debug->pos_p_m_s2[1] = 0.0f;
-        debug->vel_d_m_s2[0] = 0.0f;
-        debug->vel_d_m_s2[1] = 0.0f;
-        debug->accel_out_m_s2[0] = 0.0f;
-        debug->accel_out_m_s2[1] = 0.0f;
-    } else if (coax_ctrl_params.vel_loop_enable >= 0.5f) {
-        debug->accel_out_m_s2[0] = reference->ax_m_s2 +
-                                     debug->pos_p_m_s2[0] +
-                                     debug->vel_d_m_s2[0];
-        debug->accel_out_m_s2[1] = reference->ay_m_s2 +
-                                     debug->pos_p_m_s2[1] +
-                                     debug->vel_d_m_s2[1];
-    } else {
-        debug->pos_p_m_s2[0] = 0.0f;
-        debug->pos_p_m_s2[1] = 0.0f;
-        debug->vel_d_m_s2[0] = 0.0f;
-        debug->vel_d_m_s2[1] = 0.0f;
-        debug->accel_out_m_s2[0] = reference->ax_m_s2;
-        debug->accel_out_m_s2[1] = reference->ay_m_s2;
+    if ((translation_bypass == 0U) && (schedule->velocity_update != 0U)) {
+        memcpy(velocity_input.velocity_sp_m_s,
+               coax_ctrl_state.position_output.velocity_sp_m_s,
+               sizeof(velocity_input.velocity_sp_m_s));
+        velocity_input.velocity_meas_m_s[0] = attitude->vx_m_s;
+        velocity_input.velocity_meas_m_s[1] = attitude->vy_m_s;
+        velocity_input.velocity_meas_m_s[2] = attitude->vz_m_s;
+        velocity_input.accel_ff_m_s2[0] = reference->ax_m_s2;
+        velocity_input.accel_ff_m_s2[1] = reference->ay_m_s2;
+        velocity_input.accel_ff_m_s2[2] = reference->az_m_s2;
+        memcpy(velocity_input.measured_accel_m_s2,
+               attitude->accel_m_s2,
+               sizeof(velocity_input.measured_accel_m_s2));
+        velocity_input.dt_sec = schedule->velocity_dt_s;
+        velocity_input.measurement_valid =
+            (reference->navigation_velocity_valid != 0U) &&
+            (attitude->acceleration_valid != 0U);
+        velocity_input.integrator_enable = schedule->integrator_enable;
+        velocity_input.integrator_freeze = schedule->integrator_freeze;
+        velocity_input.integrator_reset = schedule->integrator_reset;
+        velocity_input.downstream_saturation =
+            coax_ctrl_state.translation_saturation;
+        DRV_POSITION_CONTROL_VelocityStep(&coax_ctrl_params.position,
+                                          &coax_ctrl_state.position,
+                                          &velocity_input,
+                                          &coax_ctrl_state.velocity_output);
     }
 
-    horizontal_norm = sqrtf((debug->accel_out_m_s2[0] *
-                             debug->accel_out_m_s2[0]) +
-                            (debug->accel_out_m_s2[1] *
-                             debug->accel_out_m_s2[1]));
-    if (horizontal_norm > DRV_COAX_CTRL_HORIZONTAL_ACCEL_LIMIT_M_S2) {
-        const float limit_scale =
-            DRV_COAX_CTRL_HORIZONTAL_ACCEL_LIMIT_M_S2 / horizontal_norm;
-        debug->accel_out_m_s2[0] *= limit_scale;
-        debug->accel_out_m_s2[1] *= limit_scale;
-        debug->pos_p_m_s2[0] *= limit_scale;
-        debug->pos_p_m_s2[1] *= limit_scale;
-        debug->vel_d_m_s2[0] *= limit_scale;
-        debug->vel_d_m_s2[1] *= limit_scale;
+    for (uint32_t axis = 0U; axis < 3U; ++axis) {
+        debug->position_sp_m[axis] = position_sp[axis];
+        debug->position_m[axis] = position_meas[axis];
+        debug->position_error_m[axis] =
+            debug->position_sp_m[axis] - debug->position_m[axis];
+        debug->velocity_ff_m_s[axis] = velocity_ff[axis];
+        debug->velocity_sp_m_s[axis] =
+            coax_ctrl_state.position_output.velocity_sp_m_s[axis];
+        debug->velocity_m_s[axis] = velocity_meas[axis];
+        debug->velocity_error_m_s[axis] =
+            coax_ctrl_state.velocity_output.error_m_s[axis];
+        debug->velocity_p_m_s2[axis] =
+            coax_ctrl_state.velocity_output.p_term_m_s2[axis];
+        debug->velocity_i_m_s2[axis] =
+            coax_ctrl_state.velocity_output.i_term_m_s2[axis];
+        debug->velocity_d_m_s2[axis] =
+            coax_ctrl_state.velocity_output.d_term_m_s2[axis];
+        debug->velocity_ff_m_s2[axis] =
+            coax_ctrl_state.velocity_output.ff_term_m_s2[axis];
+        debug->accel_unsat_m_s2[axis] =
+            coax_ctrl_state.velocity_output.accel_unsat_m_s2[axis];
+        debug->accel_out_m_s2[axis] =
+            coax_ctrl_state.velocity_output.accel_sat_m_s2[axis];
+        debug->pos_p_m_s2[axis] =
+            coax_ctrl_params.position.vel_kp[axis] *
+            coax_ctrl_params.position.pos_kp[axis] *
+            debug->position_error_m[axis];
+        debug->vel_d_m_s2[axis] = debug->velocity_p_m_s2[axis];
     }
 
-    debug->accel_out_m_s2[0] *= horizontal_scale;
-    debug->accel_out_m_s2[1] *= horizontal_scale;
-    debug->pos_p_m_s2[0] *= horizontal_scale;
-    debug->pos_p_m_s2[1] *= horizontal_scale;
-    debug->vel_d_m_s2[0] *= horizontal_scale;
-    debug->vel_d_m_s2[1] *= horizontal_scale;
-    if (reference->manual_total_force_valid == 0U) {
-        debug->accel_out_m_s2[2] =
-            debug->pos_p_m_s2[2] +
-            debug->pos_z_i_m_s2 +
-            debug->vel_d_m_s2[2] +
-            reference->az_m_s2;
+    debug->pos_z_i_m_s2 = debug->velocity_i_m_s2[2];
+    if (translation_bypass != 0U) {
+        memset(&coax_ctrl_state.position_output, 0,
+               sizeof(coax_ctrl_state.position_output));
+        memset(&coax_ctrl_state.velocity_output, 0,
+               sizeof(coax_ctrl_state.velocity_output));
+        for (uint32_t axis = 0U; axis < 3U; ++axis) {
+            debug->pos_p_m_s2[axis] = 0.0f;
+            debug->vel_d_m_s2[axis] = 0.0f;
+            debug->velocity_error_m_s[axis] = 0.0f;
+            debug->velocity_p_m_s2[axis] = 0.0f;
+            debug->velocity_i_m_s2[axis] = 0.0f;
+            debug->velocity_d_m_s2[axis] = 0.0f;
+            debug->velocity_ff_m_s2[axis] = accel_ff[axis];
+            debug->accel_out_m_s2[axis] = accel_ff[axis];
+            debug->accel_unsat_m_s2[axis] = debug->accel_out_m_s2[axis];
+        }
+        if ((reference->manual_total_force_valid != 0U) ||
+            (reference->direct_attitude_target_valid != 0U)) {
+            debug->accel_out_m_s2[0] = 0.0f;
+            debug->accel_out_m_s2[1] = 0.0f;
+            debug->accel_unsat_m_s2[0] = 0.0f;
+            debug->accel_unsat_m_s2[1] = 0.0f;
+        }
+    }
+
+    if (horizontal_scale < 0.999f) {
+        debug->accel_out_m_s2[0] *= horizontal_scale;
+        debug->accel_out_m_s2[1] *= horizontal_scale;
     }
 }
 
 static void coax_ctrl_compute_balance_solution(
     const DRV_COAX_CTRL_AttitudeInput *attitude,
     const DRV_COAX_CTRL_Reference *reference,
+    const DRV_COAX_CTRL_Schedule *schedule,
     DRV_COAX_CTRL_Debug *debug,
     DRV_COAX_CTRL_BalanceSolution *solution)
 {
     float actual_r[3][3];
-    float actual_t[3][3];
-    float actual_t_desired[3][3];
-    float desired_omega[3] = { 0.0f, 0.0f, reference->yaw_rate_rad_s };
-    float desired_omega_actual[3];
+    DRV_AttitudeControl_Input attitude_input;
+    DRV_RateControl_Input rate_input;
+    float error_for_angle[3];
     const float actual_omega[3] = {
         DRV_COAX_CTRL_RATE_FRAME_ROLL_SIGN * attitude->gyro_x_rad_s,
         DRV_COAX_CTRL_RATE_FRAME_PITCH_SIGN * attitude->gyro_y_rad_s,
         attitude->gyro_z_rad_s,
     };
-    /*
-     * 增益一律取正。以前 kr 取反、kd 直接使用，两种增益的符号约定相反，
-     * 于是"存负值"成了掩盖极性错误的手段。现在用 fabsf 强制为正，负反馈
-     * 完全由下面 -K_R*e_R - K_w*e_w 的结构保证。
-     */
-    const float kr_roll = fabsf(coax_ctrl_params.roll_angle_kp);
-    const float kr_pitch = fabsf(coax_ctrl_params.pitch_angle_kp);
-    const float kd_roll = fabsf(coax_ctrl_params.roll_rate_kd);
-    const float kd_pitch = fabsf(coax_ctrl_params.pitch_rate_kd);
-    /*
-     * 偏航增益对外仍是加速度量纲的 yaw_angle_kp / yaw_rate_kd（上位机滑块与
-     * 遥测通道不变），在这里乘 yaw_inertia 换算成与 roll/pitch 同构的物理量纲
-     * K_R [N*m/rad] 与 K_w [N*m*s/rad]。这样悬停小角度下的力矩与旧 PD 逐值等价，
-     * 差异只来自 e_R / e_w 的正确语义（见下面的符号推导）。
-     */
-    const float kr_yaw =
-        fabsf(coax_ctrl_params.yaw_inertia * coax_ctrl_params.yaw_angle_kp);
-    const float kd_yaw =
-        fabsf(coax_ctrl_params.yaw_inertia * coax_ctrl_params.yaw_rate_kd);
     float force_scale = 1.0f;
     float target_pitch_rad;
     float target_roll_rad;
     float target_pitch_force_rad;
     float target_roll_force_rad;
-    float gyro_momentum_cross[3];
     float roll_limit_moment_n_m;
     float pitch_limit_moment_n_m;
     float yaw_limit_moment_n_m;
@@ -761,69 +763,88 @@ static void coax_ctrl_compute_balance_solution(
         DRV_COAX_CTRL_FORCE_FRAME_PITCH_SIGN * target_pitch_rad;
 
     coax_ctrl_attitude_matrix(attitude, actual_r);
-    coax_ctrl_matrix_transpose(actual_r, actual_t);
     coax_ctrl_rpy_matrix(target_roll_force_rad,
                          target_pitch_force_rad,
                          reference->yaw_rad,
                          solution->desired_body_r);
     coax_ctrl_attitude_error(solution->desired_body_r,
                              actual_r,
-                             solution->attitude_error,
+                             error_for_angle,
                              &solution->attitude_error_angle_rad,
                              &solution->attitude_tilt_error_rad);
-    coax_ctrl_matrix_multiply(actual_t,
-                              solution->desired_body_r,
-                              actual_t_desired);
-    for (uint32_t row = 0U; row < 3U; ++row) {
-        desired_omega_actual[row] =
-            (actual_t_desired[row][0] * desired_omega[0]) +
-            (actual_t_desired[row][1] * desired_omega[1]) +
-            (actual_t_desired[row][2] * desired_omega[2]);
-        solution->rate_error_rad_s[row] =
-            actual_omega[row] - desired_omega_actual[row];
+    memset(&attitude_input, 0, sizeof(attitude_input));
+    memcpy(attitude_input.actual_rotation, actual_r, sizeof(actual_r));
+    memcpy(attitude_input.desired_rotation, solution->desired_body_r,
+           sizeof(solution->desired_body_r));
+    attitude_input.desired_rate_in_desired_frame[2] =
+        reference->yaw_rate_rad_s;
+    if (schedule->attitude_update != 0U) {
+        (void)DRV_AttitudeControl_Step(&coax_ctrl_params.attitude,
+                                       &attitude_input,
+                                       &coax_ctrl_state.attitude_output);
     }
 
-    /* omega x (J * omega) for the diagonal airframe inertia model. */
-    gyro_momentum_cross[0] =
-        (DRV_AIRFRAME_IZZ_KGM2 - DRV_AIRFRAME_IYY_KGM2) *
-        actual_omega[1] * actual_omega[2];
-    gyro_momentum_cross[1] =
-        (DRV_AIRFRAME_IXX_KGM2 - DRV_AIRFRAME_IZZ_KGM2) *
-        actual_omega[2] * actual_omega[0];
-    gyro_momentum_cross[2] =
-        (DRV_AIRFRAME_IYY_KGM2 - DRV_AIRFRAME_IXX_KGM2) *
-        actual_omega[0] * actual_omega[1];
+    roll_limit_moment_n_m = fabsf(coax_ctrl_roll_moment_from_tilt(
+        solution->total_force_n, coax_ctrl_params.tilt_limit_rad));
+    pitch_limit_moment_n_m = fabsf(coax_ctrl_pitch_moment_from_tilt(
+        solution->total_force_n, coax_ctrl_params.tilt_limit_rad, 0.0f));
+    yaw_limit_moment_n_m = coax_ctrl_yaw_limit_moment(solution->total_force_n);
+    roll_limit_moment_n_m = fmaxf(roll_limit_moment_n_m,
+                                  DRV_COAX_CTRL_RATE_SCALE_EPS);
+    pitch_limit_moment_n_m = fmaxf(pitch_limit_moment_n_m,
+                                   DRV_COAX_CTRL_RATE_SCALE_EPS);
+    yaw_limit_moment_n_m = fmaxf(yaw_limit_moment_n_m,
+                                 DRV_COAX_CTRL_RATE_SCALE_EPS);
 
-    /* M_d = -K_R*e_R - K_w*e_w + w x Jw  —— 两项都是负反馈。 */
-    solution->moment_cmd_n_m[0] =
-        (-kr_roll * solution->attitude_error[0]) -
-        (kd_roll * solution->rate_error_rad_s[0]) +
-        gyro_momentum_cross[0];
-    solution->moment_cmd_n_m[1] =
-        (-kr_pitch * solution->attitude_error[1]) -
-        (kd_pitch * solution->rate_error_rad_s[1]) +
-        gyro_momentum_cross[1];
-    /*
-     * 偏航同构进入 SO(3)，不再单独走 PD。符号推导（纯偏航误差下）：
-     *   e_R[2] = 1/2 * (Rd^T R - R^T Rd)^v |_z = sin(psi - psi_d) ~ psi - psi_d
-     *   故 -K_R * e_R[2] ~ +K_R * (psi_d - psi)，与旧 PD 的 +Kp*yaw_err 同向；
-     *   e_w[2] = w_z - (R^T Rd w_d)_z = w_z - r_d
-     *   故 -K_w * e_w[2] = K_w * (r_d - w_z)，与旧 PD 的 +Kd*(rate_ref-w_z) 同向。
-     * 因此正增益 + 负反馈结构与 roll/pitch 完全一致，wrap_pi 由 e_R 的 sin 形式
-     * 天然承担。代价是大偏航误差下 e_R 按 sin 衰减而非线性增长（180 度处为零，
-     * 是 SO(3) 姿态误差的固有性质，roll/pitch 一直如此），悬停小角度区间不受影响。
-     */
-    solution->moment_cmd_n_m[2] =
-        (-kr_yaw * solution->attitude_error[2]) -
-        (kd_yaw * solution->rate_error_rad_s[2]) +
-        gyro_momentum_cross[2] +
-        (coax_ctrl_params.yaw_inertia * reference->yaw_accel_rad_s2);
+    memset(&rate_input, 0, sizeof(rate_input));
+    memcpy(rate_input.omega, actual_omega, sizeof(actual_omega));
+    memcpy(rate_input.omega_sp, coax_ctrl_state.attitude_output.omega_sp,
+           sizeof(rate_input.omega_sp));
+    rate_input.alpha_ff[2] = reference->yaw_accel_rad_s2;
+    rate_input.inertia[0] = DRV_AIRFRAME_IXX_KGM2;
+    rate_input.inertia[1] = DRV_AIRFRAME_IYY_KGM2;
+    rate_input.inertia[2] = DRV_AIRFRAME_IZZ_KGM2;
+    rate_input.dt_s = schedule->rate_dt_s;
+    rate_input.saturation_positive[0] = roll_limit_moment_n_m;
+    rate_input.saturation_positive[1] = pitch_limit_moment_n_m;
+    rate_input.saturation_positive[2] = yaw_limit_moment_n_m;
+    rate_input.saturation_negative[0] = -roll_limit_moment_n_m;
+    rate_input.saturation_negative[1] = -pitch_limit_moment_n_m;
+    rate_input.saturation_negative[2] = -yaw_limit_moment_n_m;
+    rate_input.measurement_valid = 1U;
+    rate_input.integrator_enable = schedule->integrator_enable;
+    rate_input.integrator_freeze = schedule->integrator_freeze;
+    rate_input.integrator_reset = schedule->integrator_reset;
+    memcpy(rate_input.saturation_positive_active,
+           coax_ctrl_state.moment_saturation_positive,
+           sizeof(rate_input.saturation_positive_active));
+    memcpy(rate_input.saturation_negative_active,
+           coax_ctrl_state.moment_saturation_negative,
+           sizeof(rate_input.saturation_negative_active));
+    if (schedule->rate_update != 0U) {
+        (void)DRV_RateControl_Step(&coax_ctrl_params.rate,
+                                   &coax_ctrl_state.rate,
+                                   &rate_input,
+                                   &coax_ctrl_state.rate_output);
+    } else {
+        (void)DRV_RateControl_Evaluate(&coax_ctrl_params.rate,
+                                       &coax_ctrl_state.rate,
+                                       &rate_input,
+                                       &coax_ctrl_state.rate_output);
+    }
 
-    /* 遥测口径不变：这两路仍是加速度量纲的 P/D 分量，只是改由 e_R / e_w 导出。 */
+    memcpy(solution->attitude_error,
+           coax_ctrl_state.attitude_output.attitude_error,
+           sizeof(solution->attitude_error));
+    memcpy(solution->rate_error_rad_s,
+           coax_ctrl_state.rate_output.error,
+           sizeof(solution->rate_error_rad_s));
+    memcpy(solution->moment_cmd_n_m,
+           coax_ctrl_state.rate_output.moment_unsat,
+           sizeof(solution->moment_cmd_n_m));
     debug->yaw_angle_p_rad_s =
-        -fabsf(coax_ctrl_params.yaw_angle_kp) * solution->attitude_error[2];
-    debug->yaw_rate_d_rad_s =
-        -fabsf(coax_ctrl_params.yaw_rate_kd) * solution->rate_error_rad_s[2];
+        -coax_ctrl_params.attitude.att_kp[2] * solution->attitude_error[2];
+    debug->yaw_rate_d_rad_s = solution->rate_error_rad_s[2];
 
     solution->beta_rad = coax_ctrl_solve_roll_tilt_from_moment(
         solution->moment_cmd_n_m[0],
@@ -883,22 +904,27 @@ static void coax_ctrl_compute_balance_solution(
     debug->target_attitude_rp_rad[1] = target_pitch_rad;
 
     debug->tilt_angle_p_rad[0] = coax_ctrl_solve_pitch_tilt_from_moment(
-        -kr_pitch * solution->attitude_error[1],
+        -coax_ctrl_params.rate.kp[1] *
+         coax_ctrl_params.attitude.att_kp[1] * solution->attitude_error[1],
         solution->total_force_n,
         solution->beta_rad,
         coax_ctrl_params.tilt_limit_rad);
     debug->tilt_angle_p_rad[1] = coax_ctrl_solve_roll_tilt_from_moment(
-        -kr_roll * solution->attitude_error[0],
+        -coax_ctrl_params.rate.kp[0] *
+         coax_ctrl_params.attitude.att_kp[0] * solution->attitude_error[0],
         solution->total_force_n,
         coax_ctrl_params.tilt_limit_rad);
-    /* 符号必须与 moment_cmd 中的 -K_w*e_w 一致，否则遥测里的 D 项是假的。 */
     debug->tilt_rate_d_rad[0] = coax_ctrl_solve_pitch_tilt_from_moment(
-        -kd_pitch * solution->rate_error_rad_s[1],
+        coax_ctrl_state.rate_output.p_term[1] +
+        (coax_ctrl_params.rate.kp[1] *
+         coax_ctrl_params.attitude.att_kp[1] * solution->attitude_error[1]),
         solution->total_force_n,
         solution->beta_rad,
         coax_ctrl_params.tilt_limit_rad);
     debug->tilt_rate_d_rad[1] = coax_ctrl_solve_roll_tilt_from_moment(
-        -kd_roll * solution->rate_error_rad_s[0],
+        coax_ctrl_state.rate_output.p_term[0] +
+        (coax_ctrl_params.rate.kp[0] *
+         coax_ctrl_params.attitude.att_kp[0] * solution->attitude_error[0]),
         solution->total_force_n,
         coax_ctrl_params.tilt_limit_rad);
 
@@ -917,6 +943,24 @@ static void coax_ctrl_compute_balance_solution(
     memcpy(debug->moment_cmd_n_m,
            solution->moment_cmd_n_m,
            sizeof(debug->moment_cmd_n_m));
+    memcpy(debug->omega_ff_rad_s,
+           coax_ctrl_state.attitude_output.omega_ff,
+           sizeof(debug->omega_ff_rad_s));
+    memcpy(debug->omega_sp_rad_s,
+           coax_ctrl_state.attitude_output.omega_sp,
+           sizeof(debug->omega_sp_rad_s));
+    memcpy(debug->omega_rad_s, actual_omega, sizeof(debug->omega_rad_s));
+    memcpy(debug->rate_limit_rad_s,
+           coax_ctrl_params.attitude.rate_limit_rad_s,
+           sizeof(debug->rate_limit_rad_s));
+    memcpy(debug->rate_p_n_m, coax_ctrl_state.rate_output.p_term,
+           sizeof(debug->rate_p_n_m));
+    memcpy(debug->rate_i_n_m, coax_ctrl_state.rate_output.i_term,
+           sizeof(debug->rate_i_n_m));
+    memcpy(debug->rate_d_n_m, coax_ctrl_state.rate_output.d_term,
+           sizeof(debug->rate_d_n_m));
+    memcpy(debug->rate_ff_n_m, coax_ctrl_state.rate_output.ff_term,
+           sizeof(debug->rate_ff_n_m));
     debug->total_force_n = solution->total_force_n;
     debug->moment_utilization = solution->moment_utilization;
     debug->thrust_utilization = solution->thrust_utilization;
@@ -971,32 +1015,43 @@ static float coax_ctrl_balance_protection_scale(
 static void coax_ctrl_compute_balance_command(
     const DRV_COAX_CTRL_AttitudeInput *attitude,
     const DRV_COAX_CTRL_Reference *reference,
+    const DRV_COAX_CTRL_Schedule *schedule,
     DRV_COAX_CTRL_Debug *debug,
     DRV_COAX_CTRL_BalanceSolution *solution)
 {
     float horizontal_scale;
+    DRV_COAX_CTRL_Schedule recalc_schedule;
 
     coax_ctrl_compute_accel_cmd(attitude,
                                 reference,
+                                schedule,
                                 1.0f,
-                                1U,
                                 debug);
-    coax_ctrl_compute_balance_solution(attitude, reference, debug, solution);
+    coax_ctrl_compute_balance_solution(attitude, reference, schedule,
+                                       debug, solution);
     horizontal_scale = coax_ctrl_balance_protection_scale(reference,
                                                            solution,
                                                            &debug->protection_flags);
 
     /* 保护缩放介入时按缩放后的加速度指令重算一遍，让力矩与实际下发一致。 */
     if (horizontal_scale < 0.999f) {
+        recalc_schedule = *schedule;
+        recalc_schedule.position_update = 0U;
+        recalc_schedule.velocity_update = 0U;
+        recalc_schedule.rate_update = 0U;
         coax_ctrl_compute_accel_cmd(attitude,
                                     reference,
+                                    &recalc_schedule,
                                     horizontal_scale,
-                                    0U,
                                     debug);
-        coax_ctrl_compute_balance_solution(attitude, reference, debug, solution);
+        coax_ctrl_compute_balance_solution(attitude, reference,
+                                           &recalc_schedule, debug, solution);
     }
 
     debug->horizontal_command_scale = horizontal_scale;
+    coax_ctrl_state.translation_saturation.horizontal_scale = horizontal_scale;
+    coax_ctrl_state.translation_saturation.tilt_saturated =
+        (horizontal_scale < 0.999f) ? 1U : 0U;
 }
 
 static void coax_ctrl_allocate_motor_thrust(float total_force_n,
@@ -1044,30 +1099,43 @@ void DRV_COAX_CTRL_GetDefaultParams(DRV_COAX_CTRL_Params *params)
         return;
     }
 
-    params->pos_x_kp = 0.30f;
-    params->pos_y_kp = 0.30f;
-    params->pos_z_kp = 3.8f;
-    params->pos_z_ki = 0.25f;
-    params->vel_x_kd = 0.80f;
-    params->vel_y_kd = 0.80f;
-    params->vel_z_kd = 0.0f;
+    memset(params, 0, sizeof(*params));
+    params->position.pos_kp[0] = 0.375f;
+    params->position.pos_kp[1] = 0.375f;
+    params->position.pos_kp[2] = 3.8f;
+    params->position.vel_kp[0] = 0.80f;
+    params->position.vel_kp[1] = 0.80f;
+    params->position.vel_kp[2] = 1.0f;
+    params->position.xy_speed_limit_m_s = 0.40f;
+    params->position.z_speed_limit_up_m_s = 0.30f;
+    params->position.z_speed_limit_down_m_s = 0.30f;
+    params->position.vel_integrator_limit[0] = 1.50f;
+    params->position.vel_integrator_limit[1] = 1.50f;
+    params->position.vel_integrator_limit[2] = 1.50f;
+    params->position.xy_accel_limit_m_s2 = 3.70f;
+    params->position.z_accel_limit_up_m_s2 = 3.70f;
+    params->position.z_accel_limit_down_m_s2 = 3.70f;
+    params->position.accel_lpf_cutoff_hz = 20.0f;
     params->vel_loop_enable = 1.0f;
-    params->mass_kg = DRV_AIRFRAME_MASS_KG;
-    params->gravity_m_s2 = DRV_AIRFRAME_GRAVITY_M_S2;
-    params->pitch_tilt_lever_arm_m = DRV_AIRFRAME_PITCH_THRUST_LEVER_ARM_M;
-    params->roll_tilt_lever_arm_m = DRV_AIRFRAME_ROLL_THRUST_LEVER_ARM_M;
-    /*
-     * 增益全部为正。负反馈由控制律结构保证，不再由增益符号承担——旧代码存
-     * 负值是为了配合 kr/kd 相反的符号约定，那也正是极性错误得以隐藏的原因。
-     * 幅值与原先一致（取绝对值），因此调好的动态特性不变。
-     */
-    params->roll_angle_kp = 0.0671f;
-    params->pitch_angle_kp = 0.0660f;
-    params->roll_rate_kd = 0.1104f;
-    params->pitch_rate_kd = 0.1138f;
+    params->attitude.att_kp[0] = 0.0671f / 0.1104f;
+    params->attitude.att_kp[1] = 0.0660f / 0.1138f;
+    params->attitude.att_kp[2] = 1.0f / 0.15f;
+    params->attitude.rate_limit_rad_s[0] = 3.49065850f;
+    params->attitude.rate_limit_rad_s[1] = 3.49065850f;
+    params->attitude.rate_limit_rad_s[2] = 1.04719758f;
+    params->rate.kp[0] = 0.1104f;
+    params->rate.kp[1] = 0.1138f;
+    params->rate.kp[2] = DRV_AIRFRAME_IZZ_KGM2 * 0.15f;
+    params->rate.integrator_limit[0] = 0.010f;
+    params->rate.integrator_limit[1] = 0.010f;
+    params->rate.integrator_limit[2] = 0.00020f;
+    params->rate.alpha_lpf_cutoff_rad_s = 188.495559f;
+    for (uint32_t axis = 0U; axis < 3U; ++axis) {
+        params->rate.large_error_threshold[axis] = 1.5f;
+        params->rate.large_error_scale[axis] = 0.0f;
+        params->rate.ff_gain[axis] = 1.0f;
+    }
     params->tilt_limit_rad = DRV_COAX_CTRL_TILT_LIMIT_RAD;
-    params->yaw_angle_kp = 1.0f;
-    params->yaw_rate_kd = 0.15f;
     coax_ctrl_apply_fixed_model_params(params);
 }
 
@@ -1118,11 +1186,43 @@ uint8_t DRV_COAX_CTRL_GetParam(const char *name, float *value)
 {
     const DRV_COAX_CTRL_ParamEntry *entry = coax_ctrl_find_param(name);
 
-    if ((entry == NULL) || (value == NULL)) {
+    if ((name == NULL) || (value == NULL)) {
         return 0U;
     }
 
     DRV_COAX_CTRL_Init();
+    if (strcmp(name, "coax.roll_angle_kp") == 0) {
+        *value = coax_ctrl_params.rate.kp[0] *
+                 coax_ctrl_params.attitude.att_kp[0];
+        return 1U;
+    }
+    if (strcmp(name, "coax.pitch_angle_kp") == 0) {
+        *value = coax_ctrl_params.rate.kp[1] *
+                 coax_ctrl_params.attitude.att_kp[1];
+        return 1U;
+    }
+    if (strcmp(name, "coax.roll_rate_kd") == 0) {
+        *value = coax_ctrl_params.rate.kp[0];
+        return 1U;
+    }
+    if (strcmp(name, "coax.pitch_rate_kd") == 0) {
+        *value = coax_ctrl_params.rate.kp[1];
+        return 1U;
+    }
+    if (strcmp(name, "coax.yaw_angle_kp") == 0) {
+        *value = (coax_ctrl_params.rate.kp[2] *
+                  coax_ctrl_params.attitude.att_kp[2]) /
+                 coax_ctrl_params.yaw_inertia;
+        return 1U;
+    }
+    if (strcmp(name, "coax.yaw_rate_kd") == 0) {
+        *value = coax_ctrl_params.rate.kp[2] /
+                 coax_ctrl_params.yaw_inertia;
+        return 1U;
+    }
+    if (entry == NULL) {
+        return 0U;
+    }
     *value = *coax_ctrl_param_ptr(&coax_ctrl_params, entry);
     return 1U;
 }
@@ -1132,28 +1232,61 @@ uint8_t DRV_COAX_CTRL_SetParam(const char *name, float value)
     const DRV_COAX_CTRL_ParamEntry *entry = coax_ctrl_find_param(name);
     DRV_COAX_CTRL_Params candidate;
 
+    if ((name == NULL) || !isfinite(value) || (value < 0.0f)) {
+        return 0U;
+    }
+    DRV_COAX_CTRL_Init();
+    candidate = coax_ctrl_params;
+    if (strcmp(name, "coax.roll_angle_kp") == 0) {
+        candidate.attitude.att_kp[0] = value / fmaxf(candidate.rate.kp[0],
+                                                     DRV_COAX_CTRL_RATE_SCALE_EPS);
+        DRV_COAX_CTRL_SetParams(&candidate);
+        return 1U;
+    }
+    if (strcmp(name, "coax.pitch_angle_kp") == 0) {
+        candidate.attitude.att_kp[1] = value / fmaxf(candidate.rate.kp[1],
+                                                     DRV_COAX_CTRL_RATE_SCALE_EPS);
+        DRV_COAX_CTRL_SetParams(&candidate);
+        return 1U;
+    }
+    if ((strcmp(name, "coax.roll_rate_kd") == 0) ||
+        (strcmp(name, "coax.pitch_rate_kd") == 0)) {
+        const uint32_t axis = (name[5] == 'r') ? 0U : 1U;
+        const float kr = candidate.rate.kp[axis] *
+                         candidate.attitude.att_kp[axis];
+        candidate.rate.kp[axis] = value;
+        candidate.attitude.att_kp[axis] =
+            kr / fmaxf(value, DRV_COAX_CTRL_RATE_SCALE_EPS);
+        DRV_COAX_CTRL_SetParams(&candidate);
+        return 1U;
+    }
+    if (strcmp(name, "coax.yaw_angle_kp") == 0) {
+        candidate.attitude.att_kp[2] =
+            (candidate.yaw_inertia * value) /
+            fmaxf(candidate.rate.kp[2], DRV_COAX_CTRL_RATE_SCALE_EPS);
+        DRV_COAX_CTRL_SetParams(&candidate);
+        return 1U;
+    }
+    if (strcmp(name, "coax.yaw_rate_kd") == 0) {
+        const float kr = candidate.rate.kp[2] *
+                         candidate.attitude.att_kp[2];
+        candidate.rate.kp[2] = candidate.yaw_inertia * value;
+        candidate.attitude.att_kp[2] =
+            kr / fmaxf(candidate.rate.kp[2], DRV_COAX_CTRL_RATE_SCALE_EPS);
+        DRV_COAX_CTRL_SetParams(&candidate);
+        return 1U;
+    }
     if (coax_ctrl_param_value_valid(entry, value) == 0U) {
         return 0U;
     }
 
-    DRV_COAX_CTRL_Init();
-    candidate = coax_ctrl_params;
     *coax_ctrl_param_ptr(&candidate, entry) = value;
     if (coax_ctrl_params_valid(&candidate) == 0U) {
         return 0U;
     }
 
     coax_ctrl_params = candidate;
-    if ((entry->offset == offsetof(DRV_COAX_CTRL_Params, vel_loop_enable)) ||
-        (entry->offset == offsetof(DRV_COAX_CTRL_Params, pos_x_kp)) ||
-        (entry->offset == offsetof(DRV_COAX_CTRL_Params, pos_y_kp)) ||
-        (entry->offset == offsetof(DRV_COAX_CTRL_Params, pos_z_kp)) ||
-        (entry->offset == offsetof(DRV_COAX_CTRL_Params, pos_z_ki)) ||
-        (entry->offset == offsetof(DRV_COAX_CTRL_Params, vel_x_kd)) ||
-        (entry->offset == offsetof(DRV_COAX_CTRL_Params, vel_y_kd)) ||
-        (entry->offset == offsetof(DRV_COAX_CTRL_Params, vel_z_kd))) {
-        DRV_COAX_CTRL_ResetState();
-    }
+    DRV_COAX_CTRL_ResetState();
     return 1U;
 }
 
@@ -1380,9 +1513,10 @@ float DRV_COAX_CTRL_MotorPulseToTotalThrust(uint16_t pulse_us)
            DRV_COAX_CTRL_GRAMS_PER_NEWTON;
 }
 
-void DRV_COAX_CTRL_Run(const DRV_COAX_CTRL_AttitudeInput *attitude,
-                       const DRV_COAX_CTRL_Reference *reference,
-                       DRV_COAX_CTRL_Output *output)
+void DRV_COAX_CTRL_RunScheduled(const DRV_COAX_CTRL_AttitudeInput *attitude,
+                                const DRV_COAX_CTRL_Reference *reference,
+                                const DRV_COAX_CTRL_Schedule *schedule,
+                                DRV_COAX_CTRL_Output *output)
 {
     DRV_COAX_CTRL_Debug debug;
     DRV_COAX_CTRL_BalanceSolution solution;
@@ -1390,7 +1524,8 @@ void DRV_COAX_CTRL_Run(const DRV_COAX_CTRL_AttitudeInput *attitude,
     float thrust_upper_n;
     float thrust_lower_n;
 
-    if ((attitude == NULL) || (reference == NULL) || (output == NULL)) {
+    if ((attitude == NULL) || (reference == NULL) || (schedule == NULL) ||
+        (output == NULL)) {
         return;
     }
 
@@ -1398,7 +1533,8 @@ void DRV_COAX_CTRL_Run(const DRV_COAX_CTRL_AttitudeInput *attitude,
     memset(&debug, 0, sizeof(debug));
     memset(output, 0, sizeof(*output));
 
-    coax_ctrl_compute_balance_command(attitude, reference, &debug, &solution);
+    coax_ctrl_compute_balance_command(attitude, reference, schedule,
+                                      &debug, &solution);
     /* 三轴力矩同出一套 SO(3) 控制律；分配器才是分叉点（倾转 vs 差动推力）。 */
     yaw_torque_cmd = solution.moment_cmd_n_m[2];
     coax_ctrl_allocate_motor_thrust(debug.total_force_n,
@@ -1425,7 +1561,70 @@ void DRV_COAX_CTRL_Run(const DRV_COAX_CTRL_AttitudeInput *attitude,
         (coax_ctrl_params.yaw_torque_lower_m_per_n * output->thrust_lower_n) -
         (coax_ctrl_params.yaw_torque_upper_m_per_n * output->thrust_upper_n);
 
+    output->moment_achieved_n_m[0] = coax_ctrl_roll_moment_from_tilt(
+        debug.total_force_n, output->beta_rad);
+    output->moment_achieved_n_m[1] = coax_ctrl_pitch_moment_from_tilt(
+        debug.total_force_n, output->alpha_rad, output->beta_rad);
+    output->moment_achieved_n_m[2] = debug.yaw_torque_cmd;
+    for (uint32_t axis = 0U; axis < 3U; ++axis) {
+        const float residual = solution.moment_cmd_n_m[axis] -
+                               output->moment_achieved_n_m[axis];
+        if (residual > DRV_COAX_CTRL_RATE_SCALE_EPS) {
+            output->saturation_positive[axis] = 1U;
+        } else if (residual < -DRV_COAX_CTRL_RATE_SCALE_EPS) {
+            output->saturation_negative[axis] = 1U;
+        }
+        coax_ctrl_state.moment_saturation_positive[axis] =
+            output->saturation_positive[axis];
+        coax_ctrl_state.moment_saturation_negative[axis] =
+            output->saturation_negative[axis];
+    }
+    output->tilt_saturated =
+        output->saturation_positive[0] || output->saturation_negative[0] ||
+        output->saturation_positive[1] || output->saturation_negative[1];
+    output->yaw_differential_saturated =
+        output->saturation_positive[2] || output->saturation_negative[2];
+    output->thrust_saturated =
+        (solution.raw_total_force_n > DRV_AIRFRAME_MAX_TOTAL_FORCE_N) ||
+        (fabsf((output->thrust_upper_n + output->thrust_lower_n) -
+               debug.total_force_n) > DRV_COAX_CTRL_RATE_SCALE_EPS);
+    memcpy(debug.moment_achieved_n_m, output->moment_achieved_n_m,
+           sizeof(debug.moment_achieved_n_m));
+    memcpy(debug.saturation_positive, output->saturation_positive,
+           sizeof(debug.saturation_positive));
+    memcpy(debug.saturation_negative, output->saturation_negative,
+           sizeof(debug.saturation_negative));
+    debug.thrust_saturated = output->thrust_saturated;
+    debug.tilt_saturated = output->tilt_saturated;
+    debug.yaw_differential_saturated = output->yaw_differential_saturated;
+    coax_ctrl_state.translation_saturation.thrust_saturated =
+        output->thrust_saturated;
+    coax_ctrl_state.translation_saturation.tilt_saturated =
+        output->tilt_saturated;
+
     coax_ctrl_last_debug = debug;
+}
+
+void DRV_COAX_CTRL_Run(const DRV_COAX_CTRL_AttitudeInput *attitude,
+                       const DRV_COAX_CTRL_Reference *reference,
+                       DRV_COAX_CTRL_Output *output)
+{
+    DRV_COAX_CTRL_Schedule schedule;
+
+    if (reference == NULL) {
+        return;
+    }
+    memset(&schedule, 0, sizeof(schedule));
+    schedule.position_update = 1U;
+    schedule.velocity_update = 1U;
+    schedule.attitude_update = 1U;
+    schedule.rate_update = 1U;
+    schedule.integrator_enable = 1U;
+    schedule.position_dt_s = reference->dt_sec;
+    schedule.velocity_dt_s = reference->dt_sec;
+    schedule.attitude_dt_s = reference->dt_sec;
+    schedule.rate_dt_s = reference->dt_sec;
+    DRV_COAX_CTRL_RunScheduled(attitude, reference, &schedule, output);
 }
 
 void DRV_COAX_CTRL_GetLastDebug(DRV_COAX_CTRL_Debug *debug)

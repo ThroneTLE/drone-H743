@@ -61,7 +61,8 @@ def test_controller_uses_named_rc_channels_for_references() -> None:
     assert "frame->reference.x_m = ctx->position_ref_x_m;" in freertos
     assert "frame->reference.y_m = ctx->position_ref_y_m;" in freertos
     assert "frame->reference.dt_sec = frame->ctrl_dt_sec;" in freertos
-    assert "frame->reference.horizontal_velocity_valid = velocity_loop_enabled;" in freertos
+    assert "frame->reference.horizontal_velocity_valid =" in freertos
+    assert "nav_state.velocity_valid" in freertos
     assert "stabilizer_clamp_f32(ctx->position_ref_z_m," in freertos
     assert "frame->attitude.z_m - STABILIZER_Z_POS_ERR_MAX_M" in freertos
     assert "frame->attitude.z_m + STABILIZER_Z_POS_ERR_MAX_M" in freertos

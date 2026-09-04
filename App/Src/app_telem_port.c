@@ -88,6 +88,7 @@ uint8_t APP_TelemStream_PortSample(float *values, uint32_t count)
     APP_Sensor_SampleMessage msg;
     StabilizerVofaDebug      vofa_debug;
     APP_OPTICAL_FLOW_Status  flow_status;
+    DRV_COAX_CTRL_Debug      ctrl_debug;
     DRV_FRAME_Vector3f       velocity_flu;
     DRV_FRAME_Vector3f       position_flu;
     float                   *vofa_data = values;
@@ -107,6 +108,7 @@ uint8_t APP_TelemStream_PortSample(float *values, uint32_t count)
     APP_OpticalFlow_GetStatus(&flow_status);
 
     APP_Stabilizer_ReadVofaDebug(&vofa_debug);
+    DRV_COAX_CTRL_GetLastDebug(&ctrl_debug);
 
     /*
      * 控制器尚保留 X 前/Y 右的 legacy 口径；遥测是对外契约，必须在这里
@@ -147,13 +149,42 @@ uint8_t APP_TelemStream_PortSample(float *values, uint32_t count)
     (void)DRV_COAX_CTRL_GetParam("coax.roll_angle_kp", &vofa_data[APP_TELEM_CH_ROLL_ANGLE_KP]);
     (void)DRV_COAX_CTRL_GetParam("coax.pitch_angle_kp", &vofa_data[APP_TELEM_CH_PITCH_ANGLE_KP]);
     (void)DRV_COAX_CTRL_GetParam("coax.pos_z_kp", &vofa_data[APP_TELEM_CH_POS_Z_KP]);
-    (void)DRV_COAX_CTRL_GetParam("coax.pos_z_ki", &vofa_data[APP_TELEM_CH_POS_Z_KI]);
+    vofa_data[APP_TELEM_CH_POS_Z_KI] = 0.0f;
     (void)DRV_COAX_CTRL_GetParam("coax.vel_z_kd", &vofa_data[APP_TELEM_CH_VEL_Z_KD]);
     vofa_data[APP_TELEM_CH_FUSION_ACC_ERR] = msg.fusion_acceleration_error_deg;
     vofa_data[APP_TELEM_CH_FUSION_ACC_IGNORED] = (float)msg.fusion_accelerometer_ignored;
     vofa_data[APP_TELEM_CH_FUSION_ACC_RECOVERY] = msg.fusion_acceleration_recovery_trigger;
     vofa_data[APP_TELEM_CH_FUSION_ACC_CORRECTIONS] = (float)msg.fusion_accel_correction_count;
     vofa_data[APP_TELEM_CH_FUSION_ACC_NORM_REJECTED] = (float)msg.fusion_accel_norm_rejected;
+    for (uint32_t axis = 0U; axis < 3U; ++axis) {
+        const float linear_sign = (axis == 0U) ? 1.0f : -1.0f;
+        vofa_data[APP_TELEM_CH_CTRL_POS_SP_X + axis] =
+            linear_sign * ctrl_debug.position_sp_m[axis];
+        vofa_data[APP_TELEM_CH_CTRL_POS_ERR_X + axis] =
+            linear_sign * ctrl_debug.position_error_m[axis];
+        vofa_data[APP_TELEM_CH_CTRL_VEL_SP_X + axis] =
+            linear_sign * ctrl_debug.velocity_sp_m_s[axis];
+        vofa_data[APP_TELEM_CH_CTRL_VEL_ERR_X + axis] =
+            linear_sign * ctrl_debug.velocity_error_m_s[axis];
+        vofa_data[APP_TELEM_CH_CTRL_ACCEL_SP_X + axis] =
+            linear_sign * ctrl_debug.accel_out_m_s2[axis];
+        vofa_data[APP_TELEM_CH_CTRL_ATT_ERR_X + axis] =
+            linear_sign * ctrl_debug.attitude_error[axis];
+        vofa_data[APP_TELEM_CH_CTRL_RATE_SP_X + axis] =
+            linear_sign * ctrl_debug.omega_sp_rad_s[axis];
+        vofa_data[APP_TELEM_CH_CTRL_RATE_ERR_X + axis] =
+            linear_sign * ctrl_debug.rate_error_rad_s[axis];
+        vofa_data[APP_TELEM_CH_CTRL_MOMENT_CMD_X + axis] =
+            linear_sign * ctrl_debug.moment_cmd_n_m[axis];
+        vofa_data[APP_TELEM_CH_CTRL_MOMENT_ACH_X + axis] =
+            linear_sign * ctrl_debug.moment_achieved_n_m[axis];
+        vofa_data[APP_TELEM_CH_CTRL_SAT_POS_X + axis] = (float)
+            ((axis == 0U) ? ctrl_debug.saturation_positive[axis] :
+                            ctrl_debug.saturation_negative[axis]);
+        vofa_data[APP_TELEM_CH_CTRL_SAT_NEG_X + axis] = (float)
+            ((axis == 0U) ? ctrl_debug.saturation_negative[axis] :
+                            ctrl_debug.saturation_positive[axis]);
+    }
     /*
      * 增益通道回显的口径 = `PARAM?` 的口径 = app_control_param_to_ui_value()。
      * 那个函数（app_control_ui_sign_for_param）如今对所有参数返回 +1：FLU 迁移后

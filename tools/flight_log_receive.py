@@ -106,7 +106,7 @@ V8_PARAM_NAMES = [
     *LEGACY_PARAM_NAMES[16:],
 ]
 
-# v9 起删除 vel_loop_x/y_kp/ki/kd：那六个增益从未接入控制律。
+# v9 删除 vel_loop_x/y_kp/ki/kd：那六个增益从未接入控制律。
 VEL_LOOP_GAIN_NAMES = (
     "vel_loop_x_kp",
     "vel_loop_x_ki",
@@ -115,7 +115,28 @@ VEL_LOOP_GAIN_NAMES = (
     "vel_loop_y_ki",
     "vel_loop_y_kd",
 )
-PARAM_NAMES = [name for name in V8_PARAM_NAMES if name not in VEL_LOOP_GAIN_NAMES]
+V9_PARAM_NAMES = [name for name in V8_PARAM_NAMES if name not in VEL_LOOP_GAIN_NAMES]
+
+# v10 is the physically named four-loop cascade parameter snapshot.
+PARAM_NAMES = [
+    "pos_x_kp", "pos_y_kp", "pos_z_kp",
+    "pos_xy_vel_max_m_s", "pos_z_vel_up_max_m_s", "pos_z_vel_down_max_m_s",
+    "vel_x_kp", "vel_y_kp", "vel_z_kp",
+    "vel_x_ki", "vel_y_ki", "vel_z_ki",
+    "vel_x_kd", "vel_y_kd", "vel_z_kd",
+    "vel_x_i_limit_m_s2", "vel_y_i_limit_m_s2", "vel_z_i_limit_m_s2",
+    "accel_lpf_cutoff_hz", "accel_xy_max_m_s2",
+    "accel_z_up_max_m_s2", "accel_z_down_max_m_s2",
+    "att_roll_kp", "att_pitch_kp", "att_yaw_kp",
+    "roll_rate_limit_rad_s", "pitch_rate_limit_rad_s", "yaw_rate_limit_rad_s",
+    "rate_roll_kp", "rate_pitch_kp", "rate_yaw_kp",
+    "rate_roll_ki", "rate_pitch_ki", "rate_yaw_ki",
+    "rate_roll_kd", "rate_pitch_kd", "rate_yaw_kd",
+    "rate_roll_i_limit_n_m", "rate_pitch_i_limit_n_m", "rate_yaw_i_limit_n_m",
+    "angular_accel_lpf_cutoff_hz",
+    "rate_roll_ff", "rate_pitch_ff", "rate_yaw_ff",
+    "tilt_limit_rad", "vel_loop_enable",
+]
 
 V6_PARAM_NAMES = [
     *LEGACY_PARAM_NAMES[:15],
@@ -126,6 +147,7 @@ V6_PARAM_NAMES = [
 
 SECTOR_HEADER_PREFIX = struct.Struct("<IHHIIIIIIIIQII")
 PARAMS_STRUCT = struct.Struct("<" + "f" * len(PARAM_NAMES))
+V9_PARAMS_STRUCT = struct.Struct("<" + "f" * len(V9_PARAM_NAMES))
 V8_PARAMS_STRUCT = struct.Struct("<" + "f" * len(V8_PARAM_NAMES))
 V6_PARAMS_STRUCT = struct.Struct("<" + "f" * len(V6_PARAM_NAMES))
 LEGACY_PARAMS_STRUCT = struct.Struct("<" + "f" * len(LEGACY_PARAM_NAMES))
@@ -266,7 +288,7 @@ V8_RECORD_STRUCT = struct.Struct(
     + "I"
 )
 V8_RECORD_SIZE = V8_RECORD_STRUCT.size
-RECORD_STRUCT = struct.Struct(
+V9_RECORD_STRUCT = struct.Struct(
     "<IHHIIQII"
     + "h" * 7
     + "f" * 7
@@ -277,6 +299,35 @@ RECORD_STRUCT = struct.Struct(
     + "B" * 4
     + "B" * 12
     + "f" * 61
+    + "I"
+    + "f"
+    + "B" * 4
+    + "I"
+    + "f" * 2
+    + "I"
+    + "H" * 2
+    + "h" * 2
+    + "H" * 2
+    + "B" * 4
+    + "f" * 10
+    + "I" * 10
+    + "I"
+)
+V9_RECORD_SIZE = V9_RECORD_STRUCT.size
+RECORD_STRUCT = struct.Struct(
+    "<IHHIIQII"
+    + "h" * 7
+    + "f" * 7
+    + "f" * 3
+    + "H" * 8
+    + "H" * 5
+    + "H" * 6
+    + "B" * 4
+    + "B" * 12
+    + "f" * 121
+    + "B" * 9
+    + "3x"
+    + "f" * 3
     + "I"
     + "f"
     + "B" * 4
@@ -630,6 +681,9 @@ def parse_sector_header(data: bytes, offset: int) -> dict[str, object] | None:
     if params_size == PARAMS_STRUCT.size:
         param_names = PARAM_NAMES
         params_struct = PARAMS_STRUCT
+    elif params_size == V9_PARAMS_STRUCT.size:
+        param_names = V9_PARAM_NAMES
+        params_struct = V9_PARAMS_STRUCT
     elif params_size == V8_PARAMS_STRUCT.size:
         param_names = V8_PARAM_NAMES
         params_struct = V8_PARAMS_STRUCT
@@ -780,8 +834,17 @@ def parse_record(record_bytes: bytes) -> dict[str, object] | None:
     has_v6_diagnostics = False
     has_v7_z_integral = False
     has_v9_layout = False
+    has_v10_layout = False
     if len(record_bytes) == RECORD_SIZE:
         record_struct = RECORD_STRUCT
+        has_servo_feedback = True
+        has_ident_att = True
+        has_v6_diagnostics = True
+        has_v7_z_integral = True
+        has_v9_layout = True
+        has_v10_layout = True
+    elif len(record_bytes) == V9_RECORD_SIZE:
+        record_struct = V9_RECORD_STRUCT
         has_servo_feedback = True
         has_ident_att = True
         has_v6_diagnostics = True
@@ -946,6 +1009,55 @@ def parse_record(record_bytes: bytes) -> dict[str, object] | None:
         for axis in range(count):
             row[f"{prefix}_{axis}"] = values[i]
             i += 1
+    v10_vectors = (
+        "ctrl_moment_achieved_n_m",
+        "ctrl_position_sp_m",
+        "ctrl_position_m",
+        "ctrl_position_error_m",
+        "ctrl_velocity_ff_m_s",
+        "ctrl_velocity_sp_m_s",
+        "ctrl_velocity_m_s",
+        "ctrl_velocity_error_m_s",
+        "ctrl_velocity_p_m_s2",
+        "ctrl_velocity_i_m_s2",
+        "ctrl_velocity_d_m_s2",
+        "ctrl_velocity_ff_m_s2",
+        "ctrl_accel_unsat_m_s2",
+        "ctrl_omega_ff_rad_s",
+        "ctrl_omega_sp_rad_s",
+        "ctrl_omega_rad_s",
+        "ctrl_rate_limit_rad_s",
+        "ctrl_rate_p_n_m",
+        "ctrl_rate_i_n_m",
+        "ctrl_rate_d_n_m",
+        "ctrl_rate_ff_n_m",
+    )
+    if has_v10_layout:
+        for prefix in v10_vectors:
+            for axis in range(3):
+                row[f"{prefix}_{axis}"] = values[i]
+                i += 1
+        for prefix in ("ctrl_saturation_positive", "ctrl_saturation_negative"):
+            for axis in range(3):
+                row[f"{prefix}_{axis}"] = values[i]
+                i += 1
+        for name in (
+            "ctrl_thrust_saturated",
+            "ctrl_tilt_saturated",
+            "ctrl_yaw_differential_saturated",
+        ):
+            row[name] = values[i]
+            i += 1
+    else:
+        for prefix in v10_vectors:
+            for axis in range(3):
+                row[f"{prefix}_{axis}"] = 0.0
+        for prefix in ("ctrl_saturation_positive", "ctrl_saturation_negative"):
+            for axis in range(3):
+                row[f"{prefix}_{axis}"] = 0
+        row["ctrl_thrust_saturated"] = 0
+        row["ctrl_tilt_saturated"] = 0
+        row["ctrl_yaw_differential_saturated"] = 0
     for name in (
         "ctrl_horizontal_command_scale",
         "ctrl_moment_utilization",
@@ -1081,6 +1193,7 @@ def parse_flash_image(data: bytes) -> tuple[list[dict[str, object]], list[dict[s
                 continue
             if record_size not in (
                 RECORD_SIZE,
+                V9_RECORD_SIZE,
                 V8_RECORD_SIZE,
                 V6_RECORD_SIZE,
                 V5_RECORD_SIZE,

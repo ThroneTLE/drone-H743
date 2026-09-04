@@ -1,5 +1,5 @@
 #include "app_control.h"
-#include "app_control_config_compat.h"
+#include "app_control_config_store.h"
 #include "app_control_internal.h"
 
 #include "app_aiwb2.h"
@@ -59,12 +59,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define APP_CONTROL_CFG_MAGIC       0x44524346UL
-#define APP_CONTROL_CFG_VERSION     18U
-#define APP_CONTROL_CFG_VERSION_V17 17U
-#define APP_CONTROL_CFG_VERSION_V16 16U
-#define APP_CONTROL_CFG_VERSION_V15 15U
-#define APP_CONTROL_CFG_ADDRESS     (APP_FLASH_SERVICE_SIZE_BYTES - 4096UL)
 #define APP_CONTROL_MAX_LINE        128U
 #define APP_CONTROL_HEARTBEAT_ENABLED 0U
 #define APP_CONTROL_BOOT_READY_ENABLED 0U
@@ -87,75 +81,8 @@
 #define APP_CONTROL_FLASH_AUTOSAVE_DELAY_MS 1500U
 #define APP_CONTROL_DEG_TO_RAD 0.017453292519943295f
 #define APP_CONTROL_TILT_LIMIT_MAX_DEG 28.0f
-#define APP_CONTROL_TILT_LIMIT_DEFAULT_RAD 0.4886922f
-#define APP_CONTROL_TILT_LIMIT_LEGACY_18_RAD 0.31415927f
-#define APP_CONTROL_TILT_LIMIT_LEGACY_25_RAD 0.43633231f
-#define APP_CONTROL_TILT_LIMIT_LEGACY_EPS_RAD 0.001f
 #define APP_CONTROL_IMUCAL_SNAPSHOT_MAX_AGE_US 100000ULL
 #define APP_CONTROL_IMUCAL_ESC_SAFE_MAX_US 1100U
-
-typedef struct {
-    float pos_x_kp;
-    float pos_y_kp;
-    float pos_z_kp;
-    float vel_x_kd;
-    float vel_y_kd;
-    float vel_z_kd;
-    float vel_loop_enable;
-    float vel_loop_x_kp;
-    float vel_loop_x_ki;
-    float vel_loop_x_kd;
-    float vel_loop_y_kp;
-    float vel_loop_y_ki;
-    float vel_loop_y_kd;
-    float roll_angle_kp;
-    float pitch_angle_kp;
-    float roll_rate_kd;
-    float pitch_rate_kd;
-    float tilt_limit_rad;
-    float yaw_angle_kp;
-    float yaw_rate_kd;
-} APP_ControlCoaxTunableParamsV15;
-
-typedef struct {
-    uint32_t magic;
-    uint16_t version;
-    uint16_t size;
-    APP_ControlConfig config;
-    APP_ControlCoaxTunableParams coax_tunables;
-    APP_RcConfig rc_config;
-    uint32_t checksum;
-} APP_ControlFlashRecord;
-
-/* V17 = 删除 vel_loop_* 六个增益之前的布局，仅用于迁移读取，不要再往里加字段。 */
-typedef struct {
-    uint32_t magic;
-    uint16_t version;
-    uint16_t size;
-    APP_ControlConfig config;
-    APP_ControlCoaxTunableParamsV17 coax_tunables;
-    APP_RcConfig rc_config;
-    uint32_t checksum;
-} APP_ControlFlashRecordV17;
-
-/* V16 = 加入 rc_config 之前的布局，仅用于迁移读取，不要再往里加字段。 */
-typedef struct {
-    uint32_t magic;
-    uint16_t version;
-    uint16_t size;
-    APP_ControlConfig config;
-    APP_ControlCoaxTunableParamsV17 coax_tunables;
-    uint32_t checksum;
-} APP_ControlFlashRecordV16;
-
-typedef struct {
-    uint32_t magic;
-    uint16_t version;
-    uint16_t size;
-    APP_ControlConfig config;
-    APP_ControlCoaxTunableParamsV15 coax_tunables;
-    uint32_t checksum;
-} APP_ControlFlashRecordV15;
 
 static APP_ControlConfig control_config;
 #if (APP_CONTROL_HEARTBEAT_ENABLED != 0U)
@@ -258,19 +185,6 @@ static void app_control_report_imuframe(const char *event, uint32_t request_id);
 
 
 
-
-static uint32_t app_control_checksum(const uint8_t *data, uint32_t length)
-{
-    uint32_t sum = 0xA5A55A5AUL;
-
-    for (uint32_t index = 0U; index < length; ++index) {
-        sum = (sum << 5U) | (sum >> 27U);
-        sum ^= data[index];
-        sum += 0x9E3779B9UL;
-    }
-
-    return sum;
-}
 
 void APP_Control_QueueText(const char *format, ...)
 {
@@ -1589,98 +1503,6 @@ static void app_control_report_params(void)
     }
 }
 
-static void app_control_capture_coax_tunables(APP_ControlCoaxTunableParams *out)
-{
-    DRV_COAX_CTRL_Params params;
-
-    if (out == NULL) {
-        return;
-    }
-
-    DRV_COAX_CTRL_GetParams(&params);
-    out->pos_x_kp = params.pos_x_kp;
-    out->pos_y_kp = params.pos_y_kp;
-    out->pos_z_kp = params.pos_z_kp;
-    out->pos_z_ki = params.pos_z_ki;
-    out->vel_x_kd = params.vel_x_kd;
-    out->vel_y_kd = params.vel_y_kd;
-    out->vel_z_kd = params.vel_z_kd;
-    out->vel_loop_enable = params.vel_loop_enable;
-    out->roll_angle_kp = params.roll_angle_kp;
-    out->pitch_angle_kp = params.pitch_angle_kp;
-    out->roll_rate_kd = params.roll_rate_kd;
-    out->pitch_rate_kd = params.pitch_rate_kd;
-    out->tilt_limit_rad = params.tilt_limit_rad;
-    out->yaw_angle_kp = params.yaw_angle_kp;
-    out->yaw_rate_kd = params.yaw_rate_kd;
-}
-
-static void app_control_apply_coax_tunables(const APP_ControlCoaxTunableParams *in)
-{
-    DRV_COAX_CTRL_Params params;
-
-    if (in == NULL) {
-        return;
-    }
-
-    DRV_COAX_CTRL_GetDefaultParams(&params);
-    params.pos_x_kp = in->pos_x_kp;
-    params.pos_y_kp = in->pos_y_kp;
-    params.pos_z_kp = in->pos_z_kp;
-    params.pos_z_ki = in->pos_z_ki;
-    params.vel_x_kd = in->vel_x_kd;
-    params.vel_y_kd = in->vel_y_kd;
-    params.vel_z_kd = in->vel_z_kd;
-    params.vel_loop_enable = in->vel_loop_enable;
-    params.roll_angle_kp = in->roll_angle_kp;
-    params.pitch_angle_kp = in->pitch_angle_kp;
-    params.roll_rate_kd = in->roll_rate_kd;
-    params.pitch_rate_kd = in->pitch_rate_kd;
-    params.tilt_limit_rad = in->tilt_limit_rad;
-    if ((fabsf(params.tilt_limit_rad - APP_CONTROL_TILT_LIMIT_LEGACY_18_RAD) <=
-         APP_CONTROL_TILT_LIMIT_LEGACY_EPS_RAD) ||
-        (fabsf(params.tilt_limit_rad - APP_CONTROL_TILT_LIMIT_LEGACY_25_RAD) <=
-         APP_CONTROL_TILT_LIMIT_LEGACY_EPS_RAD)) {
-        params.tilt_limit_rad = APP_CONTROL_TILT_LIMIT_DEFAULT_RAD;
-    }
-    params.yaw_angle_kp = in->yaw_angle_kp;
-    params.yaw_rate_kd = in->yaw_rate_kd;
-    DRV_COAX_CTRL_SetParams(&params);
-}
-
-static void app_control_apply_coax_tunables_v15(
-    const APP_ControlCoaxTunableParamsV15 *in)
-{
-    DRV_COAX_CTRL_Params params;
-
-    if (in == NULL) {
-        return;
-    }
-
-    DRV_COAX_CTRL_GetDefaultParams(&params);
-    params.pos_x_kp = in->pos_x_kp;
-    params.pos_y_kp = in->pos_y_kp;
-    params.pos_z_kp = in->pos_z_kp;
-    params.vel_x_kd = in->vel_x_kd;
-    params.vel_y_kd = in->vel_y_kd;
-    params.vel_z_kd = in->vel_z_kd;
-    params.vel_loop_enable = in->vel_loop_enable;
-    params.roll_angle_kp = in->roll_angle_kp;
-    params.pitch_angle_kp = in->pitch_angle_kp;
-    params.roll_rate_kd = in->roll_rate_kd;
-    params.pitch_rate_kd = in->pitch_rate_kd;
-    params.tilt_limit_rad = in->tilt_limit_rad;
-    if ((fabsf(params.tilt_limit_rad - APP_CONTROL_TILT_LIMIT_LEGACY_18_RAD) <=
-         APP_CONTROL_TILT_LIMIT_LEGACY_EPS_RAD) ||
-        (fabsf(params.tilt_limit_rad - APP_CONTROL_TILT_LIMIT_LEGACY_25_RAD) <=
-         APP_CONTROL_TILT_LIMIT_LEGACY_EPS_RAD)) {
-        params.tilt_limit_rad = APP_CONTROL_TILT_LIMIT_DEFAULT_RAD;
-    }
-    params.yaw_angle_kp = in->yaw_angle_kp;
-    params.yaw_rate_kd = in->yaw_rate_kd;
-    DRV_COAX_CTRL_SetParams(&params);
-}
-
 static void app_control_report_airframe(void)
 {
     char mass_kg[24];
@@ -2314,136 +2136,12 @@ static void app_control_report_imu(void)
 
 static APP_FlashService_Status app_control_load_config(void)
 {
-    APP_ControlFlashRecord record;
-    APP_FlashService_Status status;
-    uint32_t checksum;
-
-    status = APP_FlashService_ReadData(APP_CONTROL_CFG_ADDRESS,
-                                (uint8_t *)&record,
-                                sizeof(record));
-    if (status != APP_FLASH_SERVICE_OK) {
-        return status;
-    }
-
-    if (record.magic != APP_CONTROL_CFG_MAGIC) {
-        return APP_FLASH_SERVICE_BAD_ID;
-    }
-
-    if ((record.version == APP_CONTROL_CFG_VERSION) &&
-        (record.size == (sizeof(record.config) + sizeof(record.coax_tunables) +
-                         sizeof(record.rc_config)))) {
-        checksum = app_control_checksum((const uint8_t *)&record.config,
-                                        record.size);
-        if (checksum != record.checksum) {
-            return APP_FLASH_SERVICE_ERROR;
-        }
-        control_config = record.config;
-        app_control_apply_coax_tunables(&record.coax_tunables);
-        app_cmd_rcmap_apply_config(&record.rc_config);
-    } else if ((record.version == APP_CONTROL_CFG_VERSION_V17) &&
-               (record.size == (sizeof(record.config) +
-                                sizeof(APP_ControlCoaxTunableParamsV17) +
-                                sizeof(record.rc_config)))) {
-        APP_ControlFlashRecordV17 legacy_record;
-        APP_ControlCoaxTunableParams migrated_tunables;
-
-        status = APP_FlashService_ReadData(APP_CONTROL_CFG_ADDRESS,
-                                           (uint8_t *)&legacy_record,
-                                           sizeof(legacy_record));
-        if (status != APP_FLASH_SERVICE_OK) {
-            return status;
-        }
-        checksum = app_control_checksum((const uint8_t *)&legacy_record.config,
-                                        legacy_record.size);
-        if (checksum != legacy_record.checksum) {
-            return APP_FLASH_SERVICE_ERROR;
-        }
-        control_config = legacy_record.config;
-        if (APP_ControlConfigCompat_V17ToCurrent(
-                &legacy_record.coax_tunables, &migrated_tunables) == 0U) {
-            return APP_FLASH_SERVICE_ERROR;
-        }
-        app_control_apply_coax_tunables(&migrated_tunables);
-        app_cmd_rcmap_apply_config(&legacy_record.rc_config);
-    } else if ((record.version == APP_CONTROL_CFG_VERSION_V16) &&
-               (record.size == (sizeof(record.config) +
-                                sizeof(APP_ControlCoaxTunableParamsV17)))) {
-        APP_ControlFlashRecordV16 legacy_record;
-        APP_ControlCoaxTunableParams migrated_tunables;
-
-        status = APP_FlashService_ReadData(APP_CONTROL_CFG_ADDRESS,
-                                           (uint8_t *)&legacy_record,
-                                           sizeof(legacy_record));
-        if (status != APP_FLASH_SERVICE_OK) {
-            return status;
-        }
-        checksum = app_control_checksum((const uint8_t *)&legacy_record.config,
-                                        legacy_record.size);
-        if (checksum != legacy_record.checksum) {
-            return APP_FLASH_SERVICE_ERROR;
-        }
-        control_config = legacy_record.config;
-        if (APP_ControlConfigCompat_V17ToCurrent(
-                &legacy_record.coax_tunables, &migrated_tunables) == 0U) {
-            return APP_FLASH_SERVICE_ERROR;
-        }
-        app_control_apply_coax_tunables(&migrated_tunables);
-        /* V16 没有遥控映射，装出厂默认 —— 与旧固件写死的 CH1..CH6 完全一致。 */
-        app_cmd_rcmap_apply_config(NULL);
-    } else if ((record.version == APP_CONTROL_CFG_VERSION_V15) &&
-               (record.size == (sizeof(record.config) +
-                                sizeof(APP_ControlCoaxTunableParamsV15)))) {
-        APP_ControlFlashRecordV15 legacy_record;
-
-        status = APP_FlashService_ReadData(APP_CONTROL_CFG_ADDRESS,
-                                           (uint8_t *)&legacy_record,
-                                           sizeof(legacy_record));
-        if (status != APP_FLASH_SERVICE_OK) {
-            return status;
-        }
-
-        checksum = app_control_checksum((const uint8_t *)&legacy_record.config,
-                                        legacy_record.size);
-        if (checksum != legacy_record.checksum) {
-            return APP_FLASH_SERVICE_ERROR;
-        }
-        control_config = legacy_record.config;
-        app_control_apply_coax_tunables_v15(&legacy_record.coax_tunables);
-        app_cmd_rcmap_apply_config(NULL);
-    } else {
-        return APP_FLASH_SERVICE_BAD_ID;
-    }
-    control_config.loaded_from_flash = 1U;
-    control_config.flash_valid = 1U;
-    return APP_FLASH_SERVICE_OK;
+    return APP_ControlConfigStore_Load(&control_config);
 }
 
 static APP_FlashService_Status app_control_save_config(void)
 {
-    APP_ControlFlashRecord record;
-    APP_FlashService_Status status;
-
-    memset(&record, 0xFF, sizeof(record));
-    record.magic = APP_CONTROL_CFG_MAGIC;
-    record.version = APP_CONTROL_CFG_VERSION;
-    record.size = (uint16_t)(sizeof(record.config) + sizeof(record.coax_tunables) +
-                             sizeof(record.rc_config));
-    record.config = control_config;
-    record.config.loaded_from_flash = 1U;
-    record.config.flash_valid = 1U;
-    app_control_capture_coax_tunables(&record.coax_tunables);
-    record.rc_config = *(const APP_RcConfig *)app_cmd_rcmap_config();
-    record.checksum = app_control_checksum((const uint8_t *)&record.config,
-                                           record.size);
-
-    status = APP_FlashService_EraseSector(APP_CONTROL_CFG_ADDRESS);
-    if (status != APP_FLASH_SERVICE_OK) {
-        return status;
-    }
-
-    return APP_FlashService_WriteData(APP_CONTROL_CFG_ADDRESS,
-                               (const uint8_t *)&record,
-                               sizeof(record));
+    return APP_ControlConfigStore_Save(&control_config);
 }
 
 uint8_t app_control_internal_commit_config_persist(void)

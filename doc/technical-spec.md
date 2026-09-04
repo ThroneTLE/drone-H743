@@ -52,7 +52,7 @@ python -m pytest tests -q 全量与 cmake --build --preset Debug；
 
 - 机制：`SVC_Param` 双槽后台保存；外部 FLASH GD25Q32（JEDEC C8 40 16）。
 - FCAL 记录：**恒 160 字节**（`_Static_assert` 锁定），演进只能吃保留区（先例：舵机机械字段占用 `v2_reserved[7]→[3]`）；`valid_mask` 新位需同步区分「持久化支持掩码」与「V1 上传通道掩码」（防越权，先例 `APP_FLIGHT_CAL_V1_VALID_MASK_SUPPORTED=0x0F`）。
-- CFG 记录：当前 V17（含 RC 映射）。版本迁移规则：新版本结构读头部判版本 → 旧版本用旧结构体整读并独立校验 checksum → 缺失域装出厂默认；旧版本必须永远可读回（测试锁定）。
+- CFG 记录：当前 V19（四环级联物理参数；含 RC 映射），继续读取 V18/V17/V16/V15。版本迁移规则：新版本结构读头部判版本 → 旧版本用旧结构体整读并独立校验 checksum → 按原物理语义换算或缺失域装安全默认；旧版本必须永远可读回（测试锁定）。
 - 判据单源：合法性判据归 Driver 层；App 因 host 单测无法链接整驱动而保留副本时，必须有 lockstep 契约测试强制逐条一致（先例：`test_coax_ctrl_contract.py::test_servo_calibration_criteria_stay_in_lockstep_across_layers`）。
 
 ## 7. 安全规范

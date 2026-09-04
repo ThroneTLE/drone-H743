@@ -4,7 +4,7 @@
 
 Read this shard only when you need existing behavioral/architecture coverage or must choose focused regression tests.
 
-Source snapshot: `bc7dc0edf926`. Indexed files: 108.
+Source snapshot: `e9621ee51b24`. Indexed files: 114.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -15,13 +15,18 @@ Source snapshot: `bc7dc0edf926`. Indexed files: 108.
 | `tests/test_aiwb2_prompt_contract.py` | — | `test_aiwb2_prompt_symbol_is_preserved_for_transparent_entry`, `test_wifi_diag_escapes_transparent_mode_before_at_queries`, `test_aiwb2_default_wifi_mode_is_softap_udp_server` (+2) |
 | `tests/test_attitude_fusion_contract.py` | — | `test_xio_fusion_is_vendored_and_replaces_height_gated_attitude`, `test_attitude_fusion_runtime` |
 | `tests/test_attitude_ident_pid.py` | — | `test_closed_loop_attitude_ident_script_fits_synthetic_prbs` |
+| `tests/test_attitude_rate_control.py` | Host-gcc contract tests for the pure SO(3) attitude/rate cascade | `test_attitude_rate_host_harness`, `test_controller_modules_are_pure_and_so3_based` |
 | `tests/test_balance_controller_model.py` | — | `test_identified_attitude_gains_stabilize_with_80_ms_delay`, `test_velocity_pi_has_critical_poles_and_bounded_step_response` |
 | `tests/test_balance_controller_runtime.py` | — | `test_real_controller_runtime_math` |
 | `tests/test_baro_contract.py` | — | `test_baro_ok_requires_real_spl06_who_am_i_not_only_spi_success` |
+| `tests/test_cascade_controller_contract.py` | R-S5-1 integration contract for the real coax-controller entry path | `test_scheduled_cascade_and_allocator_feedback_on_host`, `test_real_app_path_uses_scheduler_and_no_extra_acceleration_pid` |
 | `tests/test_coax_ctrl_contract.py` | — | `test_servo_output_compensates_90_degree_ccw_mounting`, `test_tilt_limit_is_twenty_eight_degrees_in_driver_controller`, `test_generated_controller_is_not_built_or_called` (+14) |
 | `tests/test_coax_sign_convention.py` | Sign-convention self-check for the coaxial attitude controller. This is a legacy runtime-adapter test, not the canonica… | `test_gains_are_positive_so_polarity_errors_cannot_be_masked`, `test_control_law_is_negative_feedback_by_structure`, `test_stick_polarity_lives_in_exactly_one_place` (+2) |
 | `tests/test_coax_yaw_so3_contract.py` | 偏航并入 SO(3) 控制律的契约。 偏航 PD（2026-07-24，`85a5cacb`）比 SO(3) 控制器（2026-07-25，`2d1d2cd2`）早一天， 当天的设计记录 §1 明写「Z 高度环、偏航控制和双电机推力分配保… | `test_yaw_is_produced_by_the_so3_law_not_a_separate_pd`, `test_yaw_so3_runtime_matches_legacy_pd_in_hover` |
+| `tests/test_control_config_v19.py` | CFG V19 cascade migration contract; synthetic records are unit tests only | `test_v18_v17_v15_migration_math_on_host`, `test_cfg_v19_store_is_extracted_and_backward_compatible` |
 | `tests/test_control_loop_blocking_contract.py` | S6 control contracts | `test_no_blocking`, `test_notice_buffer`, `test_control_split` (+3) |
+| `tests/test_control_scheduler.py` | — | `test_control_scheduler_host_harness`, `test_scheduler_is_pure_and_declares_real_timestamp_contract` |
+| `tests/test_controller_cascade_analysis.py` | — | `test_report_refuses_old_or_unknown_frame_logs` |
 | `tests/test_dashboard_layout.py` | R-T1-5：工作台布局模型（`panel_lib/dashboard/layout.py`）。 布局规则是纯数据变换，所以这一份**不需要显示环境**：吸附、越界钳制、重叠拒绝、 序列化往返、出厂预设，全部在没有 Tk 的情况下断言。页… | `test_clamp_pulls_a_tile_back_into_the_grid`, `test_overlap_is_rejected_rather_than_pushed_aside`, `test_out_of_grid_candidates_are_rejected` (+13) |
 | `tests/test_dashboard_page.py` | R-T1-5：“状态监视”工作台页（`panel_lib/pages/dashboard.py` + `dashboard/`）。 全部用真实的 `DronePanel()` + FakeTransport 驱动，照 `test_flow… | `test_the_workbench_is_the_first_tab_and_selected_by_default`, `test_panel_entry_point_only_carries_the_mount`, `test_presets_are_available_out_of_the_box` (+52) |
 | `tests/test_dashboard_resize.py` | 状态监视工作台的窗口 resize 合并器。 这个层不能靠肉眼判“似乎顺了一点”：Tk 拖动窗口时会连续发出大量 Configure 事件。这里用无 Tk 的假调度器钉住三件事：同一个 12 列格宽的像素抖动不重排、 多个事件合成一次布局… | `test_resize_skips_pixel_events_that_do_not_change_a_grid_cell`, `test_resize_coalesces_multiple_grid_changes_into_one_layout_pass`, `test_rendering_resumes_only_after_the_resize_quiet_window` |
@@ -39,7 +44,7 @@ Source snapshot: `bc7dc0edf926`. Indexed files: 108.
 | `tests/test_flight_log_contract.py` | — | `test_flight_log_region_leaves_reserved_flash_sectors`, `test_flight_log_uses_app_flash_service_only`, `test_stabilizer_records_snapshots_without_direct_flash_access` (+5) |
 | `tests/test_flight_log_frame_provenance.py` | R-F5b flight-log frame provenance and version migration | `test_sector_header_declares_provenance_in_reserved_area`, `test_stabilizer_fills_snapshot_provenance_from_existing_sources`, `test_firmware_crc_is_sampled_off_the_control_loop` (+3) |
 | `tests/test_flight_log_paths.py` | — | `test_canonical_data_tree_is_root_scoped`, `test_receive_uses_canonical_flight_log_dir`, `test_receive_has_headless_cli_and_canonical_gui_default` (+7) |
-| `tests/test_flight_log_receive.py` | — | `test_export_block_parser_validates_crc`, `test_export_block_parser_rejects_crc_mismatch`, `test_begin_line_requires_flight_log_magic` (+16) |
+| `tests/test_flight_log_receive.py` | — | `test_v8_528_byte_sector_is_accepted_by_flash_scanner`, `test_export_block_parser_validates_crc`, `test_export_block_parser_rejects_crc_mismatch` (+18) |
 | `tests/test_flight_log_rerun_replay.py` | — | `test_latest_csv_and_segment_helpers`, `test_split_segments_and_summary_fields`, `test_coordinate_mapping_and_rpy_identity` (+4) |
 | `tests/test_flight_log_sysid.py` | — | `test_default_channels_include_flow_and_actual_servo_bus_data`, `test_analyze_flight_log_segments_groups_and_flags`, `test_actuator_fit_and_report_outputs` |
 | `tests/test_flight_log_sysid_ui.py` | — | `test_ui_helpers_are_importable_without_starting_tk`, `test_ui_exposes_expected_flight_log_views` |
@@ -86,6 +91,7 @@ Source snapshot: `bc7dc0edf926`. Indexed files: 108.
 | `tests/test_panel_transport_extraction.py` | S6 panel transport extraction ownership and compatibility contract | `test_transport_module_owns_moved_definitions`, `test_legacy_panel_forwards_the_transport_api_without_wrappers`, `test_legacy_panel_keeps_the_direct_script_import_context` |
 | `tests/test_panel_v1_page_extraction.py` | S6 V1-metrology page extraction ownership and compatibility contract | `test_v1_page_mixin_owns_the_builder_and_every_v1_handler`, `test_all_24_methods_match_the_post_increment4_ast`, `test_legacy_panel_forwards_v1_methods_without_wrappers` (+3) |
 | `tests/test_pipeline_contract.py` | — | `test_pipeline_exists_with_required_sections`, `test_mainline_nodes_match_between_diagram_and_gate_table`, `test_current_position_points_at_an_incomplete_mainline_node` (+4) |
+| `tests/test_position_control.py` | R-S5-1 pure translational controller contract. The executable part compiles the real Driver C module with host gcc. The… | `test_position_control_source_is_pure_and_documented`, `test_position_control_host_gcc` |
 | `tests/test_project_index_contract.py` | — | `test_repository_index_is_current`, `test_repository_index_has_hard_context_limits`, `test_large_vendor_and_data_trees_are_aggregated` |
 | `tests/test_proto_frame_resync.py` | 修 bug：`$X` 解析器有两处会永久停摆的重同步空洞。 发现于 2026-09-03，R-T1-2 的模糊测试。缺陷早于遥测流工作，命中的是所有 `$X` 帧共用的 `TransportBase._consume_buffer`，**… | `test_intact_stream_still_decodes_every_frame`, `test_a_corrupt_direction_byte_only_costs_its_own_frame`, `test_a_corrupt_length_high_byte_only_costs_its_own_frame` (+6) |
 | `tests/test_rc_mapping.py` | 遥控通道映射与端点标定。 背景：通道号原来是 app_stabilizer.c 里的 6 个 #define（CH1..CH6），端点是 1000/1500/2000 三个字面量。换发射机、改通道顺序、或者摇杆行程不标准，都得改代码 重烧… | `test_moving_one_stick_identifies_that_channel`, `test_a_still_transmitter_is_not_bound_to_anything`, `test_two_channels_moving_together_is_refused` (+61) |

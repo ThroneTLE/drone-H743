@@ -15,7 +15,7 @@ def test_flight_log_region_leaves_reserved_flash_sectors() -> None:
     assert "#define APP_FLIGHT_LOG_REGION_START       0x00002000UL" in header
     assert "#define APP_FLIGHT_LOG_REGION_END_EXCL    0x003FC000UL" in header
     assert "APP_CONTROL_FLASH_SCRATCH_ADDR (APP_FLASH_SERVICE_SIZE_BYTES - 4U * 4096UL)" in read("App/Src/app_control.c")
-    assert "APP_CONTROL_CFG_ADDRESS     (APP_FLASH_SERVICE_SIZE_BYTES - 4096UL)" in read("App/Src/app_control.c")
+    assert "APP_CONTROL_CFG_ADDRESS     (APP_FLASH_SERVICE_SIZE_BYTES - 4096UL)" in read("App/Inc/app_control_config_store.h")
     assert "APP_FLIGHT_LOG_REGION_END_EXCL <=" in source
     assert "last four reserved sectors" in source
 
@@ -64,13 +64,16 @@ def test_flight_log_v7_records_flow_servo_bus_attitude_ident_and_z_integral() ->
     source = read("App/Src/app_flight_log.c")
     receiver = read("tools/flight_log_receive.py")
 
-    assert "sizeof(APP_FlightLogRecord) == 512U" in source
-    # R-F5b bumped the *sector header* to v8 for frame provenance; the record
-    # layout below is unchanged, and v7 sectors must stay readable forever.
-    assert "#define APP_FLIGHT_LOG_VERSION            9U" in source
+    assert "sizeof(APP_FlightLogRecord) == 776U" in source
+    assert "#define APP_FLIGHT_LOG_VERSION            10U" in source
+    assert "#define APP_FLIGHT_LOG_VERSION_V9         9U" in source
     assert "#define APP_FLIGHT_LOG_VERSION_V7         7U" in source
     assert "float desired_attitude_rpy_rad[3];" in header
     assert "float moment_cmd_n_m[3];" in header
+    assert "float moment_achieved_n_m[3];" in header
+    assert "float omega_sp_rad_s[3];" in header
+    assert "float velocity_i_m_s2[3];" in header
+    assert "uint8_t saturation_positive[3];" in header
     assert "float horizontal_command_scale;" in header
     assert "uint32_t protection_flags;" in header
     assert "float pos_z_i_m_s2;" in header
@@ -94,6 +97,7 @@ def test_flight_log_v7_records_flow_servo_bus_attitude_ident_and_z_integral() ->
     assert 'row[f"servo_{axis}_feedback_deg"]' in receiver
     assert "V5_RECORD_STRUCT" in receiver
     assert "V6_RECORD_STRUCT" in receiver
+    assert "V9_RECORD_STRUCT" in receiver
     assert "V4_RECORD_STRUCT" in receiver
     assert "LEGACY_RECORD_STRUCT" in receiver
 

@@ -49,10 +49,20 @@ drv_optical_flow（只取帧）
 
 ```text
 RC Driver → app_rc_config → app_stabilizer
-  → drv_coax_ctrl
+  → app_control_scheduler（500/250/100/50 Hz，真实时间戳与导航新样本门）
+  → drv_position_control（位置 P → 速度 PID）
+  → drv_coax_ctrl（合力、重力与期望姿态）
+  → drv_attitude_control（SO(3) 姿态 P → ω_sp）
+  → drv_rate_control（角速度 PID → M_cmd）
+  → drv_coax_ctrl（同轴分配、M_achieved 与逐方向饱和反馈）
   → 电机 PWM
   → 舵机输出类型选择：BUS 或 PWM
 ```
+
+慢环未到期时保持上次目标，不重复积分；位置/速度环只在新的导航样本到达后推进。
+速度 D 使用滤波后的测量加速度，角速度 D 使用滤波后的测量角加速度。积分器由解锁、
+链路、IMU/导航有效性、模式切换和实际执行器饱和共同管理。控制器内部 legacy 适配仍在
+`drv_coax_ctrl` 的具名边界，R-S5-1 不改变 FLU 迁移掩码或执行器极性。
 
 安全门、RC 意图、控制器坐标适配、机械 `pulse_sign` 和舵机输出类型是不同边界，
 不得通过负增益或发射机反向选项互相补偿。
@@ -68,6 +78,8 @@ App 请求
 ```
 
 控制环不得直接执行 Flash 擦写或阻塞 USB 文本发送。Param 使用双槽后台持久化。
+级联参数由 `app_control_config_store` 以 CFG V19 保存，并继续读取 V18/V17/V16/V15；
+旧参数先按原物理语义换算，不能把旧数值直接套入新量纲。
 
 ### 遥测与上位机
 
@@ -82,6 +94,9 @@ app_telemetry（通道表）
 
 线上格式见 `doc/telemetry-protocol.md`。状态监视对外采用带来源标记的机体 FLU；
 这只规范观察边界，不自动迁移控制器内部表示。
+
+FlightLog V10 记录真实级联中间量、分配实现力矩和饱和方向；V7/V8/V9 仍按各自
+`record_size` 与参数布局解析，历史文件的 frame provenance 不被重解释。
 
 ## 安全边界
 

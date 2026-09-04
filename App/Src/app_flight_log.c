@@ -1,6 +1,7 @@
 #include "app_flight_log.h"
 
 #include "app_firmware_identity.h"
+#include "app_control_config_store.h"
 #include "app_flash_service.h"
 #include "app_messages.h"
 #include "app_tasks.h"
@@ -26,11 +27,14 @@
  * v7 的那 12 个字节本就是清零的保留区，故其 header_crc32 无需重算即仍成立，
  * 读出来 frame_provenance_valid==0 天然表示「无溯源」。
  */
-#define APP_FLIGHT_LOG_VERSION            9U
+#define APP_FLIGHT_LOG_VERSION            10U
+#define APP_FLIGHT_LOG_VERSION_V9         9U
 #define APP_FLIGHT_LOG_VERSION_V8         8U
 #define APP_FLIGHT_LOG_VERSION_V7         7U
-#define APP_FLIGHT_LOG_LEGACY_RECORD_SIZE 528U
-#define APP_FLIGHT_LOG_LEGACY_PARAMS_SIZE (sizeof(DRV_COAX_CTRL_Params) + (6U * sizeof(float)))
+#define APP_FLIGHT_LOG_V9_RECORD_SIZE      512U
+#define APP_FLIGHT_LOG_V9_PARAMS_SIZE       92U
+#define APP_FLIGHT_LOG_V8_RECORD_SIZE      528U
+#define APP_FLIGHT_LOG_V8_PARAMS_SIZE      116U
 #define APP_FLIGHT_LOG_EXPORT_VERSION     1U
 #define APP_FLIGHT_LOG_REGION_SIZE \
     (APP_FLIGHT_LOG_REGION_END_EXCL - APP_FLIGHT_LOG_REGION_START)
@@ -71,7 +75,7 @@ typedef struct __attribute__((packed)) {
     uint64_t created_us;
     uint32_t params_size;
     uint32_t header_crc32;
-    DRV_COAX_CTRL_Params params;
+    APP_ControlCoaxTunableParams params;
     /*
      * 坐标溯源（v8 起，占用原 reserved 的前 12 字节）。
      * frame_orientation_code 为 V0 码：0..23 表示已发布规范 FLU，
@@ -84,7 +88,7 @@ typedef struct __attribute__((packed)) {
     uint8_t  frame_reserved0;
     uint32_t firmware_crc32;
     uint32_t calibration_generation;
-    uint8_t reserved[96];
+    uint8_t reserved[4];
 } APP_FlightLogSectorHeader;
 
 typedef struct __attribute__((packed)) {
@@ -181,7 +185,7 @@ typedef struct __attribute__((packed)) {
 
 _Static_assert(sizeof(APP_FlightLogSectorHeader) == APP_FLIGHT_LOG_SECTOR_HEADER_SIZE,
                "flight log sector header must stay 256 bytes");
-_Static_assert(sizeof(APP_FlightLogRecord) == 512U,
+_Static_assert(sizeof(APP_FlightLogRecord) == 776U,
                "flight log record must match tools/flight_log_receive.py");
 _Static_assert(sizeof(APP_FlightLogExportBlockHeader) == 24U,
                "flight log export header must match tools/flight_log_receive.py");
@@ -386,10 +390,13 @@ static uint8_t flight_log_sector_header_valid(APP_FlightLogSectorHeader *header)
         (((header->version == APP_FLIGHT_LOG_VERSION) &&
           (header->record_size == sizeof(APP_FlightLogRecord)) &&
           (header->params_size == sizeof(header->params))) ||
+         ((header->version == APP_FLIGHT_LOG_VERSION_V9) &&
+          (header->record_size == APP_FLIGHT_LOG_V9_RECORD_SIZE) &&
+          (header->params_size == APP_FLIGHT_LOG_V9_PARAMS_SIZE)) ||
          (((header->version == APP_FLIGHT_LOG_VERSION_V8) ||
            (header->version == APP_FLIGHT_LOG_VERSION_V7)) &&
-          (header->record_size == APP_FLIGHT_LOG_LEGACY_RECORD_SIZE) &&
-          (header->params_size == APP_FLIGHT_LOG_LEGACY_PARAMS_SIZE))) ? 1U : 0U;
+          (header->record_size == APP_FLIGHT_LOG_V8_RECORD_SIZE) &&
+          (header->params_size == APP_FLIGHT_LOG_V8_PARAMS_SIZE))) ? 1U : 0U;
     if ((header->magic != APP_FLIGHT_LOG_SECTOR_MAGIC) ||
         (layout_valid == 0U) ||
         (header->header_size != APP_FLIGHT_LOG_SECTOR_HEADER_SIZE) ||
@@ -560,9 +567,8 @@ static void flight_log_fill_sector_header(APP_FlightLogSectorHeader *header,
     header->created_us = SVC_Timestamp_Us();
     header->params_size = sizeof(header->params);
     {
-        DRV_COAX_CTRL_Params params;
-
-        DRV_COAX_CTRL_GetParams(&params);
+        APP_ControlCoaxTunableParams params;
+        APP_ControlConfigStore_CaptureTunables(&params);
         memcpy(&header->params, &params, sizeof(params));
     }
     /*

@@ -42,7 +42,7 @@ REPLAY = ROOT / "tools" / "flight_log_rerun_replay.py"
 
 SECTOR_MAGIC = 0x31534C46
 SECTOR_HEADER_SIZE = 256
-PARAMS_SIZE = 92
+PARAMS_SIZE = 116
 PREFIX_SIZE = 56
 
 
@@ -58,7 +58,7 @@ def slice_between(source: str, start: str, end: str) -> str:
 
 def test_sector_header_declares_provenance_in_reserved_area() -> None:
     source = read(LOG_SOURCE)
-    assert "#define APP_FLIGHT_LOG_VERSION            9U" in source
+    assert "#define APP_FLIGHT_LOG_VERSION            10U" in source
     # The previous version must remain a named, readable constant.
     assert "APP_FLIGHT_LOG_VERSION_V7" in source
     header = slice_between(
@@ -73,7 +73,7 @@ def test_sector_header_declares_provenance_in_reserved_area() -> None:
     ):
         assert field in header, field
     # 12 bytes taken out of the reserved area; the header stays 256 bytes.
-    assert "uint8_t reserved[96];" in header
+    assert "uint8_t reserved[4];" in header
     assert "uint8_t reserved[108];" not in header
 
 
@@ -105,7 +105,7 @@ HARNESS = r"""
 
 /* The validator only takes sizeof() of the current record, so an opaque block
  * keeps drv_imu.h (which needs main.h) out of this host harness. */
-typedef struct __attribute__((packed)) { uint8_t raw[512]; } APP_FlightLogRecord;
+typedef struct __attribute__((packed)) { uint8_t raw[776]; } APP_FlightLogRecord;
 
 #define APP_FLASH_SERVICE_SECTOR_SIZE 4096UL
 
@@ -146,8 +146,8 @@ int main(void)
     header.version = APP_FLIGHT_LOG_VERSION_V8;
     header.header_size = APP_FLIGHT_LOG_SECTOR_HEADER_SIZE;
     header.sector_size = APP_FLASH_SERVICE_SECTOR_SIZE;
-    header.record_size = APP_FLIGHT_LOG_LEGACY_RECORD_SIZE;
-    header.params_size = APP_FLIGHT_LOG_LEGACY_PARAMS_SIZE;
+    header.record_size = APP_FLIGHT_LOG_V8_RECORD_SIZE;
+    header.params_size = APP_FLIGHT_LOG_V8_PARAMS_SIZE;
     header.region_start = APP_FLIGHT_LOG_REGION_START;
     header.region_end_excl = APP_FLIGHT_LOG_REGION_END_EXCL;
     header.header_crc32 = 0U;
@@ -161,8 +161,8 @@ int main(void)
     header.version = APP_FLIGHT_LOG_VERSION_V7;
     header.header_size = APP_FLIGHT_LOG_SECTOR_HEADER_SIZE;
     header.sector_size = APP_FLASH_SERVICE_SECTOR_SIZE;
-    header.record_size = APP_FLIGHT_LOG_LEGACY_RECORD_SIZE;
-    header.params_size = APP_FLIGHT_LOG_LEGACY_PARAMS_SIZE;
+    header.record_size = APP_FLIGHT_LOG_V8_RECORD_SIZE;
+    header.params_size = APP_FLIGHT_LOG_V8_PARAMS_SIZE;
     header.region_start = APP_FLIGHT_LOG_REGION_START;
     header.region_end_excl = APP_FLIGHT_LOG_REGION_END_EXCL;
     header.header_crc32 = 0U;
@@ -214,7 +214,8 @@ def test_sector_header_migration_runs_on_host(tmp_path: Path) -> None:
         for line in source.splitlines()
         if line.startswith("#define APP_FLIGHT_LOG_SECTOR_MAGIC")
         or line.startswith("#define APP_FLIGHT_LOG_VERSION")
-        or line.startswith("#define APP_FLIGHT_LOG_LEGACY")
+        or line.startswith("#define APP_FLIGHT_LOG_V9")
+        or line.startswith("#define APP_FLIGHT_LOG_V8")
     )
     struct_source = slice_between(
         source,
@@ -229,6 +230,7 @@ def test_sector_header_migration_runs_on_host(tmp_path: Path) -> None:
     unit = tmp_path / "flight_log_header.c"
     unit.write_text(
         "#include <stdint.h>\n#include <stddef.h>\n"
+        "#include \"app_control_config_compat.h\"\n"
         + HARNESS.split("int main(void)")[0]
         + defines
         + "\n"
@@ -253,6 +255,7 @@ def test_sector_header_migration_runs_on_host(tmp_path: Path) -> None:
             "-Wextra",
             "-Werror",
             f"-I{ROOT / 'Driver' / 'Inc'}",
+            f"-I{ROOT / 'App' / 'Inc'}",
             str(unit),
             "-o",
             str(executable),
@@ -290,9 +293,9 @@ def build_sector_header(version: int, *, provenance: tuple | None = None) -> byt
     if provenance is not None:
         valid, orientation, contract, fw_crc, cal_gen = provenance
         body += struct.pack("<BBBBII", valid, orientation, contract, 0, fw_crc, cal_gen)
-        body += b"\x00" * 96
+        body += b"\x00" * (SECTOR_HEADER_SIZE - len(body))
     else:
-        body += b"\x00" * 108
+        body += b"\x00" * (SECTOR_HEADER_SIZE - len(body))
     assert len(body) == SECTOR_HEADER_SIZE
     import zlib
 

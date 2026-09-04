@@ -29,6 +29,12 @@ TELEM PAGE from=<n> count=<count> next=<next-or--1>
 SchemaHash 使用 FNV-1a，覆盖版本、通道数、标称速率、frame、坐标契约版本及全部通道
 元数据。frame、contract 或任一通道元数据变化都必须使 hash 变化。
 
+R-S5-1 在既有 28 路后追加 36 路级联调试通道，表长达到 u64 mask 的 64 路上限；
+历史编号不重排。新增通道覆盖位置/速度目标与误差、加速度目标、SO(3) 误差、
+角速度目标与误差、期望/实现力矩及逐方向饱和。完整 P/I/D/FF 分解保存在同源
+`DRV_COAX_CTRL_Debug` 与 FlightLog V10 中。默认实时掩码仍为原 12 路，参数变化
+通道为 13 路，稳态带宽仍是 3240 B/s；新增级联通道按需启用，不进入 UART 默认档。
+
 主机对 schema v3 缺失或错误的 frame/contract 整表拒绝；v1/v2 只按
 `legacy_unspecified` 兼容读取，绝不倒推成 FLU。
 

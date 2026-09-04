@@ -615,16 +615,14 @@ def test_every_consumer_is_rewired_to_the_service() -> None:
     assert "ctx->vofa_debug.vel_est_m_s[0] = nav_vx_m_s;" in STABILIZER
 
 
-def test_coax_control_law_is_untouched() -> None:
-    """只换数据来源，P/D 公式与增益一字不动（不算解冻 S5）。"""
-    for expression in (
-        "coax_ctrl_params.pos_x_kp * (reference->x_m - attitude->x_m)",
-        "coax_ctrl_params.pos_y_kp * (reference->y_m - attitude->y_m)",
-        "coax_ctrl_params.vel_x_kd * (reference->vx_m_s - attitude->vx_m_s)",
-        "coax_ctrl_params.vel_y_kd * (reference->vy_m_s - attitude->vy_m_s)",
-    ):
-        assert expression in COAX, expression
+def test_flow_service_stays_separate_from_authorized_cascade_controller() -> None:
+    """R-S5-1 changes control, but the Driver still consumes only snapshots."""
+    position = (ROOT / "Driver/Src/drv_position_control.c").read_text(encoding="utf-8")
+    assert "DRV_POSITION_CONTROL_PositionStep" in COAX
+    assert "DRV_POSITION_CONTROL_VelocityStep" in COAX
     assert "SVC_FlowNav" not in COAX, "控制器不该直接依赖 Service，只吃 frame->attitude"
+    assert "SVC_FlowNav" not in position
+    assert "HAL_" not in position and "FreeRTOS" not in position
 
 
 def test_reject_gate_and_noise_anchor_are_separate_knobs() -> None:

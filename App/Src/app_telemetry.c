@@ -10,13 +10,13 @@
 #define APP_TELEM_FRAME_CONTRACT_VERSION DRV_FRAME_CONTRACT_VERSION
 
 /*
- * 通道表 —— 顺序必须与 Core/Src/freertos.c 中 VOFA_task 的填充顺序一致。
+ * 通道表 —— 顺序必须与 app_telem_port.c 的填充顺序一致。
  * 填充代码用 APP_TELEM_CH_* 枚举名下标，因此"顺序一致"由枚举保证，
  * 本表只负责元数据。
  *
- * 关于增益通道的符号：freertos.c 在发送前会对 yaw_angle_kp / yaw_rate_kd /
- * roll_angle_kp / pitch_angle_kp 取反，让操作者看到正值，控制器内部保留
- * 实测符号。此处登记的是"上位机看到的值"的量程，与该约定一致。
+ * 旧增益通道名作为显式换算 alias 保留在线路上，避免重排历史编号；V19 的
+ * 真实物理参数名由 DRV_COAX_CTRL_ParamCount/ParamName 报告。pos_z_ki 只保留
+ * 只读零值占位，旧位置积分不会偷换成新速度积分。
  */
 static const APP_TelemChannel app_telem_channels[APP_TELEM_CH_COUNT] = {
     [APP_TELEM_CH_ROLL]        = {"roll",        "deg",   "attitude", -180.0f, 180.0f, "-"},
@@ -43,7 +43,7 @@ static const APP_TelemChannel app_telem_channels[APP_TELEM_CH_COUNT] = {
     [APP_TELEM_CH_ROLL_ANGLE_KP]   = {"roll_angle_kp",   "-", "gain", 0.0f, 10.0f, "coax.roll_angle_kp"},
     [APP_TELEM_CH_PITCH_ANGLE_KP]  = {"pitch_angle_kp",  "-", "gain", 0.0f, 10.0f, "coax.pitch_angle_kp"},
     [APP_TELEM_CH_POS_Z_KP]        = {"pos_z_kp",        "-", "gain", 0.0f, 10.0f, "coax.pos_z_kp"},
-    [APP_TELEM_CH_POS_Z_KI]        = {"pos_z_ki",        "-", "gain", 0.0f, 10.0f, "coax.pos_z_ki"},
+    [APP_TELEM_CH_POS_Z_KI]        = {"pos_z_ki",        "-", "legacy", 0.0f, 1.0f, "-"},
     [APP_TELEM_CH_VEL_Z_KD]        = {"vel_z_kd",        "-", "gain", 0.0f, 10.0f, "coax.vel_z_kd"},
 
     [APP_TELEM_CH_FUSION_ACC_ERR]           = {"fusion_acc_err",         "deg",   "fusion", 0.0f,  180.0f, "-"},
@@ -51,6 +51,42 @@ static const APP_TelemChannel app_telem_channels[APP_TELEM_CH_COUNT] = {
     [APP_TELEM_CH_FUSION_ACC_RECOVERY]      = {"fusion_acc_recovery",    "-",     "fusion", 0.0f,    1.0f, "-"},
     [APP_TELEM_CH_FUSION_ACC_CORRECTIONS]   = {"fusion_acc_corrections", "count", "fusion", 0.0f, 1000.0f, "-"},
     [APP_TELEM_CH_FUSION_ACC_NORM_REJECTED] = {"fusion_acc_norm_rej",    "count", "fusion", 0.0f, 1000.0f, "-"},
+    [APP_TELEM_CH_CTRL_POS_SP_X] = {"ctrl_pos_sp_x", "m", "cascade", -5.0f, 5.0f, "-"},
+    [APP_TELEM_CH_CTRL_POS_SP_Y] = {"ctrl_pos_sp_y", "m", "cascade", -5.0f, 5.0f, "-"},
+    [APP_TELEM_CH_CTRL_POS_SP_Z] = {"ctrl_pos_sp_z", "m", "cascade", -5.0f, 5.0f, "-"},
+    [APP_TELEM_CH_CTRL_POS_ERR_X] = {"ctrl_pos_err_x", "m", "cascade", -2.0f, 2.0f, "-"},
+    [APP_TELEM_CH_CTRL_POS_ERR_Y] = {"ctrl_pos_err_y", "m", "cascade", -2.0f, 2.0f, "-"},
+    [APP_TELEM_CH_CTRL_POS_ERR_Z] = {"ctrl_pos_err_z", "m", "cascade", -2.0f, 2.0f, "-"},
+    [APP_TELEM_CH_CTRL_VEL_SP_X] = {"ctrl_vel_sp_x", "m/s", "cascade", -5.0f, 5.0f, "-"},
+    [APP_TELEM_CH_CTRL_VEL_SP_Y] = {"ctrl_vel_sp_y", "m/s", "cascade", -5.0f, 5.0f, "-"},
+    [APP_TELEM_CH_CTRL_VEL_SP_Z] = {"ctrl_vel_sp_z", "m/s", "cascade", -5.0f, 5.0f, "-"},
+    [APP_TELEM_CH_CTRL_VEL_ERR_X] = {"ctrl_vel_err_x", "m/s", "cascade", -5.0f, 5.0f, "-"},
+    [APP_TELEM_CH_CTRL_VEL_ERR_Y] = {"ctrl_vel_err_y", "m/s", "cascade", -5.0f, 5.0f, "-"},
+    [APP_TELEM_CH_CTRL_VEL_ERR_Z] = {"ctrl_vel_err_z", "m/s", "cascade", -5.0f, 5.0f, "-"},
+    [APP_TELEM_CH_CTRL_ACCEL_SP_X] = {"ctrl_accel_sp_x", "m/s2", "cascade", -10.0f, 10.0f, "-"},
+    [APP_TELEM_CH_CTRL_ACCEL_SP_Y] = {"ctrl_accel_sp_y", "m/s2", "cascade", -10.0f, 10.0f, "-"},
+    [APP_TELEM_CH_CTRL_ACCEL_SP_Z] = {"ctrl_accel_sp_z", "m/s2", "cascade", -10.0f, 10.0f, "-"},
+    [APP_TELEM_CH_CTRL_ATT_ERR_X] = {"ctrl_att_err_x", "rad", "cascade", -3.2f, 3.2f, "-"},
+    [APP_TELEM_CH_CTRL_ATT_ERR_Y] = {"ctrl_att_err_y", "rad", "cascade", -3.2f, 3.2f, "-"},
+    [APP_TELEM_CH_CTRL_ATT_ERR_Z] = {"ctrl_att_err_z", "rad", "cascade", -3.2f, 3.2f, "-"},
+    [APP_TELEM_CH_CTRL_RATE_SP_X] = {"ctrl_rate_sp_x", "rad/s", "cascade", -10.0f, 10.0f, "-"},
+    [APP_TELEM_CH_CTRL_RATE_SP_Y] = {"ctrl_rate_sp_y", "rad/s", "cascade", -10.0f, 10.0f, "-"},
+    [APP_TELEM_CH_CTRL_RATE_SP_Z] = {"ctrl_rate_sp_z", "rad/s", "cascade", -10.0f, 10.0f, "-"},
+    [APP_TELEM_CH_CTRL_RATE_ERR_X] = {"ctrl_rate_err_x", "rad/s", "cascade", -10.0f, 10.0f, "-"},
+    [APP_TELEM_CH_CTRL_RATE_ERR_Y] = {"ctrl_rate_err_y", "rad/s", "cascade", -10.0f, 10.0f, "-"},
+    [APP_TELEM_CH_CTRL_RATE_ERR_Z] = {"ctrl_rate_err_z", "rad/s", "cascade", -10.0f, 10.0f, "-"},
+    [APP_TELEM_CH_CTRL_MOMENT_CMD_X] = {"ctrl_moment_cmd_x", "N*m", "cascade", -0.2f, 0.2f, "-"},
+    [APP_TELEM_CH_CTRL_MOMENT_CMD_Y] = {"ctrl_moment_cmd_y", "N*m", "cascade", -0.2f, 0.2f, "-"},
+    [APP_TELEM_CH_CTRL_MOMENT_CMD_Z] = {"ctrl_moment_cmd_z", "N*m", "cascade", -0.01f, 0.01f, "-"},
+    [APP_TELEM_CH_CTRL_MOMENT_ACH_X] = {"ctrl_moment_ach_x", "N*m", "cascade", -0.2f, 0.2f, "-"},
+    [APP_TELEM_CH_CTRL_MOMENT_ACH_Y] = {"ctrl_moment_ach_y", "N*m", "cascade", -0.2f, 0.2f, "-"},
+    [APP_TELEM_CH_CTRL_MOMENT_ACH_Z] = {"ctrl_moment_ach_z", "N*m", "cascade", -0.01f, 0.01f, "-"},
+    [APP_TELEM_CH_CTRL_SAT_POS_X] = {"ctrl_sat_pos_x", "bool", "cascade", 0.0f, 1.0f, "-"},
+    [APP_TELEM_CH_CTRL_SAT_POS_Y] = {"ctrl_sat_pos_y", "bool", "cascade", 0.0f, 1.0f, "-"},
+    [APP_TELEM_CH_CTRL_SAT_POS_Z] = {"ctrl_sat_pos_z", "bool", "cascade", 0.0f, 1.0f, "-"},
+    [APP_TELEM_CH_CTRL_SAT_NEG_X] = {"ctrl_sat_neg_x", "bool", "cascade", 0.0f, 1.0f, "-"},
+    [APP_TELEM_CH_CTRL_SAT_NEG_Y] = {"ctrl_sat_neg_y", "bool", "cascade", 0.0f, 1.0f, "-"},
+    [APP_TELEM_CH_CTRL_SAT_NEG_Z] = {"ctrl_sat_neg_z", "bool", "cascade", 0.0f, 1.0f, "-"},
 };
 
 _Static_assert((sizeof(app_telem_channels) / sizeof(app_telem_channels[0])) ==

@@ -2,6 +2,9 @@
 #define DRV_COAX_CTRL_H
 
 #include <stdint.h>
+#include "drv_attitude_control.h"
+#include "drv_position_control.h"
+#include "drv_rate_control.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -64,6 +67,9 @@ typedef struct {
     float az_m_s2;
     float dt_sec;
     uint8_t horizontal_velocity_valid;
+    uint8_t navigation_position_valid;
+    uint8_t navigation_velocity_valid;
+    uint8_t position_control_bypass;
     uint8_t direct_attitude_target_valid;
     uint8_t manual_total_force_valid;
     float target_roll_rad;
@@ -113,7 +119,24 @@ typedef struct {
     float gyro_x_rad_s;
     float gyro_y_rad_s;
     float gyro_z_rad_s;
+    /* Measured local acceleration for the velocity-loop D term [m/s^2]. */
+    float accel_m_s2[3];
+    uint8_t acceleration_valid;
 } DRV_COAX_CTRL_AttitudeInput;
+
+typedef struct {
+    uint8_t position_update;
+    uint8_t velocity_update;
+    uint8_t attitude_update;
+    uint8_t rate_update;
+    uint8_t integrator_enable;
+    uint8_t integrator_freeze;
+    uint8_t integrator_reset;
+    float position_dt_s;
+    float velocity_dt_s;
+    float attitude_dt_s;
+    float rate_dt_s;
+} DRV_COAX_CTRL_Schedule;
 
 typedef struct {
     float thrust_upper_n;
@@ -124,6 +147,12 @@ typedef struct {
     uint16_t motor_lower_us;
     uint16_t servo_alpha_us;
     uint16_t servo_beta_us;
+    float moment_achieved_n_m[3];
+    uint8_t saturation_positive[3];
+    uint8_t saturation_negative[3];
+    uint8_t thrust_saturated;
+    uint8_t tilt_saturated;
+    uint8_t yaw_differential_saturated;
 } DRV_COAX_CTRL_Output;
 
 typedef struct {
@@ -146,6 +175,32 @@ typedef struct {
     float attitude_error[3];
     float rate_error_rad_s[3];
     float moment_cmd_n_m[3];
+    float moment_achieved_n_m[3];
+    float position_sp_m[3];
+    float position_m[3];
+    float position_error_m[3];
+    float velocity_ff_m_s[3];
+    float velocity_sp_m_s[3];
+    float velocity_m_s[3];
+    float velocity_error_m_s[3];
+    float velocity_p_m_s2[3];
+    float velocity_i_m_s2[3];
+    float velocity_d_m_s2[3];
+    float velocity_ff_m_s2[3];
+    float accel_unsat_m_s2[3];
+    float omega_ff_rad_s[3];
+    float omega_sp_rad_s[3];
+    float omega_rad_s[3];
+    float rate_limit_rad_s[3];
+    float rate_p_n_m[3];
+    float rate_i_n_m[3];
+    float rate_d_n_m[3];
+    float rate_ff_n_m[3];
+    uint8_t saturation_positive[3];
+    uint8_t saturation_negative[3];
+    uint8_t thrust_saturated;
+    uint8_t tilt_saturated;
+    uint8_t yaw_differential_saturated;
     float horizontal_command_scale;
     float moment_utilization;
     float thrust_utilization;
@@ -153,26 +208,15 @@ typedef struct {
 } DRV_COAX_CTRL_Debug;
 
 typedef struct {
-    float pos_x_kp;
-    float pos_y_kp;
-    float pos_z_kp;
-    float pos_z_ki;
-    float vel_x_kd;
-    float vel_y_kd;
-    float vel_z_kd;
+    DRV_POSITION_CONTROL_Params position;
+    DRV_AttitudeControl_Params attitude;
+    DRV_RateControl_Params rate;
     float vel_loop_enable;
     float mass_kg;
     float gravity_m_s2;
     float pitch_tilt_lever_arm_m;
     float roll_tilt_lever_arm_m;
-    /* Stored sign preserves UI-positive K_R [N*m/rad], K_w [N*m*s/rad]. */
-    float roll_angle_kp;
-    float pitch_angle_kp;
-    float roll_rate_kd;
-    float pitch_rate_kd;
     float tilt_limit_rad;
-    float yaw_angle_kp;
-    float yaw_rate_kd;
     float yaw_inertia;
     float motor_single_max_thrust_n;
     float yaw_torque_upper_m_per_n;
@@ -198,6 +242,10 @@ void DRV_COAX_CTRL_ResetState(void);
 void DRV_COAX_CTRL_Run(const DRV_COAX_CTRL_AttitudeInput *attitude,
                        const DRV_COAX_CTRL_Reference *reference,
                        DRV_COAX_CTRL_Output *output);
+void DRV_COAX_CTRL_RunScheduled(const DRV_COAX_CTRL_AttitudeInput *attitude,
+                                const DRV_COAX_CTRL_Reference *reference,
+                                const DRV_COAX_CTRL_Schedule *schedule,
+                                DRV_COAX_CTRL_Output *output);
 void DRV_COAX_CTRL_GetLastDebug(DRV_COAX_CTRL_Debug *debug);
 
 void DRV_COAX_CTRL_GetDefaultParams(DRV_COAX_CTRL_Params *params);

@@ -214,9 +214,32 @@ def test_parse_record_and_csv_fields(tmp_path) -> None:
     assert "ident_att_signal_m_s2" in text
 
 
+def test_v10_record_exposes_full_cascade_debug() -> None:
+    values = list(flog.RECORD_STRUCT.unpack(bytes(flog.RECORD_SIZE)))
+    values[0] = flog.RECORD_MAGIC
+    values[1] = 10
+    values[2] = flog.RECORD_SIZE
+    raw = flog.RECORD_STRUCT.pack(*values)
+    values[-1] = flog.crc32(raw[:-4] + b"\x00\x00\x00\x00")
+
+    row = flog.parse_record(flog.RECORD_STRUCT.pack(*values))
+
+    assert row is not None
+    for name in (
+        "ctrl_position_error_m_2",
+        "ctrl_velocity_i_m_s2_1",
+        "ctrl_omega_sp_rad_s_2",
+        "ctrl_rate_d_n_m_0",
+        "ctrl_moment_achieved_n_m_2",
+        "ctrl_saturation_positive_2",
+        "ctrl_yaw_differential_saturated",
+    ):
+        assert name in row
+
+
 def make_record() -> bytes:
     values = []
-    values.extend([flog.RECORD_MAGIC, 7, flog.RECORD_SIZE, 3, 0, 1000, 12, 99])
+    values.extend([flog.RECORD_MAGIC, 9, flog.V9_RECORD_SIZE, 3, 0, 1000, 12, 99])
     values.extend([1, 2, 3, 4, 5, 6, 7])
     values.extend([25.0, 0.1, 0.2, 0.3, 10.0, 11.0, 12.0])
     values.extend([1.0, 2.0, 3.0])
@@ -240,10 +263,10 @@ def make_record() -> bytes:
     )
     values.extend(range(101, 111))
     values.append(0)
-    packed_without_crc = flog.RECORD_STRUCT.pack(*values)
+    packed_without_crc = flog.V9_RECORD_STRUCT.pack(*values)
     crc = flog.crc32(packed_without_crc[:-4] + b"\x00\x00\x00\x00")
     values[-1] = crc
-    return flog.RECORD_STRUCT.pack(*values)
+    return flog.V9_RECORD_STRUCT.pack(*values)
 
 
 def make_v3_record() -> bytes:
@@ -365,14 +388,17 @@ def test_parse_v5_record_without_flow_and_bus_diagnostics() -> None:
     assert row["servo_feedback_busy_count"] == 0
 
 
-def make_sector_header() -> bytes:
-    params = [float(i) for i in range(len(flog.PARAM_NAMES))]
+def make_sector_header(
+    *, version: int = 10, record_size: int = flog.RECORD_SIZE,
+    params_struct=flog.PARAMS_STRUCT, param_names=flog.PARAM_NAMES,
+) -> bytes:
+    params = [float(i) for i in range(len(param_names))]
     prefix = flog.SECTOR_HEADER_PREFIX.pack(
         flog.SECTOR_MAGIC,
-        1,
+        version,
         flog.SECTOR_HEADER_SIZE,
         flog.SECTOR_SIZE,
-        flog.RECORD_SIZE,
+        record_size,
         123,
         5,
         0,
@@ -380,12 +406,12 @@ def make_sector_header() -> bytes:
         0x2000,
         0x3FC000,
         100,
-        flog.PARAMS_STRUCT.size,
+        params_struct.size,
         0,
     )
-    reserved_len = flog.SECTOR_HEADER_SIZE - len(prefix) - flog.PARAMS_STRUCT.size
+    reserved_len = flog.SECTOR_HEADER_SIZE - len(prefix) - params_struct.size
     reserved = b"\x00" * reserved_len
-    header = bytearray(prefix + flog.PARAMS_STRUCT.pack(*params) + reserved)
+    header = bytearray(prefix + params_struct.pack(*params) + reserved)
     assert len(header) == flog.SECTOR_HEADER_SIZE
     crc = flog.crc32(bytes(header))
     struct.pack_into("<I", header, 52, crc)
@@ -479,8 +505,8 @@ def test_sector_header_and_flash_image_parse() -> None:
     assert sectors[0]["params"]["vel_x_kd"] == float(
         flog.PARAM_NAMES.index("vel_x_kd")
     )
-    assert sectors[0]["params"]["yaw_torque_lower_m_per_n"] == float(
-        flog.PARAM_NAMES.index("yaw_torque_lower_m_per_n")
+    assert sectors[0]["params"]["rate_yaw_kp"] == float(
+        flog.PARAM_NAMES.index("rate_yaw_kp")
     )
 
 
@@ -502,12 +528,15 @@ def test_legacy_single_tilt_lever_header_still_parses_without_field_shift() -> N
 
 def test_receive_dump_writes_bin_csv_and_meta(tmp_path) -> None:
     image = bytearray(b"\xFF" * flog.SECTOR_SIZE)
-    image[:flog.SECTOR_HEADER_SIZE] = make_sector_header()
+    image[:flog.SECTOR_HEADER_SIZE] = make_sector_header(
+        version=9, record_size=flog.V9_RECORD_SIZE,
+        params_struct=flog.V9_PARAMS_STRUCT, param_names=flog.V9_PARAM_NAMES,
+    )
     record = make_record()
     image[flog.SECTOR_HEADER_SIZE : flog.SECTOR_HEADER_SIZE + len(record)] = record
     begin = (
         "FLOG BEGIN version=1 block_magic=0x31424C46 total=4096 sectors=1 "
-        f"sector_size=4096 header_size=256 record_size={flog.RECORD_SIZE} log_rate=250 baud=57600 "
+        f"sector_size=4096 header_size=256 record_size={flog.V9_RECORD_SIZE} log_rate=250 baud=57600 "
         "session=123\r\n"
     ).encode("ascii")
     payload = bytes(image)
@@ -562,7 +591,10 @@ def test_receive_dump_skips_duplicate_begin_text_before_binary_block(tmp_path) -
 
 def test_receive_dump_accepts_hex_text_blocks(tmp_path) -> None:
     image = bytearray(b"\xFF" * flog.SECTOR_SIZE)
-    image[:flog.SECTOR_HEADER_SIZE] = make_sector_header()
+    image[:flog.SECTOR_HEADER_SIZE] = make_sector_header(
+        version=9, record_size=flog.V9_RECORD_SIZE,
+        params_struct=flog.V9_PARAMS_STRUCT, param_names=flog.V9_PARAM_NAMES,
+    )
     record = make_record()
     image[flog.SECTOR_HEADER_SIZE : flog.SECTOR_HEADER_SIZE + len(record)] = record
     begin = (

@@ -4,7 +4,7 @@
 
 Read this shard only when the task touches application behavior, RTOS task bodies, control flow, diagnostics, commands, or synchronous services.
 
-Source snapshot: `ceaf54e8bcd0`. Indexed files: 104.
+Source snapshot: `5b2bf9034f57`. Indexed files: 108.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -24,9 +24,11 @@ Source snapshot: `ceaf54e8bcd0`. Indexed files: 104.
 | `App/Src/app_cmd_system.c` | Application behavior and task-facing logic for cmd system | `APP_Control_ReportUartStats` |
 | `App/Src/app_cmd_telem.c` | Application behavior and task-facing logic for cmd telem | — |
 | `App/Inc/app_control.h`<br>`App/Src/app_control.c` | Application behavior and task-facing logic for control | `APP_Control_Init`, `APP_Control_Tick`, `APP_Control_QueueText`, `APP_Control_ProcessLine`, `APP_Control_MaintTick`, `APP_Control_ProcessMaintLine` (+2) |
-| `App/Inc/app_control_config_compat.h`<br>`App/Src/app_control_config_compat.c` | Application behavior and task-facing logic for control config compat | `APP_ControlConfigCompat_V17ToCurrent` |
+| `App/Inc/app_control_config_compat.h`<br>`App/Src/app_control_config_compat.c` | Application behavior and task-facing logic for control config compat | `APP_ControlConfigCompat_V18ToCurrent`, `APP_ControlConfigCompat_V17ToCurrent`, `APP_ControlConfigCompat_V15ToCurrent` |
+| `App/Inc/app_control_config_store.h`<br>`App/Src/app_control_config_store.c` | Application behavior and task-facing logic for control config store | `APP_ControlConfigStore_Load`, `APP_ControlConfigStore_Save`, `APP_ControlConfigStore_CaptureTunables` |
 | `App/Src/app_control_core.c` | Application behavior and task-facing logic for control core | `APP_IMU_Capture_IsExportActive` |
 | `App/Inc/app_control_internal.h` | Application behavior and task-facing logic for control internal | — |
+| `App/Inc/app_control_scheduler.h`<br>`App/Src/app_control_scheduler.c` | Application behavior and task-facing logic for control scheduler | `APP_ControlScheduler_Reset`, `APP_ControlScheduler_Step` |
 | `App/Inc/app_diag.h`<br>`App/Src/app_diag.c` | Application behavior and task-facing logic for diag | `APP_Diag_RecordStackOverflow`, `APP_Diag_RecordMallocFailed`, `APP_Diag_GetFaultInfo` |
 | `App/Inc/app_elrs.h`<br>`App/Src/app_elrs.c` | Application behavior and task-facing logic for elrs | `APP_ELRS_Init`, `APP_ELRS_Step`, `APP_ELRS_GetChannels`, `APP_ELRS_GetLastRcMs`, `APP_ELRS_IsRcFresh`, `APP_ELRS_SendTelemetryAttitude` (+9) |
 | `App/Inc/app_firmware_identity.h`<br>`App/Src/app_firmware_identity.c` | Application behavior and task-facing logic for firmware identity | `APP_FirmwareIdentity_IsRangeValid`, `APP_FirmwareIdentity_ComputeCrc32`, `APP_FirmwareIdentity_Get`, `APP_FirmwareIdentity_GetCrc32` |

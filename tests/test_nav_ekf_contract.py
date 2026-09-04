@@ -138,7 +138,8 @@ def test_velocity_control_uses_flow_ekf_with_limited_compensated_imu_bridge() ->
 
     # --- 速度环接线不变 ---
     assert "velocity_loop_enabled = (vel_loop_enable >= 0.5f) ? 1U : 0U;" in freertos
-    assert "reference.horizontal_velocity_valid = velocity_loop_enabled;" in freertos
+    assert "frame->reference.horizontal_velocity_valid =" in freertos
+    assert "nav_state.velocity_valid" in freertos
     assert "attitude.vx_m_s = velocity_control_x_m_s;" in freertos
     assert "attitude.vy_m_s = velocity_control_y_m_s;" in freertos
     assert "STABILIZER_VELOCITY_MEAS_Y_SIGN * nav_vy_m_s" in freertos

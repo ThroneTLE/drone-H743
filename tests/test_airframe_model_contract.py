@@ -91,32 +91,33 @@ def test_flash_config_preserves_current_record_and_migrates_v15_coax_tunables() 
     source = (
         read("App/Inc/app_control_config_compat.h")
         + read("App/Src/app_control_config_compat.c")
-        + read("App/Src/app_control.c")
+        + read("App/Inc/app_control_config_store.h")
+        + read("App/Src/app_control_config_store.c")
     )
 
     # V17 = 加入遥控映射；V16/V15 都必须还能读回来，否则升级会连舵机/PID 一起丢。
-    assert "#define APP_CONTROL_CFG_VERSION     18U" in source
+    assert "#define APP_CONTROL_CFG_VERSION     19U" in source
+    assert "#define APP_CONTROL_CFG_VERSION_V18 18U" in source
     assert "#define APP_CONTROL_CFG_VERSION_V16 16U" in source
     assert "#define APP_CONTROL_CFG_VERSION_V15 15U" in source
     assert "APP_ControlFlashRecordV16" in source
     assert "APP_ControlFlashRecordV15" in source
     assert "app_control_migrate_coax_params" not in source
-    assert "record.version == APP_CONTROL_CFG_VERSION" in source
-    assert "record.version == APP_CONTROL_CFG_VERSION_V16" in source
-    assert "record.version == APP_CONTROL_CFG_VERSION_V15" in source
-    assert "APP_ControlCoaxTunableParams coax_tunables;" in source
-    assert "float pos_z_ki;" in source
-    assert "out->pos_z_ki = params.pos_z_ki;" in source
-    assert "params.pos_z_ki = in->pos_z_ki;" in source
-    assert "app_control_capture_coax_tunables(&record.coax_tunables);" in source
-    assert "app_control_apply_coax_tunables(&record.coax_tunables);" in source
-    assert "app_control_apply_coax_tunables_v15(&legacy_record.coax_tunables);" in source
+    assert "case APP_CONTROL_CFG_VERSION:" in source
+    assert "case APP_CONTROL_CFG_VERSION_V16:" in source
+    assert "case APP_CONTROL_CFG_VERSION_V15:" in source
+    assert "APP_CONTROL_RECORD_TYPE(APP_ControlFlashRecord," in source
+    assert "float vel_z_ki;" in source
+    assert "current->vel_z_ki" not in source
+    assert "APP_ControlConfigStore_CaptureTunables(&record.coax_tunables);" in source
+    assert "config_apply_tunables(&record.coax_tunables);" in source
+    assert "APP_ControlConfigCompat_V15ToCurrent" in source
     assert "DRV_COAX_CTRL_GetDefaultParams(&params);" in source
     assert "DRV_COAX_CTRL_SetParams(&params);" in source
     assert "DRV_COAX_CTRL_Params coax_params;" not in source
     assert "record.coax_params" not in source
     tunable_struct = source[source.index("typedef struct {\n    float pos_x_kp;"):source.index("} APP_ControlCoaxTunableParams;")]
-    apply_tunables = source[source.index("static void app_control_apply_coax_tunables"):source.index("static void app_control_report_airframe")]
+    apply_tunables = source[source.index("static void config_apply_tunables"):source.index("static uint8_t config_read_current")]
     for fixed_model_field in (
         "mass_kg",
         "gravity_m_s2",
@@ -137,7 +138,8 @@ def test_v17_config_compatibility_is_extracted_from_the_oversize_entrypoint() ->
     compat = read("App/Src/app_control_config_compat.c")
     cmake = read("CMakeLists.txt")
 
-    assert '#include "app_control_config_compat.h"' in control
+    assert '#include "app_control_config_store.h"' in control
+    assert '#include "app_control_config_compat.h"' in read("App/Src/app_control_config_store.c")
     assert "APP_ControlCoaxTunableParamsV17" in header
     assert "APP_ControlConfigCompat_V17ToCurrent" in compat
     for dead_gain in (

@@ -43,36 +43,27 @@ def test_gains_are_positive_so_polarity_errors_cannot_be_masked() -> None:
 
     # Defaults must be positive; a stored negative gain used to be how a sign
     # error was hidden behind an apparently stable aircraft.
-    for line in ("params->roll_angle_kp = 0.0671f;",
-                 "params->pitch_angle_kp = 0.0660f;",
-                 "params->roll_rate_kd = 0.1104f;",
-                 "params->pitch_rate_kd = 0.1138f;",
-                 "params->yaw_angle_kp = 1.0f;",
-                 "params->yaw_rate_kd = 0.15f;"):
+    for line in ("params->attitude.att_kp[0] = 0.0671f / 0.1104f;",
+                 "params->attitude.att_kp[1] = 0.0660f / 0.1138f;",
+                 "params->rate.kp[0] = 0.1104f;",
+                 "params->rate.kp[1] = 0.1138f;",
+                 "params->rate.kp[2] = DRV_AIRFRAME_IZZ_KGM2 * 0.15f;"):
         assert line in source, line
 
     # Magnitude is taken at use, so a negative value entered from the UI cannot
     # silently invert the feedback direction.
-    for expr in ("fabsf(coax_ctrl_params.roll_angle_kp)",
-                 "fabsf(coax_ctrl_params.pitch_angle_kp)",
-                 "fabsf(coax_ctrl_params.roll_rate_kd)",
-                 "fabsf(coax_ctrl_params.pitch_rate_kd)"):
-        assert expr in source, expr
+    assert "return (value >= 0.0f) ? 1U : 0U;" in source
 
 
 def test_control_law_is_negative_feedback_by_structure() -> None:
-    source = read("Driver/Src/drv_coax_ctrl.c")
+    attitude = read("Driver/Src/drv_attitude_control.c")
+    rate = read("Driver/Src/drv_rate_control.c")
 
     # Both terms subtract. Previously kr was negated and kd was used raw, i.e.
     # the two gain types had opposite sign conventions.
-    assert "(-kr_roll * solution->attitude_error[0]) -" in source
-    assert "(-kr_pitch * solution->attitude_error[1]) -" in source
-
-    # The rate term must be subtracted, not added. Check the operator that
-    # precedes it rather than what follows, since the gyroscopic term is
-    # legitimately added after it.
-    assert "attitude_error[0]) -\n        (kd_roll" in source
-    assert "attitude_error[1]) -\n        (kd_pitch" in source
+    assert "output->omega_ff[axis] -" in attitude
+    assert "input->omega_sp[axis] - input->omega[axis]" in rate
+    assert "p_term + output->i_term[axis] - d_term" in rate
 
 
 def test_stick_polarity_lives_in_exactly_one_place() -> None:
@@ -143,10 +134,10 @@ int main(void)
     DRV_COAX_CTRL_GetDefaultParams(&params);
 
     /* Every gain must be positive in the shipped defaults. */
-    CHECK(params.roll_angle_kp > 0.0f, 1);
-    CHECK(params.pitch_angle_kp > 0.0f, 2);
-    CHECK(params.roll_rate_kd > 0.0f, 3);
-    CHECK(params.pitch_rate_kd > 0.0f, 4);
+    CHECK(params.attitude.att_kp[0] > 0.0f, 1);
+    CHECK(params.attitude.att_kp[1] > 0.0f, 2);
+    CHECK(params.rate.kp[0] > 0.0f, 3);
+    CHECK(params.rate.kp[1] > 0.0f, 4);
 
     DRV_COAX_CTRL_SetParams(&params);
 
@@ -215,8 +206,8 @@ int main(void)
      * sign; a sign slip here shows up as growing oscillation in flight.
      */
     DRV_COAX_CTRL_GetDefaultParams(&params);
-    params.roll_angle_kp = 0.0f;
-    params.pitch_angle_kp = 0.0f;
+    params.attitude.att_kp[0] = 0.0f;
+    params.attitude.att_kp[1] = 0.0f;
     DRV_COAX_CTRL_SetParams(&params);
 
     base_state(&att, &ref);
@@ -245,10 +236,10 @@ int main(void)
      * direction is unchanged.
      */
     DRV_COAX_CTRL_GetDefaultParams(&params);
-    params.pitch_angle_kp = -params.pitch_angle_kp;
+    params.attitude.att_kp[1] = -params.attitude.att_kp[1];
     DRV_COAX_CTRL_SetParams(&params);
     DRV_COAX_CTRL_GetParams(&params);
-    CHECK(params.pitch_angle_kp > 0.0f, 17);
+    CHECK(params.attitude.att_kp[1] > 0.0f, 17);
 
     base_state(&att, &ref);
     att.pitch_rad = 0.15f;
@@ -287,6 +278,9 @@ def test_controller_sign_convention_runtime(tmp_path: Path) -> None:
         [gcc, "-std=c11", "-Wall", "-Wextra", "-Werror",
          f"-I{stub_dir}", f"-I{ROOT / 'Driver' / 'Inc'}",
          str(ROOT / "Driver" / "Src" / "drv_coax_ctrl.c"),
+         str(ROOT / "Driver" / "Src" / "drv_position_control.c"),
+         str(ROOT / "Driver" / "Src" / "drv_attitude_control.c"),
+         str(ROOT / "Driver" / "Src" / "drv_rate_control.c"),
          str(harness), "-lm", "-o", str(executable)],
         check=True, capture_output=True, text=True)
 

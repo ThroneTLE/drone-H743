@@ -288,7 +288,6 @@ PARAM_CHANNELS = {
     "roll_angle_kp": "coax.roll_angle_kp",
     "pitch_angle_kp": "coax.pitch_angle_kp",
     "pos_z_kp": "coax.pos_z_kp",
-    "pos_z_ki": "coax.pos_z_ki",
     "vel_z_kd": "coax.vel_z_kd",
 }
 
@@ -346,8 +345,11 @@ def test_fill_code_indexes_by_channel_enum(schema_lines: list[str]) -> None:
     assert not bare, f"use APP_TELEM_CH_* instead of numeric indices: {bare}"
 
     used = set(re.findall(r"vofa_data\[(APP_TELEM_CH_\w+)\]", task))
+    vector_bases = set(
+        re.findall(r"vofa_data\[(APP_TELEM_CH_CTRL_\w+) \+ axis\]", task)
+    )
     channels = [parse_kv(line) for line in schema_lines if line.startswith("TELEM CH ")]
-    assert len(used) == len(channels), (
+    assert len(used) + (3 * len(vector_bases)) == len(channels), (
         "every advertised channel must be written by the fill code"
     )
 

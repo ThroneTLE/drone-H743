@@ -52,11 +52,13 @@ def test_frame_signs_and_gains() -> None:
     assert "#define DRV_COAX_CTRL_RATE_FRAME_ROLL_SIGN   (1.0f)" in source
     assert "#define DRV_COAX_CTRL_RATE_FRAME_PITCH_SIGN  (1.0f)" in source
 
-    # drv_coax_ctrl.h: 极性活在分配之后，绝不进负增益.
-    for gain in ("roll_angle_kp", "pitch_angle_kp"):
-        assert f"fabsf(coax_ctrl_params.{gain})" in source
-    assert "(-kr_roll * solution->attitude_error[0]) -" in source
-    assert "(-kr_pitch * solution->attitude_error[1]) -" in source
+    # Cascade gains are non-negative; negative feedback is structural.
+    attitude = read(ROOT / "Driver/Src/drv_attitude_control.c")
+    rate = read(ROOT / "Driver/Src/drv_rate_control.c")
+    assert "params->att_kp[axis] < 0.0f" in attitude
+    assert "params->kp[axis] < 0.0f" in rate
+    assert "output->omega_ff[axis] -" in attitude
+    assert "input->omega_sp[axis] - input->omega[axis]" in rate
 
     assert re.search(
         r"DRV_COAX_CTRL_FORCE_FRAME_ROLL_SIGN \* attitude->roll_rad", source

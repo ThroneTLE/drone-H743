@@ -60,6 +60,9 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Driver/Src/drv_elrs.c
     Driver/Src/drv_optical_flow.c
     Driver/Src/drv_coax_ctrl.c
+    Driver/Src/drv_position_control.c
+    Driver/Src/drv_attitude_control.c
+    Driver/Src/drv_rate_control.c
     Driver/Src/drv_nav_ekf.c
     Driver/Src/drv_attitude_fusion.c
     ThirdParty/Fusion/FusionAhrs.c
@@ -97,6 +100,8 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     App/Src/app_control.c
     App/Src/app_control_core.c
     App/Src/app_control_config_compat.c
+    App/Src/app_control_config_store.c
+    App/Src/app_control_scheduler.c
     App/Src/app_cmd_servocal.c
     App/Src/app_cmd_servotype.c
     App/Src/app_cmd_imucal.c
