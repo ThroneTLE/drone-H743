@@ -187,9 +187,9 @@ def test_fusion_capture_analysis_reports_rejection_and_final_tilt(tmp_path: Path
 def test_firmware_uses_fusion_rejection_and_recovery_settings() -> None:
     source = (ROOT / "Driver" / "Src" / "drv_attitude_fusion.c").read_text(encoding="utf-8")
     assert "DRV_ATTITUDE_FUSION_GAIN 0.5f" in source
-    # Widened deliberately; see tests/test_attitude_fusion_contract.py for the
-    # measured reason the previous gates starved the accelerometer in flight.
-    assert "DRV_ATTITUDE_FUSION_ACCEL_REJECTION_DEG 45.0f" in source
+    # Direction rejection is conservative; impact/free-fall rejection remains
+    # the responsibility of the separate acceleration-norm gate.
+    assert "DRV_ATTITUDE_FUSION_ACCEL_REJECTION_DEG 10.0f" in source
     assert "DRV_ATTITUDE_FUSION_REJECTION_TIMEOUT_S 0.5f" in source
     assert "DRV_ATTITUDE_FUSION_ACCEL_NORM_MIN_G 0.40f" in source
     assert "DRV_ATTITUDE_FUSION_ACCEL_NORM_MAX_G 1.80f" in source

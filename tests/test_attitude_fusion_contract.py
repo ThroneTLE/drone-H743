@@ -27,10 +27,9 @@ def test_xio_fusion_is_vendored_and_replaces_height_gated_attitude() -> None:
     assert "015d68494274b479b5996bff2530ecbcfdc266f2" in source
     assert "FusionAhrsUpdateNoMagnetometer" in source
     assert "FusionConventionNed" in source
-    # Gates are deliberately loose: coaxial-rotor vibration made the previous
-    # 10 deg / [0.85, 1.15] g pair ignore the accelerometer for 75-85 % of
-    # powered flight, leaving attitude on free-running gyro integration.
-    assert "DRV_ATTITUDE_FUSION_ACCEL_REJECTION_DEG 45.0f" in source
+    # Directional innovation is conservatively rejected beyond 10 degrees.
+    # Impact/free-fall rejection remains a separate acceleration-norm gate.
+    assert "DRV_ATTITUDE_FUSION_ACCEL_REJECTION_DEG 10.0f" in source
     assert "DRV_ATTITUDE_FUSION_REJECTION_TIMEOUT_S 0.5f" in source
     assert "DRV_ATTITUDE_FUSION_ACCEL_NORM_MIN_G 0.40f" in source
     assert "DRV_ATTITUDE_FUSION_ACCEL_NORM_MAX_G 1.80f" in source
@@ -108,8 +107,8 @@ int main(void)
     CHECK(output.accelerometer_ignored != 0U, 3);
     CHECK(fabsf(output.roll_deg) < 0.5f, 4);
 
-    /* Vibration-scale innovation must be trusted, not rejected: this is the
-     * regression that left attitude on gyro integration in powered flight. */
+    /* A 15 degree directional innovation exceeds the restored conservative
+     * gate and must be rejected independently of the acceleration-norm gate. */
     DRV_AttitudeFusion_Init();
     time_us = 0ULL;
     for (int index = 0; index < 4000; ++index) {
@@ -117,7 +116,7 @@ int main(void)
     }
     static_accel(15.0f, 0.0f, &ax, &ay, &az);
     output = update(0.0f, 0.0f, 0.0f, ax, ay, az, &time_us);
-    CHECK(output.accelerometer_ignored == 0U, 5);
+    CHECK(output.accelerometer_ignored != 0U, 5);
     CHECK(output.accel_norm_rejected == 0U, 6);
 
     /* Only physically implausible specific force is magnitude-rejected. */

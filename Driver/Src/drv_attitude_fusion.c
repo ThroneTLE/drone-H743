@@ -14,15 +14,12 @@
 #define DRV_ATTITUDE_FUSION_GAIN 0.5f
 #define DRV_ATTITUDE_FUSION_GYRO_RANGE_DPS 1000.0f
 /*
- * Coaxial-rotor vibration makes the instantaneous gravity innovation large even
- * when the airframe is level, so the innovation gate must not be tight. Offline
- * replay of log/flightlog_20260726_*.csv and log/flightlog_20260727_045138.csv
- * showed the previous 10 deg / [0.85, 1.15] g pair ignoring the accelerometer
- * for 75-85 % of powered flight, leaving attitude on free-running gyro
- * integration. Widening both gates and shortening the timeout drops that to
- * roughly 0 % and cuts median tilt error from 9.6-25.6 deg to 2.6-4.9 deg.
+ * Conservatively reject accelerometer directions that disagree with the
+ * predicted gravity direction.  Impact/free-fall rejection is handled
+ * separately by the acceleration-norm gate below.  Suitability during powered
+ * flight remains an M7 same-data A/B validation item.
  */
-#define DRV_ATTITUDE_FUSION_ACCEL_REJECTION_DEG 45.0f
+#define DRV_ATTITUDE_FUSION_ACCEL_REJECTION_DEG 10.0f
 #define DRV_ATTITUDE_FUSION_REJECTION_TIMEOUT_S 0.5f
 /* Reject only physically implausible specific force (impact, free fall). */
 #define DRV_ATTITUDE_FUSION_ACCEL_NORM_MIN_G 0.40f
