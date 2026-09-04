@@ -670,6 +670,31 @@ def test_edit_mode_overlays_appear_and_disappear(app) -> None:
     assert editor.overlays == {}
 
 
+def test_edit_overlay_close_and_properties_buttons_keep_their_own_actions(
+    app, monkeypatch,
+) -> None:
+    """X 只删除，齿轮只开属性；不能靠子控件创建顺序猜按钮身份。"""
+    select_dashboard(app)
+    actions: list[tuple[str, dash_layout.TileSpec]] = []
+    editor = app.dashboard_editor
+    monkeypatch.setattr(editor, "delete", lambda spec: actions.append(("delete", spec)))
+    monkeypatch.setattr(
+        editor, "open_properties", lambda spec: actions.append(("properties", spec))
+    )
+    editor.set_active(True)
+    app.update()
+    overlay = next(iter(editor.overlays.values()))
+    assert overlay.delete_button.cget("text") == "✕"
+    assert overlay.properties_button.cget("text") == "⚙"
+
+    overlay.delete_button.event_generate("<Button-1>")
+    app.update()
+    overlay.properties_button.event_generate("<Button-1>")
+    app.update()
+
+    assert actions == [("delete", overlay.spec), ("properties", overlay.spec)]
+
+
 def test_a_tile_can_be_moved_and_the_move_is_persisted(app) -> None:
     saved: list[dict] = []
     app._panel_state["dashboard"] = None
@@ -841,6 +866,32 @@ def test_gauge_uses_channel_table_range_and_accepts_an_empty_new_card(app) -> No
     gauge.refresh()
     assert "0.612" in gauge.value_var.get()
     assert abs(float(gauge.canvas.itemcget(gauge._value_arc, "extent"))) > 0.0
+
+
+def test_gauge_channel_can_be_changed_without_entering_layout_edit_mode(app) -> None:
+    """仪表盘与波形/数值卡一致：卡片标题栏常态就能选择通道。"""
+    select_dashboard(app)
+    load_schema(app)
+    gauge = add_dashboard_tile(app, dash_layout.TILE_GAUGE, ["flow_height"])
+    app.dashboard_edit_var.set(False)
+    app._dashboard_toggle_edit()
+    app.transport.lines.clear()
+
+    assert app.dashboard_editor.overlays == {}
+    assert gauge.channel_picker.selected == ("flow_height",)
+    assert gauge.channel_picker.choose(["yaw"])
+    assert gauge.spec.bindings == ["yaw"]
+    assert gauge.name_var.get() == "yaw"
+    assert gauge.canvas.itemcget(gauge._low, "text") == "-180"
+    assert gauge.canvas.itemcget(gauge._high, "text") == "180"
+    assert [line for line in app.transport.lines if line.startswith("TELEM MASK ")]
+
+    persisted = dash_layout.DashboardLayout.from_json(app._panel_state["dashboard"])
+    assert persisted is not None
+    assert any(
+        spec.type == dash_layout.TILE_GAUGE and spec.bindings == ["yaw"]
+        for spec in persisted.workspaces[0].tiles
+    )
 
 
 def test_command_button_uses_the_existing_validation_gate_for_push_and_toggle(app,

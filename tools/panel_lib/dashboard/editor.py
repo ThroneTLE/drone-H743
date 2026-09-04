@@ -38,15 +38,20 @@ class TileOverlay:
 
         bar = tk.Frame(self.frame, background=editor.accent)
         bar.pack(side=tk.TOP, fill=tk.X)
-        tk.Label(
+        self.properties_button = tk.Label(
             bar, text="⚙", background=editor.accent, cursor="hand2",
-        ).pack(side=tk.RIGHT, padx=(0, 2))
-        tk.Label(
+        )
+        self.properties_button.pack(side=tk.RIGHT, padx=(0, 2))
+        self.delete_button = tk.Label(
             bar, text="✕", background=editor.accent, cursor="hand2",
-        ).pack(side=tk.RIGHT, padx=(0, 4))
-        children = bar.winfo_children()
-        children[0].bind("<Button-1>", lambda _e: self.editor.delete(self.spec))
-        children[1].bind("<Button-1>", lambda _e: self.editor.open_properties(self.spec))
+        )
+        self.delete_button.pack(side=tk.RIGHT, padx=(0, 4))
+        # 不通过 ``winfo_children()`` 的堆叠顺序猜按钮身份。Tk 在不同平台/重排
+        # 后可能返回不同顺序，曾导致 X 打开属性、齿轮反而删除组件。
+        self.delete_button.bind("<Button-1>", lambda _e: self.editor.delete(self.spec))
+        self.properties_button.bind(
+            "<Button-1>", lambda _e: self.editor.open_properties(self.spec)
+        )
         tk.Label(
             bar, text=self.spec.type, background=editor.accent,
         ).pack(side=tk.LEFT, padx=4)

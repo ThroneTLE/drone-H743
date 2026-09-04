@@ -17,6 +17,7 @@ import tkinter as tk
 from tkinter import ttk
 
 from ..scope import SCOPE_PALETTE
+from .channel_picker import ChannelPicker
 from .layout import (
     TILE_ATTITUDE,
     TILE_BUTTON,
@@ -63,8 +64,17 @@ class GaugeTile(DashboardTile):
 
     def _build(self) -> None:
         self.name_var = tk.StringVar(value=self.title())
-        ttk.Label(self.frame, textvariable=self.name_var,
-                  style="Eyebrow.TLabel").pack(anchor=tk.W)
+        header = ttk.Frame(self.frame)
+        header.pack(fill=tk.X)
+        ttk.Label(header, textvariable=self.name_var,
+                  style="Eyebrow.TLabel").pack(side=tk.LEFT)
+        self.channel_picker = ChannelPicker(
+            header, bindings=self.spec.bindings, multiple=False,
+            min_selected=self.MIN_BINDINGS, max_selected=self.MAX_BINDINGS,
+            empty_text="选择数据", on_change=self._set_bindings_from_picker,
+            width=16,
+        )
+        self.channel_picker.pack(side=tk.RIGHT)
         self.canvas = tk.Canvas(self.frame, highlightthickness=0, background="#101418")
         self.canvas.pack(fill=tk.BOTH, expand=True)
         self.value_var = tk.StringVar(value="—")
@@ -87,6 +97,9 @@ class GaugeTile(DashboardTile):
     def rebind(self) -> None:
         super().rebind()
         self.name_var.set(self.title())
+        self.channel_picker.set_channels(
+            self.context.all_channels(), selected=self.spec.bindings
+        )
         if not self.spec.bindings:
             self._show_unavailable(SELECT_CHANNEL_TEXT)
             return
