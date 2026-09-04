@@ -437,6 +437,8 @@ class ValueTile(DashboardTile):
         self.name_var = tk.StringVar(value=self.title())
         self.value_var = tk.StringVar(value="—")
         self.unit_var = tk.StringVar(value="")
+        self._last_value_text: str | None = None
+        self._last_metric_style: str | None = None
         header = ttk.Frame(self.frame)
         header.pack(fill=tk.X)
         ttk.Label(header, textvariable=self.name_var, style="Eyebrow.TLabel").pack(side=tk.LEFT)
@@ -464,34 +466,46 @@ class ValueTile(DashboardTile):
             self.context.all_channels(), selected=self.spec.bindings
         )
         if not self.spec.bindings:
-            self.value_var.set("选择数据")
+            self._set_value_text("选择数据")
             self.unit_var.set("")
-            self.value_label.configure(style=DASH_METRIC_WARN_STYLE)
+            self._set_metric_style(DASH_METRIC_WARN_STYLE)
             return
         if self.missing:
-            self.value_var.set(MISSING_CHANNEL_TEXT)
+            self._set_value_text(MISSING_CHANNEL_TEXT)
             self.unit_var.set("")
-            self.value_label.configure(style=DASH_METRIC_FAIL_STYLE)
+            self._set_metric_style(DASH_METRIC_FAIL_STYLE)
             return
         channel = self.context.channel(self.spec.bindings[0]) if self.spec.bindings else None
         self.unit_var.set("" if channel is None or channel.unit == "-" else channel.unit)
-        self.value_label.configure(style=DASH_METRIC_STYLE)
+        self._set_metric_style(DASH_METRIC_STYLE)
         if self.value_var.get() == MISSING_CHANNEL_TEXT:
             # 通道回来了（换固件 / 重拉表）。不清掉这行旧的报缺文字，卡片就会
             # 一直显示"通道不存在"直到下一个样本到达——而在等数据的这几百毫秒
             # 里，用户看到的是一条已经不成立的错误。
-            self.value_var.set("—")
+            self._set_value_text("—")
 
     def refresh(self) -> None:
         if self.missing or not self.spec.bindings:
             return
         latest = self.context.latest(self.spec.bindings[0])
         if latest is None:
-            self.value_var.set("—")
+            self._set_value_text("—")
             return
         digits = int(self.spec.options.get("digits", 3))
-        self.value_var.set(f"{latest:+.{digits}f}")
-        self.value_label.configure(style=self._style_for(latest))
+        self._set_value_text(f"{latest:+.{digits}f}")
+        self._set_metric_style(self._style_for(latest))
+
+    def _set_value_text(self, text: str) -> None:
+        """跨 Tcl 边界的 StringVar 写入只在可见文本真的变化时发生。"""
+        if text != self._last_value_text:
+            self.value_var.set(text)
+            self._last_value_text = text
+
+    def _set_metric_style(self, style: str) -> None:
+        """20 张数值卡每帧重复 configure 同一 style 会挤占 resize 的主线程。"""
+        if style != self._last_metric_style:
+            self.value_label.configure(style=style)
+            self._last_metric_style = style
 
     def _style_for(self, value: float) -> str:
         """可选的上下限着色。没配阈值就一律中性色，不自作主张。"""

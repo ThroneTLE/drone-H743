@@ -1018,3 +1018,20 @@ def test_total_redraw_benchmark(app) -> None:
         f"median total redraw {median * 1000:.2f} ms "
         f"(best {samples[0] * 1000:.2f}, worst {samples[-1] * 1000:.2f})"
     )
+
+
+def test_dashboard_defers_tile_painting_while_a_resize_is_active(app, monkeypatch) -> None:
+    """拖边框时仍收数据，但不应和卡片绘图争抢 Tk 主线程。"""
+    app.dashboard_tab_visible = True
+    calls: list[str] = []
+    for index, tile in enumerate(app.dashboard_tiles):
+        monkeypatch.setattr(tile, "refresh", lambda index=index: calls.append(str(index)))
+    monkeypatch.setattr(app, "after", lambda *_args, **_kwargs: None)
+
+    app.dashboard_resize.render_suspended = True
+    app._dashboard_render_tick()
+    assert calls == []
+
+    app.dashboard_resize.render_suspended = False
+    app._dashboard_render_tick()
+    assert len(calls) == len(app.dashboard_tiles)

@@ -33,6 +33,7 @@ from ..dashboard.editor import DashboardEditor, TilePropertiesDialog
 # R-T1-5b 的组件通过注册表接入。把副作用 import 放在页面边界，而不是
 # dashboard 包的 __init__：layout.py 仍可在没有 Tk 的环境里单独使用和测试。
 from ..dashboard import tiles_extra as _tiles_extra  # noqa: F401
+from ..dashboard.resize import DashboardResizeCoordinator
 from ..dashboard.layout import (
     CARD_COLSPAN,
     CARD_ROWSPAN,
@@ -149,6 +150,7 @@ class DashboardPageMixin:
         self.dashboard_workspace_bar = None
         self.dashboard_context = PanelTileContext(self)
         self.dashboard_editor = None
+        self.dashboard_resize = None
         self.dashboard_tiles: list = []
         self.dashboard_record_rows: deque = deque(maxlen=20000)
         self.dashboard_record_handle = None
@@ -202,6 +204,7 @@ class DashboardPageMixin:
         self.dashboard_host = _ScrollHost(parent)
         self.dashboard_host.pack(fill=tk.BOTH, expand=True)
         self.dashboard_editor = DashboardEditor(self.dashboard_host.content, self)
+        self.dashboard_resize = DashboardResizeCoordinator(self)
         self.dashboard_host.canvas.bind("<Configure>", self._dashboard_on_resize, add="+")
 
     def _build_dashboard_toolbar(self, parent: ttk.Frame) -> None:
@@ -374,6 +377,8 @@ class DashboardPageMixin:
             if tile is not None:
                 self.dashboard_tiles.append(tile)
         self._dashboard_relayout()
+        if self.dashboard_resize is not None:
+            self.dashboard_resize.mark_laid_out()
         if self.dashboard_editor is not None:
             self.dashboard_editor.rebuild()
 
@@ -401,9 +406,8 @@ class DashboardPageMixin:
             self.dashboard_host.set_content_height(rows * row_h + DASHBOARD_TILE_GAP)
 
     def _dashboard_on_resize(self, _event=None) -> None:
-        self._dashboard_relayout()
-        if self.dashboard_editor is not None and self.dashboard_editor.active:
-            self.dashboard_editor.reposition()
+        if self.dashboard_resize is not None:
+            self.dashboard_resize.note_configure()
 
     # --- 编辑器回调（DashboardEditor 的 host 协议） ---
 
@@ -418,6 +422,10 @@ class DashboardPageMixin:
 
     def dashboard_relayout(self) -> None:
         self._dashboard_relayout()
+
+    def dashboard_reposition_overlays(self) -> None:
+        if self.dashboard_editor is not None and self.dashboard_editor.active:
+            self.dashboard_editor.reposition()
 
     def dashboard_persist(self) -> None:
         self._dashboard_persist()
@@ -695,8 +703,9 @@ class DashboardPageMixin:
     def _dashboard_render_tick(self) -> None:
         try:
             if self.dashboard_tab_visible:
-                for tile in self.dashboard_tiles:
-                    tile.refresh()
+                if self.dashboard_resize is None or not self.dashboard_resize.render_suspended:
+                    for tile in self.dashboard_tiles:
+                        tile.refresh()
                 self._dashboard_refresh_stats()
             self._dashboard_flush_record()
         finally:
