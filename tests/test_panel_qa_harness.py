@@ -180,8 +180,10 @@ def offline(tmp_path_factory):
     with panel_qa.isolated_environment(root):
         try:
             session = panel_qa.OfflinePanel.launch(scale=1.0, size=(1366, 768))
-        except Exception as exc:                 # pragma: no cover - 无显示环境
-            pytest.skip(f"Tk display unavailable: {exc}")
+        except Exception as exc:
+            if not panel_qa.is_display_unavailable(exc):
+                raise                            # 装置坏了就要红，不许伪装成无显示
+            pytest.skip(f"Tk display unavailable: {exc}")   # pragma: no cover
         try:
             yield session
         finally:
@@ -260,8 +262,10 @@ def test_the_simulated_dpi_scale_actually_changes_the_layout(tmp_path) -> None:
     with panel_qa.isolated_environment(tmp_path):
         try:
             session = panel_qa.OfflinePanel.launch(scale=1.5, size=(1366, 768))
-        except Exception as exc:                 # pragma: no cover - 无显示环境
-            pytest.skip(f"Tk display unavailable: {exc}")
+        except Exception as exc:
+            if not panel_qa.is_display_unavailable(exc):
+                raise                            # 装置坏了就要红，不许伪装成无显示
+            pytest.skip(f"Tk display unavailable: {exc}")   # pragma: no cover
         try:
             assert session.scale == 1.5
             assert session.panel.ui_dpi_scale == 1.5
@@ -284,8 +288,10 @@ def test_a_qa_session_leaves_the_historical_calibration_evidence_untouched(
     with panel_qa.isolated_environment(tmp_path):
         try:
             session = panel_qa.OfflinePanel.launch(scale=1.0, size=(1080, 700))
-        except Exception as exc:                 # pragma: no cover - 无显示环境
-            pytest.skip(f"Tk display unavailable: {exc}")
+        except Exception as exc:
+            if not panel_qa.is_display_unavailable(exc):
+                raise                            # 装置坏了就要红，不许伪装成无显示
+            pytest.skip(f"Tk display unavailable: {exc}")   # pragma: no cover
         try:
             for page in session.leaf_pages():
                 session.select(page)
@@ -303,8 +309,10 @@ def test_the_harness_restores_every_module_it_patched(tmp_path) -> None:
     with panel_qa.isolated_environment(tmp_path):
         try:
             session = panel_qa.OfflinePanel.launch(scale=1.0, size=(1080, 700))
-        except Exception as exc:                 # pragma: no cover - 无显示环境
-            pytest.skip(f"Tk display unavailable: {exc}")
+        except Exception as exc:
+            if not panel_qa.is_display_unavailable(exc):
+                raise                            # 装置坏了就要红，不许伪装成无显示
+            pytest.skip(f"Tk display unavailable: {exc}")   # pragma: no cover
         session.destroy()
     assert (panel_module.enable_hidpi_awareness,
             panel_module.DronePanel._load_panel_state,

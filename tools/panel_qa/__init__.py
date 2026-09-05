@@ -39,7 +39,7 @@ from .guards import (
     hardware_guards,
     is_flash_tool_command,
 )
-from .harness import MemoryTransport, OfflinePanel
+from .harness import MemoryTransport, OfflinePanel, is_display_unavailable
 from .isolation import ManualClock, QaEnvironment, directory_digest, isolated_environment
 
 __all__ = [
@@ -62,6 +62,7 @@ __all__ = [
     "gps_status_line",
     "hardware_guards",
     "is_flash_tool_command",
+    "is_display_unavailable",
     "isolated_environment",
     "probe_geometry",
     "telemetry_frame",

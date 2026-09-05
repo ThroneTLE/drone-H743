@@ -18,25 +18,18 @@ TK-00 的完成门明确禁止两件事：不把“仍能复现 bug”包装成�
 
 from __future__ import annotations
 
-import io
 import json
 import subprocess
 import sys
 import tempfile
-from collections import deque
 from datetime import datetime
 from pathlib import Path
-from types import SimpleNamespace
 
 from . import fixtures as qa_fixtures
 from .geometry import WINDOW_SIZES
 from .guards import hardware_guards
 from .harness import OfflinePanel
-from .isolation import (
-    exclusive_path,
-    isolated_environment,
-    redirected_dated_directory,
-)
+from .isolation import exclusive_path, isolated_environment
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -222,132 +215,14 @@ def observe_invalid_gps(session) -> dict:
 
 
 # ---------------------------------------------------------------- N10-N13 录制
-
-
-class _SlowWriter:
-    def __init__(self, delay_s: float = 0.002) -> None:
-        self.writes = 0
-        self.delay_s = delay_s
-
-    def write(self, text: str) -> None:
-        import time
-
-        self.writes += 1
-        time.sleep(self.delay_s)
-
-
-class _BrokenWriter:
-    def write(self, text: str) -> None:
-        raise OSError("simulated disk full")
-
-
-def observe_recording(output_dir: Path) -> dict:
-    """N10–N13：慢盘阻塞、失败不收尾、schema 变化撑破表头、同秒文件名碰撞。
-
-    直接驱动 `pages/dashboard.py` 的真实 flush/toggle/stop，只把 writer 与时钟换掉。
-    """
-    import time
-
-    from tools.panel_lib.pages import dashboard as module
-    from tools.panel_lib.pages.dashboard import DashboardPageMixin
-
-    result: dict = {"issue": "N10-N13"}
-
-    # N10：一次渲染回调里同步写完整条队列。
-    writer = _SlowWriter()
-    subject = SimpleNamespace(
-        dashboard_record_handle=writer,
-        dashboard_schema=SimpleNamespace(channel_count=2),
-        dashboard_record_rows=deque(
-            SimpleNamespace(t_us=i * 25000, values={0: float(i)}) for i in range(200)
-        ),
-    )
-    started = time.perf_counter()
-    DashboardPageMixin._dashboard_flush_record(subject)
-    result["n10_synchronous_flush"] = {
-        "injected_write_latency_ms": writer.delay_s * 1000,
-        "queued_rows": 200,
-        "blocking_seconds": time.perf_counter() - started,
-        "writes": writer.writes,
-        "note": "这是不利存储条件模拟，不代表正常硬盘写入速度",
-    }
-
-    # N11：写失败之后录制会话有没有收尾。
-    subject.dashboard_record_handle = _BrokenWriter()
-    subject.dashboard_record_rows.append(SimpleNamespace(t_us=0, values={0: 1.0}))
-    failure: dict = {"raised": None}
-    try:
-        DashboardPageMixin._dashboard_flush_record(subject)
-    except Exception as exc:                     # noqa: BLE001 - 观测的就是它
-        failure["raised"] = f"{type(exc).__name__}: {exc}"
-    failure["handle_still_active"] = subject.dashboard_record_handle is not None
-    failure["queued_rows_left"] = len(subject.dashboard_record_rows)
-    result["n11_write_failure"] = failure
-
-    # N12：录制中途换 schema，行宽跟着当前全局 schema 走，表头却是旧的。
-    buffer = io.StringIO()
-    buffer.write("t_s,a,b\n")
-    subject.dashboard_record_handle = buffer
-    subject.dashboard_schema = SimpleNamespace(channel_count=2)
-    subject.dashboard_record_rows = deque([SimpleNamespace(t_us=0, values={0: 1.0, 1: 2.0})])
-    DashboardPageMixin._dashboard_flush_record(subject)
-    subject.dashboard_schema.channel_count = 3
-    subject.dashboard_record_rows.append(
-        SimpleNamespace(t_us=25000, values={0: 1.0, 1: 2.0, 2: 3.0})
-    )
-    DashboardPageMixin._dashboard_flush_record(subject)
-    result["n12_schema_change"] = {
-        "row_widths": [len(line.split(",")) for line in buffer.getvalue().splitlines()],
-        "csv": buffer.getvalue(),
-    }
-
-    # N13：同一秒内再次开始录制，文件名相同且以 "w" 打开。
-    folder = output_dir / "record_probe"
-    folder.mkdir(parents=True, exist_ok=True)
-    schema = SimpleNamespace(
-        complete=True, channel_count=2, computed_hash=lambda: 0x12345678,
-        ordered=lambda: [SimpleNamespace(name="a"), SimpleNamespace(name="b")],
-    )
-    record = SimpleNamespace(
-        dashboard_record_handle=None, dashboard_schema=schema,
-        dashboard_record_rows=deque(),
-        dashboard_record_var=SimpleNamespace(set=lambda *_a: None),
-    )
-    record._dashboard_flush_record = lambda: DashboardPageMixin._dashboard_flush_record(record)
-    record._dashboard_stop_record = lambda: DashboardPageMixin._dashboard_stop_record(record)
-
-    class _FixedClock:
-        @staticmethod
-        def now():
-            return SimpleNamespace(strftime=lambda _fmt: "120000")
-
-    original_datetime, original_dated = module.datetime, module.dated_directory
-    module.datetime = _FixedClock
-    module.dated_directory = lambda *_a: folder
-    try:
-        DashboardPageMixin._dashboard_toggle_record(record)
-        record.dashboard_record_rows.append(
-            SimpleNamespace(t_us=25000, values={0: 123.0, 1: 456.0})
-        )
-        DashboardPageMixin._dashboard_stop_record(record)
-        first_path = record.dashboard_record_path
-        before_text = first_path.read_text(encoding="utf-8")
-
-        DashboardPageMixin._dashboard_toggle_record(record)
-        second_path = record.dashboard_record_path
-        DashboardPageMixin._dashboard_stop_record(record)
-        after_text = second_path.read_text(encoding="utf-8")
-    finally:
-        module.datetime, module.dated_directory = original_datetime, original_dated
-
-    result["n13_same_second_collision"] = {
-        "same_path": str(first_path) == str(second_path),
-        "path": first_path.name,
-        "data_rows_before": len(before_text.splitlines()) - 2,
-        "data_rows_after": len(after_text.splitlines()) - 2,
-        "first_sample_survives": ",123,456" in after_text,
-    }
-    return result
+#
+# 已由 R-T1-6（TK-05）修复，观测改写成了真正的回归契约：
+#   tests/test_dashboard_record_service.py
+# 修复前的观测原文保留在
+#   data/analysis/tk_revamp/2026-09-04/baseline_2acfd82e/observations.json
+# 的 n10_synchronous_flush / n11_write_failure / n12_schema_change /
+# n13_same_second_collision 四段里。观测脚本不再驱动那条已经不存在的同步写盘
+# 路径——留着它只会给出一个和产品无关的“仍能复现”。
 
 
 # ---------------------------------------------------------------- 主流程
@@ -366,8 +241,6 @@ def run(output_dir: Path) -> dict:
         with tempfile.TemporaryDirectory() as scratch:
             scratch_root = Path(scratch)
             with isolated_environment(scratch_root):
-                with redirected_dated_directory(scratch_root / "telemetry"):
-                    observations["observations"].append(observe_recording(scratch_root))
                 for scale in (1.0,):
                     with OfflinePanel.launch(scale=scale, size=(1366, 768)) as session:
                         observations["observations"].extend([

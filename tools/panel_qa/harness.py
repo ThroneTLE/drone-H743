@@ -25,6 +25,26 @@ from .geometry import LeafPage, probe_geometry
 
 OFFLINE_TITLE = "OFFLINE QA — SIMULATED TRANSPORT — NO HARDWARE"
 
+# 只有这几种才是"这台机器没有图形环境"。别的 TclError 是装置或页面自己坏了。
+_NO_DISPLAY_MARKERS = (
+    "no display name",
+    "couldn't connect to display",
+    "can't find a usable init.tcl",
+    "application-specific initialization failed",
+)
+
+
+def is_display_unavailable(exc: BaseException) -> bool:
+    """区分“没有显示环境”和“装置坏了”。
+
+    `except TclError: pytest.skip(...)` 是个陷阱：构造面板时的任何 Tcl 错误都会被
+    写成“无显示环境”跳过，于是一整批回归安静消失，而绿色的测试报告一个字都不说。
+    这个项目已经吃过一次安静失败的亏（`work-modes.md` 的 `gz_dps`），所以只在确实
+    连不上显示时才允许跳过，其余一律让它红。
+    """
+    text = str(exc).lower()
+    return any(marker in text for marker in _NO_DISPLAY_MARKERS)
+
 
 class MemoryTransport:
     """只把命令记在内存里的 transport。一个字节都不出进程。"""
@@ -253,4 +273,10 @@ class OfflinePanel:
         self.destroy()
 
 
-__all__ = ["MemoryTransport", "OFFLINE_TITLE", "OfflinePanel", "PendingAfter"]
+__all__ = [
+    "MemoryTransport",
+    "OFFLINE_TITLE",
+    "OfflinePanel",
+    "PendingAfter",
+    "is_display_unavailable",
+]

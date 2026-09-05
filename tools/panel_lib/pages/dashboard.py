@@ -23,7 +23,6 @@ from __future__ import annotations
 import time
 import tkinter as tk
 from collections import deque
-from datetime import datetime
 from pathlib import Path
 from tkinter import filedialog, ttk
 
@@ -51,6 +50,7 @@ from ..dashboard.tiles import (
     build_tile,
 )
 from ..proto import PROTO_REQ_PARAM_SET, parse_kv
+from ..record_service import RecordSchema, TelemetryRecorder
 from ..scope import SCOPE_RENDER_PERIOD_MS
 from ..telem_stream import TelemDecoder, TelemRing, TelemSchema
 
@@ -152,9 +152,11 @@ class DashboardPageMixin:
         self.dashboard_editor = None
         self.dashboard_resize = None
         self.dashboard_tiles: list = []
-        self.dashboard_record_rows: deque = deque(maxlen=20000)
-        self.dashboard_record_handle = None
+        # 录制的文件、列宽、指纹和代次由服务持有（R-T1-6）。页面只留一个"当前文件在
+        # 哪"的引用给用户看，不再自己拿句柄，也不再自己攒队列。
+        self.dashboard_recorder = TelemetryRecorder()
         self.dashboard_record_path = None
+        self.dashboard_record_generation: int | None = None
         self.dashboard_rate_window: deque = deque(maxlen=64)
         self.dashboard_layout = default_layout()
         self.dashboard_param_trackers: dict[str, ParamEchoTracker] = {}
@@ -196,7 +198,15 @@ class DashboardPageMixin:
         self._build_dashboard_page(frame)
         self._dashboard_load_layout()
         notebook.select(frame)
+        # 关窗时把在录的会话收尾。绑在本页自己的 frame 上而不是往面板加一个退出钩子：
+        # `drone_tcp_panel.py` 只减不增，本页在那里只有三处挂载调用。
+        frame.bind("<Destroy>", self._dashboard_on_destroy)
         self.after(SCOPE_RENDER_PERIOD_MS, self._dashboard_render_tick)
+
+    def _dashboard_on_destroy(self, _event=None) -> None:
+        recorder = getattr(self, "dashboard_recorder", None)
+        if recorder is not None:
+            recorder.close()
 
     def _build_dashboard_page(self, parent: ttk.Frame) -> None:
         self._build_dashboard_toolbar(parent)
@@ -509,6 +519,11 @@ class DashboardPageMixin:
         tab = getattr(self, "dashboard_tab", None)
         visible = tab is not None and self.notebook.select() == str(tab)
         connected = self._transport_connected()
+        # 换了一次连接就是另一次飞行/另一台飞控，不能续到同一个文件里。
+        self.dashboard_recorder.note_generation(
+            getattr(self.transport, "connection_generation", None)
+        )
+        self._dashboard_refresh_record_status()
         if visible != self.dashboard_tab_visible:
             self.dashboard_tab_visible = visible
             self._dashboard_sync_stream(visible)
@@ -581,6 +596,13 @@ class DashboardPageMixin:
     def _dashboard_adopt_schema(self) -> None:
         """通道表齐了：绑定解码器、按名重绑所有组件、发一次掩码。"""
         self.dashboard_schema_reload_requested = False
+        # 换表要先给录制收尾：旧文件的表头解释不了新宽度的行（N12）。必须在解码器
+        # 换绑之前做，否则新表的样本会先一步进到旧会话里。
+        self.dashboard_recorder.note_schema(
+            RecordSchema.from_telem_schema(self.dashboard_schema)
+        )
+        # 被动结束要当场告诉用户，不能等到下一次渲染拍——这一页很可能根本不可见。
+        self._dashboard_refresh_record_status()
         self.dashboard_decoder.bind_schema(self.dashboard_schema)
         self.dashboard_ring = TelemRing(
             capacity=DASHBOARD_RING_CAPACITY,
@@ -650,9 +672,9 @@ class DashboardPageMixin:
         self.dashboard_ring.push_many(samples)
         self.dashboard_frames_seen += 1
         self.dashboard_rate_window.append(time.monotonic())
-        if self.dashboard_record_handle is not None:
-            for sample in samples:
-                self.dashboard_record_rows.append(sample)
+        # 提交是非阻塞的：收线程绝不能因为磁盘慢而停下来，那会直接让波形跟着卡。
+        for sample in samples:
+            self.dashboard_recorder.submit(sample)
 
     # ------------------------------------------------------------------
     # 取数（TileContext 的实现）
@@ -715,7 +737,8 @@ class DashboardPageMixin:
                     for tile in self.dashboard_tiles:
                         tile.refresh()
                 self._dashboard_refresh_stats()
-            self._dashboard_flush_record()
+            # 只读一个状态快照，不碰磁盘、不等队列：写盘在服务自己的线程里。
+            self._dashboard_refresh_record_status()
         finally:
             self.after(SCOPE_RENDER_PERIOD_MS, self._dashboard_render_tick)
 
@@ -746,48 +769,53 @@ class DashboardPageMixin:
     # CSV 录制
     # ------------------------------------------------------------------
 
+    def _dashboard_record_directory(self) -> Path:
+        """录制落在项目 data 根下的按日目录。**路径归页面，文件完整性归服务。**"""
+        return ensure_directory(dated_directory(TELEMETRY_DIR))
+
     def _dashboard_toggle_record(self) -> None:
-        if self.dashboard_record_handle is not None:
+        if self.dashboard_recorder.status().active:
             self._dashboard_stop_record()
             return
         if not self.dashboard_schema.complete:
             self.dashboard_record_var.set("还没取到通道表")
             return
-        directory = ensure_directory(dated_directory(TELEMETRY_DIR))
-        path = directory / f"telem_{datetime.now().strftime('%H%M%S')}.csv"
-        handle = path.open("w", encoding="utf-8", newline="")
-        channels = self.dashboard_schema.ordered()
-        # 表头带通道名与指纹：没有指纹的话，事后没人能确定这份 CSV 是哪张通道
-        # 表下录的，列名就成了无法验证的说法。
-        handle.write(f"# schema_hash={self.dashboard_schema.computed_hash():08X}\n")
-        handle.write("t_s," + ",".join(channel.name for channel in channels) + "\n")
-        self.dashboard_record_handle = handle
-        self.dashboard_record_path = path
-        self.dashboard_record_rows.clear()
-        self.dashboard_record_var.set(str(path.name))
+        generation = getattr(self.transport, "connection_generation", None)
+        try:
+            directory = self._dashboard_record_directory()
+        except OSError as exc:
+            # 连按日目录都建不出来：说清楚，不要留一个假的"录制中"。
+            self.dashboard_record_var.set(f"无法开始录制：{exc}")
+            return
+        status = self.dashboard_recorder.start(
+            directory,
+            RecordSchema.from_telem_schema(self.dashboard_schema),
+            generation=generation,
+        )
+        self.dashboard_record_path = status.path
+        self.dashboard_record_generation = generation
+        self._dashboard_refresh_record_status()
 
     def _dashboard_stop_record(self) -> None:
-        self._dashboard_flush_record()
-        if self.dashboard_record_handle is not None:
-            self.dashboard_record_handle.close()
-        self.dashboard_record_handle = None
-        self.dashboard_record_var.set("未录制")
+        status = self.dashboard_recorder.stop()
+        self.dashboard_record_path = status.path
+        self._dashboard_refresh_record_status()
 
     def _dashboard_flush_record(self) -> None:
-        handle = self.dashboard_record_handle
-        if handle is None:
+        """等后台写线程把当前队列写完。
+
+        渲染回调**不**调它——那正是 N10 的形态。它留给"停止录制"和测试做一个有限期
+        的确定性屏障；超时就返回，界面不会为了写盘停住。
+        """
+        self.dashboard_recorder.drain()
+
+    def _dashboard_refresh_record_status(self) -> None:
+        """把服务状态映射成一行字。失败、被动结束、正常保存必须能分辨。"""
+        if self.dashboard_record_var is None:
             return
-        count = self.dashboard_schema.channel_count
-        while self.dashboard_record_rows:
-            sample = self.dashboard_record_rows.popleft()
-            cells = [f"{sample.t_us * 1e-6:.6f}"]
-            # 本帧没带的通道留空，不补 0：补 0 会让"这一帧没发这条通道"和
-            # "这条通道的值就是 0"变得不可区分。
-            cells += [
-                f"{sample.values[index]:.6g}" if index in sample.values else ""
-                for index in range(count)
-            ]
-            handle.write(",".join(cells) + "\n")
+        text = self.dashboard_recorder.status().describe()
+        if self.dashboard_record_var.get() != text:
+            self.dashboard_record_var.set(text)
 
 
 __all__ = [

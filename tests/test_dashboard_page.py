@@ -1027,7 +1027,10 @@ def test_recording_writes_a_header_with_names_and_hash(app, tmp_path, monkeypatc
     app.transport.lines.clear()
     app.transport.frames.clear()
     app._dashboard_toggle_record()
-    assert app.dashboard_record_handle is not None
+    # R-T1-6：文件句柄搬进了 `record_service`，页面只看会话状态。原契约（录制期间
+    # 一帧都不发、表头带指纹、缺席通道留空）逐条保留，完整性与失败恢复的新契约
+    # 见 `tests/test_dashboard_record_service.py`。
+    assert app.dashboard_recorder.status().active
     # 录制是纯本地动作，不许顺手改固件的流配置。
     assert app.transport.lines == []
     assert app.transport.frames == []
