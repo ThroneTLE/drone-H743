@@ -4,7 +4,7 @@
 
 Read this shard only when you need existing behavioral/architecture coverage or must choose focused regression tests.
 
-Source snapshot: `d78d9bb342df`. Indexed files: 122.
+Source snapshot: `5c55f84b1e32`. Indexed files: 124.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -88,6 +88,7 @@ Source snapshot: `d78d9bb342df`. Indexed files: 122.
 | `tests/test_optical_flow_contract.py` | — | `test_micolink_parser_accepts_live_range_and_flow_payload_shape`, `test_micolink_parser_rejects_bad_checksum_and_oversize_payload` (+10) |
 | `tests/test_panel_autoconnect.py` | 记住上次的连接并在启动时自动连回去。 关键点是**按什么认板子**：Windows 给 USB 串口分配的 COM 号会变（本机就出现过同一块 飞控在 COM30/31/32 之间跳），而 ST-Link、蓝牙串口、CH340 会占掉腾出… | `test_fingerprint_is_stable_across_com_renumbering`, `test_two_boards_of_the_same_model_get_different_fingerprints` (+14) |
 | `tests/test_panel_connection_reliability.py` | H1/H2/H4: real transport and Tk boundaries with no physical device access | `test_slow_io_does_not_block_ui_queries_cancel_or_stop`, `test_read_failure_closes_port_and_preserves_reason` (+17) |
+| `tests/test_panel_d_data_contract.py` | D 线 TK-03/TK-04 contracts: values must say what state they represent | `test_parameter_capabilities_match_the_driver_table`, `test_pid_quick_names_are_real_driver_get_set_names` (+11) |
 | `tests/test_panel_drift_page_extraction.py` | S6 stationary-drift page extraction ownership and compatibility contract | `test_drift_page_mixin_owns_only_its_builder_and_handlers`, `test_legacy_panel_forwards_the_drift_page_without_wrappers` (+3) |
 | `tests/test_panel_flow_page_extraction.py` | R-S6-1 增量11（收官）：光流与测距页搬进 panel_lib/pages/flow_ranging.py。 搬家的判据只有一条——行为零变更。这里用三种独立方式钉： 1. 逐方法 AST 哈希与搬家前逐字节一致（哈希取自父提交 9… | `test_flow_mixin_owns_every_moved_method_with_the_pre_move_ast`, `test_page_constant_has_exactly_one_definition` (+3) |
 | `tests/test_panel_proto_extraction.py` | S6 panel protocol extraction ownership and compatibility contract | `test_proto_module_owns_the_protocol_table_and_parsing_helpers`, `test_legacy_panel_forwards_every_proto_symbol_without_wrappers` (+2) |
@@ -103,6 +104,7 @@ Source snapshot: `d78d9bb342df`. Indexed files: 122.
 | `tests/test_proto_frame_resync.py` | 修 bug：`$X` 解析器有两处会永久停摆的重同步空洞。 发现于 2026-09-03，R-T1-2 的模糊测试。缺陷早于遥测流工作，命中的是所有 `$X` 帧共用的 `TransportBase._consume_buffer`，**… | `test_intact_stream_still_decodes_every_frame`, `test_a_corrupt_direction_byte_only_costs_its_own_frame` (+7) |
 | `tests/test_rc_mapping.py` | 遥控通道映射与端点标定。 背景：通道号原来是 app_stabilizer.c 里的 6 个 #define（CH1..CH6），端点是 1000/1500/2000 三个字面量。换发射机、改通道顺序、或者摇杆行程不标准，都得改代码 重烧… | `test_moving_one_stick_identifies_that_channel`, `test_a_still_transmitter_is_not_bound_to_anything` (+62) |
 | `tests/test_rc_mapping_contract.py` | — | `test_freertos_documents_fixed_elrs_channel_map`, `test_controller_uses_named_rc_channels_for_references` (+7) |
+| `tests/test_record_service_review_regressions.py` | R-T1-6 返修：关闭 2026-09-04 软件审核的 R1~R4。 审核对象是 `63223acd`。四条都不是"再多测一点"能发现的，它们各自对应第一版实现里 一个具体的结构错误： R1 Tk 线程仍在做 I/O 和等待。`sta… | `test_start_does_no_disk_io_on_the_calling_thread`, `test_stop_returns_immediately_while_the_writer_is_stuck` (+9) |
 | `tests/test_rom_dfu_boot_contract.py` | Safety and reset-context contract for the STM32H743 factory USB DFU path | `test_boot_command_is_explicit_scheduled_and_safety_gated`, `test_reset_magic_moves_the_rom_jump_out_of_the_freertos_task` (+2) |
 | `tests/test_rom_dfu_host.py` | — | `test_cli_discovery_prefers_path_and_finds_common_cubeclt_layout`, `test_v0_image_gate_accepts_only_nonempty_elf_or_hex` (+9) |
 | `tests/test_scope_canvas.py` | `panel_lib/scope.py` 的 `ScopeCanvas` 与 min/max 抽稀。 从 `tests/test_scope_page.py` 迁过来（R-T1-5 让 `pages/scope.py` 退役，但 **画布… | `test_min_max_decimation_keeps_the_extremes`, `test_short_series_are_not_decimated` (+2) |

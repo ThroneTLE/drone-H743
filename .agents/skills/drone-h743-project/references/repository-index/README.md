@@ -2,7 +2,7 @@
 
 # drone-H743 Repository Index
 
-Snapshot: `48c4cea6e062`. Covered non-index working files: 7405. Scope: Git-tracked plus non-ignored untracked files; ignored build outputs, caches, and local logs are intentionally excluded.
+Snapshot: `2118e1f6c83d`. Covered non-index working files: 7410. Scope: Git-tracked plus non-ignored untracked files; ignored build outputs, caches, and local logs are intentionally excluded.
 
 ## Use this index
 
@@ -20,8 +20,8 @@ Freshness check: `python .agents/skills/drone-h743-project/scripts/update_reposi
 | [firmware-app-services.md](firmware-app-services.md) | App behavior, tasks, control, commands, diagnostics, application services | 108 |
 | [firmware-driver-bsp.md](firmware-driver-bsp.md) | Device/algorithm drivers, buses, GPIO, DMA callbacks, cache or board binding | 76 |
 | [platform-build.md](platform-build.md) | CubeMX/Core, pins/clocks/peripherals, RTOS objects, linker/startup, USB, build, HAL/vendor internals | 1428 |
-| [tests.md](tests.md) | Existing regression/contract coverage and focused test selection | 122 |
-| [host-tools.md](host-tools.md) | Serial/TCP tools, capture, calibration, identification, log analysis and desktop UIs | 5335 |
+| [tests.md](tests.md) | Existing regression/contract coverage and focused test selection | 124 |
+| [host-tools.md](host-tools.md) | Serial/TCP tools, capture, calibration, identification, log analysis and desktop UIs | 5338 |
 | [docs-data.md](docs-data.md) | Architecture/controller documents, agent references, datasets, captures and experimental evidence | 336 |
 
 ## Ownership map

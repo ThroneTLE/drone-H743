@@ -4,7 +4,7 @@
 
 Read this shard only when the task touches CubeMX output, pins/clocks/peripherals, startup/linker layout, USB, build configuration, HAL, FreeRTOS internals, or vendor code.
 
-Source snapshot: `fdc5f1ef49bd`; aggregate snapshot: `a3797eb01bbf`. Covered files: 1428.
+Source snapshot: `a651819cd587`; aggregate snapshot: `a3797eb01bbf`. Covered files: 1428.
 
 | File/module or scope | Content outline | Key entry points / size |
 |---|---|---|

@@ -48,6 +48,27 @@ def sample(t_us: int, values: dict[int, float]):
     return SimpleNamespace(t_us=t_us, values=values)
 
 
+def settle(recorder) -> None:
+    """等写线程把队列处理完。
+
+    R-T1-6 返修后 start/stop 都是**异步**的（审核 R1：Tk 线程不许等写盘），所以
+    测试要自己给一个显式栅栏。生产界面代码不许调 wait_idle。
+    """
+    assert recorder.wait_idle(5.0), "writer thread did not settle"
+
+
+def stop_and_settle(recorder, reason=record_service.REASON_USER):
+    recorder.stop(reason)
+    settle(recorder)
+    return recorder.status()
+
+
+def start_and_settle(recorder, *args, **kwargs):
+    recorder.start(*args, **kwargs)
+    settle(recorder)
+    return recorder.status()
+
+
 @pytest.fixture
 def recorder():
     instance = TelemetryRecorder()
@@ -68,12 +89,12 @@ def test_a_second_recording_in_the_same_second_does_not_destroy_the_first(
     recorder, tmp_path,
 ) -> None:
     """P1。旧实现用 `telem_HHMMSS.csv` + `"w"`：同一秒再点一次，前一份被截断成 0 行。"""
-    recorder.start(tmp_path, TWO_CHANNELS, stem=fixed_stem())
+    start_and_settle(recorder, tmp_path, TWO_CHANNELS, stem=fixed_stem())
     recorder.submit(sample(25000, {0: 123.0, 1: 456.0}))
-    first = recorder.stop().path
+    first = stop_and_settle(recorder).path
 
-    recorder.start(tmp_path, TWO_CHANNELS, stem=fixed_stem())
-    second = recorder.stop().path
+    start_and_settle(recorder, tmp_path, TWO_CHANNELS, stem=fixed_stem())
+    second = stop_and_settle(recorder).path
 
     assert first != second, "同一秒的两次录制必须落到不同文件"
     assert read_record_rows(first) == [["0.025000", "123", "456"]]
@@ -96,8 +117,8 @@ def test_two_recorders_sharing_a_directory_get_separate_files(tmp_path) -> None:
     """两个面板实例对着同一个 data 目录：靠禁用按钮几百毫秒挡不住这个。"""
     first, second = TelemetryRecorder(), TelemetryRecorder()
     try:
-        a = first.start(tmp_path, TWO_CHANNELS, stem=fixed_stem()).path
-        b = second.start(tmp_path, TWO_CHANNELS, stem=fixed_stem()).path
+        a = start_and_settle(first, tmp_path, TWO_CHANNELS, stem=fixed_stem()).path
+        b = start_and_settle(second, tmp_path, TWO_CHANNELS, stem=fixed_stem()).path
         assert a != b
         assert a.exists() and b.exists()
     finally:
@@ -134,17 +155,19 @@ def test_a_schema_change_ends_the_session_instead_of_widening_the_rows(
     recorder, tmp_path,
 ) -> None:
     """旧实现：表头按开始时的表写死，行宽却读当前全局表，得到 [3, 3, 4]。"""
-    recorder.start(tmp_path, TWO_CHANNELS, stem=fixed_stem())
+    start_and_settle(recorder, tmp_path, TWO_CHANNELS, stem=fixed_stem())
     recorder.submit(sample(0, {0: 1.0, 1: 2.0}))
-    recorder.drain()
+    settle(recorder)
 
-    status = recorder.note_schema(THREE_CHANNELS)
+    recorder.note_schema(THREE_CHANNELS)
+    settle(recorder)
+    status = recorder.status()
     assert status.state == record_service.STATE_FINISHED
     assert status.end_reason == record_service.REASON_SCHEMA_CHANGED
 
     # 换表之后到达的样本不再进旧文件。
     recorder.submit(sample(25000, {0: 1.0, 1: 2.0, 2: 3.0}))
-    recorder.drain()
+    settle(recorder)
 
     rows = read_record_rows(status.path)
     assert [len(row) for row in rows] == [3]
@@ -152,10 +175,10 @@ def test_a_schema_change_ends_the_session_instead_of_widening_the_rows(
 
 
 def test_every_row_is_as_wide_as_its_own_header(recorder, tmp_path) -> None:
-    recorder.start(tmp_path, THREE_CHANNELS, stem=fixed_stem())
+    start_and_settle(recorder, tmp_path, THREE_CHANNELS, stem=fixed_stem())
     for index in range(5):
         recorder.submit(sample(index * 25000, {0: float(index)}))
-    status = recorder.stop()
+    status = stop_and_settle(recorder)
 
     lines = status.path.read_text(encoding="utf-8").splitlines()
     header = next(line for line in lines if not line.startswith("#"))
@@ -165,8 +188,8 @@ def test_every_row_is_as_wide_as_its_own_header(recorder, tmp_path) -> None:
 
 
 def test_the_file_records_the_schema_hash_it_was_written_under(recorder, tmp_path) -> None:
-    status = recorder.start(tmp_path, TWO_CHANNELS, stem=fixed_stem())
-    recorder.stop()
+    status = start_and_settle(recorder, tmp_path, TWO_CHANNELS, stem=fixed_stem())
+    stop_and_settle(recorder)
     header = record_service.record_header(status.path)
     assert header[0] == f"# schema_hash={TWO_CHANNELS.schema_hash:08X}"
 
@@ -175,13 +198,16 @@ def test_queued_rows_are_written_with_their_own_sessions_width(
     recorder, tmp_path, monkeypatch,
 ) -> None:
     """迟到的行按**所属会话**解释，不按当前全局 schema。"""
-    recorder.start(tmp_path, TWO_CHANNELS, stem=fixed_stem())
+    start_and_settle(recorder, tmp_path, TWO_CHANNELS, stem=fixed_stem())
     recorder.submit(sample(0, {0: 1.0, 1: 2.0}))
-    first = recorder.note_schema(THREE_CHANNELS)
+    recorder.note_schema(THREE_CHANNELS)
+    settle(recorder)
+    first = recorder.status()
 
-    second = recorder.start(tmp_path, THREE_CHANNELS, stem="telem_20260904_120001")
+    second = start_and_settle(
+        recorder, tmp_path, THREE_CHANNELS, stem="telem_20260904_120001")
     recorder.submit(sample(25000, {0: 1.0, 1: 2.0, 2: 3.0}))
-    recorder.stop()
+    stop_and_settle(recorder)
 
     assert [len(row) for row in read_record_rows(first.path)] == [3]
     assert [len(row) for row in read_record_rows(second.path)] == [4]
@@ -189,19 +215,21 @@ def test_queued_rows_are_written_with_their_own_sessions_width(
 
 def test_a_new_connection_generation_ends_the_session(recorder, tmp_path) -> None:
     """重连之后是另一次连接，不能续到同一个文件里。"""
-    recorder.start(tmp_path, TWO_CHANNELS, generation=1, stem=fixed_stem())
+    start_and_settle(recorder, tmp_path, TWO_CHANNELS, generation=1, stem=fixed_stem())
     assert recorder.note_generation(1).active
-    status = recorder.note_generation(2)
+    recorder.note_generation(2)
+    settle(recorder)
+    status = recorder.status()
     assert status.state == record_service.STATE_FINISHED
     assert status.end_reason == record_service.REASON_LINK_CHANGED
-    assert "连接代次变化" in status.describe()
+    assert "连接已更换" in status.describe()
 
 
 def test_the_trailer_explains_how_the_file_ended(recorder, tmp_path) -> None:
     """“每个文件可解释”：光有数据行说明不了它是正常停的还是被动断的。"""
-    recorder.start(tmp_path, TWO_CHANNELS, stem=fixed_stem())
+    start_and_settle(recorder, tmp_path, TWO_CHANNELS, stem=fixed_stem())
     recorder.submit(sample(0, {0: 1.0}))
-    status = recorder.stop()
+    status = stop_and_settle(recorder)
     trailer = record_service.record_header(status.path)[-1]
     assert trailer.startswith("# end reason=user rows=1 dropped=0")
 
@@ -257,10 +285,10 @@ def test_a_write_failure_ends_the_session_and_keeps_the_partial_file(
     writer = FailAfterHeader()
     install_writer(monkeypatch, writer, tmp_path / "partial.csv")
 
-    recorder.start(tmp_path, TWO_CHANNELS, stem=fixed_stem())
+    start_and_settle(recorder, tmp_path, TWO_CHANNELS, stem=fixed_stem())
     for index in range(5):
         recorder.submit(sample(index, {0: 1.0}))
-    recorder.drain()
+    settle(recorder)
 
     status = recorder.status()
     assert status.state == record_service.STATE_FAILED
@@ -277,15 +305,16 @@ def test_a_failed_recording_does_not_swallow_later_samples_into_the_same_file(
     """失败之后 submit 直接不收；用户重试得到的是一个**新**会话。"""
     # 连表头都写不下去：也必须是一个明确的失败态，不是从按钮回调里冒出去的裸异常。
     install_writer(monkeypatch, BrokenWriter(), tmp_path / "broken.csv")
-    status = recorder.start(tmp_path, TWO_CHANNELS, stem=fixed_stem())
+    status = start_and_settle(recorder, tmp_path, TWO_CHANNELS, stem=fixed_stem())
     assert status.state == record_service.STATE_FAILED
     assert "simulated disk full" in (status.error or "")
     assert recorder.submit(sample(1, {0: 2.0})) is False
 
     monkeypatch.undo()
-    healthy = recorder.start(tmp_path, TWO_CHANNELS, stem="telem_20260904_120002")
+    healthy = start_and_settle(
+        recorder, tmp_path, TWO_CHANNELS, stem="telem_20260904_120002")
     recorder.submit(sample(2, {0: 3.0}))
-    final = recorder.stop()
+    final = stop_and_settle(recorder)
     assert final.state == record_service.STATE_FINISHED
     assert healthy.path != (tmp_path / "broken.csv")
     assert read_record_rows(final.path) == [["0.000002", "3", ""]]
@@ -298,7 +327,7 @@ def test_a_directory_that_cannot_be_written_reports_instead_of_pretending(
         raise PermissionError("read-only volume")
 
     monkeypatch.setattr(record_service, "unique_record_path", refuse)
-    status = recorder.start(tmp_path, TWO_CHANNELS, stem=fixed_stem())
+    status = start_and_settle(recorder, tmp_path, TWO_CHANNELS, stem=fixed_stem())
     assert status.state == record_service.STATE_FAILED
     assert "read-only volume" in (status.error or "")
     assert not status.active, "失败的开始不能留下一个「录制中」的假象"
@@ -326,7 +355,7 @@ def test_a_slow_disk_does_not_block_the_submitting_thread(
             pass
 
     install_writer(monkeypatch, SlowWriter(), tmp_path / "slow.csv")
-    recorder.start(tmp_path, TWO_CHANNELS, stem=fixed_stem())
+    start_and_settle(recorder, tmp_path, TWO_CHANNELS, stem=fixed_stem())
 
     started = time.perf_counter()
     for index in range(200):
@@ -367,7 +396,9 @@ def test_queue_overflow_is_counted_not_silently_dropped(tmp_path, monkeypatch) -
         assert instance.status().rows_dropped > 0
         assert "已丢" in instance.status().describe()
         writer.release.set()
-        status = instance.stop()
+        instance.stop()
+        assert instance.wait_idle(5.0)
+        status = instance.status()
     finally:
         instance.close()
     assert status.rows_dropped > 0
@@ -409,6 +440,18 @@ def app(_panel, monkeypatch, tmp_path):
         _panel.dashboard_recorder.close()
 
 
+def begin_record(app):
+    """点"录制 CSV"并等文件真的建出来。
+
+    返修后 `start()` 是异步的（审核 R1：按钮回调不许碰磁盘），所以页面级测试要自己
+    等一个栅栏，再让页面把状态里的路径取回来——生产界面靠渲染拍做同一件事。
+    """
+    app._dashboard_toggle_record()
+    settle(app.dashboard_recorder)
+    app._dashboard_refresh_record_status()
+    return app.dashboard_record_path
+
+
 def load_schema(app) -> TelemSchema:
     for line in panel_qa.telemetry_schema_lines():
         app._handle_board_line(line)
@@ -421,19 +464,22 @@ def test_the_real_page_records_through_the_service(app) -> None:
     app.transport.lines.clear()
     app.transport.frames.clear()
 
-    app._dashboard_toggle_record()
+    path = begin_record(app)
     assert app.dashboard_recorder.status().active
     # 录制是纯本地动作，不许顺手改固件的流配置。
     assert app.transport.lines == []
     assert app.transport.frames == []
 
-    app._dashboard_on_binary_frame(0x2230, panel_qa.telemetry_frame(
-        {0: 1.0, 2: 3.0}, schema_hash=schema.computed_hash(), t_us=1000
-    ))
-    app._dashboard_flush_record()
+    app._dashboard_on_binary_frame(
+        0x2230,
+        panel_qa.telemetry_frame(
+            {0: 1.0, 2: 3.0}, schema_hash=schema.computed_hash(), t_us=1000),
+        transport=app.transport,
+    )
     app._dashboard_stop_record()
+    settle(app.dashboard_recorder)
 
-    lines = app.dashboard_record_path.read_text(encoding="utf-8").splitlines()
+    lines = path.read_text(encoding="utf-8").splitlines()
     assert lines[0] == f"# schema_hash={schema.computed_hash():08X}"
     assert lines[1].startswith("t_s,roll,pitch,yaw,")
     # 本帧没带的通道留空而不是补 0（旧语义原样保留）。
@@ -475,9 +521,8 @@ def test_the_render_tick_never_waits_for_the_disk(app, monkeypatch) -> None:
 
 def test_the_page_ends_the_recording_when_the_channel_table_changes(app) -> None:
     load_schema(app)
-    app._dashboard_toggle_record()
+    path = begin_record(app)
     assert app.dashboard_recorder.status().active
-    path = app.dashboard_record_path
 
     wider = list(panel_qa.DEFAULT_CHANNELS) + [
         ("fusion_acc_err", "-", -1.0, 1.0, "nav", "-")
@@ -485,6 +530,8 @@ def test_the_page_ends_the_recording_when_the_channel_table_changes(app) -> None
     for line in panel_qa.telemetry_schema_lines(wider):
         app._handle_board_line(line)
     app.update_idletasks()
+    settle(app.dashboard_recorder)
+    app._dashboard_refresh_record_status()
 
     status = app.dashboard_recorder.status()
     assert status.state == record_service.STATE_FINISHED
@@ -495,11 +542,12 @@ def test_the_page_ends_the_recording_when_the_channel_table_changes(app) -> None
 
 def test_the_page_ends_the_recording_when_the_link_generation_changes(app) -> None:
     load_schema(app)
-    app._dashboard_toggle_record()
+    begin_record(app)
     assert app.dashboard_recorder.status().active
 
     app.transport.bump_generation()
     app._dashboard_poll_tick(time.monotonic())
+    settle(app.dashboard_recorder)
 
     status = app.dashboard_recorder.status()
     assert status.state == record_service.STATE_FINISHED
@@ -513,16 +561,18 @@ def test_two_recordings_in_the_same_second_through_the_real_page(app, monkeypatc
         app.dashboard_recorder, "_now",
         lambda: __import__("datetime").datetime(2026, 9, 4, 12, 0, 0),
     )
-    app._dashboard_toggle_record()
-    app._dashboard_on_binary_frame(0x2230, panel_qa.telemetry_frame(
-        {0: 7.0}, schema_hash=schema.computed_hash(), t_us=1000
-    ))
+    first = begin_record(app)
+    app._dashboard_on_binary_frame(
+        0x2230,
+        panel_qa.telemetry_frame({0: 7.0}, schema_hash=schema.computed_hash(), t_us=1000),
+        transport=app.transport,
+    )
     app._dashboard_stop_record()
-    first = app.dashboard_record_path
+    settle(app.dashboard_recorder)
 
-    app._dashboard_toggle_record()
+    second = begin_record(app)
     app._dashboard_stop_record()
-    second = app.dashboard_record_path
+    settle(app.dashboard_recorder)
 
     assert first != second
     assert read_record_rows(first) == [["0.001000", "7", "", "", "", "", "", "", ""]]
@@ -544,8 +594,14 @@ def test_closing_the_page_finishes_an_active_recording(tmp_path, monkeypatch) ->
     instance.update_idletasks()
 
     instance._dashboard_toggle_record()
-    instance.dashboard_recorder.submit(sample(1000, {0: 5.0}))
+    assert instance.dashboard_recorder.wait_idle(5.0)
+    instance._dashboard_refresh_record_status()
     path = instance.dashboard_record_path
+    link = instance.dashboard_recorder._session.link
+    instance.dashboard_recorder.submit(
+        sample(1000, {0: 5.0}), transport=link.transport, generation=link.generation
+    )
+    # 不在这里 settle：关窗必须自己把已接受的样本收干净，否则最后一段数据就没了。
     instance.destroy()
 
     assert read_record_rows(path) == [["0.001000", "5", "", "", "", "", "", "", ""]]

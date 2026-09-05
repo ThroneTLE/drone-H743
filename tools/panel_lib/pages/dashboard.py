@@ -50,7 +50,7 @@ from ..dashboard.tiles import (
     build_tile,
 )
 from ..proto import PROTO_REQ_PARAM_SET, parse_kv
-from ..record_service import RecordSchema, TelemetryRecorder
+from ..record_service import LinkIdentity, RecordSchema, TelemetryRecorder
 from ..scope import SCOPE_RENDER_PERIOD_MS
 from ..telem_stream import TelemDecoder, TelemRing, TelemSchema
 
@@ -561,10 +561,19 @@ class DashboardPageMixin:
             return
         self.dashboard_stream_requested = active
         if active:
-            self.transport.set_binary_sink(self._dashboard_on_binary_frame)
+            # sink 里钉死**是哪条 transport 挂上来的**。回调签名不带 transport，只读
+            # `self.transport` 会把重连前后的帧记到同一条链路上——那正是新连接第一帧
+            # 混进旧录制文件的路径（审核 R2）。
+            self.transport.set_binary_sink(self._dashboard_binary_sink(self.transport))
         self.transport.send_line(command)
         if not active:
             self.transport.set_binary_sink(None)
+
+    def _dashboard_binary_sink(self, transport):
+        def sink(function: int, payload: bytes) -> None:
+            self._dashboard_on_binary_frame(function, payload, transport=transport)
+
+        return sink
 
     def _dashboard_request_schema(self) -> None:
         self.dashboard_schema = TelemSchema()
@@ -659,22 +668,30 @@ class DashboardPageMixin:
     # 数据（收线程）
     # ------------------------------------------------------------------
 
-    def _dashboard_on_binary_frame(self, function: int, payload: bytes) -> None:
+    def _dashboard_on_binary_frame(self, function: int, payload: bytes,
+                                   *, transport=None) -> None:
         """transport 收线程直接调用：解码、入环、记 CSV 行。
 
         不经过 `rx_queue`：那条队列由 Tk 主循环按批抽干，40 Hz~1 kHz 的帧走
-        那里会让波形跟着界面卡顿走样。这里只碰自己的环形缓冲和两个 deque。
+        那里会让波形跟着界面卡顿走样。这里只碰自己的环形缓冲和录制服务的队列。
+
+        `transport` 由 `_dashboard_binary_sink()` 钉在 sink 上，是这一帧的**来源
+        身份**；录制服务据此判断这一帧属不属于当前录制的那条链路。
         """
         del function
         samples = self.dashboard_decoder.feed(payload)
         if not samples:
             return
+        source = self.transport if transport is None else transport
+        generation = getattr(source, "connection_generation", None)
         self.dashboard_ring.push_many(samples)
         self.dashboard_frames_seen += 1
         self.dashboard_rate_window.append(time.monotonic())
         # 提交是非阻塞的：收线程绝不能因为磁盘慢而停下来，那会直接让波形跟着卡。
         for sample in samples:
-            self.dashboard_recorder.submit(sample)
+            self.dashboard_recorder.submit(
+                sample, transport=source, generation=generation
+            )
 
     # ------------------------------------------------------------------
     # 取数（TileContext 的实现）
@@ -774,46 +791,48 @@ class DashboardPageMixin:
         return ensure_directory(dated_directory(TELEMETRY_DIR))
 
     def _dashboard_toggle_record(self) -> None:
-        if self.dashboard_recorder.status().active:
+        """按钮回调。**全程不碰磁盘、不等待**——文件由服务的写线程建。"""
+        if self.dashboard_recorder.status().busy:
             self._dashboard_stop_record()
             return
         if not self.dashboard_schema.complete:
             self.dashboard_record_var.set("还没取到通道表")
             return
-        generation = getattr(self.transport, "connection_generation", None)
+        transport = self.transport
+        generation = getattr(transport, "connection_generation", None)
         try:
             directory = self._dashboard_record_directory()
         except OSError as exc:
-            # 连按日目录都建不出来：说清楚，不要留一个假的"录制中"。
+            # 建按日目录是唯一还留在这里的文件系统调用（mkdir，不写内容）。失败要说
+            # 清楚，不要留一个假的"录制中"。
             self.dashboard_record_var.set(f"无法开始录制：{exc}")
             return
-        status = self.dashboard_recorder.start(
+        self.dashboard_recorder.start(
             directory,
             RecordSchema.from_telem_schema(self.dashboard_schema),
             generation=generation,
+            link=LinkIdentity(transport, generation),
         )
-        self.dashboard_record_path = status.path
         self.dashboard_record_generation = generation
         self._dashboard_refresh_record_status()
 
     def _dashboard_stop_record(self) -> None:
-        status = self.dashboard_recorder.stop()
-        self.dashboard_record_path = status.path
+        """只投递结束请求。文件的收尾（尾行 + close）在写线程里做。"""
+        self.dashboard_recorder.stop()
         self._dashboard_refresh_record_status()
 
-    def _dashboard_flush_record(self) -> None:
-        """等后台写线程把当前队列写完。
-
-        渲染回调**不**调它——那正是 N10 的形态。它留给"停止录制"和测试做一个有限期
-        的确定性屏障；超时就返回，界面不会为了写盘停住。
-        """
-        self.dashboard_recorder.drain()
-
     def _dashboard_refresh_record_status(self) -> None:
-        """把服务状态映射成一行字。失败、被动结束、正常保存必须能分辨。"""
+        """把服务状态映射成一行字。失败、被动结束、正常保存必须能分辨。
+
+        路径也从状态里取：`starting` 阶段文件还没建出来，`path` 是 None，界面显示
+        "正在创建录制文件…"，而不是先编一个文件名出来。
+        """
+        status = self.dashboard_recorder.status()
+        if status.path is not None:
+            self.dashboard_record_path = status.path
         if self.dashboard_record_var is None:
             return
-        text = self.dashboard_recorder.status().describe()
+        text = status.describe()
         if self.dashboard_record_var.get() != text:
             self.dashboard_record_var.set(text)
 

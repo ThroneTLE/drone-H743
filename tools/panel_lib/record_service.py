@@ -11,9 +11,28 @@
   用户看不出这份文件到底完不完整（N11）；
 * 整条队列在渲染回调里一次写完，慢盘时界面就跟着停（N10）。
 
-所以这里的核心不是“加个线程”，是把**会话**变成一等公民：一个会话锁定它自己的
-文件、通道表指纹、列宽和连接代次，从开始到结束都不会被外面的全局状态改写。写盘在
-后台线程；Tk 线程只提交请求、读状态。
+2026-09-04 软件审核（R1~R4）指出第一版只把**渲染回调**挪开了，别的路径还在阻塞，
+而且会话缺少身份。第二版按四条重做：
+
+**① Tk 线程一次 I/O 都不做。** `start()` 不再自己建文件、写表头；它只登记一个
+会话并投递一条 `open` 命令，状态先进 `starting`，由写线程完成后翻成 `recording`。
+`stop()` 只投递 `finish` 就返回（`stopping`），不再 drain。整条链路上唯一还会等的
+地方是 `close()`——那是进程要退出了，不等就等于把最后一段数据扔掉，而且此时已经
+没有界面可卡；这个等待有上限且会如实报告有没有等完。
+
+**② 控制命令不受队列上限约束。** 用 deque + Condition 而不是 `queue.Queue`：
+行受上限（溢出计数可见），`open`/`finish`/`shutdown` 无条件入队。第一版那个
+`put(force=True)` 在队列满时会无限期挂住调用者，也就是挂住 Tk。
+
+**③ 接受样本与结束栅栏在同一把锁里。** 第一版在锁内取 session、出锁后才入队，
+`stop()` 可以插到中间，于是 `submit()` 返回 True 的样本排在 `finish` 后面被无声
+丢弃，既没写进去也没计进 dropped。现在两件事原子完成：返回 True 就一定排在本会话
+的 `finish` 之前。
+
+**④ 会话带链路身份，且只更新自己的状态。** 样本在**接收线程的入口**就要带上
+transport 对象与连接代次；对不上就地结束会话，不再等下一次 UI 轮询补救——等轮询
+意味着新连接的第一帧已经写进旧文件了。终态发布按会话 ident 判断，旧会话收尾不再
+覆盖新会话的状态（第一版超时重启后会出现状态指向旧文件、`_session` 指向新文件）。
 
 队列是**有界**的：`tk-ui` 模式明确禁止用无限队列或静默丢数据来解决背压，所以溢出
 既要有计数，也要写进文件尾的说明行里，让事后拿到 CSV 的人能看见。
@@ -21,8 +40,8 @@
 
 from __future__ import annotations
 
-import queue
 import threading
+from collections import deque
 from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
@@ -32,13 +51,17 @@ from typing import Callable, Sequence
 # 40 Hz 下 20000 行约 8 分钟余量；写盘线程正常情况下根本追得上，这个上限只在
 # 磁盘真的卡住时起作用，让“丢了多少”变成一个数字而不是一次内存膨胀。
 DEFAULT_QUEUE_LIMIT = 20000
-# 停止/等待时最多阻塞多久。UI 线程不能为了写盘无限期停住。
-DEFAULT_DRAIN_TIMEOUT_S = 5.0
+# 退出时最多等写线程多久。只有 `close()` 会用到它——那时进程要走了，不等就是丢数据。
+DEFAULT_SHUTDOWN_TIMEOUT_S = 2.0
 
 STATE_IDLE = "idle"
+STATE_STARTING = "starting"
 STATE_RECORDING = "recording"
+STATE_STOPPING = "stopping"
 STATE_FINISHED = "finished"
 STATE_FAILED = "failed"
+
+_BUSY_STATES = (STATE_STARTING, STATE_RECORDING, STATE_STOPPING)
 
 REASON_USER = "user"
 REASON_SCHEMA_CHANGED = "schema_changed"
@@ -49,7 +72,7 @@ REASON_WRITE_ERROR = "write_error"
 _REASON_TEXT = {
     REASON_USER: "用户停止",
     REASON_SCHEMA_CHANGED: "通道表变化",
-    REASON_LINK_CHANGED: "连接代次变化",
+    REASON_LINK_CHANGED: "连接已更换",
     REASON_SHUTDOWN: "面板退出",
     REASON_WRITE_ERROR: "写入失败",
 }
@@ -74,15 +97,38 @@ class RecordSchema:
         )
 
 
+class LinkIdentity:
+    """一次录制绑定的链路身份：**transport 对象本身** + 它当时的连接代次。
+
+    光比整数代次不够：每个 transport 各有一个从 0 开始的计数器，串口换成 TCP 时
+    两边的 `connection_generation` 完全可能都是 2，于是"换了一条链路"这件事在数字
+    上看不出来。所以这里同时按对象 identity 比较，并持有强引用——只有持有引用，
+    `is` 比较才不会因为对象被回收、地址被复用而给出错误的"相同"。
+    """
+
+    __slots__ = ("transport", "generation")
+
+    def __init__(self, transport: object, generation: int | None) -> None:
+        self.transport = transport
+        self.generation = generation
+
+    def matches(self, transport: object, generation: int | None) -> bool:
+        return self.transport is transport and self.generation == generation
+
+    def __repr__(self) -> str:                   # pragma: no cover - 诊断用
+        return f"LinkIdentity({type(self.transport).__name__}, gen={self.generation})"
+
+
 @dataclass(frozen=True)
 class RecordStatus:
-    """给 Tk 线程读的状态快照。读它不需要碰锁以外的任何东西，更不会碰磁盘。"""
+    """给 Tk 线程读的状态快照。读它只碰一把短锁，绝不碰磁盘。"""
 
     state: str = STATE_IDLE
     path: Path | None = None
     rows_written: int = 0
     rows_queued: int = 0
     rows_dropped: int = 0
+    rows_rejected: int = 0
     schema_hash: int | None = None
     generation: int | None = None
     end_reason: str | None = None
@@ -90,17 +136,26 @@ class RecordStatus:
 
     @property
     def active(self) -> bool:
-        return self.state == STATE_RECORDING
+        """还在收样本。`starting` 也算——文件还没建好但会话已经登记。"""
+        return self.state in (STATE_STARTING, STATE_RECORDING)
+
+    @property
+    def busy(self) -> bool:
+        """会话尚未落地（含正在收尾）。按钮的"再点一次"要看它，不是看 active。"""
+        return self.state in _BUSY_STATES
 
     def describe(self) -> str:
         """一行给用户看的话。失败和“结束了但不是你按的”必须能分辨。"""
         if self.state == STATE_IDLE:
             return "未录制"
-        name = self.path.name if self.path is not None else "?"
+        name = self.path.name if self.path is not None else "…"
+        if self.state == STATE_STARTING:
+            return "正在创建录制文件…"
         if self.state == STATE_RECORDING:
-            if self.rows_dropped:
-                return f"{name}（已丢 {self.rows_dropped} 行）"
-            return name
+            suffix = f"（已丢 {self.rows_dropped} 行）" if self.rows_dropped else ""
+            return f"{name}{suffix}"
+        if self.state == STATE_STOPPING:
+            return f"{name}：正在收尾…"
         if self.state == STATE_FAILED:
             return f"录制失败：{self.error}（部分文件 {name}）"
         reason = _REASON_TEXT.get(self.end_reason or "", self.end_reason or "")
@@ -111,15 +166,19 @@ class RecordStatus:
 
 @dataclass
 class _Session:
-    """一次录制。文件、列宽、指纹、代次在这里绑定，之后谁也改不了。"""
+    """一次录制。文件、列宽、指纹、链路身份在这里绑定，之后谁也改不了。"""
 
     ident: int
-    path: Path
-    handle: object
+    directory: Path
+    stem: str
     schema: RecordSchema
+    link: LinkIdentity | None
     generation: int | None
+    path: Path | None = None
+    handle: object = None
     rows_written: int = 0
     rows_dropped: int = 0
+    rows_rejected: int = 0
     finished: bool = False
     end_reason: str | None = None
     error: str | None = None
@@ -127,8 +186,8 @@ class _Session:
 
 @dataclass
 class _Command:
-    kind: str                       # "row" | "finish"
-    session: _Session
+    kind: str                       # "open" | "row" | "finish" | "shutdown"
+    session: _Session | None = None
     sample: object = None
     reason: str | None = None
 
@@ -173,23 +232,28 @@ def format_row(sample, channel_count: int) -> str:
 
 
 class TelemetryRecorder:
-    """录制服务。UI 只调 `start/stop/status`，收线程只调 `submit`。
+    """录制服务。
 
-    线程分工：
-        收线程  -> submit()      入队，非阻塞，满了就计数丢弃
-        写线程  -> _run()        唯一碰文件句柄的地方
-        Tk 线程 -> status()      只读快照；drain() 是可选的有限期等待
+    线程分工（这是整个模块的要点，改之前先读）：
+
+        Tk 线程  -> start / stop / note_* / status     只投递请求与读快照，零 I/O
+        收线程   -> submit(sample, transport, gen)     入队，非阻塞，带链路身份
+        写线程   -> _run()                             唯一碰文件句柄的地方
     """
 
     def __init__(self, *, queue_limit: int = DEFAULT_QUEUE_LIMIT,
                  now: Callable[[], datetime] = datetime.now) -> None:
-        self._queue: "queue.Queue[_Command | None]" = queue.Queue(maxsize=queue_limit)
+        self._cv = threading.Condition()
+        self._pending: deque[_Command] = deque()
+        self._queued_rows = 0
+        self._queue_limit = max(1, int(queue_limit))
         self._now = now
-        self._lock = threading.Lock()
         self._idle = threading.Event()
         self._idle.set()
         self._session: _Session | None = None
         self._status = RecordStatus()
+        self._status_ident: int | None = None
+        self._history: list[RecordStatus] = []
         self._next_ident = 1
         self._thread: threading.Thread | None = None
         self._closed = False
@@ -205,113 +269,142 @@ class TelemetryRecorder:
         self._thread.start()
 
     def start(self, directory: Path, schema: RecordSchema, *,
-              generation: int | None = None, stem: str | None = None) -> RecordStatus:
-        """开一个新会话。已有会话时先按用户意图结束它。"""
+              generation: int | None = None, stem: str | None = None,
+              link: LinkIdentity | None = None) -> RecordStatus:
+        """登记一个新会话并**立刻返回**。
+
+        文件创建与表头写入由写线程完成，因此这个调用不碰磁盘——它可能在 Tk 线程上
+        被按钮直接调用。返回的状态是 `starting`。
+        """
         if self._closed:
             raise RuntimeError("recorder is closed")
-        if self.status().active:
-            self.stop(REASON_USER)
         stamp = stem or f"telem_{self._now().strftime('%Y%m%d_%H%M%S')}"
-        handle = path = None
-        try:
-            handle, path = unique_record_path(Path(directory), stamp)
-            # 表头随文件一起冻结：没有指纹的话，事后没人能确定这份 CSV 是哪张通道表
-            # 下录的，列名就成了无法验证的说法。
-            handle.write(f"# schema_hash={schema.schema_hash:08X}\n")
-            handle.write("t_s," + ",".join(schema.channel_names) + "\n")
-            handle.flush()
-        except OSError as exc:
-            # 目录没了、只读卷、开头就写不下去：都必须变成一个明确的失败态，而不是
-            # 一个"录制中"的假象，也不是从按钮回调里冒出去的裸异常。
-            if handle is not None:
-                try:
-                    handle.close()
-                except Exception:                # noqa: BLE001 - 已经坏了
-                    pass
-            with self._lock:
+        with self._cv:
+            if self._session is not None:
+                self._enqueue_locked(_Command("finish", self._session, reason=REASON_USER))
                 self._session = None
-                self._status = RecordStatus(
-                    state=STATE_FAILED, path=path,
-                    schema_hash=schema.schema_hash, generation=generation,
-                    end_reason=REASON_WRITE_ERROR, error=f"{type(exc).__name__}: {exc}",
-                )
-                return self._status
-        with self._lock:
             session = _Session(
-                ident=self._next_ident, path=path, handle=handle,
-                schema=schema, generation=generation,
+                ident=self._next_ident, directory=Path(directory), stem=stamp,
+                schema=schema, link=link, generation=generation,
             )
             self._next_ident += 1
             self._session = session
             self._status = RecordStatus(
-                state=STATE_RECORDING, path=path, schema_hash=schema.schema_hash,
+                state=STATE_STARTING, schema_hash=schema.schema_hash,
                 generation=generation,
             )
+            self._status_ident = session.ident
+            self._enqueue_locked(_Command("open", session))
+            status = self._status
         self._ensure_thread()
-        return self.status()
+        return status
 
     def stop(self, reason: str = REASON_USER) -> RecordStatus:
-        """请求结束当前会话，并在有限时间内等写线程把队列写完。"""
-        with self._lock:
+        """请求结束当前会话并**立刻返回**（`stopping`）。不等写线程。"""
+        with self._cv:
             session = self._session
             if session is None:
                 return self._status
             self._session = None
-        self._enqueue(_Command("finish", session, reason=reason), force=True)
-        self.drain()
-        return self.status()
+            self._enqueue_locked(_Command("finish", session, reason=reason))
+            if self._status_ident == session.ident:
+                self._status = replace(self._status, state=STATE_STOPPING,
+                                       end_reason=reason)
+            status = self._status
+        self._ensure_thread()
+        return status
 
-    def close(self) -> RecordStatus:
-        """面板退出。必须把在录的会话收尾，否则最后一段数据留在队列里没人写。"""
-        status = self.stop(REASON_SHUTDOWN) if self.status().active else self.status()
-        self._closed = True
+    def close(self, timeout: float = DEFAULT_SHUTDOWN_TIMEOUT_S) -> RecordStatus:
+        """面板退出。
+
+        **这是整个服务里唯一会等的地方**，理由很直接：进程马上就没了，不等就等于把
+        最后一段已接受的数据扔掉，而此时也已经没有界面可以被卡住。等待有上限，等没
+        等完可以从返回状态看出来（还停在 `stopping` 就是没等完）。
+        """
+        if self.status().busy:
+            self.stop(REASON_SHUTDOWN)
+        with self._cv:
+            self._closed = True
+            self._enqueue_locked(_Command("shutdown"))
         thread = self._thread
         if thread is not None and thread.is_alive():
-            self._queue.put(None)
-            thread.join(timeout=DEFAULT_DRAIN_TIMEOUT_S)
+            thread.join(timeout=timeout)
         self._thread = None
-        return status
+        return self.status()
 
     # ---------------------------------------------------------------- 提交
 
-    def submit(self, sample) -> bool:
-        """收线程调用。**永不阻塞**：队列满就丢最新的一行并计数。"""
-        with self._lock:
-            session = self._session
-        if session is None:
-            return False
-        return self._enqueue(_Command("row", session, sample=sample))
+    def submit(self, sample, *, transport: object = None,
+               generation: int | None = None) -> bool:
+        """收线程调用。**永不阻塞**，且接受与结束在同一把锁里完成。
 
-    def _enqueue(self, command: _Command, *, force: bool = False) -> bool:
-        self._idle.clear()
-        try:
-            if force:
-                self._queue.put(command)
-            else:
-                self._queue.put_nowait(command)
-        except queue.Full:
-            with self._lock:
-                command.session.rows_dropped += 1
-                if self._status.path == command.session.path:
+        返回 True 表示这一行一定排在本会话的 `finish` 之前；返回 False 一定伴随一个
+        可解释的计数（拒收 / 丢弃）或"根本没在录"。
+        """
+        with self._cv:
+            session = self._session
+            if session is None:
+                return False
+            if session.link is not None and not session.link.matches(transport, generation):
+                # 换了链路。就地结束，不等下一次 UI 轮询——等轮询意味着新连接的第一帧
+                # 已经写进旧文件了（审核 R2）。
+                session.rows_rejected += 1
+                self._session = None
+                self._enqueue_locked(
+                    _Command("finish", session, reason=REASON_LINK_CHANGED)
+                )
+                if self._status_ident == session.ident:
                     self._status = replace(
-                        self._status, rows_dropped=command.session.rows_dropped
+                        self._status, state=STATE_STOPPING,
+                        end_reason=REASON_LINK_CHANGED,
+                        rows_rejected=session.rows_rejected,
                     )
-            return False
-        return True
+                return False
+            if self._queued_rows >= self._queue_limit:
+                session.rows_dropped += 1
+                if self._status_ident == session.ident:
+                    self._status = replace(self._status,
+                                           rows_dropped=session.rows_dropped)
+                return False
+            self._enqueue_locked(_Command("row", session, sample=sample))
+            return True
+
+    def _enqueue_locked(self, command: _Command) -> None:
+        """调用者必须持有 `_cv`。
+
+        控制命令（open/finish/shutdown）不受行上限约束：第一版把它们和数据行放进同
+        一个有界 `queue.Queue`，队列满时 `put()` 会把 Tk 线程无限期挂住。
+        """
+        self._pending.append(command)
+        if command.kind == "row":
+            self._queued_rows += 1
+        self._idle.clear()
+        self._cv.notify()
 
     # ---------------------------------------------------------------- 状态
 
     def status(self) -> RecordStatus:
-        with self._lock:
-            return self._status
+        with self._cv:
+            return replace(self._status, rows_queued=self._queued_rows)
+
+    def history(self) -> list[RecordStatus]:
+        """已落地会话的终态，按结束顺序。超时后旧会话的结果从这里查，不靠全局状态。"""
+        with self._cv:
+            return list(self._history)
 
     def queued(self) -> int:
-        return self._queue.qsize()
+        with self._cv:
+            return self._queued_rows
 
-    def drain(self, timeout: float = DEFAULT_DRAIN_TIMEOUT_S) -> bool:
-        """等写线程把当前队列处理完。超时返回 False，**不会**无限期挂住 UI。"""
-        if self._queue.empty() and self._idle.is_set():
-            return True                          # 没在录也没积压，不为此起一条线程
+    def wait_idle(self, timeout: float = 5.0) -> bool:
+        """等写线程把当前队列处理完。
+
+        **UI 不许调它**——这是给测试和收尾用的确定性栅栏。留一个显式的名字，比让
+        界面代码顺手调一个叫 `flush` 的东西安全。
+        """
+        with self._cv:
+            if not self._pending and self._idle.is_set():
+                return True
         self._ensure_thread()
         return self._idle.wait(timeout)
 
@@ -319,45 +412,66 @@ class TelemetryRecorder:
 
     def note_schema(self, schema: RecordSchema) -> RecordStatus:
         """通道表换了。旧文件的表头解释不了新宽度的行，所以结束会话并写明原因。"""
-        current = self.status()
-        if current.active and current.schema_hash != schema.schema_hash:
+        with self._cv:
+            session = self._session
+            changed = session is not None and session.schema.schema_hash != schema.schema_hash
+        if changed:
             return self.stop(REASON_SCHEMA_CHANGED)
-        return current
+        return self.status()
 
     def note_generation(self, generation: int | None) -> RecordStatus:
-        """连接代次变了：这已经是另一台/另一次飞控，不能续到同一个文件里。"""
-        current = self.status()
-        if current.active and current.generation is not None \
-                and generation is not None and generation != current.generation:
+        """连接代次变了。
+
+        这是**兜底**，不是主路径：真正的把关在 `submit()` 的链路身份核对里，因为帧
+        走接收线程，比任何 UI 轮询都早到。
+        """
+        with self._cv:
+            session = self._session
+            changed = (
+                session is not None
+                and session.generation is not None
+                and generation is not None
+                and generation != session.generation
+            )
+        if changed:
             return self.stop(REASON_LINK_CHANGED)
-        return current
+        return self.status()
 
     # ---------------------------------------------------------------- 写线程
 
     def _run(self) -> None:
         while True:
-            try:
-                command = self._queue.get(timeout=0.2)
-            except queue.Empty:
-                self._idle.set()
-                if self._closed and self._session is None:
-                    return
-                continue
-            if command is None:
-                self._idle.set()
+            with self._cv:
+                while not self._pending:
+                    self._idle.set()
+                    if self._closed:
+                        return
+                    self._cv.wait(0.2)
+                command = self._pending.popleft()
+                if command.kind == "row":
+                    self._queued_rows -= 1
+            if command.kind == "shutdown":
+                with self._cv:
+                    self._idle.set()
                 return
-            try:
-                self._apply(command)
-            finally:
-                self._queue.task_done()
-                if self._queue.empty():
+            # I/O 在锁外做：写盘可能很慢，而 Tk 线程随时会来读状态。
+            self._apply(command)
+            with self._cv:
+                if not self._pending:
                     self._idle.set()
 
     def _apply(self, command: _Command) -> None:
         session = command.session
+        if session is None:                      # pragma: no cover - 只有 shutdown
+            return
+        if command.kind == "open":
+            self._open(session)
+            return
         if session.finished:
             return                               # 会话已收尾，迟到的行不再写
         if command.kind == "row":
+            if session.handle is None:           # open 失败过，后面的行直接不写
+                return
             try:
                 session.handle.write(
                     format_row(command.sample, session.schema.channel_count)
@@ -366,61 +480,97 @@ class TelemetryRecorder:
                 self._fail(session, exc)
             else:
                 session.rows_written += 1
-                self._publish(session)
+                self._publish_progress(session)
             return
         self._finish(session, command.reason or REASON_USER)
+
+    def _open(self, session: _Session) -> None:
+        try:
+            handle, path = unique_record_path(session.directory, session.stem)
+            # 表头随文件一起冻结：没有指纹的话，事后没人能确定这份 CSV 是哪张通道表
+            # 下录的，列名就成了无法验证的说法。
+            handle.write(f"# schema_hash={session.schema.schema_hash:08X}\n")
+            handle.write("t_s," + ",".join(session.schema.channel_names) + "\n")
+            handle.flush()
+        except OSError as exc:
+            session.path = getattr(exc, "filename", None) and Path(exc.filename)
+            self._fail(session, exc)
+            return
+        session.handle = handle
+        session.path = path
+        with self._cv:
+            if self._status_ident == session.ident:
+                self._status = replace(self._status, state=STATE_RECORDING, path=path)
+            elif self._session is session:       # pragma: no cover - 防御
+                self._status_ident = session.ident
 
     def _trailer(self, session: _Session, reason: str) -> str:
         return (
             f"# end reason={reason} rows={session.rows_written} "
-            f"dropped={session.rows_dropped}\n"
+            f"dropped={session.rows_dropped} rejected={session.rows_rejected}\n"
         )
 
     def _finish(self, session: _Session, reason: str) -> None:
         session.finished = True
         session.end_reason = reason
-        try:
-            session.handle.write(self._trailer(session, reason))
-            session.handle.close()
-        except OSError as exc:
-            self._fail(session, exc, closing=True)
-            return
-        with self._lock:
-            self._status = RecordStatus(
-                state=STATE_FINISHED, path=session.path,
-                rows_written=session.rows_written, rows_dropped=session.rows_dropped,
-                schema_hash=session.schema.schema_hash, generation=session.generation,
-                end_reason=reason,
-            )
+        if session.handle is not None:
+            try:
+                session.handle.write(self._trailer(session, reason))
+                session.handle.close()
+            except OSError as exc:
+                self._fail(session, exc, closing=True)
+                return
+        self._publish_terminal(session, RecordStatus(
+            state=STATE_FINISHED, path=session.path,
+            rows_written=session.rows_written, rows_dropped=session.rows_dropped,
+            rows_rejected=session.rows_rejected,
+            schema_hash=session.schema.schema_hash, generation=session.generation,
+            end_reason=reason,
+        ))
 
     def _fail(self, session: _Session, exc: BaseException, *, closing: bool = False) -> None:
         """一次错误只产生一个失败态：句柄关掉，会话作废，部分文件留给用户。"""
-        if session.finished and closing is False:
+        if session.finished and not closing:
             return
         session.finished = True
         session.end_reason = REASON_WRITE_ERROR
         session.error = f"{type(exc).__name__}: {exc}"
-        try:
-            session.handle.close()
-        except Exception:                        # noqa: BLE001 - 已经坏了，别再抛
-            pass
-        with self._lock:
+        if session.handle is not None:
+            try:
+                session.handle.close()
+            except Exception:                    # noqa: BLE001 - 已经坏了，别再抛
+                pass
+        with self._cv:
             if self._session is session:
                 self._session = None
-            self._status = RecordStatus(
-                state=STATE_FAILED, path=session.path,
-                rows_written=session.rows_written, rows_dropped=session.rows_dropped,
-                schema_hash=session.schema.schema_hash, generation=session.generation,
-                end_reason=REASON_WRITE_ERROR, error=session.error,
-            )
+        self._publish_terminal(session, RecordStatus(
+            state=STATE_FAILED, path=session.path,
+            rows_written=session.rows_written, rows_dropped=session.rows_dropped,
+            rows_rejected=session.rows_rejected,
+            schema_hash=session.schema.schema_hash, generation=session.generation,
+            end_reason=REASON_WRITE_ERROR, error=session.error,
+        ))
 
-    def _publish(self, session: _Session) -> None:
-        with self._lock:
-            if self._status.path == session.path and self._status.state == STATE_RECORDING:
+    def _publish_terminal(self, session: _Session, status: RecordStatus) -> None:
+        """终态只更新**它自己那个会话**的状态。
+
+        第一版无条件写 `_status`：stop 超时后用户又开了新会话，旧 finish 完成时会把
+        界面状态改回旧文件的 finished，而 `_session` 指向新文件（审核 R4）。终态一律
+        进 `history()`，随时可查。
+        """
+        with self._cv:
+            self._history.append(status)
+            if self._status_ident == session.ident:
+                self._status = status
+
+    def _publish_progress(self, session: _Session) -> None:
+        with self._cv:
+            if self._status_ident == session.ident and self._status.state == STATE_RECORDING:
                 self._status = replace(
                     self._status,
                     rows_written=session.rows_written,
                     rows_dropped=session.rows_dropped,
+                    rows_rejected=session.rows_rejected,
                 )
 
 
@@ -442,13 +592,12 @@ def read_record_rows(path: Path) -> list[Sequence[str]]:
 
 def record_header(path: Path) -> list[str]:
     lines = Path(path).read_text(encoding="utf-8").splitlines()
-    header = [line for line in lines if line.startswith("#")]
-    return header
+    return [line for line in lines if line.startswith("#")]
 
 
 __all__ = [
-    "DEFAULT_DRAIN_TIMEOUT_S",
     "DEFAULT_QUEUE_LIMIT",
+    "DEFAULT_SHUTDOWN_TIMEOUT_S",
     "REASON_LINK_CHANGED",
     "REASON_SCHEMA_CHANGED",
     "REASON_SHUTDOWN",
@@ -458,6 +607,9 @@ __all__ = [
     "STATE_FINISHED",
     "STATE_IDLE",
     "STATE_RECORDING",
+    "STATE_STARTING",
+    "STATE_STOPPING",
+    "LinkIdentity",
     "RecordSchema",
     "RecordStatus",
     "TelemetryRecorder",

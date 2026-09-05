@@ -1027,6 +1027,7 @@ def test_recording_writes_a_header_with_names_and_hash(app, tmp_path, monkeypatc
     app.transport.lines.clear()
     app.transport.frames.clear()
     app._dashboard_toggle_record()
+    assert app.dashboard_recorder.wait_idle(5.0)
     # R-T1-6：文件句柄搬进了 `record_service`，页面只看会话状态。原契约（录制期间
     # 一帧都不发、表头带指纹、缺席通道留空）逐条保留，完整性与失败恢复的新契约
     # 见 `tests/test_dashboard_record_service.py`。
@@ -1038,8 +1039,10 @@ def test_recording_writes_a_header_with_names_and_hash(app, tmp_path, monkeypatc
     app._dashboard_on_binary_frame(
         0x2230, telem_frame({"roll": 1.0, "yaw": 3.0}, t_us=1000)
     )
-    app._dashboard_flush_record()
     app._dashboard_stop_record()
+    # R-T1-6 返修：start/stop 都是异步的（Tk 线程不许等写盘），测试自己给栅栏。
+    assert app.dashboard_recorder.wait_idle(5.0)
+    app._dashboard_refresh_record_status()
 
     text = app.dashboard_record_path.read_text(encoding="utf-8").splitlines()
     assert text[0] == f"# schema_hash={schema_hash():08X}"
