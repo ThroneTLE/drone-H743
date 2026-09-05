@@ -4,12 +4,13 @@
 
 Read this shard only when you need existing behavioral/architecture coverage or must choose focused regression tests.
 
-Source snapshot: `8e875ea8053f`. Indexed files: 120.
+Source snapshot: `d78d9bb342df`. Indexed files: 122.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
-| `tests/conftest.py` | Offline suite: block physical serial opens before collection and Tk callbacks | `pytest_configure`, `isolate_panel_defaults` (+3) |
+| `tests/conftest.py` | 离线测试套件的全局硬件护栏与状态隔离。 两条路都要堵，而且必须在**收集之前**就装上： * 物理串口 —— `serial.Serial.open` * 烧录 / 调试探针 —— `subprocess.Popen`（openocd /… | `pytest_configure`, `isolate_panel_defaults` (+3) |
 | `tests/data.txt` | — | — |
+| `tests/golden/telem_frames_v1.bin` | — | — |
 | `tests/test_acceptance_v2_runtime_contract.py` | — | `test_v2a_lease_and_esc_fail_safe_are_target_owned`, `test_v2a_stage_names_match_offline_engine_and_servo_delta_is_bounded` (+1) |
 | `tests/test_action_contract.py` | Contract tests for the Action safety state machine (``App/Src/app_action.c``). An Action is any task that spans time an… | `test_01_armed_interlock_refuses_to_start`, `test_02_hard_timeout_fires_after_the_link_dies` (+15) |
 | `tests/test_airframe_model_contract.py` | — | `test_airframe_constants_capture_measured_tether_geometry`, `test_coax_defaults_use_airframe_model_not_old_placeholder_mass` (+4) |
@@ -91,6 +92,7 @@ Source snapshot: `8e875ea8053f`. Indexed files: 120.
 | `tests/test_panel_flow_page_extraction.py` | R-S6-1 增量11（收官）：光流与测距页搬进 panel_lib/pages/flow_ranging.py。 搬家的判据只有一条——行为零变更。这里用三种独立方式钉： 1. 逐方法 AST 哈希与搬家前逐字节一致（哈希取自父提交 9… | `test_flow_mixin_owns_every_moved_method_with_the_pre_move_ast`, `test_page_constant_has_exactly_one_definition` (+3) |
 | `tests/test_panel_proto_extraction.py` | S6 panel protocol extraction ownership and compatibility contract | `test_proto_module_owns_the_protocol_table_and_parsing_helpers`, `test_legacy_panel_forwards_every_proto_symbol_without_wrappers` (+2) |
 | `tests/test_panel_qa_harness.py` | R-S1-3（TK-00）：无硬件 QA 测试基础的**装置契约**。 这份文件只证明装置本身可信，**不证明产品正确**。区别很重要：报告里 N01–N13 那些 缺陷在这里一条都不会被断言成“已修”，它们由各自的实现包先写红灯再修绿。… | `test_opening_a_physical_serial_port_fails_immediately`, `test_running_a_flashing_tool_fails_immediately` (+18) |
+| `tests/test_panel_qa_review_regressions.py` | R-S1-3 返修：关闭 2026-09-04 软件审核的 Q1~Q6。 审核对象是 `3269a7fe`。六条的共同点是：**装置声称的保证比它实际做到的强**，而且原来 那批测试恰好都绕过了差额——`test_a_qa_session… | `test_every_data_path_constant_is_redirected`, `test_the_output_directories_the_review_named_are_isolated` (+13) |
 | `tests/test_panel_rc_wizard_page_extraction.py` | S6 RC page extraction contract | `test_method_ownership`, `test_method_ast` (+5) |
 | `tests/test_panel_state_extraction.py` | S6 panel-state persistence extraction ownership and compatibility contract | `test_state_module_owns_persistence_and_logging_implementation`, `test_legacy_panel_forwards_every_state_symbol_without_wrappers` (+2) |
 | `tests/test_panel_transport_extraction.py` | S6 panel transport extraction ownership and compatibility contract | `test_transport_module_owns_moved_definitions`, `test_legacy_panel_forwards_the_transport_api_without_wrappers` (+1) |

@@ -28,7 +28,7 @@ from pathlib import Path
 from .geometry import WINDOW_SIZES
 from .guards import hardware_guards
 from .harness import OfflinePanel
-from .isolation import exclusive_path, isolated_environment
+from .isolation import claim_output_path, isolated_environment
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -157,10 +157,10 @@ def run(output_dir: Path) -> dict:
         }
     # 输出也走排他创建。这份脚本存在的全部理由就是保住“修复前”的那一份证据，
     # 再用 "w" 把它盖掉就太讽刺了。
-    target = exclusive_path(output_dir, "observations", ".json")
-    target.write_text(
-        json.dumps(observations, indent=2, ensure_ascii=False), encoding="utf-8"
-    )
+    # 申领即创建：选名和写入之间不能有窗口（审核 Q5）。
+    handle, target = claim_output_path(output_dir, "observations", ".json")
+    with handle:
+        handle.write(json.dumps(observations, indent=2, ensure_ascii=False))
     observations["output_path"] = str(target)
     return observations
 

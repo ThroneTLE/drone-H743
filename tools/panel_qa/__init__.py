@@ -34,13 +34,20 @@ from .fixtures import (
 from .geometry import LeafPage, PageGeometryReport, SCALES, WINDOW_SIZES, probe_geometry
 from .guards import (
     FLASH_TOOL_TOKENS,
+    install_hardware_guards,
     HardwareAccessAttempt,
     HardwareGuardLog,
     hardware_guards,
     is_flash_tool_command,
 )
 from .harness import MemoryTransport, OfflinePanel, is_display_unavailable
-from .isolation import ManualClock, QaEnvironment, directory_digest, isolated_environment
+from .isolation import (
+    ManualClock,
+    QaEnvironment,
+    claim_output_path,
+    directory_digest,
+    isolated_environment,
+)
 
 __all__ = [
     "DEFAULT_CHANNELS",
@@ -56,11 +63,13 @@ __all__ = [
     "QaEnvironment",
     "SCALES",
     "WINDOW_SIZES",
+    "claim_output_path",
     "directory_digest",
     "firmware_format_keys",
     "gps_position_line",
     "gps_status_line",
     "hardware_guards",
+    "install_hardware_guards",
     "is_flash_tool_command",
     "is_display_unavailable",
     "isolated_environment",

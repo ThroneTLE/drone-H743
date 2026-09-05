@@ -84,19 +84,27 @@ def _command_tokens(args) -> list[str]:
     return tokens
 
 
-def is_flash_tool_command(args) -> str | None:
+def is_flash_tool_command(args, executable=None) -> str | None:
     """命中就返回触发的那个 token，用于错误信息；没命中返回 None。
 
-    只看**可执行文件名**（argv[0] 的 basename），不看后面的参数：
-    `python analyse.py --openocd-log x.txt` 不是一次烧录。
+    看两处：`Popen` 的 `executable=` 参数（**它优先于 argv[0]，是真正被执行的那个
+    程序**），以及 argv[0]。第一版只看 argv[0]，于是
+    `Popen(['safe-name'], executable='openocd.exe')` 直接穿过去了（审核 Q3）。
+
+    只看**文件名**，不看后面的参数：`python analyse.py --openocd-log x.txt` 不是一次
+    烧录，误杀它会让分析脚本没法用。
     """
+    names = []
+    if executable is not None:
+        names.append(executable)
     tokens = _command_tokens(args)
-    if not tokens:
-        return None
-    executable = tokens[0].replace("\\", "/").rsplit("/", 1)[-1].lower()
-    for token in FLASH_TOOL_TOKENS:
-        if token in executable:
-            return token
+    if tokens:
+        names.append(tokens[0])
+    for name in _command_tokens(names):
+        basename = name.replace("\\", "/").rsplit("/", 1)[-1].lower()
+        for token in FLASH_TOOL_TOKENS:
+            if token in basename:
+                return token
     return None
 
 
@@ -124,9 +132,14 @@ class _GuardInstallation:
             # `args` 可以是位置参数也可以是关键字参数（`subprocess.run` 走位置，
             # 但库里到处都有 `Popen(args=...)` 的写法）。两种都要看到。
             command = args[0] if args else kwargs.get("args")
-            token = is_flash_tool_command(command)
+            # `executable=` 优先于 argv[0]，是真正被执行的程序（审核 Q3）。
+            executable = kwargs.get("executable")
+            if executable is None and len(args) > 2:
+                executable = args[2]             # Popen 的第三个位置参数就是它
+            token = is_flash_tool_command(command, executable)
             if token is not None:
-                detail = " ".join(_command_tokens(command))
+                detail = " ".join(_command_tokens([executable] if executable else []) +
+                                  _command_tokens(command))
                 log.attempts.append(HardwareAccessAttempt("flash_tool", detail))
                 raise AssertionError(
                     "QA harness must not run a flashing/reset tool "
@@ -146,20 +159,36 @@ class _GuardInstallation:
             subprocess.Popen.__init__ = self._popen_original
 
 
-@contextmanager
-def hardware_guards(log: HardwareGuardLog | None = None) -> Iterator[HardwareGuardLog]:
-    """在作用域内拦截物理串口与烧录工具，退出时把上一层实现原样放回。"""
+def install_hardware_guards(log: HardwareGuardLog | None = None):
+    """装上护栏，返回 `(log, uninstall)`。
+
+    单独暴露一个非上下文管理器的入口，是为了让 `tests/conftest.py` 能在**收集之前**
+    就把两条路都堵上、整个 session 都有效。第一版只有 `hardware_guards()` 这个局部
+    上下文，于是默认 pytest 全程其实只有串口护栏（审核 Q3）。
+    """
     guard_log = HardwareGuardLog() if log is None else log
     installation = _GuardInstallation(guard_log)
     installation.install()
+    return guard_log, installation.uninstall
+
+
+@contextmanager
+def hardware_guards(log: HardwareGuardLog | None = None) -> Iterator[HardwareGuardLog]:
+    """在作用域内拦截物理串口与烧录工具，退出时把上一层实现原样放回。
+
+    可嵌套：全局护栏已经装上时再开一层，本层内的拦截只记进本层的 log，退出后原样
+    还给上一层。刻意验证护栏的测试因此不会污染全局计数。
+    """
+    guard_log, uninstall = install_hardware_guards(log)
     try:
         yield guard_log
     finally:
-        installation.uninstall()
+        uninstall()
 
 
 __all__ = [
     "FLASH_TOOL_TOKENS",
+    "install_hardware_guards",
     "HardwareAccessAttempt",
     "HardwareGuardLog",
     "hardware_guards",

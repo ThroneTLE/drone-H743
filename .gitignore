@@ -9,6 +9,9 @@ cmake-build-*/
 *.elf
 *.elf.proxy_cache
 *.bin
+# 例外：黄金向量夹具必须能从干净检出直接跑（R-S1-3 交接门 / 审核 Q6）。
+# 它由固件真实编码器产出，是协议契约的一部分，不是构建产物。
+!tests/golden/*.bin
 *.hex
 *.map
 *.o

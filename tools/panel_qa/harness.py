@@ -82,21 +82,48 @@ class MemoryTransport:
     def set_binary_sink(self, sink) -> None:
         self.binary_sink = sink
 
+    def start(self, *_args, **_kwargs) -> None:
+        """连接。真实 transport 在这里起线程/开套接字；替身只翻状态并进代次。
+
+        必须如实翻 `is_connected` 和 `connection_generation`，否则"重连之后旧会话的
+        东西不许污染新会话"这条契约在装置里根本演不出来（审核 Q2）。
+        """
+        self.stopped = False
+        self.is_connected = True
+        self._connection_generation += 1
+
     def stop(self) -> None:
         self.stopped = True
+        self.is_connected = False
+        self.binary_sink = None
+        self._connection_generation += 1
 
     def cancel_pending_sends(self) -> None:
         pass
 
     def close(self) -> None:
-        self.stopped = True
+        self.stop()
 
 
 @dataclass
 class PendingAfter:
-    delay_ms: int
+    """一条被记录下来的定时回调。
+
+    第一版只存了 (delay, callback)，`after_cancel` 是个空函数，而且启动时排下去的
+    周期任务在替换 `after` 之前就被全部取消了——记录里只剩两个 resize 回调，接收/
+    IMU/链路/录制的循环一个都不在（审核 Q4）。现在有真实的 id、到期时刻和取消语义，
+    并且 `after` 在**构造面板之前**就被换掉，启动链因此完整保留。
+    """
+
+    ident: str
+    due_ms: int
     callback: object
     args: tuple = ()
+    cancelled: bool = False
+
+    @property
+    def delay_ms(self) -> int:
+        return self.due_ms
 
 
 @dataclass
@@ -108,6 +135,11 @@ class OfflinePanel:
     scale: float
     callback_errors: list[BaseException] = field(default_factory=list)
     pending_after: list[PendingAfter] = field(default_factory=list)
+    transports: dict = field(default_factory=dict)
+    clock_ms: int = 0
+    _after_seq: int = 0
+    _real_after: object = None
+    _real_after_cancel: object = None
     _restore: list = field(default_factory=list)
 
     # ---------------------------------------------------------------- 构造
@@ -143,6 +175,25 @@ class OfflinePanel:
 
         patch(tk.Tk, "__init__", hidden_init)
 
+        session = cls(panel=None, transport=MemoryTransport(connected=connected),
+                      scale=scale, _restore=restore)
+        if record_after:
+            # **在构造之前**换掉：启动时排下去的接收/链路/录制周期任务因此会被记录，
+            # 而不是先被排下去、再被我们一把取消（审核 Q4）。
+            session._real_after = tk.Misc.after
+            session._real_after_cancel = tk.Misc.after_cancel
+
+            # 必须是**普通函数**才能拿到调用它的那个 widget：绑定方法放进类属性不会
+            # 再次绑定，widget 就丢了，而 `after_idle` 需要它。
+            def virtual_after(widget, delay, callback=None, *args):
+                return session._virtual_after(widget, delay, callback, *args)
+
+            def virtual_after_cancel(widget, ident):
+                return session._virtual_after_cancel(widget, ident)
+
+            patch(tk.Misc, "after", virtual_after)
+            patch(tk.Misc, "after_cancel", virtual_after_cancel)
+
         try:
             instance = panel_module.DronePanel()
         except BaseException:
@@ -150,29 +201,13 @@ class OfflinePanel:
                 setattr(target, name, value)
             raise
 
-        transport = MemoryTransport(connected=connected)
-        session = cls(panel=instance, transport=transport, scale=scale, _restore=restore)
-        session._prepare(size, record_after)
+        session.panel = instance
+        session._prepare(size, connected)
         return session
 
-    def _prepare(self, size: tuple[int, int], record_after: bool) -> None:
+    def _prepare(self, size: tuple[int, int], connected: bool) -> None:
         panel = self.panel
         panel.update_idletasks()
-        # 启动时排下去的定时器先全清掉；之后的调度按 record_after 决定是记录还是照常。
-        for ident in panel.tk.call("after", "info"):
-            try:
-                panel.after_cancel(ident)
-            except tk.TclError:                  # pragma: no cover - 已经跑掉了
-                pass
-        if record_after:
-            def recording_after(delay, callback=None, *args):
-                if callback is None:             # after(ms) 当 sleep 用，装置里没有意义
-                    return ""
-                self.pending_after.append(PendingAfter(int(delay), callback, args))
-                return f"qa-after-{len(self.pending_after)}"
-
-            panel.after = recording_after
-            panel.after_cancel = lambda _ident: None
 
         # 回调异常不再只落盘：装置必须能断言“这一页没有静默抛异常”。
         errors = self.callback_errors
@@ -182,8 +217,18 @@ class OfflinePanel:
 
         panel.report_callback_exception = record_callback_exception
 
-        panel.serial_transport = self.transport
-        panel.transport = self.transport
+        # **三条**通道全部换成替身。第一版只换了 serial 和当前 transport，于是在面板里
+        # 选到 TCP/UDP 再点连接，会走到真实适配器去开套接字（审核 Q2）。
+        self.transports = {
+            "serial": self.transport,
+            "tcp": MemoryTransport(connected=connected, port="QA-TCP"),
+            "udp": MemoryTransport(connected=connected, port="QA-UDP"),
+        }
+        panel.serial_transport = self.transports["serial"]
+        panel.tcp_transport = self.transports["tcp"]
+        panel.udp_transport = self.transports["udp"]
+        panel.transport = panel._current_transport()
+        self.transport = panel.transport
         panel.title(OFFLINE_TITLE)
         panel.attributes("-alpha", 0.0)
         panel.deiconify()
@@ -198,12 +243,56 @@ class OfflinePanel:
     def pump(self) -> None:
         self.panel.update()
 
+    # --- 虚拟调度器（审核 Q4） ---
+
+    def _virtual_after(self, widget, delay, callback=None, *args):
+        """`tk.Misc.after` 的替身：记录而不是丢弃，并且返回**真实可取消**的 id。"""
+        if callback is None:                     # after(ms) 当 sleep 用，装置里没有意义
+            return ""
+        # `after_idle()` 转成 `after('idle', ...)`。它是"下一次空闲就跑"，不是定时器；
+        # 交回真实实现，否则 ttk 内部的一堆布局收尾会永远不发生。
+        if delay == "idle":
+            return self._real_after(widget, delay, callback, *args)
+        self._after_seq += 1
+        ident = f"qa-after-{self._after_seq}"
+        self.pending_after.append(
+            PendingAfter(ident, self.clock_ms + int(delay), callback, tuple(args))
+        )
+        return ident
+
+    def _virtual_after_cancel(self, widget, ident) -> None:
+        if not isinstance(ident, str) or not ident.startswith("qa-after-"):
+            return self._real_after_cancel(widget, ident)
+        for item in self.pending_after:
+            if item.ident == ident:
+                item.cancelled = True
+                return
+
     def run_pending_after(self) -> int:
-        """执行当前排队的定时回调（只跑这一批，重排的留到下次）。"""
+        """执行当前排队且未取消的回调（只跑这一批，重排的留到下次）。"""
         batch, self.pending_after = self.pending_after, []
-        for item in batch:
+        ran = 0
+        for item in sorted(batch, key=lambda entry: entry.due_ms):
+            if item.cancelled:
+                continue
             item.callback(*item.args)
-        return len(batch)
+            ran += 1
+        return ran
+
+    def advance_ms(self, milliseconds: int) -> int:
+        """把虚拟时钟往前推，按到期顺序执行到期的回调。"""
+        self.clock_ms += int(milliseconds)
+        due = [item for item in self.pending_after
+               if not item.cancelled and item.due_ms <= self.clock_ms]
+        self.pending_after = [item for item in self.pending_after if item not in due]
+        for item in sorted(due, key=lambda entry: entry.due_ms):
+            item.callback(*item.args)
+        return len(due)
+
+    def scheduled_callbacks(self) -> list[str]:
+        """当前排着的回调名字。用来断言启动链真的被保留下来了。"""
+        return [getattr(item.callback, "__name__", repr(item.callback))
+                for item in self.pending_after if not item.cancelled]
 
     def leaf_pages(self) -> list[LeafPage]:
         """展开“校准”“传感器”两个分组，得到真正有内容的叶页。"""
