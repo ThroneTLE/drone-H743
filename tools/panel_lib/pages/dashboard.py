@@ -214,11 +214,19 @@ class DashboardPageMixin:
             ("导出布局", self._dashboard_export_layout),
             ("导入布局", self._dashboard_import_layout),
         )
-        for index, (label, command) in enumerate(action_specs):
+        # 每个控件按同一个计数器落格，谁都不再手写行列号——"编辑布局"曾被硬编码
+        # 成 row=1/column=0，正好压在"导出布局"上，两个控件叠在一格里。
+        # 四列而不是三列：七个控件正好两行排满，工具条高度和出缺陷那版一样。
+        # 排成三行会多占 39 px，实测把 dashboard 总重绘从 5/5 过压到 3/5 挂。
+        columns = 4
+        cells = iter(
+            {"row": index // columns, "column": index % columns, "padx": (0, 6),
+             "pady": 2, "sticky": tk.W}
+            for index in range(len(action_specs) + 2)
+        )
+        for label, command in action_specs:
             ttk.Button(actions, text=label, command=command,
-                       style="Secondary.TButton").grid(
-                           row=index // 3, column=index % 3, padx=(0, 6), pady=2, sticky=tk.W
-                       )
+                       style="Secondary.TButton").grid(**next(cells))
         self.dashboard_add_button = ttk.Menubutton(
             actions, text="添加组件", style="Secondary.TButton"
         )
@@ -229,15 +237,13 @@ class DashboardPageMixin:
                 command=lambda t=tile_type: self._dashboard_add_tile(t),
             )
         self.dashboard_add_button.configure(menu=menu)
-        self.dashboard_add_button.grid(row=1, column=2, padx=(0, 6), pady=2, sticky=tk.W)
+        self.dashboard_add_button.grid(**next(cells))
         self.dashboard_add_menu = menu
 
         self.dashboard_edit_var = tk.BooleanVar(value=False)
         ttk.Checkbutton(actions, text="编辑布局", variable=self.dashboard_edit_var,
-                        command=self._dashboard_toggle_edit).grid(
-                            row=1, column=0, padx=(0, 6), pady=2, sticky=tk.W
-                        )
-        for column in range(3):
+                        command=self._dashboard_toggle_edit).grid(**next(cells))
+        for column in range(columns):
             actions.columnconfigure(column, weight=1)
 
     def _build_dashboard_stats(self, parent: ttk.Frame) -> None:

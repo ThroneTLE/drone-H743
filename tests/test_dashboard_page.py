@@ -656,6 +656,44 @@ def test_param_card_marks_a_missing_echo_red_without_claiming_the_sent_value(app
 # ---------------------------------------------------------------- 编辑模式
 
 
+def test_toolbar_controls_do_not_overlap(app) -> None:
+    """"编辑布局"曾被硬编码到 row=1/column=0，正好压在"导出布局"上。
+
+    断言落在实际像素矩形而不是行列号：grid 冲突、place 叠放、跨列 span 写错
+    都是同一种毛病——两个控件占了同一块屏幕。
+    """
+    select_dashboard(app)
+    app.update()                      # 光 update_idletasks 拿不到已排好的几何
+    actions = app.dashboard_add_button.master
+
+    boxes = []
+    for child in actions.winfo_children():
+        if not child.winfo_manager():
+            continue
+        # 宽度还是 1 说明这个控件根本没排好，此时所有人都落在原点，
+        # 比出来的"重叠"是假的。
+        assert child.winfo_width() > 1, f"{child.cget('text')!r} 尚未完成布局"
+        boxes.append((
+            child.winfo_x(), child.winfo_y(),
+            child.winfo_x() + child.winfo_width(),
+            child.winfo_y() + child.winfo_height(),
+            str(child.cget("text")),
+        ))
+    assert len(boxes) >= 7, f"动作区只找到 {len(boxes)} 个控件"
+
+    for index, (ax0, ay0, ax1, ay1, a) in enumerate(boxes):
+        for bx0, by0, bx1, by1, b in boxes[index + 1:]:
+            overlap = min(ax1, bx1) - max(ax0, bx0) > 0 and min(ay1, by1) - max(ay0, by0) > 0
+            assert not overlap, f"{a!r} 与 {b!r} 在屏幕上重叠"
+
+    # 同时钉住行列号唯一，重叠为 0 但两个控件恰好都是 1×1 时也能报出来。
+    cells = [(actions.grid_info().get("row"), child.grid_info().get("row"),
+              child.grid_info().get("column")) for child in actions.winfo_children()
+             if child.winfo_manager() == "grid"]
+    seats = [(row, column) for _, row, column in cells]
+    assert len(seats) == len(set(seats)), f"有控件共用同一格：{seats}"
+
+
 def test_edit_mode_overlays_appear_and_disappear(app) -> None:
     select_dashboard(app)
     editor = app.dashboard_editor
