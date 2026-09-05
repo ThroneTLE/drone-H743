@@ -4,7 +4,7 @@
 
 Read this shard only when the task uses serial/TCP diagnostics, log analysis, identification, capture, calibration, or desktop UIs.
 
-Source snapshot: `840c530ec7f1`; aggregate snapshot: `cf81711b8086`. Covered files: 5339.
+Source snapshot: `a4b19451e3e6`; aggregate snapshot: `cf81711b8086`. Covered files: 5339.
 
 | File/module or scope | Content outline | Key entry points / size |
 |---|---|---|
@@ -65,7 +65,7 @@ Source snapshot: `840c530ec7f1`; aggregate snapshot: `cf81711b8086`. Covered fil
 | `tools/panel_qa/isolation.py` | 隔离：用户状态、日志、data 输出、时钟，以及“没动过用户数据”的可核验指纹。 四件事分开： * `isolated_environment()` 把面板会写的每一个路径常量改指到临时根目录。它患的是 和 `tests/conftest… | `QaEnvironment`, `isolated_environment`, `redirected_dated_directory`, `directory_digest`, `claim_output_path`, `ManualClock` |
 | `tools/pressure_rs485_gui.py` | Tkinter GUI for the RS485 Modbus pressure/weight transmitter | `IdentPoint`, `IdentRun`, `LossRow`, `motor_name`, `is_esp_controller`, `percent_to_pulse` (+10) |
 | `tools/pressure_rs485_test.py` | RS485 Modbus-RTU test tool for the 4-channel weighing/pressure transmitter. Manual notes used here: - Protocol: Modbus… | `ReadResult`, `crc16_modbus`, `add_crc`, `check_crc`, `dip_to_addr`, `parse_u16` (+8) |
-| `tools/project_paths.py` | Canonical repository paths for captures, logs, calibration, and analysis data | `ensure_directory`, `date_from_name`, `dated_directory`, `dated_directory_for_name`, `latest_dated_directory` |
+| `tools/project_paths.py` | Canonical repository paths for captures, logs, calibration, and analysis data | `canonical_path`, `ensure_directory`, `date_from_name`, `dated_directory`, `dated_directory_for_name`, `latest_dated_directory` |
 | `tools/README.md` | drone-H743 PC 工具 | `主工作台`, `数据位置`, `常用离线工具`, `Rerun 隔离环境`, `Serial Studio` |
 | `tools/rom_dfu.py` | Safe host-side helpers for STM32 ROM USB DFU firmware updates. V0 deliberately delegates device programming to STM32Cub… | `RomDfuError`, `DfuToolNotFoundError`, `FirmwareImageError`, `DfuEnumerationTimeoutError`, `DfuCancelledError`, `FlashResult` (+15) |
 | `tools/run_flight_log_rerun_replay.ps1` | Host-side utility for run flight log rerun replay | — |

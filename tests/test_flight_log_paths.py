@@ -14,13 +14,31 @@ def read(path: str) -> str:
 
 
 def test_canonical_data_tree_is_root_scoped() -> None:
-    assert paths.DATA_ROOT == ROOT / "data"
-    assert paths.FLIGHT_LOG_DIR == ROOT / "data" / "flight_logs"
-    assert paths.IMU_VIBRATION_CAPTURE_DIR == ROOT / "data" / "captures" / "imu_vibration"
-    assert paths.ATTITUDE_IDENT_DIR == ROOT / "data" / "identification" / "attitude"
-    assert paths.PRESSURE_CALIBRATION_DIR == ROOT / "data" / "calibration" / "pressure"
-    assert paths.AIRFRAME_CALIBRATION_DIR == ROOT / "data" / "calibration" / "airframe"
-    assert (paths.DATA_ROOT / "README.md").is_file()
+    """规范布局断言走 import 时冻结的记录，不走运行期常量。
+
+    测试期间 `paths.DATA_ROOT` 被 `tests/conftest.py` 整棵改指到临时根——那是为了
+    不让测试往真实 `data/calibration/**` 里写东西（2026-09-05 真的漏过一次伪造的
+    机械校准证据）。"规范布局长什么样"和"这次运行往哪写"是两件事，这条断言问的是
+    前者。
+    """
+    canonical = paths.canonical_path
+    assert canonical("DATA_ROOT") == ROOT / "data"
+    assert canonical("FLIGHT_LOG_DIR") == ROOT / "data" / "flight_logs"
+    assert canonical("IMU_VIBRATION_CAPTURE_DIR") == ROOT / "data" / "captures" / "imu_vibration"
+    assert canonical("ATTITUDE_IDENT_DIR") == ROOT / "data" / "identification" / "attitude"
+    assert canonical("PRESSURE_CALIBRATION_DIR") == ROOT / "data" / "calibration" / "pressure"
+    assert canonical("AIRFRAME_CALIBRATION_DIR") == ROOT / "data" / "calibration" / "airframe"
+    assert (canonical("DATA_ROOT") / "README.md").is_file()
+
+    # 冻结记录与运行期常量必须是同一批名字，否则新增常量会悄悄不受隔离保护。
+    live = {
+        name for name, value in vars(paths).items()
+        if name.isupper() and isinstance(value, Path)
+    }
+    assert live == set(paths.CANONICAL_DATA_TREE), (
+        f"常量集合漂移：只在运行期有 {live - set(paths.CANONICAL_DATA_TREE)}，"
+        f"只在冻结记录里有 {set(paths.CANONICAL_DATA_TREE) - live}"
+    )
 
 
 def test_receive_uses_canonical_flight_log_dir() -> None:

@@ -85,6 +85,51 @@ def test_the_rc_wizard_log_follows_the_isolated_log_dir(tmp_path) -> None:
         assert env.contains(panel_state.PANEL_CRASH_LOG)
 
 
+def test_the_default_test_session_never_writes_into_the_real_data_tree() -> None:
+    """Q1 的后续：装置修好了，但默认 pytest 从来没进过这个装置。
+
+    2026-09-05 一次普通的 `pytest tests` 把一份伪造的机械校准证据
+    （`status=PERSISTED_READBACK_MATCH`、`props_removed_confirmed=true`）写进了真实的
+    `data/calibration/servo_mechanical/2026-09-05/`。当时 `tests/conftest.py` 只重指
+    panel_state 和日志四项，别的写入目标全指着工作树；漏出去的还是 AGENTS.md 明令
+    不许动的历史证据目录，假记录混进真记录里比漏测危险得多。
+
+    所以判据落在**默认会话本身**：不显式进 `isolated_environment()`，此刻每一个
+    可写常量都必须已经在真实 `data/` 之外。
+    """
+    import tools.project_paths as project_paths
+
+    real_data_root = project_paths.canonical_path("DATA_ROOT")
+    leaked: list[str] = []
+    for module in qa_isolation._module_candidates():
+        for attr, value in list(vars(module).items()):
+            if not attr.isupper() or not isinstance(value, Path):
+                continue
+            try:
+                Path(value).resolve().relative_to(real_data_root.resolve())
+            except ValueError:
+                continue                         # 已经在临时根里，正是我们要的
+            leaked.append(f"{module.__name__}.{attr} -> {value}")
+    assert leaked == [], (
+        "默认测试会话里这些写入目标仍指着真实 data/ 树：\n" + "\n".join(sorted(leaked))
+    )
+
+
+def test_the_real_calibration_tree_is_not_reachable_through_any_constant() -> None:
+    """写具体一点：泄漏那次用的就是 SERVO_MECHANICAL_CALIBRATION_DIR。"""
+    from tools import project_paths
+    from tools.panel_lib.pages import mechanical
+
+    real_calibration = project_paths.canonical_path("CALIBRATION_ROOT").resolve()
+    for owner, attr in (
+        (project_paths, "SERVO_MECHANICAL_CALIBRATION_DIR"),
+        (project_paths, "CALIBRATION_ROOT"),
+        (mechanical, "SERVO_MECHANICAL_CALIBRATION_DIR"),
+    ):
+        live = Path(getattr(owner, attr)).resolve()
+        assert real_calibration not in (live, *live.parents), f"{attr} 仍能走到真实校准树"
+
+
 # ---------------------------------------------------------------- Q2 全部 transport
 
 

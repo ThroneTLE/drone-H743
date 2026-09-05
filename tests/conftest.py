@@ -47,25 +47,30 @@ def pytest_configure(config):
 
 @pytest.fixture(scope="session", autouse=True)
 def isolate_panel_defaults(tmp_path_factory):
-    """把面板**自身**的状态与日志挪到临时目录，并掐掉启动副作用。
+    """把整棵 `data/` 写入面挪到临时目录，并掐掉面板的启动副作用。
 
-    这里刻意只动 panel_state / 日志这几项，不整棵重指 `DATA_ROOT`：
-    `tests/test_flight_log_paths.py` 断言的正是 `data/` 树的规范定义，全局重指会把
-    那条正当契约打掉。需要完整写入面隔离的用例（QA 装置、页面保存/导出）自己进
-    `panel_qa.isolated_environment()`——审核 Q1 修的是那个入口。
+    以前这里只动 panel_state / 日志四项，理由是"全局重指会打掉
+    `test_canonical_data_tree_is_root_scoped` 那条正当契约"。代价是真的付出来了：
+    2026-09-05 一次普通的 pytest 跑把一份**伪造的**机械校准证据
+    （`status=PERSISTED_READBACK_MATCH`）写进了真实的
+    `data/calibration/servo_mechanical/`——那是 AGENTS.md 明令不许动的历史证据目录，
+    假记录和真记录混在一起比漏测危险得多。
+
+    正确的解法不是继续收窄，而是把两件事分开：
+      * **运行期写到哪**——整棵重指到临时根，`panel_qa.isolated_environment()`
+        按对象 identity 扫描 `tools.*`，一个常量都不漏；
+      * **规范布局是什么**——`project_paths.CANONICAL_DATA_TREE` 在 import 时冻结，
+        隔离碰不到它，契约测试改断言这份记录。
+
+    进入时机是 session fixture 而不是 `pytest_configure`：收集阶段已经把所有测试
+    模块（连带它们 import 的 `tools.*`）拉进来了，此时扫描才扫得全。之后才 import
+    的模块从 `tools.project_paths` 现取，取到的也是改指后的值，两头都盖住。
     """
     from tools import drone_tcp_panel as panel
-    from tools import project_paths
-    from tools.panel_lib import state
+    from tools.panel_qa.isolation import isolated_environment
 
     patch = pytest.MonkeyPatch()
-    root = tmp_path_factory.mktemp("panel-defaults")
-    for name, value in {"PANEL_STATE_PATH": root / "panel_state.json", "LOG_DIR": root,
-                        "PANEL_CRASH_LOG": root / "panel_crash.log",
-                        "RC_WIZARD_TRACE_LOG": root / "rc_wizard.log"}.items():
-        for module in (panel, state, project_paths):
-            if hasattr(module, name):
-                patch.setattr(module, name, value)
+    root = tmp_path_factory.mktemp("data-root")
     original_init = panel.DronePanel.__init__
 
     def isolated_init(self, *args, **kwargs):
@@ -78,7 +83,8 @@ def isolate_panel_defaults(tmp_path_factory):
             original_init(self, *args, **kwargs)
 
     patch.setattr(panel.DronePanel, "__init__", isolated_init)
-    yield
+    with isolated_environment(root):
+        yield
     patch.undo()
 
 

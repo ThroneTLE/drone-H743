@@ -8,9 +8,16 @@ from tools import project_paths as paths
 
 
 def test_date_directory_helpers_are_sortable_and_validate_dates(tmp_path: Path) -> None:
-    assert paths.FIRMWARE_UPDATE_DIR == paths.DATA_ROOT / "firmware_updates"
-    assert paths.IMU_METROLOGY_CALIBRATION_DIR == paths.DATA_ROOT / "calibration" / "imu_metrology"
-    assert paths.FLIGHT_ACCEPTANCE_CALIBRATION_DIR == paths.DATA_ROOT / "calibration" / "flight_acceptance_v2"
+    # 规范布局问冻结记录，不问运行期常量（测试期间整棵 data/ 被改指到临时根，
+    # 见 tests/conftest.py）。
+    canonical = paths.canonical_path
+    assert canonical("FIRMWARE_UPDATE_DIR") == canonical("DATA_ROOT") / "firmware_updates"
+    assert canonical("IMU_METROLOGY_CALIBRATION_DIR") == (
+        canonical("DATA_ROOT") / "calibration" / "imu_metrology"
+    )
+    assert canonical("FLIGHT_ACCEPTANCE_CALIBRATION_DIR") == (
+        canonical("DATA_ROOT") / "calibration" / "flight_acceptance_v2"
+    )
     assert paths.date_from_name("flightlog_20260725_161555.csv") == date(2026, 7, 25)
     assert paths.date_from_name("capture-2026-07-25.json") == date(2026, 7, 25)
     assert paths.date_from_name("capture_20261340.csv") is None

@@ -50,6 +50,27 @@ FIRMWARE_UPDATE_DIR = DATA_ROOT / "firmware_updates"
 # 东西一样属于"本机产物、不进版本库"。
 PANEL_STATE_PATH = DATA_ROOT / "panel_state.json"
 
+# 上面这些常量在测试与离线 QA 里会被 `panel_qa.isolated_environment()` 整体改指到
+# 临时目录——那是**运行期的写入位置**。但"规范布局长什么样"是本仓库的定义，不是
+# 运行期状态，不该跟着变：契约测试断言的是这份在 import 时冻结下来的记录，隔离装置
+# 碰不到它（它是 dict，不是 Path，identity 扫描不认）。
+# 两者不会漂移：记录就是从上面同一批常量里抓的，加了新常量而忘了登记这里，
+# `tests/test_data_organization.py` 会红。
+CANONICAL_DATA_TREE: dict[str, Path] = {
+    _name: _value
+    for _name, _value in list(globals().items())
+    if _name.isupper() and isinstance(_value, Path)
+}
+
+
+def canonical_path(name: str) -> Path:
+    """规范布局里某个常量本来指向哪儿（不受隔离影响）。"""
+    try:
+        return CANONICAL_DATA_TREE[name]
+    except KeyError:                             # pragma: no cover - 名字打错
+        raise KeyError(f"{name} 不是 project_paths 里的路径常量") from None
+
+
 DATE_DIRECTORY_RE = re.compile(r"^20\d{2}-\d{2}-\d{2}$")
 DATE_TOKEN_RE = re.compile(
     r"(?<!\d)(20\d{2})[-_]?([01]\d)[-_]?([0-3]\d)(?!\d)"
