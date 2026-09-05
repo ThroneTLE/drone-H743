@@ -44,7 +44,7 @@ VIBRATION_AST_SHA256 = {
     "_build_vibration_filter_page": "d6483841646aea2d7ae966623f75c441db8d11e01d983a95fa0a4db80e344106",
 }
 SERVO_DEBUG_AST_SHA256 = {
-    "_build_servo_page": "cdbca905951b7c69996a5f2c4093367c915ba16d76b45072cb605b249f7f8640",
+    "_build_servo_page": "448c54c3e0e7472424eb0cf6d04e3a792c9a5568ae2d63690774af943825719a",
     "_build_servo_tab": "8c939df106d33a9912c12315b036d8ec94b446f4057ee82f5c8b5c8076553345",
     "_servo_spin": "f7a1c49d31771e45a0e931da512d6a19fb5130701f5822fd1a29b6bef22e6733",
     "_refresh_servo_output_controls": "6f5c31f85e094d2cd5bc2c61626a44125db36241a8d08550fb8d5cd94f6c604b",
@@ -389,7 +389,8 @@ def test_s6_increment8_page_owners_ast_forwarding() -> None:
     assert set(servo_debug) == set(SERVO_DEBUG_AST_SHA256)
     assert (set(vibration) | set(servo_debug)).isdisjoint(legacy)
     assert len(vibration["_build_vibration_filter_page"].body) == 10
-    assert len(servo_debug["_build_servo_page"].body) == 15
+    # Scoped dark-theme mount; remaining builder/command AST stays frozen.
+    assert len(servo_debug["_build_servo_page"].body) == 16
     assert len(servo_debug["_build_servo_tab"].body) == 42
     assert legacy_panel.VibrationPageMixin is vibration_page.VibrationPageMixin
     assert legacy_panel.ServoDebugPageMixin is servo_debug_page.ServoDebugPageMixin

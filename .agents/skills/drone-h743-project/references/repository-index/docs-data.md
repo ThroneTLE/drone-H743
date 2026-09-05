@@ -4,7 +4,7 @@
 
 Read this shard only when the task needs architecture rationale, controller math, historical evidence, captures, datasets, or agent-support documentation.
 
-Document snapshot: `e23fce937f6f`; aggregate snapshot: `84a26ce8a44a`. Covered files: 326.
+Document snapshot: `e23fce937f6f`; aggregate snapshot: `c22f307d252d`. Covered files: 335.
 
 ## Documents and agent support
 
@@ -42,6 +42,6 @@ Document snapshot: `e23fce937f6f`; aggregate snapshot: `84a26ce8a44a`. Covered f
 | Scope | Content outline | Inventory |
 |---|---|---|
 | `.tmp/` | Temporary analysis results; inspect only a specifically named run | 105 files / 10.6 MiB / .json×25, .csv×19, .png×14, .md×11, .txt×11 |
-| `data/` | Canonical captures, flight logs, identification, calibration, telemetry, and analysis root | 195 files / 18.3 MiB / .csv×83, .json×57, .txt×17, .png×17, .sal×13 |
+| `data/` | Canonical captures, flight logs, identification, calibration, telemetry, and analysis root | 204 files / 18.4 MiB / .csv×83, .json×57, .txt×22, .png×19, .sal×13 |
 
 Do not load a whole dataset directory. Select one named run after code or test evidence points to it.

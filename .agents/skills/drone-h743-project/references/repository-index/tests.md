@@ -4,7 +4,7 @@
 
 Read this shard only when you need existing behavioral/architecture coverage or must choose focused regression tests.
 
-Source snapshot: `85beb36638ca`. Indexed files: 117.
+Source snapshot: `6e2ecf6105f5`. Indexed files: 118.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -108,6 +108,7 @@ Source snapshot: `85beb36638ca`. Indexed files: 117.
 | `tests/test_servo_bus_guard_contract.py` | R-S7-3 contract: bus-only servo paths are inert in PWM mode | `test_guard_owns_pwm_selection_and_all_bus_only_commands`, `test_control_has_one_minimal_pwm_rejection_before_bus_dispatch`, `test_legacy_vofa_servo_command_is_rejected_only_in_pwm_mode` (+4) |
 | `tests/test_servo_cal_contract.py` | — | `test_servo_cal_uses_release_startup_save_and_restore_without_center_save`, `test_servo_cal_requires_disarmed_low_throttle_rc_gate_and_corner_hold`, `test_stabilizer_freezes_motors_and_skips_normal_servo_send_during_cal` (+1) |
 | `tests/test_servo_debug_page_contract.py` | R-S7-4 host contracts for BUS-only controls and PWM JOG routing | `test_pwm_jog_has_no_bus_command_and_bus_move_is_unchanged`, `test_active_pwm_stays_gated_when_candidate_is_changed_to_bus`, `test_pwm_page_keeps_bus_surfaces_disabled_and_does_not_add_bus_subcommands` |
+| `tests/test_servo_debug_theme.py` | Servo dark-theme contrast and PWM gates | `test_dark_spinboxes`, `test_subtle_borders`, `test_pwm_gates` |
 | `tests/test_servo_dma_contract.py` | — | `test_stabilizer_uses_nonblocking_servo_dma_path`, `test_stabilizer_selects_pwm_or_bus_without_running_bus_only_services`, `test_servo_arbitration_precedes_both_hardware_outputs` (+7) |
 | `tests/test_servo_feedback_bench_contract.py` | — | `test_driver_uses_manual_prad_request_and_fixed_length_dma_receive`, `test_uart7_fixed_length_rx_complete_is_routed_to_servo_driver`, `test_feedback_bench_is_opt_in_and_step_profile_is_bounded` (+2) |
 | `tests/test_servo_feedback_runtime_contract.py` | — | `test_runtime_feedback_uses_deterministic_50_hz_per_servo_slots`, `test_runtime_feedback_snapshot_carries_quality_metadata` |

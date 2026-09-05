@@ -18,6 +18,7 @@ from ..proto import (
     safe_int,
 )
 from .servo_type_controls import ServoTypeControlsMixin
+from ..servo_debug_theme import apply_servo_debug_theme
 
 
 class ServoDebugPageMixin(ServoTypeControlsMixin):
@@ -42,6 +43,7 @@ class ServoDebugPageMixin(ServoTypeControlsMixin):
         raw_button.pack(side=tk.LEFT, padx=(6, 0))
         self._servo_raw_widgets.extend((raw_entry, raw_button))
         self._refresh_servo_output_controls()
+        apply_servo_debug_theme(parent, self.ui_palette)
 
     def _build_servo_tab(self, parent: ttk.Frame, index: int) -> None:
         values: dict[str, tk.Variable] = {

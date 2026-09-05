@@ -1,0 +1,42 @@
+FF.                                                                      [100%]
+================================== FAILURES ===================================
+_____________________________ test_dark_spinboxes _____________________________
+
+app = <tools.drone_tcp_panel.DronePanel object .>
+
+    def test_dark_spinboxes(app):
+        style = ttk.Style(app)
+        boxes = [widget for widget in descendants(_page(app)) if isinstance(widget, ttk.Spinbox)]
+        assert len(boxes) == 12  # Both slots: ID, pulse, duration, mode, new ID, baud.
+        for box in boxes:
+            name = str(box.cget("style")) or "TSpinbox"
+            for state in ((), ("focus",), ("readonly",), ("disabled",)):
+                background = style.lookup(name, "fieldbackground", state=state)
+                foreground = style.lookup(name, "foreground", state=state)
+>               assert background in (app.ui_palette["panel"], app.ui_palette["disabled"])
+E               AssertionError: assert '' in ('#262C36', '#242A33')
+
+tests\test_servo_debug_theme.py:42: AssertionError
+_____________________________ test_subtle_borders _____________________________
+
+app = <tools.drone_tcp_panel.DronePanel object .>
+
+    def test_subtle_borders(app):
+        style = ttk.Style(app)
+        widgets = [widget for widget in descendants(_page(app))
+                   if isinstance(widget, (ttk.Notebook, ttk.Scale))]
+        assert len(widgets) == 3
+        colors = {app.ui_palette[key] for key in ("border", "border_strong", "raised", "panel", "accent")}
+        for widget in widgets:
+            name = str(widget.cget("style"))
+>           assert name.startswith("ServoDebug.")
+E           AssertionError: assert False
+E            +  where False = <built-in method startswith of str object at 0x00007FFE07CC8D00>('ServoDebug.')
+E            +    where <built-in method startswith of str object at 0x00007FFE07CC8D00> = ''.startswith
+
+tests\test_servo_debug_theme.py:55: AssertionError
+Physical serial open attempts: 0
+=========================== short test summary info ===========================
+FAILED tests/test_servo_debug_theme.py::test_dark_spinboxes - AssertionError:...
+FAILED tests/test_servo_debug_theme.py::test_subtle_borders - AssertionError:...
+2 failed, 1 passed in 2.28s

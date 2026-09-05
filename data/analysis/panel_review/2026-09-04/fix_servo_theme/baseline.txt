@@ -1,0 +1,46 @@
+FF.                                                                      [100%]
+================================== FAILURES ===================================
+____________ test_servo_spinboxes_have_dark_fields_in_every_state _____________
+
+app = <tools.drone_tcp_panel.DronePanel object .>
+
+    def test_servo_spinboxes_have_dark_fields_in_every_state(app):
+        style = ttk.Style(app)
+>       boxes = [widget for widget in descendants(app.servo_tab) if isinstance(widget, ttk.Spinbox)]
+
+tests\test_servo_debug_theme.py:30: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <tools.drone_tcp_panel.DronePanel object .>, attr = 'servo_tab'
+
+    def __getattr__(self, attr):
+        "Delegate attribute access to the interpreter object"
+>       return getattr(self.tk, attr)
+E       AttributeError: '_tkinter.tkapp' object has no attribute 'servo_tab'
+
+D:\ANACON\Lib\tkinter\__init__.py:2433: AttributeError
+________ test_servo_tabs_and_sliders_have_no_default_white_highlights _________
+
+app = <tools.drone_tcp_panel.DronePanel object .>
+
+    def test_servo_tabs_and_sliders_have_no_default_white_highlights(app):
+        style = ttk.Style(app)
+>       widgets = [widget for widget in descendants(app.servo_tab)
+                   if isinstance(widget, (ttk.Notebook, ttk.Scale))]
+
+tests\test_servo_debug_theme.py:44: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <tools.drone_tcp_panel.DronePanel object .>, attr = 'servo_tab'
+
+    def __getattr__(self, attr):
+        "Delegate attribute access to the interpreter object"
+>       return getattr(self.tk, attr)
+E       AttributeError: '_tkinter.tkapp' object has no attribute 'servo_tab'
+
+D:\ANACON\Lib\tkinter\__init__.py:2433: AttributeError
+Physical serial open attempts: 0
+=========================== short test summary info ===========================
+FAILED tests/test_servo_debug_theme.py::test_servo_spinboxes_have_dark_fields_in_every_state
+FAILED tests/test_servo_debug_theme.py::test_servo_tabs_and_sliders_have_no_default_white_highlights
+2 failed, 1 passed in 2.19s
