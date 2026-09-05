@@ -14,6 +14,8 @@
 from __future__ import annotations
 
 import subprocess
+import sys
+import json
 from pathlib import Path
 
 import pytest
@@ -254,23 +256,45 @@ def test_scrollable_content_is_not_counted_as_unreachable(offline) -> None:
 
 def test_the_simulated_dpi_scale_actually_changes_the_layout(tmp_path) -> None:
     """三档缩放必须真的作用到布局，否则矩阵的 125/150% 是空跑。"""
-    with panel_qa.isolated_environment(tmp_path):
-        try:
-            session = panel_qa.OfflinePanel.launch(scale=1.5, size=(1366, 768))
-        except Exception as exc:
-            if not panel_qa.is_display_unavailable(exc):
-                raise                            # 装置坏了就要红，不许伪装成无显示
-            pytest.skip(f"Tk display unavailable: {exc}")   # pragma: no cover
-        try:
-            assert session.scale == 1.5
-            assert session.panel.ui_dpi_scale == 1.5
-            font = session.panel.tk.call("font", "actual", "TkDefaultFont", "-size")
-            assert isinstance(font, int)
-            reports = session.probe_geometry(sizes=((1080, 700),))
-            assert len(reports) == 18
-            assert all(r.scale == 1.5 for r in reports)
-        finally:
-            session.destroy()
+    child = """
+import json
+from pathlib import Path
+import tempfile
+from tools import panel_qa
+
+with tempfile.TemporaryDirectory() as root:
+    with panel_qa.hardware_guards() as guard:
+        with panel_qa.isolated_environment(Path(root)):
+            try:
+                session = panel_qa.OfflinePanel.launch(scale=1.5, size=(1366, 768))
+            except BaseException as exc:
+                if panel_qa.is_display_unavailable(exc):
+                    print("DISPLAY_UNAVAILABLE")
+                    raise SystemExit(0)
+                raise
+            try:
+                font = session.panel.tk.call("font", "actual", "TkDefaultFont", "-size")
+                reports = session.probe_geometry(sizes=((1080, 700),))
+                print(json.dumps({"scale": session.scale, "dpi": session.panel.ui_dpi_scale,
+                                  "font": font, "reports": len(reports),
+                                  "scales": [report.scale for report in reports],
+                                  "clean": guard.clean}))
+            finally:
+                session.destroy()
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", child], cwd=ROOT,
+        capture_output=True, text=True, timeout=120,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    if "DISPLAY_UNAVAILABLE" in result.stdout:
+        pytest.skip("Tk display unavailable")
+    payload = json.loads(result.stdout.strip().splitlines()[-1])
+    assert payload["scale"] == 1.5
+    assert payload["dpi"] == 1.5
+    assert isinstance(payload["font"], int)
+    assert payload["reports"] == 18
+    assert all(scale == 1.5 for scale in payload["scales"])
 
 
 def test_a_qa_session_leaves_the_historical_calibration_evidence_untouched(
