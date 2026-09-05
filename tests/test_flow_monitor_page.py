@@ -310,6 +310,9 @@ def test_plot_redraw_is_throttled_and_skipped_while_hidden(app, monkeypatch) -> 
     assert draws == [], "页面不可见时不重绘"
 
     select_flow_tab(app)
+    # Revealing a matplotlib canvas may schedule its own backend resize repaint;
+    # the contract below measures the page's throttled data redraws.
+    draws.clear()
     app._imu_poll_tick()
     app.clock.advance(1.0)
     app._flow_monitor_tick()
