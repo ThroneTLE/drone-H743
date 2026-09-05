@@ -1,0 +1,67 @@
+........................................................................ [  7%]
+........................................................................ [ 14%]
+........................................................................ [ 21%]
+........................................................................ [ 28%]
+........................................................................ [ 35%]
+........................................................................ [ 42%]
+........................................................................ [ 49%]
+........................................................................ [ 56%]
+........................................................................ [ 63%]
+........................................................................ [ 70%]
+........................................................................ [ 77%]
+......................................F................................. [ 84%]
+........................................................................ [ 91%]
+............F........................................................... [ 98%]
+..................                                                       [100%]
+================================== FAILURES ===================================
+___________ test_redraw_benchmark_eight_curves_ten_thousand_points ____________
+
+_panel = <tools.drone_tcp_panel.DronePanel object .>
+
+    def test_redraw_benchmark_eight_curves_ten_thousand_points(_panel) -> None:
+        """8 ���� �� 10 k �㣬�����ػ� ��5 ms��R-T1-3 �оݣ�������Ҫ��ס����"""
+        canvas = scope_widget.ScopeCanvas(_panel, width=900, height=320)
+        canvas.canvas.pack()
+        canvas.set_curves([(index, f"ch{index}") for index in range(8)])
+        canvas.set_window(60.0)
+        times = np.linspace(0.0, 60.0, 10000, dtype=np.float64)
+        series = {
+            index: (times, np.sin(times * (index + 1)).astype(np.float32))
+            for index in range(8)
+        }
+    
+        canvas.render(series)          # Ԥ�ȣ���һ�λὨ grid item
+        _panel.update_idletasks()
+    
+        samples = []
+        for _ in range(15):
+            start = time.perf_counter()
+            canvas.render(series)
+            samples.append(time.perf_counter() - start)
+        samples.sort()
+        median = samples[len(samples) // 2]
+        # �оݿ�����λ�����������һ�Σ����һ�ο��Կ���������Ҳ�����һ��
+        # ������β���� GC �Ͳ���ϵͳ���ȣ�������δ��룩��
+>       assert median <= 0.005, (
+            f"median redraw {median * 1000:.2f} ms "
+            f"(best {samples[0] * 1000:.2f}, worst {samples[-1] * 1000:.2f})"
+        )
+E       AssertionError: median redraw 5.98 ms (best 2.29, worst 8.15)
+E       assert 0.0059849999961443245 <= 0.005
+
+tests\test_scope_canvas.py:86: AssertionError
+___________ test_transport_change_is_confined_to_the_binary_branch ____________
+
+    def test_transport_change_is_confined_to_the_binary_branch() -> None:
+        source = (ROOT / "tools" / "panel_lib" / "transport.py").read_text(encoding="utf-8")
+    
+        # �ı�·��һ��δ�ģ�$X ֡ͷ�������ֽڡ�CRC ��������
+>       assert 'self.rx_queue.put(("proto", function, text))' in source
+E       assert 'self.rx_queue.put(("proto", function, text))' in '"""Transport primitives and serial-device reconnect helpers for the panel."""\n\nfrom __future__ import annotations\n...ngerprint",\n    "serial_port_identity",\n    "udp_payload_is_probably_text",\n    "wait_for_application_serial",\n]\n'
+
+tests\test_telem_stream_decoder.py:468: AssertionError
+Physical serial open attempts: 0
+=========================== short test summary info ===========================
+FAILED tests/test_scope_canvas.py::test_redraw_benchmark_eight_curves_ten_thousand_points
+FAILED tests/test_telem_stream_decoder.py::test_transport_change_is_confined_to_the_binary_branch
+2 failed, 1024 passed in 105.21s (0:01:45)

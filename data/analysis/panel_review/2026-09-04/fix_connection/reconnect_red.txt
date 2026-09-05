@@ -1,0 +1,64 @@
+FF                                                                       [100%]
+================================== FAILURES ===================================
+____________ test_reopen_waits_off_ui_for_previous_handle_to_close ____________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000021BFD093470>
+
+    def test_reopen_waits_off_ui_for_previous_handle_to_close(monkeypatch):
+        old, new = Port(), Port()
+        close_release, opened = threading.Event(), threading.Event()
+        original_close = old.close
+    
+        def close():
+            close_release.wait(2)
+            original_close()
+    
+        old.close = close
+        transport = connect(monkeypatch, old)
+    
+        def reopen(*args, **kwargs):
+            assert not old.is_open, "reopen raced the still-owned serial handle"
+            opened.set()
+            return new
+    
+        monkeypatch.setattr(tr.serial, "Serial", reopen)
+        try:
+            start = time.perf_counter()
+            transport.start("FAKE", 115200)
+            assert time.perf_counter() - start < .1
+            assert not opened.is_set()
+            close_release.set()
+>           assert opened.wait(1), "reconnect failed instead of waiting for close"
+E           AssertionError: reconnect failed instead of waiting for close
+E           assert False
+E            +  where False = <bound method Event.wait of <threading.Event at 0x21bfd093860: unset>>(1)
+E            +    where <bound method Event.wait of <threading.Event at 0x21bfd093860: unset>> = <threading.Event at 0x21bfd093860: unset>.wait
+
+tests\test_panel_connection_reliability.py:300: AssertionError
+_____ test_old_connection_notifications_do_not_probe_or_reset_new_session _____
+
+app = <tools.drone_tcp_panel.DronePanel object .>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000021BFF818A10>
+
+    def test_old_connection_notifications_do_not_probe_or_reset_new_session(app, monkeypatch):
+        old = Port()
+        transport = connect(monkeypatch, old)
+        app.serial_transport = app.transport = transport
+        app.rx_queue = transport.rx_queue
+        try:
+            transport.stop()
+            transport._connection_generation += 1
+            transport.port = Port()  # New connection already probed before old events drain.
+            app.structured_protocol_supported = True
+            probes = []
+            monkeypatch.setattr(app, "_begin_protocol_probe", lambda: probes.append(True))
+            app._drain_rx()
+>           assert not probes
+E           assert not [True]
+
+tests\test_panel_connection_reliability.py:319: AssertionError
+Physical serial open attempts: 0
+=========================== short test summary info ===========================
+FAILED tests/test_panel_connection_reliability.py::test_reopen_waits_off_ui_for_previous_handle_to_close
+FAILED tests/test_panel_connection_reliability.py::test_old_connection_notifications_do_not_probe_or_reset_new_session
+2 failed, 20 deselected in 3.24s

@@ -9,6 +9,9 @@ import time
 from abc import ABC, abstractmethod
 from typing import Callable, Sequence
 
+from .connection_state import ReceivedMessage, receive_context
+from .serial_session import SerialSessionMixin
+
 from .proto import (
     PROTO_BINARY_FUNCTIONS,
     PROTO_DIR_FROM_FC,
@@ -251,6 +254,11 @@ def build_proto_frame(direction: int, function: int, payload: bytes) -> bytes:
 class TransportBase(ABC):
     def __init__(self, rx_queue: "queue.Queue[str]") -> None:
         self.rx_queue = rx_queue
+        self._connection_generation = 0
+
+    @property
+    def connection_generation(self) -> int:
+        return self._connection_generation
 
     @property
     @abstractmethod
@@ -309,7 +317,13 @@ class TransportBase(ABC):
             return
         sink(function, payload)
 
-    def _consume_buffer(self, buffer: bytearray) -> None:
+    def _consume_buffer(self, buffer: bytearray, *, context=None) -> None:
+        if context is None and getattr(self, "_stamp_received", False):
+            context = receive_context(self)
+
+        def emit(payload):
+            self.rx_queue.put(ReceivedMessage(payload, context) if context is not None else payload)
+
         while buffer:
             if len(buffer) >= 9 and buffer[0:2] == PROTO_HEADER:
                 if buffer[2] not in (PROTO_DIR_TO_FC, PROTO_DIR_FROM_FC):
@@ -341,13 +355,14 @@ class TransportBase(ABC):
 
                     if frame[2] == PROTO_DIR_FROM_FC:
                         if function in PROTO_BINARY_FUNCTIONS:
-                            self._deliver_binary(function, payload)
+                            if context is None or context.is_current(self):
+                                self._deliver_binary(function, payload)
                             continue
                         text = payload.decode("utf-8", errors="replace").rstrip("\r\n")
-                        self.rx_queue.put(("proto", function, text))
+                        emit(("proto", function, text))
                     else:
                         shown = payload.decode("utf-8", errors="replace").replace("\r", "\\r").replace("\n", "\\n")
-                        self.rx_queue.put(f"RXRAW fn=0x{function:04X} len={len(payload)} data={shown}")
+                        emit(f"RXRAW fn=0x{function:04X} len={len(payload)} data={shown}")
                     continue
 
                 del buffer[0]
@@ -358,20 +373,22 @@ class TransportBase(ABC):
             if newline_index != -1 and (frame_index == -1 or newline_index < frame_index):
                 line = bytes(buffer[:newline_index]).rstrip(b"\r")
                 del buffer[: newline_index + 1]
-                self.rx_queue.put(line.decode("utf-8", errors="replace"))
+                emit(line.decode("utf-8", errors="replace"))
                 continue
 
             if frame_index > 0:
                 raw = bytes(buffer[:frame_index])
                 del buffer[:frame_index]
                 shown = raw.decode("utf-8", errors="replace").replace("\r", "\\r").replace("\n", "\\n")
-                self.rx_queue.put(f"RXRAW len={len(raw)} data={shown}")
+                emit(f"RXRAW len={len(raw)} data={shown}")
                 continue
 
             break
 
 
 class TcpTransport(TransportBase):
+    _stamp_received = True
+
     def __init__(self, rx_queue: "queue.Queue[str]") -> None:
         super().__init__(rx_queue)
         self.sock: socket.socket | None = None
@@ -407,6 +424,7 @@ class TcpTransport(TransportBase):
             pass
         with self.lock:
             sockets = [self.client, self.sock]
+            self._connection_generation += 1
             self.client = None
             self.sock = None
         for item in sockets:
@@ -490,12 +508,14 @@ class TcpTransport(TransportBase):
                     except OSError:
                         pass
                 self.client = client
+                self._connection_generation += 1
+                generation = self._connection_generation
             self.rx_queue.put(f"[上位机] 板子已连接: {addr[0]}:{addr[1]}")
-            self._read_client(client)
+            self._read_client(client, generation)
 
         self.rx_queue.put("[上位机] TCP 服务已停止")
 
-    def _read_client(self, client: socket.socket) -> None:
+    def _read_client(self, client: socket.socket, generation: int) -> None:
         client.settimeout(0.5)
         buffer = bytearray()
         while not self.stop_event.is_set():
@@ -508,10 +528,11 @@ class TcpTransport(TransportBase):
             if not data:
                 break
             buffer += data
-            self._consume_buffer(buffer)
+            self._consume_buffer(buffer, context=receive_context(self, generation=generation))
         with self.lock:
             if self.client is client:
                 self.client = None
+                self._connection_generation += 1
         try:
             client.close()
         except OSError:
@@ -520,6 +541,8 @@ class TcpTransport(TransportBase):
 
 
 class UdpTransport(TransportBase):
+    _stamp_received = True
+
     def __init__(self, rx_queue: "queue.Queue[str]") -> None:
         super().__init__(rx_queue)
         self.sock: socket.socket | None = None
@@ -548,8 +571,10 @@ class UdpTransport(TransportBase):
         with self.lock:
             self.sock = sock
             self.remote = (module_ip, module_port)
+            self._connection_generation += 1
+            generation = self._connection_generation
         self.rx_queue.put(f"[host] UDP ready local={bind_ip}:{local_port} module={module_ip}:{module_port}")
-        self.thread = threading.Thread(target=self._read_loop, args=(sock,), daemon=True)
+        self.thread = threading.Thread(target=self._read_loop, args=(sock, generation), daemon=True)
         self.thread.start()
 
     def stop(self) -> None:
@@ -558,6 +583,7 @@ class UdpTransport(TransportBase):
             sock = self.sock
             self.sock = None
             self.remote = None
+            self._connection_generation += 1
         if sock is not None:
             try:
                 sock.close()
@@ -586,7 +612,7 @@ class UdpTransport(TransportBase):
             self.rx_queue.put(f"[host] UDP send failed: {exc}")
             return False
 
-    def _read_loop(self, sock: socket.socket) -> None:
+    def _read_loop(self, sock: socket.socket, generation: int) -> None:
         while not self.stop_event.is_set():
             try:
                 data, addr = sock.recvfrom(4096)
@@ -598,7 +624,7 @@ class UdpTransport(TransportBase):
                 self.rx_queue.put(("udp_raw", addr[0], addr[1], len(data)))
                 continue
             buffer = bytearray(data)
-            self._consume_buffer(buffer)
+            self._consume_buffer(buffer, context=receive_context(self, generation=generation))
             if buffer:
                 shown = bytes(buffer).decode("utf-8", errors="replace").replace("\r", "\\r").replace("\n", "\\n")
                 self.rx_queue.put(f"RXRAW len={len(buffer)} data={shown}")
@@ -606,178 +632,12 @@ class UdpTransport(TransportBase):
             if self.sock is sock:
                 self.sock = None
                 self.remote = None
+                self._connection_generation += 1
         self.rx_queue.put("[host] UDP stopped")
 
 
-class SerialTransport(TransportBase):
-    def __init__(self, rx_queue: "queue.Queue[str]") -> None:
-        super().__init__(rx_queue)
-        self.port: "serial.Serial | None" = None
-        self.thread: threading.Thread | None = None
-        self._sender_thread: threading.Thread | None = None
-        self._send_queue: "queue.Queue[tuple[int, bytes] | None]" = queue.Queue()
-        self._send_generation = 0
-        self._connection_generation = 0
-        self._active_port: str | None = None
-        self.stop_event = threading.Event()
-        self.lock = threading.Lock()
-
-    @property
-    def is_connected(self) -> bool:
-        with self.lock:
-            return self.port is not None and bool(self.port.is_open)
-
-    @property
-    def active_port(self) -> str | None:
-        with self.lock:
-            return self._active_port
-
-    @property
-    def connection_generation(self) -> int:
-        with self.lock:
-            return self._connection_generation
-
-    def start(self, port_name: str, baudrate: int) -> None:
-        if not HAS_PYSERIAL or serial is None:
-            self.rx_queue.put(f"[上位机] 串口模式不可用: {PYSERIAL_ERROR or '未安装 pyserial'}")
-            return
-        self.stop()
-        self._send_queue = queue.Queue()
-        with self.lock:
-            self._send_generation += 1
-        self.stop_event.clear()
-        try:
-            opened = serial.Serial(port_name, baudrate=baudrate, timeout=0.2, write_timeout=0.5)
-        except Exception as exc:
-            self.rx_queue.put(f"[上位机] 打开串口失败: {exc}")
-            return
-        with self.lock:
-            self.port = opened
-            self._active_port = str(port_name)
-            self._connection_generation += 1
-        self.rx_queue.put(f"[上位机] 串口已连接: {port_name} @ {baudrate}")
-        self._sender_thread = threading.Thread(target=self._sender_loop, daemon=True)
-        self._sender_thread.start()
-        self.thread = threading.Thread(target=self._read_loop, args=(opened,), daemon=True)
-        self.thread.start()
-
-    def stop(self) -> None:
-        self.stop_event.set()
-        try:
-            self._send_queue.put_nowait(None)
-        except queue.Full:
-            pass
-        with self.lock:
-            port = self.port
-            self.port = None
-            self._active_port = None
-            self._connection_generation += 1
-        if port is not None:
-            self._safe_close(port)
-
-    @staticmethod
-    def _safe_close(port) -> None:
-        try:
-            if hasattr(port, 'cancel_read'):
-                port.cancel_read()
-        except Exception:
-            pass
-        try:
-            if hasattr(port, 'cancel_write'):
-                port.cancel_write()
-        except Exception:
-            pass
-        try:
-            port.close()
-        except Exception:
-            pass
-
-    def send_frame(self, function: int, payload: bytes = b"") -> bool:
-        if SERIAL_ASCII_COMPAT_MODE:
-            try:
-                text = payload.decode("utf-8") if payload else ""
-            except UnicodeDecodeError:
-                text = ""
-            if text:
-                return self.send_line(text)
-        frame = build_proto_frame(PROTO_DIR_TO_FC, function, payload)
-        with self.lock:
-            if self.port is None or not self.port.is_open:
-                return False
-            generation = self._send_generation
-        try:
-            self._send_queue.put_nowait((generation, frame))
-            return True
-        except queue.Full:
-            return False
-
-    def send_line(self, line: str) -> bool:
-        data = (line.rstrip("\r\n") + "\r\n").encode("utf-8")
-        with self.lock:
-            if self.port is None or not self.port.is_open:
-                return False
-            generation = self._send_generation
-        try:
-            self._send_queue.put_nowait((generation, data))
-            return True
-        except queue.Full:
-            return False
-
-    def cancel_pending_sends(self) -> None:
-        with self.lock:
-            self._send_generation += 1
-        try:
-            while True:
-                self._send_queue.get_nowait()
-        except queue.Empty:
-            return
-
-    def _sender_loop(self) -> None:
-        while not self.stop_event.is_set():
-            try:
-                item = self._send_queue.get(timeout=0.3)
-            except queue.Empty:
-                continue
-            if item is None:
-                break
-            generation, frame = item
-            with self.lock:
-                if generation != self._send_generation:
-                    continue
-                port = self.port
-                if port is None or not port.is_open:
-                    continue
-                try:
-                    written = port.write(frame)
-                    port.flush()
-                    if SERIAL_TX_DEBUG_ENABLED:
-                        shown = frame.decode("utf-8", errors="replace").replace("\r", "\\r").replace("\n", "\\n")
-                        self.rx_queue.put(f"[host] serial tx bytes={written} data={shown}")
-                except Exception as exc:
-                    self.rx_queue.put(f"[上位机] 串口发送失败: {exc}")
-
-    def _read_loop(self, port: "serial.Serial") -> None:
-        buffer = bytearray()
-        while not self.stop_event.is_set():
-            try:
-                if not port.is_open:
-                    break
-                waiting = port.in_waiting
-                chunk = port.read(waiting or 1)
-            except Exception:
-                break
-            if not chunk:
-                continue
-            buffer += chunk
-            self._consume_buffer(buffer)
-        with self.lock:
-            was_current = self.port is port
-            if self.port is port:
-                self.port = None
-                self._active_port = None
-                self._connection_generation += 1
-        if was_current:
-            self.rx_queue.put("[上位机] 串口已断开")
+class SerialTransport(SerialSessionMixin, TransportBase):
+    """Public transport API; serial session lifecycle lives in serial_session.py."""
 
 
 __all__ = [

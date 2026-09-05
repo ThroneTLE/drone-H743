@@ -33,7 +33,7 @@ try:
     from .panel_lib import plotting as _panel_plotting
     from .panel_lib import proto as _panel_proto
     from .panel_lib import state as _panel_state
-    from .panel_lib import transport as _panel_transport
+    from .panel_lib import transport as _panel_transport, rx_dispatch as _panel_rx
 except ImportError:  # Allows direct import and: python tools/drone_tcp_panel.py
     try:
         from tools.panel_lib import evidence as _panel_evidence
@@ -50,7 +50,7 @@ except ImportError:  # Allows direct import and: python tools/drone_tcp_panel.py
         from tools.panel_lib import plotting as _panel_plotting
         from tools.panel_lib import proto as _panel_proto
         from tools.panel_lib import state as _panel_state
-        from tools.panel_lib import transport as _panel_transport
+        from tools.panel_lib import transport as _panel_transport, rx_dispatch as _panel_rx
     except ImportError:
         from panel_lib import evidence as _panel_evidence
         from panel_lib.pages import acceptance_v2 as _panel_acceptance_v2
@@ -66,7 +66,7 @@ except ImportError:  # Allows direct import and: python tools/drone_tcp_panel.py
         from panel_lib import plotting as _panel_plotting
         from panel_lib import proto as _panel_proto
         from panel_lib import state as _panel_state
-        from panel_lib import transport as _panel_transport
+        from panel_lib import transport as _panel_transport, rx_dispatch as _panel_rx
 
 # Compatibility forwarding: existing callers may keep importing these names from
 # tools.drone_tcp_panel while transport.py owns their implementations.
@@ -2291,6 +2291,8 @@ class DronePanel(ValidationV0PageMixin, EvidenceMixin, AcceptanceV2PageMixin, Vi
         return True, f"{active_port} · {identity_reason}"
 
     def _firmware_safety_advisory(self) -> tuple[str, str]:
+        if not _panel_rx.snapshot_is_current(self):
+            return "unknown", "飞控状态未知（快照来自已断开的连接）"
         age_s = (
             time.monotonic() - self.validation_latest_host_time
             if self.validation_latest_host_time > 0.0
@@ -5440,29 +5442,7 @@ class DronePanel(ValidationV0PageMixin, EvidenceMixin, AcceptanceV2PageMixin, Vi
         self.after(1000, self._check_link_health)
 
     def _drain_rx(self) -> None:
-        processed = 0
-        try:
-            while processed < RX_DRAIN_BATCH_SIZE:
-                item = self.rx_queue.get_nowait()
-                processed += 1
-                if isinstance(item, tuple) and len(item) == 3 and item[0] == "proto":
-                    _tag, function, text = item
-                    self._handle_proto_frame(int(function), str(text))
-                    continue
-                if isinstance(item, tuple) and len(item) == 4 and item[0] == "udp_raw":
-                    _tag, host, port, size = item
-                    self.udp_raw_hidden_count += 1
-                    self.udp_raw_last_note = f"hidden UDP binary frames={self.udp_raw_hidden_count} last={host}:{port} {size}B"
-                    self.ident_link_var.set(self.udp_raw_last_note)
-                    continue
-
-                line = str(item)
-                self._append(line)
-                self._handle_board_line(line)
-        except queue.Empty:
-            pass
-        delay_ms = RX_DRAIN_BUSY_MS if not self.rx_queue.empty() else RX_DRAIN_IDLE_MS
-        self.after(delay_ms, self._drain_rx)
+        _panel_rx.drain_rx(self, RX_DRAIN_BATCH_SIZE, RX_DRAIN_BUSY_MS, RX_DRAIN_IDLE_MS)
 
     def _on_close(self) -> None:
         if self.firmware_programming:

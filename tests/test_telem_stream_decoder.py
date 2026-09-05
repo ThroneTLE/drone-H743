@@ -464,8 +464,9 @@ def test_ring_clear_resets_every_channel() -> None:
 def test_transport_change_is_confined_to_the_binary_branch() -> None:
     source = (ROOT / "tools" / "panel_lib" / "transport.py").read_text(encoding="utf-8")
 
-    # 文本路径一字未改：$X 帧头、方向字节、CRC 都不动。
-    assert 'self.rx_queue.put(("proto", function, text))' in source
+    # H2 adds host-only receive provenance; text tuple and wire CRC stay intact.
+    assert 'emit(("proto", function, text))' in source
+    assert 'ReceivedMessage(payload, context)' in source
     assert "proto_crc8_dvb_s2(body) == frame[-1]" in source
     assert "if function in PROTO_BINARY_FUNCTIONS:" in source
 

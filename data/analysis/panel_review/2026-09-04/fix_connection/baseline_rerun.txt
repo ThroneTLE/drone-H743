@@ -1,0 +1,131 @@
+FFFFsFF                                                                  [100%]
+================================== FAILURES ===================================
+________ test_slow_io_does_not_block_ui_queries_cancel_or_stop[write] _________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000160AF04B200>
+phase = 'write'
+
+    @pytest.mark.parametrize("phase", ["write", "flush"])
+    def test_slow_io_does_not_block_ui_queries_cancel_or_stop(monkeypatch, phase):
+        port = Port(slow_write=phase == "write", pending=phase == "flush")
+        transport = connect(monkeypatch, port)
+        try:
+            assert transport.send_line("PING")
+            assert port.entered.wait(1)
+            # Bound baseline failure too: old code holds the UI lock until release.
+            timer = threading.Timer(.35, port.release.set)
+            timer.start()
+            start = time.perf_counter()
+            assert transport.is_connected
+            assert transport.active_port == "FAKE"
+            transport.cancel_pending_sends()
+            transport.stop()
+            elapsed = time.perf_counter() - start
+>           assert elapsed < .1, f"UI blocked for {elapsed:.3f}s during {phase}"
+E           AssertionError: UI blocked for 0.357s during write
+E           assert 0.3565220999880694 < 0.1
+
+tests\test_panel_connection_reliability.py:90: AssertionError
+________ test_slow_io_does_not_block_ui_queries_cancel_or_stop[flush] _________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000160AF048A10>
+phase = 'flush'
+
+    @pytest.mark.parametrize("phase", ["write", "flush"])
+    def test_slow_io_does_not_block_ui_queries_cancel_or_stop(monkeypatch, phase):
+        port = Port(slow_write=phase == "write", pending=phase == "flush")
+        transport = connect(monkeypatch, port)
+        try:
+            assert transport.send_line("PING")
+            assert port.entered.wait(1)
+            # Bound baseline failure too: old code holds the UI lock until release.
+            timer = threading.Timer(.35, port.release.set)
+            timer.start()
+            start = time.perf_counter()
+            assert transport.is_connected
+            assert transport.active_port == "FAKE"
+            transport.cancel_pending_sends()
+            transport.stop()
+            elapsed = time.perf_counter() - start
+>           assert elapsed < .1, f"UI blocked for {elapsed:.3f}s during {phase}"
+E           AssertionError: UI blocked for 0.356s during flush
+E           assert 0.3559748999978183 < 0.1
+
+tests\test_panel_connection_reliability.py:90: AssertionError
+_____________ test_read_failure_closes_port_and_preserves_reason ______________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000160AF0B8E60>
+
+    def test_read_failure_closes_port_and_preserves_reason(monkeypatch):
+        port = Port(read_error=True)
+        transport = connect(monkeypatch, port)
+        try:
+            transport.thread.join(1)
+>           assert port.closed.wait(.1), "reader exited without closing its port"
+E           AssertionError: reader exited without closing its port
+E           assert False
+E            +  where False = <bound method Event.wait of <threading.Event at 0x160af0b8fe0: unset>>(0.1)
+E            +    where <bound method Event.wait of <threading.Event at 0x160af0b8fe0: unset>> = <threading.Event at 0x160af0b8fe0: unset>.wait
+E            +      where <threading.Event at 0x160af0b8fe0: unset> = <test_panel_connection_reliability.Port object at 0x00000160AF0B8D40>.closed
+
+tests\test_panel_connection_reliability.py:103: AssertionError
+_______ test_backlog_keeps_receive_time_and_fails_existing_safety_gate ________
+
+app = <tools.drone_tcp_panel.DronePanel object .>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000160AF0B9EE0>
+
+    def test_backlog_keeps_receive_time_and_fails_existing_safety_gate(app, monkeypatch):
+        clock = [100.0]
+        monkeypatch.setattr(tr.time, "monotonic", lambda: clock[0])
+        app.serial_transport._consume_buffer(bytearray("".join(imu_lines()).encode()))
+        clock[0] += 2.2
+        app._drain_rx()
+>       assert app.validation_latest_host_time == 100.0
+E       assert 102.2 == 100.0
+E        +  where 102.2 = <tools.drone_tcp_panel.DronePanel object .>.validation_latest_host_time
+
+tests\test_panel_connection_reliability.py:149: AssertionError
+_____________ test_split_snapshot_retains_earliest_fragment_time ______________
+
+app = <tools.drone_tcp_panel.DronePanel object .>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000160B5AF5640>
+
+    def test_split_snapshot_retains_earliest_fragment_time(app, monkeypatch):
+        clock = [100.0]
+        monkeypatch.setattr(tr.time, "monotonic", lambda: clock[0])
+        head, body = imu_lines()
+        app.serial_transport._consume_buffer(bytearray(head.encode()))
+        app._drain_rx()
+        clock[0] += 2.2
+        app.serial_transport._consume_buffer(bytearray(body.encode()))
+        app._drain_rx()
+>       assert app.validation_latest_host_time == 100.0
+E       assert 102.2 == 100.0
+E        +  where 102.2 = <tools.drone_tcp_panel.DronePanel object .>.validation_latest_host_time
+
+tests\test_panel_connection_reliability.py:171: AssertionError
+______ test_same_sequence_fragments_from_different_sessions_do_not_merge ______
+
+app = <tools.drone_tcp_panel.DronePanel object .>
+
+    def test_same_sequence_fragments_from_different_sessions_do_not_merge(app):
+        head, body = imu_lines()
+        app.serial_transport._consume_buffer(bytearray(head.encode()))
+        app._drain_rx()
+        app.serial_transport._connection_generation = 2
+        app.serial_transport._consume_buffer(bytearray(body.encode()))
+        app._drain_rx()
+>       assert app.validation_latest_host_time == 0.0
+E       assert 80881.734 == 0.0
+E        +  where 80881.734 = <tools.drone_tcp_panel.DronePanel object .>.validation_latest_host_time
+
+tests\test_panel_connection_reliability.py:182: AssertionError
+Physical serial open attempts: 0
+=========================== short test summary info ===========================
+FAILED tests/test_panel_connection_reliability.py::test_slow_io_does_not_block_ui_queries_cancel_or_stop[write]
+FAILED tests/test_panel_connection_reliability.py::test_slow_io_does_not_block_ui_queries_cancel_or_stop[flush]
+FAILED tests/test_panel_connection_reliability.py::test_read_failure_closes_port_and_preserves_reason
+FAILED tests/test_panel_connection_reliability.py::test_backlog_keeps_receive_time_and_fails_existing_safety_gate
+FAILED tests/test_panel_connection_reliability.py::test_split_snapshot_retains_earliest_fragment_time
+FAILED tests/test_panel_connection_reliability.py::test_same_sequence_fragments_from_different_sessions_do_not_merge
+6 failed, 1 skipped in 7.46s

@@ -1,0 +1,256 @@
+.....s.....F...F............................FF............               [100%]
+================================== FAILURES ===================================
+___ test_v0_session_invalidates_transport_write_queues_at_the_send_boundary ___
+
+    def test_v0_session_invalidates_transport_write_queues_at_the_send_boundary() -> None:
+        rx: "queue.Queue[str]" = queue.Queue()
+        tcp = panel.TcpTransport(rx)
+        serial = panel.SerialTransport(rx)
+        tcp._send_queue.put_nowait((tcp._send_generation, b"unsafe-tcp"))
+        serial._send_queue.put_nowait((serial._send_generation, b"unsafe-serial"))
+    
+        tcp.cancel_pending_sends()
+        serial.cancel_pending_sends()
+    
+        assert tcp._send_queue.empty()
+        assert serial._send_queue.empty()
+        assert tcp._send_generation == 1
+        assert serial._send_generation == 1
+>       assert TRANSPORT_SOURCE.count("generation != self._send_generation") == 2
+E       assert 1 == 2
+E        +  where 1 = <built-in method count of str object at 0x0000029328110EB0>('generation != self._send_generation')
+E        +    where <built-in method count of str object at 0x0000029328110EB0> = '"""Transport primitives and serial-device reconnect helpers for the panel."""\n\nfrom __future__ import annotations\n...ngerprint",\n    "serial_port_identity",\n    "udp_payload_is_probably_text",\n    "wait_for_application_serial",\n]\n'.count
+
+tests\test_drone_validation_v0.py:304: AssertionError
+____________ test_ui_hot_paths_are_bounded_and_render_is_throttled ____________
+
+    def test_ui_hot_paths_are_bounded_and_render_is_throttled() -> None:
+        drain = function_body(SOURCE, "    def _drain_rx(")
+        append = function_body(SOURCE, "    def _append(")
+        flush = function_body(SOURCE, "    def _flush_log(")
+        imu_tick = function_body(SOURCE, "    def _imu_poll_tick(")
+        ident = function_body(SOURCE, "    def _ident_handle_line(")
+    
+>       assert "processed < RX_DRAIN_BATCH_SIZE" in drain
+E       AssertionError: assert 'processed < RX_DRAIN_BATCH_SIZE' in '    def _drain_rx(self) -> None:\n        _panel_rx.drain_rx(self, RX_DRAIN_BATCH_SIZE, RX_DRAIN_BUSY_MS, RX_DRAIN_IDLE_MS)\n'
+
+tests\test_drone_validation_v0.py:367: AssertionError
+________ test_panel_builds_the_reordered_v0_layout_without_connecting _________
+
+tmp_path = WindowsPath('C:/Users/23259/AppData/Local/Temp/pytest-of-23259/pytest-1194/test_panel_builds_the_reordere0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000002935795DEE0>
+
+    def test_panel_builds_the_reordered_v0_layout_without_connecting(
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        calibration_dir = tmp_path / "calibration" / "airframe"
+        monkeypatch.setattr(panel_evidence, "AIRFRAME_CALIBRATION_DIR", calibration_dir)
+        monkeypatch.setattr(panel, "FIRMWARE_UPDATE_DIR", tmp_path / "firmware_updates")
+        dialog_messages: list[tuple[str, str]] = []
+        monkeypatch.setattr(
+            panel.messagebox,
+            "showwarning",
+            lambda title, message: dialog_messages.append((title, message)),
+        )
+        monkeypatch.setattr(
+            panel.messagebox,
+            "showinfo",
+            lambda title, message: dialog_messages.append((title, message)),
+        )
+        monkeypatch.setattr(panel.messagebox, "askyesno", lambda *_args, **_kwargs: True)
+        try:
+            app = panel.DronePanel()
+        except tk.TclError as exc:
+            pytest.skip(f"Tk display unavailable: {exc}")
+        try:
+            app.update_idletasks()
+            labels = [app.notebook.tab(tab_id, "text") for tab_id in app.notebook.tabs()]
+            # R-T1-5��״̬���ӹ���̨��ΪĬ����ҳ�����߲þ��������ڡ�������֮ǰ��
+            assert labels[:5] == [
+                "״̬����", "����", "У׼", "ά�� �� �̼�����", "������",
+            ]
+            calibration_labels = [
+                app.calibration_notebook.tab(tab_id, "text")
+                for tab_id in app.calibration_notebook.tabs()
+            ]
+            assert calibration_labels == [
+                "����ϵ�뼫��", "IMU ��ƫ�����", "ң����", "�����е�������г�",
+                "��������", "�޽�����������", "�񶯼�����˲�",
+            ]
+            # R-S1-1���ĸ�������ҳ�ս��������������飬���㲻��ƽ�����ǡ�
+            sensor_labels = [
+                app.sensor_notebook.tab(tab_id, "text")
+                for tab_id in app.sensor_notebook.tabs()
+            ]
+            assert sensor_labels == ["��ѹ��", "IMU ���ӣ�������", "GPS / ������", "����"]
+            assert "��ѹ��" not in labels
+            assert "IMU ���ӣ�������" not in labels
+            assert "GPS / ������" not in labels
+            assert str(app.baro_tab.master) == str(app.sensor_notebook)
+            assert str(app.imu_tab.master) == str(app.sensor_notebook)
+            assert str(app.gps_tab.master) == str(app.sensor_notebook)
+            assert str(app.flow_sensor_tab.master) == str(app.sensor_notebook)
+            # �����ġ�����ѹ��ҳ/��̬ҳ/GPS ҳ����������ת��ֱ�� select ��ҳ���� TclError��
+            app._open_gps_tab()
+            assert app.notebook.select() == str(app.sensor_group_tab)
+            assert app.sensor_notebook.select() == str(app.gps_tab)
+            app._open_imu_tab()
+            assert app.sensor_notebook.select() == str(app.imu_tab)
+            app._open_baro_tab()
+            assert app.sensor_notebook.select() == str(app.baro_tab)
+            assert "��� / ����" in labels
+            assert app.firmware_image_var.get().endswith("build\\Debug\\drone-H743.elf")
+            assert str(app.firmware_start_button["state"]) == "disabled"
+            assert str(app.v1_start_button["state"]) == "disabled"
+            # �����Զ��ָ����һ�� V1 �Ự�����������İ�ȡ���ڱ��� data/ ���ݣ�
+            # ֻ����"û�аѲɼ������Ѿ�����"�����󶨿������ϵ���ʷ���ݡ�
+            assert "�ɼ���" not in app.v1_status_var.get()
+            assert str(app.log_box) not in app._body_pane.panes()
+            assert app.validation_stage_tree.exists("level")
+            assert app.validation_stage_tree.exists("positive_yaw")
+            assert tuple(app.validation_stage_tree.get_children()) == tuple(
+                stage.value for stage in panel.VALIDATION_UI_STAGES
+            )
+            assert "��ѡ������ֹ����" in app.validation_firmware_hash_var.get()
+            assert str(app.validation_begin_button["state"]) == "disabled"
+            assert str(app.validation_session_button["style"]) == "Primary.TButton"
+            assert str(app.validation_commit_button["style"]) == "Warning.TButton"
+            assert str(app.v1_apply_button["style"]) == "Warning.TButton"
+            assert str(app.firmware_start_button["style"]) == "Warning.TButton"
+            assert isinstance(app.validation_tab, panel.VerticalScrolledFrame)
+            assert isinstance(app.v1_tab, panel.VerticalScrolledFrame)
+            assert isinstance(app.v2_tab, panel.VerticalScrolledFrame)
+            assert isinstance(app.firmware_tab, panel.VerticalScrolledFrame)
+            assert app.ui_scaling <= app.ui_native_scaling
+    
+            # The two target lines merge only when their sequence matches.
+            app._transport_connected = lambda: True  # type: ignore[method-assign]
+            app.validation_props_removed_var.set(True)
+            app.validation_power_safe_var.set(True)
+            app.validation_session_active = True
+            app._update_imu_line(
+                "IMU sample valid=1 source=stabilizer_snapshot frame=legacy_intermediate "
+                "units=mg_mdps_cdeg contract=1 migration=0x00 ts_ms=1250 seq=1234 "
+                "bias=1 armed=0 m1=1000 m2=1000 temp_cdeg=2500"
+            )
+            app._update_imu_line(
+                "IMU sample seq=1234 ax=100 ay=-200 az=975 gx=1500 gy=-2500 gz=500 "
+                "roll=123 pitch=-456 yaw=789 fusion_flags=0x00 ferr_cdeg=100 "
+                "ftrig_milli=0 fcorr=10"
+            )
+    
+            assert app.validation_samples[panel.ValidationStage.LEVEL] == []
+            assert app.validation_latest_values["frame"] == "legacy_intermediate"
+            assert str(app.validation_begin_button["state"]) == "normal"
+            assert "׼�����" in app.validation_next_action_var.get()
+    
+            app._validation_begin_stage()
+            app._update_imu_line(
+                "IMU sample valid=1 source=stabilizer_snapshot frame=legacy_intermediate "
+                "units=mg_mdps_cdeg contract=1 migration=0x00 ts_ms=1350 seq=1235 "
+                "bias=1 armed=0 m1=1000 m2=1000 temp_cdeg=2500"
+            )
+            app._update_imu_line(
+                "IMU sample seq=1235 ax=100 ay=-200 az=975 gx=1500 gy=-2500 gz=500 "
+                "roll=123 pitch=-456 yaw=789 fusion_flags=0x00 ferr_cdeg=100 "
+                "ftrig_milli=0 fcorr=11"
+            )
+            samples = app.validation_samples[panel.ValidationStage.LEVEL]
+            assert len(samples) == 1
+            assert samples[0].timestamp_s == pytest.approx(1.35)
+            assert samples[0].accel_g == pytest.approx((0.1, -0.2, 0.975))
+            assert len(app.validation_raw_rows) == 1
+            # A later target sample becoming armed must terminate the same stage.
+            app._update_imu_line(
+                "IMU sample valid=1 source=stabilizer_snapshot frame=legacy_intermediate "
+                "units=mg_mdps_cdeg contract=1 migration=0x00 ts_ms=1450 seq=1236 "
+                "bias=1 armed=1 m1=1200 m2=1000 temp_cdeg=2500"
+            )
+            app._update_imu_line(
+                "IMU sample seq=1236 ax=0 ay=0 az=1000 gx=0 gy=0 gz=0 "
+                "roll=0 pitch=0 yaw=0 fusion_flags=0 ferr_cdeg=0 ftrig_milli=0 fcorr=2"
+            )
+    
+            assert app.validation_active_stage is None
+            assert panel.ValidationStage.LEVEL in app.validation_unsupported_stages
+            assert len(app.validation_samples[panel.ValidationStage.LEVEL]) == 1
+            assert app.validation_stage_tree.set("level", "status") == "FAIL"
+            assert "armed=1" in app.validation_session_var.get()
+    
+            # The three reverse static poses stay in the file schema for legacy
+            # evidence, but the standard workflow must not ask the user for them.
+            legacy_optional_stages = {
+                panel.ValidationStage.NOSE_DOWN,
+                panel.ValidationStage.RIGHT_SIDE_UP,
+                panel.ValidationStage.INVERTED,
+            }
+            assert all(
+                not app.validation_stage_tree.exists(stage.value)
+                for stage in legacy_optional_stages
+            )
+            app.validation_stage_tree.selection_set(panel.ValidationStage.NOSE_UP.value)
+            app._on_validation_stage_select()
+    
+            # Every finished/aborted/skipped step is recoverable from a PC-side
+            # session file.  Preserve all old reverse-pose markers even though the
+            # current UI no longer presents those steps.  Loading is historical
+            # review, not target state.
+            app.validation_skipped_stages.update(legacy_optional_stages)
+            app.validation_finished_stages.update(legacy_optional_stages)
+            app._validation_autosave_session(force=True)
+            session_path = app.validation_session_path
+            assert session_path is not None and session_path.is_file()
+            level_samples_before_reload = tuple(
+                app.validation_samples[panel.ValidationStage.LEVEL]
+            )
+            app._validation_stop_session()
+            app.validation_samples = {
+                stage: [] for stage in panel.STAGE_DEFINITIONS
+            }
+            app.validation_stage_results.clear()
+            app.validation_unsupported_stages.clear()
+            app.validation_skipped_stages.clear()
+            app.validation_finished_stages.clear()
+            app.validation_session_path = None
+            app.validation_loaded_report_path = None
+    
+            app._validation_load_latest_artifact()
+    
+>           assert tuple(
+                app.validation_samples[panel.ValidationStage.LEVEL]
+            ) == level_samples_before_reload
+E           assert () == (ImuSample(ti...00000000001),)
+E             Right contains one more item: ImuSample(timestamp_s=1.35, accel_x_g=0.1, accel_y_g=-0.2, accel_z_g=0.975, gyro_x_dps=1.5, gyro_y_dps=-2.5, gyro_z_dps=0.5, roll_deg=1.23, pitch_deg=-4.5600000000000005, yaw_deg=7.890000000000001)
+E             Use -v to get more diff
+
+tests\test_drone_validation_v0.py:1087: AssertionError
+___________ test_s6_increment10_validation_and_evidence_ast_owners ____________
+
+    def test_s6_increment10_validation_and_evidence_ast_owners() -> None:
+        legacy_path = ROOT / "tools" / "drone_tcp_panel.py"
+        evidence_path = ROOT / "tools" / "panel_lib" / "evidence.py"
+        validation_path = ROOT / "tools" / "panel_lib" / "pages" / "validation_v0.py"
+        legacy = _python_class_methods(legacy_path, "DronePanel")
+        evidence = _python_class_methods(evidence_path, "EvidenceMixin")
+        validation = _python_class_methods(validation_path, "ValidationV0PageMixin")
+    
+        assert INCREMENT10_PARENT == "69bf4158977c62f65a78f7dc4b61b8a9f80275b7"
+        assert set(validation) == set(V0_PAGE_AST_SHA256)
+        assert set(evidence) == set(EVIDENCE_AST_SHA256)
+        assert (set(validation) | set(evidence)).isdisjoint(legacy)
+>       assert {name: _python_ast_sha256(validation[name]) for name in V0_PAGE_AST_SHA256} == V0_PAGE_AST_SHA256
+E       AssertionError: assert {'_build_vali...239b753', ...} == {'_build_vali...239b753', ...}
+E         Omitting 37 identical items, use -vv to show
+E         Differing items:
+E         {'_validation_accept_imu_values': 'ac7d5f6d70a623df9ea167f34406ece06eb7cf99efcf513564345d44d4c88861'} != {'_validation_accept_imu_values': 'ebd39577cc8a7d33eeb23986f9a158f0050ca88e2bc503719749b1b695a15151'}
+E         Use -v to get more diff
+
+tests\test_drone_validation_v0.py:1303: AssertionError
+Physical serial open attempts: 0
+=========================== short test summary info ===========================
+FAILED tests/test_drone_validation_v0.py::test_v0_session_invalidates_transport_write_queues_at_the_send_boundary
+FAILED tests/test_drone_validation_v0.py::test_ui_hot_paths_are_bounded_and_render_is_throttled
+FAILED tests/test_drone_validation_v0.py::test_panel_builds_the_reordered_v0_layout_without_connecting
+FAILED tests/test_drone_validation_v0.py::test_s6_increment10_validation_and_evidence_ast_owners
+4 failed, 53 passed, 1 skipped in 11.13s

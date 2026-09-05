@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import math
+
+from ..connection_state import snapshot_receipt, snapshot_is_current
 import statistics
 import time
 import tkinter as tk
@@ -565,6 +567,7 @@ class ValidationV0PageMixin:
         connected = self._transport_connected()
         fresh = (
             self.validation_latest_host_time > 0.0
+            and snapshot_is_current(self)
             and (now - self.validation_latest_host_time) <= VALIDATION_SAMPLE_FRESH_S
         )
         snapshot_ok = (
@@ -1427,7 +1430,7 @@ class ValidationV0PageMixin:
 
     def _validation_latest_is_safe(self) -> tuple[bool, str]:
         values = self.validation_latest_values
-        if not values or (time.monotonic() - self.validation_latest_host_time) > VALIDATION_SAMPLE_FRESH_S:
+        if not values or not snapshot_is_current(self) or (time.monotonic() - self.validation_latest_host_time) > VALIDATION_SAMPLE_FRESH_S:
             return False, "没有新鲜的完整目标快照"
         if values.get("source") != "stabilizer_snapshot" or values.get("valid") != "1":
             return False, "固件不支持坐标系校准快照来源标识；请重新编译并烧写本次固件"
@@ -1598,6 +1601,7 @@ class ValidationV0PageMixin:
                 self._validation_refresh_readiness()
                 self._firmware_refresh_safety()
             return
+        receipt = snapshot_receipt(self, sequence)
         cached_sequence = safe_int(self.validation_latest_values.get("seq"), -1)
         if cached_sequence != sequence:
             self.validation_latest_values = {"seq": str(sequence)}
@@ -1639,12 +1643,8 @@ class ValidationV0PageMixin:
         if self.validation_latest_sequence is not None and sequence <= self.validation_latest_sequence:
             return
         self.validation_latest_sequence = sequence
-        self.validation_latest_host_time = time.monotonic()
-        self.validation_latest_transport_generation = (
-            self.serial_transport.connection_generation
-            if self.transport is self.serial_transport
-            else None
-        )
+        self.validation_latest_host_time = receipt.received_at
+        self.validation_latest_transport_generation = receipt.generation
         self.validation_source_var.set(
             f"数据源：snapshot · frame={merged['frame']} contract={merged['contract']} "
             f"migration={merged['migration']} seq={sequence}"

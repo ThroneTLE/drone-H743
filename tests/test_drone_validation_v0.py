@@ -37,6 +37,8 @@ TRANSPORT_SOURCE = (ROOT / "tools" / "panel_lib" / "transport.py").read_text(
     encoding="utf-8"
 )
 INCREMENT10_PARENT = "69bf4158977c62f65a78f7dc4b61b8a9f80275b7"
+# H2 receipt/generation repair changes only three snapshot methods below;
+# their behavior is covered by test_panel_connection_reliability.py.
 V0_PAGE_AST_SHA256 = {
     "_build_validation_stepper": "fc3cd984eb80f7d0dc833d3e488eefa858e54a2fa71d468e06ccbf59f863164e",
     "_validation_current_step": "4f85dc0baf49912ef1b050d7c0cfce42d5c49fd9ee74992d8bee34663224cd6a",
@@ -45,7 +47,7 @@ V0_PAGE_AST_SHA256 = {
     "_validation_set_gate": "e6fdd2fa939cbbb2bb7b1a9468baa61ad5f83dfbd9fe9fa707f1dc2b45c5eeba",
     "_build_validation_page": "fc51614a1cc0497c45529fa7a48263292edf7ffcb1717a41169c6451f5231ab3",
     "_validation_update_safety_text": "b39643683d08e58eb54249112b57ff979c6127fa6c2456c9b7c1a89b1c23428d",
-    "_validation_refresh_readiness": "1ca01fcc2ea6a980c2de22ac7065934cb32184f1963a81c8032fead7f93873e6",
+    "_validation_refresh_readiness": "d83dec0d051628ada7edae01a7dc111044bb8b09191ceb9884307e7d225f7c56",
     "_validation_set_status": "5d3f430fa41769066c0073e5bb3195aa9f6dd0fe499ea3d793d3d96b0f78d7c0",
     "_validation_selected_stage": "f8396054884d5298861756f8e257114867cd5ded507381dbbbc97d70d82073d2",
     "_on_validation_stage_select": "e803cf911affe959b0c474f5ac432d3058d1b63cde7dafe5d875a94d085f3fa2",
@@ -68,14 +70,14 @@ V0_PAGE_AST_SHA256 = {
     "_validation_skip_stage": "345abe34461b5744a8a52b458de922c70248bd73ad0fa92a97cfcf667a828526",
     "_validation_start_session": "28afa8f2ead337eeaebad37ef770aed10b84140d31cf8a9953ca84331db182dd",
     "_validation_stop_session": "39789aeb07d44f609fd6be28143cf4d823def77d3d94d7ba2eb92c775d24a6e4",
-    "_validation_latest_is_safe": "4eca79e699352db68e9989f5e66bf7c894d4f60ce0fc97d2833ede509bff1b43",
+    "_validation_latest_is_safe": "ccf735fd3d98be6b758258cca478b6efe998e89f22bbaa607ad110cbe874542b",
     "_validation_begin_stage": "c1e266f583b0ea900d4d8c169cb25beb6b6428bdce644ba7bb636a82f9dfbaa0",
     "_validation_finish_stage": "0363a839cfee1fbeb75f80bd30815bbcee2c28c81f3b7ef8e5880cee812731fb",
     "_validation_abort_active_stage": "5f85ca116f87fed3c93e5ca7ebb3e64245dc056a47e5b5a0c56c65282239b753",
     "_validation_accept_imu_health": "54fa1881e4110c0bb3215faa47dfffe2db4e241d8ccdcb16ffed7edb43f38e70",
     "_validation_health_state": "293f628cce3d64a09a358643c707faaf760697de226cd7af2784d6ebc9b33e38",
     "_validation_target_restarted": "a9551e6878742199eff9abe747a59b84f03b88aafa769fcb8bad00993b7fe62a",
-    "_validation_accept_imu_values": "ebd39577cc8a7d33eeb23986f9a158f0050ca88e2bc503719749b1b695a15151",
+    "_validation_accept_imu_values": "ac7d5f6d70a623df9ea167f34406ece06eb7cf99efcf513564345d44d4c88861",
 }
 EVIDENCE_AST_SHA256 = {
     "_validation_live_safety_gate": "c8e337f0876111c36d368fa3423533eff107eb2d5a05cb1078466f87c2486c09",
@@ -301,7 +303,8 @@ def test_v0_session_invalidates_transport_write_queues_at_the_send_boundary() ->
     assert serial._send_queue.empty()
     assert tcp._send_generation == 1
     assert serial._send_generation == 1
-    assert TRANSPORT_SOURCE.count("generation != self._send_generation") == 2
+    serial_source = (ROOT / "tools/panel_lib/serial_session.py").read_text(encoding="utf-8")
+    assert (TRANSPORT_SOURCE + serial_source).count("generation != self._send_generation") == 2
     start = function_body(SOURCE, "    def _validation_start_session(")
     assert "transport.cancel_pending_sends()" in start
     assert start.index("transport.cancel_pending_sends()") < start.index(
@@ -364,7 +367,9 @@ def test_ui_hot_paths_are_bounded_and_render_is_throttled() -> None:
     imu_tick = function_body(SOURCE, "    def _imu_poll_tick(")
     ident = function_body(SOURCE, "    def _ident_handle_line(")
 
-    assert "processed < RX_DRAIN_BATCH_SIZE" in drain
+    assert "RX_DRAIN_BATCH_SIZE" in drain
+    dispatcher = (ROOT / "tools/panel_lib/rx_dispatch.py").read_text(encoding="utf-8")
+    assert "processed < batch_size" in dispatcher
     assert "RX_DRAIN_BUSY_MS" in drain
     assert "_pending_log_lines.append" in append
     assert 'batch = "".join(self._pending_log_lines)' in flush

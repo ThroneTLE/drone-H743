@@ -1,0 +1,232 @@
+FFFFEssFE                                                                [100%]
+=================================== ERRORS ====================================
+_ ERROR at teardown of test_backlog_keeps_receive_time_and_fails_existing_safety_gate _
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001261F909E80>
+
+    @pytest.fixture
+    def app(monkeypatch):
+        try:
+            instance = panel.DronePanel()
+        except tk.TclError as exc:
+            pytest.skip(str(exc))
+        instance.withdraw()
+        for ident in instance.tk.call("after", "info"):
+            instance.after_cancel(ident)
+        monkeypatch.setattr(instance, "after", lambda *args: None)
+        instance.transport = instance.serial_transport
+        instance.serial_transport.port = Port()
+        instance.serial_transport._connection_generation = 1
+        yield instance
+>       instance.destroy()
+
+tests\test_panel_connection_reliability.py:128: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+D:\ANACON\Lib\tkinter\__init__.py:2389: in destroy
+    for c in list(self.children.values()): c.destroy()
+D:\ANACON\Lib\tkinter\__init__.py:2666: in destroy
+    for c in list(self.children.values()): c.destroy()
+D:\ANACON\Lib\tkinter\__init__.py:2666: in destroy
+    for c in list(self.children.values()): c.destroy()
+D:\ANACON\Lib\tkinter\__init__.py:2666: in destroy
+    for c in list(self.children.values()): c.destroy()
+D:\ANACON\Lib\tkinter\__init__.py:2666: in destroy
+    for c in list(self.children.values()): c.destroy()
+D:\ANACON\Lib\tkinter\__init__.py:2666: in destroy
+    for c in list(self.children.values()): c.destroy()
+D:\ANACON\Lib\tkinter\__init__.py:2666: in destroy
+    for c in list(self.children.values()): c.destroy()
+D:\ANACON\Lib\tkinter\__init__.py:2666: in destroy
+    for c in list(self.children.values()): c.destroy()
+D:\ANACON\Lib\tkinter\__init__.py:2666: in destroy
+    for c in list(self.children.values()): c.destroy()
+D:\ANACON\Lib\tkinter\__init__.py:2666: in destroy
+    for c in list(self.children.values()): c.destroy()
+D:\ANACON\Lib\tkinter\__init__.py:2670: in destroy
+    Misc.destroy(self)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <tkinter.Canvas object .!frame.!panedwindow.!notebook.!frame3.!notebook.!frame.!panedwindow.!frame2.!labelframe.!canvas>
+
+    def destroy(self):
+        """Internal function.
+    
+        Delete all Tcl commands created for
+        this widget in the Tcl interpreter."""
+        if self._tclCommands is not None:
+            for name in self._tclCommands:
+>               self.tk.deletecommand(name)
+E               _tkinter.TclError: can't delete Tcl command
+
+D:\ANACON\Lib\tkinter\__init__.py:689: TclError
+_ ERROR at teardown of test_same_sequence_fragments_from_different_sessions_do_not_merge _
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001261F989C40>
+
+    @pytest.fixture
+    def app(monkeypatch):
+        try:
+            instance = panel.DronePanel()
+        except tk.TclError as exc:
+            pytest.skip(str(exc))
+        instance.withdraw()
+        for ident in instance.tk.call("after", "info"):
+            instance.after_cancel(ident)
+        monkeypatch.setattr(instance, "after", lambda *args: None)
+        instance.transport = instance.serial_transport
+        instance.serial_transport.port = Port()
+        instance.serial_transport._connection_generation = 1
+        yield instance
+>       instance.destroy()
+
+tests\test_panel_connection_reliability.py:128: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+D:\ANACON\Lib\tkinter\__init__.py:2389: in destroy
+    for c in list(self.children.values()): c.destroy()
+D:\ANACON\Lib\tkinter\__init__.py:2666: in destroy
+    for c in list(self.children.values()): c.destroy()
+D:\ANACON\Lib\tkinter\__init__.py:2666: in destroy
+    for c in list(self.children.values()): c.destroy()
+D:\ANACON\Lib\tkinter\__init__.py:2666: in destroy
+    for c in list(self.children.values()): c.destroy()
+D:\ANACON\Lib\tkinter\__init__.py:2666: in destroy
+    for c in list(self.children.values()): c.destroy()
+D:\ANACON\Lib\tkinter\__init__.py:2666: in destroy
+    for c in list(self.children.values()): c.destroy()
+D:\ANACON\Lib\tkinter\__init__.py:2666: in destroy
+    for c in list(self.children.values()): c.destroy()
+D:\ANACON\Lib\tkinter\__init__.py:2666: in destroy
+    for c in list(self.children.values()): c.destroy()
+D:\ANACON\Lib\tkinter\__init__.py:2666: in destroy
+    for c in list(self.children.values()): c.destroy()
+D:\ANACON\Lib\tkinter\__init__.py:2666: in destroy
+    for c in list(self.children.values()): c.destroy()
+D:\ANACON\Lib\tkinter\__init__.py:2670: in destroy
+    Misc.destroy(self)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <tkinter.Canvas object .!frame.!panedwindow.!notebook.!frame3.!notebook.!frame.!panedwindow.!frame2.!labelframe.!canvas>
+
+    def destroy(self):
+        """Internal function.
+    
+        Delete all Tcl commands created for
+        this widget in the Tcl interpreter."""
+        if self._tclCommands is not None:
+            for name in self._tclCommands:
+>               self.tk.deletecommand(name)
+E               _tkinter.TclError: can't delete Tcl command
+
+D:\ANACON\Lib\tkinter\__init__.py:689: TclError
+================================== FAILURES ===================================
+________ test_slow_io_does_not_block_ui_queries_cancel_or_stop[write] _________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001261F89B0E0>
+phase = 'write'
+
+    @pytest.mark.parametrize("phase", ["write", "flush"])
+    def test_slow_io_does_not_block_ui_queries_cancel_or_stop(monkeypatch, phase):
+        port = Port(slow_write=phase == "write", pending=phase == "flush")
+        transport = connect(monkeypatch, port)
+        try:
+            assert transport.send_line("PING")
+            assert port.entered.wait(1)
+            # Bound baseline failure too: old code holds the UI lock until release.
+            timer = threading.Timer(.35, port.release.set)
+            timer.start()
+            start = time.perf_counter()
+            assert transport.is_connected
+            assert transport.active_port == "FAKE"
+            transport.cancel_pending_sends()
+            transport.stop()
+            elapsed = time.perf_counter() - start
+>           assert elapsed < .1, f"UI blocked for {elapsed:.3f}s during {phase}"
+E           AssertionError: UI blocked for 0.365s during write
+E           assert 0.3653782999899704 < 0.1
+
+tests\test_panel_connection_reliability.py:89: AssertionError
+________ test_slow_io_does_not_block_ui_queries_cancel_or_stop[flush] _________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001261F899F40>
+phase = 'flush'
+
+    @pytest.mark.parametrize("phase", ["write", "flush"])
+    def test_slow_io_does_not_block_ui_queries_cancel_or_stop(monkeypatch, phase):
+        port = Port(slow_write=phase == "write", pending=phase == "flush")
+        transport = connect(monkeypatch, port)
+        try:
+            assert transport.send_line("PING")
+            assert port.entered.wait(1)
+            # Bound baseline failure too: old code holds the UI lock until release.
+            timer = threading.Timer(.35, port.release.set)
+            timer.start()
+            start = time.perf_counter()
+            assert transport.is_connected
+            assert transport.active_port == "FAKE"
+            transport.cancel_pending_sends()
+            transport.stop()
+            elapsed = time.perf_counter() - start
+>           assert elapsed < .1, f"UI blocked for {elapsed:.3f}s during {phase}"
+E           AssertionError: UI blocked for 0.363s during flush
+E           assert 0.36308670000289567 < 0.1
+
+tests\test_panel_connection_reliability.py:89: AssertionError
+_____________ test_read_failure_closes_port_and_preserves_reason ______________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001261F908EC0>
+
+    def test_read_failure_closes_port_and_preserves_reason(monkeypatch):
+        port = Port(read_error=True)
+        transport = connect(monkeypatch, port)
+        try:
+            transport.thread.join(1)
+>           assert port.closed.wait(.1), "reader exited without closing its port"
+E           AssertionError: reader exited without closing its port
+E           assert False
+E            +  where False = <bound method Event.wait of <threading.Event at 0x1261f909010: unset>>(0.1)
+E            +    where <bound method Event.wait of <threading.Event at 0x1261f909010: unset>> = <threading.Event at 0x1261f909010: unset>.wait
+E            +      where <threading.Event at 0x1261f909010: unset> = <test_panel_connection_reliability.Port object at 0x000001261F908D40>.closed
+
+tests\test_panel_connection_reliability.py:102: AssertionError
+_______ test_backlog_keeps_receive_time_and_fails_existing_safety_gate ________
+
+app = <tools.drone_tcp_panel.DronePanel object .>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001261F909E80>
+
+    def test_backlog_keeps_receive_time_and_fails_existing_safety_gate(app, monkeypatch):
+        clock = [100.0]
+        monkeypatch.setattr(tr.time, "monotonic", lambda: clock[0])
+        app.serial_transport._consume_buffer(bytearray("".join(imu_lines()).encode()))
+        clock[0] += 2.2
+        app._drain_rx()
+>       assert app.validation_latest_host_time == 100.0
+E       assert 102.2 == 100.0
+E        +  where 102.2 = <tools.drone_tcp_panel.DronePanel object .>.validation_latest_host_time
+
+tests\test_panel_connection_reliability.py:145: AssertionError
+______ test_same_sequence_fragments_from_different_sessions_do_not_merge ______
+
+app = <tools.drone_tcp_panel.DronePanel object .>
+
+    def test_same_sequence_fragments_from_different_sessions_do_not_merge(app):
+        head, body = imu_lines()
+        app.serial_transport._consume_buffer(bytearray(head.encode()))
+        app._drain_rx()
+        app.serial_transport._connection_generation = 2
+        app.serial_transport._consume_buffer(bytearray(body.encode()))
+        app._drain_rx()
+>       assert app.validation_latest_host_time == 0.0
+E       assert 80851.593 == 0.0
+E        +  where 80851.593 = <tools.drone_tcp_panel.DronePanel object .>.validation_latest_host_time
+
+tests\test_panel_connection_reliability.py:178: AssertionError
+Physical serial open attempts: 0
+=========================== short test summary info ===========================
+FAILED tests/test_panel_connection_reliability.py::test_slow_io_does_not_block_ui_queries_cancel_or_stop[write]
+FAILED tests/test_panel_connection_reliability.py::test_slow_io_does_not_block_ui_queries_cancel_or_stop[flush]
+FAILED tests/test_panel_connection_reliability.py::test_read_failure_closes_port_and_preserves_reason
+FAILED tests/test_panel_connection_reliability.py::test_backlog_keeps_receive_time_and_fails_existing_safety_gate
+FAILED tests/test_panel_connection_reliability.py::test_same_sequence_fragments_from_different_sessions_do_not_merge
+ERROR tests/test_panel_connection_reliability.py::test_backlog_keeps_receive_time_and_fails_existing_safety_gate
+ERROR tests/test_panel_connection_reliability.py::test_same_sequence_fragments_from_different_sessions_do_not_merge
+5 failed, 2 skipped, 2 errors in 5.25s

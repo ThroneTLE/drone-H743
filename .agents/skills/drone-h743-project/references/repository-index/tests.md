@@ -4,10 +4,11 @@
 
 Read this shard only when you need existing behavioral/architecture coverage or must choose focused regression tests.
 
-Source snapshot: `5f0777bfba5c`. Indexed files: 115.
+Source snapshot: `85beb36638ca`. Indexed files: 117.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
+| `tests/conftest.py` | Offline suite: block physical serial opens before collection and Tk callbacks | `pytest_configure`, `isolate_panel_defaults`, `pytest_sessionfinish` (+2) |
 | `tests/data.txt` | — | — |
 | `tests/test_acceptance_v2_runtime_contract.py` | — | `test_v2a_lease_and_esc_fail_safe_are_target_owned`, `test_v2a_stage_names_match_offline_engine_and_servo_delta_is_bounded`, `test_v2a_protocol_is_explicit_and_panel_keeps_lease_alive` |
 | `tests/test_action_contract.py` | Contract tests for the Action safety state machine (``App/Src/app_action.c``). An Action is any task that spans time an… | `test_01_armed_interlock_refuses_to_start`, `test_02_hard_timeout_fires_after_the_link_dies`, `test_03_cancel_stops_and_makes_safe` (+14) |
@@ -84,6 +85,7 @@ Source snapshot: `5f0777bfba5c`. Indexed files: 115.
 | `tests/test_nav_ekf_contract.py` | — | `test_quality_adaptive_flow_ekf_is_owned_by_the_flow_nav_service`, `test_nav_ekf_exposes_industry_consistency_metrics`, `test_velocity_control_uses_flow_ekf_with_limited_compensated_imu_bridge` (+1) |
 | `tests/test_optical_flow_contract.py` | — | `test_micolink_parser_accepts_live_range_and_flow_payload_shape`, `test_micolink_parser_rejects_bad_checksum_and_oversize_payload`, `test_micolink_parser_resynchronizes_after_noise_and_ignores_other_messages` (+9) |
 | `tests/test_panel_autoconnect.py` | 记住上次的连接并在启动时自动连回去。 关键点是**按什么认板子**：Windows 给 USB 串口分配的 COM 号会变（本机就出现过同一块 飞控在 COM30/31/32 之间跳），而 ST-Link、蓝牙串口、CH340 会占掉腾出… | `test_fingerprint_is_stable_across_com_renumbering`, `test_two_boards_of_the_same_model_get_different_fingerprints`, `test_a_port_without_a_serial_number_falls_back_to_the_usb_location` (+13) |
+| `tests/test_panel_connection_reliability.py` | H1/H2/H4: real transport and Tk boundaries with no physical device access | `test_slow_io_does_not_block_ui_queries_cancel_or_stop`, `test_read_failure_closes_port_and_preserves_reason`, `test_backlog_keeps_receive_time_and_fails_existing_safety_gate` (+16) |
 | `tests/test_panel_drift_page_extraction.py` | S6 stationary-drift page extraction ownership and compatibility contract | `test_drift_page_mixin_owns_only_its_builder_and_handlers`, `test_legacy_panel_forwards_the_drift_page_without_wrappers`, `test_moved_drift_page_ast_matches_the_pre_extraction_implementation` (+2) |
 | `tests/test_panel_flow_page_extraction.py` | R-S6-1 增量11（收官）：光流与测距页搬进 panel_lib/pages/flow_ranging.py。 搬家的判据只有一条——行为零变更。这里用三种独立方式钉： 1. 逐方法 AST 哈希与搬家前逐字节一致（哈希取自父提交 9… | `test_flow_mixin_owns_every_moved_method_with_the_pre_move_ast`, `test_page_constant_has_exactly_one_definition`, `test_legacy_panel_forwards_the_same_objects` (+2) |
 | `tests/test_panel_proto_extraction.py` | S6 panel protocol extraction ownership and compatibility contract | `test_proto_module_owns_the_protocol_table_and_parsing_helpers`, `test_legacy_panel_forwards_every_proto_symbol_without_wrappers`, `test_protocol_line_methods_move_intact_to_the_mixin` (+1) |
