@@ -28,6 +28,7 @@ class ServoTypeControlsMixin:
             values=("bus", "pwm"),
             state="readonly",
             width=8,
+            style="Numeric.TCombobox",
         )
         selector.pack(side=tk.LEFT, padx=6)
         selector.bind("<<ComboboxSelected>>", lambda _event: self._refresh_servo_output_controls())

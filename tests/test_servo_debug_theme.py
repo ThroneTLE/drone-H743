@@ -36,12 +36,16 @@ def test_dark_spinboxes(app):
     assert len(boxes) == 12  # Both slots: ID, pulse, duration, mode, new ID, baud.
     for box in boxes:
         name = str(box.cget("style")) or "TSpinbox"
+        assert name == "Numeric.TSpinbox"
         for state in ((), ("focus",), ("readonly",), ("disabled",)):
             background = style.lookup(name, "fieldbackground", state=state)
             foreground = style.lookup(name, "foreground", state=state)
             assert background in (app.ui_palette["panel"], app.ui_palette["disabled"])
             assert foreground != background
-            assert foreground in (app.ui_palette["ink_dim"], app.ui_palette["muted"])
+            assert foreground in (
+                app.ui_palette["ink"], app.ui_palette["ink_dim"], app.ui_palette["muted"],
+                app.ui_palette["disabled_ink"],
+            )
 
 
 def test_subtle_borders(app):
@@ -52,7 +56,8 @@ def test_subtle_borders(app):
     colors = {app.ui_palette[key] for key in ("border", "border_strong", "raised", "panel", "accent")}
     for widget in widgets:
         name = str(widget.cget("style"))
-        assert name.startswith("ServoDebug.")
+        if not name:
+            name = "TNotebook" if isinstance(widget, ttk.Notebook) else "Numeric.Horizontal.TScale"
         for option in ("bordercolor", "lightcolor", "darkcolor"):
             assert style.lookup(name, option) in colors
 
@@ -66,7 +71,8 @@ def test_pwm_gates(app):
     checks = [widget for widget in descendants(_page(app)) if isinstance(widget, ttk.Checkbutton)]
     assert checks
     for check in checks:
-        assert style.lookup(check.cget("style"), "background", state=("disabled",)) == app.ui_palette["surface"]
+        name = str(check.cget("style")) or "TCheckbutton"
+        assert style.lookup(name, "background", state=("disabled",)) == app.ui_palette["surface"]
     app.servo_type_active_var.set("bus")
     app._refresh_servo_output_controls()
     assert all(not widget.instate(["disabled"]) for widget in app._servo_bus_widgets)

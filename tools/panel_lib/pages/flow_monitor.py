@@ -17,6 +17,7 @@ from tkinter import ttk
 
 from ..plotting import Figure, FigureCanvasTkAgg, HAS_MATPLOTLIB, MATPLOTLIB_ERROR
 from ..proto import parse_kv, safe_int
+from ..theme import apply_matplotlib_theme
 
 
 # 固件内部约 10 Hz 更新；一次 FLOW? 回六行，5 Hz 已经够画曲线，
@@ -183,6 +184,7 @@ class FlowMonitorPageMixin:
 
         self.flow_monitor_velocity_figure = Figure(figsize=(5, 2.6), dpi=100)
         self.flow_monitor_velocity_axis = self.flow_monitor_velocity_figure.add_subplot(111)
+        apply_matplotlib_theme(self.flow_monitor_velocity_figure, self.ui_palette)
         self.flow_monitor_velocity_canvas = FigureCanvasTkAgg(
             self.flow_monitor_velocity_figure, master=velocity_box
         )
@@ -190,6 +192,7 @@ class FlowMonitorPageMixin:
 
         self.flow_monitor_track_figure = Figure(figsize=(5, 2.6), dpi=100)
         self.flow_monitor_track_axis = self.flow_monitor_track_figure.add_subplot(111)
+        apply_matplotlib_theme(self.flow_monitor_track_figure, self.ui_palette)
         self.flow_monitor_track_canvas = FigureCanvasTkAgg(
             self.flow_monitor_track_figure, master=track_box
         )

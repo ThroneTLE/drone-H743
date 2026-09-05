@@ -35,6 +35,7 @@ try:
     from .panel_lib import plotting as _panel_plotting
     from .panel_lib import proto as _panel_proto
     from .panel_lib import state as _panel_state
+    from .panel_lib import theme as _panel_theme
     from .panel_lib import transport as _panel_transport, rx_dispatch as _panel_rx
 except ImportError:  # Allows direct import and: python tools/drone_tcp_panel.py
     try:
@@ -54,6 +55,7 @@ except ImportError:  # Allows direct import and: python tools/drone_tcp_panel.py
         from tools.panel_lib import plotting as _panel_plotting
         from tools.panel_lib import proto as _panel_proto
         from tools.panel_lib import state as _panel_state
+        from tools.panel_lib import theme as _panel_theme
         from tools.panel_lib import transport as _panel_transport, rx_dispatch as _panel_rx
     except ImportError:
         from panel_lib import evidence as _panel_evidence
@@ -72,6 +74,7 @@ except ImportError:  # Allows direct import and: python tools/drone_tcp_panel.py
         from panel_lib import plotting as _panel_plotting
         from panel_lib import proto as _panel_proto
         from panel_lib import state as _panel_state
+        from panel_lib import theme as _panel_theme
         from panel_lib import transport as _panel_transport, rx_dispatch as _panel_rx
 
 # Compatibility forwarding: existing callers may keep importing these names from
@@ -546,44 +549,15 @@ LINK_KEEPALIVE_IDLE_S = 2.0
 LINK_KEEPALIVE_MIN_INTERVAL_S = 1.5
 LINK_STALE_S = 6.0
 
-# 深色工程控制台配色。规则：全局只有一个强调色 accent，用于"当前该点的那一个
-# 操作"；确认类用 amber、破坏类用 red，且都只做描边+微填充，不做大面积实心。
-# 状态一律用指示灯圆点表达，不用彩色文字块，避免页面变成调色盘。
-UI_PALETTE = {
-    "canvas": "#171B22",
-    "surface": "#1E232B",
-    "panel": "#262C36",
-    "raised": "#323945",
-    "ink": "#EDF1F7",
-    "ink_dim": "#C6CEDA",
-    "muted": "#8D97A6",
-    "border": "#39414E",
-    "border_strong": "#4C5666",
-    "navy": "#262C36",
-    "accent": "#4DA3F5",
-    "accent_hover": "#7BBEFF",
-    "accent_ink": "#0A1A29",
-    "accent_soft": "#28374A",
-    "blue": "#4DA3F5",
-    "blue_hover": "#7BBEFF",
-    "blue_soft": "#28374A",
-    "green": "#4ADE97",
-    "green_soft": "#22352C",
-    "amber": "#F2B441",
-    "amber_soft": "#38311F",
-    "amber_hover": "#FFC960",
-    "red": "#FF8B82",
-    "red_hover": "#FFA9A2",
-    "red_soft": "#3B2729",
-    "disabled": "#242A33",
-    "disabled_ink": "#6B7482",
-    "console": "#171B21",
-}
-UI_FONT = "Microsoft YaHei UI"
-UI_MONO = "Consolas"
-UI_SIZE = 10        # 正文
-UI_SIZE_SM = 9      # 页签、eyebrow、表头
-UI_SIZE_TITLE = 16
+# Shared theme remains available through this legacy module for callers that
+# historically imported the palette from ``drone_tcp_panel``.
+UI_PALETTE = _panel_theme.UI_PALETTE
+UI_FONT = _panel_theme.UI_FONT
+UI_MONO = _panel_theme.UI_MONO
+UI_SIZE = _panel_theme.UI_SIZE
+UI_SIZE_SM = _panel_theme.UI_SIZE_SM
+UI_SIZE_TITLE = _panel_theme.UI_SIZE_TITLE
+apply_matplotlib_theme = _panel_theme.apply_matplotlib_theme
 # 可选 matplotlib 守卫归 panel_lib/plotting.py 所有，页面模块与大面板共用一份判定。
 FigureCanvasTkAgg = _panel_plotting.FigureCanvasTkAgg
 Figure = _panel_plotting.Figure
@@ -1288,241 +1262,7 @@ class DronePanel(ValidationV0PageMixin, EvidenceMixin, AcceptanceV2PageMixin, Vi
         self.tk.call("tk", "scaling", self.ui_scaling)
 
     def _configure_style(self) -> None:
-        palette = UI_PALETTE
-        self.ui_palette = palette
-        self.configure(background=palette["canvas"])
-        self.option_add("*Font", (UI_FONT, UI_SIZE))
-        self.option_add("*Text.Font", (UI_FONT, UI_SIZE))
-        # 消息框/下拉列表等经典 Tk 部件不吃 ttk 样式，单独压深，避免深色页面里
-        # 弹出一块刺眼的白。
-        self.option_add("*Listbox.background", palette["panel"])
-        self.option_add("*Listbox.foreground", palette["ink"])
-        self.option_add("*Listbox.selectBackground", palette["accent"])
-        self.option_add("*Listbox.selectForeground", palette["accent_ink"])
-        style = ttk.Style(self)
-        if "clam" in style.theme_names():
-            style.theme_use("clam")
-        style.configure(".", font=(UI_FONT, UI_SIZE), background=palette["surface"],
-                        foreground=palette["ink"])
-
-        # ---- 容器 ----
-        style.configure("TFrame", background=palette["surface"])
-        style.configure("Shell.TFrame", background=palette["canvas"])
-        style.configure("Page.TFrame", background=palette["surface"])
-        style.configure("Card.TFrame", background=palette["panel"])
-        style.configure("AccentBar.TFrame", background=palette["accent"])
-        style.configure("Rule.TFrame", background=palette["border"])
-
-        # ---- 文字 ----
-        style.configure("TLabel", background=palette["surface"], foreground=palette["ink"])
-        style.configure(
-            "PageTitle.TLabel", background=palette["surface"], foreground=palette["ink"],
-            font=(UI_FONT, UI_SIZE_TITLE, "bold"),
-        )
-        style.configure(
-            "Eyebrow.TLabel", background=palette["surface"], foreground=palette["muted"],
-            font=(UI_FONT, UI_SIZE_SM, "bold"),
-        )
-        style.configure(
-            "SectionTitle.TLabel", background=palette["surface"], foreground=palette["ink_dim"],
-            font=(UI_FONT, UI_SIZE, "bold"),
-        )
-        style.configure("Muted.TLabel", background=palette["surface"], foreground=palette["muted"])
-        style.configure("CardMuted.TLabel", background=palette["panel"], foreground=palette["muted"])
-        style.configure("Card.TLabel", background=palette["panel"], foreground=palette["ink"])
-        # 数值一律等宽：工程上位机读数抖动时不会左右跳动。
-        style.configure(
-            "Mono.TLabel", background=palette["surface"], foreground=palette["ink_dim"],
-            font=(UI_MONO, UI_SIZE),
-        )
-        style.configure(
-            "CardMono.TLabel", background=palette["panel"], foreground=palette["ink_dim"],
-            font=(UI_MONO, UI_SIZE),
-        )
-        # 指引不再是浅蓝气泡，而是一条左侧强调线的提示行。
-        style.configure(
-            "Guide.TLabel", background=palette["accent_soft"], foreground=palette["ink"],
-            font=(UI_FONT, UI_SIZE), padding=(10, 6),
-        )
-        for name, color in (
-            ("Pass", palette["green"]),
-            ("Warn", palette["amber"]),
-            ("Fail", palette["red"]),
-        ):
-            style.configure(
-                f"{name}.TLabel", background=palette["surface"], foreground=color,
-                font=(UI_FONT, UI_SIZE, "bold"), padding=(2, 2),
-            )
-            style.configure(
-                f"Card{name}.TLabel", background=palette["panel"], foreground=color,
-                font=(UI_FONT, UI_SIZE, "bold"), padding=(2, 2),
-            )
-        style.configure(
-            "Idle.TLabel", background=palette["surface"], foreground=palette["muted"],
-            font=(UI_FONT, UI_SIZE), padding=(2, 2),
-        )
-        # 步骤条"当前步"用强调色，与 Pass/Warn/Fail 的语义色区分开。
-        style.configure(
-            "Active.TLabel", background=palette["surface"], foreground=palette["accent"],
-            font=(UI_FONT, UI_SIZE, "bold"), padding=(2, 2),
-        )
-        style.configure(
-            "CardIdle.TLabel", background=palette["panel"], foreground=palette["muted"],
-            font=(UI_FONT, UI_SIZE), padding=(2, 2),
-        )
-
-        # ---- 分组框 ----
-        style.configure(
-            "TLabelframe", background=palette["surface"], bordercolor=palette["border"],
-            lightcolor=palette["border"], darkcolor=palette["border"], relief=tk.SOLID,
-        )
-        style.configure(
-            "TLabelframe.Label", background=palette["surface"], foreground=palette["muted"],
-            font=(UI_FONT, UI_SIZE_SM, "bold"), padding=(4, 0),
-        )
-
-        # ---- 按钮：全局只有 Primary 是实心，其余一律描边/幽灵 ----
-        style.configure(
-            "TButton", background=palette["surface"], foreground=palette["ink_dim"],
-            bordercolor=palette["border_strong"], focusthickness=1,
-            focuscolor=palette["accent"], relief=tk.SOLID,
-            padding=(11, 5), font=(UI_FONT, UI_SIZE),
-        )
-        style.map(
-            "TButton",
-            background=[("disabled", palette["disabled"]), ("active", palette["raised"])],
-            foreground=[("disabled", palette["disabled_ink"]), ("active", palette["ink"])],
-            bordercolor=[("disabled", palette["border"])],
-        )
-        style.configure(
-            "Primary.TButton", background=palette["accent"], foreground=palette["accent_ink"],
-            bordercolor=palette["accent"], padding=(14, 6), font=(UI_FONT, UI_SIZE, "bold"),
-        )
-        style.map(
-            "Primary.TButton",
-            background=[("disabled", palette["disabled"]), ("pressed", palette["accent"]),
-                        ("active", palette["accent_hover"])],
-            foreground=[("disabled", palette["disabled_ink"]), ("!disabled", palette["accent_ink"])],
-            bordercolor=[("disabled", palette["border"]), ("!disabled", palette["accent"])],
-        )
-        # 需二次确认(Warning)与破坏性(Danger)操作：描边 + 极淡填充，够醒目但不喧宾夺主。
-        for name, color, soft, hover in (
-            ("Success", palette["green"], palette["green_soft"], palette["green"]),
-            ("Warning", palette["amber"], palette["amber_soft"], palette["amber_hover"]),
-            ("Danger", palette["red"], palette["red_soft"], palette["red_hover"]),
-        ):
-            style.configure(
-                f"{name}.TButton", background=soft, foreground=color,
-                bordercolor=color, padding=(12, 5), font=(UI_FONT, UI_SIZE, "bold"),
-            )
-            style.map(
-                f"{name}.TButton",
-                background=[("disabled", palette["disabled"]), ("active", palette["raised"])],
-                foreground=[("disabled", palette["disabled_ink"]), ("active", hover)],
-                bordercolor=[("disabled", palette["border"]), ("!disabled", color)],
-            )
-        style.configure(
-            "Secondary.TButton", background=palette["surface"], foreground=palette["muted"],
-            bordercolor=palette["border"], padding=(11, 5), font=(UI_FONT, UI_SIZE),
-        )
-        style.map(
-            "Secondary.TButton",
-            background=[("active", palette["raised"]), ("disabled", palette["disabled"])],
-            foreground=[("disabled", palette["disabled_ink"]), ("active", palette["ink_dim"])],
-        )
-        style.configure(
-            "Link.TButton", background=palette["surface"], foreground=palette["accent"],
-            bordercolor=palette["surface"], relief=tk.FLAT, padding=(6, 4),
-        )
-        style.map(
-            "Link.TButton",
-            background=[("active", palette["accent_soft"]), ("disabled", palette["surface"])],
-            foreground=[("disabled", palette["disabled_ink"])],
-        )
-
-        # ---- 页签 ----
-        style.configure(
-            "TNotebook", background=palette["canvas"], bordercolor=palette["border"],
-            tabmargins=(2, 4, 2, 0),
-        )
-        style.configure(
-            "TNotebook.Tab", background=palette["canvas"], foreground=palette["muted"],
-            bordercolor=palette["canvas"], padding=(11, 6), font=(UI_FONT, UI_SIZE_SM),
-        )
-        style.map(
-            "TNotebook.Tab",
-            background=[("selected", palette["surface"]), ("active", palette["raised"])],
-            foreground=[("selected", palette["accent"]), ("active", palette["ink_dim"])],
-            font=[("selected", (UI_FONT, UI_SIZE_SM, "bold"))],
-        )
-
-        # ---- 表格 ----
-        style.configure(
-            "Treeview", background=palette["panel"], fieldbackground=palette["panel"],
-            foreground=palette["ink_dim"], bordercolor=palette["border"],
-            rowheight=21, font=(UI_MONO, UI_SIZE),
-        )
-        style.map(
-            "Treeview",
-            background=[("selected", palette["accent_soft"])],
-            foreground=[("selected", palette["ink"])],
-        )
-        style.configure(
-            "Treeview.Heading", background=palette["raised"], foreground=palette["muted"],
-            bordercolor=palette["border"], relief=tk.FLAT, padding=(8, 5),
-            font=(UI_FONT, UI_SIZE_SM, "bold"),
-        )
-        style.map("Treeview.Heading", background=[("active", palette["border_strong"])])
-
-        # ---- 输入 ----
-        style.configure(
-            "TEntry", fieldbackground=palette["panel"], foreground=palette["ink"],
-            insertcolor=palette["accent"], bordercolor=palette["border_strong"],
-            lightcolor=palette["border"], darkcolor=palette["border"], padding=(6, 4),
-        )
-        style.map("TEntry", bordercolor=[("focus", palette["accent"])])
-        style.configure(
-            "TCombobox", fieldbackground=palette["panel"], background=palette["panel"],
-            foreground=palette["ink"], arrowcolor=palette["muted"],
-            bordercolor=palette["border_strong"], lightcolor=palette["border"],
-            darkcolor=palette["border"], padding=(5, 3), arrowsize=13,
-        )
-        style.map(
-            "TCombobox",
-            fieldbackground=[("readonly", palette["panel"])],
-            foreground=[("readonly", palette["ink"])],
-            selectbackground=[("readonly", palette["panel"])],
-            selectforeground=[("readonly", palette["ink"])],
-            bordercolor=[("focus", palette["accent"])],
-        )
-        style.configure(
-            "Horizontal.TProgressbar", troughcolor=palette["panel"], background=palette["accent"],
-            bordercolor=palette["border"], lightcolor=palette["accent"],
-            darkcolor=palette["accent"], thickness=6,
-        )
-        style.configure(
-            "TCheckbutton", background=palette["surface"], foreground=palette["ink_dim"],
-            indicatorbackground=palette["panel"], indicatorforeground=palette["accent_ink"],
-            bordercolor=palette["border_strong"],
-            indicatormargin=(0, 0, 6, 0), padding=(3, 2),
-        )
-        style.map(
-            "TCheckbutton",
-            indicatorbackground=[("selected", palette["accent"]), ("active", palette["raised"])],
-            foreground=[("disabled", palette["disabled_ink"]), ("active", palette["ink"])],
-        )
-        style.configure("TSeparator", background=palette["border"])
-        style.configure("TPanedwindow", background=palette["canvas"], sashwidth=5)
-        style.configure(
-            "Vertical.TScrollbar", background=palette["raised"], troughcolor=palette["surface"],
-            bordercolor=palette["surface"], arrowcolor=palette["muted"], width=11,
-        )
-        style.map("Vertical.TScrollbar", background=[("active", palette["border_strong"])])
-        style.configure(
-            "Horizontal.TScrollbar", background=palette["raised"], troughcolor=palette["surface"],
-            bordercolor=palette["surface"], arrowcolor=palette["muted"],
-        )
-
+        _panel_theme.PanelThemeMixin._configure_style(self)
     def _build_port_label(self, p) -> str:
         desc = (p.description or "").upper()
         hwid = (p.hwid or "").upper()
@@ -2049,6 +1789,7 @@ class DronePanel(ValidationV0PageMixin, EvidenceMixin, AcceptanceV2PageMixin, Vi
         if HAS_MATPLOTLIB and Figure is not None and FigureCanvasTkAgg is not None:
             self.baro_figure = Figure(figsize=(5, 3), dpi=100)
             self.baro_axis = self.baro_figure.add_subplot(111)
+            apply_matplotlib_theme(self.baro_figure, self.ui_palette)
             self.baro_canvas = FigureCanvasTkAgg(self.baro_figure, master=plot_box)
             self.baro_canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True, pady=(8, 0))
             self._update_baro_plot()
@@ -3067,6 +2808,7 @@ class DronePanel(ValidationV0PageMixin, EvidenceMixin, AcceptanceV2PageMixin, Vi
         if HAS_MATPLOTLIB and Figure is not None and FigureCanvasTkAgg is not None:
             self.gps_figure = Figure(figsize=(6, 4), dpi=100)
             self.gps_axis = self.gps_figure.add_subplot(111)
+            apply_matplotlib_theme(self.gps_figure, self.ui_palette)
             self.gps_canvas = FigureCanvasTkAgg(self.gps_figure, master=plot_box)
             self.gps_canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
             self._update_gps_plot()
@@ -3211,6 +2953,7 @@ class DronePanel(ValidationV0PageMixin, EvidenceMixin, AcceptanceV2PageMixin, Vi
         if HAS_MATPLOTLIB and Figure is not None and FigureCanvasTkAgg is not None:
             self.ident_figure = Figure(figsize=(6, 4), dpi=100)
             self.ident_axis_plot = self.ident_figure.add_subplot(111)
+            apply_matplotlib_theme(self.ident_figure, self.ui_palette)
             self.ident_canvas = FigureCanvasTkAgg(self.ident_figure, master=plot_box)
             self.ident_canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
         else:
@@ -3368,16 +3111,19 @@ class DronePanel(ValidationV0PageMixin, EvidenceMixin, AcceptanceV2PageMixin, Vi
 
     def _spin(self, parent: ttk.Frame, row: int, label: str, variable: tk.Variable, minimum: int, maximum: int, command) -> None:
         ttk.Label(parent, text=label).grid(row=row, column=0, sticky=tk.W, pady=4)
-        box = ttk.Spinbox(parent, from_=minimum, to=maximum, textvariable=variable, width=10)
+        box = ttk.Spinbox(parent, from_=minimum, to=maximum, textvariable=variable, width=10,
+                          style="Numeric.TSpinbox")
         box.grid(row=row, column=1, sticky=tk.EW, pady=4)
         if command is not None:
             ttk.Button(parent, text="应用", command=command).grid(row=row, column=2, padx=(6, 0))
 
     def _scale(self, parent: ttk.Frame, row: int, label: str, variable: tk.Variable, minimum: int, maximum: int) -> None:
         ttk.Label(parent, text=label).grid(row=row, column=0, sticky=tk.W, pady=4)
-        scale = ttk.Scale(parent, from_=minimum, to=maximum, variable=variable, orient=tk.HORIZONTAL)
+        scale = ttk.Scale(parent, from_=minimum, to=maximum, variable=variable,
+                          orient=tk.HORIZONTAL, style="Numeric.Horizontal.TScale")
         scale.grid(row=row, column=1, sticky=tk.EW, pady=4)
-        ttk.Spinbox(parent, from_=minimum, to=maximum, textvariable=variable, width=8).grid(row=row, column=2, padx=(6, 0))
+        ttk.Spinbox(parent, from_=minimum, to=maximum, textvariable=variable, width=8,
+                    style="Numeric.TSpinbox").grid(row=row, column=2, padx=(6, 0))
 
     def _start(self) -> None:
         if self.v1_worker is not None and self.v1_worker.is_alive():

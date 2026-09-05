@@ -37,7 +37,8 @@ class DriftPageMixin:
         self.drift_stop_button.pack(side=tk.LEFT, padx=(6, 0))
         ttk.Label(drift_actions, text="时长(秒)").pack(side=tk.LEFT, padx=(14, 4))
         ttk.Spinbox(drift_actions, from_=30, to=300, increment=10, width=6,
-                    textvariable=self.drift_duration_var).pack(side=tk.LEFT)
+                    textvariable=self.drift_duration_var, style="Numeric.TSpinbox").pack(
+                        side=tk.LEFT)
         self.drift_baseline_button = ttk.Button(
             drift_actions, text="设为对照组", command=self._drift_set_baseline,
             state=tk.DISABLED, style="Secondary.TButton")
