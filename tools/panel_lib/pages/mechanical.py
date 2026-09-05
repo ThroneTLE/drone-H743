@@ -98,7 +98,7 @@ class MechanicalPageMixin:
                 "向机头(+X)倾 → 「机构标记反向」。",
             ),
         )):
-            row = index * 3 + 1
+            row = index * 4 + 1
             values: dict[str, tk.Variable] = {
                 "axis": tk.StringVar(value=axis),
                 "center": tk.IntVar(value=1500),
@@ -112,42 +112,49 @@ class MechanicalPageMixin:
             self.mechanical_rows.append(values)
             ttk.Label(table, text=title).grid(row=row, column=0, sticky=tk.W, padx=4, pady=4)
             ttk.Spinbox(table, from_=500, to=2500, increment=1, width=8,
-                        textvariable=values["center"]).grid(row=row, column=1, padx=4)
+                        style="Numeric.TSpinbox", textvariable=values["center"]).grid(
+                            row=row, column=1, padx=4, sticky=tk.W)
             ttk.Spinbox(table, from_=500, to=2500, increment=1, width=8,
-                        textvariable=values["minimum"]).grid(row=row, column=2, padx=4)
+                        style="Numeric.TSpinbox", textvariable=values["minimum"]).grid(
+                            row=row, column=2, padx=4, sticky=tk.W)
             ttk.Spinbox(table, from_=500, to=2500, increment=1, width=8,
-                        textvariable=values["maximum"]).grid(row=row, column=3, padx=4)
+                        style="Numeric.TSpinbox", textvariable=values["maximum"]).grid(
+                            row=row, column=3, padx=4, sticky=tk.W)
             ttk.Combobox(
                 table, textvariable=values["polarity"], state="readonly", width=18,
-                values=("未确认", "机构标记正向", "机构标记反向"),
+                values=("未确认", "机构标记正向", "机构标记反向"), style="Numeric.TCombobox",
             ).grid(row=row, column=4, sticky=tk.W, padx=4)
+
             actions = ttk.Frame(table)
-            actions.grid(row=row, column=5, sticky=tk.W, padx=4)
-            for label, target in (
+            actions.grid(row=row + 1, column=0, columnspan=6, sticky=tk.W, padx=4)
+            for action_index, (label, target) in enumerate((
                 ("中心", "center"), ("-50", "negative"), ("+50", "positive"),
                 ("最小", "minimum"), ("最大", "maximum"),
-            ):
+            )):
                 ttk.Button(
                     actions, text=label,
                     command=lambda i=index, t=target: self._mechanical_move(i, t),
                     style="Secondary.TButton" if target == "center" else "Warning.TButton",
-                ).pack(side=tk.LEFT, padx=2)
-            ttk.Label(actions, text="中点微调", style="Muted.TLabel").pack(
-                side=tk.LEFT, padx=(10, 2))
-            for label, delta in (("-10", -10), ("-2", -2), ("+2", 2), ("+10", 10)):
+                ).grid(row=0, column=action_index, padx=2, pady=2, sticky=tk.W)
+            ttk.Label(actions, text="中点微调", style="Muted.TLabel").grid(
+                row=1, column=0, padx=(0, 8), pady=2, sticky=tk.W)
+            for nudge_index, (label, delta) in enumerate(
+                (("-10", -10), ("-2", -2), ("+2", 2), ("+10", 10)), start=1
+            ):
                 ttk.Button(
                     actions, text=label,
                     command=lambda i=index, d=delta: self._mechanical_nudge_center(i, d),
                     style="Secondary.TButton",
-                ).pack(side=tk.LEFT, padx=2)
+                ).grid(row=1, column=nudge_index, padx=2, pady=2, sticky=tk.W)
+            for column in range(5):
+                actions.columnconfigure(column, weight=0)
 
-            # 深色主题下不用 Guide 高亮条（作者实测发白刺眼），平铺亮字即可。
             ttk.Label(
                 table, text=flu_guide, wraplength=1080,
-            ).grid(row=row + 1, column=0, columnspan=6, sticky=tk.W, padx=4, pady=(0, 2))
+            ).grid(row=row + 2, column=0, columnspan=6, sticky=tk.W, padx=4, pady=(0, 2))
 
             confirms = ttk.Frame(table)
-            confirms.grid(row=row + 2, column=0, columnspan=6, sticky=tk.W, padx=4, pady=(0, 7))
+            confirms.grid(row=row + 3, column=0, columnspan=6, sticky=tk.W, padx=4, pady=(0, 7))
             ttk.Checkbutton(
                 confirms, text="机械中立位已对正", variable=values["center_confirmed"]
             ).pack(side=tk.LEFT)

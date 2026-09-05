@@ -46,8 +46,10 @@ class AcceptanceV2PageMixin:
         ttk.Checkbutton(safety, text="动力已隔离或机体已可靠固定", variable=self.validation_power_safe_var).pack(side=tk.LEFT, padx=(16, 0))
         controls = ttk.Frame(parent); controls.pack(fill=tk.X, pady=(10, 0))
         ttk.Button(controls, text="启动无桨安全模式", command=self._v2_start,
-                   style="Warning.TButton").pack(side=tk.LEFT)
-        ttk.Label(controls, text="步骤").pack(side=tk.LEFT, padx=(16, 4))
+                   style="Warning.TButton").pack(anchor=tk.W)
+        step_row = ttk.Frame(controls)
+        step_row.pack(fill=tk.X, pady=(8, 0))
+        ttk.Label(step_row, text="步骤").pack(side=tk.LEFT, padx=(0, 4))
         stages = (
             "rc_center", "rc_positive_roll", "rc_positive_pitch", "rc_positive_yaw",
             "nav_static", "nav_forward", "nav_left", "restore_positive_roll",
@@ -55,15 +57,15 @@ class AcceptanceV2PageMixin:
             "servo_alpha_negative_50us", "servo_beta_positive_50us",
             "servo_beta_negative_50us", "failsafe",
         )
-        ttk.Combobox(controls, textvariable=self.v2_stage_var, values=stages,
-                     state="readonly", width=31).pack(side=tk.LEFT)
+        ttk.Combobox(step_row, textvariable=self.v2_stage_var, values=stages,
+                     state="readonly", width=31).pack(anchor=tk.W)
         ttk.Button(controls, text="切换并观察步骤", command=self._v2_set_stage,
-                   style="Primary.TButton").pack(side=tk.LEFT, padx=(8, 0))
+                   style="Primary.TButton").pack(anchor=tk.W, pady=(8, 0))
         ttk.Button(controls, text="停止无桨验收", command=self._v2_stop,
-                   style="Danger.TButton").pack(side=tk.LEFT, padx=(16, 0))
+                   style="Danger.TButton").pack(anchor=tk.W, pady=(8, 0))
         ttk.Button(controls, text="读取快照", command=lambda: self._send_proto(
             PROTO_REQ_ACCEPTANCE, "ACCEPT?", "ACCEPT?"),
-            style="Secondary.TButton").pack(side=tk.LEFT, padx=(8, 0))
+            style="Secondary.TButton").pack(anchor=tk.W, pady=(8, 0))
         ttk.Label(parent, textvariable=self.v2_status_var, style="Guide.TLabel",
                   wraplength=1120).pack(fill=tk.X, pady=(12, 8))
         live = ttk.LabelFrame(parent, text="目标端只读快照", padding=10); live.pack(fill=tk.X)

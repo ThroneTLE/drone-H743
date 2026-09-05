@@ -21,7 +21,7 @@ FLOW_PAGE_PATH = ROOT / "tools" / "panel_lib" / "pages" / "flow_ranging.py"
 RC_PAGE_PATH = ROOT / "tools" / "panel_lib" / "pages" / "rc_wizard.py"
 
 METHOD_AST_SHA256 = {
-    "_build_rc_page": "3a1aea8c91ae7df2479facb516d9e1b6c9927b51aaef54c15b9329fb749442dc",
+    "_build_rc_page": "688346a18b5466c90a90c83d71d79d645a89e5c975b46ec79514234545c9b3f2",
     "_rc_row_entry": "4ee254afe89559f7af7b9f520d7f80a5bd1a4a73e8ca4fefd316417c0db70e75",
     "_rc_collect_map": "636036f6c51260ac6791a3ee94d8c2cf803ca85e8589ac72c16cfd2e1826a79e",
     "_rc_set_row": "8c3b9319326db09eb172f6936df5e59cfe0b0f9688c8d7ff3cc08c09d8150c74",
@@ -88,7 +88,7 @@ OWNED_CONSTANTS = {
 UNTOUCHED_PAGE_AST_SHA256 = {
     # Effective parent 27149729 changed only this builder's label style after
     # the requested 8b8085c6 baseline; the RC hashes above remain pinned to 8b.
-    "_build_mechanical_calibration_page": "7aeec318492aa2f51113a30e081f88e55ed278cfddf86afe32848e41cbaf48b7",
+    "_build_mechanical_calibration_page": "a361b5ff4e5dc1f5dc69cd3a7877e795abdca1ec4d6c8d029700902d7f2e5154",
     "_mechanical_row_values": "91112bfc4ed0c275a94a5bab26e39ff0caf68b8e3377991765cd5f9cdeb2ab82",
     "_mechanical_local_target": "9f151f75ecdee6a72f283491518fb793abbaee323a1616a1b84032e16d7bd156",
     "_mechanical_target_matches_local": "7a959f7bd8f9fcf114d521e56f1369342bad5a2e2f1557053f8c55f421e99427",
@@ -101,7 +101,7 @@ UNTOUCHED_PAGE_AST_SHA256 = {
     "_mechanical_nudge_center": "44b1f0da89a2b39e291c8520f994d197fccd99760d25a700469bd25d821633bf",
     "_mechanical_jog_stop": "bd1fc4be0f2a5c43eb1968f7929e4de85ee93fb1183307f4fe80231926295170",
     "_mechanical_save_evidence": "090a8861825e49b5b1c3440138e9260fb09d8b80e093eecaa07852939574e9f2",
-    "_build_flow_range_calibration_page": "8a3fec1fc473df0c739b94f836b97a46d6b3cc8c6eeda365b2622bc9953f66dd",
+    "_build_flow_range_calibration_page": "b82cfc6332ac43ec89dcea660fc61a76080e7bd4fe203c1ad7a9d18fcbd7b448",
     "_flow_range_request_once": "2ff7e3a41f240d644b4e729c14f68ef8f563784a0157d7f5c9908cb0c61c3428",
     "_flow_cal_start": "59f98967d8d888edbfb924652470a982f9428b45711c45c93ecc8329fbe30147",
     "_flow_cal_stop": "7f0514ad7a8b81f308c642468e4cfe6f8191b833ea4779a5aa0e292104355d9a",

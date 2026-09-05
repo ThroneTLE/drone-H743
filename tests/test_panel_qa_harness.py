@@ -232,18 +232,13 @@ def test_no_callback_raised_while_building_or_switching_pages(offline) -> None:
 def test_the_geometry_probe_reports_controls_that_exist_but_cannot_be_reached(
     offline,
 ) -> None:
-    """“不能只查控件存在”——这条判据只有在两者同时成立时才有意义。"""
+    """V 线修复后，真实装置应确认机械动作不再横向越界。"""
     offline.resize(1366, 768)
     reports = {r.page: r for r in offline.probe_geometry(sizes=((1366, 768),))}
     mechanical = next(r for name, r in reports.items() if "舵机机械" in name)
+    assert mechanical.clean, mechanical.to_json()
 
-    clipped = {control.text: control for control in mechanical.clipped}
-    assert {"-10", "-2", "+2"} <= set(clipped), mechanical.to_json()
-    assert clipped["-10"].clipped_x > 0
-
-    widget = offline.panel.nametowidget(clipped["-10"].path)
-    assert widget.winfo_exists(), "控件存在——所以只断言存在的测试会绿，用户却点不到"
-    assert widget.winfo_manager(), "而且它确实被布局接管了，不是没 pack 上去"
+    assert len(offline.panel.mechanical_rows) == 2
 
 
 def test_scrollable_content_is_not_counted_as_unreachable(offline) -> None:

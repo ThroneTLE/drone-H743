@@ -25,7 +25,6 @@ import tempfile
 from datetime import datetime
 from pathlib import Path
 
-from .geometry import WINDOW_SIZES
 from .guards import hardware_guards
 from .harness import OfflinePanel
 from .isolation import claim_output_path, isolated_environment
@@ -44,64 +43,13 @@ def _head_commit() -> str:
         return "unknown"
 
 
-# ---------------------------------------------------------------- N01 主题
-
-
-def observe_input_theme(session) -> dict:
-    """N01：Spinbox 是否配了深色字段底。基线上 `TSpinbox.fieldbackground` 是空的。"""
-    from tkinter import ttk
-
-    style = ttk.Style(session.panel)
-    return {
-        "issue": "N01",
-        "styles": {
-            widget: {
-                key: style.lookup(widget, key)
-                for key in ("foreground", "fieldbackground", "background")
-            }
-            for widget in ("TEntry", "TSpinbox", "TCombobox", "Treeview")
-        },
-    }
-
-
-# ---------------------------------------------------------------- N02/N03 布局
-
-
-def observe_layout(session) -> dict:
-    """N02/N03：三尺寸下够不到的交互控件。判据见 `geometry.py`。"""
-    reports = session.probe_geometry(sizes=WINDOW_SIZES)
-    return {
-        "issue": "N02/N03",
-        "scale_simulated": session.scale,
-        "pages": len({r.page for r in reports}),
-        "cases": len(reports),
-        "cases_with_unreachable_controls": sum(1 for r in reports if not r.clean),
-        "detail": [r.to_json() for r in reports if not r.clean],
-    }
-
-
-# ---------------------------------------------------------------- N04 滚轮
-
-
-def observe_dashboard_mousewheel(session) -> dict:
-    """N04：给状态监视视口造出可滚内容，再看滚轮事件动不动得了 yview。"""
-    panel = session.panel
-    panel.notebook.select(panel.dashboard_tab)
-    session.resize(1080, 700)
-    canvas = panel.dashboard_host.canvas
-    panel.unbind_all("<MouseWheel>")
-    canvas.configure(scrollregion=(0, 0, 500, 2000))
-    canvas.yview_moveto(0)
-    before = canvas.yview()
-    canvas.event_generate("<MouseWheel>", delta=-120)
-    panel.update_idletasks()
-    return {
-        "issue": "N04",
-        "yview_before": list(before),
-        "yview_after": list(canvas.yview()),
-        "canvas_binding": canvas.bind("<MouseWheel>"),
-        "scrolled": list(before) != list(canvas.yview()),
-    }
+# ---------------------------------------------------------------- N01-N04
+#
+# 已由 V 线 TK-01/TK-02 改写为真实产品回归：
+#   tests/test_tk_v_revamp.py
+# 修复前的观测原文保留在
+#   data/analysis/tk_revamp/2026-09-04/baseline_63223acd/observations.json。
+# 基线脚本不再重复驱动已不存在的主题/布局/全局滚轮缺陷。
 
 
 # ---------------------------------------------------------------- N05-N09
@@ -142,11 +90,6 @@ def run(output_dir: Path) -> dict:
             with isolated_environment(scratch_root):
                 for scale in (1.0,):
                     with OfflinePanel.launch(scale=scale, size=(1366, 768)) as session:
-                        observations["observations"].extend([
-                            observe_input_theme(session),
-                            observe_layout(session),
-                            observe_dashboard_mousewheel(session),
-                        ])
                         observations["callback_errors"] = [
                             repr(e) for e in session.callback_errors
                         ]

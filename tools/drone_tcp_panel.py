@@ -37,6 +37,7 @@ try:
     from .panel_lib import state as _panel_state
     from .panel_lib import theme as _panel_theme
     from .panel_lib import transport as _panel_transport, rx_dispatch as _panel_rx
+    from .panel_lib import viewport as _panel_viewport
 except ImportError:  # Allows direct import and: python tools/drone_tcp_panel.py
     try:
         from tools.panel_lib import evidence as _panel_evidence
@@ -57,6 +58,7 @@ except ImportError:  # Allows direct import and: python tools/drone_tcp_panel.py
         from tools.panel_lib import state as _panel_state
         from tools.panel_lib import theme as _panel_theme
         from tools.panel_lib import transport as _panel_transport, rx_dispatch as _panel_rx
+        from tools.panel_lib import viewport as _panel_viewport
     except ImportError:
         from panel_lib import evidence as _panel_evidence
         from panel_lib.pages import acceptance_v2 as _panel_acceptance_v2
@@ -76,6 +78,7 @@ except ImportError:  # Allows direct import and: python tools/drone_tcp_panel.py
         from panel_lib import state as _panel_state
         from panel_lib import theme as _panel_theme
         from panel_lib import transport as _panel_transport, rx_dispatch as _panel_rx
+        from panel_lib import viewport as _panel_viewport
 
 # Compatibility forwarding: existing callers may keep importing these names from
 # tools.drone_tcp_panel while transport.py owns their implementations.
@@ -762,45 +765,8 @@ def normalize_module_key(key: str) -> str | None:
     return MODULE_ALIASES.get(key.upper())
 
 
-class VerticalScrolledFrame(ttk.Frame):
-    """A width-following vertical viewport for long workflow pages."""
-
-    def __init__(self, parent: tk.Misc) -> None:
-        super().__init__(parent, style="Page.TFrame")
-        self.canvas = tk.Canvas(
-            self, background=UI_PALETTE["surface"], highlightthickness=0, borderwidth=0)
-        self.scrollbar = ttk.Scrollbar(
-            self, orient=tk.VERTICAL, command=self.canvas.yview)
-        self.canvas.configure(yscrollcommand=self.scrollbar.set)
-        self.canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        self.scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        self.content = ttk.Frame(
-            self.canvas, padding=(14, 14, 10, 18), style="Page.TFrame")
-        self._window = self.canvas.create_window(
-            (0, 0), window=self.content, anchor=tk.NW)
-        self.content.bind("<Configure>", self._sync_scroll_region)
-        self.content.bind("<Enter>", self._bind_wheel)
-        self.content.bind("<Leave>", self._unbind_wheel)
-        self.canvas.bind("<Configure>", self._sync_width)
-        self.canvas.bind("<Enter>", self._bind_wheel)
-        self.canvas.bind("<Leave>", self._unbind_wheel)
-
-    def _sync_scroll_region(self, _event: tk.Event | None = None) -> None:
-        self.canvas.configure(scrollregion=self.canvas.bbox("all"))
-
-    def _sync_width(self, event: tk.Event) -> None:
-        self.canvas.itemconfigure(self._window, width=event.width)
-
-    def _bind_wheel(self, _event: tk.Event) -> None:
-        self.canvas.bind_all("<MouseWheel>", self._on_mousewheel)
-
-    def _unbind_wheel(self, _event: tk.Event) -> None:
-        self.canvas.unbind_all("<MouseWheel>")
-
-    def _on_mousewheel(self, event: tk.Event) -> None:
-        delta = int(getattr(event, "delta", 0))
-        if delta != 0:
-            self.canvas.yview_scroll(-1 if delta > 0 else 1, "units")
+VerticalScrolledFrame = _panel_viewport.VerticalScrolledFrame
+FixedActionViewport = _panel_viewport.FixedActionViewport
 
 
 def enable_hidpi_awareness() -> float:
@@ -1425,7 +1391,7 @@ class DronePanel(ValidationV0PageMixin, EvidenceMixin, AcceptanceV2PageMixin, Vi
         self.notebook = ttk.Notebook(body)
         body.add(self.notebook, weight=6)
 
-        overview = ttk.Frame(self.notebook, padding=14, style="Page.TFrame")
+        overview_scroll = VerticalScrolledFrame(self.notebook)
         calibration = ttk.Frame(self.notebook, padding=8, style="Page.TFrame")
         self.calibration_notebook = ttk.Notebook(calibration)
         self.calibration_notebook.pack(fill=tk.BOTH, expand=True)
@@ -1446,22 +1412,31 @@ class DronePanel(ValidationV0PageMixin, EvidenceMixin, AcceptanceV2PageMixin, Vi
         acceptance_v2 = acceptance_v2_scroll.content
         vibration = vibration_scroll.content
         firmware = firmware_scroll.content
+        overview = overview_scroll.content
         sensors = ttk.Frame(self.notebook, padding=8, style="Page.TFrame")
         self.sensor_notebook = ttk.Notebook(sensors)
         self.sensor_notebook.pack(fill=tk.BOTH, expand=True)
-        baro = ttk.Frame(self.sensor_notebook, padding=14, style="Page.TFrame")
-        imu = ttk.Frame(self.sensor_notebook, padding=14, style="Page.TFrame")
-        gps = ttk.Frame(self.sensor_notebook, padding=14, style="Page.TFrame")
-        flow_sensor = ttk.Frame(self.sensor_notebook, padding=14, style="Page.TFrame")
-        ident = ttk.Frame(self.notebook, padding=14, style="Page.TFrame")
-        params = ttk.Frame(self.notebook, padding=14, style="Page.TFrame")
-        servos = ttk.Frame(self.notebook, padding=14, style="Page.TFrame")
-        commands = ttk.Frame(self.notebook, padding=14, style="Page.TFrame")
-        self.baro_tab = baro
-        self.imu_tab = imu
+        baro_scroll = VerticalScrolledFrame(self.sensor_notebook)
+        imu_scroll = VerticalScrolledFrame(self.sensor_notebook)
+        gps_scroll = VerticalScrolledFrame(self.sensor_notebook)
+        flow_sensor_scroll = VerticalScrolledFrame(self.sensor_notebook)
+        ident_scroll = VerticalScrolledFrame(self.notebook)
+        params_scroll = VerticalScrolledFrame(self.notebook)
+        servos_view = FixedActionViewport(self.notebook)
+        commands_scroll = VerticalScrolledFrame(self.notebook)
+        baro = baro_scroll.content
+        imu = imu_scroll.content
+        gps = gps_scroll.content
+        flow_sensor = flow_sensor_scroll.content
+        ident = ident_scroll.content
+        params = params_scroll.content
+        servos = servos_view.content
+        commands = commands_scroll.content
+        self.baro_tab = baro_scroll
+        self.imu_tab = imu_scroll
         self.calibration_group_tab = calibration
         self.sensor_group_tab = sensors
-        self.flow_sensor_tab = flow_sensor
+        self.flow_sensor_tab = flow_sensor_scroll
         self.validation_tab = validation_scroll
         self.v1_tab = metrology_scroll
         self.rc_tab = rc_scroll
@@ -1470,10 +1445,10 @@ class DronePanel(ValidationV0PageMixin, EvidenceMixin, AcceptanceV2PageMixin, Vi
         self.v2_tab = acceptance_v2_scroll
         self.vibration_tab = vibration_scroll
         self.firmware_tab = firmware_scroll
-        self.gps_tab = gps
-        self.ident_tab = ident
+        self.gps_tab = gps_scroll
+        self.ident_tab = ident_scroll
 
-        self.notebook.add(overview, text="总览")
+        self.notebook.add(overview_scroll, text="总览")
         self.notebook.add(calibration, text="校准")
         self.calibration_notebook.add(validation_scroll, text="坐标系与极性")
         self.calibration_notebook.add(metrology_scroll, text="IMU 零偏与比例")
@@ -1484,14 +1459,14 @@ class DronePanel(ValidationV0PageMixin, EvidenceMixin, AcceptanceV2PageMixin, Vi
         self.calibration_notebook.add(vibration_scroll, text="振动检测与滤波")
         self.notebook.add(firmware_scroll, text="维护 · 固件升级")
         self.notebook.add(sensors, text="传感器")
-        self.sensor_notebook.add(baro, text="气压计")
-        self.sensor_notebook.add(imu, text="IMU 监视（旧链）")
-        self.sensor_notebook.add(gps, text="GPS / 磁力计")
-        self.sensor_notebook.add(flow_sensor, text="光流")
-        self.notebook.add(servos, text="维护 · 舵机调试")
-        self.notebook.add(params, text="参数 / PID")
-        self.notebook.add(ident, text="系统辨识")
-        self.notebook.add(commands, text="诊断 / 命令")
+        self.sensor_notebook.add(baro_scroll, text="气压计")
+        self.sensor_notebook.add(imu_scroll, text="IMU 监视（旧链）")
+        self.sensor_notebook.add(gps_scroll, text="GPS / 磁力计")
+        self.sensor_notebook.add(flow_sensor_scroll, text="光流")
+        self.notebook.add(servos_view, text="维护 · 舵机调试")
+        self.notebook.add(params_scroll, text="参数 / PID")
+        self.notebook.add(ident_scroll, text="系统辨识")
+        self.notebook.add(commands_scroll, text="诊断 / 命令")
 
         self._build_overview_page(overview)
         self._build_validation_page(validation)
@@ -1508,7 +1483,7 @@ class DronePanel(ValidationV0PageMixin, EvidenceMixin, AcceptanceV2PageMixin, Vi
         self._build_sensor_flow_page(flow_sensor)
         self._build_ident_page(ident)
         self._build_params_page(params)
-        self._build_servo_page(servos)
+        self._build_servo_page(servos, fixed_parent=servos_view.fixed)
         self._build_command_page(commands)
         self._dashboard_mount(self.notebook)
 
@@ -1619,13 +1594,13 @@ class DronePanel(ValidationV0PageMixin, EvidenceMixin, AcceptanceV2PageMixin, Vi
             style="Muted.TLabel",
         ).pack(fill=tk.X, pady=(3, 8))
         ttk.Frame(parent, height=1, style="Rule.TFrame").pack(fill=tk.X, pady=(0, 8))
-        panes = ttk.PanedWindow(parent, orient=tk.HORIZONTAL)
+        panes = ttk.Frame(parent)
         panes.pack(fill=tk.BOTH, expand=True)
 
         left = ttk.Frame(panes)
         right = ttk.Frame(panes)
-        panes.add(left, weight=3)
-        panes.add(right, weight=2)
+        left.pack(fill=tk.BOTH, expand=True)
+        right.pack(fill=tk.BOTH, expand=True, pady=(10, 0))
 
         toolbar = ttk.Frame(left)
         toolbar.pack(fill=tk.X, pady=(0, 8))
@@ -2873,12 +2848,12 @@ class DronePanel(ValidationV0PageMixin, EvidenceMixin, AcceptanceV2PageMixin, Vi
         ttk.Label(top, textvariable=self.ident_sample_count_var).pack(side=tk.LEFT, padx=4)
         ttk.Label(top, textvariable=self.ident_reason_var).pack(side=tk.LEFT, padx=4)
 
-        panes = ttk.PanedWindow(parent, orient=tk.HORIZONTAL)
+        panes = ttk.Frame(parent)
         panes.pack(fill=tk.BOTH, expand=True, pady=(10, 0))
         left = ttk.Frame(panes)
         right = ttk.Frame(panes)
-        panes.add(left, weight=2)
-        panes.add(right, weight=3)
+        left.pack(fill=tk.X)
+        right.pack(fill=tk.X, pady=(10, 0))
 
         cfg = ttk.LabelFrame(left, text="Experiment", padding=10)
         cfg.pack(fill=tk.X)
@@ -2975,12 +2950,12 @@ class DronePanel(ValidationV0PageMixin, EvidenceMixin, AcceptanceV2PageMixin, Vi
         ttk.Button(top, text="恢复默认", command=lambda: self._send_proto(PROTO_REQ_DEFAULTS, "DEFAULTS")).pack(side=tk.LEFT, padx=6)
         ttk.Label(top, textvariable=self.config_summary_var).pack(side=tk.LEFT, padx=(14, 0))
 
-        panes = ttk.PanedWindow(parent, orient=tk.HORIZONTAL)
+        panes = ttk.Frame(parent)
         panes.pack(fill=tk.BOTH, expand=True, pady=(10, 0))
         left = ttk.Frame(panes)
         right = ttk.Frame(panes)
-        panes.add(left, weight=3)
-        panes.add(right, weight=2)
+        left.pack(fill=tk.X)
+        right.pack(fill=tk.X, pady=(10, 0))
 
         self.param_tree = ttk.Treeview(left, columns=("target", "draft", "source", "status"), show="tree headings")
         self.param_tree.heading("#0", text="参数")
@@ -3048,7 +3023,7 @@ class DronePanel(ValidationV0PageMixin, EvidenceMixin, AcceptanceV2PageMixin, Vi
     def _build_command_page(self, parent: ttk.Frame) -> None:
         quick = ttk.LabelFrame(parent, text="兼容 / 调试命令", padding=10)
         quick.pack(fill=tk.X)
-        for label, command in [
+        for index, (label, command) in enumerate([
             ("PING", "PING"),
             ("STATUS?", "STATUS?"),
             ("CONFIG?", "CONFIG?"),
@@ -3060,8 +3035,12 @@ class DronePanel(ValidationV0PageMixin, EvidenceMixin, AcceptanceV2PageMixin, Vi
             ("MAG?", "MAG?"),
             ("SAVE", "SAVE"),
             ("LOAD", "LOAD"),
-        ]:
-            ttk.Button(quick, text=label, command=lambda c=command: self._send(c)).pack(side=tk.LEFT, padx=3)
+        ]):
+            ttk.Button(
+                quick, text=label, command=lambda c=command: self._send(c)
+            ).grid(row=index // 4, column=index % 4, padx=3, pady=3, sticky=tk.W)
+        for column in range(4):
+            quick.columnconfigure(column, weight=1)
 
         help_box = ttk.LabelFrame(parent, text="兼容格式", padding=10)
         help_box.pack(fill=tk.BOTH, expand=True, pady=(10, 0))

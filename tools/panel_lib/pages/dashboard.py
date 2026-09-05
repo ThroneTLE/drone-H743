@@ -53,6 +53,7 @@ from ..proto import PROTO_REQ_PARAM_SET, parse_kv
 from ..record_service import LinkIdentity, RecordSchema, TelemetryRecorder
 from ..scope import SCOPE_RENDER_PERIOD_MS
 from ..telem_stream import TelemDecoder, TelemRing, TelemSchema
+from ..viewport import VerticalScrolledFrame
 
 
 try:  # 三段回退与面板其它页一致：包内 / tools 包 / 直接跑脚本
@@ -72,34 +73,7 @@ DASHBOARD_NOMINAL_WIDTH = 1200
 DASHBOARD_STATE_KEY = "dashboard"
 
 
-class _ScrollHost(ttk.Frame):
-    """一个只做纵向滚动的最小视口。
-
-    不复用 `drone_tcp_panel.VerticalScrolledFrame`：那个类在面板主文件里，
-    从 panel_lib 反向 import 会绕成循环依赖。这里只要 30 行。
-    """
-
-    def __init__(self, parent: tk.Misc) -> None:
-        super().__init__(parent, style="Page.TFrame")
-        self.canvas = tk.Canvas(self, highlightthickness=0, borderwidth=0)
-        self.scrollbar = ttk.Scrollbar(self, orient=tk.VERTICAL, command=self.canvas.yview)
-        self.canvas.configure(yscrollcommand=self.scrollbar.set)
-        self.canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        self.scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        self.content = ttk.Frame(self.canvas, style="Page.TFrame")
-        self._window = self.canvas.create_window((0, 0), window=self.content, anchor=tk.NW)
-        self.canvas.bind("<Configure>", self._sync_width)
-
-    def _sync_width(self, event: tk.Event) -> None:
-        self.canvas.itemconfigure(self._window, width=event.width)
-
-    def set_content_height(self, height: int) -> None:
-        self.content.configure(height=max(height, 1))
-        self.canvas.configure(scrollregion=(0, 0, 0, max(height, 1)))
-
-    def viewport_width(self) -> int:
-        width = int(self.canvas.winfo_width())
-        return width if width > 1 else DASHBOARD_NOMINAL_WIDTH
+_ScrollHost = VerticalScrolledFrame
 
 
 class PanelTileContext(TileContext):
@@ -219,7 +193,7 @@ class DashboardPageMixin:
 
     def _build_dashboard_toolbar(self, parent: ttk.Frame) -> None:
         bar = ttk.Frame(parent)
-        bar.pack(fill=tk.X, pady=(0, 6))
+        bar.pack(fill=tk.X, pady=(0, 4))
         ttk.Label(bar, text="TELEM  /  状态监视", style="Eyebrow.TLabel").pack(side=tk.LEFT)
 
         self.dashboard_workspace_bar = ttk.Frame(bar)
@@ -230,18 +204,24 @@ class DashboardPageMixin:
         ttk.Label(bar, textvariable=self.dashboard_record_var, style="Mono.TLabel").pack(
             side=tk.RIGHT
         )
-        ttk.Button(bar, text="录制 CSV", command=self._dashboard_toggle_record,
-                   style="Secondary.TButton").pack(side=tk.RIGHT, padx=(6, 6))
-        ttk.Button(bar, text="清空缓冲", command=self._dashboard_clear_buffer,
-                   style="Secondary.TButton").pack(side=tk.RIGHT, padx=(6, 0))
-        ttk.Button(bar, text="恢复预设", command=self._dashboard_restore_presets,
-                   style="Secondary.TButton").pack(side=tk.RIGHT, padx=(6, 0))
-        ttk.Button(bar, text="导出布局", command=self._dashboard_export_layout,
-                   style="Secondary.TButton").pack(side=tk.RIGHT, padx=(6, 0))
-        ttk.Button(bar, text="导入布局", command=self._dashboard_import_layout,
-                   style="Secondary.TButton").pack(side=tk.RIGHT, padx=(6, 0))
-        self.dashboard_add_button = ttk.Menubutton(bar, text="添加组件",
-                                                   style="Secondary.TButton")
+
+        actions = ttk.Frame(parent)
+        actions.pack(fill=tk.X, pady=(0, 6))
+        action_specs = (
+            ("录制 CSV", self._dashboard_toggle_record),
+            ("清空缓冲", self._dashboard_clear_buffer),
+            ("恢复预设", self._dashboard_restore_presets),
+            ("导出布局", self._dashboard_export_layout),
+            ("导入布局", self._dashboard_import_layout),
+        )
+        for index, (label, command) in enumerate(action_specs):
+            ttk.Button(actions, text=label, command=command,
+                       style="Secondary.TButton").grid(
+                           row=index // 3, column=index % 3, padx=(0, 6), pady=2, sticky=tk.W
+                       )
+        self.dashboard_add_button = ttk.Menubutton(
+            actions, text="添加组件", style="Secondary.TButton"
+        )
         menu = tk.Menu(self.dashboard_add_button, tearoff=False)
         for tile_type, factory in sorted(TILE_CLASSES.items()):
             menu.add_command(
@@ -249,12 +229,16 @@ class DashboardPageMixin:
                 command=lambda t=tile_type: self._dashboard_add_tile(t),
             )
         self.dashboard_add_button.configure(menu=menu)
-        self.dashboard_add_button.pack(side=tk.RIGHT, padx=(6, 0))
+        self.dashboard_add_button.grid(row=1, column=2, padx=(0, 6), pady=2, sticky=tk.W)
         self.dashboard_add_menu = menu
 
         self.dashboard_edit_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(bar, text="编辑布局", variable=self.dashboard_edit_var,
-                        command=self._dashboard_toggle_edit).pack(side=tk.RIGHT, padx=(6, 0))
+        ttk.Checkbutton(actions, text="编辑布局", variable=self.dashboard_edit_var,
+                        command=self._dashboard_toggle_edit).grid(
+                            row=1, column=0, padx=(0, 6), pady=2, sticky=tk.W
+                        )
+        for column in range(3):
+            actions.columnconfigure(column, weight=1)
 
     def _build_dashboard_stats(self, parent: ttk.Frame) -> None:
         box = ttk.Frame(parent)
@@ -417,6 +401,12 @@ class DashboardPageMixin:
 
     def _dashboard_on_resize(self, _event=None) -> None:
         if self.dashboard_resize is not None:
+            # Geometry probes record ``after`` callbacks; do the first changed
+            # grid-cell placement synchronously while still coalescing pixel noise.
+            cell_width = self._dashboard_cell_width()
+            if self.dashboard_resize._last_cell_width != cell_width:
+                self._dashboard_relayout()
+                self.dashboard_resize.mark_laid_out()
             self.dashboard_resize.note_configure()
 
     # --- 编辑器回调（DashboardEditor 的 host 协议） ---

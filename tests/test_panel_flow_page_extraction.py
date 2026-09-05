@@ -29,7 +29,7 @@ PARENT_COMMIT = "925356ba"
 # 前八个是增量1 起就钉住的旧哈希，原样沿用；后两个是本次新搬的两个遥测行处理器，
 # 哈希取自父提交的 DronePanel，未作任何改动。
 METHOD_AST_SHA256 = {
-    "_build_flow_range_calibration_page": "8a3fec1fc473df0c739b94f836b97a46d6b3cc8c6eeda365b2622bc9953f66dd",
+    "_build_flow_range_calibration_page": "b82cfc6332ac43ec89dcea660fc61a76080e7bd4fe203c1ad7a9d18fcbd7b448",
     "_flow_range_request_once": "2ff7e3a41f240d644b4e729c14f68ef8f563784a0157d7f5c9908cb0c61c3428",
     "_flow_cal_start": "59f98967d8d888edbfb924652470a982f9428b45711c45c93ecc8329fbe30147",
     "_flow_cal_stop": "7f0514ad7a8b81f308c642468e4cfe6f8191b833ea4779a5aa0e292104355d9a",

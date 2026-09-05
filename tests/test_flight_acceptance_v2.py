@@ -27,7 +27,7 @@ LEGACY_PANEL_PATH = ROOT / "tools" / "drone_tcp_panel.py"
 V2_PAGE_PATH = ROOT / "tools" / "panel_lib" / "pages" / "acceptance_v2.py"
 INCREMENT9_PARENT = "4d87d78f7497318737f3b3645f812ce3dd9977e7"
 V2_PAGE_AST_SHA256 = {
-    "_build_v2_page": "88c22660c867905d80525a96d22f1620bb8f021e2e989806dd03b28e859340f2",
+    "_build_v2_page": "f436d8271888fcede8f33a53a817ee66ab68b6d37881da695adf6657cb4ed5cf",
     "_v2_start": "f462ccdc451e156315c59e34efe38fc8ca886902a0e322dccb0004856e81156e",
     "_v2_set_stage": "9c9f56d725688ceda0e73aa1a11edb0d0082addac16a13e24cd29a76c7300fe1",
     "_v2_stop": "f546e12abedd6833bf4e533f083974b139a6a4e02253916be273ed160a4f49d8",
@@ -302,7 +302,7 @@ def test_s6_increment9_v2_page_ast_owner_and_forwarding() -> None:
     assert set(owned) == set(V2_PAGE_AST_SHA256)
     assert set(owned).isdisjoint(legacy)
     assert {name: _page_ast_sha256(owned[name]) for name in V2_PAGE_AST_SHA256} == V2_PAGE_AST_SHA256
-    assert len(owned["_build_v2_page"].body) == 22
+    assert len(owned["_build_v2_page"].body) == 24
     assert legacy_panel.AcceptanceV2PageMixin is acceptance_v2_page.AcceptanceV2PageMixin
     for name in V2_PAGE_AST_SHA256:
         assert getattr(legacy_panel.DronePanel, name) is getattr(

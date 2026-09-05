@@ -18,18 +18,33 @@ from ..proto import (
     safe_int,
 )
 from .servo_type_controls import ServoTypeControlsMixin
-from ..servo_debug_theme import apply_servo_debug_theme
 
 
 class ServoDebugPageMixin(ServoTypeControlsMixin):
-    def _build_servo_page(self, parent: ttk.Frame) -> None:
+    def _build_servo_page(
+        self, parent: ttk.Frame, *, fixed_parent: ttk.Frame | None = None
+    ) -> None:
         self._servo_bus_widgets: list[tk.Widget] = []
         self._servo_raw_widgets: list[tk.Widget] = []
         self._servo_input_widgets: dict[tuple[int, str], tk.Widget] = {}
         self.servo_validation_vars: list[tk.StringVar] = []
+        if fixed_parent is not None:
+            stop_box = ttk.LabelFrame(fixed_parent, text="固定操作区 · 点动停止", padding=6)
+            stop_box.pack(fill=tk.X)
+            ttk.Label(stop_box, text="停止只交还稳定环，不断开通信：").pack(
+                side=tk.LEFT, padx=(0, 8)
+            )
+            for index in range(2):
+                button = ttk.Button(
+                    stop_box, text="停止",
+                    command=lambda i=index: self._servo_cmd(i, "DST"),
+                    style="Danger.TButton",
+                )
+                button.pack(side=tk.LEFT, padx=(0, 6))
+                self._servo_bus_widgets.append(button)
         self._build_servo_type_controls(parent)
 
-        servo_notebook = ttk.Notebook(parent)
+        servo_notebook = ttk.Notebook(parent, style="TNotebook")
         servo_notebook.pack(fill=tk.BOTH, expand=True)
         for index in range(2):
             frame = ttk.Frame(servo_notebook, padding=10)
@@ -39,14 +54,12 @@ class ServoDebugPageMixin(ServoTypeControlsMixin):
         raw = ttk.LabelFrame(parent, text="手动原始舵机指令（仅总线模式）", padding=10)
         raw.pack(fill=tk.X, pady=(10, 0))
         self.raw_var = tk.StringVar(value="{#001P1500T0500!#002P1500T0500!}")
-        raw_entry = ttk.Entry(raw, textvariable=self.raw_var)
+        raw_entry = ttk.Entry(raw, textvariable=self.raw_var, style="Numeric.TEntry")
         raw_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
         raw_button = ttk.Button(raw, text="发送原始指令", command=self._send_raw)
         raw_button.pack(side=tk.LEFT, padx=(6, 0))
         self._servo_raw_widgets.extend((raw_entry, raw_button))
         self._refresh_servo_output_controls()
-        apply_servo_debug_theme(parent, self.ui_palette)
-
     def _build_servo_tab(self, parent: ttk.Frame, index: int) -> None:
         values: dict[str, tk.Variable] = {
             "id": tk.IntVar(value=index + 1),
@@ -97,7 +110,10 @@ class ServoDebugPageMixin(ServoTypeControlsMixin):
 
         id_box = ttk.LabelFrame(parent, text="修改实体舵机 ID", padding=8)
         id_box.grid(row=row, column=0, columnspan=2, sticky=tk.EW, pady=(8, 4))
-        new_id = ttk.Spinbox(id_box, from_=0, to=255, textvariable=values["new_id"], width=8)
+        new_id = ttk.Spinbox(
+            id_box, from_=0, to=255, textvariable=values["new_id"], width=8,
+            style="Numeric.TSpinbox",
+        )
         new_id.pack(side=tk.LEFT)
         self._servo_input_widgets[(index, "new_id")] = new_id
         set_id = ttk.Button(id_box, text="写入新 ID", command=lambda i=index: self._servo_set_physical_id(i))
@@ -116,7 +132,6 @@ class ServoDebugPageMixin(ServoTypeControlsMixin):
             ("恢复扭力", "ULR"),
             ("暂停", "DPT"),
             ("继续", "DCT"),
-            ("停止", "DST"),
             ("当前位置设中位", "SCK"),
             ("设置启动位置", "CSD"),
             ("清除启动位置", "CSM"),
@@ -136,7 +151,10 @@ class ServoDebugPageMixin(ServoTypeControlsMixin):
         baud_box = ttk.Frame(parent)
         baud_box.grid(row=row + 1, column=0, columnspan=2, sticky=tk.EW, pady=(8, 0))
         ttk.Label(baud_box, text="波特率代码").pack(side=tk.LEFT)
-        baud = ttk.Spinbox(baud_box, from_=0, to=7, textvariable=values["baud"], width=5)
+        baud = ttk.Spinbox(
+            baud_box, from_=0, to=7, textvariable=values["baud"], width=5,
+            style="Numeric.TSpinbox",
+        )
         baud.pack(side=tk.LEFT, padx=6)
         self._servo_input_widgets[(index, "baud")] = baud
         baud_button = ttk.Button(baud_box, text="设置波特率", command=lambda i=index: self._servo_baud(i))
@@ -148,7 +166,10 @@ class ServoDebugPageMixin(ServoTypeControlsMixin):
     def _servo_spin(self, parent: ttk.Frame, index: int, field: str, row: int, label: str,
                     variable: tk.Variable, minimum: int, maximum: int, command) -> None:
         ttk.Label(parent, text=label).grid(row=row, column=0, sticky=tk.W, pady=4)
-        box = ttk.Spinbox(parent, from_=minimum, to=maximum, textvariable=variable, width=10)
+        box = ttk.Spinbox(
+            parent, from_=minimum, to=maximum, textvariable=variable, width=10,
+            style="Numeric.TSpinbox",
+        )
         box.grid(row=row, column=1, sticky=tk.EW, pady=4)
         self._servo_input_widgets[(index, field)] = box
         self._servo_bus_widgets.append(box)

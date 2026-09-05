@@ -18,7 +18,7 @@ FLOW_PAGE_PATH = ROOT / "tools" / "panel_lib" / "pages" / "flow_ranging.py"
 PARENT_COMMIT = "e88b3d99a061d199ab1fe9fb69d7e952c0a6e2bf"
 
 METHOD_AST_SHA256 = {
-    "_build_mechanical_calibration_page": "7aeec318492aa2f51113a30e081f88e55ed278cfddf86afe32848e41cbaf48b7",
+    "_build_mechanical_calibration_page": "a361b5ff4e5dc1f5dc69cd3a7877e795abdca1ec4d6c8d029700902d7f2e5154",
     "_mechanical_row_values": "91112bfc4ed0c275a94a5bab26e39ff0caf68b8e3377991765cd5f9cdeb2ab82",
     "_mechanical_local_target": "9f151f75ecdee6a72f283491518fb793abbaee323a1616a1b84032e16d7bd156",
     "_mechanical_target_matches_local": "7a959f7bd8f9fcf114d521e56f1369342bad5a2e2f1557053f8c55f421e99427",
@@ -34,7 +34,7 @@ METHOD_AST_SHA256 = {
 }
 
 FLOW_AST_SHA256 = {
-    "_build_flow_range_calibration_page": "8a3fec1fc473df0c739b94f836b97a46d6b3cc8c6eeda365b2622bc9953f66dd",
+    "_build_flow_range_calibration_page": "b82cfc6332ac43ec89dcea660fc61a76080e7bd4fe203c1ad7a9d18fcbd7b448",
     "_flow_range_request_once": "2ff7e3a41f240d644b4e729c14f68ef8f563784a0157d7f5c9908cb0c61c3428",
     "_flow_cal_start": "59f98967d8d888edbfb924652470a982f9428b45711c45c93ecc8329fbe30147",
     "_flow_cal_stop": "7f0514ad7a8b81f308c642468e4cfe6f8191b833ea4779a5aa0e292104355d9a",

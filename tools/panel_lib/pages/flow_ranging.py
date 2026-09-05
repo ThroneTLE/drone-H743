@@ -108,20 +108,29 @@ class FlowRangingPageMixin:
             row, textvariable=self.flow_cal_stage_var,
             values=tuple(self.flow_cal_stage_by_label), state="readonly", width=30,
         )
-        self.flow_cal_stage_combo.pack(side=tk.LEFT, padx=(5, 12))
-        ttk.Label(row, text="水平参考位移 m").pack(side=tk.LEFT)
-        ttk.Entry(row, textvariable=self.flow_cal_reference_distance_var, width=7).pack(side=tk.LEFT, padx=(4, 12))
-        ttk.Label(row, text="近点 m").pack(side=tk.LEFT)
-        ttk.Entry(row, textvariable=self.flow_cal_near_height_var, width=7).pack(side=tk.LEFT, padx=(4, 10))
-        ttk.Label(row, text="远点 m").pack(side=tk.LEFT)
-        ttk.Entry(row, textvariable=self.flow_cal_far_height_var, width=7).pack(side=tk.LEFT, padx=(4, 12))
+        self.flow_cal_stage_combo.pack(side=tk.LEFT, padx=(5, 0))
+
+        values_row = ttk.Frame(capture)
+        values_row.pack(fill=tk.X, pady=(8, 0))
+        ttk.Label(values_row, text="水平参考位移 m").pack(side=tk.LEFT)
+        ttk.Entry(values_row, textvariable=self.flow_cal_reference_distance_var, width=7).pack(
+            side=tk.LEFT, padx=(4, 12)
+        )
+        ttk.Label(values_row, text="近点 m").pack(side=tk.LEFT)
+        ttk.Entry(values_row, textvariable=self.flow_cal_near_height_var, width=7).pack(
+            side=tk.LEFT, padx=(4, 10)
+        )
+        ttk.Label(values_row, text="远点 m").pack(side=tk.LEFT)
+        ttk.Entry(values_row, textvariable=self.flow_cal_far_height_var, width=7).pack(
+            side=tk.LEFT, padx=(4, 12)
+        )
         self.flow_cal_start_button = ttk.Button(
-            row, text="开始本步采样", command=self._flow_cal_start,
+            values_row, text="开始本步采样", command=self._flow_cal_start,
             style="Primary.TButton",
         )
         self.flow_cal_start_button.pack(side=tk.LEFT)
         self.flow_cal_stop_button = ttk.Button(
-            row, text="停止并分析", command=self._flow_cal_stop,
+            values_row, text="停止并分析", command=self._flow_cal_stop,
             state=tk.DISABLED, style="Warning.TButton",
         )
         self.flow_cal_stop_button.pack(side=tk.LEFT, padx=(6, 0))

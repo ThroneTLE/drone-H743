@@ -319,18 +319,24 @@ class ValidationV0PageMixin:
         self.validation_resume_button.pack(side=tk.LEFT, padx=(6, 0))
         ttk.Button(session_bar, text="暂停", command=self._validation_stop_session,
                    style="Danger.TButton").pack(side=tk.LEFT, padx=(6, 0))
+
+        history_bar = ttk.Frame(parent)
+        history_bar.pack(fill=tk.X, pady=(6, 0))
+        ttk.Label(history_bar, text="历史会话", style="Muted.TLabel").pack(
+            side=tk.LEFT, padx=(0, 8)
+        )
         self.validation_history_combo = ttk.Combobox(
-            session_bar, textvariable=self.validation_history_var,
-            values=(), state="readonly", width=40,
+            history_bar, textvariable=self.validation_history_var,
+            values=(), state="readonly", width=24,
         )
         self.validation_history_combo.pack(side=tk.LEFT, padx=(18, 6))
         ttk.Button(
-            session_bar, text="载入",
+            history_bar, text="载入",
             command=self._validation_load_selected_history,
             style="Secondary.TButton",
         ).pack(side=tk.LEFT)
         ttk.Button(
-            session_bar, text="刷新",
+            history_bar, text="刷新",
             command=self._validation_refresh_history_choices,
             style="Link.TButton",
         ).pack(side=tk.LEFT, padx=(4, 0))
@@ -441,16 +447,16 @@ class ValidationV0PageMixin:
             text="读取飞机映射状态",
             command=lambda: self._send_proto(PROTO_REQ_IMU_FRAME, "IMUFRAME?"),
             style="Secondary.TButton",
-        ).grid(row=2, column=4, sticky=tk.W, padx=(16, 0), pady=(7, 0))
+        ).grid(row=3, column=0, sticky=tk.W, pady=(7, 0))
         ttk.Label(mapping, text="飞机回报", style="Muted.TLabel").grid(
-            row=3, column=0, sticky=tk.W, pady=(8, 0))
+            row=4, column=0, sticky=tk.W, pady=(8, 0))
         ttk.Label(
             mapping,
             textvariable=self.validation_orientation_target_var,
             style="Mono.TLabel",
-        ).grid(row=3, column=1, columnspan=5, sticky=tk.W, pady=(8, 0))
+        ).grid(row=4, column=1, columnspan=5, sticky=tk.W, pady=(8, 0))
         ttk.Label(mapping, text="最近操作", style="Muted.TLabel").grid(
-            row=4, column=0, sticky=tk.W, pady=(2, 0))
+            row=5, column=0, sticky=tk.W, pady=(2, 0))
         self.validation_orientation_event_label = ttk.Label(
             mapping,
             textvariable=self.validation_orientation_event_var,
@@ -458,12 +464,12 @@ class ValidationV0PageMixin:
             wraplength=980,
         )
         self.validation_orientation_event_label.grid(
-            row=4, column=1, columnspan=5, sticky=tk.W, pady=(2, 0))
+            row=5, column=1, columnspan=5, sticky=tk.W, pady=(2, 0))
         ttk.Label(
             mapping,
             text="首次使用仍需烧录一次支持 IMUFRAME 的固件；之后改映射无需重新编程。",
             style="Muted.TLabel",
-        ).grid(row=5, column=0, columnspan=6, sticky=tk.W, pady=(5, 0))
+        ).grid(row=6, column=0, columnspan=6, sticky=tk.W, pady=(5, 0))
 
         panes = ttk.PanedWindow(parent, orient=tk.HORIZONTAL)
         panes.pack(fill=tk.BOTH, expand=True, pady=(10, 0))

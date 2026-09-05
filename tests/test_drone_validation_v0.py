@@ -21,6 +21,7 @@ from tools.panel_lib.pages import validation_v0 as validation_v0_page
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = (ROOT / "tools" / "drone_tcp_panel.py").read_text(encoding="utf-8")
+THEME_SOURCE = (ROOT / "tools" / "panel_lib" / "theme.py").read_text(encoding="utf-8")
 EVIDENCE_SOURCE = (
     ROOT / "tools" / "panel_lib" / "evidence.py"
 ).read_text(encoding="utf-8")
@@ -45,7 +46,7 @@ V0_PAGE_AST_SHA256 = {
     "_validation_refresh_stepper": "18ef352f3ce1f3bb20c1ef7647d0a8d2099c4172812cf36f70968c51b91f9791",
     "_validation_recolor_stage_rows": "8e3bd0eb74fa22373c2bcc28119b59c37675302ba3ed1eaddfb950f55da910ae",
     "_validation_set_gate": "e6fdd2fa939cbbb2bb7b1a9468baa61ad5f83dfbd9fe9fa707f1dc2b45c5eeba",
-    "_build_validation_page": "fc51614a1cc0497c45529fa7a48263292edf7ffcb1717a41169c6451f5231ab3",
+    "_build_validation_page": "6bc6a9f42fb6d6823645a8287dcbaff8b48ea8905f362b12db3bdcb6dba0fe7f",
     "_validation_update_safety_text": "b39643683d08e58eb54249112b57ff979c6127fa6c2456c9b7c1a89b1c23428d",
     "_validation_refresh_readiness": "d83dec0d051628ada7edae01a7dc111044bb8b09191ceb9884307e7d225f7c56",
     "_validation_set_status": "5d3f430fa41769066c0073e5bb3195aa9f6dd0fe499ea3d793d3d96b0f78d7c0",
@@ -643,7 +644,7 @@ def contrast_ratio(fg: str, bg: str) -> float:
 
 
 def test_panel_visual_hierarchy_uses_semantic_styles_and_guidance() -> None:
-    configure = function_body(SOURCE, "    def _configure_style(")
+    configure = function_body(THEME_SOURCE, "    def _configure_style(")
     validation = function_body(SOURCE, "    def _build_validation_page(")
     v1 = function_body(V1_SOURCE, "    def _build_v1_page(")
     v2 = function_body(V2_SOURCE, "    def _build_v2_page(")
@@ -1307,7 +1308,7 @@ def test_s6_increment10_validation_and_evidence_ast_owners() -> None:
     assert (set(validation) | set(evidence)).isdisjoint(legacy)
     assert {name: _python_ast_sha256(validation[name]) for name in V0_PAGE_AST_SHA256} == V0_PAGE_AST_SHA256
     assert {name: _python_ast_sha256(evidence[name]) for name in EVIDENCE_AST_SHA256} == EVIDENCE_AST_SHA256
-    assert len(validation["_build_validation_page"].body) == 114
+    assert len(validation["_build_validation_page"].body) == 117
 
     helper_owners = {
         **_python_top_functions(validation_path),

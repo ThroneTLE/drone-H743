@@ -116,7 +116,7 @@ def test_sensor_group_collects_baro_imu_gps_flow_under_one_expandable_tab() -> N
     assert 'self.notebook.add(gps, text="GPS / 磁力计")' not in build
     # 容器归属也必须真的改到二级 Notebook 上，不能只改 .add() 调用点。
     for name in ("baro", "imu", "gps", "flow_sensor"):
-        assert f"{name} = ttk.Frame(self.sensor_notebook," in build
+        assert f"{name}_scroll = VerticalScrolledFrame(self.sensor_notebook)" in build
     # “校准”分组及其子页与本次改动无关，必须原样保留。
     assert 'self.notebook.add(calibration, text="校准")' in build
     assert 'self.calibration_notebook.add(flow_range_scroll, text="光流与测距")' in build

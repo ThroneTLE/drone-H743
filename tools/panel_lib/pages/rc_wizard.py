@@ -340,7 +340,7 @@ class RcWizardPageMixin:
         live = ttk.LabelFrame(parent, text="1 · 实时通道", padding=10)
         live.pack(fill=tk.X)
         bars = ttk.Frame(live)
-        bars.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        bars.pack(side=tk.TOP, fill=tk.X, expand=True)
         bars.columnconfigure(1, weight=1)
         self.rc_channel_bars = []
         self.rc_channel_labels = []
@@ -362,7 +362,7 @@ class RcWizardPageMixin:
         bars.columnconfigure(4, weight=1)
 
         sticks = ttk.Frame(live)
-        sticks.pack(side=tk.RIGHT, padx=(18, 0))
+        sticks.pack(side=tk.TOP, fill=tk.X, pady=(10, 0))
         self.rc_stick_canvas = tk.Canvas(
             sticks, width=250, height=126, highlightthickness=0,
             background=UI_PALETTE["console"],
