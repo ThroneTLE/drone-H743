@@ -23,6 +23,8 @@ try:
     from .panel_lib.pages import acceptance_v2 as _panel_acceptance_v2
     from .panel_lib.pages import drift as _panel_drift
     from .panel_lib.pages import dashboard as _panel_dashboard, flow_monitor as _panel_flow_monitor
+    from .panel_lib.pages import gps_validity as _panel_gps_validity
+    from .panel_lib import parameter_editor as _panel_parameter_editor
     from .panel_lib.pages import flow_ranging as _panel_flow
     from .panel_lib.pages import mechanical as _panel_mechanical
     from .panel_lib.pages import rc_wizard as _panel_rc
@@ -56,6 +58,8 @@ except ImportError:  # Allows direct import and: python tools/drone_tcp_panel.py
         from panel_lib.pages import acceptance_v2 as _panel_acceptance_v2
         from panel_lib.pages import drift as _panel_drift
         from panel_lib.pages import dashboard as _panel_dashboard, flow_monitor as _panel_flow_monitor
+        from panel_lib.pages import gps_validity as _panel_gps_validity
+        from panel_lib import parameter_editor as _panel_parameter_editor
         from panel_lib.pages import flow_ranging as _panel_flow
         from panel_lib.pages import mechanical as _panel_mechanical
         from panel_lib.pages import rc_wizard as _panel_rc
@@ -227,6 +231,9 @@ FLOW_MONITOR_POLL_PERIOD_S = _panel_flow_monitor.FLOW_MONITOR_POLL_PERIOD_S
 FLOW_MONITOR_QUALITY_FULL_SCALE = _panel_flow_monitor.FLOW_MONITOR_QUALITY_FULL_SCALE
 FLOW_MONITOR_RENDER_PERIOD_NS = _panel_flow_monitor.FLOW_MONITOR_RENDER_PERIOD_NS
 FlowMonitorPageMixin = _panel_flow_monitor.FlowMonitorPageMixin
+GpsValidityPageMixin = _panel_gps_validity.GpsValidityPageMixin
+MAX_GPS_TRACK_POINTS = _panel_gps_validity.MAX_GPS_TRACK_POINTS
+ParameterEditorMixin = _panel_parameter_editor.ParameterEditorMixin
 MechanicalPageMixin = _panel_mechanical.MechanicalPageMixin
 ServoDebugPageMixin = _panel_servo_debug.ServoDebugPageMixin
 V1PageMixin = _panel_v1.V1PageMixin
@@ -848,11 +855,13 @@ def enable_hidpi_awareness() -> float:
         return 1.0
 
 
-class DronePanel(ValidationV0PageMixin, EvidenceMixin, AcceptanceV2PageMixin, VibrationPageMixin, ServoDebugPageMixin, MechanicalPageMixin, RcWizardPageMixin, V1PageMixin, FlowRangingPageMixin, FlowMonitorPageMixin, _panel_dashboard.DashboardPageMixin, DriftPageMixin, PanelStateMixin, ProtocolLineMixin, tk.Tk):
+class DronePanel(ValidationV0PageMixin, EvidenceMixin, AcceptanceV2PageMixin, VibrationPageMixin, ServoDebugPageMixin, MechanicalPageMixin, RcWizardPageMixin, V1PageMixin, FlowRangingPageMixin, FlowMonitorPageMixin, GpsValidityPageMixin, ParameterEditorMixin, _panel_dashboard.DashboardPageMixin, DriftPageMixin, PanelStateMixin, ProtocolLineMixin, tk.Tk):
     def __init__(self) -> None:
         # 必须早于 super().__init__()：Tk 根窗口一旦创建，DPI 感知就无法再改。
         self.ui_dpi_scale = enable_hidpi_awareness()
         super().__init__()
+        self._init_gps_state()
+        self._init_parameter_editor_state()
         self._configure_compact_scaling()
         self.title("drone-H743 地面站")
         width = min(int(1500 * self.ui_dpi_scale), self.winfo_screenwidth() - 80)
@@ -873,10 +882,6 @@ class DronePanel(ValidationV0PageMixin, EvidenceMixin, AcceptanceV2PageMixin, Vi
         self.baro_buffer: list[dict[str, float | str]] = []
         self._baro_dirty = False
         self._last_baro_plot_ns = 0
-        self.gps_track: list[dict[str, float | str | int]] = []
-        self.gps_origin_lat: float | None = None
-        self.gps_origin_lon: float | None = None
-        self.gps_last_plot_ns = 0
         self.imu_poll_enabled = tk.BooleanVar(value=False)
         self.imu_last_poll = 0.0
         self.imu_last_sample_time = 0.0
@@ -924,9 +929,6 @@ class DronePanel(ValidationV0PageMixin, EvidenceMixin, AcceptanceV2PageMixin, Vi
         self.validation_candidate_source_path: Path | None = None
         self.validation_orientation_audit_path: Path | None = None
         self._last_validation_readiness_ns = 0
-        self.params: dict[str, dict[str, str | bool]] = {}
-        self.param_iids: dict[str, str] = {}
-        self.param_names_by_iid: dict[str, str] = {}
         self.servo_widgets: list[dict[str, tk.Variable]] = []
         self.structured_protocol_supported: bool | None = None
         self.ident_samples: list[dict[str, str | float | int]] = []
@@ -1206,6 +1208,7 @@ class DronePanel(ValidationV0PageMixin, EvidenceMixin, AcceptanceV2PageMixin, Vi
 
         self._configure_style()
         self._build_ui()
+        self._bind_gps_visibility_events()
         self.serial_port_var.trace_add("write", self._on_serial_port_selection_change)
         self.ident_axis_var.trace_add("write", self._on_ident_config_change)
         self.ident_mode_var.trace_add("write", self._on_ident_config_change)
@@ -3234,10 +3237,13 @@ class DronePanel(ValidationV0PageMixin, EvidenceMixin, AcceptanceV2PageMixin, Vi
         panes.add(left, weight=3)
         panes.add(right, weight=2)
 
-        self.param_tree = ttk.Treeview(left, columns=("value", "source", "dirty"), show="tree headings")
+        self.param_tree = ttk.Treeview(left, columns=("target", "draft", "source", "status"), show="tree headings")
         self.param_tree.heading("#0", text="参数")
         self.param_tree.column("#0", width=220, anchor=tk.W)
-        for col, label, width in [("value", "值", 150), ("source", "来源", 100), ("dirty", "待发送", 80)]:
+        for col, label, width in [
+            ("target", "目标值", 110), ("draft", "本地草稿", 110),
+            ("source", "来源/单位", 135), ("status", "状态", 150),
+        ]:
             self.param_tree.heading(col, text=label)
             self.param_tree.column(col, width=width, anchor=tk.W)
         self.param_tree.pack(fill=tk.BOTH, expand=True)
@@ -3248,13 +3254,22 @@ class DronePanel(ValidationV0PageMixin, EvidenceMixin, AcceptanceV2PageMixin, Vi
         self.param_name_var = tk.StringVar()
         self.param_value_var = tk.StringVar()
         ttk.Label(edit, text="名称").grid(row=0, column=0, sticky=tk.W, pady=4)
-        ttk.Entry(edit, textvariable=self.param_name_var).grid(row=0, column=1, sticky=tk.EW, pady=4)
+        self.param_name_entry = ttk.Entry(edit, textvariable=self.param_name_var)
+        self.param_name_entry.grid(row=0, column=1, sticky=tk.EW, pady=4)
         ttk.Label(edit, text="值").grid(row=1, column=0, sticky=tk.W, pady=4)
-        ttk.Entry(edit, textvariable=self.param_value_var).grid(row=1, column=1, sticky=tk.EW, pady=4)
+        self.param_value_entry = ttk.Entry(edit, textvariable=self.param_value_var)
+        self.param_value_entry.grid(row=1, column=1, sticky=tk.EW, pady=4)
+        ttk.Label(edit, textvariable=self.param_value_error_var, style="Fail.TLabel").grid(
+            row=2, column=0, columnspan=2, sticky=tk.W, pady=(0, 4)
+        )
         actions = ttk.Frame(edit)
-        actions.grid(row=2, column=0, columnspan=2, sticky=tk.EW, pady=(8, 0))
+        actions.grid(row=3, column=0, columnspan=2, sticky=tk.EW, pady=(8, 0))
         ttk.Button(actions, text="暂存修改", command=self._stage_param_edit).pack(side=tk.LEFT)
         ttk.Button(actions, text="发送修改", command=self._send_param_edit).pack(side=tk.LEFT, padx=6)
+        ttk.Button(actions, text="撤销草稿", command=self._discard_param_draft).pack(side=tk.LEFT)
+        ttk.Label(edit, textvariable=self.param_editor_status_var, style="Muted.TLabel").grid(
+            row=4, column=0, columnspan=2, sticky=tk.W, pady=(6, 0)
+        )
         edit.columnconfigure(1, weight=1)
 
         pid = ttk.LabelFrame(right, text="PID 快速编辑", padding=10)
@@ -3262,16 +3277,26 @@ class DronePanel(ValidationV0PageMixin, EvidenceMixin, AcceptanceV2PageMixin, Vi
         self.pid_vars: dict[str, dict[str, tk.StringVar]] = {}
         ttk.Label(pid, text="轴").grid(row=0, column=0, sticky=tk.W)
         for col, term in enumerate(("kp", "ki", "kd"), start=1):
-            ttk.Label(pid, text=term.upper()).grid(row=0, column=col, sticky=tk.W)
+            label = "KI（只读）" if term == "ki" else term.upper()
+            ttk.Label(pid, text=label).grid(row=0, column=col, sticky=tk.W)
+        self.pid_widgets = {}
         for row, axis in enumerate(("roll", "pitch", "yaw"), start=1):
             ttk.Label(pid, text=axis).grid(row=row, column=0, sticky=tk.W, pady=4)
             self.pid_vars[axis] = {}
+            self.pid_widgets[axis] = {}
             for col, term in enumerate(("kp", "ki", "kd"), start=1):
                 var = tk.StringVar(value="")
                 self.pid_vars[axis][term] = var
-                ttk.Entry(pid, textvariable=var, width=10).grid(row=row, column=col, sticky=tk.EW, padx=(4, 0), pady=4)
+                entry = ttk.Entry(pid, textvariable=var, width=10)
+                entry.grid(row=row, column=col, sticky=tk.EW, padx=(4, 0), pady=4)
+                self.pid_widgets[axis][term] = entry
+                if term == "ki":
+                    entry.configure(state=tk.DISABLED)
         ttk.Button(pid, text="发送 PID", command=self._send_pid_values).grid(row=4, column=0, columnspan=2, sticky=tk.EW, pady=(8, 0))
         ttk.Button(pid, text="读取 PID", command=lambda: self._send_proto(PROTO_REQ_PID, "PID?")).grid(row=4, column=2, columnspan=2, sticky=tk.EW, padx=(6, 0), pady=(8, 0))
+        ttk.Label(pid, textvariable=self.pid_ki_status_var, style="Muted.TLabel").grid(
+            row=5, column=0, columnspan=4, sticky=tk.W, pady=(5, 0)
+        )
         for col in range(1, 4):
             pid.columnconfigure(col, weight=1)
 
@@ -3401,6 +3426,7 @@ class DronePanel(ValidationV0PageMixin, EvidenceMixin, AcceptanceV2PageMixin, Vi
             self._save_panel_state()
 
     def _stop(self) -> None:
+        self._parameter_on_disconnect()
         if self.v1_worker is not None and self.v1_worker.is_alive():
             self.v1_cancel_event.set()
         self.tcp_transport.stop()
@@ -3775,6 +3801,7 @@ class DronePanel(ValidationV0PageMixin, EvidenceMixin, AcceptanceV2PageMixin, Vi
             self._refresh_detail()
 
     def _handle_board_line(self, line: str) -> None:
+        self._parameter_handle_result_line(line)
         if line.startswith("[上位机] 板子已连接") or line.startswith("[上位机] 串口已连接"):
             self._begin_protocol_probe()
             return
@@ -4633,139 +4660,6 @@ class DronePanel(ValidationV0PageMixin, EvidenceMixin, AcceptanceV2PageMixin, Vi
                 writer.writerow(sample)
         self._append(f"[上位机] 已导出气压计暂存数据: {filename}")
 
-    def _gps_lat_lon_from_values(self, values: dict[str, str]) -> tuple[float | None, float | None]:
-        lat = first_float(values, "lat_deg", "latitude_deg", "latitude")
-        lon = first_float(values, "lon_deg", "longitude_deg", "longitude")
-        if lat is None:
-            lat = first_float(values, "lat", "lat_deg_e7")
-        if lon is None:
-            lon = first_float(values, "lon", "lon_deg_e7")
-        if lat is not None and abs(lat) > 90.0:
-            lat /= 10000000.0
-        if lon is not None and abs(lon) > 180.0:
-            lon /= 10000000.0
-        return lat, lon
-
-    def _gps_xy_from_lat_lon(self, lat: float, lon: float) -> tuple[float, float]:
-        if self.gps_origin_lat is None or self.gps_origin_lon is None:
-            self.gps_origin_lat = lat
-            self.gps_origin_lon = lon
-        radius_m = 6378137.0
-        lat0 = self.gps_origin_lat
-        lon0 = self.gps_origin_lon
-        x = math.radians(lon - lon0) * radius_m * math.cos(math.radians(lat0))
-        y = math.radians(lat - lat0) * radius_m
-        return x, y
-
-    def _update_gps_line(self, line: str) -> None:
-        values = parse_kv(line)
-        lat, lon = self._gps_lat_lon_from_values(values)
-        fix_text = first_value(values, "fix", "fix_type")
-        previous_fix = self.gps_vars.get("fix").get() if "fix" in self.gps_vars else "0"
-        fix = safe_int(fix_text, safe_int(previous_fix, 0))
-        valid = safe_int(first_value(values, "valid", "valid_fix"), 0) != 0
-        if "ok" in values:
-            initialized = safe_int(values.get("ok"), 0) != 0
-        elif line.startswith("STATUS gps"):
-            initialized = safe_int(values.get("init"), 0) != 0
-        elif "init" in values:
-            initialized = safe_int(values.get("init"), 1) == 0
-        else:
-            initialized = False
-        sv_text = first_value(values, "sv", "num_sv")
-        previous_sv = self.gps_vars.get("sv").get() if "sv" in self.gps_vars else "0"
-        sv = safe_int(sv_text, safe_int(previous_sv, 0))
-        now = time.time()
-        x: float | None = None
-        y: float | None = None
-
-        if lat is not None and lon is not None and abs(lat) <= 90.0 and abs(lon) <= 180.0:
-            if abs(lat) > 0.000001 or abs(lon) > 0.000001:
-                x, y = self._gps_xy_from_lat_lon(lat, lon)
-                self.gps_track.append(
-                    {
-                        "time": now,
-                        "lat": lat,
-                        "lon": lon,
-                        "x_m": x,
-                        "y_m": y,
-                        "fix": fix,
-                        "sv": sv,
-                        "hmsl_mm": safe_int(first_value(values, "hmsl_mm", "hmsl"), 0),
-                        "hacc_mm": safe_int(first_value(values, "hacc_mm", "hacc"), 0),
-                        "line": line,
-                    }
-                )
-                if len(self.gps_track) > MAX_GPS_TRACK_POINTS:
-                    del self.gps_track[: len(self.gps_track) - MAX_GPS_TRACK_POINTS]
-
-        previous_state = self.gps_vars.get("state").get() if "state" in self.gps_vars else "-"
-        if valid or fix >= 2:
-            state = "已定位"
-        elif initialized:
-            state = "已初始化"
-        elif previous_state not in {"-", "等待 GPS"} and not ({"ok", "init", "valid", "valid_fix", "fix", "fix_type"} & values.keys()):
-            state = previous_state
-        else:
-            state = "等待 GPS"
-        age = first_value(values, "age_ms", "age")
-        if age != "-" and age.isdigit():
-            age = f"{age} ms"
-        speed = first_value(values, "gspd", "ground_speed_mm_s", "speed_mm_s")
-        if speed == "-":
-            vn = first_float(values, "vn", "vel_n_mm_s")
-            ve = first_float(values, "ve", "vel_e_mm_s")
-            if vn is not None and ve is not None:
-                speed = f"{math.hypot(vn, ve):.0f}"
-
-        updates = {
-            "state": state,
-            "fix": str(fix) if fix_text != "-" else "-",
-            "sv": str(sv) if sv_text != "-" else "-",
-            "lon": f"{lon:.7f}" if lon is not None else "-",
-            "lat": f"{lat:.7f}" if lat is not None else "-",
-            "hmsl": first_value(values, "hmsl_mm", "hmsl"),
-            "x": f"{x:.2f}" if x is not None else "-",
-            "y": f"{y:.2f}" if y is not None else "-",
-            "spd": speed,
-            "hdg": "-",
-            "age": age,
-        }
-        heading = first_float(values, "head_e5", "heading_motion_deg_e5", "heading_deg_e5")
-        if heading is not None:
-            updates["hdg"] = f"{heading / 100000.0:.2f}"
-        for key, value in updates.items():
-            if key in self.gps_vars and value != "-":
-                self.gps_vars[key].set(value)
-
-        value_text = f"fix={fix} sv={sv}"
-        if lat is not None and lon is not None:
-            value_text += f" lat={lat:.7f} lon={lon:.7f}"
-        code_parts = [
-            f"nav={values.get('nav', '-')}",
-            f"pkts={first_value(values, 'pkts', 'packets')}",
-        ]
-        if "nmea" in values or "gga" in values:
-            code_parts.append(f"nmea={values.get('nmea', '-')}")
-            code_parts.append(f"gga={values.get('gga', '-')}")
-
-        self._update_module(
-            "GPS",
-            state=state,
-            stage=f"fix={fix}",
-            value=value_text,
-            code=" ".join(code_parts),
-            hint=self._hardware_hint("GPS", valid or initialized, values),
-            line=line,
-        )
-        self.gps_count_var.set(f"轨迹点: {len(self.gps_track)}")
-        self.gps_status_var.set(f"{state}  fix={fix}  sv={sv}")
-
-        now_ns = time.monotonic_ns()
-        if now_ns - self.gps_last_plot_ns > 200_000_000:
-            self.gps_last_plot_ns = now_ns
-            self._update_gps_plot()
-
     def _update_mag_line(self, line: str) -> None:
         values = parse_kv(line)
         has_state_fields = bool({"ok", "init", "st", "raw", "mgauss", "x", "y", "z"} & values.keys())
@@ -4814,61 +4708,6 @@ class DronePanel(ValidationV0PageMixin, EvidenceMixin, AcceptanceV2PageMixin, Vi
             hint=self._hardware_hint("MAG", ok, values) if has_state_fields else None,
             line=line,
         )
-
-    def _update_gps_plot(self) -> None:
-        if not HAS_MATPLOTLIB or self.gps_axis is None or self.gps_canvas is None:
-            return
-        self.gps_axis.clear()
-        self.gps_axis.set_title("M9N XY track")
-        self.gps_axis.set_xlabel("X east (m)")
-        self.gps_axis.set_ylabel("Y north (m)")
-        self.gps_axis.grid(True, alpha=0.3)
-        self.gps_axis.set_aspect("equal", adjustable="datalim")
-
-        if self.gps_track:
-            xs = [float(point["x_m"]) for point in self.gps_track]
-            ys = [float(point["y_m"]) for point in self.gps_track]
-            self.gps_axis.plot(xs, ys, linewidth=1.2, marker=".", markersize=3)
-            self.gps_axis.scatter([xs[-1]], [ys[-1]], s=45, color="#d62728", zorder=3)
-            pad = max(max(xs) - min(xs), max(ys) - min(ys), 2.0) * 0.08
-            self.gps_axis.set_xlim(min(xs) - pad, max(xs) + pad)
-            self.gps_axis.set_ylim(min(ys) - pad, max(ys) + pad)
-        else:
-            self.gps_axis.text(0.5, 0.5, "waiting for GPS points", ha="center", va="center", transform=self.gps_axis.transAxes)
-
-        self.gps_figure.tight_layout()
-        self.gps_canvas.draw_idle()
-
-    def _clear_gps_track(self) -> None:
-        self.gps_track.clear()
-        self.gps_origin_lat = None
-        self.gps_origin_lon = None
-        self.gps_count_var.set("轨迹点: 0")
-        self.gps_status_var.set("等待 GPS")
-        self.gps_last_plot_ns = time.monotonic_ns()
-        self._update_gps_plot()
-
-    def _export_gps_csv(self) -> None:
-        if not self.gps_track:
-            messagebox.showinfo("没有数据", "GPS 轨迹为空")
-            return
-        initial = dated_directory(TELEMETRY_DIR) / f"gps_track_{time.strftime('%Y%m%d_%H%M%S')}.csv"
-        initial.parent.mkdir(parents=True, exist_ok=True)
-        filename = filedialog.asksaveasfilename(
-            title="导出 GPS 轨迹",
-            defaultextension=".csv",
-            initialdir=str(initial.parent),
-            initialfile=initial.name,
-            filetypes=[("CSV", "*.csv"), ("All files", "*.*")],
-        )
-        if not filename:
-            return
-        with open(filename, "w", newline="", encoding="utf-8") as stream:
-            writer = csv.DictWriter(stream, fieldnames=["time", "lat", "lon", "x_m", "y_m", "fix", "sv", "hmsl_mm", "hacc_mm", "line"])
-            writer.writeheader()
-            for point in self.gps_track:
-                writer.writerow(point)
-        self._append(f"[上位机] 已导出 GPS 轨迹: {filename}")
 
     def _ident_csv_fields(self) -> list[str]:
         return [
@@ -5158,167 +4997,6 @@ class DronePanel(ValidationV0PageMixin, EvidenceMixin, AcceptanceV2PageMixin, Vi
                 for src, dst in servo_map.items():
                     if src in values:
                         widgets[dst].set(safe_int(values[src]))
-
-    def _update_param_line(self, line: str) -> None:
-        values = parse_kv(line)
-        tokens = line.split()
-        record = tokens[1] if len(tokens) >= 2 and "=" not in tokens[1] else None
-        name = values.get("name") or values.get("key")
-        value = values.get("value") or values.get("val")
-        if name is not None and value is not None:
-            self._set_param(name, value, "PARAM", dirty=False)
-            return
-
-        if record is not None:
-            for key, item_value in values.items():
-                if key not in {"ok", "st", "count"}:
-                    self._set_param(f"{record}.{key}", item_value, "PARAM", dirty=False)
-            return
-
-        for key, item_value in values.items():
-            if key not in {"ok", "st", "count"}:
-                self._set_param(key, item_value, "PARAM", dirty=False)
-
-    def _update_pid_line(self, line: str) -> None:
-        values = parse_kv(line)
-        tokens = line.split()
-        axis = values.get("axis")
-        if axis is None and len(tokens) >= 2 and "=" not in tokens[1]:
-            axis = tokens[1].lower()
-        if axis is None:
-            group = (values.get("group") or values.get("target") or "").lower()
-            index = safe_int(values.get("index"), -1)
-            if group in {"rate", "angle"} and 0 <= index < 3:
-                axis = ("roll", "pitch", "yaw")[index]
-
-        if axis in self.pid_vars:
-            for term in ("kp", "ki", "kd"):
-                if term in values:
-                    self.pid_vars[axis][term].set(values[term])
-                    self._set_param(f"pid.{axis}.{term}", values[term], "PID", dirty=False)
-            return
-
-        for key, value in values.items():
-            if key in {"axis", "ok", "st"}:
-                continue
-            lowered = key.lower().replace("_", ".")
-            if lowered.startswith("pid."):
-                name = lowered
-            elif "." in lowered:
-                name = f"pid.{lowered}"
-            else:
-                name = f"pid.{key}"
-            self._set_param(name, value, "PID", dirty=False)
-            self._sync_pid_quick_var(name, value)
-
-    def _sync_pid_quick_var(self, name: str, value: str) -> None:
-        parts = name.lower().split(".")
-        if len(parts) >= 3 and parts[-2] in self.pid_vars and parts[-1] in self.pid_vars[parts[-2]]:
-            self.pid_vars[parts[-2]][parts[-1]].set(value)
-
-    def _set_param(self, name: str, value: str, source: str, dirty: bool) -> None:
-        self.params[name] = {"value": value, "source": source, "dirty": dirty}
-        dirty_text = "yes" if dirty else ""
-        iid = self.param_iids.get(name)
-        if iid is None:
-            iid = f"p{len(self.param_iids)}"
-            self.param_iids[name] = iid
-            self.param_names_by_iid[iid] = name
-        if self.param_tree.exists(iid):
-            self.param_tree.item(iid, text=name, values=(value, source, dirty_text))
-        else:
-            self.param_tree.insert("", tk.END, iid=iid, text=name, values=(value, source, dirty_text))
-        self._sync_pid_quick_var(name, value)
-
-    def _on_param_select(self, _event: tk.Event) -> None:
-        selection = self.param_tree.selection()
-        if not selection:
-            return
-        name = self.param_names_by_iid.get(selection[0], selection[0])
-        self.param_name_var.set(name)
-        self.param_value_var.set(str(self.params.get(name, {}).get("value", "")))
-
-    def _stage_param_edit(self) -> None:
-        name = self.param_name_var.get().strip()
-        value = self.param_value_var.get().strip()
-        if not name:
-            messagebox.showerror("参数错误", "参数名不能为空")
-            return
-        self._set_param(name, value, "local", dirty=True)
-
-    def _param_value_for_servo(self, index: int, param_key: str, widget_key: str, fallback: str) -> str:
-        param_value = str(self.params.get(f"servo{index}.{param_key}", {}).get("value", "")).strip()
-        if param_value:
-            return param_value
-        if 0 <= index < len(self.servo_widgets):
-            return str(self.servo_widgets[index][widget_key].get()).strip()
-        return fallback
-
-    def _payload_for_param_edit(self, name: str, value: str) -> tuple[int, str]:
-        lowered = name.strip().lower()
-        parts = lowered.split(".")
-        pid_aliases = {
-            "pid.roll.kp": "coax.roll_angle_kp",
-            "pid.pitch.kp": "coax.pitch_angle_kp",
-            "pid.roll.kd": "coax.roll_rate_kd",
-            "pid.pitch.kd": "coax.pitch_rate_kd",
-            "pid.yaw.kp": "coax.yaw_angle_kp",
-            "pid.yaw.kd": "coax.yaw_rate_kd",
-            "pid.pos.x.kp": "coax.pos_x_kp",
-            "pid.pos.y.kp": "coax.pos_y_kp",
-            "pid.pos.z.kp": "coax.pos_z_kp",
-            "pid.pos.z.ki": "coax.pos_z_ki",
-            "pid.vel.x.kd": "coax.vel_x_kd",
-            "pid.vel.y.kd": "coax.vel_y_kd",
-            "pid.vel.z.kd": "coax.vel_z_kd",
-            "pid.vel_loop.enable": "coax.vel_loop_enable",
-        }
-        if lowered in pid_aliases:
-            payload = f"PARAM SET {pid_aliases[lowered]} {value}"
-            return PROTO_REQ_PARAM_SET, payload
-        if len(parts) == 2 and parts[0].startswith("servo") and parts[0][5:].isdigit():
-            index = int(parts[0][5:])
-            field = parts[1]
-            if field == "id":
-                payload = f"SERVO ID {index} {value}"
-                return PROTO_REQ_SERVO_ID, payload
-            if field in {"enabled", "en"}:
-                payload = f"SERVO ENABLE {index} {value}"
-                return PROTO_REQ_SERVO_ENABLE, payload
-            if field == "mode":
-                payload = f"SERVO MODE {index} {value}"
-                return PROTO_REQ_SERVO_MODE, payload
-            if field in {"pulse", "pulse_us"}:
-                time_ms = self._param_value_for_servo(index, "time", "time", "500")
-                payload = f"SERVO MOVE {index} {value} {time_ms}"
-                return PROTO_REQ_SERVO_MOVE, payload
-            if field in {"time", "time_ms"}:
-                pulse = self._param_value_for_servo(index, "pulse", "pulse", "1500")
-                payload = f"SERVO MOVE {index} {pulse} {value}"
-                return PROTO_REQ_SERVO_MOVE, payload
-
-        payload = f"PARAM SET {name} {value}"
-        return PROTO_REQ_PARAM_SET, payload
-
-    def _send_param_edit(self) -> None:
-        self._stage_param_edit()
-        name = self.param_name_var.get().strip()
-        value = self.param_value_var.get().strip()
-        if name:
-            function, payload = self._payload_for_param_edit(name, value)
-            self._send_proto_once(function, payload, payload)
-
-    def _send_pid_values(self) -> None:
-        for axis, terms in self.pid_vars.items():
-            parts = []
-            for term in ("kp", "ki", "kd"):
-                value = terms[term].get().strip()
-                if value:
-                    parts.append(f"{term}={value}")
-                    self._set_param(f"pid.{axis}.{term}", value, "local", dirty=True)
-            if parts:
-                payload = f"PID SET {axis} {' '.join(parts)}"
-                self._send_proto(PROTO_REQ_PID_SET, payload, payload)
 
     def _stage_text(self, stage: str) -> str:
         mapping = {

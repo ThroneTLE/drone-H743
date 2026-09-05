@@ -25,6 +25,8 @@ class ServoDebugPageMixin(ServoTypeControlsMixin):
     def _build_servo_page(self, parent: ttk.Frame) -> None:
         self._servo_bus_widgets: list[tk.Widget] = []
         self._servo_raw_widgets: list[tk.Widget] = []
+        self._servo_input_widgets: dict[tuple[int, str], tk.Widget] = {}
+        self.servo_validation_vars: list[tk.StringVar] = []
         self._build_servo_type_controls(parent)
 
         servo_notebook = ttk.Notebook(parent)
@@ -67,13 +69,19 @@ class ServoDebugPageMixin(ServoTypeControlsMixin):
         enabled.grid(row=row, column=0, sticky=tk.W)
         self._servo_bus_widgets.append(enabled)
         row += 1
-        self._servo_spin(parent, row, "当前舵机 ID", values["id"], 0, 255, lambda i=index: self._servo_set_id(i))
+        self._servo_spin(parent, index, "id", row, "当前舵机 ID", values["id"], 0, 255, lambda i=index: self._servo_set_id(i))
         row += 1
         self._scale(parent, row, "目标位置 us", values["pulse"], 500, 2500)
         row += 1
-        self._servo_spin(parent, row, "运行时间 ms", values["time"], 0, 9999, None)
+        self._servo_spin(parent, index, "time", row, "运行时间 ms", values["time"], 0, 9999, None)
         row += 1
-        self._servo_spin(parent, row, "模式 1-8", values["mode"], 1, 8, lambda i=index: self._servo_mode(i))
+        self._servo_spin(parent, index, "mode", row, "模式 1-8", values["mode"], 1, 8, lambda i=index: self._servo_mode(i))
+        row += 1
+        validation_var = tk.StringVar(value="")
+        self.servo_validation_vars.append(validation_var)
+        ttk.Label(parent, textvariable=validation_var, style="Fail.TLabel").grid(
+            row=row, column=0, columnspan=3, sticky=tk.W, pady=(0, 4)
+        )
         row += 1
         ttk.Button(parent, text="移动此舵机", command=lambda i=index: self._servo_move(i)).grid(
             row=row, column=0, pady=6, sticky=tk.EW
@@ -91,6 +99,7 @@ class ServoDebugPageMixin(ServoTypeControlsMixin):
         id_box.grid(row=row, column=0, columnspan=2, sticky=tk.EW, pady=(8, 4))
         new_id = ttk.Spinbox(id_box, from_=0, to=255, textvariable=values["new_id"], width=8)
         new_id.pack(side=tk.LEFT)
+        self._servo_input_widgets[(index, "new_id")] = new_id
         set_id = ttk.Button(id_box, text="写入新 ID", command=lambda i=index: self._servo_set_physical_id(i))
         set_id.pack(side=tk.LEFT, padx=6)
         self._servo_bus_widgets.extend((new_id, set_id))
@@ -129,17 +138,19 @@ class ServoDebugPageMixin(ServoTypeControlsMixin):
         ttk.Label(baud_box, text="波特率代码").pack(side=tk.LEFT)
         baud = ttk.Spinbox(baud_box, from_=0, to=7, textvariable=values["baud"], width=5)
         baud.pack(side=tk.LEFT, padx=6)
+        self._servo_input_widgets[(index, "baud")] = baud
         baud_button = ttk.Button(baud_box, text="设置波特率", command=lambda i=index: self._servo_baud(i))
         baud_button.pack(side=tk.LEFT)
         self._servo_bus_widgets.extend((baud, baud_button))
 
         parent.columnconfigure(1, weight=1)
 
-    def _servo_spin(self, parent: ttk.Frame, row: int, label: str, variable: tk.Variable,
-                    minimum: int, maximum: int, command) -> None:
+    def _servo_spin(self, parent: ttk.Frame, index: int, field: str, row: int, label: str,
+                    variable: tk.Variable, minimum: int, maximum: int, command) -> None:
         ttk.Label(parent, text=label).grid(row=row, column=0, sticky=tk.W, pady=4)
         box = ttk.Spinbox(parent, from_=minimum, to=maximum, textvariable=variable, width=10)
         box.grid(row=row, column=1, sticky=tk.EW, pady=4)
+        self._servo_input_widgets[(index, field)] = box
         self._servo_bus_widgets.append(box)
         if command is not None:
             button = ttk.Button(parent, text="应用", command=command)
@@ -160,9 +171,63 @@ class ServoDebugPageMixin(ServoTypeControlsMixin):
         payload = f"SERVO RAW {self.raw_var.get().strip()}"
         self._send_proto(PROTO_REQ_SERVO_RAW, payload, payload)
 
-    def _servo_values(self, index: int) -> dict[str, int]:
+    def _servo_validation_error(self, index: int, field: str, message: str) -> None:
+        labels = {
+            "id": "当前舵机 ID", "pulse": "目标位置 us", "time": "运行时间 ms",
+            "mode": "模式 1-8", "enabled": "启用此舵机槽位", "new_id": "新 ID",
+            "baud": "波特率代码",
+        }
+        validation_vars = getattr(self, "servo_validation_vars", ())
+        if index < len(validation_vars):
+            validation_vars[index].set(f"{labels.get(field, field)}：{message}")
+        widget = getattr(self, "_servo_input_widgets", {}).get((index, field))
+        if widget is not None:
+            widget.focus_set()
+            try:
+                widget.selection_range(0, tk.END)
+            except tk.TclError:
+                pass
+
+    def _servo_clear_validation_error(self, index: int) -> None:
+        validation_vars = getattr(self, "servo_validation_vars", ())
+        if index < len(validation_vars):
+            validation_vars[index].set("")
+
+    def _servo_values(self, index: int, fields: tuple[str, ...] | None = None) -> dict[str, int] | None:
         widgets = self.servo_widgets[index]
-        return {key: int(var.get()) for key, var in widgets.items()}
+        bounds = {
+            "id": (0, 255), "pulse": (500, 2500), "time": (0, 9999),
+            "mode": (1, 8), "enabled": (0, 1), "new_id": (0, 255), "baud": (0, 7),
+        }
+        result: dict[str, int] = {}
+        for field in fields or tuple(widgets):
+            variable = widgets[field]
+            try:
+                raw = str(variable.get()).strip()
+            except tk.TclError:
+                # IntVar/DoubleVar validate on ``get()`` and would turn a
+                # user-entered partial value into the old global TclError.
+                # Read the edit buffer as text so the field-level path below
+                # can report it without sending anything.
+                raw = str(variable._tk.globalgetvar(variable._name)).strip()
+            if not raw:
+                self._servo_validation_error(index, field, "值不能为空")
+                return None
+            if not raw.lstrip("+-").isdigit():
+                self._servo_validation_error(index, field, "请输入整数")
+                return None
+            try:
+                value = int(raw)
+            except ValueError:
+                self._servo_validation_error(index, field, "数值过大")
+                return None
+            minimum, maximum = bounds[field]
+            if value < minimum or value > maximum:
+                self._servo_validation_error(index, field, f"范围应为 {minimum}..{maximum}")
+                return None
+            result[field] = value
+        self._servo_clear_validation_error(index)
+        return result
 
     def _servo_move_pwm_immediate(self, index: int, pulse_us: int) -> None:
         # 裸 `SERVO JOG` 是 mechanical.py 拆桨标定的 500µs/s 慢速斜坡（1000µs 行程要 2s），
@@ -171,7 +236,9 @@ class ServoDebugPageMixin(ServoTypeControlsMixin):
         self._send_proto(PROTO_REQ_SERVO_MOVE, payload, payload)
 
     def _servo_move(self, index: int) -> None:
-        values = self._servo_values(index)
+        values = self._servo_values(index, ("pulse", "time"))
+        if values is None:
+            return
         if self._servo_output_is_pwm():
             self._servo_move_pwm_immediate(index, values["pulse"])
             return
@@ -180,36 +247,50 @@ class ServoDebugPageMixin(ServoTypeControlsMixin):
 
     def _servo_move_all(self) -> None:
         if self._servo_output_is_pwm():
+            pulses: list[int] = []
             for index in range(len(self.servo_widgets)):
-                self._servo_move_pwm_immediate(index, self._servo_values(index)["pulse"])
+                values = self._servo_values(index, ("pulse",))
+                if values is None:
+                    return
+                pulses.append(values["pulse"])
+            for index, pulse in enumerate(pulses):
+                self._servo_move_pwm_immediate(index, pulse)
             return
         self._send_proto(PROTO_REQ_SERVO_MOVE_ALL, "SERVO MOVEALL")
 
     def _servo_mode(self, index: int) -> None:
         if self._servo_output_is_pwm():
             return
-        values = self._servo_values(index)
+        values = self._servo_values(index, ("mode",))
+        if values is None:
+            return
         payload = f"SERVO MODE {index} {values['mode']}"
         self._send_proto(PROTO_REQ_SERVO_MODE, payload, payload)
 
     def _servo_enable(self, index: int) -> None:
         if self._servo_output_is_pwm():
             return
-        values = self._servo_values(index)
+        values = self._servo_values(index, ("enabled",))
+        if values is None:
+            return
         payload = f"SERVO ENABLE {index} {values['enabled']}"
         self._send_proto(PROTO_REQ_SERVO_ENABLE, payload, payload)
 
     def _servo_set_id(self, index: int) -> None:
         if self._servo_output_is_pwm():
             return
-        values = self._servo_values(index)
+        values = self._servo_values(index, ("id",))
+        if values is None:
+            return
         payload = f"SERVO ID {index} {values['id']}"
         self._send_proto(PROTO_REQ_SERVO_ID, payload, payload)
 
     def _servo_set_physical_id(self, index: int) -> None:
         if self._servo_output_is_pwm():
             return
-        values = self._servo_values(index)
+        values = self._servo_values(index, ("new_id",))
+        if values is None:
+            return
         payload = f"SERVO SETID {index} {values['new_id']}"
         self._send_proto(PROTO_REQ_SERVO_SETID, payload, payload)
 
@@ -222,7 +303,9 @@ class ServoDebugPageMixin(ServoTypeControlsMixin):
     def _servo_baud(self, index: int) -> None:
         if self._servo_output_is_pwm():
             return
-        values = self._servo_values(index)
+        values = self._servo_values(index, ("baud",))
+        if values is None:
+            return
         payload = f"SERVO CMD {index} BD {values['baud']}"
         self._send_proto(PROTO_REQ_SERVO_ACTION, payload, payload)
 

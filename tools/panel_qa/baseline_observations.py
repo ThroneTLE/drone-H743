@@ -25,7 +25,6 @@ import tempfile
 from datetime import datetime
 from pathlib import Path
 
-from . import fixtures as qa_fixtures
 from .geometry import WINDOW_SIZES
 from .guards import hardware_guards
 from .harness import OfflinePanel
@@ -105,113 +104,13 @@ def observe_dashboard_mousewheel(session) -> dict:
     }
 
 
-# ---------------------------------------------------------------- N05 输入校验
-
-
-def observe_invalid_servo_input(session) -> dict:
-    """N05：维护舵机页填非数字后点“移动此舵机”，看用户拿到的是字段错误还是内部异常。"""
-    panel = session.panel
-    session.transport.lines.clear()
-    original = panel.servo_widgets[0]["pulse"].get()
-    panel.servo_widgets[0]["pulse"].set("abc")
-    try:
-        panel._servo_move(0)
-        outcome = "no error"
-    except Exception as exc:                     # noqa: BLE001 - 观测的就是它
-        outcome = f"{type(exc).__name__}: {exc}"
-    finally:
-        panel.servo_widgets[0]["pulse"].set(original)
-    return {"issue": "N05", "outcome": outcome, "sent": list(session.transport.lines)}
-
-
-# ---------------------------------------------------------------- N06 PID 契约
-
-
-def observe_pid_ki_contract(session) -> dict:
-    """N06：只填 KI 时上位机发了什么，以及固件 `PID SET` 到底认哪些项。"""
-    panel = session.panel
-    session.transport.lines.clear()
-    session.transport.frames.clear()
-    for terms in panel.pid_vars.values():
-        for var in terms.values():
-            var.set("")
-    panel.pid_vars["roll"]["ki"].set("0.1")
-    panel._send_pid_values()
-    # PID SET 走的是二进制帧而不是文本行，两条出口都要看。
-    sent_frames = [
-        payload.decode("utf-8", "replace") for _function, payload in session.transport.frames
-    ]
-
-    # 固件那一侧的契约就是它自己的 usage 串，逐字取出来，不转述。
-    control_path = PROJECT_ROOT / "App" / "Src" / "app_control.c"
-    control_source = control_path.read_text(encoding="utf-8", errors="replace")
-    usage = next(
-        (line.strip() for line in control_source.splitlines()
-         if "ERR usage PID SET" in line),
-        "",
-    )
-    return {
-        "issue": "N06",
-        "sent_lines": list(session.transport.lines),
-        "sent_frames": sent_frames,
-        "firmware_usage_line": usage,
-        "firmware_source": f"{control_path.relative_to(PROJECT_ROOT).as_posix()}",
-        "firmware_accepts_ki": "ki=" in usage,
-    }
-
-
-# ---------------------------------------------------------------- N07 参数草稿
-
-
-def observe_param_draft_overwrite(session) -> dict:
-    """N07：暂存一个未发送草稿，然后收一条后台回读，看草稿还在不在。"""
-    panel = session.panel
-    name = "coax.vel_x_kp"
-    panel._set_param(name, "1.2", "local", True)
-    before = dict(panel.params[name])
-    panel._update_param_line(f"PARAM name={name} value=0.8")
-    return {
-        "issue": "N07",
-        "draft_before_echo": before,
-        "after_echo": dict(panel.params[name]),
-    }
-
-
-# ---------------------------------------------------------------- N08/N09 GPS
-
-
-def observe_invalid_gps(session) -> dict:
-    """N08/N09：固件说 `valid=0`，但 pos 行仍带旧坐标；同时本页不可见。
-
-    夹具用 `panel_qa.fixtures` 的固件格式串生成，不是手打的报文。
-    """
-    panel = session.panel
-    panel.gps_track.clear()
-    panel.gps_origin_lat = None
-    panel.gps_origin_lon = None
-    # 停在机械校准页：GPS 页此刻不可见。
-    panel.notebook.select(panel.calibration_group_tab)
-    panel.calibration_notebook.select(panel.mechanical_tab)
-
-    draws: list[str] = []
-    original_plot = panel._update_gps_plot
-    panel._update_gps_plot = lambda: draws.append("draw")
-    try:
-        for _ in range(5):
-            panel.gps_last_plot_ns = 0
-            panel._update_gps_line(qa_fixtures.gps_status_line(
-                ok=1, init=0, fix=0, valid=0, sv=0, age_ms=5000))
-            panel._update_gps_line(qa_fixtures.gps_position_line())
-    finally:
-        panel._update_gps_plot = original_plot
-    return {
-        "issue": "N08/N09",
-        "visible_page": "校准 / 舵机机械中心与行程",
-        "track_points_from_invalid_fixes": len(panel.gps_track),
-        "origin_latitude": panel.gps_origin_lat,
-        "plot_calls_while_hidden": len(draws),
-        "state_text": panel.gps_vars["state"].get(),
-    }
+# ---------------------------------------------------------------- N05-N09
+#
+# 已由 D 线 TK-03/TK-04 改写为真实产品回归：
+#   tests/test_panel_d_data_contract.py
+# 修复前的观测原文保留在
+#   data/analysis/tk_revamp/2026-09-04/baseline_63223acd/observations_1.json。
+# 基线脚本不再重复驱动已经转为回归测试的输入/参数/GPS 缺陷。
 
 
 # ---------------------------------------------------------------- N10-N13 录制
@@ -247,10 +146,6 @@ def run(output_dir: Path) -> dict:
                             observe_input_theme(session),
                             observe_layout(session),
                             observe_dashboard_mousewheel(session),
-                            observe_invalid_servo_input(session),
-                            observe_pid_ki_contract(session),
-                            observe_param_draft_overwrite(session),
-                            observe_invalid_gps(session),
                         ])
                         observations["callback_errors"] = [
                             repr(e) for e in session.callback_errors
