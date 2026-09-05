@@ -4,7 +4,7 @@
 
 Read this shard only when the task needs architecture rationale, controller math, historical evidence, captures, datasets, or agent-support documentation.
 
-Document snapshot: `e23fce937f6f`; aggregate snapshot: `c22f307d252d`. Covered files: 335.
+Document snapshot: `8c29cb2333e3`; aggregate snapshot: `c22f307d252d`. Covered files: 336.
 
 ## Documents and agent support
 
@@ -18,6 +18,7 @@ Document snapshot: `e23fce937f6f`; aggregate snapshot: `c22f307d252d`. Covered f
 | `.agents/skills/drone-h743-project/references/h7-memory-domains.md` | STM32H743 Memory And Domain Notes For This Project | `先记住的结论`, `当前工程 `.ioc` 已暴露的主要内存区`, `项目内推荐的四区分工`, `1. ITCM`, `2. DTCM`, `3. D1 / AXI SRAM` (+5) |
 | `.agents/skills/drone-h743-project/references/modes/algorithm-validation.md` | 类别模式：算法验证 | `授权`, `判据（验收看这几条，不看"测试绿不绿"）`, `禁止（未经作者单独批准）`, `交付物` |
 | `.agents/skills/drone-h743-project/references/modes/protocol-telemetry.md` | 类别模式：协议 / 遥测改动 | `授权`, `判据`, `禁止（未经作者单独批准）`, `交付物` |
+| `.agents/skills/drone-h743-project/references/modes/tk-ui.md` | 类别模式：tk-ui | `适用`, `授权范围`, `必须保持`, `测试与判据`, `禁止`, `交付物` (+1) |
 | `.agents/skills/drone-h743-project/references/runtime-services.md` | Runtime Services And Background Work | `Ownership`, `Focused Validation` |
 | `.agents/skills/drone-h743-project/references/work-modes.md` | 执行者工作模式 | `三层结构`, `默认层：常规 REQ 执行`, `横切层：修 bug 模式`, `进入条件（满足任一）`, `不进入`, `流程（顺序不可省）` (+2) |
 | `.agents/skills/drone-h743-project/scripts/update_repository_index.py` | Build the compact, task-routed repository index used by the project skill | `git_working_files`, `read_bytes`, `read_text`, `compact`, `human_topic`, `c_symbols` (+21) |

@@ -281,8 +281,9 @@ def individual_row(path: str, kind: str) -> str:
         # 测试分片每行只列 3 个入口而非 6 个：本分片的用途是"挑到文件"，
         # 挑中之后就该直接打开文件看，多列的名字换不来判断力，却持续挤占
         # 32KB 硬限。改密度、不抬限制——延续 2026-08-30 F4/F5 的 6→4，
-        # 2026-09-03 S8 新增遥测解码测试后 tests.md 到 33062 B，再压到 3。
-        return f"| `{path}` | {compact(purpose)} | {symbol_cell(symbols, limit=3)} |"
+        # 2026-09-03 S8 新增遥测解码测试后 tests.md 到 33062 B，再压到 3；
+        # 2026-09-04 R-S1-3/R-T1-6 新增 QA 装置与录制契约测试后到 33678 B，压到 2。
+        return f"| `{path}` | {compact(purpose)} | {symbol_cell(symbols, limit=2)} |"
     return f"| `{path}` | {compact(purpose)} | {symbol_cell(symbols)} |"
 
 
