@@ -19,6 +19,9 @@
 
 from __future__ import annotations
 
+import json
+import subprocess
+import sys
 import threading
 import time
 import tkinter as tk
@@ -39,6 +42,8 @@ from tools.panel_lib.record_service import (
 )
 from tools.panel_lib.telem_stream import TelemSchema
 
+
+ROOT = Path(__file__).resolve().parents[1]
 
 TWO_CHANNELS = RecordSchema(schema_hash=0x12345678, channel_names=("a", "b"))
 THREE_CHANNELS = RecordSchema(schema_hash=0x0BADC0DE, channel_names=("a", "b", "c"))
@@ -578,32 +583,63 @@ def test_two_recordings_in_the_same_second_through_the_real_page(app, monkeypatc
     assert read_record_rows(first) == [["0.001000", "7", "", "", "", "", "", "", ""]]
 
 
-def test_closing_the_page_finishes_an_active_recording(tmp_path, monkeypatch) -> None:
-    """关窗时在录的会话必须收尾，最后一段数据不能烂在队列里。"""
-    monkeypatch.setattr(dashboard_page, "TELEMETRY_DIR", tmp_path)
-    monkeypatch.setattr(dashboard_page, "dated_directory", lambda _root: tmp_path / "day")
+CLOSE_CHILD = """
+import json, sys, tempfile
+from pathlib import Path
+from types import SimpleNamespace
+
+from tools import panel_qa
+from tools.panel_lib import record_service
+from tools.panel_lib.pages import dashboard as dashboard_page
+
+target = Path(sys.argv[1])
+with panel_qa.isolated_environment(tempfile.mkdtemp()),         panel_qa.isolation.redirected_dated_directory(target):
     try:
-        instance = panel.DronePanel()
-    except tk.TclError as exc:
-        if not panel_qa.is_display_unavailable(exc):
-            raise                                # 装置坏了就要红，不许伪装成无显示
-        pytest.skip(f"Tk display unavailable: {exc}")       # pragma: no cover
-    instance.transport = panel_qa.MemoryTransport(connected=True)
+        qa = panel_qa.OfflinePanel.launch(scale=1.0, size=(1080, 700))
+    except BaseException as exc:
+        if panel_qa.is_display_unavailable(exc):
+            print("DISPLAY_UNAVAILABLE")
+            raise SystemExit(0)
+        raise
+    panel = qa.panel
     for line in panel_qa.telemetry_schema_lines():
-        instance._handle_board_line(line)
-    instance.update_idletasks()
+        panel._handle_board_line(line)
+    panel.update_idletasks()
 
-    instance._dashboard_toggle_record()
-    assert instance.dashboard_recorder.wait_idle(5.0)
-    instance._dashboard_refresh_record_status()
-    path = instance.dashboard_record_path
-    link = instance.dashboard_recorder._session.link
-    instance.dashboard_recorder.submit(
-        sample(1000, {0: 5.0}), transport=link.transport, generation=link.generation
+    panel._dashboard_toggle_record()
+    assert panel.dashboard_recorder.wait_idle(5.0)
+    panel._dashboard_refresh_record_status()
+    path = panel.dashboard_record_path
+    link = panel.dashboard_recorder._session.link
+    accepted = panel.dashboard_recorder.submit(
+        SimpleNamespace(t_us=1000, values={0: 5.0}),
+        transport=link.transport, generation=link.generation,
     )
-    # 不在这里 settle：关窗必须自己把已接受的样本收干净，否则最后一段数据就没了。
-    instance.destroy()
+    # 刻意不在这里 settle：关窗必须自己把已接受的样本收干净。
+    qa.destroy()
+    print(json.dumps({"path": str(path), "accepted": accepted}))
+"""
 
+
+def test_closing_the_page_finishes_an_active_recording(tmp_path) -> None:
+    """关窗时在录的会话必须收尾，最后一段数据不能烂在队列里。
+
+    跑在**子进程**里：这个用例需要一个能被真正销毁的面板，而同一进程里再建一个 Tk
+    root（本模块已经有一个 module 级面板）会间歇性地在 `Tk()` 处炸掉——2026-09-05
+    的整合跑里就命中过一次。这不是产品缺陷，是装置层面的进程级限制；照
+    `test_panel_qa_harness.py` 里高 DPI 矩阵那条的先例隔离，断言一条不少。
+    """
+    result = subprocess.run(
+        [sys.executable, "-c", CLOSE_CHILD, str(tmp_path / "day")],
+        cwd=ROOT, capture_output=True, text=True, timeout=180,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    if "DISPLAY_UNAVAILABLE" in result.stdout:
+        pytest.skip("Tk display unavailable")    # pragma: no cover
+    payload = json.loads(result.stdout.strip().splitlines()[-1])
+    assert payload["accepted"] is True, "样本必须是在关窗之前被接受的"
+
+    path = Path(payload["path"])
     assert read_record_rows(path) == [["0.001000", "5", "", "", "", "", "", "", ""]]
     assert any("end reason=" in line for line in record_service.record_header(path))
 

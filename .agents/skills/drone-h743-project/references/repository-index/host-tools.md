@@ -4,7 +4,7 @@
 
 Read this shard only when the task uses serial/TCP diagnostics, log analysis, identification, capture, calibration, or desktop UIs.
 
-Source snapshot: `bd50b0dfcca0`; aggregate snapshot: `dfad6019dbfb`. Covered files: 5338.
+Source snapshot: `077f58aad0be`; aggregate snapshot: `d44ccccf387b`. Covered files: 5339.
 
 | File/module or scope | Content outline | Key entry points / size |
 |---|---|---|
@@ -15,7 +15,7 @@ Source snapshot: `bd50b0dfcca0`; aggregate snapshot: `dfad6019dbfb`. Covered fil
 | `tools/controller_cascade_analysis.py` | R-S5-1 evidence gate for same-recording controller cascade comparison. The tool deliberately refuses to compare an old/… | `inspect_candidate`, `build_report`, `main` |
 | `tools/decode_saleae_spi_csv.py` | Decode SPI bytes from a Saleae raw digital.csv export. Default mapping follows the current Saleae hookup: Channel 0 = C… | `parse_args`, `load_rows`, `decode`, `bits_to_bytes`, `fmt_bytes`, `main` |
 | `tools/drift_ab_check.py` | PIPELINE R-M3-2 · 静止漂移 A/B 采集与对比（只读）。 以 ~8Hz 轮询 `IMU?` 采集一段静止遥测，喂给 stationary_drift 分析器生成 DriftReport 并落盘，然后与最近一份历史基线（默… | `collect`, `main` |
-| `tools/drone_tcp_panel.py` | Ground-station panel for the drone-H743 Ai-WB2 transparent link | `firmware_update_link_gate`, `firmware_update_snapshot_advisory`, `airframe_record_from_line`, `ident_record_from_line`, `fit_ident_step`, `normalize_module_key` (+4) |
+| `tools/drone_tcp_panel.py` | Ground-station panel for the drone-H743 Ai-WB2 transparent link | `firmware_update_link_gate`, `firmware_update_snapshot_advisory`, `airframe_record_from_line`, `ident_record_from_line`, `fit_ident_step`, `normalize_module_key` (+3) |
 | `tools/esp8266_pwm_calibrator/.gitignore` | Host-side utility for .gitignore | — |
 | `tools/esp8266_pwm_calibrator/platformio.ini` | Host-side utility for platformio | — |
 | `tools/esp8266_pwm_calibrator/README.md` | ESP8266 PWM Calibrator | `Wiring`, `Build And Upload`, `Serial Protocol`, `GUI Workflow`, `OLED Status`, `Test Flow And Loss Coefficient` (+1) |
@@ -57,11 +57,11 @@ Source snapshot: `bd50b0dfcca0`; aggregate snapshot: `dfad6019dbfb`. Covered fil
 | `tools/panel_lib/proto.py` | Protocol identifiers and line-parsing helpers for the panel | `parse_kv`, `safe_int`, `safe_float`, `first_value`, `first_float`, `ProtocolLineMixin` |
 | `tools/panel_lib/record_service.py` | R-T1-6（TK-05）：遥测录制服务。 页面原来自己拿着一个文件句柄和一个 deque，在 Tk 的渲染回调里 while 循环写盘。四个 问题是同一个根因的四张脸——**没有“录制会话”这个东西**，只有一堆散落的全局变量： * 文… | `RecordSchema`, `LinkIdentity`, `RecordStatus`, `unique_record_path`, `format_row`, `TelemetryRecorder` (+2) |
 | `tools/panel_qa/__init__.py` | R-S1-3（TK-00）：上位机无硬件 QA 测试基础。 改版报告的每一条问题都是在“真实 `DronePanel` + 模拟 transport”上复现的，可是 复现装置当时散在 `data/analysis/tk_revamp/20… | — |
-| `tools/panel_qa/baseline_observations.py` | R-S1-3（TK-00）：改版报告 N01–N13 的**基线观测**脚本。 这不是回归测试，也**不会**被 pytest 收集。它回答的是一个只有运行才能回答的问题： 报告写在基线 `6f7a440e` 上的那些现象，在**当前**… | `observe_input_theme`, `observe_layout`, `observe_dashboard_mousewheel`, `run`, `main` |
+| `tools/panel_qa/baseline_observations.py` | R-S1-3（TK-00）：改版报告 N01–N13 的**基线观测**脚本。 这不是回归测试，也**不会**被 pytest 收集。它回答的是一个只有运行才能回答的问题： 报告写在基线 `6f7a440e` 上的那些现象，在**当前**… | `run`, `main` |
 | `tools/panel_qa/fixtures.py` | 协议夹具：键名从固件源码的格式串里抽出来，不许手打。 SKILL.md「Validation」写死了这条：主机工具解析固件输出时，测试夹具必须钉在**真实 发出的格式**上，因为固件从没发过的字段名不会报错，只会安静地永远匹配不上。改版… | `firmware_format_keys`, `gps_status_line`, `gps_position_line`, `telemetry_schema_lines`, `telemetry_frame` |
 | `tools/panel_qa/geometry.py` | 叶页枚举与几何探针。 判据照抄改版报告 §2 的三条，一个字不改，这样“修好了”能和报告里的告警逐条对上： 1. **横向越界** —— 控件右边界越过窗口右边界。横向没有滚动条，越界就是**够不到**。 2. **不可滚动区的纵向越界*… | `LeafPage`, `ClippedControl`, `PageGeometryReport`, `collect_clipped_controls`, `probe_geometry` |
 | `tools/panel_qa/guards.py` | 全局硬件护栏：物理串口 + 烧录/复位程序。 `tests/conftest.py` 已经挡住了 `serial.Serial.open`。那只挡住一条路：AGENTS.md 第 5 条说的是**未经 REQ 明文授权不得烧录、复位、发送… | `HardwareAccessAttempt`, `HardwareGuardLog`, `is_flash_tool_command`, `install_hardware_guards`, `hardware_guards` |
-| `tools/panel_qa/harness.py` | 真实 `DronePanel` 的离线装置。 “真实”是重点。报告 §2 明确要求用真实页面方法而不是字符串断言，因为被测的东西是 布局和交互，源码搜出来的关键字证明不了按钮点不点得到。所以这里构造的是**没有任何 删减的 `DroneP… | `is_display_unavailable`, `MemoryTransport`, `PendingAfter`, `OfflinePanel` |
+| `tools/panel_qa/harness.py` | 真实 `DronePanel` 的离线装置。 “真实”是重点。报告 §2 明确要求用真实页面方法而不是字符串断言，因为被测的东西是 布局和交互，源码搜出来的关键字证明不了按钮点不点得到。所以这里构造的是**没有任何 删减的 `DroneP… | `confirm_display_available`, `display_available`, `is_display_unavailable`, `MemoryTransport`, `PendingAfter`, `OfflinePanel` |
 | `tools/panel_qa/isolation.py` | 隔离：用户状态、日志、data 输出、时钟，以及“没动过用户数据”的可核验指纹。 四件事分开： * `isolated_environment()` 把面板会写的每一个路径常量改指到临时根目录。它患的是 和 `tests/conftest… | `QaEnvironment`, `isolated_environment`, `redirected_dated_directory`, `directory_digest`, `claim_output_path`, `ManualClock` |
 | `tools/pressure_rs485_gui.py` | Tkinter GUI for the RS485 Modbus pressure/weight transmitter | `IdentPoint`, `IdentRun`, `LossRow`, `motor_name`, `is_esp_controller`, `percent_to_pulse` (+10) |
 | `tools/pressure_rs485_test.py` | RS485 Modbus-RTU test tool for the 4-channel weighing/pressure transmitter. Manual notes used here: - Protocol: Modbus… | `ReadResult`, `crc16_modbus`, `add_crc`, `check_crc`, `dip_to_addr`, `parse_u16` (+8) |
@@ -80,6 +80,6 @@ Source snapshot: `bd50b0dfcca0`; aggregate snapshot: `dfad6019dbfb`. Covered fil
 | `tools/vofa_serial_capture.py` | Capture USART1/VOFA JustFloat telemetry from the flight controller. The firmware currently sends 28 little-endian float… | `RunningStats`, `build_parser`, `safe_text`, `split_lines`, `parse_frame`, `write_metadata` (+1) |
 | `tools/vofa_udp_bridge.py` | Bridge Ai-WB2 UDP transparent mode to fixed VOFA UDP ports. Why this exists: - Ai-WB2 auto transparent mode is configur… | `log`, `main` |
 | `tools/ground_station/ bundled tree` | Bundled application/runtime distribution; inspect an exact file only when maintaining that bundle | 5239 files / 135.6 MiB / .svg×854, .h×841, .cpp×635, .md×459, .py×257 |
-| `tools/panel_lib/ bundled tree` | Bundled application/runtime distribution; inspect an exact file only when maintaining that bundle | 28 files / 492.9 KiB / .py×28 |
+| `tools/panel_lib/ bundled tree` | Bundled application/runtime distribution; inspect an exact file only when maintaining that bundle | 29 files / 504.5 KiB / .py×29 |
 
 Open the smallest listed tool or bundle landmark first; do not preload bundled runtimes.

@@ -4,7 +4,7 @@
 
 Read this shard only when you need existing behavioral/architecture coverage or must choose focused regression tests.
 
-Source snapshot: `5c55f84b1e32`. Indexed files: 124.
+Source snapshot: `60aec7c6910a`. Indexed files: 125.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -88,7 +88,7 @@ Source snapshot: `5c55f84b1e32`. Indexed files: 124.
 | `tests/test_optical_flow_contract.py` | — | `test_micolink_parser_accepts_live_range_and_flow_payload_shape`, `test_micolink_parser_rejects_bad_checksum_and_oversize_payload` (+10) |
 | `tests/test_panel_autoconnect.py` | 记住上次的连接并在启动时自动连回去。 关键点是**按什么认板子**：Windows 给 USB 串口分配的 COM 号会变（本机就出现过同一块 飞控在 COM30/31/32 之间跳），而 ST-Link、蓝牙串口、CH340 会占掉腾出… | `test_fingerprint_is_stable_across_com_renumbering`, `test_two_boards_of_the_same_model_get_different_fingerprints` (+14) |
 | `tests/test_panel_connection_reliability.py` | H1/H2/H4: real transport and Tk boundaries with no physical device access | `test_slow_io_does_not_block_ui_queries_cancel_or_stop`, `test_read_failure_closes_port_and_preserves_reason` (+17) |
-| `tests/test_panel_d_data_contract.py` | D 线 TK-03/TK-04 contracts: values must say what state they represent | `test_parameter_capabilities_match_the_driver_table`, `test_pid_quick_names_are_real_driver_get_set_names` (+11) |
+| `tests/test_panel_d_data_contract.py` | D 线 TK-03/TK-04 contracts: values must say what state they represent | `test_d_modules_are_imported_in_all_three_panel_contexts`, `test_parameter_capabilities_match_the_driver_table` (+12) |
 | `tests/test_panel_drift_page_extraction.py` | S6 stationary-drift page extraction ownership and compatibility contract | `test_drift_page_mixin_owns_only_its_builder_and_handlers`, `test_legacy_panel_forwards_the_drift_page_without_wrappers` (+3) |
 | `tests/test_panel_flow_page_extraction.py` | R-S6-1 增量11（收官）：光流与测距页搬进 panel_lib/pages/flow_ranging.py。 搬家的判据只有一条——行为零变更。这里用三种独立方式钉： 1. 逐方法 AST 哈希与搬家前逐字节一致（哈希取自父提交 9… | `test_flow_mixin_owns_every_moved_method_with_the_pre_move_ast`, `test_page_constant_has_exactly_one_definition` (+3) |
 | `tests/test_panel_proto_extraction.py` | S6 panel protocol extraction ownership and compatibility contract | `test_proto_module_owns_the_protocol_table_and_parsing_helpers`, `test_legacy_panel_forwards_every_proto_symbol_without_wrappers` (+2) |
@@ -127,6 +127,7 @@ Source snapshot: `5c55f84b1e32`. Indexed files: 124.
 | `tests/test_telem_stream_contract.py` | R-T1-1：遥测流 v2（固件侧）契约测试。 三部分： 1. **黄金向量**：宿主 gcc 真编译 `app_telem_frame.c` + `app_proto.c`，让固件 自己的编码器把一组给定的 mask/values 编出… | `test_encoder_matches_the_golden_vectors_byte_for_byte`, `test_golden_vector_file_is_in_sync_with_the_firmware` (+10) |
 | `tests/test_telem_stream_decoder.py` | R-T1-2：上位机遥测流解码（`tools/panel_lib/telem_stream.py` + transport 二进制分支）。 四件事： 1. **黄金向量对称**：`tests/golden/telem_frames_v1.… | `test_transport_delivers_telemetry_payloads_as_bytes`, `test_v3_schema_preserves_body_frame_provenance` (+21) |
 | `tests/test_telemetry_schema_contract.py` | Contract tests for the VOFA telemetry channel schema (``TELEM?``). The schema exists so the ground station never has to… | `test_header_reports_version_count_rate_and_hash`, `test_every_channel_reported_exactly_once_in_fill_order` (+13) |
+| `tests/test_tk_v_revamp.py` | V 线 TK-01/TK-02 contracts against the real offline DronePanel | `test_theme_is_global_semantic_and_contrasted`, `test_matplotlib_pages_share_the_dark_chart_theme` (+3) |
 | `tests/test_usb_v0_transport_contract.py` | — | `test_usb_route`, `test_mirror` (+2) |
 | `tests/test_v0_guidance_flow.py` | V0 引导可达性回归测试。 V0 页的四项准备清单（连接/快照/零偏/安全输出）与 A/B/C 按钮全部由 _validation_refresh_readiness 依据实时 stabilizer snapshot 解锁，页面文案也明确… | `test_v0_page_polls_as_soon_as_it_is_visible`, `test_v0_page_does_not_poll_while_disconnected` (+6) |
 | `tests/test_v1_evidence_table.py` | V1 采集页的证据表格。 背景：2026-08-29 的会话里同时躺着三条 50 Hz 的降级采集和两条重复的 accel_pos_x， 表格是平铺的，既看不出哪些步骤还没采、也删不掉，点"分析"只会抛一句不知道说的是谁 的 "采样率仅… | `test_every_planned_step_gets_a_row_even_before_it_is_captured`, `test_a_degraded_capture_is_flagged_before_the_user_clicks_analyse` (+15) |

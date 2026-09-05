@@ -19,10 +19,30 @@ import pytest
 
 def pytest_configure(config):
     from tools.panel_qa.guards import install_hardware_guards
+    from tools.panel_qa.harness import display_available
+
+    # 在进程还干净的时候探一次图形环境。之后再出 Tk 错误就一定不是"没有显示"，
+    # 而是装置或资源问题——必须红，不许静默 skip（2026-09-05 曾出现 15 个静默跳过）。
+    config._display_available = display_available()
 
     log, uninstall = install_hardware_guards()
     config._hardware_guard_log = log
     config._hardware_guard_uninstall = uninstall
+
+    # 统计整场跑创建了多少个 Tk root。Windows 上 Tcl 解释器反复创建/销毁到一定数量
+    # 后会间歇性失败（报的是 "can't find a usable init.tcl"，和真正的无头环境同文），
+    # 所以这个数字是排查装置层面不稳定的第一手依据，不是装饰。
+    import tkinter
+
+    config._tk_root_count = 0
+    original_tk_init = tkinter.Tk.__init__
+
+    def counting_init(self, *args, **kwargs):
+        config._tk_root_count += 1
+        return original_tk_init(self, *args, **kwargs)
+
+    tkinter.Tk.__init__ = counting_init
+    config._tk_init_original = original_tk_init
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -78,6 +98,10 @@ def pytest_terminal_summary(terminalreporter, config):
     terminalreporter.write_line(
         f"Flashing/probe tool invocation attempts: {len(log.flash_invocations)}"
     )
+    terminalreporter.write_line(
+        f"Tk display available at session start: {getattr(config, '_display_available', '?')}"
+        f"; Tk roots created: {getattr(config, '_tk_root_count', '?')}"
+    )
     for detail in log.attempts:
         terminalreporter.write_line(f"  blocked {detail.kind}: {detail.detail}")
 
@@ -86,3 +110,8 @@ def pytest_unconfigure(config):
     uninstall = getattr(config, "_hardware_guard_uninstall", None)
     if uninstall is not None:
         uninstall()
+    original = getattr(config, "_tk_init_original", None)
+    if original is not None:
+        import tkinter
+
+        tkinter.Tk.__init__ = original

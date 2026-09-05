@@ -25,7 +25,7 @@ from .geometry import LeafPage, probe_geometry
 
 OFFLINE_TITLE = "OFFLINE QA — SIMULATED TRANSPORT — NO HARDWARE"
 
-# 只有这几种才是"这台机器没有图形环境"。别的 TclError 是装置或页面自己坏了。
+# 这几种**文本**看起来像"这台机器没有图形环境"。但只看文本不够——见下。
 _NO_DISPLAY_MARKERS = (
     "no display name",
     "couldn't connect to display",
@@ -33,15 +33,46 @@ _NO_DISPLAY_MARKERS = (
     "application-specific initialization failed",
 )
 
+# 本进程里是否成功创建过 Tk root。None = 还不知道。
+_DISPLAY_CONFIRMED: bool | None = None
+
+
+def confirm_display_available() -> None:
+    """成功建出 Tk root 时调用一次。之后任何失败都不可能是"没有显示环境"。"""
+    global _DISPLAY_CONFIRMED
+    _DISPLAY_CONFIRMED = True
+
+
+def display_available() -> bool:
+    """这台机器到底有没有图形环境。结果按进程缓存，只探一次。"""
+    global _DISPLAY_CONFIRMED
+    if _DISPLAY_CONFIRMED is None:
+        try:
+            probe = tk.Tk()
+        except BaseException:                    # noqa: BLE001 - 探测失败就是没有
+            _DISPLAY_CONFIRMED = False
+        else:
+            probe.destroy()
+            _DISPLAY_CONFIRMED = True
+    return _DISPLAY_CONFIRMED
+
 
 def is_display_unavailable(exc: BaseException) -> bool:
-    """区分“没有显示环境”和“装置坏了”。
+    """区分"没有显示环境"和"装置坏了"。
 
     `except TclError: pytest.skip(...)` 是个陷阱：构造面板时的任何 Tcl 错误都会被
-    写成“无显示环境”跳过，于是一整批回归安静消失，而绿色的测试报告一个字都不说。
-    这个项目已经吃过一次安静失败的亏（`work-modes.md` 的 `gz_dps`），所以只在确实
-    连不上显示时才允许跳过，其余一律让它红。
+    写成"无显示环境"跳过，于是一整批回归安静消失，而绿色的测试报告一个字都不说。
+    这个项目已经吃过一次安静失败的亏（`work-modes.md` 的 `gz_dps`）。
+
+    第一版只比对异常文本，仍然不够狠：Windows 上 Tk **资源耗尽**时报的也是
+    "Can't find a usable init.tcl ... tk wasn't installed properly"，和真正的无头
+    环境一模一样。2026-09-05 的整合跑里因此出现过一次 **15 个静默 skip**。
+
+    所以判据改成机器属性而不是文本：**本进程只要成功建出过一次 Tk root，之后的
+    任何失败都不是"没有显示环境"**，一律让它红。只有从没成功过时才回退到文本比对。
     """
+    if _DISPLAY_CONFIRMED is True:
+        return False
     text = str(exc).lower()
     return any(marker in text for marker in _NO_DISPLAY_MARKERS)
 
@@ -201,6 +232,7 @@ class OfflinePanel:
                 setattr(target, name, value)
             raise
 
+        confirm_display_available()
         session.panel = instance
         session._prepare(size, connected)
         return session
@@ -364,6 +396,8 @@ class OfflinePanel:
 
 __all__ = [
     "MemoryTransport",
+    "confirm_display_available",
+    "display_available",
     "OFFLINE_TITLE",
     "OfflinePanel",
     "PendingAfter",
