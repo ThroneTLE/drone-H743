@@ -42,6 +42,8 @@ except ImportError:  # Allows direct import and: python tools/drone_tcp_panel.py
         from tools.panel_lib.pages import acceptance_v2 as _panel_acceptance_v2
         from tools.panel_lib.pages import drift as _panel_drift
         from tools.panel_lib.pages import dashboard as _panel_dashboard, flow_monitor as _panel_flow_monitor
+        from tools.panel_lib.pages import gps_validity as _panel_gps_validity
+        from tools.panel_lib import parameter_editor as _panel_parameter_editor
         from tools.panel_lib.pages import flow_ranging as _panel_flow
         from tools.panel_lib.pages import mechanical as _panel_mechanical
         from tools.panel_lib.pages import rc_wizard as _panel_rc

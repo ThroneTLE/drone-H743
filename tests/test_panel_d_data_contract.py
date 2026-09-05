@@ -14,6 +14,7 @@ from tools.panel_qa import fixtures as qa_fixtures
 
 ROOT = Path(__file__).resolve().parents[1]
 DRIVER_PARAMS = ROOT / "Driver" / "Src" / "drv_coax_ctrl.c"
+PANEL_SOURCE = ROOT / "tools" / "drone_tcp_panel.py"
 
 
 @pytest.fixture(scope="module")
@@ -70,6 +71,13 @@ def _driver_parameter_names() -> set[str]:
     named = re.findall(r'DRV_COAX_CTRL_NAMED_PARAM_ENTRY\("([^"]+)"', source)
     plain = re.findall(r"DRV_COAX_CTRL_PARAM_ENTRY\(([_A-Za-z][_A-Za-z0-9]*)\)", source)
     return {f"coax.{name}" for name in (*named, *plain)}
+
+
+def test_d_modules_are_imported_in_all_three_panel_contexts() -> None:
+    """The independent-loader path must bind the same D modules as package import."""
+    source = PANEL_SOURCE.read_text(encoding="utf-8")
+    assert source.count("pages import gps_validity as _panel_gps_validity") == 3
+    assert source.count("import parameter_editor as _panel_parameter_editor") == 3
 
 
 def test_parameter_capabilities_match_the_driver_table() -> None:

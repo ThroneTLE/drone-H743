@@ -44,22 +44,29 @@ VIBRATION_AST_SHA256 = {
     "_build_vibration_filter_page": "d6483841646aea2d7ae966623f75c441db8d11e01d983a95fa0a4db80e344106",
 }
 SERVO_DEBUG_AST_SHA256 = {
-    "_build_servo_page": "448c54c3e0e7472424eb0cf6d04e3a792c9a5568ae2d63690774af943825719a",
-    "_build_servo_tab": "8c939df106d33a9912c12315b036d8ec94b446f4057ee82f5c8b5c8076553345",
-    "_servo_spin": "f7a1c49d31771e45a0e931da512d6a19fb5130701f5822fd1a29b6bef22e6733",
+    # R-S1-6：字段级校验需要在页面/输入适配中保存焦点与错误状态；
+    # 当前值同时包含已批准 V 线的同函数容器改动，未变函数仍逐字节钉死。
+    "_build_servo_page": "e858c1d43849a48a9ff06cdd24c30242c932f2cc11e65a93e500732c1e9b7af6",
+    "_build_servo_tab": "99eea22c1aaf3fd8cfe2e4a0d71f27f023ba3124763232ef8e0e01a39dc67de5",
+    "_servo_spin": "75daa2f22c16281677bb0d56b52e0efeca935a364fea7f369f1d25c482fceb28",
     "_refresh_servo_output_controls": "6f5c31f85e094d2cd5bc2c61626a44125db36241a8d08550fb8d5cd94f6c604b",
     "_send_raw": "bce3e02d68ff9b9ad4c69fa3b70c456fb18f203f0d0771471fab834663873b47",
-    "_servo_values": "eb8e3632a5b07df9a26a46cc73ddd8c6ee40cc1c0ac2e0da8d514bff69b65484",
+    # R-S1-6：按动作只解析所需字段，非法值走字段错误而非 Tcl 异常。
+    "_servo_values": "5b6134a8537540eb77e37da6fd92fe14a4a46607a52c9e16258ca1830ab212a4",
     # R-S7-7：PWM 调试页改走即时通路（NOW），三个方法随之重钉。
     "_servo_move_pwm_immediate": "f4bbc9011fc0b91bd29c0a216f9dd34a4cf47194e74ac8b3b19120802922eeec",
-    "_servo_move": "0222f52f9f85c0e765f64fa88de8415165f0164d11fc35785302dc006e6d51a8",
-    "_servo_move_all": "0111acb759e4d9cb51590a10a22ac483edf72477950db636e68329278a9e2c16",
-    "_servo_mode": "605e3b441cf7618211518224f57c82dc257a916b550bd69ab1ac5f0f0cc9a429",
-    "_servo_enable": "81171cf844bac2fedf76e0698446397ae18a9924552ce6a046d59cc75aa6e206",
-    "_servo_set_id": "feecd52bcb00bc07d6af187071c26811cf227eb261cfc307510f22b0332def84",
-    "_servo_set_physical_id": "0c80edcc0d69035d83f7a8930b428b597244aa3ac5577f4e08179a126d600a13",
+    # R-S1-6：这些调用者同样只验证各自命令需要的字段；原协议 payload 不变。
+    "_servo_move": "256be904d57b2dbdd9e091ee188019564945825f6bbcd6023a885e4206fa5fcd",
+    "_servo_move_all": "03c8ab893ec105a7114741201809489370bae06ff16b086bd639319d4fd392e4",
+    "_servo_mode": "e529d19e928d2523e86bc72d8f825e762b4b4166fa405c9ed1bffe7a1585fcb2",
+    "_servo_enable": "bab9921d81041497815a785d9a4518614c26fb0253d71925b8f36729d0bdd840",
+    "_servo_set_id": "6da8ac6f5e736cd8cc629d676dba0a54b547343bfffe081694c752c202b86bc8",
+    "_servo_set_physical_id": "f51ff085dc30b5fca3f57625326fe9a027bfd660c370a51030960efa24394cc1",
     "_servo_cmd": "1af048dfd65fdb84e818357c3ce0e80f0ba01600fb5b7cf6ba90581f687a0547",
-    "_servo_baud": "6275e9dd10a41cb0a0b442fd87012f630af638c6c73879c40337fee14c13c6dc",
+    "_servo_baud": "2682c697f6bf4d5844d1eb729240ceeb5b5e4ec50c30328b82bcb441d4730023",
+    # R-S1-6：新增字段错误显示/焦点辅助函数，纳入 owner 集合，不削弱集合断言。
+    "_servo_validation_error": "a15a6fe82d4b4268575a2d655397739c26314e5b1b970cae0794ec758be2171c",
+    "_servo_clear_validation_error": "4c88a7cac2c96f3d14fe45dceb64397f7df6444e857952c18e8cd04b98d6833d",
     "_update_servo_ok_line": "e34aefe4ead010297387a1c03c366ce42be177ceb320461fab9fd403b521e6ff",
 }
 
@@ -389,9 +396,11 @@ def test_s6_increment8_page_owners_ast_forwarding() -> None:
     assert set(servo_debug) == set(SERVO_DEBUG_AST_SHA256)
     assert (set(vibration) | set(servo_debug)).isdisjoint(legacy)
     assert len(vibration["_build_vibration_filter_page"].body) == 10
-    # Scoped dark-theme mount; remaining builder/command AST stays frozen.
-    assert len(servo_debug["_build_servo_page"].body) == 16
-    assert len(servo_debug["_build_servo_tab"].body) == 42
+    # R-S1-6 replaced the old byte-for-byte builder snapshot with the
+    # field-error/focus contract; the approved V-line container delta is in the
+    # same current function body. Unchanged command helpers remain hash-locked.
+    assert len(servo_debug["_build_servo_page"].body) == 18
+    assert len(servo_debug["_build_servo_tab"].body) == 48
     assert legacy_panel.VibrationPageMixin is vibration_page.VibrationPageMixin
     assert legacy_panel.ServoDebugPageMixin is servo_debug_page.ServoDebugPageMixin
     for owner, hashes in (
