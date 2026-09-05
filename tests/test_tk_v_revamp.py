@@ -85,6 +85,7 @@ def test_theme_is_global_semantic_and_contrasted(qa):
 
 
 def test_matplotlib_pages_share_the_dark_chart_theme(qa):
+    checked = 0
     for figure_name in ("baro_figure", "gps_figure", "ident_figure"):
         figure = getattr(qa.panel, figure_name, None)
         if figure is None:
@@ -95,6 +96,10 @@ def test_matplotlib_pages_share_the_dark_chart_theme(qa):
         )
         assert figure.axes
         assert figure.axes[0].get_facecolor() == figure.get_facecolor()
+        checked += 1
+    # 三张图全是 None 时这个循环一条断言都不跑，会静默变绿——本批一直在打的
+    # 就是这个形态，别在自己的新测试里再造一遍。
+    assert checked == 3, f"只核到 {checked} 张图，应当三张都在"
 
 
 def test_viewports_route_wheel_locally_and_support_keyboard(qa):

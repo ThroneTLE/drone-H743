@@ -20,6 +20,10 @@ class ParameterCapability:
     writable: bool = True
     minimum: float | None = 0.0
     maximum: float | None = None
+    # ``rate_limit_rad_s`` and ``tilt_limit_rad`` use ``value > 0`` in firmware,
+    # not ``value >= 0``.  Without this flag the host would forward a 0 the
+    # flight controller answers with ERR.
+    minimum_exclusive: bool = False
     value_kind: str = "float"
     storage: str = "RAM；Flash 持久化需单独确认"
 
@@ -118,19 +122,50 @@ _CAPABILITY_ROWS = (
 )
 
 
+# Mirrors of ``coax_ctrl_param_value_valid()`` in ``Driver/Src/drv_coax_ctrl.c``.
+# The firmware stays the authority -- these only stop the host from sending a
+# value the flight controller is guaranteed to answer with ERR.  Every one of
+# them is cross-checked against the C source by
+# ``tests/test_tk_review_regressions.py``, so a firmware change that moves a
+# bound turns that test red instead of silently loosening the host.
+COAX_PARAM_ABS_LIMIT = 2000.0
+COAX_TILT_LIMIT_RAD = 0.4886922
+# ``value > 0`` fields, keyed by the bare firmware field name.
+_POSITIVE_ONLY = frozenset(
+    {
+        "roll_rate_limit_rad_s",
+        "pitch_rate_limit_rad_s",
+        "yaw_rate_limit_rad_s",
+        "tilt_limit_rad",
+    }
+)
+
 PARAMETER_CAPABILITIES: dict[str, ParameterCapability] = {}
 for _row in _CAPABILITY_ROWS:
     _name, _unit = _row[:2]
     _kind = _row[2] if len(_row) > 2 else "float"
+    if _kind == "bool":
+        _minimum, _maximum, _exclusive = 0.0, 1.0, False
+    elif _name == "tilt_limit_rad":
+        _minimum, _maximum, _exclusive = 0.0, COAX_TILT_LIMIT_RAD, True
+    else:
+        _minimum = 0.0
+        _maximum = COAX_PARAM_ABS_LIMIT
+        _exclusive = _name in _POSITIVE_ONLY
     PARAMETER_CAPABILITIES[f"coax.{_name}"] = ParameterCapability(
-        name=f"coax.{_name}", unit=_unit, value_kind=_kind
+        name=f"coax.{_name}",
+        unit=_unit,
+        minimum=_minimum,
+        maximum=_maximum,
+        minimum_exclusive=_exclusive,
+        value_kind=_kind,
     )
 
 # PID SET exposes six derived controller values through DRV_COAX_CTRL_GetParam/
 # SetParam.  They are real firmware names, but intentionally do not appear in
 # the raw offset table because each is computed from more than one field.
 PID_VIRTUAL_CAPABILITIES = {
-    name: ParameterCapability(name=name, unit="gain")
+    name: ParameterCapability(name=name, unit="gain", maximum=COAX_PARAM_ABS_LIMIT)
     for name in (
         "coax.roll_angle_kp", "coax.pitch_angle_kp", "coax.yaw_angle_kp",
         "coax.roll_rate_kd", "coax.pitch_rate_kd", "coax.yaw_rate_kd",
@@ -206,14 +241,19 @@ def validate_parameter_text(
         return False, "请输入有限数字"
     if not math.isfinite(parsed):
         return False, "不接受 NaN 或无穷大"
-    if capability.minimum is not None and parsed < capability.minimum:
-        return False, f"不能小于 {capability.minimum:g} {capability.unit}"
+    if capability.minimum is not None:
+        if capability.minimum_exclusive and parsed <= capability.minimum:
+            return False, f"必须大于 {capability.minimum:g} {capability.unit}"
+        if not capability.minimum_exclusive and parsed < capability.minimum:
+            return False, f"不能小于 {capability.minimum:g} {capability.unit}"
     if capability.maximum is not None and parsed > capability.maximum:
         return False, f"不能大于 {capability.maximum:g} {capability.unit}"
     return True, ""
 
 
 __all__ = [
+    "COAX_PARAM_ABS_LIMIT",
+    "COAX_TILT_LIMIT_RAD",
     "PARAMETER_CAPABILITIES",
     "PID_VIRTUAL_CAPABILITIES",
     "PID_PARAMETER_ALIASES",

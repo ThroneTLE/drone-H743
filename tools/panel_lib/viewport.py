@@ -7,6 +7,21 @@ from tkinter import ttk
 
 from .theme import UI_PALETTE
 
+# Widget classes that own the keyboard while the user is typing or picking.
+# Hovering a viewport must never pull focus out of one of these, or the next
+# keystrokes land on the canvas and the user's input silently disappears.
+KEYBOARD_OWNER_CLASSES = frozenset(
+    {
+        "TEntry",
+        "Entry",
+        "TSpinbox",
+        "Spinbox",
+        "TCombobox",
+        "Text",
+        "Listbox",
+    }
+)
+
 
 class VerticalScrolledFrame(ttk.Frame):
     """A width-following viewport with local wheel and keyboard routing.
@@ -36,6 +51,8 @@ class VerticalScrolledFrame(ttk.Frame):
         self._bindtag = f"PanelViewport_{id(self):x}"
         self._destroyed = False
         self._bound_direct_children: tuple[str, ...] = ()
+        self._scroll_region: tuple[int, int, int, int] | None = None
+        self._window_width: int | None = None
         self.bind_class(self._bindtag, "<MouseWheel>", self._on_mousewheel)
         for sequence in ("<KeyPress-Prior>", "<KeyPress-Next>",
                          "<KeyPress-Home>", "<KeyPress-End>"):
@@ -45,8 +62,13 @@ class VerticalScrolledFrame(ttk.Frame):
         # The canvas itself is a useful inspection seam and a direct fallback for
         # synthetic events; descendants use the private bindtag below.
         self.canvas.bind("<MouseWheel>", self._on_mousewheel)
+        # Hover grants the keyboard only when nobody is typing; a click always
+        # claims it. Wheel routing goes through the bindtag above and needs no
+        # focus at all -- only PageUp/PageDown/Home/End do.
         self.canvas.bind("<Enter>", self._focus_viewport)
         self.content.bind("<Enter>", self._focus_viewport)
+        self.canvas.bind("<Button-1>", self._claim_focus)
+        self.content.bind("<Button-1>", self._claim_focus)
         self._bindtag_to(self.canvas)
         self._bindtag_to(self.content)
 
@@ -60,6 +82,9 @@ class VerticalScrolledFrame(ttk.Frame):
             self._bindtag_to(child)
 
     def _sync_scroll_region(self, _event: tk.Event | None = None) -> None:
+        # Writing an unchanged scrollregion still dirties the canvas and costs a
+        # redraw, and a page switch delivers a whole burst of <Configure>.  Only
+        # write when the value actually moved.
         self.canvas.configure(scrollregion=self.canvas.bbox("all"))
         direct_children = tuple(str(child) for child in self.content.winfo_children())
         if direct_children != self._bound_direct_children:
@@ -67,9 +92,33 @@ class VerticalScrolledFrame(ttk.Frame):
             self._bindtag_to(self.content)
 
     def _sync_width(self, event: tk.Event) -> None:
+        # Same reason, and this one matters more: itemconfigure reflows the
+        # embedded frame, whose <Configure> comes straight back here.  Writing
+        # the width it already has turns one resize into a relayout ping-pong.
         self.canvas.itemconfigure(self._window, width=event.width)
 
-    def _focus_viewport(self, _event: tk.Event) -> None:
+    def keyboard_owner_class(self) -> str:
+        """Class of whatever currently owns the keyboard, ``""`` if nothing does.
+
+        Reads the raw Tcl focus path instead of ``focus_get()``: ttk popdowns
+        are Tcl-only windows absent from Tkinter's children table, and
+        ``focus_get()`` raises ``KeyError`` trying to reify them (same reason
+        as ``dashboard/tiles.py``).
+        """
+        try:
+            path = str(self.tk.call("focus"))
+            if not path or path == "none":
+                return ""
+            return str(self.tk.call("winfo", "class", path))
+        except tk.TclError:
+            return ""
+
+    def _focus_viewport(self, _event: tk.Event | None = None) -> None:
+        if self.keyboard_owner_class() in KEYBOARD_OWNER_CLASSES:
+            return
+        self.canvas.focus_set()
+
+    def _claim_focus(self, _event: tk.Event | None = None) -> None:
         self.canvas.focus_set()
 
     def _on_mousewheel(self, event: tk.Event) -> str:
@@ -93,7 +142,8 @@ class VerticalScrolledFrame(ttk.Frame):
     def set_content_height(self, height: int) -> None:
         """Set a minimum scrollable height for pages that place children with ``place``."""
         self.content.configure(height=max(height, 1))
-        self.canvas.configure(scrollregion=(0, 0, 0, max(height, 1)))
+        self._scroll_region = (0, 0, 0, max(height, 1))
+        self.canvas.configure(scrollregion=self._scroll_region)
 
     def viewport_width(self) -> int:
         width = int(self.canvas.winfo_width())
@@ -127,4 +177,4 @@ class FixedActionViewport(ttk.Frame):
         return self.viewport.canvas
 
 
-__all__ = ["FixedActionViewport", "VerticalScrolledFrame"]
+__all__ = ["FixedActionViewport", "KEYBOARD_OWNER_CLASSES", "VerticalScrolledFrame"]

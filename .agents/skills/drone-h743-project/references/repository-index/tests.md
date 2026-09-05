@@ -4,7 +4,7 @@
 
 Read this shard only when you need existing behavioral/architecture coverage or must choose focused regression tests.
 
-Source snapshot: `60aec7c6910a`. Indexed files: 125.
+Source snapshot: `773590832bc7`. Indexed files: 126.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -127,6 +127,7 @@ Source snapshot: `60aec7c6910a`. Indexed files: 125.
 | `tests/test_telem_stream_contract.py` | R-T1-1：遥测流 v2（固件侧）契约测试。 三部分： 1. **黄金向量**：宿主 gcc 真编译 `app_telem_frame.c` + `app_proto.c`，让固件 自己的编码器把一组给定的 mask/values 编出… | `test_encoder_matches_the_golden_vectors_byte_for_byte`, `test_golden_vector_file_is_in_sync_with_the_firmware` (+10) |
 | `tests/test_telem_stream_decoder.py` | R-T1-2：上位机遥测流解码（`tools/panel_lib/telem_stream.py` + transport 二进制分支）。 四件事： 1. **黄金向量对称**：`tests/golden/telem_frames_v1.… | `test_transport_delivers_telemetry_payloads_as_bytes`, `test_v3_schema_preserves_body_frame_provenance` (+21) |
 | `tests/test_telemetry_schema_contract.py` | Contract tests for the VOFA telemetry channel schema (``TELEM?``). The schema exists so the ground station never has to… | `test_header_reports_version_count_rate_and_hash`, `test_every_channel_reported_exactly_once_in_fill_order` (+13) |
+| `tests/test_tk_review_regressions.py` | Regressions for the V/D-line review findings (R-S1-4 … R-S1-7). Every test here exists because the reviewer found a cri… | `test_hovering_a_viewport_does_not_steal_focus_from_an_entry`, `test_every_keyboard_owner_class_is_protected` (+8) |
 | `tests/test_tk_v_revamp.py` | V 线 TK-01/TK-02 contracts against the real offline DronePanel | `test_theme_is_global_semantic_and_contrasted`, `test_matplotlib_pages_share_the_dark_chart_theme` (+3) |
 | `tests/test_usb_v0_transport_contract.py` | — | `test_usb_route`, `test_mirror` (+2) |
 | `tests/test_v0_guidance_flow.py` | V0 引导可达性回归测试。 V0 页的四项准备清单（连接/快照/零偏/安全输出）与 A/B/C 按钮全部由 _validation_refresh_readiness 依据实时 stabilizer snapshot 解锁，页面文案也明确… | `test_v0_page_polls_as_soon_as_it_is_visible`, `test_v0_page_does_not_poll_while_disconnected` (+6) |
