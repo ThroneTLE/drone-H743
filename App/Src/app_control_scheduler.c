@@ -34,7 +34,7 @@ static uint8_t scheduler_due(uint64_t now_us,
                              uint64_t period_us)
 {
     if (previous_us == 0ULL) {
-        return 1U;
+        return (now_us >= period_us) ? 1U : 0U;
     }
     if (now_us <= previous_us) {
         return 1U;
@@ -51,11 +51,12 @@ void APP_ControlScheduler_Reset(APP_ControlSchedulerState *state)
 
 void APP_ControlScheduler_Step(APP_ControlSchedulerState *state,
                                uint64_t now_us,
-                               uint64_t navigation_sample_us,
+                               uint64_t navigation_sample_token,
                                uint8_t navigation_valid,
                                APP_ControlSchedule *schedule)
 {
-    uint8_t new_navigation_sample;
+    uint8_t new_velocity_sample;
+    uint8_t new_position_sample;
 
     if ((state == NULL) || (schedule == NULL)) {
         return;
@@ -68,26 +69,25 @@ void APP_ControlScheduler_Step(APP_ControlSchedulerState *state,
         return;
     }
 
-    if ((navigation_valid != 0U) && (navigation_sample_us > now_us)) {
-        schedule->timestamp_fault = 1U;
-        navigation_valid = 0U;
-    }
-    new_navigation_sample =
-        ((navigation_valid != 0U) && (navigation_sample_us != 0ULL) &&
-         ((state->last_nav_sample_us == 0ULL) ||
-          (navigation_sample_us > state->last_nav_sample_us))) ? 1U : 0U;
-    schedule->navigation_sample_new = new_navigation_sample;
+    new_velocity_sample =
+        ((navigation_valid != 0U) && (navigation_sample_token != 0ULL) &&
+         (navigation_sample_token != state->last_velocity_sample_token)) ? 1U : 0U;
+    new_position_sample =
+        ((navigation_valid != 0U) && (navigation_sample_token != 0ULL) &&
+         (navigation_sample_token != state->last_position_sample_token)) ? 1U : 0U;
+    schedule->navigation_sample_new =
+        (new_velocity_sample || new_position_sample) ? 1U : 0U;
 
     schedule->rate_due = scheduler_due(now_us, state->last_rate_us,
                                         APP_CONTROL_SCHED_RATE_PERIOD_US);
     schedule->attitude_due = scheduler_due(
         now_us, state->last_attitude_us, APP_CONTROL_SCHED_ATTITUDE_PERIOD_US);
     schedule->velocity_due =
-        ((new_navigation_sample != 0U) &&
+        ((new_velocity_sample != 0U) &&
          (scheduler_due(now_us, state->last_velocity_us,
                         APP_CONTROL_SCHED_VELOCITY_PERIOD_US) != 0U)) ? 1U : 0U;
     schedule->position_due =
-        ((new_navigation_sample != 0U) &&
+        ((new_position_sample != 0U) &&
          (scheduler_due(now_us, state->last_position_us,
                         APP_CONTROL_SCHED_POSITION_PERIOD_US) != 0U)) ? 1U : 0U;
 
@@ -95,30 +95,46 @@ void APP_ControlScheduler_Step(APP_ControlSchedulerState *state,
         schedule->rate_dt_s = scheduler_dt(
             now_us, state->last_rate_us, APP_CONTROL_SCHED_RATE_PERIOD_US,
             &schedule->timestamp_fault);
-        state->last_rate_us = now_us;
     }
     if (schedule->attitude_due != 0U) {
         schedule->attitude_dt_s = scheduler_dt(
             now_us, state->last_attitude_us,
             APP_CONTROL_SCHED_ATTITUDE_PERIOD_US, &schedule->timestamp_fault);
-        state->last_attitude_us = now_us;
     }
     if (schedule->velocity_due != 0U) {
         schedule->velocity_dt_s = scheduler_dt(
             now_us, state->last_velocity_us,
             APP_CONTROL_SCHED_VELOCITY_PERIOD_US, &schedule->timestamp_fault);
-        state->last_velocity_us = now_us;
     }
     if (schedule->position_due != 0U) {
         schedule->position_dt_s = scheduler_dt(
             now_us, state->last_position_us,
             APP_CONTROL_SCHED_POSITION_PERIOD_US, &schedule->timestamp_fault);
-        state->last_position_us = now_us;
-    }
-
-    if (new_navigation_sample != 0U) {
-        state->last_nav_sample_us = navigation_sample_us;
     }
     state->last_now_us = now_us;
     state->initialized = 1U;
+}
+
+void APP_ControlScheduler_Commit(APP_ControlSchedulerState *state,
+                                 uint64_t now_us,
+                                 uint64_t navigation_sample_token,
+                                 const APP_ControlSchedule *executed)
+{
+    if ((state == NULL) || (executed == NULL)) {
+        return;
+    }
+    if (executed->rate_due != 0U) {
+        state->last_rate_us = now_us;
+    }
+    if (executed->attitude_due != 0U) {
+        state->last_attitude_us = now_us;
+    }
+    if (executed->velocity_due != 0U) {
+        state->last_velocity_us = now_us;
+        state->last_velocity_sample_token = navigation_sample_token;
+    }
+    if (executed->position_due != 0U) {
+        state->last_position_us = now_us;
+        state->last_position_sample_token = navigation_sample_token;
+    }
 }

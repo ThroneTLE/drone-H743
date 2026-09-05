@@ -4,7 +4,7 @@
 
 Read this shard only when you need existing behavioral/architecture coverage or must choose focused regression tests.
 
-Source snapshot: `e9621ee51b24`. Indexed files: 114.
+Source snapshot: `5f0777bfba5c`. Indexed files: 115.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -20,6 +20,7 @@ Source snapshot: `e9621ee51b24`. Indexed files: 114.
 | `tests/test_balance_controller_runtime.py` | — | `test_real_controller_runtime_math` |
 | `tests/test_baro_contract.py` | — | `test_baro_ok_requires_real_spl06_who_am_i_not_only_spi_success` |
 | `tests/test_cascade_controller_contract.py` | R-S5-1 integration contract for the real coax-controller entry path | `test_scheduled_cascade_and_allocator_feedback_on_host`, `test_real_app_path_uses_scheduler_and_no_extra_acceleration_pid` |
+| `tests/test_cascade_review_regressions.py` | Regression tests for the 919fcfd9 software-review findings | `test_allocator_lifecycle_antiwindup_and_param_regressions`, `test_time_domains_telemetry_and_z_measurement_are_explicit`, `test_scheduler_retains_slow_due_until_control_executes` |
 | `tests/test_coax_ctrl_contract.py` | — | `test_servo_output_compensates_90_degree_ccw_mounting`, `test_tilt_limit_is_twenty_eight_degrees_in_driver_controller`, `test_generated_controller_is_not_built_or_called` (+14) |
 | `tests/test_coax_sign_convention.py` | Sign-convention self-check for the coaxial attitude controller. This is a legacy runtime-adapter test, not the canonica… | `test_gains_are_positive_so_polarity_errors_cannot_be_masked`, `test_control_law_is_negative_feedback_by_structure`, `test_stick_polarity_lives_in_exactly_one_place` (+2) |
 | `tests/test_coax_yaw_so3_contract.py` | 偏航并入 SO(3) 控制律的契约。 偏航 PD（2026-07-24，`85a5cacb`）比 SO(3) 控制器（2026-07-25，`2d1d2cd2`）早一天， 当天的设计记录 §1 明写「Z 高度环、偏航控制和双电机推力分配保… | `test_yaw_is_produced_by_the_so3_law_not_a_separate_pd`, `test_yaw_so3_runtime_matches_legacy_pd_in_hover` |

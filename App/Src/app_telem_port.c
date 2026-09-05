@@ -169,21 +169,19 @@ uint8_t APP_TelemStream_PortSample(float *values, uint32_t count)
         vofa_data[APP_TELEM_CH_CTRL_ACCEL_SP_X + axis] =
             linear_sign * ctrl_debug.accel_out_m_s2[axis];
         vofa_data[APP_TELEM_CH_CTRL_ATT_ERR_X + axis] =
-            linear_sign * ctrl_debug.attitude_error[axis];
+            ctrl_debug.attitude_error[axis];
         vofa_data[APP_TELEM_CH_CTRL_RATE_SP_X + axis] =
-            linear_sign * ctrl_debug.omega_sp_rad_s[axis];
+            ctrl_debug.omega_sp_rad_s[axis];
         vofa_data[APP_TELEM_CH_CTRL_RATE_ERR_X + axis] =
-            linear_sign * ctrl_debug.rate_error_rad_s[axis];
+            ctrl_debug.rate_error_rad_s[axis];
         vofa_data[APP_TELEM_CH_CTRL_MOMENT_CMD_X + axis] =
-            linear_sign * ctrl_debug.moment_cmd_n_m[axis];
+            ctrl_debug.moment_cmd_n_m[axis];
         vofa_data[APP_TELEM_CH_CTRL_MOMENT_ACH_X + axis] =
-            linear_sign * ctrl_debug.moment_achieved_n_m[axis];
-        vofa_data[APP_TELEM_CH_CTRL_SAT_POS_X + axis] = (float)
-            ((axis == 0U) ? ctrl_debug.saturation_positive[axis] :
-                            ctrl_debug.saturation_negative[axis]);
-        vofa_data[APP_TELEM_CH_CTRL_SAT_NEG_X + axis] = (float)
-            ((axis == 0U) ? ctrl_debug.saturation_negative[axis] :
-                            ctrl_debug.saturation_positive[axis]);
+            ctrl_debug.moment_achieved_n_m[axis];
+        vofa_data[APP_TELEM_CH_CTRL_SAT_POS_X + axis] =
+            (float)ctrl_debug.saturation_positive[axis];
+        vofa_data[APP_TELEM_CH_CTRL_SAT_NEG_X + axis] =
+            (float)ctrl_debug.saturation_negative[axis];
     }
     /*
      * 增益通道回显的口径 = `PARAM?` 的口径 = app_control_param_to_ui_value()。

@@ -11,9 +11,10 @@ extern "C" {
  * Deterministic cascade scheduler for StabilizerTask.
  *
  * `now_us` is the monotonic control timestamp from SVC_Timestamp.  Position
- * and velocity work additionally require a new navigation sample timestamp;
- * reusing the same sample never advances their integrators.  The scheduler
- * contains no RTOS/HAL/I/O calls and does not own controller state.
+ * and velocity work additionally require a new opaque navigation sample token
+ * from the producer's clock domain.  The token is compared only for identity;
+ * it is never compared with `now_us`. `Step` polls due work, while `Commit`
+ * advances only work the caller actually executed.
  */
 #define APP_CONTROL_SCHED_RATE_PERIOD_US      2000ULL  /* 500 Hz */
 #define APP_CONTROL_SCHED_ATTITUDE_PERIOD_US  4000ULL  /* 250 Hz */
@@ -22,7 +23,8 @@ extern "C" {
 
 typedef struct {
     uint64_t last_now_us;
-    uint64_t last_nav_sample_us;
+    uint64_t last_velocity_sample_token;
+    uint64_t last_position_sample_token;
     uint64_t last_rate_us;
     uint64_t last_attitude_us;
     uint64_t last_velocity_us;
@@ -46,9 +48,13 @@ typedef struct {
 void APP_ControlScheduler_Reset(APP_ControlSchedulerState *state);
 void APP_ControlScheduler_Step(APP_ControlSchedulerState *state,
                                uint64_t now_us,
-                               uint64_t navigation_sample_us,
+                               uint64_t navigation_sample_token,
                                uint8_t navigation_valid,
                                APP_ControlSchedule *schedule);
+void APP_ControlScheduler_Commit(APP_ControlSchedulerState *state,
+                                 uint64_t now_us,
+                                 uint64_t navigation_sample_token,
+                                 const APP_ControlSchedule *executed);
 
 #ifdef __cplusplus
 }

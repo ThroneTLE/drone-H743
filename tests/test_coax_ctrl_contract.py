@@ -18,8 +18,8 @@ def test_servo_output_compensates_90_degree_ccw_mounting() -> None:
     assert "static void coax_ctrl_body_tilt_to_servo_tilts(float body_x_tilt_rad," in source
     assert "*servo_alpha_tilt_rad = -body_y_tilt_rad;" in source
     assert "*servo_beta_tilt_rad = -body_x_tilt_rad;" in source
-    assert "DRV_COAX_CTRL_BodyTiltRadToServoPulses(output->alpha_rad," in source
-    assert "output->beta_rad," in source
+    assert "DRV_COAX_CTRL_BodyTiltRadToServoPulses(requested_alpha_rad," in source
+    assert "requested_beta_rad," in source
     assert "coax_ctrl_servo_calibration.pulse_sign[" in source
     assert "DRV_COAX_CTRL_SERVO_ALPHA_SIGN" not in source
     assert "DRV_COAX_CTRL_SERVO_BETA_SIGN" not in source
@@ -363,9 +363,10 @@ def test_nonlinear_balance_controller_uses_so3_error_and_realtime_moment_arm_inv
         "debug->desired_attitude_rpy_rad[0] *= DRV_COAX_CTRL_FORCE_FRAME_ROLL_SIGN;"
         in solve
     )
-    assert "output->alpha_rad = solution.alpha_rad;" in wrapper
-    assert "output->beta_rad = solution.beta_rad;" in wrapper
-    assert "DRV_COAX_CTRL_BodyTiltRadToServoPulses(output->alpha_rad," in wrapper
+    assert "requested_alpha_rad = solution.alpha_rad;" in wrapper
+    assert "requested_beta_rad = solution.beta_rad;" in wrapper
+    assert "coax_ctrl_servo_pulses_to_body_tilts" in wrapper
+    assert "DRV_COAX_CTRL_BodyTiltRadToServoPulses(requested_alpha_rad," in wrapper
     assert "output->motor_upper_us = DRV_COAX_CTRL_ThrustToMotorPulse" in wrapper
 
 

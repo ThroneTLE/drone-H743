@@ -236,10 +236,12 @@ int main(void)
      * direction is unchanged.
      */
     DRV_COAX_CTRL_GetDefaultParams(&params);
-    params.attitude.att_kp[1] = -params.attitude.att_kp[1];
+    params.attitude.att_kp[1] = 0.5f;
+    DRV_COAX_CTRL_SetParams(&params);
+    params.attitude.att_kp[1] = -0.5f;
     DRV_COAX_CTRL_SetParams(&params);
     DRV_COAX_CTRL_GetParams(&params);
-    CHECK(params.attitude.att_kp[1] > 0.0f, 17);
+    CHECK(fabsf(params.attitude.att_kp[1] - 0.5f) < 1.0e-6f, 17);
 
     base_state(&att, &ref);
     att.pitch_rad = 0.15f;

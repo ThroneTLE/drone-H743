@@ -48,6 +48,7 @@
 
 #define DRV_COAX_CTRL_FORCE_EPS_N          1.0e-4f
 #define DRV_COAX_CTRL_RATE_SCALE_EPS       1.0e-6f
+#define DRV_COAX_CTRL_SERVO_ANGLE_TOL_RAD  8.0e-4f
 #define DRV_COAX_CTRL_PROP9047_YAW_M_PER_N 0.0001f
 #define DRV_COAX_CTRL_SINGLE_MAX_THRUST_N 10.2f
 #define DRV_COAX_CTRL_THRUST_TABLE_POINTS  21U
@@ -503,6 +504,14 @@ static uint8_t coax_ctrl_param_value_valid(const DRV_COAX_CTRL_ParamEntry *entry
 
     if (entry->offset == offsetof(DRV_COAX_CTRL_Params, vel_loop_enable)) {
         return ((value >= 0.0f) && (value <= 1.0f)) ? 1U : 0U;
+    }
+    if ((entry->offset == offsetof(DRV_COAX_CTRL_Params,
+                                   attitude.rate_limit_rad_s[0])) ||
+        (entry->offset == offsetof(DRV_COAX_CTRL_Params,
+                                   attitude.rate_limit_rad_s[1])) ||
+        (entry->offset == offsetof(DRV_COAX_CTRL_Params,
+                                   attitude.rate_limit_rad_s[2]))) {
+        return (value > 0.0f) ? 1U : 0U;
     }
     return (value >= 0.0f) ? 1U : 0U;
 }
@@ -1057,7 +1066,9 @@ static void coax_ctrl_compute_balance_command(
 static void coax_ctrl_allocate_motor_thrust(float total_force_n,
                                             float yaw_torque_cmd,
                                             float *upper_n,
-                                            float *lower_n)
+                                            float *lower_n,
+                                            uint8_t *upper_saturated,
+                                            uint8_t *lower_saturated)
 {
     const float ku = coax_ctrl_params.yaw_torque_upper_m_per_n;
     const float kl = coax_ctrl_params.yaw_torque_lower_m_per_n;
@@ -1067,13 +1078,24 @@ static void coax_ctrl_allocate_motor_thrust(float total_force_n,
         denom = DRV_COAX_CTRL_RATE_SCALE_EPS;
     }
 
-    *upper_n = (kl * total_force_n - yaw_torque_cmd) / denom;
-    *lower_n = (ku * total_force_n + yaw_torque_cmd) / denom;
+    const float upper_raw = (kl * total_force_n - yaw_torque_cmd) / denom;
+    const float lower_raw = (ku * total_force_n + yaw_torque_cmd) / denom;
+
+    *upper_n = upper_raw;
+    *lower_n = lower_raw;
 
     *upper_n = coax_ctrl_clamp_f32(*upper_n, 0.0f,
                                    coax_ctrl_params.motor_single_max_thrust_n);
     *lower_n = coax_ctrl_clamp_f32(*lower_n, 0.0f,
                                    coax_ctrl_params.motor_single_max_thrust_n);
+    if (upper_saturated != NULL) {
+        *upper_saturated = (fabsf(*upper_n - upper_raw) >
+                            DRV_COAX_CTRL_RATE_SCALE_EPS) ? 1U : 0U;
+    }
+    if (lower_saturated != NULL) {
+        *lower_saturated = (fabsf(*lower_n - lower_raw) >
+                            DRV_COAX_CTRL_RATE_SCALE_EPS) ? 1U : 0U;
+    }
 }
 
 void DRV_COAX_CTRL_Init(void)
@@ -1155,10 +1177,10 @@ void DRV_COAX_CTRL_GetParams(DRV_COAX_CTRL_Params *params)
     *params = coax_ctrl_params;
 }
 
-void DRV_COAX_CTRL_SetParams(const DRV_COAX_CTRL_Params *params)
+static uint8_t coax_ctrl_try_set_params(const DRV_COAX_CTRL_Params *params)
 {
     if (params == NULL) {
-        return;
+        return 0U;
     }
 
     DRV_COAX_CTRL_Init();
@@ -1167,9 +1189,14 @@ void DRV_COAX_CTRL_SetParams(const DRV_COAX_CTRL_Params *params)
     if (coax_ctrl_params_valid(&candidate) != 0U) {
         coax_ctrl_params = candidate;
         DRV_COAX_CTRL_ResetState();
-    } else {
-        DRV_COAX_CTRL_ResetParams();
+        return 1U;
     }
+    return 0U;
+}
+
+void DRV_COAX_CTRL_SetParams(const DRV_COAX_CTRL_Params *params)
+{
+    (void)coax_ctrl_try_set_params(params);
 }
 
 uint32_t DRV_COAX_CTRL_ParamCount(void)
@@ -1238,43 +1265,48 @@ uint8_t DRV_COAX_CTRL_SetParam(const char *name, float value)
     DRV_COAX_CTRL_Init();
     candidate = coax_ctrl_params;
     if (strcmp(name, "coax.roll_angle_kp") == 0) {
+        if ((candidate.rate.kp[0] <= DRV_COAX_CTRL_RATE_SCALE_EPS) &&
+            (value > 0.0f)) return 0U;
         candidate.attitude.att_kp[0] = value / fmaxf(candidate.rate.kp[0],
                                                      DRV_COAX_CTRL_RATE_SCALE_EPS);
-        DRV_COAX_CTRL_SetParams(&candidate);
-        return 1U;
+        return coax_ctrl_try_set_params(&candidate);
     }
     if (strcmp(name, "coax.pitch_angle_kp") == 0) {
+        if ((candidate.rate.kp[1] <= DRV_COAX_CTRL_RATE_SCALE_EPS) &&
+            (value > 0.0f)) return 0U;
         candidate.attitude.att_kp[1] = value / fmaxf(candidate.rate.kp[1],
                                                      DRV_COAX_CTRL_RATE_SCALE_EPS);
-        DRV_COAX_CTRL_SetParams(&candidate);
-        return 1U;
+        return coax_ctrl_try_set_params(&candidate);
     }
     if ((strcmp(name, "coax.roll_rate_kd") == 0) ||
         (strcmp(name, "coax.pitch_rate_kd") == 0)) {
         const uint32_t axis = (name[5] == 'r') ? 0U : 1U;
         const float kr = candidate.rate.kp[axis] *
                          candidate.attitude.att_kp[axis];
+        if ((value <= DRV_COAX_CTRL_RATE_SCALE_EPS) &&
+            (kr > DRV_COAX_CTRL_RATE_SCALE_EPS)) return 0U;
         candidate.rate.kp[axis] = value;
         candidate.attitude.att_kp[axis] =
             kr / fmaxf(value, DRV_COAX_CTRL_RATE_SCALE_EPS);
-        DRV_COAX_CTRL_SetParams(&candidate);
-        return 1U;
+        return coax_ctrl_try_set_params(&candidate);
     }
     if (strcmp(name, "coax.yaw_angle_kp") == 0) {
+        if ((candidate.rate.kp[2] <= DRV_COAX_CTRL_RATE_SCALE_EPS) &&
+            (value > 0.0f)) return 0U;
         candidate.attitude.att_kp[2] =
             (candidate.yaw_inertia * value) /
             fmaxf(candidate.rate.kp[2], DRV_COAX_CTRL_RATE_SCALE_EPS);
-        DRV_COAX_CTRL_SetParams(&candidate);
-        return 1U;
+        return coax_ctrl_try_set_params(&candidate);
     }
     if (strcmp(name, "coax.yaw_rate_kd") == 0) {
         const float kr = candidate.rate.kp[2] *
                          candidate.attitude.att_kp[2];
+        if (((candidate.yaw_inertia * value) <= DRV_COAX_CTRL_RATE_SCALE_EPS) &&
+            (kr > DRV_COAX_CTRL_RATE_SCALE_EPS)) return 0U;
         candidate.rate.kp[2] = candidate.yaw_inertia * value;
         candidate.attitude.att_kp[2] =
             kr / fmaxf(candidate.rate.kp[2], DRV_COAX_CTRL_RATE_SCALE_EPS);
-        DRV_COAX_CTRL_SetParams(&candidate);
-        return 1U;
+        return coax_ctrl_try_set_params(&candidate);
     }
     if (coax_ctrl_param_value_valid(entry, value) == 0U) {
         return 0U;
@@ -1449,6 +1481,36 @@ void DRV_COAX_CTRL_BodyTiltRadToServoPulses(float body_x_tilt_rad,
     }
 }
 
+static void coax_ctrl_servo_pulses_to_body_tilts(uint16_t servo_alpha_us,
+                                                  uint16_t servo_beta_us,
+                                                  float *body_x_tilt_rad,
+                                                  float *body_y_tilt_rad)
+{
+    const float servo_span_us =
+        (float)(DRV_COAX_CTRL_SERVO_PHYSICAL_MAX_US -
+                DRV_COAX_CTRL_SERVO_PHYSICAL_MIN_US);
+    const float rad_per_us = DRV_COAX_CTRL_SERVO_TRAVEL_RAD / servo_span_us;
+    const float servo_alpha_tilt =
+        ((float)servo_alpha_us -
+         (float)coax_ctrl_servo_calibration.center_us[
+             DRV_COAX_CTRL_SERVO_ALPHA_INDEX]) * rad_per_us *
+        (float)coax_ctrl_servo_calibration.pulse_sign[
+            DRV_COAX_CTRL_SERVO_ALPHA_INDEX];
+    const float servo_beta_tilt =
+        ((float)servo_beta_us -
+         (float)coax_ctrl_servo_calibration.center_us[
+             DRV_COAX_CTRL_SERVO_BETA_INDEX]) * rad_per_us *
+        (float)coax_ctrl_servo_calibration.pulse_sign[
+            DRV_COAX_CTRL_SERVO_BETA_INDEX];
+
+    if (body_x_tilt_rad != NULL) {
+        *body_x_tilt_rad = -servo_beta_tilt;
+    }
+    if (body_y_tilt_rad != NULL) {
+        *body_y_tilt_rad = -servo_alpha_tilt;
+    }
+}
+
 uint16_t DRV_COAX_CTRL_ThrustToMotorPulse(float thrust_n)
 {
     float thrust_g;
@@ -1523,6 +1585,11 @@ void DRV_COAX_CTRL_RunScheduled(const DRV_COAX_CTRL_AttitudeInput *attitude,
     float yaw_torque_cmd;
     float thrust_upper_n;
     float thrust_lower_n;
+    float requested_alpha_rad;
+    float requested_beta_rad;
+    float achieved_total_force_n;
+    uint8_t upper_motor_saturated = 0U;
+    uint8_t lower_motor_saturated = 0U;
 
     if ((attitude == NULL) || (reference == NULL) || (schedule == NULL) ||
         (output == NULL)) {
@@ -1530,6 +1597,9 @@ void DRV_COAX_CTRL_RunScheduled(const DRV_COAX_CTRL_AttitudeInput *attitude,
     }
 
     DRV_COAX_CTRL_Init();
+    if (schedule->integrator_reset != 0U) {
+        DRV_COAX_CTRL_ResetState();
+    }
     memset(&debug, 0, sizeof(debug));
     memset(output, 0, sizeof(*output));
 
@@ -1540,18 +1610,26 @@ void DRV_COAX_CTRL_RunScheduled(const DRV_COAX_CTRL_AttitudeInput *attitude,
     coax_ctrl_allocate_motor_thrust(debug.total_force_n,
                                     yaw_torque_cmd,
                                     &thrust_upper_n,
-                                    &thrust_lower_n);
+                                    &thrust_lower_n,
+                                    &upper_motor_saturated,
+                                    &lower_motor_saturated);
 
     output->thrust_upper_n = thrust_upper_n;
     output->thrust_lower_n = thrust_lower_n;
-    output->alpha_rad = solution.alpha_rad;
-    output->beta_rad = solution.beta_rad;
+    requested_alpha_rad = solution.alpha_rad;
+    requested_beta_rad = solution.beta_rad;
     output->motor_upper_us = DRV_COAX_CTRL_ThrustToMotorPulse(thrust_upper_n);
     output->motor_lower_us = DRV_COAX_CTRL_ThrustToMotorPulse(thrust_lower_n);
-    DRV_COAX_CTRL_BodyTiltRadToServoPulses(output->alpha_rad,
-                                           output->beta_rad,
+    DRV_COAX_CTRL_BodyTiltRadToServoPulses(requested_alpha_rad,
+                                           requested_beta_rad,
                                            &output->servo_alpha_us,
                                            &output->servo_beta_us);
+    coax_ctrl_servo_pulses_to_body_tilts(output->servo_alpha_us,
+                                         output->servo_beta_us,
+                                         &output->alpha_rad,
+                                         &output->beta_rad);
+    debug.tilt_out_rad[0] = output->alpha_rad;
+    debug.tilt_out_rad[1] = output->beta_rad;
 
     debug.motor_thrust_cmd_n[0] = output->thrust_upper_n;
     debug.motor_thrust_cmd_n[1] = output->thrust_lower_n;
@@ -1561,17 +1639,29 @@ void DRV_COAX_CTRL_RunScheduled(const DRV_COAX_CTRL_AttitudeInput *attitude,
         (coax_ctrl_params.yaw_torque_lower_m_per_n * output->thrust_lower_n) -
         (coax_ctrl_params.yaw_torque_upper_m_per_n * output->thrust_upper_n);
 
+    achieved_total_force_n = output->thrust_upper_n + output->thrust_lower_n;
     output->moment_achieved_n_m[0] = coax_ctrl_roll_moment_from_tilt(
-        debug.total_force_n, output->beta_rad);
+        achieved_total_force_n, output->beta_rad);
     output->moment_achieved_n_m[1] = coax_ctrl_pitch_moment_from_tilt(
-        debug.total_force_n, output->alpha_rad, output->beta_rad);
+        achieved_total_force_n, output->alpha_rad, output->beta_rad);
     output->moment_achieved_n_m[2] = debug.yaw_torque_cmd;
     for (uint32_t axis = 0U; axis < 3U; ++axis) {
-        const float residual = solution.moment_cmd_n_m[axis] -
-                               output->moment_achieved_n_m[axis];
-        if (residual > DRV_COAX_CTRL_RATE_SCALE_EPS) {
+        uint8_t constrained =
+            coax_ctrl_state.rate_output.saturated_pos[axis] ||
+            coax_ctrl_state.rate_output.saturated_neg[axis];
+        if ((axis == 0U) &&
+            (fabsf(requested_beta_rad - output->beta_rad) >
+             DRV_COAX_CTRL_SERVO_ANGLE_TOL_RAD)) constrained = 1U;
+        if ((axis == 1U) &&
+            (fabsf(requested_alpha_rad - output->alpha_rad) >
+             DRV_COAX_CTRL_SERVO_ANGLE_TOL_RAD)) constrained = 1U;
+        if ((axis == 2U) &&
+            ((upper_motor_saturated != 0U) ||
+             (lower_motor_saturated != 0U))) constrained = 1U;
+        if ((constrained != 0U) && (solution.moment_cmd_n_m[axis] > 0.0f)) {
             output->saturation_positive[axis] = 1U;
-        } else if (residual < -DRV_COAX_CTRL_RATE_SCALE_EPS) {
+        } else if ((constrained != 0U) &&
+                   (solution.moment_cmd_n_m[axis] < 0.0f)) {
             output->saturation_negative[axis] = 1U;
         }
         coax_ctrl_state.moment_saturation_positive[axis] =
@@ -1581,7 +1671,8 @@ void DRV_COAX_CTRL_RunScheduled(const DRV_COAX_CTRL_AttitudeInput *attitude,
     }
     output->tilt_saturated =
         output->saturation_positive[0] || output->saturation_negative[0] ||
-        output->saturation_positive[1] || output->saturation_negative[1];
+        output->saturation_positive[1] || output->saturation_negative[1] ||
+        (debug.horizontal_command_scale < 0.999f);
     output->yaw_differential_saturated =
         output->saturation_positive[2] || output->saturation_negative[2];
     output->thrust_saturated =
@@ -1601,6 +1692,19 @@ void DRV_COAX_CTRL_RunScheduled(const DRV_COAX_CTRL_AttitudeInput *attitude,
         output->thrust_saturated;
     coax_ctrl_state.translation_saturation.tilt_saturated =
         output->tilt_saturated;
+    memset(coax_ctrl_state.translation_saturation.pos_limit, 0,
+           sizeof(coax_ctrl_state.translation_saturation.pos_limit));
+    memset(coax_ctrl_state.translation_saturation.neg_limit, 0,
+           sizeof(coax_ctrl_state.translation_saturation.neg_limit));
+    for (uint32_t axis = 0U; axis < 3U; ++axis) {
+        const uint8_t limited = (axis < 2U) ? output->tilt_saturated :
+                                             output->thrust_saturated;
+        if ((limited != 0U) && (debug.accel_out_m_s2[axis] > 0.0f)) {
+            coax_ctrl_state.translation_saturation.pos_limit[axis] = 1U;
+        } else if ((limited != 0U) && (debug.accel_out_m_s2[axis] < 0.0f)) {
+            coax_ctrl_state.translation_saturation.neg_limit[axis] = 1U;
+        }
+    }
 
     coax_ctrl_last_debug = debug;
 }

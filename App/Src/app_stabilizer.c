@@ -674,6 +674,10 @@ typedef struct
   float height_ref_m;
   float height_origin_m;
   uint8_t height_origin_ready;
+  float last_vertical_velocity_m_s;
+  float vertical_accel_m_s2;
+  uint32_t last_vertical_velocity_sample_ms;
+  uint8_t vertical_accel_ready;
   float yaw_ref_rad;
   uint8_t yaw_ref_ready;
   StabilizerVofaDebug vofa_debug;
@@ -1006,6 +1010,8 @@ static void stabilizer_reset_for_imu_frame(
   ctx->yaw_ref_ready = 0U;
   memset(ctx->last_gyro_rad_s, 0, sizeof(ctx->last_gyro_rad_s));
   ctx->last_gyro_ready = 0U;
+  ctx->last_vertical_velocity_sample_ms = 0U;
+  ctx->vertical_accel_ready = 0U;
   ctx->imu_frame_orientation_code = orientation_code;
   ctx->imu_calibration_generation = calibration_generation;
 
@@ -1573,6 +1579,8 @@ static void stabilizer_control_compute(StabilizerContext *ctx,
     DRV_COAX_CTRL_ResetState();
     APP_ControlScheduler_Reset(&ctx->control_scheduler);
     ctx->last_gyro_ready = 0U;
+    ctx->last_vertical_velocity_sample_ms = 0U;
+    ctx->vertical_accel_ready = 0U;
     ctx->position_ref_z_ready = 0U;
     ctx->yaw_ref_ready = 0U;
     ctx->vofa_debug.vel_loop_active = 0.0f;
@@ -1593,7 +1601,28 @@ static void stabilizer_control_compute(StabilizerContext *ctx,
       APP_OpticalFlow_GetHeightSample(&frame->range_height_m,
                                       &frame->range_velocity_m_s,
                                       &frame->range_sample_ms);
-    (void)frame->range_sample_ms;
+    if ((frame->range_height_valid != 0U) &&
+        (frame->range_sample_ms != ctx->last_vertical_velocity_sample_ms)) {
+      const float velocity_z_m_s = -frame->range_velocity_m_s;
+      const uint32_t elapsed_ms = frame->range_sample_ms -
+                                  ctx->last_vertical_velocity_sample_ms;
+      if ((ctx->last_vertical_velocity_sample_ms != 0U) &&
+          (elapsed_ms > 0U) && (elapsed_ms <= SVC_FLOW_NAV_TIMEOUT_MS)) {
+        ctx->vertical_accel_m_s2 =
+          (velocity_z_m_s - ctx->last_vertical_velocity_m_s) /
+          ((float)elapsed_ms * 0.001f);
+        ctx->vertical_accel_ready = 1U;
+      } else {
+        ctx->vertical_accel_m_s2 = 0.0f;
+        ctx->vertical_accel_ready = 0U;
+      }
+      ctx->last_vertical_velocity_m_s = velocity_z_m_s;
+      ctx->last_vertical_velocity_sample_ms = frame->range_sample_ms;
+    } else if (frame->range_height_valid == 0U) {
+      ctx->vertical_accel_m_s2 = 0.0f;
+      ctx->vertical_accel_ready = 0U;
+      ctx->last_vertical_velocity_sample_ms = 0U;
+    }
     if (frame->range_height_valid != 0U) {
       if (ctx->height_origin_ready == 0U) {
         ctx->height_origin_m = frame->range_height_m;
@@ -1643,8 +1672,10 @@ static void stabilizer_control_compute(StabilizerContext *ctx,
       frame->attitude.gyro_z_rad_s = ctx->last_msg.imu.gyro_z_dps * STABILIZER_DEG_TO_RAD;
       frame->attitude.accel_m_s2[0] = ctx->vofa_debug.acc_nav_m_s2[0];
       frame->attitude.accel_m_s2[1] = ctx->vofa_debug.acc_nav_m_s2[1];
-      frame->attitude.accel_m_s2[2] = 0.0f;
-      frame->attitude.acceleration_valid = nav_state.velocity_valid;
+      frame->attitude.accel_m_s2[2] = ctx->vertical_accel_m_s2;
+      frame->attitude.acceleration_valid =
+        ((nav_state.velocity_valid != 0U) &&
+         (ctx->vertical_accel_ready != 0U)) ? 1U : 0U;
 
       (void)DRV_COAX_CTRL_GetParam("coax.vel_loop_enable", &vel_loop_enable);
       velocity_loop_enabled = (vel_loop_enable >= 0.5f) ? 1U : 0U;
@@ -2238,15 +2269,19 @@ static void stabilizer_control_step(StabilizerContext *ctx)
   memset(&frame, 0, sizeof(frame));
   memset(&navigation_state, 0, sizeof(navigation_state));
   frame.now_us = SVC_Timestamp_Us();
-  frame.now_ms = (uint32_t)(frame.now_us / 1000ULL);
+  frame.now_ms = HAL_GetTick();
   SVC_FlowNav_GetState(&navigation_state);
   APP_ControlScheduler_Step(&ctx->control_scheduler,
                             frame.now_us,
-                            (uint64_t)navigation_state.velocity_sample_ms * 1000ULL,
+                            (uint64_t)navigation_state.velocity_sample_ms,
                             navigation_state.velocity_valid,
                             &frame.cascade_schedule);
 
   if (frame.cascade_schedule.rate_due != 0U) {
+    APP_ControlScheduler_Commit(&ctx->control_scheduler,
+                                frame.now_us,
+                                (uint64_t)navigation_state.velocity_sample_ms,
+                                &frame.cascade_schedule);
     ctx->last_out_ms = frame.now_ms;
 
     /* 声明里的非零初值，memset 后需显式恢复 */

@@ -23,15 +23,18 @@ static int near(float a, float b) { return fabsf(a - b) < 1.0e-6f; }
 int main(void) {
     APP_ControlSchedulerState state;
     APP_ControlSchedule out;
+    uint64_t last_nav = 0ULL;
     APP_ControlScheduler_Reset(&state);
 
     for (uint64_t t = 2000ULL; t <= 1000000ULL; t += 2000ULL) {
-        uint64_t nav = ((t % 10000ULL) == 0ULL) ? t : state.last_nav_sample_us;
+        uint64_t nav = ((t % 10000ULL) == 0ULL) ? t : last_nav;
         APP_ControlScheduler_Step(&state, t, nav, nav != 0ULL, &out);
         rate_count += out.rate_due;
         attitude_count += out.attitude_due;
         velocity_count += out.velocity_due;
         position_count += out.position_due;
+        APP_ControlScheduler_Commit(&state, t, nav, &out);
+        if ((t % 10000ULL) == 0ULL) last_nav = t;
     }
     if (rate_count != 500U || attitude_count != 250U ||
         velocity_count != 100U || position_count != 50U) return 1;
@@ -50,9 +53,9 @@ int main(void) {
         !out.velocity_due || !out.position_due) return 4;
     if (!near(out.rate_dt_s, 0.1f) || !near(out.velocity_dt_s, 0.1f)) return 5;
 
-    APP_ControlScheduler_Step(&state, 1304000ULL, 1400000ULL, 1U, &out);
-    if (!out.timestamp_fault || out.navigation_sample_new ||
-        out.velocity_due || out.position_due) return 6;
+    APP_ControlScheduler_Reset(&state);
+    APP_ControlScheduler_Step(&state, 1000ULL, 5000ULL, 1U, &out);
+    if (out.timestamp_fault || !out.navigation_sample_new) return 6;
 
     printf("rate=%u attitude=%u velocity=%u position=%u\n",
            rate_count, attitude_count, velocity_count, position_count);
@@ -99,7 +102,8 @@ def test_scheduler_is_pure_and_declares_real_timestamp_contract() -> None:
     )
     forbidden = ("cmsis_os", "FreeRTOS", "stm32", "HAL_", "APP_USB", "Flash")
     assert not any(token in source for token in forbidden)
-    assert "navigation sample timestamp" in header
+    assert "navigation sample token" in header
+    assert "APP_ControlScheduler_Commit" in header
     assert "APP_CONTROL_SCHED_RATE_PERIOD_US      2000ULL" in header
     assert "APP_CONTROL_SCHED_ATTITUDE_PERIOD_US  4000ULL" in header
     assert "APP_CONTROL_SCHED_VELOCITY_PERIOD_US 10000ULL" in header

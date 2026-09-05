@@ -378,25 +378,9 @@ void DRV_POSITION_CONTROL_VelocityStep(
         const float delta_i = candidate_i[axis] -
                               state->velocity_integrator_m_s2[axis];
         const uint8_t downstream_positive =
-            (input->downstream_saturation.pos_limit[axis] != 0U) ||
-            (((axis < 2U) &&
-              ((input->downstream_saturation.tilt_saturated != 0U) ||
-               ((input->downstream_saturation.horizontal_scale > 0.0f) &&
-                (input->downstream_saturation.horizontal_scale < 0.999f)))) &&
-             (delta_i > 0.0f)) ||
-            (((axis == 2U) &&
-              (input->downstream_saturation.thrust_saturated != 0U)) &&
-             (delta_i > 0.0f));
+            input->downstream_saturation.pos_limit[axis];
         const uint8_t downstream_negative =
-            (input->downstream_saturation.neg_limit[axis] != 0U) ||
-            (((axis < 2U) &&
-              ((input->downstream_saturation.tilt_saturated != 0U) ||
-               ((input->downstream_saturation.horizontal_scale > 0.0f) &&
-                (input->downstream_saturation.horizontal_scale < 0.999f)))) &&
-             (delta_i < 0.0f)) ||
-            (((axis == 2U) &&
-              (input->downstream_saturation.thrust_saturated != 0U)) &&
-             (delta_i < 0.0f));
+            input->downstream_saturation.neg_limit[axis];
         const uint8_t driving_deeper =
             (((candidate_feedback.pos_limit[axis] != 0U) ||
               (downstream_positive != 0U)) && (delta_i > 0.0f)) ||
