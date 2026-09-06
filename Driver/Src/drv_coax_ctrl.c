@@ -29,12 +29,21 @@
 /*                                                                        */
 /*  姿态约定：本层拿到的角度**口径由姿态融合的 convention 决定**，而它按    */
 /*  APP_Sensor_IsFluOrientationActive() 在 NED / NWU 之间切换：              */
-/*    roll_rad  > 0  →  机身右侧下沉   （两种口径相同）                     */
+/*    roll_rad  > 0  →  机身右侧下沉   （两种口径相同，迁移不改它）         */
 /*    pitch_rad > 0  →  legacy(NED)=机头上仰；FLU(NWU)=机头**下俯**         */
 /*    gyro_x    > 0  →  正 roll 方向的角速率                               */
 /*    gyro_y    > 0  →  正 pitch 方向的角速率                              */
-/*  可执行证据见 tests/test_flu_seam1_estimator_frame.py。pitch 这一翻正是   */
-/*  半迁移互锁存在的原因，见 tests/test_flu_seam3_force_frame_derivation.py。*/
+/*  可执行证据见 tests/test_flu_seam1_estimator_frame.py。                  */
+/*                                                                        */
+/*  内环（姿态误差）对实测与目标一视同仁，所以口径怎么变它都自洽；真正被    */
+/*  物理钉死的是**外环**——目标姿态由加速度指令经力矢量算出来，不是摇杆给的。*/
+/*  实测（2026-09-06，真控制器，见                                          */
+/*  tests/test_flu_seam3_force_frame_derivation.py）：                      */
+/*    向前加速 → 控制器在 pitch=+0.19 最安静 = FLU 机头下俯  ✓ 自洽        */
+/*    向右加速 → 控制器在 roll =-0.20 最安静 = FLU 左翼下沉  ✗ 与"local Y  */
+/*               是机体右"这一全链注释矛盾                                 */
+/*  roll 这条差异**不是 FLU 迁移引入的**（roll 口径 FRD 与 FLU 相同），要么  */
+/*  local Y 实际是左、要么外环 roll 反了；只能拆桨横移实测，见 R-F6-2 工单。 */
 /* ════════════════════════════════════════════════════════════════════════ */
 
 /*

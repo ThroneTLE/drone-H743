@@ -94,7 +94,78 @@ int main(void)
 """
 
 
-def _build_and_run(tmp_path: Path, tag: str, source_text: str) -> list[tuple[float, float]]:
+OUTER_LOOP_HARNESS = r"""
+#include "drv_coax_ctrl.h"
+#include "drv_airframe_model.h"
+
+#include <math.h>
+#include <stdio.h>
+#include <string.h>
+
+/*
+ * Find the measured attitude at which the controller goes quietest while it is
+ * asked for a constant physical acceleration.  That equilibrium is the frame
+ * convention the outer loop actually believes in -- it comes from the force
+ * vector, so it is pinned to physics rather than to a stick mapping.
+ *
+ * Prints one "pitch roll" line for the forward demand, then one for the
+ * rightward demand.
+ */
+static void quietest(float ax, float ay, float *best_pitch, float *best_roll)
+{
+    DRV_COAX_CTRL_AttitudeInput att;
+    DRV_COAX_CTRL_Reference ref;
+    DRV_COAX_CTRL_Output out;
+    float best_mag = 1.0e9f;
+
+    *best_pitch = 0.0f;
+    *best_roll = 0.0f;
+
+    for (int i = -40; i <= 40; ++i) {
+        const float angle = (float)i * 0.005f;
+        float mag;
+
+        memset(&att, 0, sizeof(att));
+        memset(&ref, 0, sizeof(ref));
+        ref.dt_sec = 0.002f;
+        ref.ax_m_s2 = ax;
+        ref.ay_m_s2 = ay;
+        /* Canonical FLU: +pitch nose down, +roll right wing down. */
+        if (ax != 0.0f) { att.pitch_rad = angle; } else { att.roll_rad = angle; }
+
+        DRV_COAX_CTRL_Run(&att, &ref, &out);
+        mag = fabsf(out.alpha_rad) + fabsf(out.beta_rad);
+        if (mag < best_mag) {
+            best_mag = mag;
+            if (ax != 0.0f) { *best_pitch = angle; } else { *best_roll = angle; }
+        }
+    }
+}
+
+int main(void)
+{
+    DRV_COAX_CTRL_Params params;
+    float pitch, roll;
+
+    DRV_COAX_CTRL_Init();
+    DRV_COAX_CTRL_GetDefaultParams(&params);
+    /* Route the demand through the acceleration feed-forward path so the
+     * physical demand is exactly what this harness sets. */
+    params.vel_loop_enable = 0.0f;
+    DRV_COAX_CTRL_SetParams(&params);
+
+    quietest(2.0f, 0.0f, &pitch, &roll);
+    printf("%.9f %.9f\n", (double)pitch, (double)roll);
+    quietest(0.0f, 2.0f, &pitch, &roll);
+    printf("%.9f %.9f\n", (double)pitch, (double)roll);
+    return 0;
+}
+"""
+
+
+def _build_and_run(tmp_path: Path, tag: str, source_text: str,
+                   harness: str = AB_HARNESS,
+                   expect: int = 625) -> list[tuple[float, float]]:
     gcc = shutil.which("gcc")
     assert gcc is not None
 
@@ -112,9 +183,9 @@ def _build_and_run(tmp_path: Path, tag: str, source_text: str) -> list[tuple[flo
         encoding="ascii",
     )
 
-    harness = work / "ab_harness.c"
-    harness.write_text(AB_HARNESS, encoding="ascii")
-    executable = work / "ab_harness.exe"
+    harness_c = work / "harness.c"
+    harness_c.write_text(harness, encoding="ascii")
+    executable = work / "harness.exe"
 
     subprocess.run(
         [gcc, "-std=c11", "-O1",
@@ -123,14 +194,14 @@ def _build_and_run(tmp_path: Path, tag: str, source_text: str) -> list[tuple[flo
          str(ROOT / "Driver" / "Src" / "drv_position_control.c"),
          str(ROOT / "Driver" / "Src" / "drv_attitude_control.c"),
          str(ROOT / "Driver" / "Src" / "drv_rate_control.c"),
-         str(harness), "-lm", "-o", str(executable)],
+         str(harness_c), "-lm", "-o", str(executable)],
         check=True, capture_output=True, text=True)
 
     result = subprocess.run([str(executable)], check=True,
                             capture_output=True, text=True)
     rows = [tuple(float(v) for v in line.split())
             for line in result.stdout.strip().splitlines()]
-    assert len(rows) == 625
+    assert len(rows) == expect
     return rows
 
 
@@ -172,8 +243,9 @@ def test_force_frame_roll_sign_is_load_bearing(tmp_path: Path) -> None:
 
 
 def test_the_cancellation_claim_is_not_reasserted() -> None:
-    """那句错话曾在四处被复述，别让它回来。"""
+    """那句错话曾在五处被复述（含 drv_coax_ctrl.h），别让它回来。"""
     for path in (CTRL_SOURCE,
+                 ROOT / "Driver" / "Inc" / "drv_coax_ctrl.h",
                  ROOT / "tests" / "test_coax_sign_convention.py",
                  ROOT / "tests" / "test_flu_seam3_controller_frame.py"):
         text = read(path)
@@ -182,19 +254,49 @@ def test_the_cancellation_claim_is_not_reasserted() -> None:
         assert "cancels in the attitude error" not in text, path
 
 
-def test_nothing_compensates_the_seam01_pitch_flip() -> None:
-    """seam 0/1 迁到 FLU 把 pitch 口径翻了，seam 3 没有任何补偿。
+def test_outer_loop_pitch_agrees_with_flu_but_roll_does_not(tmp_path: Path) -> None:
+    """外环是被物理钉死的那一环，实测它认哪个姿态叫"到位"。
 
-    姿态融合按 `flu_active` 在 NED / NWU 之间切换（见
-    tests/test_flu_seam1_estimator_frame.py 的可执行断言）：
-      legacy(NED/FRD)：pitch > 0 = 机头上仰
-      FLU(NWU)       ：pitch > 0 = 机头下俯
-    roll 在两种口径下都是"右翼下沉为正"，所以只有 pitch 翻了。
+    内环对实测与目标一视同仁，所以口径怎么变都自洽，问不出东西。外环不然：
+    目标姿态由**加速度指令**经力矢量算出来（`atan2(F_前, F_上)`），而加速度
+    指令是物理量，所以外环把角度口径钉死在物理上。
 
-    而 `FORCE_FRAME_PITCH_SIGN` 仍是 +1，且全仓库唯一读
-    `APP_Sensor_IsFluOrientationActive()` 的地方是解锁互锁本身。也就是说，
-    半迁移状态下控制器拿到的 pitch 就是反的——**这正是那道互锁存在的原因，
-    它必须留着**，直到 R-F6-2 把矩阵重导完。
+    实测（真控制器，加速度前馈通道）：
+      向前加速（物理上要机头下俯）→ 最安静在 pitch = +0.19 → FLU 机头下俯 ✓
+      向右加速（物理上要右翼下沉）→ 最安静在 roll  = -0.20 → FLU 左翼下沉 ✗
+
+    pitch 自洽。roll 与"local Y 是机体右"这条全链注释矛盾，两种可能：
+    local Y 其实是左（四处注释都写错了），或者外环 roll 反了。**主机判不了**
+    ——这是光流 Y 方向的物理问题，要拆桨横移实测。
+
+    注意 roll 口径在 FRD 与 FLU 下相同，所以这条差异**不是 FLU 迁移引入的**，
+    R-F6-2 也不会顺手修好它。
+    """
+    if shutil.which("gcc") is None:
+        pytest.skip("host gcc is unavailable")
+
+    rows = _build_and_run(tmp_path, "outer", read(CTRL_SOURCE),
+                          harness=OUTER_LOOP_HARNESS, expect=2)
+    (fwd_pitch, fwd_roll), (right_pitch, right_roll) = rows
+
+    # 向前加速：目标俯仰为正，且平衡点落在正 pitch —— FLU 机头下俯，自洽。
+    assert fwd_pitch > 0.05, f"向前加速的平衡俯仰角变了：{fwd_pitch}"
+    assert abs(fwd_roll) < 0.05, f"向前加速不该要求滚转：{fwd_roll}"
+
+    # 向右加速：平衡点落在负 roll —— FLU 左翼下沉，与"local Y 是右"矛盾。
+    assert right_roll < -0.05, (
+        f"向右加速的平衡滚转角变成 {right_roll}。若这是拆桨实测后的有意修正，"
+        "请连同 drv_coax_ctrl.h 的 seam 3 frame map 与本断言一起更新。"
+    )
+    assert abs(right_pitch) < 0.05, f"向右加速不该要求俯仰：{right_pitch}"
+
+
+def test_only_the_arm_lock_knows_about_flu(tmp_path: Path) -> None:
+    """全仓库唯一读 `APP_Sensor_IsFluOrientationActive()` 的地方是解锁互锁。
+
+    控制律里没有"按朝向切口径"的分支，这是对的——运行时分叉会让两种朝向都
+    缺乏证据（见 frame-migration 模式）。代价是半迁移态只能靠那道互锁兜住，
+    所以**它必须留着**，直到六个 seam 全部收口。
     """
     assert "#define DRV_COAX_CTRL_FORCE_FRAME_PITCH_SIGN (1.0f)" in read(CTRL_SOURCE)
 

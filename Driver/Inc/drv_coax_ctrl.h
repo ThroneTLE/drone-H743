@@ -100,12 +100,20 @@ typedef struct {
      * DRV_COAX_CTRL_FORCE_FRAME_ROLL_SIGN / _PITCH_SIGN (attitude) and
      * DRV_COAX_CTRL_RATE_FRAME_ROLL_SIGN / _PITCH_SIGN (body rates).  The
      * force-frame sign is applied to the measured and the target attitude
-     * alike, so it cancels in the attitude error and never reaches stick
-     * direction.  Keep polarity in those named constants; never fold it into
-     * a gain.
+     * alike, which keeps the inner loop self-consistent -- but it does NOT
+     * drop out of the attitude error, and it does reach the servo output.
+     * Measured 2026-09-06: flipping the roll constant moves beta by up to
+     * 67.5 mrad against a 0.8 mrad servo tolerance.  See
+     * tests/test_flu_seam3_force_frame_derivation.py.  Keep polarity in these
+     * named constants; never fold it into a gain.
      *
-     * Whether those constants suit this airframe is settled by M6 props-off
-     * direction verification, not by host tests.
+     * The outer loop is the part that is pinned to physics, because the target
+     * attitude is derived from the acceleration demand rather than from a
+     * stick.  Measured on the real controller: a forward demand settles at
+     * +pitch (FLU nose-down -- consistent), but a rightward demand settles at
+     * -roll (FLU left-wing-down -- inconsistent with "local Y is right", which
+     * is what every comment in this chain claims).  Whether local Y really is
+     * body-right is a props-off physical question, not a host-test question.
      */
     float x_m;
     float y_m;

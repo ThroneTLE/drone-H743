@@ -103,10 +103,18 @@ bit 的 executable evidence）。复核不通过则本子工单退回，不得�
   属 seam 4，本子工单不动。CFG 持久化格式若必须变，单独提 REQ 并保证向后兼容。
 - **Test Seam**：`test_flu_seam3_*` 从"钉现状"改成"钉迁移后语义"；
   `test_cascade_controller_contract.py` / `test_coax_sign_convention.py` /
-  `test_coax_yaw_so3_contract.py` 同步；**追加迁移前后逐样本对拍**——用
-  `data/` 实录喂进新旧两版控制器，力矩输出应在浮点容差内一致（纯表述变更不该
-  改变数值，对不上就是掺了别的改动）。
+  `test_coax_yaw_so3_contract.py` 同步；**追加迁移前后逐样本对拍**。
 - 交付**软件证据即可，不置位**。bit3 由 R-F6-5 的实机证据触发。
+
+> ⚠ **本节已被重发工单取代，以那份为准：**
+> [`req-rf6-2-controller-flu-migration.md`](req-rf6-2-controller-flu-migration.md)
+>
+> 上面这条 Test Seam 原本写的是"力矩输出应在浮点容差内一致"，**已于 2026-09-06
+> 被实测证伪**：四个符号常量不是惰性的（翻 `FORCE_FRAME_ROLL_SIGN` 会让 beta 变
+> 67.5 mrad，对照舵机角容差 0.8 mrad），照原判据做不出来。重发工单把判据改成
+> "同一**物理**姿态下舵机指令一致"，并已验证可精确达成（0.000 mrad）。
+> 重发工单还带了核心矩阵重导的结论、以及一条**必须先由持机会话定性**的前置
+> （光流 Y 到底是机体左还是右）。
 
 ---
 

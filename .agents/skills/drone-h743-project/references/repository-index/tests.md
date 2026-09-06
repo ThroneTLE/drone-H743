@@ -4,7 +4,7 @@
 
 Read this shard only when you need existing behavioral/architecture coverage or must choose focused regression tests.
 
-Source snapshot: `682116ba73ec`. Indexed files: 129.
+Source snapshot: `aa29ca0a6d26`. Indexed files: 129.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -65,7 +65,7 @@ Source snapshot: `682116ba73ec`. Indexed files: 129.
 | `tests/test_flu_seam1_estimator_frame.py` | R-F1 seam 1 estimator FLU contract | `test_convention_tracks_frame`, `test_flu_branch_no_sign_comp` (+3) |
 | `tests/test_flu_seam2_navigation_frame.py` | R-F6-1 seam 2 navigation frame contract. Seam 2 (navigation) was the only one of the six FLU runtime seams with no coor… | `test_svc_flow_nav_header_names_its_frames_units_and_timebases`, `test_drv_nav_ekf_header_disclaims_frame_ownership` (+3) |
 | `tests/test_flu_seam3_controller_frame.py` | R-F3 seam 3 controller FLU boundary contract | `test_frame_signs_and_gains`, `test_mount_outside_control_law` (+2) |
-| `tests/test_flu_seam3_force_frame_derivation.py` | R-F6-2 核心矩阵重导：力坐标系符号常量到底在做什么。 这个模块存在的唯一理由，是仓库里曾经有一句被复述了四遍的论断： "此符号同时作用于实测姿态和目标姿态，因此在姿态误差中相消" 它是**错的**，而且不是无害的措辞问题——R-F6… | `test_force_frame_roll_sign_is_load_bearing`, `test_the_cancellation_claim_is_not_reasserted` (+1) |
+| `tests/test_flu_seam3_force_frame_derivation.py` | R-F6-2 核心矩阵重导：力坐标系符号常量到底在做什么。 这个模块存在的唯一理由，是仓库里曾经有一句被复述了四遍的论断： "此符号同时作用于实测姿态和目标姿态，因此在姿态误差中相消" 它是**错的**，而且不是无害的措辞问题——R-F6… | `test_force_frame_roll_sign_is_load_bearing`, `test_the_cancellation_claim_is_not_reasserted` (+2) |
 | `tests/test_flu_seam4_rc_actuator_frame.py` | R-F4 seam 4 RC/actuator polarity contract | `test_stick_direction_has_exactly_one_decision_point`, `test_velocity_measurement_polarity_is_a_named_constant` (+3) |
 | `tests/test_flu_seam5_telemetry_frame.py` | R-F5 seam 5 telemetry/log frame contract | `test_replay_geometry_is_frozen`, `test_replay_converts_to_flu_only_on_recorded_provenance` (+5) |
 | `tests/test_ground_calibration.py` | — | `test_calibration_navigation_uses_function_names_instead_of_version_codes`, `test_sensor_group_collects_baro_imu_gps_flow_under_one_expandable_tab` (+19) |
