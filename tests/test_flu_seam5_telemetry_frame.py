@@ -22,6 +22,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 
@@ -105,7 +106,25 @@ def test_live_nav_telemetry_adapts_controller_legacy_xy_to_body_flu() -> None:
 def test_telemetry_seam_cannot_be_declared_done() -> None:
     """A canonical live display alone cannot declare full runtime migration."""
     contract = read(CONTRACT)
-    assert "#define DRV_FRAME_RUNTIME_MIGRATION_DONE_MASK               0U" in contract
+    done_match = re.search(
+        r"^#define\s+DRV_FRAME_RUNTIME_MIGRATION_DONE_MASK\s+(0x[0-9A-Fa-f]+|\d+)U\s*$",
+        contract,
+        re.MULTILINE,
+    )
+    assert done_match is not None
+    required_match = re.search(
+        r"^#define\s+DRV_FRAME_RUNTIME_MIGRATION_REQUIRED_MASK\s+(0x[0-9A-Fa-f]+|\d+)U\s*$",
+        contract,
+        re.MULTILINE,
+    )
+    assert required_match is not None
+    done_mask = int(done_match.group(1), 0)
+    required_mask = int(required_match.group(1), 0)
+    # Seam 5 (telemetry/log) bit must not be set from live-display evidence
+    # alone: it requires the FlightLog/replay residue in this module to be
+    # resolved too (R-F6-4).
+    assert (done_mask & (1 << 5)) == 0
+    assert done_mask != required_mask
 
 
 def test_replay_declares_its_frame_contract() -> None:

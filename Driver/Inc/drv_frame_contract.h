@@ -48,10 +48,17 @@
 #define DRV_FRAME_RUNTIME_MIGRATION_REQUIRED_MASK           0x3FU
 
 /*
- * The canonical contract is established, but every runtime seam above remains
+ * The canonical contract is established, but most runtime seams above remain
  * legacy. Set bits only with a matching end-to-end executable/physical test.
+ *
+ * bit0 (SENSOR_TO_FLU) and bit1 (ESTIMATOR_ADAPTER) are bookkeeping only:
+ * both seams already publish/consume canonical FLU with no source behaviour
+ * change (author ruling 2026-08-30, option C), and reviewer-verified
+ * executable evidence exists in tests/test_flu_seam0_sensor_frame.py and
+ * tests/test_flu_seam1_estimator_frame.py (R-F6-0, 2026-09-06). Setting these
+ * bits does not advance seams 2-5 and does not lift the arm lock.
  */
-#define DRV_FRAME_RUNTIME_MIGRATION_DONE_MASK               0U
+#define DRV_FRAME_RUNTIME_MIGRATION_DONE_MASK               0x03U
 #define DRV_FRAME_RUNTIME_MIGRATION_COMPLETE \
     (((DRV_FRAME_RUNTIME_MIGRATION_DONE_MASK & \
        DRV_FRAME_RUNTIME_MIGRATION_REQUIRED_MASK) == \

@@ -60,7 +60,7 @@ def test_runtime_migration_cannot_be_declared_complete_yet() -> None:
     assert macro_uint("DRV_FRAME_CANONICAL_ANGLE_UNIT_IS_RADIAN") == 1
     assert macro_uint("DRV_FRAME_CANONICAL_RATE_UNIT_IS_RAD_PER_SECOND") == 1
     assert macro_uint("DRV_FRAME_RUNTIME_MIGRATION_REQUIRED_MASK") == 0x3F
-    assert macro_uint("DRV_FRAME_RUNTIME_MIGRATION_DONE_MASK") == 0
+    assert macro_uint("DRV_FRAME_RUNTIME_MIGRATION_DONE_MASK") == 0x03
     assert "#define DRV_FRAME_RUNTIME_MIGRATION_COMPLETE" in HEADER.read_text(encoding="utf-8")
     assert "Runtime migration is incomplete" in reference
     for legacy_path in (
@@ -71,6 +71,22 @@ def test_runtime_migration_cannot_be_declared_complete_yet() -> None:
         "Driver/Src/drv_coax_ctrl.c",
     ):
         assert legacy_path in reference
+
+
+def test_done_mask_bits_have_seam_test_files() -> None:
+    """Every set DONE_MASK bit must have executable evidence on disk.
+
+    A bit set without a matching tests/test_flu_seam<N>_*.py file is exactly
+    the "hand-waved" completion the mask exists to prevent (R-F6-0).
+    """
+    done_mask = macro_uint("DRV_FRAME_RUNTIME_MIGRATION_DONE_MASK")
+    tests_dir = ROOT / "tests"
+    for bit in range(6):
+        if (done_mask >> bit) & 1:
+            matches = list(tests_dir.glob(f"test_flu_seam{bit}_*.py"))
+            assert matches, (
+                f"DONE_MASK bit{bit} is set but no tests/test_flu_seam{bit}_*.py exists"
+            )
 
 
 FLU_HARNESS = r"""
@@ -126,7 +142,7 @@ int main(void)
            DRV_FRAME_MIGRATION_RC_ACTUATOR_BIT |
            DRV_FRAME_MIGRATION_TELEMETRY_LOG_BIT) ==
           DRV_FRAME_RUNTIME_MIGRATION_REQUIRED_MASK, 43);
-    CHECK(DRV_FRAME_RUNTIME_MIGRATION_DONE_MASK == 0U, 44);
+    CHECK(DRV_FRAME_RUNTIME_MIGRATION_DONE_MASK == 0x03U, 44);
     CHECK(DRV_FRAME_RUNTIME_MIGRATION_COMPLETE == 0U, 45);
 
     cross_xy = DRV_FRAME_Cross(x_forward, y_left);

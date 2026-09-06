@@ -96,7 +96,7 @@ flowchart TB
 | R-M6-2..4 | M6 | 〔人+机〕V2A 无桨端到端 + 失控保护 | ACCEPT 全阶段通过；断链进入安全态；方向一致性表全对 | 待做 |
 | R-F0~F5 | M7前置 | 〔码〕FLU 六 seam 契约与证据基线（不是运行时迁移完成） | 每 seam 的现状口径、适配边界、测试和实机基线可追溯 | ✅ 2026-08-30（基线交付完成；**运行时掩码仍为 0x00**，不得解读成全链 FLU） |
 | R-F6 | M7前置 | 〔码+机〕控制器/RC/导航/日志剩余运行时表述迁移到 FLU；**已拆为 R-F6-0~5，工单见 `doc/req-rf6-flu-runtime-migration.md`** | 每 seam 可执行测试、拆桨物理方向 A/B、历史数据不重解释，最终掩码与事实一致 | 进行中（2026-09-05 作者决策：不退回 legacy 朝向，从根源做完；已拆为 R-F6-0~5 派发；M5/M6 门与 M7 解冻仍待作者拍板） |
-| R-F6-0 | M7前置 | 〔码〕收口 seam 0/1 掩码位：`DRV_FRAME_RUNTIME_MIGRATION_DONE_MASK` `0U`→`0x03U`，同步 `flu-coordinate-contract.md` 状态段。类别模式：frame-migration | 审核者先复核 seam0/seam1 证据充分性；不改任何运行时代码；`test_flu_frame_contract.py` 追加「每个置位 bit 必须有对应 seam 测试文件」机检 | 待做 |
+| R-F6-0 | M7前置 | 〔码〕收口 seam 0/1 掩码位：`DRV_FRAME_RUNTIME_MIGRATION_DONE_MASK` `0U`→`0x03U`，同步 `flu-coordinate-contract.md` 状态段。类别模式：frame-migration | 审核者先复核 seam0/seam1 证据充分性；不改任何运行时代码；`test_flu_frame_contract.py` 追加「每个置位 bit 必须有对应 seam 测试文件」机检 | 待审核 |
 | R-F6-1 | M7前置 | 〔码〕seam 2 导航口径成文 + 新建 `tests/test_flu_seam2_navigation_frame.py`（六 seam 里唯一无测试的空白）。类别模式：frame-migration | 三个导航头文件补齐坐标系/单位/符号/时间戳来源；只钉现状不改数值行为；判据取 `data/` 光流+测距实录 | 待做 |
 | R-F6-2 | M7前置 | 〔码〕**seam 3 控制器内部表述迁移到 FLU**（核心）：`DRV_COAX_CTRL_Reference` 位置/速度改规范 FLU，删除 `FORCE_FRAME_*`/`RATE_FRAME_*` 四个符号常量与调用侧两处 Z 取反。依赖 R-F6-1。类别模式：frame-migration | 禁止用增益抵消符号；`data/` 实录做迁移前后逐样本对拍，力矩输出浮点容差内一致；交付软件证据但**不置位** | 待做 |
 | R-F6-3 | M7前置 | 〔码〕seam 4 RC/执行器跟随：横向意图改 body-left-positive，舵机极性继续走运行时 `ServoCalibration`。依赖 R-F6-2。类别模式：frame-migration | 不改 RCMAP Flash ABI 与 failsafe；新增「摇杆往左→期望力矩符号」端到端 host 测试 | 待做 |
@@ -260,6 +260,7 @@ flowchart TB
 | 2026-08-29 | Debug 固件构建 | `cmake --build --preset Debug` | 构建通过 | 仅确认可构建；不代表已烧录或实机通过 |
 | 2026-08-28 | 历史 V0 坐标证据 | `R_FLU<-legacy_intermediate_v1 = diag(-1,-1,+1)` | 历史证据有效 | 当前固件改动后仍须重跑，M2 保持未完成 |
 | 2026-08-29 | 运行时 FLU 迁移 | `DRV_FRAME_RUNTIME_MIGRATION_DONE_MASK = 0U` | 未完成 | 禁止宣称运行时 FLU 完成或自由飞行放行 |
+| 2026-09-06 | R-F6-0：收口 seam 0/1 掩码位 | 审核者复核 `test_flu_seam0_sensor_frame.py`（11 项，真编译 `app_sensor.c` 对照 `drv_frame_contract.h`）与 `test_flu_seam1_estimator_frame.py`（真编译 Fusion + `drv_attitude_fusion.c`），确认二者是"复合后仍为规范 FLU/NWU"的可执行证据，非自证；`DONE_MASK` `0U`→`0x03U`，同步 `flu-coordinate-contract.md` 状态段；`test_flu_frame_contract.py` 新增「置位 bit 必须有对应 `tests/test_flu_seam<N>_*.py`」机检；同步修正三处硬编码旧值断言（`test_flu_seam5_telemetry_frame.py`、`test_validation_snapshot_contract.py`）为掩码无关的正则/位运算判据。全量 `python -m pytest tests -q` **1192 passed**；`cmake --build --preset Debug` 零警告、链接通过；索引已重建 | 通过 | `DRV_FRAME_RUNTIME_MIGRATION_DONE_MASK = 0x03U`（bit0/bit1 记账，不推进 seam2~5，不解除 arm lock）；R-F6-0 转**待审核** |
 
 ## 推进与更新规则
 

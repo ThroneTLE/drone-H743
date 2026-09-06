@@ -157,7 +157,7 @@ def test_valid_imu_protocol_is_provenanced_and_remains_legacy() -> None:
     assert "DRV_FRAME_RUNTIME_MIGRATION_DONE_MASK" in report
     assert report.count("seq=%lu") == 2
     assert re.search(
-        r"^#define\s+DRV_FRAME_RUNTIME_MIGRATION_DONE_MASK\s+0U\s*$",
+        r"^#define\s+DRV_FRAME_RUNTIME_MIGRATION_DONE_MASK\s+(0x[0-9A-Fa-f]+|\d+)U\s*$",
         frame_contract,
         re.MULTILINE,
     )

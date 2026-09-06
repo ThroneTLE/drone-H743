@@ -4,7 +4,7 @@
 
 Read this shard only when you need existing behavioral/architecture coverage or must choose focused regression tests.
 
-Source snapshot: `b00b92209247`. Indexed files: 127.
+Source snapshot: `bd01e564e16f`. Indexed files: 127.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -59,7 +59,7 @@ Source snapshot: `b00b92209247`. Indexed files: 127.
 | `tests/test_flow_monitor_page.py` | R-S1-2：“传感器 · 光流”实时监控页。 这里全部用真实的 `DronePanel()` 驱动，不做源码文本断言（那部分在 `tests/test_ground_calibration.py`）。钉四件事： 1. 轮询有自己的可见性… | `test_flow_poll_only_runs_while_the_flow_tab_is_selected`, `test_flow_poll_does_not_depend_on_the_calibration_collect_switch` (+14) |
 | `tests/test_flow_nav_service_contract.py` | R-M5-5：光流导航 Service（Services/Src/svc_flow_nav.c）契约测试。 分两部分： 1. 行为部分用宿主 gcc 真编译 svc_flow_nav.c + drv_nav_ekf.c，跑一个 C 桩子，… | `test_flow_nav_service_behaviour_on_host_gcc`, `test_driver_layer_stays_a_pure_frame_parser` (+8) |
 | `tests/test_flow_yaw_gyro_capture.py` | M5 台架实测暴露的缺陷：旋转补偿阶永远拿不到偏航角速度。 2026-08-30 现场证据：`flow_range_20260830_200716.json` 里 299 个实采样本， `gyro_z_dps` **无一非 null**，… | `test_firmware_still_emits_bare_gz_in_mdps`, `test_every_known_gyro_spelling_lands_in_dps` (+1) |
-| `tests/test_flu_frame_contract.py` | — | `test_skill_routes_coordinate_work_to_the_normative_contract`, `test_runtime_migration_cannot_be_declared_complete_yet` (+1) |
+| `tests/test_flu_frame_contract.py` | — | `test_skill_routes_coordinate_work_to_the_normative_contract`, `test_runtime_migration_cannot_be_declared_complete_yet` (+2) |
 | `tests/test_flu_runtime_candidate_pipeline.py` | — | `test_frame_candidate_is_applied_once_before_any_estimator_consumer`, `test_frame_change_resets_state_and_selects_nwu_for_canonical_flu` (+4) |
 | `tests/test_flu_seam0_sensor_frame.py` | R-F0 seam 0 sensor FLU contract | `test_persisted_code_descriptor`, `test_mounting_comment_matches_v0` (+1) |
 | `tests/test_flu_seam1_estimator_frame.py` | R-F1 seam 1 estimator FLU contract | `test_convention_tracks_frame`, `test_flu_branch_no_sign_comp` (+3) |
