@@ -4,7 +4,7 @@
 
 Read this shard only when you need existing behavioral/architecture coverage or must choose focused regression tests.
 
-Source snapshot: `aabc053d2df0`. Indexed files: 129.
+Source snapshot: `c9fcc7d45a71`. Indexed files: 130.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -56,6 +56,7 @@ Source snapshot: `aabc053d2df0`. Indexed files: 129.
 | `tests/test_flight_log_waveform_ui.py` | — | `test_waveform_ui_helpers_do_not_start_tk`, `test_waveform_ui_exposes_folder_file_channel_plot_workflow` |
 | `tests/test_flight_log_workbench.py` | — | `test_workbench_helpers_build_segment_labels_and_presets`, `test_workbench_rerun_command_uses_isolated_wrapper` (+1) |
 | `tests/test_flight_validation.py` | — | `test_fixed_stages_document_the_requested_flu_actions`, `test_static_stage_reports_statistics_axis_sign_and_pass` (+18) |
+| `tests/test_flow_lateral_direction_evidence.py` | 光流横向方向：用 2026-08-30 的地面实录把控制器系 Y 的正方向钉死。 R-F6-2 卡在一个问题上：控制器系的 `y_m` / `vy_m_s` 到底是机体**右**正还是 **左**正。仓库里五处注释说"右正"，`15d83… | `test_recording_is_the_flu_ground_evidence`, `test_moving_left_reads_positive_in_the_flu_export` (+2) |
 | `tests/test_flow_monitor_page.py` | R-S1-2：“传感器 · 光流”实时监控页。 这里全部用真实的 `DronePanel()` 驱动，不做源码文本断言（那部分在 `tests/test_ground_calibration.py`）。钉四件事： 1. 轮询有自己的可见性… | `test_flow_poll_only_runs_while_the_flow_tab_is_selected`, `test_flow_poll_does_not_depend_on_the_calibration_collect_switch` (+14) |
 | `tests/test_flow_nav_service_contract.py` | R-M5-5：光流导航 Service（Services/Src/svc_flow_nav.c）契约测试。 分两部分： 1. 行为部分用宿主 gcc 真编译 svc_flow_nav.c + drv_nav_ekf.c，跑一个 C 桩子，… | `test_flow_nav_service_behaviour_on_host_gcc`, `test_driver_layer_stays_a_pure_frame_parser` (+8) |
 | `tests/test_flow_yaw_gyro_capture.py` | M5 台架实测暴露的缺陷：旋转补偿阶永远拿不到偏航角速度。 2026-08-30 现场证据：`flow_range_20260830_200716.json` 里 299 个实采样本， `gyro_z_dps` **无一非 null**，… | `test_firmware_still_emits_bare_gz_in_mdps`, `test_every_known_gyro_spelling_lands_in_dps` (+1) |
