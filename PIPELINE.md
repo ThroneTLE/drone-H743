@@ -95,7 +95,13 @@ flowchart TB
 | R-M6-1 | M6 | 〔人+机〕RCMAP 向导标定并 COMMIT | 12 步向导完成，重启回读一致 | 待做 |
 | R-M6-2..4 | M6 | 〔人+机〕V2A 无桨端到端 + 失控保护 | ACCEPT 全阶段通过；断链进入安全态；方向一致性表全对 | 待做 |
 | R-F0~F5 | M7前置 | 〔码〕FLU 六 seam 契约与证据基线（不是运行时迁移完成） | 每 seam 的现状口径、适配边界、测试和实机基线可追溯 | ✅ 2026-08-30（基线交付完成；**运行时掩码仍为 0x00**，不得解读成全链 FLU） |
-| R-F6 | M7前置 | 〔码+机〕控制器/RC/导航/日志剩余运行时表述迁移到 FLU | M6 后单独设计；逐 seam 可执行测试、拆桨物理方向 A/B、历史数据不重解释，最终掩码与事实一致 | ⏸（等待 M6 与作者批准的迁移方案） |
+| R-F6 | M7前置 | 〔码+机〕控制器/RC/导航/日志剩余运行时表述迁移到 FLU；**已拆为 R-F6-0~5，工单见 `doc/req-rf6-flu-runtime-migration.md`** | 每 seam 可执行测试、拆桨物理方向 A/B、历史数据不重解释，最终掩码与事实一致 | 进行中（2026-09-05 作者决策：不退回 legacy 朝向，从根源做完；已拆为 R-F6-0~5 派发；M5/M6 门与 M7 解冻仍待作者拍板） |
+| R-F6-0 | M7前置 | 〔码〕收口 seam 0/1 掩码位：`DRV_FRAME_RUNTIME_MIGRATION_DONE_MASK` `0U`→`0x03U`，同步 `flu-coordinate-contract.md` 状态段。类别模式：frame-migration | 审核者先复核 seam0/seam1 证据充分性；不改任何运行时代码；`test_flu_frame_contract.py` 追加「每个置位 bit 必须有对应 seam 测试文件」机检 | 待做 |
+| R-F6-1 | M7前置 | 〔码〕seam 2 导航口径成文 + 新建 `tests/test_flu_seam2_navigation_frame.py`（六 seam 里唯一无测试的空白）。类别模式：frame-migration | 三个导航头文件补齐坐标系/单位/符号/时间戳来源；只钉现状不改数值行为；判据取 `data/` 光流+测距实录 | 待做 |
+| R-F6-2 | M7前置 | 〔码〕**seam 3 控制器内部表述迁移到 FLU**（核心）：`DRV_COAX_CTRL_Reference` 位置/速度改规范 FLU，删除 `FORCE_FRAME_*`/`RATE_FRAME_*` 四个符号常量与调用侧两处 Z 取反。依赖 R-F6-1。类别模式：frame-migration | 禁止用增益抵消符号；`data/` 实录做迁移前后逐样本对拍，力矩输出浮点容差内一致；交付软件证据但**不置位** | 待做 |
+| R-F6-3 | M7前置 | 〔码〕seam 4 RC/执行器跟随：横向意图改 body-left-positive，舵机极性继续走运行时 `ServoCalibration`。依赖 R-F6-2。类别模式：frame-migration | 不改 RCMAP Flash ABI 与 failsafe；新增「摇杆往左→期望力矩符号」端到端 host 测试 | 待做 |
+| R-F6-4 | M7前置 | 〔码〕seam 5 残余：FlightLog 记录写入 frame 标识与契约版本；`flight_log_rerun_replay.py` 按记录 frame 字段分派回放几何。依赖 R-F6-2。类别模式：frame-migration | 历史 FRD 记录仍按 FRD 回放，绝不重解释；两份实录（迁移前/后）各自回放正确且互不串用 | 待做 |
+| R-F6-5 | M7前置 | 〔机〕拆桨物理方向验证（导航变换/控制器误差符号/RC 意图/舵机电机极性/混控/failsafe）+ 系留通电，通过后一次性置 `DONE_MASK=0x3FU` | FLU 契约「V2 end-to-end actuation」全项匹配；置位后解锁互锁自然解除，但**不等于解冻 M7 带桨试飞** | 待做（归审核者） |
 | R-F5b | M7前置 | 〔人+机〕（码面已完成）飞行日志坐标溯源字段 + 回放逐文件选口径（格式改动已获批） | 记录版本升级且旧版本永远可读（§6）；含 frame/契约版本/fw_crc32；回放按文件溯源选口径，无溯源按 legacy FRD 渲染并标注 | 进行中（软件面过审、v8 头与 fw_crc32 实机确认 2026-08-30；余「已填充溯源」需真实录制会话，顺延 M6 带 RC 场次） |
 | R-F1b | 待定 | 〔码〕legacy gyro 反射修正（det=−1 与 accel 不自洽，F1 只钉未改） | 仅当掩码完成后决定保留 legacy 分支才执行；改动影响 legacy yaw 可观测输出，须单独实机 A/B | ⏸（待 legacy 分支去留决策） |
 | R-S6-1 | S6 | 〔码〕panel 拆分为 tools/panel_lib/ 包（spec §11） | 每次搬一页；行为零变更；全量绿 | ✅（增量1~11 全部完成 2026-08-30；panel 11446→5443 行） |
