@@ -62,8 +62,8 @@ def test_svc_flow_nav_header_names_its_frames_units_and_timebases() -> None:
     # distinguished, and the world frame must not be claimed as NED/ENU.
     assert "不得称为 NED 或 ENU" in header
     assert "机体系光流地速" in header
-    assert "STABILIZER_VELOCITY_MEAS_Y_SIGN=+1" in header
-    assert "不是规范 FLU 的左正" in header
+    assert "Y = 机体左正" in header
+    assert "R-F6-1 曾错误地" in header
 
     # State: height sign and vx/vy convention must be named explicitly.
     assert "不是带符号的导航系 Z 坐标" in header
@@ -84,8 +84,8 @@ def test_drv_nav_ekf_header_disclaims_frame_ownership() -> None:
 def test_app_nav_estimator_header_points_to_the_service_convention() -> None:
     header = read(ESTIMATOR_HEADER)
     assert "不持有、也不重新定义坐标系" in header
-    assert "机体系 X 前 / Y 右正" in header
-    assert "legacy 约定" in header
+    assert "机体系 X 前 / Y 左正" in header
+    assert "与规范 FLU" in header
 
 
 # --------------------------------------------------------------- real recordings

@@ -83,13 +83,15 @@ def test_stick_polarity_lives_in_exactly_one_place() -> None:
 def test_sign_convention_is_documented_in_one_block() -> None:
     source = read("Driver/Src/drv_coax_ctrl.c")
 
-    header_at = source.index("极性约定（唯一声明处）")
+    # R-F6-2 (2026-09-06): once both position/velocity and attitude/rate are
+    # genuinely FLU, the standard rotation-matrix formula needs no per-axis
+    # sign compensation, so these four constants are deleted, not re-valued.
+    assert "极性约定（唯一声明处）" in source
     for name in ("DRV_COAX_CTRL_FORCE_FRAME_ROLL_SIGN",
                  "DRV_COAX_CTRL_FORCE_FRAME_PITCH_SIGN",
                  "DRV_COAX_CTRL_RATE_FRAME_ROLL_SIGN",
                  "DRV_COAX_CTRL_RATE_FRAME_PITCH_SIGN"):
-        first = source.index(f"#define {name}")
-        assert first > header_at, f"{name} must be declared inside the block"
+        assert f"#define {name}" not in source, f"{name} should be deleted, not re-valued"
     # Mechanical installation polarity is measured per aircraft and therefore
     # comes from the one runtime servo-calibration record, not compile-time
     # alpha/beta sign switches that can drift away from the saved evidence.

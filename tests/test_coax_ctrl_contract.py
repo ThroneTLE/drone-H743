@@ -175,21 +175,22 @@ def test_controller_wrapper_exposes_velocity_first_vector_control_inputs() -> No
     assert "float ax_m_s2;" in header
     assert "float dt_sec;" in header
     assert "uint8_t horizontal_velocity_valid;" in header
-    assert "range height above ground is exposed to the controller as z = -height" in header
-    # R-F3 replaced the stale "already rotated to body FRD" claim with the frame
-    # map the runtime actually delivers; see tests/test_flu_seam3_controller_frame.py.
-    assert "canonical FLU body frame" in header
-    assert "still the legacy (forward, right, down) local-level frame" in header
+    # R-F6-2 (2026-09-06): migrated Reference/AttitudeInput position/velocity
+    # to canonical FLU (+Z up); see tests/test_flu_seam3_controller_frame.py.
+    assert "canonical FLU" in header
+    assert "must carry the SAME frame as DRV_COAX_CTRL_Reference" in header
     assert "float yaw_rate_rad_s;" in header
     assert "float yaw_accel_rad_s2;" in header
     assert "Paper psi_d, psi_d_dot and psi_d_ddot references" in header
     assert "reference->ax_m_s2" in wrapper
     assert "reference->vx_m_s" in wrapper
     assert "static void coax_ctrl_local_down_to_body" in wrapper
-    assert "Controller inputs use the existing local frame: X forward, Y right, Z down" in wrapper
+    assert "canonical FLU local frame" in wrapper
     assert "coax_ctrl_local_down_to_body(attitude," in wrapper
     assert "solution->desired_force_local_n," in wrapper
-    assert "coax_ctrl_params.gravity_m_s2 - debug->accel_out_m_s2[2]" in wrapper
+    # R-F6-2: +Z is now up, so the gravity/accel force formula adds instead
+    # of subtracting (more commanded upward accel needs more thrust).
+    assert "coax_ctrl_params.gravity_m_s2 + debug->accel_out_m_s2[2]" in wrapper
     assert "debug->pos_z_i_m_s2" in wrapper
     assert "vel_integrator_limit" in read("Driver/Inc/drv_position_control.h")
     # 偏航已并入 SO(3)：yaw_rate 参考经 desired_omega 走 R^T Rd 变换进 e_w，
@@ -234,8 +235,9 @@ def test_controller_wrapper_exposes_velocity_first_vector_control_inputs() -> No
     assert "frame->attitude.vx_m_s = velocity_control_x_m_s;" in freertos
     assert "frame->attitude.vy_m_s = velocity_control_y_m_s;" in freertos
     assert "frame->relative_height_m = frame->range_height_m - ctx->height_origin_m;" in freertos
-    assert "frame->attitude.z_m = -frame->relative_height_m;" in freertos
-    assert "frame->attitude.vz_m_s = -frame->range_velocity_m_s;" in freertos
+    # R-F6-2: +Z is up, no negation (was frame->attitude.z_m = -frame->relative_height_m).
+    assert "frame->attitude.z_m = frame->relative_height_m;" in freertos
+    assert "frame->attitude.vz_m_s = frame->range_velocity_m_s;" in freertos
     assert "stabilizer_clamp_f32(ctx->position_ref_z_m," in freertos
     assert "STABILIZER_Z_POS_ERR_MAX_M" in freertos
     assert "frame->reference.vz_m_s = 0.0f;" in freertos
@@ -300,24 +302,21 @@ def test_nonlinear_balance_controller_uses_so3_error_and_realtime_moment_arm_inv
     solve = wrapper.split("static void coax_ctrl_compute_balance_solution", 1)[1]
     solve = solve.split("static float coax_ctrl_balance_protection_scale", 1)[0]
 
-    assert "#define DRV_COAX_CTRL_FORCE_FRAME_ROLL_SIGN  (-1.0f)" in wrapper
-    assert "#define DRV_COAX_CTRL_FORCE_FRAME_PITCH_SIGN (1.0f)" in wrapper
-    assert "#define DRV_COAX_CTRL_RATE_FRAME_ROLL_SIGN   (1.0f)" in wrapper
-    assert "#define DRV_COAX_CTRL_RATE_FRAME_PITCH_SIGN  (1.0f)" in wrapper
-    assert (
-        "DRV_COAX_CTRL_FORCE_FRAME_ROLL_SIGN * attitude->roll_rad"
-        in attitude_helper
-    )
-    assert (
-        "DRV_COAX_CTRL_FORCE_FRAME_PITCH_SIGN * attitude->pitch_rad"
-        in attitude_helper
-    )
-    assert "coax_ctrl_rpy_matrix(roll_rad, pitch_rad, attitude->yaw_rad, rotation);" in attitude_helper
+    # R-F6-2 (2026-09-06): the four FORCE_FRAME/RATE_FRAME sign constants are
+    # deleted, not re-valued -- see tests/test_flu_seam3_controller_frame.py
+    # and tests/test_flu_seam3_force_frame_derivation.py for why deletion
+    # (rather than folding a value) was the correct migration.
+    for name in ("DRV_COAX_CTRL_FORCE_FRAME_ROLL_SIGN",
+                 "DRV_COAX_CTRL_FORCE_FRAME_PITCH_SIGN",
+                 "DRV_COAX_CTRL_RATE_FRAME_ROLL_SIGN",
+                 "DRV_COAX_CTRL_RATE_FRAME_PITCH_SIGN"):
+        assert f"#define {name}" not in wrapper
+    assert "coax_ctrl_rpy_matrix(attitude->roll_rad, attitude->pitch_rad," in attitude_helper
     assert "rotation[0][2] = (cr * sp * cy) + (sr * sy);" in rpy_helper
     assert "rotation[1][2] = (cr * sp * sy) - (sr * cy);" in rpy_helper
     assert "rotation[2][2] = cr * cp;" in rpy_helper
-    assert "DRV_COAX_CTRL_RATE_FRAME_ROLL_SIGN * attitude->gyro_x_rad_s" in solve
-    assert "DRV_COAX_CTRL_RATE_FRAME_PITCH_SIGN * attitude->gyro_y_rad_s" in solve
+    assert "attitude->gyro_x_rad_s," in solve
+    assert "attitude->gyro_y_rad_s," in solve
     assert "coax_ctrl_gimbal_matrix" not in wrapper
     assert "coax_ctrl_build_thrust_frame" not in wrapper
     assert "DRV_COAX_CTRL_BALANCE_ITERATIONS" not in wrapper
@@ -326,17 +325,10 @@ def test_nonlinear_balance_controller_uses_so3_error_and_realtime_moment_arm_inv
     assert "atan2f(solution->desired_force_local_n[0]," in solve
     assert "-atan2f(solution->desired_force_local_n[1] * cosf(target_pitch_rad)," in solve
     assert (
-        "target_roll_force_rad =\n"
-        "        DRV_COAX_CTRL_FORCE_FRAME_ROLL_SIGN * target_roll_rad;"
+        "coax_ctrl_rpy_matrix(target_roll_rad,\n"
+        "                         target_pitch_rad,"
         in solve
     )
-    assert (
-        "target_pitch_force_rad =\n"
-        "        DRV_COAX_CTRL_FORCE_FRAME_PITCH_SIGN * target_pitch_rad;"
-        in solve
-    )
-    assert "coax_ctrl_rpy_matrix(target_roll_force_rad," in solve
-    assert "target_pitch_force_rad," in solve
     assert "reference->direct_attitude_target_valid != 0U" in solve
     assert "coax_ctrl_clamp_f32(reference->target_roll_rad," in solve
     assert "coax_ctrl_clamp_f32(reference->target_pitch_rad," in solve
@@ -359,10 +351,10 @@ def test_nonlinear_balance_controller_uses_so3_error_and_realtime_moment_arm_inv
     assert "debug->force_cmd_n[0] +=" not in wrapper
     assert "debug->target_attitude_rp_rad[0] = target_roll_rad;" in solve
     assert "debug->target_attitude_rp_rad[1] = target_pitch_rad;" in solve
-    assert (
-        "debug->desired_attitude_rpy_rad[0] *= DRV_COAX_CTRL_FORCE_FRAME_ROLL_SIGN;"
-        in solve
-    )
+    # R-F6-2: no undo-multiplication needed any more (nothing was signed
+    # going in), so coax_ctrl_rotation_to_rpy's output is used directly.
+    assert "coax_ctrl_rotation_to_rpy(solution->desired_body_r,\n" in solve
+    assert "*= DRV_COAX_CTRL_FORCE_FRAME_ROLL_SIGN" not in solve
     assert "requested_alpha_rad = solution.alpha_rad;" in wrapper
     assert "requested_beta_rad = solution.beta_rad;" in wrapper
     assert "coax_ctrl_servo_pulses_to_body_tilts" in wrapper

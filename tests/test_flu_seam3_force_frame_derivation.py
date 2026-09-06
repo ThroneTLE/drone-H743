@@ -36,8 +36,6 @@ CTRL_SOURCE = ROOT / "Driver" / "Src" / "drv_coax_ctrl.c"
 STABILIZER = ROOT / "App" / "Src" / "app_stabilizer.c"
 SENSOR = ROOT / "App" / "Src" / "app_sensor.c"
 
-ROLL_SIGN_DEFINE = "#define DRV_COAX_CTRL_FORCE_FRAME_ROLL_SIGN  (-1.0f)"
-
 # drv_coax_ctrl.c 自己的舵机角容差。差异超过它就不是浮点噪声，是真的换了指令。
 SERVO_ANGLE_TOL_RAD = 8.0e-4
 
@@ -108,8 +106,9 @@ OUTER_LOOP_HARNESS = r"""
  * convention the outer loop actually believes in -- it comes from the force
  * vector, so it is pinned to physics rather than to a stick mapping.
  *
- * Prints one "pitch roll" line for the forward demand, then one for the
- * rightward demand.
+ * Prints one "pitch roll" line for the forward (+X) demand, then one for the
+ * +Y demand (R-F6-2 section 3: +Y is left, not right -- see the Python
+ * docstring above the caller of this harness).
  */
 static void quietest(float ax, float ay, float *best_pitch, float *best_roll)
 {
@@ -205,28 +204,57 @@ def _build_and_run(tmp_path: Path, tag: str, source_text: str,
     return rows
 
 
-def test_force_frame_roll_sign_is_load_bearing(tmp_path: Path) -> None:
-    """删掉 FORCE_FRAME_ROLL_SIGN 会改舵机指令，不是"在误差里相消"。
+ATTITUDE_MATRIX_CALL = (
+    "    coax_ctrl_rpy_matrix(attitude->roll_rad, attitude->pitch_rad,\n"
+    "                        attitude->yaw_rad, rotation);"
+)
+TARGET_RPY_MATRIX_CALL = (
+    "    coax_ctrl_rpy_matrix(target_roll_rad,\n"
+    "                         target_pitch_rad,\n"
+    "                         reference->yaw_rad,\n"
+    "                         solution->desired_body_r);"
+)
 
-    实测（2026-09-06，625 组直接姿态模式 + 悬停推力）：beta 最大差
-    67.5 mrad（约等于整个翻号），alpha 最大差 20.4 mrad，都远超舵机角容差
-    0.8 mrad；519/625 组的输出符号发生翻转。
 
-    所以 R-F6-2 不可能"删掉常量而力矩不变"——迁移必须重导矩阵，并且改动后
-    存档的 ServoCalibration 极性随之失效，必须重新拆桨实测。
+def test_force_frame_roll_sign_was_load_bearing_before_deletion(
+    tmp_path: Path,
+) -> None:
+    """R-F6-2 deleted FORCE_FRAME_ROLL_SIGN; this reconstructs why that was safe.
+
+    历史实测（2026-09-06，625 组直接姿态模式 + 悬停推力，常量仍在时）：把
+    DRV_COAX_CTRL_FORCE_FRAME_ROLL_SIGN 从 -1 改成 +1，beta 最大差 67.5 mrad
+    （约等于整个翻号），alpha 最大差 20.4 mrad，都远超舵机角容差 0.8 mrad；
+    519/625 组输出符号翻转。这条历史证据证明了"删掉常量而力矩不变"是不可能
+    事件，R-F6-2 因此必须重导矩阵而不是简单删除。
+
+    常量本身已被删除（不再是"改值"），无法再对活代码做原地патch。为了不
+    依赖易变的 git 历史，本测试改为对**当前**（已迁移、无符号）源码做反向
+    补丁——把 roll 重新接回一个 -1 符号，注入回当年那两个调用点——重放
+    "常量仍在"的历史场景，并断言其与当前（无符号）版本仍然存在同等量级的
+    差异。这确认了删除该常量确实是一次有内容的改动，而不是无操作的重命名。
     """
     if shutil.which("gcc") is None:
         pytest.skip("host gcc is unavailable")
 
-    source = read(CTRL_SOURCE)
-    assert ROLL_SIGN_DEFINE in source, "力坐标系 roll 符号常量已改名或改值"
+    current = read(CTRL_SOURCE)
+    assert ATTITUDE_MATRIX_CALL in current, "attitude_matrix 调用点已改写，需要更新本测试的补丁位置"
+    assert TARGET_RPY_MATRIX_CALL in current, "target rpy_matrix 调用点已改写，需要更新本测试的补丁位置"
 
-    base = _build_and_run(tmp_path, "base", source)
-    patched = _build_and_run(
-        tmp_path, "no_roll_sign",
-        source.replace(
-            ROLL_SIGN_DEFINE,
-            "#define DRV_COAX_CTRL_FORCE_FRAME_ROLL_SIGN  (1.0f)"))
+    reintroduced_sign = current.replace(
+        ATTITUDE_MATRIX_CALL,
+        "    coax_ctrl_rpy_matrix(-1.0f * attitude->roll_rad, attitude->pitch_rad,\n"
+        "                        attitude->yaw_rad, rotation);",
+    ).replace(
+        TARGET_RPY_MATRIX_CALL,
+        "    coax_ctrl_rpy_matrix(-1.0f * target_roll_rad,\n"
+        "                         target_pitch_rad,\n"
+        "                         reference->yaw_rad,\n"
+        "                         solution->desired_body_r);",
+    )
+    assert reintroduced_sign != current
+
+    base = _build_and_run(tmp_path, "current", current)
+    patched = _build_and_run(tmp_path, "reintroduced_roll_sign", reintroduced_sign)
 
     worst = max(max(abs(a0 - a1), abs(b0 - b1))
                 for (a0, b0), (a1, b1) in zip(base, patched))
@@ -234,8 +262,8 @@ def test_force_frame_roll_sign_is_load_bearing(tmp_path: Path) -> None:
                 if (b0 * b1 < 0.0) or (a0 * a1 < 0.0))
 
     assert worst > SERVO_ANGLE_TOL_RAD, (
-        "力坐标系 roll 符号看起来在姿态误差里相消了。若这是有意的重导，"
-        "请连同本文件的论证一并更新；若不是，说明符号链被改坏了。"
+        "重新接回 roll 符号后，输出居然和当前版本几乎一致——这条历史证据"
+        "复现失败，说明几何重导可能引入了别的抵消，需要重新核实。"
     )
     assert flips > len(base) // 2, (
         f"只有 {flips}/{len(base)} 组输出翻转，与 2026-09-06 实测的 519 组不符"
@@ -243,11 +271,14 @@ def test_force_frame_roll_sign_is_load_bearing(tmp_path: Path) -> None:
 
 
 def test_the_cancellation_claim_is_not_reasserted() -> None:
-    """那句错话曾在五处被复述（含 drv_coax_ctrl.h），别让它回来。"""
+    """那句错话曾在七处被复述（R-F6-2 复查时又在 app_stabilizer.c 与
+    app_rc_config.h 各发现一处，原有守卫列表未覆盖），别让它回来。"""
     for path in (CTRL_SOURCE,
                  ROOT / "Driver" / "Inc" / "drv_coax_ctrl.h",
                  ROOT / "tests" / "test_coax_sign_convention.py",
-                 ROOT / "tests" / "test_flu_seam3_controller_frame.py"):
+                 ROOT / "tests" / "test_flu_seam3_controller_frame.py",
+                 STABILIZER,
+                 ROOT / "App" / "Inc" / "app_rc_config.h"):
         text = read(path)
         assert "在姿态误差中相消" not in text, path
         assert "cancel in the attitude error" not in text, path
@@ -261,34 +292,37 @@ def test_outer_loop_pitch_agrees_with_flu_but_roll_does_not(tmp_path: Path) -> N
     目标姿态由**加速度指令**经力矢量算出来（`atan2(F_前, F_上)`），而加速度
     指令是物理量，所以外环把角度口径钉死在物理上。
 
-    实测（真控制器，加速度前馈通道）：
-      向前加速（物理上要机头下俯）→ 最安静在 pitch = +0.19 → FLU 机头下俯 ✓
-      向右加速（物理上要右翼下沉）→ 最安静在 roll  = -0.20 → FLU 左翼下沉 ✗
+    实测（真控制器，加速度前馈通道，迁移前后数值不变——见下文解释）：
+      ax=+2（向前加速，物理上要机头下俯）→ 最安静在 pitch=+0.19 → FLU 机头下俯 ✓
+      ay=+2（本变量原称"向右加速"）        → 最安静在 roll =-0.20 → FLU 左翼下沉
 
-    pitch 自洽。roll 与"local Y 是机体右"这条全链注释矛盾，两种可能：
-    local Y 其实是左（四处注释都写错了），或者外环 roll 反了。**主机判不了**
-    ——这是光流 Y 方向的物理问题，要拆桨横移实测。
+    R-F6-2 第 3 节定性结论（2026-09-06，拆桨向右平移实测原始光流 Y 为负）：
+    local Y 从传感器读数起就一直是左正，"ay=+2 是向右加速"这一标注本身是错的
+    ——ay=+2 实际命令的是**向左**加速，其物理正确响应正是左翼下沉（FLU roll
+    为负），与实测完全吻合，不再是矛盾。pitch 与 roll 现在**都**自洽。
 
-    注意 roll 口径在 FRD 与 FLU 下相同，所以这条差异**不是 FLU 迁移引入的**，
-    R-F6-2 也不会顺手修好它。
+    这条结论不改变本测试的数值断言（下面的阈值原样保留），只改变解读：
+    迁移前这里断言的是"矛盾"，迁移后断言的是"自洽"，数值本身分毫未变——
+    因为 ay/ax 的物理含义、atan2 几何和平衡点搜索都没有变化，变的只是
+    "ay=+2 该叫向左还是向右"这句人类标注。
     """
     if shutil.which("gcc") is None:
         pytest.skip("host gcc is unavailable")
 
     rows = _build_and_run(tmp_path, "outer", read(CTRL_SOURCE),
                           harness=OUTER_LOOP_HARNESS, expect=2)
-    (fwd_pitch, fwd_roll), (right_pitch, right_roll) = rows
+    (fwd_pitch, fwd_roll), (ay_pitch, ay_roll) = rows
 
-    # 向前加速：目标俯仰为正，且平衡点落在正 pitch —— FLU 机头下俯，自洽。
+    # ax=+2（向前加速）：目标俯仰为正，且平衡点落在正 pitch —— FLU 机头下俯，自洽。
     assert fwd_pitch > 0.05, f"向前加速的平衡俯仰角变了：{fwd_pitch}"
     assert abs(fwd_roll) < 0.05, f"向前加速不该要求滚转：{fwd_roll}"
 
-    # 向右加速：平衡点落在负 roll —— FLU 左翼下沉，与"local Y 是右"矛盾。
-    assert right_roll < -0.05, (
-        f"向右加速的平衡滚转角变成 {right_roll}。若这是拆桨实测后的有意修正，"
+    # ay=+2（向左加速，见上文定性）：平衡点落在负 roll —— FLU 左翼下沉，自洽。
+    assert ay_roll < -0.05, (
+        f"ay=+2 的平衡滚转角变成 {ay_roll}。若这是有意的重导，"
         "请连同 drv_coax_ctrl.h 的 seam 3 frame map 与本断言一起更新。"
     )
-    assert abs(right_pitch) < 0.05, f"向右加速不该要求俯仰：{right_pitch}"
+    assert abs(ay_pitch) < 0.05, f"ay=+2 不该要求俯仰：{ay_pitch}"
 
 
 def test_only_the_arm_lock_knows_about_flu(tmp_path: Path) -> None:
@@ -298,8 +332,6 @@ def test_only_the_arm_lock_knows_about_flu(tmp_path: Path) -> None:
     缺乏证据（见 frame-migration 模式）。代价是半迁移态只能靠那道互锁兜住，
     所以**它必须留着**，直到六个 seam 全部收口。
     """
-    assert "#define DRV_COAX_CTRL_FORCE_FRAME_PITCH_SIGN (1.0f)" in read(CTRL_SOURCE)
-
     # 姿态从融合到控制器全程不翻号：口径完全由融合的 convention 决定。
     stabilizer = read(STABILIZER)
     assert "ctx->pitch = ctx->attitude_fusion.pitch_deg;" in stabilizer
@@ -317,3 +349,87 @@ def test_only_the_arm_lock_knows_about_flu(tmp_path: Path) -> None:
     assert stabilizer.count("APP_Sensor_IsFluOrientationActive()") == 1
     assert "DRV_FRAME_RUNTIME_MIGRATION_COMPLETE == 0U" in stabilizer
     assert "APP_Sensor_IsFluOrientationActive(void)" in read(SENSOR)
+
+
+# --------------------------------------------------------------------------
+# Section 7 of the migration doc: yaw was never given a FORCE_FRAME-style
+# sign constant, so check (don't casually fix) whether it enters the
+# geometry with a sign consistent with FLU.  "Write down whatever you find."
+
+YAW_HARNESS = r"""
+#include "drv_coax_ctrl.h"
+#include "drv_airframe_model.h"
+
+#include <stdio.h>
+#include <string.h>
+
+int main(void)
+{
+    DRV_COAX_CTRL_AttitudeInput att;
+    DRV_COAX_CTRL_Reference ref;
+    DRV_COAX_CTRL_Output out;
+    DRV_COAX_CTRL_Debug debug;
+    int i;
+
+    DRV_COAX_CTRL_Init();
+
+    /* Level attitude except yaw; reference.yaw_rad stays 0, so this is a
+     * pure yaw-only measured-vs-target mismatch, hover thrust. */
+    for (i = -6; i <= 6; ++i) {
+        float yaw = (float)i * 0.1f;
+
+        memset(&att, 0, sizeof(att));
+        memset(&ref, 0, sizeof(ref));
+        ref.direct_attitude_target_valid = 1U;
+        ref.manual_total_force_valid = 1U;
+        ref.manual_total_force_n = DRV_AIRFRAME_MASS_KG * DRV_AIRFRAME_GRAVITY_M_S2;
+        att.yaw_rad = yaw;
+
+        DRV_COAX_CTRL_Run(&att, &ref, &out);
+        DRV_COAX_CTRL_GetLastDebug(&debug);
+        printf("%.9f %.9f\n", (double)yaw, (double)debug.moment_cmd_n_m[2]);
+    }
+    return 0;
+}
+"""
+
+
+def test_yaw_moment_restores_toward_target_the_flu_consistent_way(
+    tmp_path: Path,
+) -> None:
+    """R-F6-2 section 7: yaw has no sign constant; check what it actually does.
+
+    +yaw is FLU nose-left; legacy FRD called the same physical rotation
+    nose-right (seam 0/1 already flipped this, with no compensating constant
+    in the controller -- there is nothing named "YAW_SIGN" anywhere in
+    drv_coax_ctrl.c).  Measured here: with reference.yaw_rad pinned at 0 and
+    attitude.yaw_rad swept away from it, the commanded yaw moment
+    (moment_cmd_n_m[2]) is NEGATIVE for a POSITIVE yaw error and POSITIVE for
+    a negative one -- i.e. it always pushes back toward zero. A restoring
+    moment for a "nose has turned left" error must turn the nose back right,
+    which is negative about FLU's +Z-up axis: this is the FLU-consistent
+    sign, found without any code change and without a dedicated constant.
+
+    Separately (not asserted numerically here, just recorded): the OTHER
+    place yaw appears, coax_ctrl_local_down_to_body's `psi`, only feeds
+    DRV_COAX_CTRL_Debug.force_cmd_n (telemetry) -- target_roll_rad/
+    target_pitch_rad are computed from desired_force_local_n directly with
+    no yaw rotation at all, so the outer loop's "local X/Y" implicitly means
+    "X/Y at whatever heading is currently held", not a yaw-stabilised world
+    frame.  That is a pre-existing architectural property, not something
+    R-F6-2 introduced or is fixing -- per this section's instruction, this
+    records the finding without changing it.
+    """
+    if shutil.which("gcc") is None:
+        pytest.skip("host gcc is unavailable")
+
+    rows = _build_and_run(tmp_path, "yaw", read(CTRL_SOURCE),
+                          harness=YAW_HARNESS, expect=13)
+
+    for yaw, moment_z in rows:
+        if yaw > 1.0e-6:
+            assert moment_z < 0.0, f"yaw={yaw}: expected restoring (negative) moment_z, got {moment_z}"
+        elif yaw < -1.0e-6:
+            assert moment_z > 0.0, f"yaw={yaw}: expected restoring (positive) moment_z, got {moment_z}"
+        else:
+            assert abs(moment_z) < 1.0e-9, f"zero yaw error should give zero moment_z, got {moment_z}"

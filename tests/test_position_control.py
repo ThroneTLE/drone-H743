@@ -62,7 +62,9 @@ static int position_contract(void)
     /* Old outer-loop equivalence: Kp_pos * (position_sp - position). */
     CHECK(NEAR(out.velocity_sp_m_s[0], 4.0f), 1);
     CHECK(NEAR(out.velocity_sp_m_s[1], -6.0f), 2);
-    CHECK(NEAR(out.velocity_sp_m_s[2], -1.5f), 3);
+    /* R-F6-2: +Z is up, so negative excess is now clamped by down_limit (1.25),
+     * not up_limit (1.5). */
+    CHECK(NEAR(out.velocity_sp_m_s[2], -1.25f), 3);
     CHECK(out.sat.neg_limit[2] != 0U && out.sat.thrust_saturated != 0U, 4);
 
     p.xy_speed_limit_m_s = 4.0f;
@@ -82,7 +84,9 @@ static int position_contract(void)
     in.direct_velocity_m_s[2] = 2.0f;
     DRV_POSITION_CONTROL_PositionStep(&p, &in, &out);
     CHECK(NEAR(out.velocity_sp_m_s[0], -2.0f) && NEAR(out.velocity_sp_m_s[1], 1.0f), 9);
-    CHECK(NEAR(out.velocity_sp_m_s[2], 1.25f) && out.sat.pos_limit[2] != 0U, 10);
+    /* R-F6-2: +Z is up, so positive excess is now clamped by up_limit (1.5),
+     * not down_limit (1.25). */
+    CHECK(NEAR(out.velocity_sp_m_s[2], 1.5f) && out.sat.pos_limit[2] != 0U, 10);
 
     in.position_bypass = 0U; in.measurement_valid = 0U;
     DRV_POSITION_CONTROL_PositionStep(&p, &in, &out);
@@ -173,12 +177,13 @@ static int saturation_and_invalid(void)
     p.xy_accel_limit_m_s2 = 100.0f;
     p.z_accel_limit_up_m_s2 = 0.5f;
     p.z_accel_limit_down_m_s2 = 0.8f;
+    /* R-F6-2: +Z is up.  +velocity_sp[2] (upward) clamps to up_limit. */
     in.velocity_sp_m_s[0] = 0.0f; in.velocity_sp_m_s[2] = 2.0f;
     DRV_POSITION_CONTROL_VelocityStep(&p, &state, &in, &out);
-    CHECK(NEAR(out.accel_sat_m_s2[2], 0.8f) && out.sat.pos_limit[2] != 0U, 34);
+    CHECK(NEAR(out.accel_sat_m_s2[2], 0.5f) && out.sat.pos_limit[2] != 0U, 34);
     in.velocity_sp_m_s[2] = -2.0f;
     DRV_POSITION_CONTROL_VelocityStep(&p, &state, &in, &out);
-    CHECK(NEAR(out.accel_sat_m_s2[2], -0.5f) && out.sat.neg_limit[2] != 0U, 35);
+    CHECK(NEAR(out.accel_sat_m_s2[2], -0.8f) && out.sat.neg_limit[2] != 0U, 35);
 
     state.velocity_integrator_m_s2[0] = 0.15f;
     state.accel_lpf_m_s2[0] = 3.0f;
@@ -232,8 +237,8 @@ def test_position_control_source_is_pure_and_documented() -> None:
     header = HEADER.read_text(encoding="utf-8")
     source = SOURCE.read_text(encoding="utf-8")
     assert "+X forward" in header
-    assert "+Y right" in header
-    assert "+Z down" in header
+    assert "+Y left" in header
+    assert "+Z up" in header
     assert "metres per second" in header and "metres per second squared" in header
     assert "measurement_valid" in header and "integrator_freeze" in header
     assert "HAL" not in source

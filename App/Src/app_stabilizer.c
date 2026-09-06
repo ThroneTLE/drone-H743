@@ -103,7 +103,13 @@
 #define STABILIZER_USE_DIRECT_ANGLE_SERVO 0U     /* 1=角度直驱舵机, 0=同轴控制器(永久) */
 #define STABILIZER_YAW_RATE_REF_MAX_RAD_S 1.04719758f /* CH4 偏航参考累加最大速率 [rad/s] */
 #define STABILIZER_XY_VEL_REF_MAX_M_S  0.40f     /* CH1/CH2 水平速度目标最大值 [m/s]    */
-#define STABILIZER_VELOCITY_MEAS_Y_SIGN (1.0f)   /* 光流/融合速度 Y 轴映射到机体系右正 */
+/*
+ * R-F6-2（2026-09-06）：seam2(svc_flow_nav)→seam3(drv_coax_ctrl) 的 Y 轴适配器。
+ * 拆桨向右平移实测：原始光流 Y 为负，即 seam2 输出从传感器读数起就已经是
+ * 左正（与规范 FLU 一致），并非本常量曾经声称的"右正"。此值因此保持 +1
+ * （无操作透传），若未来 seam2 本身改标为右正，回来改本值，不要改别处符号。
+ */
+#define STABILIZER_VELOCITY_MEAS_Y_SIGN (1.0f)
 #define STABILIZER_XY_POS_ERR_MAX_M    0.50f     /* 水平位置外环单次误差限幅 [m]        */
 #define STABILIZER_Z_REF_RATE_MAX_M_S  0.30f     /* CH3 满杆高度目标积分速度 [m/s]       */
 #define STABILIZER_Z_REF_MAX_M         0.40f     /* 上电光流测高基准以上高度上限 [m]     */
@@ -142,8 +148,11 @@
 #define STABILIZER_USE_RC_DIRECT_TILT_SERVO 0U   /* 0=自稳定控制器(永久), 1=CH1/CH2直控舵机调试 */
 #define STABILIZER_RC_ATTITUDE_TARGET_LIMIT_RAD 0.349065850f /* CH6 姿态调试最大 ±20° */
 /*
- * 摇杆 → 目标姿态的极性。这是整条链路上唯一决定"摇杆方向"的符号，其余符号
- * 同时作用于实测和目标姿态、在姿态误差中相消，因此改这里不影响自稳。
+ * 摇杆 → 目标姿态的极性。这是整条链路上唯一决定"摇杆方向"的符号。
+ * 控制器内部的力坐标系符号（原 DRV_COAX_CTRL_FORCE_FRAME_ROLL_SIGN 等，
+ * R-F6-2 已删除）对舵机输出是有实际影响的——SO(3) 姿态误差是非线性的，
+ * 并不会像线性量那样互相抵消，见 tests/test_flu_seam3_force_frame_derivation.py
+ * 的实测反例——只是这条影响恰好不改变"摇杆方向由这两个常量唯一决定"这一事实。
  * 约定：pitch 摇杆前推 → 目标 pitch < 0（机头下压）→ 飞机前倾。
  * 实机确认：原来 PITCH_SIGN = +1 时前推变成后倾，故取 -1。
  */
@@ -1613,7 +1622,7 @@ static void stabilizer_control_compute(StabilizerContext *ctx,
                                       &frame->range_sample_ms);
     if ((frame->range_height_valid != 0U) &&
         (frame->range_sample_ms != ctx->last_vertical_velocity_sample_ms)) {
-      const float velocity_z_m_s = -frame->range_velocity_m_s;
+      const float velocity_z_m_s = frame->range_velocity_m_s;
       const uint32_t elapsed_ms = frame->range_sample_ms -
                                   ctx->last_vertical_velocity_sample_ms;
       if ((ctx->last_vertical_velocity_sample_ms != 0U) &&
@@ -1669,10 +1678,10 @@ static void stabilizer_control_compute(StabilizerContext *ctx,
       frame->attitude.roll_rad = ctx->roll_control * STABILIZER_DEG_TO_RAD;
       frame->attitude.pitch_rad = ctx->pitch_control * STABILIZER_DEG_TO_RAD;
       frame->attitude.yaw_rad = ctx->yaw_control * STABILIZER_DEG_TO_RAD;
-      frame->attitude.z_m = -frame->relative_height_m;
+      frame->attitude.z_m = frame->relative_height_m;
       frame->attitude.vx_m_s = velocity_control_x_m_s;
       frame->attitude.vy_m_s = velocity_control_y_m_s;
-      frame->attitude.vz_m_s = -frame->range_velocity_m_s;
+      frame->attitude.vz_m_s = frame->range_velocity_m_s;
       if (frame->range_height_valid == 0U) {
         frame->attitude.z_m = 0.0f;
         frame->attitude.vz_m_s = 0.0f;
@@ -1789,7 +1798,7 @@ static void stabilizer_control_compute(StabilizerContext *ctx,
           stabilizer_clamp_f32(ctx->height_ref_m,
                                0.0f,
                                STABILIZER_Z_REF_MAX_M);
-        ctx->position_ref_z_m = -ctx->height_ref_m;
+        ctx->position_ref_z_m = ctx->height_ref_m;
         ctx->position_ref_z_ready = 1U;
       } else {
         if (ctx->position_ref_z_ready == 0U) {
@@ -1807,7 +1816,7 @@ static void stabilizer_control_compute(StabilizerContext *ctx,
           stabilizer_clamp_f32(ctx->height_ref_m,
                                0.0f,
                                STABILIZER_Z_REF_MAX_M);
-        ctx->position_ref_z_m = -ctx->height_ref_m;
+        ctx->position_ref_z_m = ctx->height_ref_m;
       }
       if ((frame->range_height_valid == 0U) ||
           (ctx->height_origin_ready == 0U)) {
@@ -1892,7 +1901,7 @@ static void stabilizer_control_compute(StabilizerContext *ctx,
     }
 
     ctx->vofa_debug.range_vertical_velocity_m_s = frame->range_velocity_m_s;
-    ctx->vofa_debug.altitude_ref_m = -frame->reference.z_m;
+    ctx->vofa_debug.altitude_ref_m = frame->reference.z_m;
     ctx->vofa_debug.altitude_correction_us = 0.0f;
 
     frame->moves[0].pulse_us = frame->ctrl_out.servo_alpha_us;

@@ -158,9 +158,10 @@ typedef struct {
  *     FLU 前/左符号语义，legacy 分支为前/右）。本 Service 不重新定义、也不
  *     改变这个约定，只按调用方给的值原样喂给 EKF。
  *   - flow_vx_m_s / flow_vy_m_s：机体系光流地速，已由调用方做完旋转/偏置补偿，
- *     但**未**旋转到导航系；X = 机体前向，Y = 机体右正（legacy 约定，
- *     STABILIZER_VELOCITY_MEAS_Y_SIGN=+1，不是规范 FLU 的左正）——这是尚未
- *     完成的 seam 3/4 残留，不由本 seam 修正。
+ *     但**未**旋转到导航系；X = 机体前向，Y = 机体左正（与规范 FLU 相同，
+ *     STABILIZER_VELOCITY_MEAS_Y_SIGN=+1 是 no-op 透传）。R-F6-1 曾错误地
+ *     记为"右正"；R-F6-2（2026-09-06）拆桨向右平移实测原始光流 Y 为负，
+ *     纠正为左正——见 doc/req-rf6-2-controller-flu-migration.md 第 3 节。
  *   - dt_sec：控制环节拍（秒），只喂给 EKF predict，不用于位移积分。
  *   - now_ms：调用方的 HAL_GetTick()，与 SVC_FLOW_NAV_Sample 的
  *     distance_received_ms/flow_received_ms 同一条时间轴。
@@ -182,13 +183,13 @@ typedef struct {
  *
  * R-F6-1（只钉现状）：
  *   - height_m / height_raw_m：测距高度，标量，正值 = 离地高度增加（向上），
- *     不是带符号的导航系 Z 坐标；由调用方（app_stabilizer.c）决定是否取负号
- *     进入自己的 Z-down 内部表述（那一步是 R-F6-2 范围）。
+ *     不是带符号的导航系 Z 坐标；R-F6-2 起调用方（app_stabilizer.c）直接
+ *     采用该正值作为自己内部 Z-up 表述，不再取负号。
  *   - vertical_velocity_m_s：height_m 的时间导数，符号跟随 height_m——正值
  *     表示高度增加（上升）。
  *   - vx_m_s / vy_m_s：EKF 融合后的水平速度，与 SVC_FLOW_NAV_FuseInput 的
- *     flow_vx_m_s/flow_vy_m_s 同一机体系约定（X 前 / Y 右正，legacy），
- *     EKF 本身不做任何额外旋转。
+ *     flow_vx_m_s/flow_vy_m_s 同一机体系约定（X 前 / Y 左正，与规范 FLU
+ *     相同），EKF 本身不做任何额外旋转。
  *   - height_sample_ms / velocity_sample_ms：HAL_GetTick() 时基。
  */
 typedef struct {
@@ -233,13 +234,13 @@ uint32_t SVC_FlowNav_GetLastGoodMs(void);
 /* 返回本拍光流量测是否被 EKF 接受。 */
 uint8_t SVC_FlowNav_Fuse(const SVC_FLOW_NAV_FuseInput *input);
 /*
- * R-F6-1（只钉现状）：机体系水平速度，X 前 / Y 右正（legacy 约定，与
+ * 机体系水平速度，X 前 / Y 左正（与规范 FLU 相同，与
  * SVC_FLOW_NAV_FuseInput.flow_vx_m_s/flow_vy_m_s 同一约定），未旋转到导航系。
  */
 void SVC_FlowNav_GetVelocity(float *vx_m_s, float *vy_m_s);
 /*
- * R-F6-1（只钉现状）：对 SVC_FlowNav_GetVelocity() 输出按传感器时基做限幅累计
- * 积分，轴约定与速度一致（X 前 / Y 右正，legacy），不是带符号的导航系坐标。
+ * 对 SVC_FlowNav_GetVelocity() 输出按传感器时基做限幅累计
+ * 积分，轴约定与速度一致（X 前 / Y 左正），不是带符号的导航系坐标。
  */
 void SVC_FlowNav_GetPosition(float *x_m, float *y_m);
 /*

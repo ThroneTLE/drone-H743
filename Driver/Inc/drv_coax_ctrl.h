@@ -48,13 +48,18 @@ extern "C" {
 typedef struct {
     /*
      * Paper p_d, p_d_dot and p_d_ddot references in the local controller
-     * frame. X is forward, Y is right. Z follows the existing altitude
-     * convention:
-     * range height above ground is exposed to the controller as z = -height.
+     * frame: canonical FLU (Driver/Inc/drv_frame_contract.h) -- +X forward,
+     * +Y left, +Z up.
      *
-     * This is the legacy local-level frame and is deliberately NOT the
-     * canonical FLU body frame; the attitude feedback below arrives in FLU
-     * instead.  See DRV_COAX_CTRL_AttitudeInput for the full seam 3 frame map.
+     * R-F6-2 (2026-09-06): migrated from the legacy local-level frame
+     * (+X forward, +Y right, +Z down, z = -height above ground).  The +Y
+     * migration changed no runtime value -- a props-off lateral-translation
+     * test showed the raw optical-flow Y channel was already left-positive;
+     * every comment in this codebase claiming "+Y right" for this frame was
+     * simply wrong (see doc/req-rf6-2-controller-flu-migration.md section 3).
+     * Only +Z actually flipped sign (height above ground is now +z directly,
+     * no negation).  See DRV_COAX_CTRL_AttitudeInput for the full seam 3
+     * frame map.
      */
     float x_m;
     float y_m;
@@ -84,36 +89,38 @@ typedef struct {
 typedef struct {
     /*
      * Paper p, p_dot and attitude feedback after App-layer sensor mounting
-     * correction.
+     * correction.  Canonical FLU throughout (Driver/Inc/drv_frame_contract.h)
+     * -- +X forward, +Y left, +Z up; +roll right wing down, +pitch nose down,
+     * +yaw nose left.  roll_rad/pitch_rad/yaw_rad/gyro_*_rad_s were already
+     * canonical FLU before R-F6-2 (seam 0/1).  x_m/y_m/z_m/vx_m_s/vy_m_s/
+     * vz_m_s must carry the SAME frame as DRV_COAX_CTRL_Reference: they feed
+     * the same position/velocity error computation
+     * (coax_ctrl_compute_accel_cmd), and migrating one side without the
+     * other makes that error physically inconsistent.
      *
-     * Frames actually delivered by the runtime (seam 3 audit, 2026-08-30):
-     *   roll_rad / pitch_rad / yaw_rad, gyro_*_rad_s
-     *       canonical FLU body frame of Driver/Inc/drv_frame_contract.h --
-     *       +X forward, +Y left, +Z up; +roll right wing down, +pitch nose
-     *       down, +yaw nose left.  Passed in unconverted.
-     *   x_m / y_m / z_m, vx_m_s / vy_m_s / vz_m_s
-     *       still the legacy (forward, right, down) local-level frame; the
-     *       App layer negates the altitude channel on the way in.
+     * R-F6-2 (2026-09-06): the driver used to re-derive its own "force
+     * frame" from this attitude via DRV_COAX_CTRL_FORCE_FRAME_ROLL_SIGN /
+     * _PITCH_SIGN and DRV_COAX_CTRL_RATE_FRAME_ROLL_SIGN / _PITCH_SIGN,
+     * because the position/velocity side of this same struct (and of
+     * DRV_COAX_CTRL_Reference) still used the legacy local-level frame.
+     * That per-axis sign is not a similarity transform on the SO(3) attitude
+     * error -- measured 2026-09-06: flipping just the roll constant moved
+     * beta by up to 67.5 mrad against a 0.8 mrad servo tolerance (see
+     * tests/test_flu_seam3_force_frame_derivation.py) -- so it did not
+     * "cancel"; it was a real, load-bearing correction for a real frame
+     * mismatch.  Once both structs are genuinely FLU throughout, the
+     * standard ZYX Euler rotation matrix (coax_ctrl_rpy_matrix) is already
+     * correct for FLU's own right-handed axes with no extra sign, because
+     * FLU's roll/pitch/yaw signs are themselves defined by the right-hand
+     * rule about FLU's own X/Y/Z (see drv_frame_contract.h).  The four
+     * constants are therefore deleted, not re-valued.
      *
-     * The conversion from the delivered attitude into the control law's own
-     * force frame is NOT done by the caller.  It lives in this driver as
-     * DRV_COAX_CTRL_FORCE_FRAME_ROLL_SIGN / _PITCH_SIGN (attitude) and
-     * DRV_COAX_CTRL_RATE_FRAME_ROLL_SIGN / _PITCH_SIGN (body rates).  The
-     * force-frame sign is applied to the measured and the target attitude
-     * alike, which keeps the inner loop self-consistent -- but it does NOT
-     * drop out of the attitude error, and it does reach the servo output.
-     * Measured 2026-09-06: flipping the roll constant moves beta by up to
-     * 67.5 mrad against a 0.8 mrad servo tolerance.  See
-     * tests/test_flu_seam3_force_frame_derivation.py.  Keep polarity in these
-     * named constants; never fold it into a gain.
-     *
-     * The outer loop is the part that is pinned to physics, because the target
-     * attitude is derived from the acceleration demand rather than from a
-     * stick.  Measured on the real controller: a forward demand settles at
-     * +pitch (FLU nose-down -- consistent), but a rightward demand settles at
-     * -roll (FLU left-wing-down -- inconsistent with "local Y is right", which
-     * is what every comment in this chain claims).  Whether local Y really is
-     * body-right is a props-off physical question, not a host-test question.
+     * The +Y question was resolved by a props-off lateral-translation test
+     * (2026-09-06): moving the airframe right produced a NEGATIVE raw
+     * optical-flow Y reading, so local Y was already left-positive from the
+     * sensor up -- every comment in this chain claiming "local Y is right"
+     * was simply wrong.  See doc/req-rf6-2-controller-flu-migration.md
+     * section 3.  Only +Z actually changed (down-positive to up-positive).
      */
     float x_m;
     float y_m;

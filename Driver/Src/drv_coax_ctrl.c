@@ -35,38 +35,19 @@
 /*    gyro_y    > 0  →  正 pitch 方向的角速率                              */
 /*  可执行证据见 tests/test_flu_seam1_estimator_frame.py。                  */
 /*                                                                        */
-/*  内环（姿态误差）对实测与目标一视同仁，所以口径怎么变它都自洽；真正被    */
-/*  物理钉死的是**外环**——目标姿态由加速度指令经力矢量算出来，不是摇杆给的。*/
-/*  实测（2026-09-06，真控制器，见                                          */
-/*  tests/test_flu_seam3_force_frame_derivation.py）：                      */
-/*    向前加速 → 控制器在 pitch=+0.19 最安静 = FLU 机头下俯  ✓ 自洽        */
-/*    向右加速 → 控制器在 roll =-0.20 最安静 = FLU 左翼下沉  ✗ 与"local Y  */
-/*               是机体右"这一全链注释矛盾                                 */
-/*  roll 这条差异**不是 FLU 迁移引入的**（roll 口径 FRD 与 FLU 相同），要么  */
-/*  local Y 实际是左、要么外环 roll 反了；只能拆桨横移实测，见 R-F6-2 工单。 */
+/*  R-F6-2（2026-09-06，工单见                                              */
+/*  doc/req-rf6-2-controller-flu-migration.md）：位置/速度侧（Reference /   */
+/*  AttitudeInput 的 x_m/y_m/z_m、vx/vy/vz_m_s）已migrate到规范 FLU。       */
+/*  第 3 节定性结论：**local Y 从原始光流读数起就一直是左正**（拆桨向右平移 */
+/*  实测原始 flow_vy 为负），四处"local Y 是机体右"的注释全部是错的，Y 不   */
+/*  需要任何数值改动；只有 Z 真的从下正翻成了上正。姿态/角速率本来就已是    */
+/*  规范 FLU，因此力坐标系不再需要任何符号补偿——下面这条曾经的                */
+/*  DRV_COAX_CTRL_FORCE_FRAME_ROLL_SIGN / _PITCH_SIGN /                     */
+/*  DRV_COAX_CTRL_RATE_FRAME_ROLL_SIGN / _PITCH_SIGN 四个常量已删除，        */
+/*  coax_ctrl_rpy_matrix 直接吃 FLU 角度，不加任何符号：标准 ZYX 欧拉矩阵    */
+/*  公式对任何右手系都成立，FLU 的 roll/pitch/yaw 定义本来就是绕 FLU 自己    */
+/*  的 X/Y/Z 的右手旋转（见 drv_frame_contract.h），无需额外补偿。          */
 /* ════════════════════════════════════════════════════════════════════════ */
-
-/*
- * 姿态角 → 力坐标系。控制律内部使用的力坐标系与实机姿态契约在 roll 上相差
- * 一个反号。
- *
- * 这里曾经声称：此符号同时作用于实测姿态和目标姿态，所以会在姿态误差里
- * 自动抵消掉。那是**错的**——姿态误差走 SO(3) 的
- * e_R = 0.5*vee(R_d^T R_a - R_a^T R_d)，
- * 是矩阵乘出来的非线性量；只把 Rz(psi)Ry(theta)Rx(phi) 里 Rx 的参数反号不是
- * 相似变换（三个角同时反号才是），所以不相消，还会串到 pitch/yaw 通道。
- * 实测（625 组，2026-09-06）：把这个常量改成 +1，beta 最大差 67.5 mrad、
- * alpha 最大差 20.4 mrad，519/625 组输出符号翻转，而舵机角容差只有 0.8 mrad。
- *
- * 后果：R-F6-2 不可能"删掉常量而力矩不变"；且一旦改动，存档的
- * ServoCalibration 极性随之失效，必须重新拆桨实测。
- */
-#define DRV_COAX_CTRL_FORCE_FRAME_ROLL_SIGN  (-1.0f)
-#define DRV_COAX_CTRL_FORCE_FRAME_PITCH_SIGN (1.0f)
-
-/* 角速率进入控制律的符号，与上面的姿态符号配套。 */
-#define DRV_COAX_CTRL_RATE_FRAME_ROLL_SIGN   (1.0f)
-#define DRV_COAX_CTRL_RATE_FRAME_PITCH_SIGN  (1.0f)
 
 #define DRV_COAX_CTRL_FORCE_EPS_N          1.0e-4f
 #define DRV_COAX_CTRL_RATE_SCALE_EPS       1.0e-6f
@@ -216,19 +197,18 @@ static uint16_t coax_ctrl_clamp_u16(int32_t value, uint16_t lo, uint16_t hi)
 }
 
 /*
- * Controller inputs use the existing local frame: X forward, Y right, Z down
- * with altitude represented as z = -height. Keep the application, RC, and gain
- * polarities intact; only this force-frame projection adapts the measured roll
- * convention so vertical thrust maps to the physical roll servo direction.
+ * R-F6-2 (2026-09-06): controller inputs use the canonical FLU local frame
+ * (X forward, Y left, Z up).  This is R^T(roll, pitch, yaw), the standard
+ * ZYX Euler rotation matrix transposed -- it needs no per-axis sign
+ * adaptation because FLU's own roll/pitch/yaw are already defined as
+ * right-hand rotations about FLU's own X/Y/Z (drv_frame_contract.h).
  */
 static void coax_ctrl_local_down_to_body(const DRV_COAX_CTRL_AttitudeInput *attitude,
                                          const float local_down[3],
                                          float body[3])
 {
-    const float phi =
-        DRV_COAX_CTRL_FORCE_FRAME_ROLL_SIGN * attitude->roll_rad;
-    const float theta =
-        DRV_COAX_CTRL_FORCE_FRAME_PITCH_SIGN * attitude->pitch_rad;
+    const float phi = attitude->roll_rad;
+    const float theta = attitude->pitch_rad;
     const float psi = attitude->yaw_rad;
     const float cphi = cosf(phi);
     const float sphi = sinf(phi);
@@ -408,12 +388,8 @@ static void coax_ctrl_attitude_matrix(
     const DRV_COAX_CTRL_AttitudeInput *attitude,
     float rotation[3][3])
 {
-    const float roll_rad =
-        DRV_COAX_CTRL_FORCE_FRAME_ROLL_SIGN * attitude->roll_rad;
-    const float pitch_rad =
-        DRV_COAX_CTRL_FORCE_FRAME_PITCH_SIGN * attitude->pitch_rad;
-
-    coax_ctrl_rpy_matrix(roll_rad, pitch_rad, attitude->yaw_rad, rotation);
+    coax_ctrl_rpy_matrix(attitude->roll_rad, attitude->pitch_rad,
+                        attitude->yaw_rad, rotation);
 }
 
 static void coax_ctrl_attitude_error(const float desired[3][3],
@@ -718,15 +694,13 @@ static void coax_ctrl_compute_balance_solution(
     DRV_RateControl_Input rate_input;
     float error_for_angle[3];
     const float actual_omega[3] = {
-        DRV_COAX_CTRL_RATE_FRAME_ROLL_SIGN * attitude->gyro_x_rad_s,
-        DRV_COAX_CTRL_RATE_FRAME_PITCH_SIGN * attitude->gyro_y_rad_s,
+        attitude->gyro_x_rad_s,
+        attitude->gyro_y_rad_s,
         attitude->gyro_z_rad_s,
     };
     float force_scale = 1.0f;
     float target_pitch_rad;
     float target_roll_rad;
-    float target_pitch_force_rad;
-    float target_roll_force_rad;
     float roll_limit_moment_n_m;
     float pitch_limit_moment_n_m;
     float yaw_limit_moment_n_m;
@@ -745,9 +719,16 @@ static void coax_ctrl_compute_balance_solution(
                                 DRV_COAX_CTRL_FORCE_EPS_N,
                                 DRV_AIRFRAME_MAX_TOTAL_FORCE_N);
     } else {
+        /*
+         * R-F6-2: Z is now up-positive, so Newton's second law along Z gives
+         * F_thrust = m*(g + a_up) -- more commanded upward acceleration
+         * means more thrust, not less.  (Legacy down-positive Z used
+         * F_thrust = m*(g - a_down); this is the same physics, opposite
+         * sign convention.)
+         */
         solution->desired_force_local_n[2] =
             coax_ctrl_params.mass_kg *
-            (coax_ctrl_params.gravity_m_s2 - debug->accel_out_m_s2[2]);
+            (coax_ctrl_params.gravity_m_s2 + debug->accel_out_m_s2[2]);
         if (solution->desired_force_local_n[2] < DRV_COAX_CTRL_FORCE_EPS_N) {
             solution->desired_force_local_n[2] = DRV_COAX_CTRL_FORCE_EPS_N;
         }
@@ -788,14 +769,9 @@ static void coax_ctrl_compute_balance_solution(
             -atan2f(solution->desired_force_local_n[1] * cosf(target_pitch_rad),
                     solution->desired_force_local_n[2]);
     }
-    target_roll_force_rad =
-        DRV_COAX_CTRL_FORCE_FRAME_ROLL_SIGN * target_roll_rad;
-    target_pitch_force_rad =
-        DRV_COAX_CTRL_FORCE_FRAME_PITCH_SIGN * target_pitch_rad;
-
     coax_ctrl_attitude_matrix(attitude, actual_r);
-    coax_ctrl_rpy_matrix(target_roll_force_rad,
-                         target_pitch_force_rad,
+    coax_ctrl_rpy_matrix(target_roll_rad,
+                         target_pitch_rad,
                          reference->yaw_rad,
                          solution->desired_body_r);
     coax_ctrl_attitude_error(solution->desired_body_r,
@@ -963,8 +939,6 @@ static void coax_ctrl_compute_balance_solution(
     debug->tilt_out_rad[1] = solution->beta_rad;
     coax_ctrl_rotation_to_rpy(solution->desired_body_r,
                               debug->desired_attitude_rpy_rad);
-    debug->desired_attitude_rpy_rad[0] *= DRV_COAX_CTRL_FORCE_FRAME_ROLL_SIGN;
-    debug->desired_attitude_rpy_rad[1] *= DRV_COAX_CTRL_FORCE_FRAME_PITCH_SIGN;
     memcpy(debug->attitude_error,
            solution->attitude_error,
            sizeof(debug->attitude_error));

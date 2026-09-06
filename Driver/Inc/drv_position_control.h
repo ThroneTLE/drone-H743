@@ -15,10 +15,17 @@ extern "C" {
 /*
  * Public frame and timing contract:
  *
- * The controller uses the active legacy local frame: +X forward, +Y right,
- * +Z down.  Position is metres, velocity is metres per second, acceleration
- * is metres per second squared, and dt_sec is seconds.  These are SI control
- * quantities; no HAL, RTOS, I/O, or frame conversion is performed here.
+ * The controller uses the canonical FLU local frame (drv_frame_contract.h):
+ * +X forward, +Y left, +Z up.  Position is metres, velocity is metres per
+ * second, acceleration is metres per second squared, and dt_sec is seconds.
+ * These are SI control quantities; no HAL, RTOS, I/O, or frame conversion is
+ * performed here.
+ *
+ * R-F6-2 (2026-09-06): +Z was down-positive before this migration; +Y was
+ * never actually right-positive despite this file's prior comment saying so
+ * (a props-off physical test showed the raw upstream signal was already
+ * left-positive -- see doc/req-rf6-2-controller-flu-migration.md section 3),
+ * so only +Z's sign and the up/down clamp branches below actually changed.
  *
  * The position and velocity steps are independent.  A caller may run the
  * position step at a slower rate and feed its velocity_sp to the velocity
@@ -38,16 +45,16 @@ typedef struct {
     float vel_ki[DRV_POSITION_CONTROL_AXIS_COUNT];
     float vel_kd[DRV_POSITION_CONTROL_AXIS_COUNT];
 
-    /* Position velocity limits: XY vector norm; Z numeric + is down. */
+    /* Position velocity limits: XY vector norm; Z numeric + is up. */
     float xy_speed_limit_m_s;
-    float z_speed_limit_up_m_s;   /* limit for negative Z (upward) */
-    float z_speed_limit_down_m_s; /* limit for positive Z (downward) */
+    float z_speed_limit_up_m_s;   /* limit for positive Z (upward) */
+    float z_speed_limit_down_m_s; /* limit for negative Z (downward) */
 
-    /* Velocity-PID acceleration limits: XY vector norm; Z numeric + is down. */
+    /* Velocity-PID acceleration limits: XY vector norm; Z numeric + is up. */
     float vel_integrator_limit[DRV_POSITION_CONTROL_AXIS_COUNT];
     float xy_accel_limit_m_s2;
-    float z_accel_limit_up_m_s2;   /* limit for negative Z (upward) */
-    float z_accel_limit_down_m_s2; /* limit for positive Z (downward) */
+    float z_accel_limit_up_m_s2;   /* limit for positive Z (upward) */
+    float z_accel_limit_down_m_s2; /* limit for negative Z (downward) */
 
     /* First-order measured-acceleration LPF cutoff in Hz; <=0 bypasses it. */
     float accel_lpf_cutoff_hz;

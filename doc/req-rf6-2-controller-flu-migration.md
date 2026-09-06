@@ -107,6 +107,27 @@
 **这条不定性，本工单不许开工**——(A) 和 (B) 会导出相反的 `y` 折算方向，
 在错的方向上做完对拍，只会得到一个自洽但反向的控制器，而且对拍全绿。
 
+### 定性结论（2026-09-06，持机会话）
+
+**(B) 成立**：拆桨、通电，把机体沿地面向右平移，`FLOW?` 读回的原始 `flow_vy`
+（未经任何软件符号处理，`APP_OpticalFlow` 原样透传）为**负**。即向右平移时
+原始光流 Y 为负 → 光流传感器的原始 Y 轴方向本来就是**左正**，而非四处注释
+声称的"右正"。此结论与第 2 节的外环实测互相独证：若 local Y 本来就是左正，
+"向右加速"这一说法本身就是误标——`ay_m_s2=+2` 实际命令的是"向左加速"，
+其物理正确响应正是左翼下沉（FLU roll 为负），与实测完全吻合，不存在矛盾。
+
+**结论**：local Y（`Reference`/`AttitudeInput` 的 `y_m`/`vy_m_s`/`ay_m_s2`，
+以及 `svc_flow_nav`/`app_stabilizer` 里所有喂给它们的量）从传感器原始读数
+起就一直是**左正**，从未真的是"右正"。四处（`drv_coax_ctrl.h`、
+`drv_coax_ctrl.c`、`app_stabilizer.c:106`、`svc_flow_nav.h`）以及新发现的
+第五处（`drv_position_control.h:18`）声称"Y 右正"的注释**全部是错的**，
+运行时数值本身不需要为 Y 做任何改动。第 4 节 Contract 与第 1 节换标表中
+"y_m/vy_m_s/ay_m_s2：右正→左正，取反" 一律按本节结论**反转为"不变，仅改
+注释"**。`STABILIZER_VELOCITY_MEAS_Y_SIGN` 保持 `+1`，不改为 `-1`。
+
+不是 FLU 迁移引入的问题，也不是缺陷，是五处文档注释与实际物理方向不符，
+本工单一并改正措辞、不改数值。
+
 > ⚠ 这条差异**不是 FLU 迁移引入的**：roll 口径在 FRD 与 FLU 下同为"右翼下沉为正"。
 > 它是既有问题，R-F6-2 也不会顺手修好它。若定性为 (A)，单独立 REQ 修，不要混进来。
 
@@ -164,6 +185,29 @@ seam 0/1 迁移时翻了，而控制器里**没有对应的符号常量**。
 
 用第 2 节同一套方法查：给一个固定的世界系水平加速度指令，扫 `att.yaw_rad`，
 看目标姿态随偏航的旋转方向对不对。**查出来是什么就写什么，不要顺手改。**
+
+### 查证结果（2026-09-06）
+
+`att.yaw_rad` 只在两处出现：
+
+1. `coax_ctrl_attitude_matrix`（`actual_r`）与 `desired_body_r`
+   （`reference->yaw_rad`）——姿态误差的真实路径。实测（悬停推力 + 直接姿态
+   目标，`reference.yaw_rad` 钉死为 0，扫 `attitude.yaw_rad`）：yaw 误差为正
+   （测得比目标更偏"机头左转"）时，`moment_cmd_n_m[2]` 为**负**；yaw 误差为
+   负时为正——始终把偏航拉回目标。FLU 里 +yaw 是机头左转，"测得更左转"要拉回
+   就必须朝右转，对应 +Z 轴负向的力矩——负号自洽，且这里**没有任何符号常量**
+   （`drv_coax_ctrl.c` 里搜不到"YAW_SIGN"），是姿态融合早在 seam 0/1 就已经把
+   yaw 迁到 FLU 的自然结果。见
+   `tests/test_flu_seam3_force_frame_derivation.py::test_yaw_moment_restores_toward_target_the_flu_consistent_way`。
+2. `coax_ctrl_local_down_to_body` 的 `psi`——但这条路径的输出
+   `desired_force_local_n`（旋转后即 `desired_force_body_n`）**只喂
+   `DRV_COAX_CTRL_Debug.force_cmd_n`**（遥测），不参与 `target_roll_rad`/
+   `target_pitch_rad` 的计算——那两个量直接从未经偏航旋转的
+   `desired_force_local_n` 算 `atan2`。也就是说外环把"world X/Y"当成"当前
+   航向下的 X/Y"，并不随测得的偏航重新旋转成真正随偏航稳定的世界系。
+
+**这是本工单之前就存在的架构特征，不是 R-F6-2 引入或应当顺手修的缺陷**——
+按本节要求，只记录，不改动。
 
 ## 8. 交付
 

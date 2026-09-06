@@ -138,15 +138,15 @@ static void drv_position_control_limit_z(
     float output[DRV_POSITION_CONTROL_AXIS_COUNT],
     DRV_POSITION_CONTROL_SaturationFeedback *feedback)
 {
-    /* In the legacy frame, numeric +Z is down: negative is upward. */
-    if ((up_limit > 0.0f) && (output[2U] < -up_limit)) {
-        output[2U] = -up_limit;
-        feedback->thrust_saturated = 1U;
-        feedback->neg_limit[2U] = 1U;
-    } else if ((down_limit > 0.0f) && (output[2U] > down_limit)) {
-        output[2U] = down_limit;
+    /* R-F6-2: canonical FLU, numeric +Z is up: negative is downward. */
+    if ((up_limit > 0.0f) && (output[2U] > up_limit)) {
+        output[2U] = up_limit;
         feedback->thrust_saturated = 1U;
         feedback->pos_limit[2U] = 1U;
+    } else if ((down_limit > 0.0f) && (output[2U] < -down_limit)) {
+        output[2U] = -down_limit;
+        feedback->thrust_saturated = 1U;
+        feedback->neg_limit[2U] = 1U;
     }
 
     (void)input;

@@ -69,10 +69,12 @@ def test_controller_uses_named_rc_channels_for_references() -> None:
     assert "float height_origin_m;" in freertos
     assert "uint8_t height_origin_ready;" in freertos
     assert "frame->relative_height_m = frame->range_height_m - ctx->height_origin_m;" in freertos
-    assert "frame->attitude.z_m = -frame->relative_height_m;" in freertos
+    # R-F6-2 (2026-09-06): +Z is up, no negation.
+    assert "frame->attitude.z_m = frame->relative_height_m;" in freertos
     assert "ctx->height_ref_m = frame->relative_height_m;" in freertos
     assert "ctx->height_ref_m +=\n          stabilizer_rc_throttle_height_rate_m_s(" in freertos
-    assert "ctx->position_ref_z_m = -ctx->height_ref_m;" in freertos
+    # R-F6-2 (2026-09-06): +Z is up, no negation.
+    assert "ctx->position_ref_z_m = ctx->height_ref_m;" in freertos
     assert "frame->reference.az_m_s2 = 0.0f;" in freertos
     assert "frame->reference.yaw_rad = ctx->yaw_ref_rad;" in freertos
     assert "frame->reference.yaw_rate_rad_s = yaw_rate_ref_rad_s;" in freertos

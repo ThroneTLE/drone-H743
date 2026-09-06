@@ -52,7 +52,10 @@ def test_velocity_measurement_polarity_is_a_named_constant() -> None:
     """Flow/fusion lateral polarity must not be folded into a gain."""
     source = read(STABILIZER)
     assert "#define STABILIZER_VELOCITY_MEAS_Y_SIGN (1.0f)" in source
-    assert "机体系右正" in source
+    # R-F6-2 (2026-09-06): props-off lateral translation test showed local Y
+    # was already left-positive from the raw optical-flow reading, not
+    # right-positive as previously documented.
+    assert "左正（与规范 FLU 一致）" in source
 
 
 def test_yaw_stick_maps_to_a_rate_reference_without_a_hidden_sign() -> None:

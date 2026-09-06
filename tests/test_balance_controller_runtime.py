@@ -131,27 +131,40 @@ int main(void)
     params.position.vel_kp[2] = 0.0f;
     params.position.vel_ki[2] = 0.50f;
     DRV_COAX_CTRL_SetParams(&params);
-    attitude.z_m = -0.20f;
-    reference.z_m = -0.40f;
+    /* R-F6-2: +Z is up.  Same physical scenario as before the migration
+     * (measured 0.20m up, target 0.40m up -- needs to climb), values negated. */
+    attitude.z_m = 0.20f;
+    reference.z_m = 0.40f;
     for (int step = 0; step < 50; ++step) {
         DRV_COAX_CTRL_Run(&attitude, &reference, &output);
     }
     DRV_COAX_CTRL_GetLastDebug(&debug);
-    CHECK(debug.pos_z_i_m_s2 < -0.09f, 102);
-    CHECK(debug.accel_out_m_s2[2] < -0.09f, 103);
+    CHECK(debug.pos_z_i_m_s2 > 0.09f, 102);
+    CHECK(debug.accel_out_m_s2[2] > 0.09f, 103);
     CHECK(debug.total_force_n >
           DRV_AIRFRAME_MASS_KG * DRV_AIRFRAME_GRAVITY_M_S2,
           104);
 
+    /*
+     * R-F6-2: removing FORCE_FRAME_ROLL_SIGN changes the servo-facing roll
+     * output for this scenario (not a relabeling -- the attitude error is
+     * genuinely different once desired_body_r is built from the unsigned
+     * target_roll_rad).  target_attitude_rp_rad/desired_attitude_rpy_rad[0]
+     * were already reported unsigned before this migration (the old code
+     * multiplied the recovered angle back by FORCE_FRAME_ROLL_SIGN just for
+     * debug/reporting), so checks 22/26/27 are unaffected; beta_rad,
+     * moment_cmd_n_m[0] and servo_alpha_us flip, confirmed against the real
+     * compiled controller (2026-09-06).
+     */
     reset_case(&attitude, &reference);
     reference.vy_m_s = 0.8f;
     DRV_COAX_CTRL_Run(&attitude, &reference, &output);
     DRV_COAX_CTRL_GetLastDebug(&debug);
-    CHECK(output.beta_rad < 0.0f, 20);
+    CHECK(output.beta_rad > 0.0f, 20);
     CHECK(fabsf(output.alpha_rad) < 1.0e-4f, 21);
     CHECK(debug.desired_attitude_rpy_rad[0] < 0.0f, 22);
-    CHECK(debug.moment_cmd_n_m[0] > 0.0f, 23);
-    CHECK(output.servo_alpha_us > DRV_COAX_CTRL_SERVO_ALPHA_CENTER_US, 24);
+    CHECK(debug.moment_cmd_n_m[0] < 0.0f, 23);
+    CHECK(output.servo_alpha_us < DRV_COAX_CTRL_SERVO_ALPHA_CENTER_US, 24);
     CHECK(nearly_equal(
         debug.moment_achieved_n_m[0],
         -0.581f * DRV_AIRFRAME_ROLL_THRUST_LEVER_ARM_M *
@@ -220,6 +233,7 @@ int main(void)
     CHECK(output.motor_upper_us == 1604U, 100);
     CHECK(output.motor_lower_us == 1604U, 101);
 
+    /* R-F6-2: same reasoning as checks 20-24 above. */
     reset_case(&attitude, &reference);
     reference.direct_attitude_target_valid = 1U;
     reference.target_roll_rad = 0.10f;
@@ -227,8 +241,8 @@ int main(void)
     DRV_COAX_CTRL_GetLastDebug(&debug);
     CHECK(nearly_equal(debug.target_attitude_rp_rad[0], 0.10f, 1.0e-5f), 75);
     CHECK(nearly_equal(debug.desired_attitude_rpy_rad[0], 0.10f, 1.0e-5f), 76);
-    CHECK(output.beta_rad > 0.0f, 77);
-    CHECK(output.servo_alpha_us < DRV_COAX_CTRL_SERVO_ALPHA_CENTER_US, 78);
+    CHECK(output.beta_rad < 0.0f, 77);
+    CHECK(output.servo_alpha_us > DRV_COAX_CTRL_SERVO_ALPHA_CENTER_US, 78);
 
     reset_case(&attitude, &reference);
     attitude.pitch_rad = 0.10f;
@@ -236,10 +250,11 @@ int main(void)
     CHECK(output.alpha_rad > 0.0f, 31);
     CHECK(output.servo_beta_us < DRV_COAX_CTRL_SERVO_BETA_CENTER_US, 32);
 
+    /* R-F6-2: same reasoning as checks 20-24/77-78. */
     reset_case(&attitude, &reference);
     attitude.roll_rad = 0.10f;
     DRV_COAX_CTRL_Run(&attitude, &reference, &output);
-    CHECK(output.beta_rad < 0.0f, 33);
+    CHECK(output.beta_rad > 0.0f, 33);
 
     reset_case(&attitude, &reference);
     DRV_COAX_CTRL_GetParams(&params);
