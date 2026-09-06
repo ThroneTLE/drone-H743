@@ -199,6 +199,54 @@ def test_a_truncated_frame_poisons_the_next_one_unless_the_parser_is_reset(parse
     assert healed["rc"] == 4, "重置之后下一个字节就是真正的帧头，一帧都不该丢"
 
 
+def test_resync_after_a_desync_costs_at_most_one_frame(parser) -> None:
+    """从任意位置失步之后，重新锁上的代价必须有界。
+
+    这是 2026-09-06 那个 30% 错帧率的**真正放大器**：CRSF 全靠地址字节起头，
+    原来的判据（`0x00/0x10/0x80/>=0xC0`）有 67/256 = 26% 的字节值会被当成地址，
+    于是解析器在 payload 里逐字节撞运气，一次失步平均连打七八个假帧。实测
+    abort≈30/s 就打出 crc_err≈215/s，而真坏字节只有 fe+ne≈35/s。
+
+    这里穷举所有可能的失步相位：把干净流的前 k 个字节吃掉（k = 1..25），每个相位
+    都要求最多丢一帧就重新锁上。
+    """
+    worst = 0
+    for skip in range(1, len(CLEAN)):
+        stats = parser([CLEAN[skip:] + CLEAN * 6])
+        assert stats["rc"] >= 6, f"相位 {skip}：后面 6 帧应当全解出来，实际 {stats['rc']}"
+        worst = max(worst, stats["crc_err"] + stats["len_err"])
+    assert worst <= 1, f"最坏相位下产生了 {worst} 个假帧/长度错，重同步代价失控"
+
+
+def test_only_named_crsf_addresses_start_a_frame(parser) -> None:
+    """地址判据的宽度就是失步代价，必须是具名地址而不是范围。
+
+    实测（SWD 直读 DMA 缓冲、全缓冲扫描 + CRC 校验）50/50 帧地址都是 0xC8。
+    """
+    source = read("Driver/Src/drv_elrs.c")
+    body = source[source.index("static uint8_t Crsf_IsCommonAddress"):
+                  source.index("static uint16_t Crsf_ReadPackedChannel")]
+
+    assert "CRSF_ADDRESS_FLIGHT_CONTROLLER" in body
+    assert "CRSF_ADDRESS_BROADCAST" in body
+    assert ">= 0xC0" not in body and ">=0xC0" not in body, (
+        "范围判断会把 64 个字节值当成地址，失步后就是逐字节撞运气"
+    )
+
+    # 未被接受的地址不许起头：拿一整帧改掉地址字节，应当一帧都解不出来。
+    for address in (0x10, 0x80, 0xC0, 0xEA, 0xEE):
+        mutated = bytearray(CLEAN)
+        mutated[0] = address
+        stats = parser([bytes(mutated)])
+        assert stats["rc"] == 0, f"0x{address:02X} 不该被当成帧头"
+
+    for address in (0xC8, 0x00):
+        mutated = bytearray(CLEAN)
+        mutated[0] = address
+        stats = parser([bytes(mutated)])
+        assert stats["rc"] == 1, f"0x{address:02X} 是本链路的合法目的地址"
+
+
 def test_reset_keeps_counters_and_channel_values(parser) -> None:
     """重置只丢半帧，不许把已经解出来的东西也一并清掉。
 

@@ -4,7 +4,7 @@
 
 Read this shard only when you need existing behavioral/architecture coverage or must choose focused regression tests.
 
-Source snapshot: `8b1319e30a93`. Indexed files: 128.
+Source snapshot: `9544edaa4dd2`. Indexed files: 128.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -30,7 +30,7 @@ Source snapshot: `8b1319e30a93`. Indexed files: 128.
 | `tests/test_control_loop_blocking_contract.py` | S6 control contracts | `test_no_blocking`, `test_notice_buffer` (+4) |
 | `tests/test_control_scheduler.py` | — | `test_control_scheduler_host_harness`, `test_scheduler_is_pure_and_declares_real_timestamp_contract` |
 | `tests/test_controller_cascade_analysis.py` | — | `test_report_refuses_old_or_unknown_frame_logs` |
-| `tests/test_crsf_parser_resync.py` | CRSF 解析器的失步与重同步（`Driver/Src/drv_elrs.c`，宿主 gcc 直接编真实源码）。 为什么专门立一份：2026-09-06 实机取证发现遥控链路 **70% 错帧率**，而 SWD 直读 UART4 的 DM… | `test_a_clean_stream_decodes_every_frame`, `test_channel_values_survive_the_packing` (+7) |
+| `tests/test_crsf_parser_resync.py` | CRSF 解析器的失步与重同步（`Driver/Src/drv_elrs.c`，宿主 gcc 直接编真实源码）。 为什么专门立一份：2026-09-06 实机取证发现遥控链路 **70% 错帧率**，而 SWD 直读 UART4 的 DM… | `test_a_clean_stream_decodes_every_frame`, `test_channel_values_survive_the_packing` (+9) |
 | `tests/test_dashboard_layout.py` | R-T1-5：工作台布局模型（`panel_lib/dashboard/layout.py`）。 布局规则是纯数据变换，所以这一份**不需要显示环境**：吸附、越界钳制、重叠拒绝、 序列化往返、出厂预设，全部在没有 Tk 的情况下断言。页… | `test_clamp_pulls_a_tile_back_into_the_grid`, `test_overlap_is_rejected_rather_than_pushed_aside` (+17) |
 | `tests/test_dashboard_page.py` | R-T1-5：“状态监视”工作台页（`panel_lib/pages/dashboard.py` + `dashboard/`）。 全部用真实的 `DronePanel()` + FakeTransport 驱动，照 `test_flow… | `test_the_workbench_is_the_first_tab_and_selected_by_default`, `test_panel_entry_point_only_carries_the_mount` (+59) |
 | `tests/test_dashboard_record_service.py` | R-T1-6（TK-05）：录制的文件完整性、后台写入与失败恢复。 对应改版报告 N10–N13。每一条都先在 `tools/panel_qa/baseline_observations.py` 里作为 **基线观测**记录下修复前的事实… | `test_a_second_recording_in_the_same_second_does_not_destroy_the_first`, `test_recording_never_overwrites_a_file_that_is_already_there` (+21) |

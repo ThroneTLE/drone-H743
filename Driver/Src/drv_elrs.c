@@ -22,11 +22,28 @@ static uint8_t  g_rc_updated;
 
 /* ---------- helpers ---------- */
 
+/*
+ * 只接受本链路真正会出现的**目的**地址。
+ *
+ * CRSF 没有转义也没有帧定界符，全靠地址字节起头，所以这个判据的宽度直接决定
+ * 失步之后要花多少字节才能重新锁上。原来的 `0x00 / 0x10 / 0x80 / >=0xC0` 有
+ * 67/256（**26%**）的字节值会被当成地址：解析器在 payload 里逐字节撞运气，
+ * 一次失步平均要连打七八个假帧才碰巧撞回真帧头。实测 abort≈30/s 打出
+ * crc_err≈215/s、len_err≈250/s，而真正的坏字节只有 fe+ne≈35/s。
+ *
+ * 接收机→飞控这条链路上，帧的目的地址只会是飞控自己（0xC8）或广播（0x00）。
+ * 实测取证（2026-09-06，SWD 直读 UART4 的 DMA 缓冲，全缓冲逐偏移扫描 + CRC
+ * 校验才算一帧）：**50/50 帧地址都是 0xC8**、类型都是 0x16、整帧长度都是 26。
+ *
+ * 收窄到这两个值把误锁率从 26% 压到 0.78%（33 倍）。代价说清楚：若将来接收机
+ * 改用别的目的地址发链路统计，`lq/rssi` 会停更——RC 控制不受影响（那是 0xC8），
+ * 且 `DRV_ELRS_GetTotalFrames() - DRV_ELRS_GetRcFrames()` 归零就能看出来。
+ * 要放宽就往这里**加具名地址**，不要退回 `>= 0xC0` 那种范围判断。
+ */
 static uint8_t Crsf_IsCommonAddress(uint8_t address)
 {
-    if (address == 0x00U || address == 0x10U || address == 0x80U)
-        return 1U;
-    return (address >= 0xC0U) ? 1U : 0U;
+    return ((address == CRSF_ADDRESS_FLIGHT_CONTROLLER) ||
+            (address == CRSF_ADDRESS_BROADCAST)) ? 1U : 0U;
 }
 
 static uint16_t Crsf_ReadPackedChannel(const uint8_t *payload, uint8_t channel)

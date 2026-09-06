@@ -8,6 +8,7 @@ extern "C" {
 #endif
 
 /* CRSF protocol constants */
+#define CRSF_ADDRESS_BROADCAST          0x00U
 #define CRSF_ADDRESS_FLIGHT_CONTROLLER  0xC8U
 #define CRSF_FRAME_GPS                  0x02U
 #define CRSF_FRAME_BATTERY_SENSOR       0x08U
