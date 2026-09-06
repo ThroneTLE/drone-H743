@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import re
 import shutil
 import struct
 import subprocess
@@ -24,7 +25,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 GOLDEN_DIR = ROOT / "tests" / "golden"
-GOLDEN_FRAMES = GOLDEN_DIR / "telem_frames_v1.bin"
+GOLDEN_FRAMES = GOLDEN_DIR / "telem_frames_v2.bin"
 
 APP_INC = ROOT / "App" / "Inc"
 APP_SRC = ROOT / "App" / "Src"
@@ -36,6 +37,11 @@ def read(path: str) -> str:
 
 
 # ------------------------------------------------------------------ 黄金向量
+
+
+# 刻意在这里重新写一遍而不是从 panel_lib 里 import：黄金向量测的就是"两个
+# 独立实现产出同一串字节"，共用常量会让两边一起写错时静默通过。
+TELEM_FRAME_FLAG_WIDE_MASK = 0x0002
 
 
 def proto_crc8_dvb_s2(data: bytes) -> int:
@@ -62,10 +68,21 @@ def expected_frame(
 
     刻意不复用固件的任何代码：黄金向量的意义就是"两个独立实现产出同一串
     字节"。如果这里也去调固件的编码器，两边一起写错也测不出来。
+
+    v2 的掩码是变长的，宽窄**由掩码内容唯一决定**（高 64 位非零即宽），
+    调用方给的 WIDE_MASK 位一律丢弃。这条在这里也独立重写一遍，正是为了
+    钉住"帧里写的宽度"与"实际写了几个字节"出自同一个判断。
     """
+    wide = mask >> 64 != 0
+    flags = flags & ~TELEM_FRAME_FLAG_WIDE_MASK
+    if wide:
+        flags |= TELEM_FRAME_FLAG_WIDE_MASK
     payload = struct.pack(
-        "<BBHIIHHQ", 1, count, seq, schema, t_us, dt_us, flags, mask
-    ) + b"".join(struct.pack("<f", value) for value in values)
+        "<BBHIIHHQ", 2, count, seq, schema, t_us, dt_us, flags, mask & ((1 << 64) - 1)
+    )
+    if wide:
+        payload += struct.pack("<Q", mask >> 64)
+    payload += b"".join(struct.pack("<f", value) for value in values)
     body = struct.pack("<BHH", 0, 0x2230, len(payload)) + payload
     return b"$X>" + body + bytes([proto_crc8_dvb_s2(body)])
 
@@ -83,6 +100,13 @@ GOLDEN_CASES = [
     (1, 1, 0xA5A5A5A5, 12345, 0, 0, 0x0000000008000000, [3.25]),
     # count>1 的批量帧（R-T2 才会用，格式在 R-T1 就钉死）。
     (2, 3, 0x5A5A5A5A, 1000, 500, 0, 0x0000000000000003,
+     [1.0, 2.0, 3.0, 4.0]),
+    # 边界：bit 63 仍是窄掩码（24 字节头）。差一位就变宽，所以两边都要钉。
+    (1, 11, 0x0BADF00D, 777, 0, 0, 1 << 63, [6.5]),
+    # bit 64：最小的宽掩码帧，头 32 字节，flags 自动带上 WIDE_MASK。
+    (1, 12, 0x0BADF00D, 778, 0, 0, 1 << 64, [7.5]),
+    # 跨越 64 位边界：低半与高半都有通道，值仍按全局通道索引升序排。
+    (1, 13, 0xC0FFEE00, 779, 0, 1, (1 << 0) | (1 << 63) | (1 << 64) | (1 << 127),
      [1.0, 2.0, 3.0, 4.0]),
 ]
 
@@ -109,8 +133,8 @@ ENCODER_HARNESS = r"""
 static FILE *out_file;
 
 static int emit(uint8_t count, uint16_t seq, uint32_t schema, uint32_t t_us,
-                uint16_t dt_us, uint16_t flags, uint64_t mask,
-                const float *values, uint32_t value_count)
+                uint16_t dt_us, uint16_t flags, uint64_t mask_lo,
+                uint64_t mask_hi, const float *values, uint32_t value_count)
 {
     APP_TelemFrameDesc desc;
     uint8_t frame[APP_TELEM_FRAME_OVERHEAD + APP_TELEM_FRAME_MAX_PAYLOAD];
@@ -122,7 +146,8 @@ static int emit(uint8_t count, uint16_t seq, uint32_t schema, uint32_t t_us,
     desc.t_us = t_us;
     desc.dt_us = dt_us;
     desc.flags = flags;
-    desc.mask = mask;
+    desc.mask.lo = mask_lo;
+    desc.mask.hi = mask_hi;
 
     if (APP_TelemFrame_Encode(&desc, values, value_count,
                               APP_TELEM_FRAME_MAX_PAYLOAD, frame,
@@ -142,13 +167,37 @@ int main(int argc, char **argv)
     out_file = fopen(argv[1], "wb");
     if (out_file == NULL) { return 3; }
 
-    /* --- 不变量：popcount / 长度公式 --- */
-    if (APP_TelemFrame_PopCount(0ULL) != 0U) { return 10; }
-    if (APP_TelemFrame_PopCount(0xFFFFFFFFFFFFFFFFULL) != 64U) { return 11; }
-    if (APP_TelemFrame_PayloadLength(1U, 0ULL) != 0U) { return 12; }
-    if (APP_TelemFrame_PayloadLength(0U, 1ULL) != 0U) { return 13; }
-    if (APP_TelemFrame_PayloadLength(1U, 0x0FULL) != 24U + 16U) { return 14; }
-    if (APP_TelemFrame_PayloadLength(2U, 0x03ULL) != 24U + 16U) { return 15; }
+    /* --- 不变量：popcount / 头长 / 长度公式 --- */
+    {
+        APP_TelemMask m_zero = {0ULL, 0ULL};
+        APP_TelemMask m_lo_full = {0xFFFFFFFFFFFFFFFFULL, 0ULL};
+        APP_TelemMask m_all = {0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL};
+        APP_TelemMask m_bit0 = {1ULL, 0ULL};
+        APP_TelemMask m_lo4 = {0x0FULL, 0ULL};
+        APP_TelemMask m_lo2 = {0x03ULL, 0ULL};
+        APP_TelemMask m_bit63 = {1ULL << 63, 0ULL};
+        APP_TelemMask m_bit64 = {0ULL, 1ULL};
+
+        if (APP_TelemFrame_PopCount(m_zero) != 0U) { return 10; }
+        if (APP_TelemFrame_PopCount(m_lo_full) != 64U) { return 11; }
+        if (APP_TelemFrame_PopCount(m_all) != 128U) { return 16; }
+        if (APP_TelemFrame_PayloadLength(1U, m_zero) != 0U) { return 12; }
+        if (APP_TelemFrame_PayloadLength(0U, m_bit0) != 0U) { return 13; }
+        if (APP_TelemFrame_PayloadLength(1U, m_lo4) != 24U + 16U) { return 14; }
+        if (APP_TelemFrame_PayloadLength(2U, m_lo2) != 24U + 16U) { return 15; }
+        /* 宽窄只看高半：bit63 仍窄，bit64 立刻变宽。 */
+        if (APP_TelemFrame_HeaderBytes(m_bit63) != 24U) { return 17; }
+        if (APP_TelemFrame_HeaderBytes(m_bit64) != 32U) { return 18; }
+        if (APP_TelemFrame_PayloadLength(1U, m_bit64) != 32U + 4U) { return 19; }
+        /* 位读写在 64 位边界两侧都要成立。 */
+        if (APP_TelemMask_Test(m_bit63, 63U) == 0U) { return 50; }
+        if (APP_TelemMask_Test(m_bit63, 64U) != 0U) { return 51; }
+        if (APP_TelemMask_Test(m_bit64, 64U) == 0U) { return 52; }
+        if (APP_TelemMask_Test(m_bit64, 63U) != 0U) { return 53; }
+        if (APP_TelemMask_IsWide(m_bit63) != 0U) { return 54; }
+        if (APP_TelemMask_IsWide(m_bit64) == 0U) { return 55; }
+        if (APP_TelemMask_IsEmpty(APP_TelemMask_AndNot(m_bit64, m_all)) == 0U) { return 56; }
+    }
 
     /* --- 值个数与 mask 对不上必须整帧拒绝，不许截断 --- */
     {
@@ -159,7 +208,7 @@ int main(int argc, char **argv)
 
         memset(&desc, 0, sizeof(desc));
         desc.count = 1U;
-        desc.mask = 0x07ULL;
+        desc.mask.lo = 0x07ULL;
         if (APP_TelemFrame_Encode(&desc, values, 2U, 256U, frame,
                                   (uint16_t)sizeof(frame), &length)
             != APP_TELEM_FRAME_ERR_ARGS) {
@@ -179,7 +228,7 @@ int main(int argc, char **argv)
         for (i = 0U; i < 8U; ++i) { values[i] = (float)i; }
         memset(&desc, 0, sizeof(desc));
         desc.count = 1U;
-        desc.mask = 0xFFULL;   /* 8 路 -> payload 56 B */
+        desc.mask.lo = 0xFFULL;   /* 8 路 -> payload 56 B */
         if (APP_TelemFrame_Encode(&desc, values, 8U, 55U, frame,
                                   (uint16_t)sizeof(frame), &length)
             != APP_TELEM_FRAME_ERR_TOO_LARGE) {
@@ -199,12 +248,19 @@ int main(int argc, char **argv)
         float c[4] = {1.0f, 2.0f, 3.0f, 4.0f};
         float d[1] = {3.25f};
         float e[4] = {1.0f, 2.0f, 3.0f, 4.0f};
+        float f[1] = {6.5f};
+        float g[1] = {7.5f};
+        float h[4] = {1.0f, 2.0f, 3.0f, 4.0f};
 
-        if (emit(1U, 0U, 0x11223344UL, 0UL, 0U, 0U, 0x0000000000000001ULL, a, 1U)) { return 40; }
-        if (emit(1U, 7U, 0xDEADBEEFUL, 0x01020304UL, 0U, 0U, 0x0000000000000015ULL, b, 3U)) { return 41; }
-        if (emit(1U, 65535U, 0x00000001UL, 0xFFFFFFFFUL, 0U, 1U, 0x000000000000000FULL, c, 4U)) { return 42; }
-        if (emit(1U, 1U, 0xA5A5A5A5UL, 12345UL, 0U, 0U, 0x0000000008000000ULL, d, 1U)) { return 43; }
-        if (emit(2U, 3U, 0x5A5A5A5AUL, 1000UL, 500U, 0U, 0x0000000000000003ULL, e, 4U)) { return 44; }
+        if (emit(1U, 0U, 0x11223344UL, 0UL, 0U, 0U, 0x0000000000000001ULL, 0ULL, a, 1U)) { return 40; }
+        if (emit(1U, 7U, 0xDEADBEEFUL, 0x01020304UL, 0U, 0U, 0x0000000000000015ULL, 0ULL, b, 3U)) { return 41; }
+        if (emit(1U, 65535U, 0x00000001UL, 0xFFFFFFFFUL, 0U, 1U, 0x000000000000000FULL, 0ULL, c, 4U)) { return 42; }
+        if (emit(1U, 1U, 0xA5A5A5A5UL, 12345UL, 0U, 0U, 0x0000000008000000ULL, 0ULL, d, 1U)) { return 43; }
+        if (emit(2U, 3U, 0x5A5A5A5AUL, 1000UL, 500U, 0U, 0x0000000000000003ULL, 0ULL, e, 4U)) { return 44; }
+        if (emit(1U, 11U, 0x0BADF00DUL, 777UL, 0U, 0U, 1ULL << 63, 0ULL, f, 1U)) { return 45; }
+        if (emit(1U, 12U, 0x0BADF00DUL, 778UL, 0U, 0U, 0ULL, 1ULL, g, 1U)) { return 46; }
+        if (emit(1U, 13U, 0xC0FFEE00UL, 779UL, 0U, 1U,
+                 1ULL | (1ULL << 63), 1ULL | (1ULL << 63), h, 4U)) { return 47; }
     }
 
     (void)fclose(out_file);
@@ -276,8 +332,17 @@ def test_golden_frames_are_self_describing() -> None:
         payload_length = blob[offset + 6] | (blob[offset + 7] << 8)
         payload = blob[offset + 8:offset + 8 + payload_length]
         count = payload[1]
+        flags = struct.unpack_from("<H", payload, 14)[0]
+        # 头长要能只从 flags 推出来：接收端在读掩码之前还不知道数据从哪儿开始，
+        # 只能靠这一位。用长度反推宽度就成了循环论证，正是这里要排除的。
+        wide = bool(flags & TELEM_FRAME_FLAG_WIDE_MASK)
+        header = 32 if wide else 24
         mask = struct.unpack_from("<Q", payload, 16)[0]
-        assert payload_length == 24 + 4 * count * bin(mask).count("1")
+        if wide:
+            mask |= struct.unpack_from("<Q", payload, 24)[0] << 64
+        assert payload_length == header + 4 * count * bin(mask).count("1")
+        # 宽窄由内容决定：高半为空却发了宽掩码，就是白白多占 8 字节。
+        assert wide == (mask >> 64 != 0)
         offset += 9 + payload_length
         seen += 1
     assert seen == len(GOLDEN_CASES)
@@ -381,13 +446,21 @@ void APP_Control_QueueText(const char *format, ...) { (void)format; }
 
 /* ------------------------------ 工具 ------------------------------------- */
 
-static uint64_t frame_mask(void)
+static uint16_t frame_flags(void);
+
+static APP_TelemMask frame_mask(void)
 {
-    uint64_t mask = 0ULL;
+    APP_TelemMask mask = {0ULL, 0ULL};
     uint32_t i;
     /* payload 从 $X 头之后第 8 字节开始，mask 在 payload 偏移 16。 */
     for (i = 0U; i < 8U; ++i) {
-        mask |= ((uint64_t)port_last_frame[8 + 16 + i]) << (8U * i);
+        mask.lo |= ((uint64_t)port_last_frame[8 + 16 + i]) << (8U * i);
+    }
+    /* 宽掩码的高半紧跟其后；窄帧里那 8 个字节是数据，绝不能当掩码读。 */
+    if ((frame_flags() & APP_TELEM_FRAME_FLAG_WIDE_MASK) != 0U) {
+        for (i = 0U; i < 8U; ++i) {
+            mask.hi |= ((uint64_t)port_last_frame[8 + 24 + i]) << (8U * i);
+        }
     }
     return mask;
 }
@@ -398,14 +471,21 @@ static uint16_t frame_flags(void)
                       ((uint16_t)port_last_frame[8 + 15] << 8));
 }
 
-static uint64_t param_mask(void)
+static APP_TelemMask param_mask(void)
 {
-    uint64_t mask = 0ULL;
+    APP_TelemMask mask = {0ULL, 0ULL};
     uint32_t i;
     for (i = 0U; i < (uint32_t)APP_TELEM_CH_COUNT; ++i) {
-        if (APP_Telemetry_ChannelHasParam(i) != 0U) { mask |= (1ULL << i); }
+        if (APP_Telemetry_ChannelHasParam(i) != 0U) {
+            mask = APP_TelemMask_Or(mask, APP_TelemMask_FromBit(i));
+        }
     }
     return mask;
+}
+
+static int mask_equal(APP_TelemMask a, APP_TelemMask b)
+{
+    return ((a.lo == b.lo) && (a.hi == b.hi)) ? 1 : 0;
 }
 
 static void reset_world(void)
@@ -429,11 +509,12 @@ static void reset_world(void)
 
 static int test_default_mask_and_steady_state_frame(void)
 {
-    uint64_t steady;
+    APP_TelemMask steady;
 
     reset_world();
     /* 默认掩码里必须有全部参数通道，否则全量刷新帧喂不出滑块初值。 */
-    CHECK((APP_TelemStream_DefaultMask() & param_mask()) == param_mask(), 100);
+    CHECK(mask_equal(APP_TelemMask_And(APP_TelemStream_DefaultMask(), param_mask()),
+                     param_mask()), 100);
 
     APP_TelemStream_NoteCommandSource(APP_TELEM_SINK_UART);
     CHECK(APP_TelemStream_SetRefresh(0U) == APP_TELEM_STREAM_OK, 101);
@@ -442,13 +523,13 @@ static int test_default_mask_and_steady_state_frame(void)
     /* 首帧：影子还没建立，参数通道全部当成"变了"，所以带上。 */
     APP_TelemStream_Tick();
     CHECK(port_uart_frames == 1U, 103);
-    CHECK((frame_mask() & param_mask()) == param_mask(), 104);
+    CHECK(mask_equal(APP_TelemMask_And(frame_mask(), param_mask()), param_mask()), 104);
 
     /* 第二帧起参数不变就不再回显——这正是 JustFloat 每帧都在浪费的 2560 B/s。 */
     APP_TelemStream_Tick();
     CHECK(port_uart_frames == 2U, 105);
     steady = frame_mask();
-    CHECK((steady & param_mask()) == 0ULL, 106);
+    CHECK(APP_TelemMask_IsEmpty(APP_TelemMask_And(steady, param_mask())) != 0U, 106);
     /* 12 路实时通道 -> 9 + 24 + 48 = 81 B。带宽表就按这个数算。 */
     CHECK(port_last_length == 81U, 107);
     return 0;
@@ -456,8 +537,8 @@ static int test_default_mask_and_steady_state_frame(void)
 
 static int test_only_the_changed_parameter_is_echoed(void)
 {
-    uint64_t roll_bit = (1ULL << (uint32_t)APP_TELEM_CH_ROLL_RATE_KD);
-    uint64_t pitch_bit = (1ULL << (uint32_t)APP_TELEM_CH_PITCH_RATE_KD);
+    APP_TelemMask roll_bit = APP_TelemMask_FromBit((uint32_t)APP_TELEM_CH_ROLL_RATE_KD);
+    APP_TelemMask pitch_bit = APP_TelemMask_FromBit((uint32_t)APP_TELEM_CH_PITCH_RATE_KD);
 
     reset_world();
     APP_TelemStream_NoteCommandSource(APP_TELEM_SINK_UART);
@@ -465,21 +546,21 @@ static int test_only_the_changed_parameter_is_echoed(void)
     (void)APP_TelemStream_SetActive(1U);
     APP_TelemStream_Tick();   /* 首帧建影子 */
     APP_TelemStream_Tick();   /* 稳态帧 */
-    CHECK((frame_mask() & param_mask()) == 0ULL, 200);
+    CHECK(APP_TelemMask_IsEmpty(APP_TelemMask_And(frame_mask(), param_mask())) != 0U, 200);
 
     port_values[APP_TELEM_CH_ROLL_RATE_KD] = 1.25f;
     APP_TelemStream_Tick();
-    CHECK((frame_mask() & param_mask()) == roll_bit, 201);
-    CHECK((frame_mask() & pitch_bit) == 0ULL, 202);
+    CHECK(mask_equal(APP_TelemMask_And(frame_mask(), param_mask()), roll_bit), 201);
+    CHECK(APP_TelemMask_IsEmpty(APP_TelemMask_And(frame_mask(), pitch_bit)) != 0U, 202);
 
     /* 只回显一帧，下一帧就不再带了。 */
     APP_TelemStream_Tick();
-    CHECK((frame_mask() & param_mask()) == 0ULL, 203);
+    CHECK(APP_TelemMask_IsEmpty(APP_TelemMask_And(frame_mask(), param_mask())) != 0U, 203);
 
     /* 值没变就不置位，哪怕重复写同一个数。 */
     port_values[APP_TELEM_CH_ROLL_RATE_KD] = 1.25f;
     APP_TelemStream_Tick();
-    CHECK((frame_mask() & param_mask()) == 0ULL, 204);
+    CHECK(APP_TelemMask_IsEmpty(APP_TelemMask_And(frame_mask(), param_mask())) != 0U, 204);
     return 0;
 }
 
@@ -497,7 +578,7 @@ static int test_send_failure_keeps_the_dirty_bit(void)
     APP_TelemStream_Tick();      /* 发失败 */
     port_uart_fails = 0U;
     APP_TelemStream_Tick();      /* 必须补发 */
-    CHECK((frame_mask() & (1ULL << (uint32_t)APP_TELEM_CH_VEL_Z_KD)) != 0ULL, 250);
+    CHECK(APP_TelemMask_Test(frame_mask(), (uint32_t)APP_TELEM_CH_VEL_Z_KD) != 0U, 250);
     return 0;
 }
 
@@ -514,12 +595,20 @@ static int test_refresh_period(void)
     for (tick = 1U; tick <= 39U; ++tick) {
         APP_TelemStream_Tick();
         if (tick > 1U) {
+            /*
+             * 稳态帧必须两位全 0：FULL_REFRESH 不用说，WIDE_MASK 也必须是 0。
+             * 实时通道全在低 64 位，稳态帧因此只发 8 字节掩码；一旦哪个高通道
+             * 漏进了稳态掩码，每帧就白涨 8 B，40 Hz 下 312 B/s，默认配置会被
+             * 顶过数传 60% 带宽门限——那种回归在波形上完全看不出来。
+             */
             CHECK(frame_flags() == 0U, 301);
         }
     }
     APP_TelemStream_Tick();
-    CHECK(frame_flags() == APP_TELEM_FRAME_FLAG_FULL_REFRESH, 302);
-    CHECK(frame_mask() == APP_TelemStream_DefaultMask(), 303);
+    /* 全量帧带上真名增益（通道 >= 64），所以它是宽掩码帧。 */
+    CHECK((frame_flags() & APP_TELEM_FRAME_FLAG_FULL_REFRESH) != 0U, 302);
+    CHECK((frame_flags() & APP_TELEM_FRAME_FLAG_WIDE_MASK) != 0U, 304);
+    CHECK(mask_equal(frame_mask(), APP_TelemStream_DefaultMask()), 303);
 
     /* REFRESH 0 之后永远不再出现全量帧。 */
     reset_world();
@@ -528,7 +617,12 @@ static int test_refresh_period(void)
     (void)APP_TelemStream_SetActive(1U);
     for (tick = 0U; tick < 200U; ++tick) {
         APP_TelemStream_Tick();
-        CHECK(frame_flags() == 0U, 310);
+        /*
+         * 这里只断言 FULL_REFRESH，不再断言整个 flags 为 0：复位后的第一帧会把
+         * 全部参数当脏值带上，其中含通道 >= 64，那一帧合法地是宽掩码帧。
+         * 稳态帧的"两位全 0"由上面的 301 负责。
+         */
+        CHECK((frame_flags() & APP_TELEM_FRAME_FLAG_FULL_REFRESH) == 0U, 310);
     }
     return 0;
 }
@@ -624,15 +718,23 @@ static int test_limits_are_rejected_not_truncated(void)
     CHECK(APP_TelemStream_SetRate(40U) == APP_TELEM_STREAM_OK, 702);
     CHECK(APP_TelemStream_SetRate(1U) == APP_TELEM_STREAM_OK, 703);
 
-    CHECK(APP_TelemStream_SetMask(0ULL) == APP_TELEM_STREAM_ERR_MASK, 704);
+    CHECK(APP_TelemStream_SetMask(APP_TelemMask_Zero()) == APP_TELEM_STREAM_ERR_MASK, 704);
     /* R-S5-1 fills the final u64 slot; bit 63 is now a valid channel. */
-    CHECK(APP_TelemStream_SetMask(1ULL << 63) == APP_TELEM_STREAM_OK, 705);
+    CHECK(APP_TelemStream_SetMask(APP_TelemMask_FromBit(63U)) == APP_TELEM_STREAM_OK, 705);
+    /* 高半通道（v2 宽掩码）同样必须被接受，且表外位仍要拒。 */
+    CHECK(APP_TelemStream_SetMask(APP_TelemMask_FromBit(64U)) == APP_TELEM_STREAM_OK, 709);
+    CHECK(APP_TelemStream_SetMask(APP_TelemMask_FromBit(127U))
+          == APP_TELEM_STREAM_ERR_MASK, 710);
     CHECK(APP_TelemStream_SetRefresh(61U) == APP_TELEM_STREAM_ERR_RANGE, 706);
 
     /* 出口装不下的配置：报 ERR，而且一帧都不发。 */
     port_max_payload = 40U;   /* 只放得下 4 路 */
-    CHECK(APP_TelemStream_SetMask(0xFFULL) == APP_TELEM_STREAM_ERR_TOO_LARGE, 707);
-    CHECK(APP_TelemStream_SetMask(0x0FULL) == APP_TELEM_STREAM_OK, 708);
+    {
+        APP_TelemMask m8 = {0xFFULL, 0ULL};
+        APP_TelemMask m4 = {0x0FULL, 0ULL};
+        CHECK(APP_TelemStream_SetMask(m8) == APP_TELEM_STREAM_ERR_TOO_LARGE, 707);
+        CHECK(APP_TelemStream_SetMask(m4) == APP_TELEM_STREAM_OK, 708);
+    }
 
     /* 配置期漏掉的情况由发送期兜底：可观测（回一条 ERR + drop 计数）。 */
     (void)APP_TelemStream_SetActive(1U);
@@ -796,13 +898,60 @@ def test_stream_never_runs_in_the_control_loop_context() -> None:
 def test_default_configuration_fits_the_telemetry_link() -> None:
     """数传 57600 baud = 5760 B/s；类别模式规定默认配置不得超过 60%。
 
-    稳态 12 路 = 81 B/帧 × 40 Hz，1 Hz 的全量刷新帧替换当拍的稳态帧。
+    通道数**从源码数出来**，不写死。写死的话，往通道表里加一条参数通道时这条
+    门限会继续绿着，而实机上全量刷新帧已经变长了——那正是 v2 加 20 路真名增益
+    时差点撞上的事（余量只剩 76 B/s）。
+
+    两种帧：
+      * 稳态帧 —— 只有实时通道，全部在低 64 位，所以是 24 字节窄掩码头；
+      * 全量刷新帧 —— 每 refresh 秒一帧，带上全部参数通道，含通道 >= 64，
+        所以是 32 字节宽掩码头，并且替换当拍的稳态帧（不是额外多发一帧）。
     """
-    steady_bytes = 9 + 24 + 4 * 12
-    refresh_bytes = 9 + 24 + 4 * 26
+    stream_src = read("App/Src/app_telem_stream.c")
+    table_src = read("App/Src/app_telemetry.c")
+
+    default_block = stream_src.split("app_telem_stream_default_channels[] = {", 1)[1]
+    default_block = default_block.split("};", 1)[0]
+    realtime = len(re.findall(r"APP_TELEM_CH_\w+", default_block))
+
+    table_block = table_src.split("app_telem_channels[APP_TELEM_CH_COUNT] = {", 1)[1]
+    table_block = table_block.split("\n};", 1)[0]
+    params = len(re.findall(r'"(coax\.[\w.]+)"', table_block))
+
+    assert realtime == 12
+    assert params == 33, "13 个 legacy alias + 20 路真名增益"
+
+    steady_bytes = 9 + 24 + 4 * realtime
+    refresh_bytes = 9 + 32 + 4 * (realtime + params)
     assert steady_bytes == 81
+    assert refresh_bytes == 221
+
     total = 39 * steady_bytes + refresh_bytes
-    assert total == 3296
+    assert total == 3380
     assert total <= 0.60 * 5760
     # 对照：改造前的 JustFloat 定长帧。
     assert 116 * 40 == 4640
+
+
+def test_the_full_refresh_frame_still_fits_one_uart_message() -> None:
+    """全量刷新帧要塞进一条 APP_UART_TxMessage，否则数传上整条流直接配不起来。
+
+    UART 出口上限 = APP_UART_TX_TEXT_SIZE - $X 成帧开销。加参数通道最先撞的是
+    这堵墙，不是带宽门限——SetMask 会返回 ERR_TOO_LARGE，症状是"面板一打开
+    调参页，流就停了"。
+    """
+    messages = read("App/Inc/app_messages.h")
+    tx_text_size = int(
+        re.search(r"#define APP_UART_TX_TEXT_SIZE\s+(\d+)U", messages).group(1)
+    )
+    frame_header = read("App/Inc/app_telem_frame.h")
+    overhead = int(
+        re.search(r"#define APP_TELEM_FRAME_OVERHEAD\s+(\d+)U", frame_header).group(1)
+    )
+
+    max_payload = tx_text_size - overhead
+    refresh_payload = 32 + 4 * (12 + 33)
+    assert refresh_payload == 212
+    assert refresh_payload <= max_payload, (
+        f"全量刷新帧 {refresh_payload} B 放不进 UART 出口上限 {max_payload} B"
+    )

@@ -23,6 +23,7 @@ from .layout import (
     TILE_BUTTON,
     TILE_CHANNELS,
     TILE_GAUGE,
+    TILE_SECTION,
 )
 from .tiles import (
     DASH_METRIC_STYLE,
@@ -449,6 +450,58 @@ class ChannelListTile(DashboardTile):
             self.tree.set(name, "value", "—" if latest is None else f"{latest:+.4g}")
 
 
+@register_tile
+class SectionTile(DashboardTile):
+    """分组标题条：把一屏组件在视觉上切成几块。
+
+    不绑通道、不发命令、不参与遥测掩码——它唯一的作用是让"这几张卡属于同一件
+    事"这句话不用靠记忆。控制器调参那一屏 14 张滑块平铺时，同一个环的参数散在
+    不同行，标题条是最省地方的分隔（一行 62 px，比给每组套一个带边框的容器便宜，
+    也不需要给布局模型引入嵌套）。
+    """
+
+    TYPE = TILE_SECTION
+    LABEL = "分组标题"
+    MIN_BINDINGS = 0
+    MAX_BINDINGS = 0
+    PARAM_ONLY = None
+    DEFAULT_SPAN = (12, 1)
+    OPTION_FIELDS = (
+        ("title", "标题"),
+        ("note", "副标题"),
+    )
+
+    def _build(self) -> None:
+        # 标题条不是卡片：基类默认的 Card.TFrame 会在每一组上方多出一个和参数卡
+        # 同色的空盒子，"分块"反而被读成"又一张卡"。换成页面底色 + 一条细分隔线，
+        # 空白本身就成了分组边界。
+        self.frame.configure(style="Page.TFrame", padding=(2, 4, 2, 0))
+        self.title_var = tk.StringVar(value=self._section_title())
+        self.note_var = tk.StringVar(value=self._section_note())
+        head = ttk.Frame(self.frame, style="Page.TFrame")
+        head.pack(fill=tk.X)
+        ttk.Label(head, textvariable=self.title_var,
+                  style="SectionTitle.TLabel").pack(side=tk.LEFT)
+        ttk.Label(head, textvariable=self.note_var,
+                  style="Muted.TLabel").pack(side=tk.LEFT, padx=(8, 0))
+        ttk.Frame(self.frame, height=1, style="Rule.TFrame").pack(fill=tk.X, pady=(3, 0))
+
+    def _section_title(self) -> str:
+        title = self.spec.options.get("title")
+        if isinstance(title, str) and title.strip():
+            return title.strip()
+        return self.LABEL
+
+    def _section_note(self) -> str:
+        note = self.spec.options.get("note")
+        return note.strip() if isinstance(note, str) else ""
+
+    def rebind(self) -> None:
+        super().rebind()
+        self.title_var.set(self._section_title())
+        self.note_var.set(self._section_note())
+
+
 __all__ = [
     "BUTTON_MODE_PUSH",
     "BUTTON_MODE_TOGGLE",
@@ -458,4 +511,5 @@ __all__ = [
     "ButtonTile",
     "ChannelListTile",
     "GaugeTile",
+    "SectionTile",
 ]

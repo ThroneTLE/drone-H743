@@ -184,6 +184,34 @@ uint8_t APP_TelemStream_PortSample(float *values, uint32_t count)
             (float)ctrl_debug.saturation_negative[axis];
     }
     /*
+     * 真名增益回显。这些直接读参数表，不经过 app_control 的 alias 换算——
+     * alias（roll_rate_kd 等）会把两个环的增益乘在一起，滑块拿到乘积就永远
+     * 对不上自己那一项。GetParam 失败时保持 0：读不到就显示 0，比显示上一拍
+     * 的陈旧值安全。
+     */
+    (void)DRV_COAX_CTRL_GetParam("coax.rate_roll_kp",  &vofa_data[APP_TELEM_CH_RATE_ROLL_KP]);
+    (void)DRV_COAX_CTRL_GetParam("coax.rate_pitch_kp", &vofa_data[APP_TELEM_CH_RATE_PITCH_KP]);
+    (void)DRV_COAX_CTRL_GetParam("coax.rate_yaw_kp",   &vofa_data[APP_TELEM_CH_RATE_YAW_KP]);
+    (void)DRV_COAX_CTRL_GetParam("coax.rate_roll_ki",  &vofa_data[APP_TELEM_CH_RATE_ROLL_KI]);
+    (void)DRV_COAX_CTRL_GetParam("coax.rate_pitch_ki", &vofa_data[APP_TELEM_CH_RATE_PITCH_KI]);
+    (void)DRV_COAX_CTRL_GetParam("coax.rate_yaw_ki",   &vofa_data[APP_TELEM_CH_RATE_YAW_KI]);
+    (void)DRV_COAX_CTRL_GetParam("coax.rate_roll_kd",  &vofa_data[APP_TELEM_CH_RATE_ROLL_KD]);
+    (void)DRV_COAX_CTRL_GetParam("coax.rate_pitch_kd", &vofa_data[APP_TELEM_CH_RATE_PITCH_KD]);
+    (void)DRV_COAX_CTRL_GetParam("coax.rate_yaw_kd",   &vofa_data[APP_TELEM_CH_RATE_YAW_KD]);
+    (void)DRV_COAX_CTRL_GetParam("coax.att_roll_kp",   &vofa_data[APP_TELEM_CH_ATT_ROLL_KP]);
+    (void)DRV_COAX_CTRL_GetParam("coax.att_pitch_kp",  &vofa_data[APP_TELEM_CH_ATT_PITCH_KP]);
+    (void)DRV_COAX_CTRL_GetParam("coax.att_yaw_kp",    &vofa_data[APP_TELEM_CH_ATT_YAW_KP]);
+    (void)DRV_COAX_CTRL_GetParam("coax.vel_x_kp",      &vofa_data[APP_TELEM_CH_VEL_X_KP]);
+    (void)DRV_COAX_CTRL_GetParam("coax.vel_y_kp",      &vofa_data[APP_TELEM_CH_VEL_Y_KP]);
+    (void)DRV_COAX_CTRL_GetParam("coax.vel_z_kp",      &vofa_data[APP_TELEM_CH_VEL_Z_KP]);
+    (void)DRV_COAX_CTRL_GetParam("coax.vel_x_ki",      &vofa_data[APP_TELEM_CH_VEL_X_KI]);
+    (void)DRV_COAX_CTRL_GetParam("coax.vel_y_ki",      &vofa_data[APP_TELEM_CH_VEL_Y_KI]);
+    (void)DRV_COAX_CTRL_GetParam("coax.vel_z_ki",      &vofa_data[APP_TELEM_CH_VEL_Z_KI]);
+    (void)DRV_COAX_CTRL_GetParam("coax.angular_accel_lpf_cutoff_rad_s",
+                                 &vofa_data[APP_TELEM_CH_ANGULAR_ACCEL_LPF]);
+    (void)DRV_COAX_CTRL_GetParam("coax.accel_lpf_cutoff_hz",
+                                 &vofa_data[APP_TELEM_CH_ACCEL_LPF]);
+    /*
      * 增益通道回显的口径 = `PARAM?` 的口径 = app_control_param_to_ui_value()。
      * 那个函数（app_control_ui_sign_for_param）如今对所有参数返回 +1：FLU 迁移后
      * 控制器内部增益本身就是操作者看到的正值。旧 VOFA 填充里对四个角度增益取反

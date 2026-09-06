@@ -32,7 +32,11 @@ from tools import drone_tcp_panel as panel
 from tools.panel_lib.dashboard import layout as dash_layout
 from tools.panel_lib.dashboard import tiles as dash_tiles
 from tools.panel_lib.pages import dashboard as dashboard_page
-from tools.panel_lib.telem_stream import TELEM_FRAME_HEADER_BYTES, TelemSchema
+from tools.panel_lib.telem_stream import (
+    TELEM_FRAME_HEADER_BYTES,
+    TELEM_FRAME_VERSION,
+    TelemSchema,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -66,6 +70,10 @@ class SwitchableTransport(FakeTransport):
 
 
 # 一份最小但真实形状的通道表：预设用到的曲线通道 + 两条参数通道。
+#
+# 参数通道用固件 v2 的**真名** `rate_roll_kd` / `rate_pitch_kd`（角速度环真正的
+# D，作用在差分角加速度上），不是 `roll_rate_kd` 那个换算 alias —— 出厂预设已经
+# 不摆 alias 了，装置跟着走，否则 param_card() 在预设里找不到卡。
 SCHEMA_LINES = [
     "TELEM ver=3 n=8 rate=40 page=8 hash=00000000 frame=body_flu contract=1",
     "TELEM CH idx=0 name=roll unit=deg min=-180.000 max=180.000 grp=attitude param=-",
@@ -74,14 +82,14 @@ SCHEMA_LINES = [
     "TELEM CH idx=3 name=vel_est_x unit=m/s min=-5.000 max=5.000 grp=nav param=-",
     "TELEM CH idx=4 name=vel_est_y unit=m/s min=-5.000 max=5.000 grp=nav param=-",
     "TELEM CH idx=5 name=flow_height unit=m min=0.000 max=5.000 grp=nav param=-",
-    "TELEM CH idx=6 name=roll_rate_kd unit=- min=0.000 max=10.000 grp=gain param=coax.roll_rate_kd",
-    "TELEM CH idx=7 name=pitch_rate_kd unit=- min=0.000 max=10.000 grp=gain param=coax.pitch_rate_kd",
+    "TELEM CH idx=6 name=rate_roll_kd unit=kg.m^2 min=0.000 max=10.000 grp=gain param=coax.rate_roll_kd",
+    "TELEM CH idx=7 name=rate_pitch_kd unit=kg.m^2 min=0.000 max=10.000 grp=gain param=coax.rate_pitch_kd",
     "TELEM PAGE from=0 count=8 next=-1",
 ]
 
 NAME_TO_INDEX = {
     "roll": 0, "pitch": 1, "yaw": 2, "vel_est_x": 3, "vel_est_y": 4,
-    "flow_height": 5, "roll_rate_kd": 6, "pitch_rate_kd": 7,
+    "flow_height": 5, "rate_roll_kd": 6, "rate_pitch_kd": 7,
 }
 
 
@@ -100,9 +108,11 @@ def telem_frame(values: dict[str, float], *, seq: int = 0, t_us: int = 0,
     for index in indexed:
         mask |= 1 << index
     head = struct.pack(
-        "<BBHIIHHQ", 1, 1, seq & 0xFFFF,
+        "<BBHIIHHQ", TELEM_FRAME_VERSION, 1, seq & 0xFFFF,
         schema_hash() if schema is None else schema, t_us, 0, 0, mask,
     )
+    # 本文件的测试通道表只有个位数条，全部落在低 64 位，所以永远是窄掩码帧。
+    assert mask >> 64 == 0
     assert len(head) == TELEM_FRAME_HEADER_BYTES
     return head + b"".join(
         struct.pack("<f", indexed[index]) for index in sorted(indexed)
@@ -194,8 +204,14 @@ def test_presets_are_available_out_of_the_box(app) -> None:
 
     app.dashboard_workspace_var.set(1)
     app._dashboard_switch_workspace()
-    assert len(tiles_of(app, dash_layout.TILE_PARAM)) == 14
+    assert len(tiles_of(app, dash_layout.TILE_PARAM)) == len(
+        dash_layout.PARAM_CHANNEL_NAMES
+    )
     assert len(tiles_of(app, dash_layout.TILE_WAVE)) == 2
+    # 四条分组标题条（位置/速度/角度/角速度），滑块按串级环分块。
+    assert len(tiles_of(app, dash_layout.TILE_SECTION)) == len(
+        dash_layout.PARAM_LOOP_GROUPS
+    )
 
 
 # ---------------------------------------------------------------- 可见性门控
@@ -323,8 +339,8 @@ def test_mask_is_the_union_of_bound_channels_plus_parameters(app) -> None:
     for name in ("roll", "pitch", "yaw", "vel_est_x", "vel_est_y", "flow_height"):
         assert mask & (1 << NAME_TO_INDEX[name]), name
     # 参数通道恒在掩码里：平时不置位，但 1 Hz 全量刷新帧要靠它们喂回滑块。
-    assert mask & (1 << NAME_TO_INDEX["roll_rate_kd"])
-    assert mask & (1 << NAME_TO_INDEX["pitch_rate_kd"])
+    assert mask & (1 << NAME_TO_INDEX["rate_roll_kd"])
+    assert mask & (1 << NAME_TO_INDEX["rate_pitch_kd"])
     assert f"TELEM MASK {mask:X}" in app.transport.lines
 
 
@@ -468,7 +484,7 @@ def param_card(app, name: str):
 
 
 def test_drag_is_throttled_and_release_always_sends(app) -> None:
-    card = param_card(app, "roll_rate_kd")
+    card = param_card(app, "rate_roll_kd")
     app.transport.frames.clear()
 
     card.scale_var.set(1.0)
@@ -483,12 +499,12 @@ def test_drag_is_throttled_and_release_always_sends(app) -> None:
     assert len(app.transport.frames) == 2
     function, payload = app.transport.frames[-1]
     assert function == panel.PROTO_REQ_PARAM_SET
-    assert payload.decode("utf-8").startswith("PARAM SET coax.roll_rate_kd 1.1")
+    assert payload.decode("utf-8").startswith("PARAM SET coax.rate_roll_kd 1.1")
 
 
 def test_throttle_rate_is_at_most_five_per_second(app) -> None:
     assert dash_tiles.PARAM_THROTTLE_S >= 0.2
-    card = param_card(app, "roll_rate_kd")
+    card = param_card(app, "rate_roll_kd")
     app.transport.frames.clear()
 
     start = time.monotonic()
@@ -501,20 +517,20 @@ def test_throttle_rate_is_at_most_five_per_second(app) -> None:
 
 def test_the_entry_box_sends_an_exact_value(app) -> None:
     """滑块拖不到 0.0671 这种数，输入框才是调 PID 真正用的入口。"""
-    card = param_card(app, "roll_rate_kd")
+    card = param_card(app, "rate_roll_kd")
     app.transport.frames.clear()
 
     card.entry_var.set("0.0671")
     card._on_entry_commit()
 
     assert len(app.transport.frames) == 1
-    assert app.transport.frames[0][1].decode("utf-8") == "PARAM SET coax.roll_rate_kd 0.0671"
+    assert app.transport.frames[0][1].decode("utf-8") == "PARAM SET coax.rate_roll_kd 0.0671"
     assert card.scale_var.get() == pytest.approx(0.0671)
 
 
 def test_a_malformed_entry_sends_nothing(app) -> None:
     """输错了就退回当前回显值。静默发一个 0 出去比什么都不做糟糕得多。"""
-    card = param_card(app, "roll_rate_kd")
+    card = param_card(app, "rate_roll_kd")
     app.transport.frames.clear()
     card.entry_var.set("十二")
     card._on_entry_commit()
@@ -522,7 +538,7 @@ def test_a_malformed_entry_sends_nothing(app) -> None:
 
 
 def test_matching_echo_confirms_and_a_clamped_echo_diverges(app) -> None:
-    card = param_card(app, "roll_rate_kd")
+    card = param_card(app, "rate_roll_kd")
     tracker = card.tracker
     now = time.monotonic()
 
@@ -543,7 +559,7 @@ def test_a_stale_echo_right_after_sending_does_not_diverge(app) -> None:
     发送值不是飞控值。尚未有真实回显时，界面必须保持“未知”而不是拿上位机
     刚发出去的值冒充已应用的参数。
     """
-    card = param_card(app, "roll_rate_kd")
+    card = param_card(app, "rate_roll_kd")
     tracker = card.tracker
     now = time.monotonic()
 
@@ -558,7 +574,7 @@ def test_a_stale_echo_right_after_sending_does_not_diverge(app) -> None:
 
 def test_an_echo_inside_the_throttle_window_does_not_snap_the_slider_back(app) -> None:
     """拖动中被拽回固件上一拍的值，手感就是滑块往回蹦。"""
-    card = param_card(app, "roll_rate_kd")
+    card = param_card(app, "rate_roll_kd")
     tracker = card.tracker
     now = time.monotonic()
 
@@ -569,7 +585,7 @@ def test_an_echo_inside_the_throttle_window_does_not_snap_the_slider_back(app) -
 
 def test_an_unsolicited_echo_just_follows_the_firmware(app) -> None:
     """LOAD / DEFAULTS 之后固件自己变了值：跟随，不报 diverged。"""
-    card = param_card(app, "roll_rate_kd")
+    card = param_card(app, "rate_roll_kd")
     tracker = card.tracker
     assert tracker.note_echo(4.25, time.monotonic()) == "follow"
     assert tracker.state == dash_tiles.PARAM_STATE_IDLE
@@ -577,12 +593,12 @@ def test_an_unsolicited_echo_just_follows_the_firmware(app) -> None:
 
 
 def test_param_card_refresh_drives_the_state_from_telemetry(app) -> None:
-    card = param_card(app, "roll_rate_kd")
+    card = param_card(app, "rate_roll_kd")
     app.transport.frames.clear()
     card.scale_var.set(2.5)
     card._on_release()
 
-    app._dashboard_on_binary_frame(0x2230, telem_frame({"roll_rate_kd": 2.5}))
+    app._dashboard_on_binary_frame(0x2230, telem_frame({"rate_roll_kd": 2.5}))
     card.refresh()
     assert card.state_var.get() == dash_tiles.PARAM_STATE_CONFIRMED
     assert "2.5" in card.value_var.get()
@@ -592,7 +608,7 @@ def test_param_card_refresh_survives_a_tcl_only_combobox_popdown_focus(
     app, monkeypatch,
 ) -> None:
     """打开 ttk 下拉框时，内部 popdown 没有对应的 Tkinter Widget。"""
-    card = param_card(app, "roll_rate_kd")
+    card = param_card(app, "rate_roll_kd")
     tracker = card.tracker
     assert tracker is not None
     tracker.note_echo(2.5, time.monotonic())
@@ -615,8 +631,8 @@ def test_param_card_refresh_survives_a_tcl_only_combobox_popdown_focus(
 
 def test_param_card_marks_only_a_flight_controller_echo_green(app) -> None:
     """绿色只能由遥测回显触发，不能由本机 send_param 成功触发。"""
-    card = param_card(app, "roll_rate_kd")
-    app._dashboard_on_binary_frame(0x2230, telem_frame({"roll_rate_kd": 1.0}))
+    card = param_card(app, "rate_roll_kd")
+    app._dashboard_on_binary_frame(0x2230, telem_frame({"rate_roll_kd": 1.0}))
     card.refresh()
 
     card.scale_var.set(2.5)
@@ -629,7 +645,7 @@ def test_param_card_marks_only_a_flight_controller_echo_green(app) -> None:
         dash_tiles.PARAM_FEEDBACK_PENDING_COLOUR
     )
 
-    app._dashboard_on_binary_frame(0x2230, telem_frame({"roll_rate_kd": 2.5}))
+    app._dashboard_on_binary_frame(0x2230, telem_frame({"rate_roll_kd": 2.5}))
     card.refresh()
     assert card.state_var.get() == dash_tiles.PARAM_STATE_CONFIRMED
     assert card.feedback_var.get() == "飞控已回显"
@@ -639,7 +655,7 @@ def test_param_card_marks_only_a_flight_controller_echo_green(app) -> None:
 
 
 def test_param_card_marks_a_missing_echo_red_without_claiming_the_sent_value(app) -> None:
-    card = param_card(app, "roll_rate_kd")
+    card = param_card(app, "rate_roll_kd")
     tracker = card.tracker
     assert tracker is not None
     tracker.note_sent(2.5, time.monotonic() - dash_tiles.PARAM_ECHO_TIMEOUT_S - 0.01)

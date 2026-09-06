@@ -43,14 +43,16 @@ static void app_cmd_telem_report_status(APP_TelemStreamStatus status,
 }
 
 /*
- * 16 位十六进制掩码。不用 strtoull：目标端的精简 C 库对 long long 转换不保证
- * 可用，而这里解错一位就会让上位机收到一张与它请求的完全不同的通道集合——
- * 帧自描述能挡住错位，但挡不住"我要的通道根本没发"。所以自己逐字符解，
- * 并且拒绝任何非法字符与超长输入，不做"能解多少算多少"的宽容处理。
+ * 至多 32 位十六进制掩码（128 通道）。不用 strtoull：目标端的精简 C 库对
+ * long long 转换不保证可用，而这里解错一位就会让上位机收到一张与它请求的完全
+ * 不同的通道集合——帧自描述能挡住错位，但挡不住"我要的通道根本没发"。所以自己
+ * 逐字符解，并且拒绝任何非法字符与超长输入，不做"能解多少算多少"的宽容处理。
+ *
+ * 高位在前：新数字从低位灌入 lo，lo 溢出的高 4 位左移进 hi，与打印格式同序。
  */
-static uint8_t app_cmd_telem_parse_mask(const char *text, uint64_t *value)
+static uint8_t app_cmd_telem_parse_mask(const char *text, APP_TelemMask *value)
 {
-    uint64_t parsed = 0ULL;
+    APP_TelemMask parsed = APP_TelemMask_Zero();
     uint32_t digits = 0U;
 
     if ((text == NULL) || (value == NULL) || (text[0] == '\0')) {
@@ -76,11 +78,12 @@ static uint8_t app_cmd_telem_parse_mask(const char *text, uint64_t *value)
         }
 
         digits++;
-        if (digits > 16U) {
+        if (digits > 32U) {
             return 0U;
         }
 
-        parsed = (parsed << 4) | (uint64_t)nibble;
+        parsed.hi = (parsed.hi << 4) | ((parsed.lo >> 60) & 0xFULL);
+        parsed.lo = (parsed.lo << 4) | (uint64_t)nibble;
         text++;
     }
 
@@ -163,10 +166,10 @@ void app_control_handle_telem(char **tokens, uint32_t count)
     }
 
     if (strcmp(tokens[1], "MASK") == 0) {
-        uint64_t mask = 0ULL;
+        APP_TelemMask mask = APP_TelemMask_Zero();
 
         if ((count != 3U) || (app_cmd_telem_parse_mask(tokens[2], &mask) == 0U)) {
-            APP_Control_QueueText("ERR usage TELEM MASK <hex up to 16 digits>\r\n");
+            APP_Control_QueueText("ERR usage TELEM MASK <hex up to 32 digits>\r\n");
             return;
         }
         app_cmd_telem_report_status(APP_TelemStream_SetMask(mask), "mask");

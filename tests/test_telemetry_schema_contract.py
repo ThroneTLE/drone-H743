@@ -289,6 +289,30 @@ PARAM_CHANNELS = {
     "pitch_angle_kp": "coax.pitch_angle_kp",
     "pos_z_kp": "coax.pos_z_kp",
     "vel_z_kd": "coax.vel_z_kd",
+    # v2 追加的真名增益（通道 64 起）。上面 13 条是单环 PD 时代的换算 alias，
+    # 保留只为不重排历史通道号；调参真正该动的是下面这些。
+    # 注意 `roll_rate_kd`（alias，其实是角速度环的 P）与 `rate_roll_kd`（真正的
+    # 角速度环 D）是两条不同的通道，名字只差词序。
+    "rate_roll_kp": "coax.rate_roll_kp",
+    "rate_pitch_kp": "coax.rate_pitch_kp",
+    "rate_yaw_kp": "coax.rate_yaw_kp",
+    "rate_roll_ki": "coax.rate_roll_ki",
+    "rate_pitch_ki": "coax.rate_pitch_ki",
+    "rate_yaw_ki": "coax.rate_yaw_ki",
+    "rate_roll_kd": "coax.rate_roll_kd",
+    "rate_pitch_kd": "coax.rate_pitch_kd",
+    "rate_yaw_kd": "coax.rate_yaw_kd",
+    "att_roll_kp": "coax.att_roll_kp",
+    "att_pitch_kp": "coax.att_pitch_kp",
+    "att_yaw_kp": "coax.att_yaw_kp",
+    "vel_x_kp": "coax.vel_x_kp",
+    "vel_y_kp": "coax.vel_y_kp",
+    "vel_z_kp": "coax.vel_z_kp",
+    "vel_x_ki": "coax.vel_x_ki",
+    "vel_y_ki": "coax.vel_y_ki",
+    "vel_z_ki": "coax.vel_z_ki",
+    "angular_accel_lpf": "coax.angular_accel_lpf_cutoff_rad_s",
+    "accel_lpf": "coax.accel_lpf_cutoff_hz",
 }
 
 
@@ -362,8 +386,9 @@ def test_frame_length_and_period_derive_from_the_channel_table() -> None:
     # the frame or de-syncs the advertised rate.
     assert "(values == NULL) || (count != (uint32_t)APP_TELEM_CH_COUNT)" in port
     assert "app_telem_stream.rate_hz           = APP_TELEM_RATE_HZ;" in stream
-    # 掩码是 u64，表长超过 64 必须先升帧版本而不是悄悄加一条。
-    assert "_Static_assert((int)APP_TELEM_CH_COUNT <= 64," in read("App/Inc/app_telemetry.h")
+    # 掩码 v2 是变长 64/128 位，表长超过 128 必须先升帧版本而不是悄悄加一条。
+    assert ("_Static_assert((int)APP_TELEM_CH_COUNT <= 128,"
+            in read("App/Inc/app_telemetry.h"))
 
 
 def test_channel_table_covers_every_enum_id() -> None:

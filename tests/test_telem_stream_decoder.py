@@ -2,7 +2,7 @@
 
 四件事：
 
-  1. **黄金向量对称**：`tests/golden/telem_frames_v1.bin` 是固件自己的编码器在
+  1. **黄金向量对称**：`tests/golden/telem_frames_v2.bin` 是固件自己的编码器在
      宿主 gcc 上产出的字节（见 `tests/test_telem_stream_contract.py`）。这里把
      那份文件原样喂进 transport + 解码器，断言解出来的值与固件编码时的输入
      完全相同。两端不允许各写各的"看起来一样"。
@@ -25,7 +25,10 @@ import pytest
 from tools.panel_lib import transport as transport_module
 from tools.panel_lib.telem_stream import (
     TELEM_FRAME_FLAG_FULL_REFRESH,
+    TELEM_FRAME_FLAG_WIDE_MASK,
     TELEM_FRAME_HEADER_BYTES,
+    TELEM_FRAME_HEADER_BYTES_WIDE,
+    TELEM_FRAME_MAX_CHANNELS,
     TelemDecoder,
     TelemRing,
     TelemSchema,
@@ -134,7 +137,7 @@ def test_decoder_reproduces_exactly_what_the_firmware_encoded() -> None:
         decoder = TelemDecoder(schema_hash=schema)
         samples = decoder.feed(payload)
 
-        channels = [i for i in range(64) if mask >> i & 1]
+        channels = [i for i in range(TELEM_FRAME_MAX_CHANNELS) if mask >> i & 1]
         assert len(samples) == count
         for sample_index, sample in enumerate(samples):
             assert sample.seq == seq
@@ -147,7 +150,7 @@ def test_decoder_reproduces_exactly_what_the_firmware_encoded() -> None:
 
 def test_a_frame_whose_length_disagrees_with_its_mask_is_dropped_whole() -> None:
     """长度和掩码对不上就是错位的开始，半解一帧比丢一帧危险得多。"""
-    payload = struct.pack("<BBHIIHHQ", 1, 1, 0, 0x1234, 0, 0, 0, 0b111)
+    payload = struct.pack("<BBHIIHHQ", 2, 1, 0, 0x1234, 0, 0, 0, 0b111)
     decoder = TelemDecoder(schema_hash=0x1234)
 
     assert decoder.feed(payload + struct.pack("<ff", 1.0, 2.0)) == []
@@ -160,18 +163,58 @@ def test_a_frame_whose_length_disagrees_with_its_mask_is_dropped_whole() -> None
 
 def test_unknown_version_and_empty_mask_are_rejected() -> None:
     decoder = TelemDecoder(schema_hash=0x1234)
-    assert decoder.feed(struct.pack("<BBHIIHHQ", 2, 1, 0, 0x1234, 0, 0, 0, 1) +
+    # v1 现在也是"未知版本"。v1 的 flags bit1 恒为 0，拿 v1 规则去读一个 v2 宽掩码
+    # 帧会把掩码高 8 字节当成前两个通道的值；版本号拦得比长度校验更早也更说得清。
+    assert decoder.feed(struct.pack("<BBHIIHHQ", 1, 1, 0, 0x1234, 0, 0, 0, 1) +
                         struct.pack("<f", 1.0)) == []
     assert decoder.stats.rejected_version == 1
-    assert decoder.feed(struct.pack("<BBHIIHHQ", 1, 1, 0, 0x1234, 0, 0, 0, 0)) == []
+    assert decoder.feed(struct.pack("<BBHIIHHQ", 3, 1, 0, 0x1234, 0, 0, 0, 1) +
+                        struct.pack("<f", 1.0)) == []
+    assert decoder.stats.rejected_version == 2
+    assert decoder.feed(struct.pack("<BBHIIHHQ", 2, 1, 0, 0x1234, 0, 0, 0, 0)) == []
     assert decoder.stats.rejected_mask == 1
-    assert decoder.feed(b"\x01\x01") == []
+    assert decoder.feed(b"\x02\x01") == []
     assert decoder.stats.rejected_length == 1
+
+
+def test_wide_mask_frames_decode_and_narrow_ones_stay_24_bytes() -> None:
+    """v2 的变长掩码：头长必须只从 flags 推，不能靠长度倒推。
+
+    宽窄搞反的后果是静默错位——把掩码高 8 字节当成前两个通道的值，而长度校验
+    还可能正好通过。所以两侧都钉：bit63 必须仍是 24 字节头，bit64 必须是 32
+    字节头，且解出来的通道号要对得上。
+    """
+    narrow = expected_frame(count=1, seq=0, schema=0x55, t_us=0, dt_us=0,
+                            flags=0, mask=1 << 63, values=[6.5])
+    wide = expected_frame(count=1, seq=1, schema=0x55, t_us=0, dt_us=0,
+                          flags=0, mask=1 << 64, values=[7.5])
+    both = expected_frame(count=1, seq=2, schema=0x55, t_us=0, dt_us=0,
+                          flags=0, mask=(1 << 0) | (1 << 64), values=[1.0, 2.0])
+
+    # payload = 整帧减去 $X 的 8 字节前缀和 1 字节 CRC。
+    assert len(narrow) - 9 == TELEM_FRAME_HEADER_BYTES + 4
+    assert len(wide) - 9 == TELEM_FRAME_HEADER_BYTES_WIDE + 4
+
+    decoder = TelemDecoder(schema_hash=0x55)
+    assert decoder.feed(narrow[8:-1])[0].values == {63: 6.5}
+    assert decoder.feed(wide[8:-1])[0].values == {64: 7.5}
+    # 跨边界时通道号仍是全局编号，低半的 0 排在高半的 64 前面。
+    assert decoder.feed(both[8:-1])[0].values == {0: 1.0, 64: 2.0}
+    assert decoder.stats.rejected_total == 0
+
+
+def test_a_wide_flag_without_the_extra_eight_bytes_is_rejected() -> None:
+    """flags 说宽、字节数却是窄的 —— 整帧丢，不许"按窄的读读看"。"""
+    decoder = TelemDecoder(schema_hash=0x1234)
+    payload = struct.pack("<BBHIIHHQ", 2, 1, 0, 0x1234, 0, 0,
+                          TELEM_FRAME_FLAG_WIDE_MASK, 1) + struct.pack("<f", 1.0)
+    assert decoder.feed(payload) == []
+    assert decoder.stats.rejected_total == 1
 
 
 def test_channels_outside_the_table_are_rejected_not_ignored() -> None:
     decoder = TelemDecoder(schema_hash=0x1234, channel_count=8)
-    payload = struct.pack("<BBHIIHHQ", 1, 1, 0, 0x1234, 0, 0, 0, 1 << 30)
+    payload = struct.pack("<BBHIIHHQ", 2, 1, 0, 0x1234, 0, 0, 0, 1 << 30)
     assert decoder.feed(payload + struct.pack("<f", 1.0)) == []
     assert decoder.stats.rejected_mask == 1
 
@@ -180,7 +223,7 @@ def test_sequence_gaps_are_counted() -> None:
     decoder = TelemDecoder(schema_hash=0x99)
 
     def frame(seq: int) -> bytes:
-        return struct.pack("<BBHIIHHQ", 1, 1, seq, 0x99, seq * 1000, 0, 0, 1) + \
+        return struct.pack("<BBHIIHHQ", 2, 1, seq, 0x99, seq * 1000, 0, 0, 1) + \
             struct.pack("<f", float(seq))
 
     for seq in (0, 1, 2):
@@ -202,7 +245,7 @@ def test_timestamps_are_unwrapped_across_the_32_bit_rollover() -> None:
     decoder = TelemDecoder(schema_hash=0x99)
 
     def frame(seq: int, t_us: int) -> bytes:
-        return struct.pack("<BBHIIHHQ", 1, 1, seq, 0x99, t_us, 0, 0, 1) + \
+        return struct.pack("<BBHIIHHQ", 2, 1, seq, 0x99, t_us, 0, 0, 1) + \
             struct.pack("<f", 0.0)
 
     first = decoder.feed(frame(0, 0xFFFFFF00))[0]
@@ -374,7 +417,15 @@ def test_schema_exposes_the_parameter_binding_for_sliders(tmp_path) -> None:
     assert not by_name["roll"].is_parameter
     # 滑块由通道表数据驱动生成，上位机不再自备一张增益表。
     sliders = [c.name for c in schema.ordered() if c.is_parameter]
-    assert len(sliders) == 13
+    assert len(sliders) == 33
+
+    # 名字相近但含义完全不同的一对，必须各自绑到自己的参数上：
+    # `roll_rate_kd` 是单环时代的 alias，写的是角速度环的 **P**（rate.kp[0]）；
+    # `rate_roll_kd` 才是角速度环真正的 D（作用在差分角加速度上）。
+    # 两者绑串了，调 D 的人实际在调 P，而且没有任何人会报错。
+    assert by_name["rate_roll_kd"].param == "coax.rate_roll_kd"
+    assert by_name["rate_roll_kd"].unit == "kg.m^2"
+    assert by_name["roll_rate_kd"].param != by_name["rate_roll_kd"].param
 
 
 def test_changing_any_metadata_field_changes_the_computed_hash(tmp_path) -> None:
@@ -418,7 +469,7 @@ def test_ring_is_bounded_and_ordered() -> None:
     decoder = TelemDecoder(schema_hash=None, channel_count=4)
 
     for seq in range(20):
-        payload = struct.pack("<BBHIIHHQ", 1, 1, seq & 0xFFFF, 0, seq * 1000, 0, 0, 1)
+        payload = struct.pack("<BBHIIHHQ", 2, 1, seq & 0xFFFF, 0, seq * 1000, 0, 0, 1)
         payload += struct.pack("<f", float(seq))
         ring.push_many(decoder.feed(payload))
 
@@ -437,9 +488,9 @@ def test_each_channel_keeps_its_own_timeline() -> None:
 
     # 三帧只有通道 0，第四帧才带上通道 2。
     for seq in range(3):
-        payload = struct.pack("<BBHIIHHQ", 1, 1, seq, 0, seq * 1000, 0, 0, 0b001)
+        payload = struct.pack("<BBHIIHHQ", 2, 1, seq, 0, seq * 1000, 0, 0, 0b001)
         ring.push_many(decoder.feed(payload + struct.pack("<f", float(seq))))
-    payload = struct.pack("<BBHIIHHQ", 1, 1, 3, 0, 3000, 0, 0, 0b101)
+    payload = struct.pack("<BBHIIHHQ", 2, 1, 3, 0, 3000, 0, 0, 0b101)
     ring.push_many(decoder.feed(payload + struct.pack("<ff", 3.0, 42.0)))
 
     assert ring.used(0) == 4
@@ -451,7 +502,7 @@ def test_each_channel_keeps_its_own_timeline() -> None:
 def test_ring_clear_resets_every_channel() -> None:
     ring = TelemRing(capacity=4, channel_count=2)
     decoder = TelemDecoder(schema_hash=None, channel_count=2)
-    payload = struct.pack("<BBHIIHHQ", 1, 1, 0, 0, 0, 0, 0, 0b11)
+    payload = struct.pack("<BBHIIHHQ", 2, 1, 0, 0, 0, 0, 0, 0b11)
     ring.push_many(decoder.feed(payload + struct.pack("<ff", 1.0, 2.0)))
     assert ring.used(0) == 1
     ring.clear()

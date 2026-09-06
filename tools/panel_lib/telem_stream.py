@@ -29,12 +29,21 @@ from .proto import parse_kv
 
 
 # 帧头（payload 内部，不含 $X 那 9 字节）
-TELEM_FRAME_VERSION = 1
+#
+# v2 起掩码是变长的：flags 的 WIDE_MASK 位为 0 时掩码 8 字节（通道 0..63）、
+# 头长 24；为 1 时掩码 16 字节（通道 0..127）、头长 32。实时通道全在低 64 位，
+# 所以稳态帧仍是 24 字节头，与 v1 逐字节等长；只有触及高通道的全量刷新帧变宽。
+# **不接受 v1**：v1 的 flags bit1 恒为 0，用 v1 规则去读一个宽掩码帧会把掩码高
+# 半当成数据，长度校验虽然会拦下，但版本号拦得更早也更说得清。
+TELEM_FRAME_VERSION = 2
 TELEM_FRAME_HEADER_BYTES = 24
+TELEM_FRAME_HEADER_BYTES_WIDE = 32
 TELEM_FRAME_FLAG_FULL_REFRESH = 0x0001
-TELEM_FRAME_MAX_CHANNELS = 64
+TELEM_FRAME_FLAG_WIDE_MASK = 0x0002
+TELEM_FRAME_MAX_CHANNELS = 128
 
 _HEADER_STRUCT = struct.Struct("<BBHIIHHQ")
+_MASK_HI_STRUCT = struct.Struct("<Q")
 
 # t_us 是固件 64 位微秒时间戳的低 32 位，约 71 分钟回绕一次。
 TELEM_TIME_WRAP_US = 1 << 32
@@ -241,9 +250,10 @@ class TelemDecoder:
     """掩码帧解码器。
 
     只有**完全自洽**的帧才产出样本：版本对、长度正好等于
-    `24 + 4*count*popcount(mask)`、掩码不含表外通道、schema 指纹与当前通道表
-    一致。任何一条不满足都整帧丢弃并计数——半解的帧比丢掉的帧危险得多，
-    它长度合法、看起来正常，只是每条曲线都挪了一格。
+    `header + 4*count*popcount(mask)`（header 由 flags 的 WIDE_MASK 位决定，
+    24 或 32）、掩码不含表外通道、schema 指纹与当前通道表一致。任何一条不满足
+    都整帧丢弃并计数——半解的帧比丢掉的帧危险得多，它长度合法、看起来正常，
+    只是每条曲线都挪了一格。
     """
 
     def __init__(self, schema_hash: int | None = None,
@@ -285,6 +295,17 @@ class TelemDecoder:
             self.stats.rejected_version += 1
             return []
 
+        # 宽掩码：高 64 位紧跟在低 64 位之后，数据区随之后移 8 字节。宽窄读
+        # flags 而不是猜长度——长度校验要拿它当输入，不能反过来靠长度推宽度。
+        if flags & TELEM_FRAME_FLAG_WIDE_MASK:
+            header_bytes = TELEM_FRAME_HEADER_BYTES_WIDE
+            if len(payload) < header_bytes:
+                self.stats.rejected_length += 1
+                return []
+            mask |= _MASK_HI_STRUCT.unpack_from(payload, TELEM_FRAME_HEADER_BYTES)[0] << 64
+        else:
+            header_bytes = TELEM_FRAME_HEADER_BYTES
+
         if count == 0 or mask == 0:
             self.stats.rejected_mask += 1
             return []
@@ -297,7 +318,7 @@ class TelemDecoder:
                 return []
 
         channels = [i for i in range(TELEM_FRAME_MAX_CHANNELS) if mask >> i & 1]
-        expected = TELEM_FRAME_HEADER_BYTES + 4 * count * len(channels)
+        expected = header_bytes + 4 * count * len(channels)
         if len(payload) != expected:
             self.stats.rejected_length += 1
             return []
@@ -311,7 +332,7 @@ class TelemDecoder:
         self._note_seq(seq)
 
         floats = struct.unpack_from(f"<{count * len(channels)}f", payload,
-                                    TELEM_FRAME_HEADER_BYTES)
+                                    header_bytes)
         full = bool(flags & TELEM_FRAME_FLAG_FULL_REFRESH)
         samples: list[TelemSample] = []
         for sample_index in range(count):
@@ -422,7 +443,9 @@ class TelemRing:
 
 __all__ = [
     "TELEM_FRAME_FLAG_FULL_REFRESH",
+    "TELEM_FRAME_FLAG_WIDE_MASK",
     "TELEM_FRAME_HEADER_BYTES",
+    "TELEM_FRAME_HEADER_BYTES_WIDE",
     "TELEM_FRAME_MAX_CHANNELS",
     "TELEM_FRAME_VERSION",
     "TELEM_TIME_WRAP_US",

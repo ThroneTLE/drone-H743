@@ -12,8 +12,11 @@ import json
 from tools.panel_lib.dashboard.layout import (
     DASHBOARD_COLUMNS,
     DASHBOARD_MAX_ROWS,
+    ALIAS_PARAM_CHANNEL_NAMES,
     PARAM_CHANNEL_NAMES,
+    PARAM_LOOP_GROUPS,
     TILE_PARAM,
+    TILE_SECTION,
     TILE_VALUE,
     TILE_WAVE,
     DashboardLayout,
@@ -172,9 +175,54 @@ def test_controller_tuning_preset_puts_sliders_and_waves_on_one_screen() -> None
     params = [t for t in workspace.tiles if t.type == TILE_PARAM]
     waves = [t for t in workspace.tiles if t.type == TILE_WAVE]
 
-    assert len(params) == len(PARAM_CHANNEL_NAMES) == 14
+    assert len(params) == len(PARAM_CHANNEL_NAMES) == 27
     assert len(waves) == 2
-    assert [t.bindings[0] for t in params] == list(PARAM_CHANNEL_NAMES)
+    assert sorted(t.bindings[0] for t in params) == sorted(PARAM_CHANNEL_NAMES)
+
+
+def test_loop_groups_cover_every_param_channel_exactly_once() -> None:
+    """分块不是重新挑一遍参数：漏掉的那个会在工作台上永久消失。"""
+    grouped = [name for _, names in PARAM_LOOP_GROUPS for name in names]
+    assert sorted(grouped) == sorted(PARAM_CHANNEL_NAMES)
+    assert len(grouped) == len(set(grouped))
+
+
+def test_the_preset_uses_real_gain_names_not_the_legacy_aliases() -> None:
+    """出厂预设不许再摆那 14 个换算 alias。
+
+    `roll_rate_kd` 实际写的是角速度环的 **P**（rate.kp[0]），`roll_angle_kp` 是
+    两个环增益的乘积，拖一个会偷改另一个；`pos_z_ki` 在固件参数表里根本不存在。
+    真名通道（rate_*/att_*/vel_*_kp/ki）是固件 v2 追加的，含义与名字一致。
+    """
+    bound = set(controller_tuning_workspace().bound_channels())
+
+    assert not bound & set(ALIAS_PARAM_CHANNEL_NAMES), "预设里混进了换算 alias"
+    # 尤其是这两条：名字只差词序，含义一个是 P 一个是 D。
+    assert "rate_roll_kd" in bound
+    assert "roll_rate_kd" not in bound
+    # 角速度环必须是完整 PID —— D 项作用在差分出来的角加速度上，
+    # 所以它的低通截止也必须可调，否则 D 调的是噪声。
+    for name in ("rate_roll_kp", "rate_roll_ki", "rate_roll_kd", "angular_accel_lpf"):
+        assert name in bound, name
+
+
+def test_controller_tuning_preset_groups_sliders_by_control_loop() -> None:
+    """每个环一条标题条，块内滑块紧跟其后且不跨到下一块的标题上方。"""
+    tiles = controller_tuning_workspace().tiles
+    sections = [t for t in tiles if t.type == TILE_SECTION]
+
+    assert [t.options["title"] for t in sections] == [
+        title for title, _ in PARAM_LOOP_GROUPS
+    ]
+    assert [t.colspan for t in sections] == [DASHBOARD_COLUMNS] * len(PARAM_LOOP_GROUPS)
+
+    boundaries = [t.row for t in sections] + [DASHBOARD_MAX_ROWS]
+    for index, (_, names) in enumerate(PARAM_LOOP_GROUPS):
+        block = [
+            t.bindings[0] for t in tiles
+            if t.type == TILE_PARAM and boundaries[index] < t.row < boundaries[index + 1]
+        ]
+        assert block == list(names)
 
 
 def test_presets_have_no_overlaps() -> None:

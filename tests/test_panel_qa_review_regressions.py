@@ -289,7 +289,7 @@ def test_concurrent_claims_never_collide(tmp_path) -> None:
 
 def test_the_golden_fixture_is_tracked_by_git() -> None:
     """审核 Q6：`.gitignore` 的 `*.bin` 把它吞了，独立干净检出跑不了黄金向量。"""
-    golden = ROOT / "tests" / "golden" / "telem_frames_v1.bin"
+    golden = ROOT / "tests" / "golden" / "telem_frames_v2.bin"
     assert golden.exists(), "黄金向量夹具不在工作树里"
     listed = subprocess.run(
         ["git", "ls-files", "--error-unmatch", str(golden.relative_to(ROOT).as_posix())],

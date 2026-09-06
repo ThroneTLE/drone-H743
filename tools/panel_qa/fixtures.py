@@ -17,6 +17,8 @@ import re
 import struct
 from pathlib import Path
 
+from tools.panel_lib import telem_stream
+
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
@@ -98,6 +100,11 @@ def gps_position_line(*, lon_e7: int = 1210000000, lat_e7: int = 310000000,
 
 TELEM_FRAME_HEADER_FORMAT = "<BBHIIHHQ"
 
+# 从被测代码里取，不在装置里另抄一份数字：抄的那份迟早和协议漂移，而装置漂移
+# 的表现是"测试全绿、实机全红"。
+TELEM_FRAME_VERSION = telem_stream.TELEM_FRAME_VERSION
+TELEM_FRAME_FLAG_WIDE_MASK = telem_stream.TELEM_FRAME_FLAG_WIDE_MASK
+
 DEFAULT_CHANNELS = (
     # (name, unit, min, max, group, param)
     ("roll", "deg", -180.0, 180.0, "attitude", "-"),
@@ -139,9 +146,16 @@ def telemetry_frame(values: dict[int, float], *, schema_hash: int, seq: int = 0,
     mask = 0
     for index in values:
         mask |= 1 << index
+    # v2 的掩码是变长的：高 64 位有东西才发 16 字节并置 WIDE_MASK。宽窄由内容
+    # 决定，装置这里也照这条来，否则装置造出来的帧和固件造的不是同一种帧。
+    wide = mask >> 64 != 0
+    flags = TELEM_FRAME_FLAG_WIDE_MASK if wide else 0
     head = struct.pack(
-        TELEM_FRAME_HEADER_FORMAT, 1, 1, seq & 0xFFFF, schema_hash, t_us, 0, 0, mask
+        TELEM_FRAME_HEADER_FORMAT, TELEM_FRAME_VERSION, 1, seq & 0xFFFF,
+        schema_hash, t_us, 0, flags, mask & ((1 << 64) - 1),
     )
+    if wide:
+        head += struct.pack("<Q", mask >> 64)
     body = b"".join(struct.pack("<f", values[index]) for index in sorted(values))
     return head + body
 

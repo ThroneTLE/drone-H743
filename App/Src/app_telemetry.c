@@ -87,6 +87,49 @@ static const APP_TelemChannel app_telem_channels[APP_TELEM_CH_COUNT] = {
     [APP_TELEM_CH_CTRL_SAT_NEG_X] = {"ctrl_sat_neg_x", "bool", "cascade", 0.0f, 1.0f, "-"},
     [APP_TELEM_CH_CTRL_SAT_NEG_Y] = {"ctrl_sat_neg_y", "bool", "cascade", 0.0f, 1.0f, "-"},
     [APP_TELEM_CH_CTRL_SAT_NEG_Z] = {"ctrl_sat_neg_z", "bool", "cascade", 0.0f, 1.0f, "-"},
+
+    /*
+     * 串级四环的真名增益（通道 64 起）。量程不是拍脑袋的"0..10"：滑块拖到头
+     * 的那个值必须是这一项物理上还说得通的上界，否则拖到 30% 就已经炸机。
+     * 每条的上界都锚在默认值或机体惯量上，注释里写清锚点，改机体时跟着改。
+     *
+     * 下界一律 0：DRV_COAX_CTRL_SetParam 直接拒绝负值，给负量程只会让滑块
+     * 左半段全是静默失败。
+     */
+    /* 角速度环 P：N.m/(rad/s)。默认 roll/pitch 0.1104/0.1138，yaw = Izz*0.15。 */
+    [APP_TELEM_CH_RATE_ROLL_KP]  = {"rate_roll_kp",  "N.m/(rad/s)", "gain", 0.0f, 1.0f,    "coax.rate_roll_kp"},
+    [APP_TELEM_CH_RATE_PITCH_KP] = {"rate_pitch_kp", "N.m/(rad/s)", "gain", 0.0f, 1.0f,    "coax.rate_pitch_kp"},
+    [APP_TELEM_CH_RATE_YAW_KP]   = {"rate_yaw_kp",   "N.m/(rad/s)", "gain", 0.0f, 0.002f,  "coax.rate_yaw_kp"},
+    /* 角速度环 I：N.m/rad。上界锚在各轴积分限幅（0.010 / 0.010 / 0.0002 N.m）。 */
+    [APP_TELEM_CH_RATE_ROLL_KI]  = {"rate_roll_ki",  "N.m/rad", "gain", 0.0f, 0.5f,   "coax.rate_roll_ki"},
+    [APP_TELEM_CH_RATE_PITCH_KI] = {"rate_pitch_ki", "N.m/rad", "gain", 0.0f, 0.5f,   "coax.rate_pitch_ki"},
+    [APP_TELEM_CH_RATE_YAW_KI]   = {"rate_yaw_ki",   "N.m/rad", "gain", 0.0f, 0.01f,  "coax.rate_yaw_ki"},
+    /*
+     * 角速度环 D：作用在**差分得到的角加速度**上，量纲就是转动惯量 kg.m^2，
+     * 所以上界锚在机体惯量本身（Ixx=Iyy=0.051、Izz=0.00035）。Kd 取到 1×J
+     * 相当于把一整个惯量的加速度反馈回去，再大就该怀疑是差分噪声在驱动力矩了。
+     */
+    [APP_TELEM_CH_RATE_ROLL_KD]  = {"rate_roll_kd",  "kg.m^2", "gain", 0.0f, 0.05f,   "coax.rate_roll_kd"},
+    [APP_TELEM_CH_RATE_PITCH_KD] = {"rate_pitch_kd", "kg.m^2", "gain", 0.0f, 0.05f,   "coax.rate_pitch_kd"},
+    [APP_TELEM_CH_RATE_YAW_KD]   = {"rate_yaw_kd",   "kg.m^2", "gain", 0.0f, 0.001f,  "coax.rate_yaw_kd"},
+    /* 姿态环 P：1/s。默认 roll/pitch 约 0.61/0.58，yaw 约 6.67。 */
+    [APP_TELEM_CH_ATT_ROLL_KP]  = {"att_roll_kp",  "1/s", "gain", 0.0f,  5.0f, "coax.att_roll_kp"},
+    [APP_TELEM_CH_ATT_PITCH_KP] = {"att_pitch_kp", "1/s", "gain", 0.0f,  5.0f, "coax.att_pitch_kp"},
+    [APP_TELEM_CH_ATT_YAW_KP]   = {"att_yaw_kp",   "1/s", "gain", 0.0f, 20.0f, "coax.att_yaw_kp"},
+    /* 速度环 P / I。默认 kp 0.8/0.8/1.0，ki 全 0（积分限幅 1.5 m/s^2）。 */
+    [APP_TELEM_CH_VEL_X_KP] = {"vel_x_kp", "1/s",   "gain", 0.0f, 5.0f, "coax.vel_x_kp"},
+    [APP_TELEM_CH_VEL_Y_KP] = {"vel_y_kp", "1/s",   "gain", 0.0f, 5.0f, "coax.vel_y_kp"},
+    [APP_TELEM_CH_VEL_Z_KP] = {"vel_z_kp", "1/s",   "gain", 0.0f, 5.0f, "coax.vel_z_kp"},
+    [APP_TELEM_CH_VEL_X_KI] = {"vel_x_ki", "1/s^2", "gain", 0.0f, 5.0f, "coax.vel_x_ki"},
+    [APP_TELEM_CH_VEL_Y_KI] = {"vel_y_ki", "1/s^2", "gain", 0.0f, 5.0f, "coax.vel_y_ki"},
+    [APP_TELEM_CH_VEL_Z_KI] = {"vel_z_ki", "1/s^2", "gain", 0.0f, 5.0f, "coax.vel_z_ki"},
+    /*
+     * 两个微分低通截止。它们不是"手感"参数：D 项吃的是差分噪声还是真信号
+     * 全看这两个值，调 Kd 之前先把它定下来，所以必须和 Kd 摆在同一屏。
+     * 默认 188.4956 rad/s（30 Hz）与 20 Hz；0 表示不滤波（直接用原始差分）。
+     */
+    [APP_TELEM_CH_ANGULAR_ACCEL_LPF] = {"angular_accel_lpf", "rad/s", "gain", 0.0f, 628.0f, "coax.angular_accel_lpf_cutoff_rad_s"},
+    [APP_TELEM_CH_ACCEL_LPF]         = {"accel_lpf",         "Hz",    "gain", 0.0f, 100.0f, "coax.accel_lpf_cutoff_hz"},
 };
 
 _Static_assert((sizeof(app_telem_channels) / sizeof(app_telem_channels[0])) ==

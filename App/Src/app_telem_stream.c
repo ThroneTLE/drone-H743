@@ -41,7 +41,7 @@ static const uint8_t app_telem_stream_default_channels[] = {
 
 typedef struct {
     uint32_t        rate_hz;
-    uint64_t        mask;
+    APP_TelemMask   mask;
     uint32_t        refresh_s;
     APP_TelemFormat format;
     APP_TelemSink   sink;
@@ -52,7 +52,7 @@ typedef struct {
     uint32_t        drops;
     uint32_t        usb_lost;
     uint32_t        refresh_accum_ms;
-    uint64_t        dirty;
+    APP_TelemMask   dirty;
     uint32_t        shadow[APP_TELEM_CH_COUNT];
     uint8_t         shadow_valid;
     uint8_t         encode_error_latched;
@@ -74,26 +74,27 @@ static float   app_telem_stream_packed[APP_TELEM_CH_COUNT];
 /* 内部工具                                                            */
 /* ------------------------------------------------------------------ */
 
-static uint64_t telem_stream_all_mask(void)
+static APP_TelemMask telem_stream_all_mask(void)
 {
-    uint32_t count = (uint32_t)APP_TELEM_CH_COUNT;
+    APP_TelemMask mask = APP_TelemMask_Zero();
+    uint32_t index;
 
-    if (count >= 64U) {
-        return ~0ULL;
+    for (index = 0U; index < (uint32_t)APP_TELEM_CH_COUNT; ++index) {
+        mask = APP_TelemMask_Or(mask, APP_TelemMask_FromBit(index));
     }
 
-    return (1ULL << count) - 1ULL;
+    return mask;
 }
 
 /* 参数回显通道的位集合。这些通道按变化发，不进稳态帧。 */
-static uint64_t telem_stream_param_mask(void)
+static APP_TelemMask telem_stream_param_mask(void)
 {
-    uint64_t mask = 0ULL;
+    APP_TelemMask mask = APP_TelemMask_Zero();
     uint32_t index;
 
     for (index = 0U; index < (uint32_t)APP_TELEM_CH_COUNT; ++index) {
         if (APP_Telemetry_ChannelHasParam(index) != 0U) {
-            mask |= (1ULL << index);
+            mask = APP_TelemMask_Or(mask, APP_TelemMask_FromBit(index));
         }
     }
 
@@ -111,16 +112,17 @@ static uint32_t telem_stream_period_ms(void)
     return (1000U / hz) > 0U ? (1000U / hz) : 1U;
 }
 
-uint64_t APP_TelemStream_DefaultMask(void)
+APP_TelemMask APP_TelemStream_DefaultMask(void)
 {
-    uint64_t mask = telem_stream_param_mask();
+    APP_TelemMask mask = telem_stream_param_mask();
     uint32_t index;
 
     for (index = 0U;
          index < (sizeof(app_telem_stream_default_channels) /
                   sizeof(app_telem_stream_default_channels[0]));
          ++index) {
-        mask |= (1ULL << app_telem_stream_default_channels[index]);
+        mask = APP_TelemMask_Or(
+            mask, APP_TelemMask_FromBit(app_telem_stream_default_channels[index]));
     }
 
     return mask;
@@ -176,7 +178,7 @@ void APP_TelemStream_NoteCommandSource(APP_TelemSink source)
  * 所以按 popcount(mask) 算，不按稳态帧算——否则会出现"平时好好的，刷新那一拍
  * 突然超长"这种最难查的间歇故障。
  */
-static APP_TelemStreamStatus telem_stream_check_capacity(uint64_t mask,
+static APP_TelemStreamStatus telem_stream_check_capacity(APP_TelemMask mask,
                                                          APP_TelemSink sink)
 {
     uint32_t payload = APP_TelemFrame_PayloadLength(1U, mask);
@@ -251,13 +253,15 @@ APP_TelemStreamStatus APP_TelemStream_SetRate(uint32_t hz)
     return APP_TELEM_STREAM_OK;
 }
 
-APP_TelemStreamStatus APP_TelemStream_SetMask(uint64_t mask)
+APP_TelemStreamStatus APP_TelemStream_SetMask(APP_TelemMask mask)
 {
     APP_TelemStreamStatus status;
 
     APP_TelemStream_Init();
 
-    if ((mask == 0ULL) || ((mask & ~telem_stream_all_mask()) != 0ULL)) {
+    if ((APP_TelemMask_IsEmpty(mask) != 0U) ||
+        (APP_TelemMask_IsEmpty(
+             APP_TelemMask_AndNot(mask, telem_stream_all_mask())) == 0U)) {
         return APP_TELEM_STREAM_ERR_MASK;
     }
 
@@ -342,24 +346,29 @@ static const char *telem_stream_sink_name(APP_TelemSink sink)
 
 void APP_TelemStream_ReportStatus(void)
 {
-    char text[192];
-    uint64_t mask;
+    char text[224];
+    APP_TelemMask mask;
 
     APP_TelemStream_Init();
     mask = app_telem_stream.mask;
 
     /*
-     * 掩码按两个 32 位半打印，不用 %llX：目标端是 newlib-nano 的精简 printf，
+     * 掩码按 32 位半打印，不用 %llX：目标端是 newlib-nano 的精简 printf，
      * 长长整型转换在那里不保证可用，而 hash 和 mask 一旦打歪上位机就重建错表。
+     * 通道号越过 63 之后掩码是 128 位，这里固定发 32 个十六进制字符、高位在前，
+     * 上位机按整串解析，不靠长度猜宽度。
      */
     (void)snprintf(text, sizeof(text),
-                   "TELEM STREAM stream=%u rate=%lu mask=%08lX%08lX refresh=%lu "
+                   "TELEM STREAM stream=%u rate=%lu mask=%08lX%08lX%08lX%08lX "
+                   "refresh=%lu "
                    "fmt=%s sink=%s active=%s seq=%u frames=%lu drop=%lu "
                    "usb_lost=%lu\r\n",
                    (unsigned int)((vofaStreamActive != 0U) ? 1U : 0U),
                    (unsigned long)app_telem_stream.rate_hz,
-                   (unsigned long)((mask >> 32) & 0xFFFFFFFFULL),
-                   (unsigned long)(mask & 0xFFFFFFFFULL),
+                   (unsigned long)((mask.hi >> 32) & 0xFFFFFFFFULL),
+                   (unsigned long)(mask.hi & 0xFFFFFFFFULL),
+                   (unsigned long)((mask.lo >> 32) & 0xFFFFFFFFULL),
+                   (unsigned long)(mask.lo & 0xFFFFFFFFULL),
                    (unsigned long)app_telem_stream.refresh_s,
                    (app_telem_stream.format == APP_TELEM_FORMAT_JF) ? "jf" : "bin",
                    telem_stream_sink_name(app_telem_stream.sink),
@@ -401,7 +410,9 @@ static void telem_stream_update_dirty(const float *values)
 
         memcpy(&bits, &values[index], sizeof(bits));
         if ((first != 0U) || (bits != app_telem_stream.shadow[index])) {
-            app_telem_stream.dirty |= (1ULL << index);
+            app_telem_stream.dirty =
+                APP_TelemMask_Or(app_telem_stream.dirty,
+                                 APP_TelemMask_FromBit(index));
         }
         app_telem_stream.shadow[index] = bits;
     }
@@ -409,13 +420,13 @@ static void telem_stream_update_dirty(const float *values)
     app_telem_stream.shadow_valid = 1U;
 }
 
-static uint32_t telem_stream_pack(uint64_t mask, const float *values, float *out)
+static uint32_t telem_stream_pack(APP_TelemMask mask, const float *values, float *out)
 {
     uint32_t index;
     uint32_t used = 0U;
 
     for (index = 0U; index < (uint32_t)APP_TELEM_CH_COUNT; ++index) {
-        if ((mask & (1ULL << index)) != 0ULL) {
+        if (APP_TelemMask_Test(mask, index) != 0U) {
             out[used++] = values[index];
         }
     }
@@ -443,7 +454,7 @@ void APP_TelemStream_Tick(void)
     APP_TelemSink        sink;
     APP_TelemFrameDesc   desc;
     APP_TelemFrameStatus encoded;
-    uint64_t             send_mask;
+    APP_TelemMask        send_mask;
     uint32_t             packed;
     uint16_t             frame_length = 0U;
     uint8_t              full_refresh = 0U;
@@ -506,11 +517,12 @@ void APP_TelemStream_Tick(void)
     if (full_refresh != 0U) {
         send_mask = app_telem_stream.mask;
     } else {
-        send_mask = (app_telem_stream.mask & ~telem_stream_param_mask()) |
-                    (app_telem_stream.mask & app_telem_stream.dirty);
+        send_mask = APP_TelemMask_Or(
+            APP_TelemMask_AndNot(app_telem_stream.mask, telem_stream_param_mask()),
+            APP_TelemMask_And(app_telem_stream.mask, app_telem_stream.dirty));
     }
 
-    if (send_mask == 0ULL) {
+    if (APP_TelemMask_IsEmpty(send_mask) != 0U) {
         /* 只选了参数通道且这一拍没有变化：本来就没什么要说的。 */
         return;
     }
@@ -553,7 +565,7 @@ void APP_TelemStream_Tick(void)
      * 只有真发出去了才清脏位并推进 seq。发失败还清脏位的话，那次参数变化就
      * 永远不会再上线，滑块会一直停在 pending。
      */
-    app_telem_stream.dirty &= ~send_mask;
+    app_telem_stream.dirty = APP_TelemMask_AndNot(app_telem_stream.dirty, send_mask);
     app_telem_stream.seq++;
     app_telem_stream.frames++;
 }

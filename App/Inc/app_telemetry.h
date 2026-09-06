@@ -84,15 +84,47 @@ typedef enum {
     APP_TELEM_CH_CTRL_SAT_NEG_X,
     APP_TELEM_CH_CTRL_SAT_NEG_Y,
     APP_TELEM_CH_CTRL_SAT_NEG_Z,
+    /*
+     * 以下 20 路是串级四环的**真实**增益回显（通道 64 起，需要宽掩码帧）。
+     *
+     * 在此之前面板上能拖的 14 个滑块里有 6 个是单环 PD 时代的换算 alias：
+     * `roll_rate_kd` 实际写的是 `rate.kp[0]`（角速度环的 P），`roll_angle_kp`
+     * 是 `rate.kp[0] * att_kp[0]` 的乘积，拖任意一个都会为了保住乘积去偷改另一个
+     * 环的增益。角速度环真正的 I/D（`rate_*_ki` / `rate_*_kd`）此前没有任何 UI
+     * 入口，默认值又是 0，于是那一环实际跑的是纯 P。这一批把 46 项参数表里
+     * 调参真正要动的那些按真名摆上来，alias 保留只为不重排历史通道号。
+     */
+    APP_TELEM_CH_RATE_ROLL_KP,
+    APP_TELEM_CH_RATE_PITCH_KP,
+    APP_TELEM_CH_RATE_YAW_KP,
+    APP_TELEM_CH_RATE_ROLL_KI,
+    APP_TELEM_CH_RATE_PITCH_KI,
+    APP_TELEM_CH_RATE_YAW_KI,
+    APP_TELEM_CH_RATE_ROLL_KD,
+    APP_TELEM_CH_RATE_PITCH_KD,
+    APP_TELEM_CH_RATE_YAW_KD,
+    APP_TELEM_CH_ATT_ROLL_KP,
+    APP_TELEM_CH_ATT_PITCH_KP,
+    APP_TELEM_CH_ATT_YAW_KP,
+    APP_TELEM_CH_VEL_X_KP,
+    APP_TELEM_CH_VEL_Y_KP,
+    APP_TELEM_CH_VEL_Z_KP,
+    APP_TELEM_CH_VEL_X_KI,
+    APP_TELEM_CH_VEL_Y_KI,
+    APP_TELEM_CH_VEL_Z_KI,
+    APP_TELEM_CH_ANGULAR_ACCEL_LPF,
+    APP_TELEM_CH_ACCEL_LPF,
     APP_TELEM_CH_COUNT
 } APP_TelemChannelId;
 
 /*
- * 通道号是掩码帧里的位号（doc/telemetry-protocol.md 的 u64 mask），
- * 所以表长有硬上限。超过 64 路要先升帧格式版本，不是悄悄加一条。
+ * 通道号是掩码帧里的位号（doc/telemetry-protocol.md）。帧格式 v2 的掩码是
+ * 变长的 64/128 位，所以硬上限是 128 路；再往上要先升帧格式版本，不是悄悄
+ * 加一条。低 64 路必须留给实时通道：稳态帧只有全部通道号 < 64 时才发窄掩码，
+ * 那 8 个字节正是默认配置卡在数传 60% 带宽门限里的余量。
  */
-_Static_assert((int)APP_TELEM_CH_COUNT <= 64,
-               "telemetry mask is u64: adding a 65th channel needs a frame version bump");
+_Static_assert((int)APP_TELEM_CH_COUNT <= 128,
+               "telemetry mask is 128-bit: adding a 129th channel needs a frame version bump");
 
 /* 遥测帧的标称周期与速率。app_telem_stream.c 用它做上电默认值。 */
 #define APP_TELEM_PERIOD_MS 25U

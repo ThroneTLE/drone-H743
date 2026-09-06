@@ -69,13 +69,13 @@ void APP_TelemStream_NoteCommandSource(APP_TelemSink source);
 
 APP_TelemStreamStatus APP_TelemStream_SetActive(uint8_t active);
 APP_TelemStreamStatus APP_TelemStream_SetRate(uint32_t hz);
-APP_TelemStreamStatus APP_TelemStream_SetMask(uint64_t mask);
+APP_TelemStreamStatus APP_TelemStream_SetMask(APP_TelemMask mask);
 APP_TelemStreamStatus APP_TelemStream_SetRefresh(uint32_t seconds);
 APP_TelemStreamStatus APP_TelemStream_SetFormat(APP_TelemFormat format);
 APP_TelemStreamStatus APP_TelemStream_SetSink(APP_TelemSink sink);
 
 /* 上电默认掩码：12 路实时通道 + 全部参数通道（后者平时不置位，不占带宽）。 */
-uint64_t APP_TelemStream_DefaultMask(void);
+APP_TelemMask APP_TelemStream_DefaultMask(void);
 
 /* 当前实际出口（把 AUTO 解开）。 */
 APP_TelemSink APP_TelemStream_ActiveSink(void);

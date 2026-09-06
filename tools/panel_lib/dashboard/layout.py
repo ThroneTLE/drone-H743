@@ -20,7 +20,8 @@ DASHBOARD_ROW_HEIGHT = 62
 DASHBOARD_MAX_ROWS = 40
 
 # 组件类型标识。字符串而不是枚举：它们要原样进 JSON，而且用户导出的布局要能
-# 用肉眼看懂。第一批（R-T1-5）三种，第二批（R-T1-5b）四种。
+# 用肉眼看懂。第一批（R-T1-5）三种，第二批（R-T1-5b）四种，外加一个不绑通道的
+# 分组标题条。
 TILE_WAVE = "wave"
 TILE_VALUE = "value"
 TILE_PARAM = "param"
@@ -28,6 +29,7 @@ TILE_GAUGE = "gauge"
 TILE_BUTTON = "button"
 TILE_ATTITUDE = "attitude"
 TILE_CHANNELS = "channels"
+TILE_SECTION = "section"
 
 LAYOUT_VERSION = 1
 
@@ -260,16 +262,58 @@ class DashboardLayout:
 
 # ------------------------------------------------------------------ 出厂预设
 
-# 14 个增益参数通道，顺序与固件通道表一致（app_telemetry.c）。
-PARAM_CHANNEL_NAMES = (
-    "roll_rate_kd", "pitch_rate_kd", "yaw_angle_kp", "yaw_rate_kd",
-    "pos_x_kp", "pos_y_kp", "vel_x_kd", "vel_y_kd",
-    "vel_loop_enable", "roll_angle_kp", "pitch_angle_kp",
-    "pos_z_kp", "pos_z_ki", "vel_z_kd",
+# 单环 PD 时代留下的、**名字与实际含义对不上**的通道（app_telemetry.c 通道
+# 7..22 里的一部分）。出厂预设一律不摆它们：
+#
+#   roll_rate_kd  实际是 rate.kp[0]           —— 角速度环的 P，不是 D
+#   roll_angle_kp 实际是 rate.kp[0]*att_kp[0] —— 两个环增益的乘积
+#   pos_z_ki      固件参数表里根本不存在，遥测值恒为 0，滑块拖不动任何东西
+#
+# 拖 `roll_angle_kp` 会为了保住那个乘积去反向改 `att_kp`，拖 `roll_rate_kd` 又
+# 会反过来改回去 —— 两个滑块互相偷改对方（DRV_COAX_CTRL_SetParam 的特判分支）。
+# 它们保留在通道表里只为不重排历史编号，需要时仍可从组件的通道下拉里选出来。
+#
+# 历史 14 个通道里的另外 7 个（pos_x/y/z_kp、vel_x/y/z_kd、vel_loop_enable）
+# 名副其实，直连参数表字段，照常进预设。
+ALIAS_PARAM_CHANNEL_NAMES = (
+    "roll_rate_kd", "pitch_rate_kd", "yaw_rate_kd",
+    "roll_angle_kp", "pitch_angle_kp", "yaw_angle_kp",
+    "pos_z_ki",
+)
+
+# 四个串级环的增益分组，用固件参数表里的**真名**（通道 64 起）。顺序就是串级
+# 从外到内：位置 → 速度 → 角度 → 角速度。这也是调参时唯一安全的推进顺序
+# （内环没稳之前动外环，看到的响应不是外环的），所以分块顺序照抄它。
+#
+# 两条不那么显然的归属：
+#
+# * `vel_loop_enable` 是速度环的总开关而不是增益，但速度环那几个 kp/ki/kd 有没有
+#   效果全看它，单独拎出去会让人对着不起作用的滑块调半天。
+# * 两个低通截止（`accel_lpf` / `angular_accel_lpf`）跟各自的 D 项放在一起。
+#   D 项吃的是差分噪声还是真信号由截止频率决定，先定它再调 Kd；不同屏的话，
+#   调 Kd 的人根本不知道自己在跟什么较劲。
+PARAM_LOOP_GROUPS = (
+    ("位置环 P", ("pos_x_kp", "pos_y_kp", "pos_z_kp")),
+    ("速度环 PID", ("vel_x_kp", "vel_y_kp", "vel_z_kp",
+                    "vel_x_ki", "vel_y_ki", "vel_z_ki",
+                    "vel_x_kd", "vel_y_kd", "vel_z_kd",
+                    "vel_loop_enable", "accel_lpf")),
+    ("角度环 P", ("att_roll_kp", "att_pitch_kp", "att_yaw_kp")),
+    ("角速度环 PID", ("rate_roll_kp", "rate_pitch_kp", "rate_yaw_kp",
+                      "rate_roll_ki", "rate_pitch_ki", "rate_yaw_ki",
+                      "rate_roll_kd", "rate_pitch_kd", "rate_yaw_kd",
+                      "angular_accel_lpf")),
+)
+
+# 出厂预设摆出来的滑块 = 上面四块拍平。顺序即摆放顺序。
+PARAM_CHANNEL_NAMES = tuple(
+    name for _, names in PARAM_LOOP_GROUPS for name in names
 )
 
 WAVE_COLSPAN, WAVE_ROWSPAN = 6, 5
 CARD_COLSPAN, CARD_ROWSPAN = 3, 2
+SECTION_ROWSPAN = 1
+PARAM_CARDS_PER_ROW = DASHBOARD_COLUMNS // CARD_COLSPAN
 
 
 def flight_monitor_workspace() -> Workspace:
@@ -297,10 +341,14 @@ def flight_monitor_workspace() -> Workspace:
 
 
 def controller_tuning_workspace() -> Workspace:
-    """“控制器调参”：14 张参数滑块卡 + 两张波形，滑块与波形同屏。
+    """“控制器调参”：两张波形 + 14 张参数滑块卡，滑块按串级环分块。
 
     R-T1-3 被打回的直接原因就是滑块和波形不在一个视野里——调参时要边拖边看
     响应，两者不同屏等于把这件事拆成了两步。
+
+    滑块此前按固件通道号顺序平铺，于是 `roll_rate_kd` 和 `roll_angle_kp` 隔着
+    七张卡，同一个环的三个轴也不挨着；调参时要在屏幕上来回找。现在改成按
+    `PARAM_LOOP_GROUPS` 分块，每块一条标题条，块内一行放得下就放一行。
     """
     tiles = [
         TileSpec(TILE_WAVE, 0, 0, WAVE_COLSPAN, WAVE_ROWSPAN,
@@ -308,10 +356,20 @@ def controller_tuning_workspace() -> Workspace:
         TileSpec(TILE_WAVE, 6, 0, WAVE_COLSPAN, WAVE_ROWSPAN,
                  ["vel_est_x", "vel_est_y"], {"title": "速度估计"}),
     ]
-    for index, name in enumerate(PARAM_CHANNEL_NAMES):
-        column = (index % 4) * CARD_COLSPAN
-        row = WAVE_ROWSPAN + (index // 4) * CARD_ROWSPAN
-        tiles.append(TileSpec(TILE_PARAM, column, row, CARD_COLSPAN, CARD_ROWSPAN, [name]))
+    row = WAVE_ROWSPAN
+    for title, names in PARAM_LOOP_GROUPS:
+        tiles.append(TileSpec(TILE_SECTION, 0, row, DASHBOARD_COLUMNS, SECTION_ROWSPAN,
+                              [], {"title": title}))
+        row += SECTION_ROWSPAN
+        for index, name in enumerate(names):
+            tiles.append(TileSpec(
+                TILE_PARAM,
+                (index % PARAM_CARDS_PER_ROW) * CARD_COLSPAN,
+                row + (index // PARAM_CARDS_PER_ROW) * CARD_ROWSPAN,
+                CARD_COLSPAN, CARD_ROWSPAN, [name],
+            ))
+        card_rows = -(-len(names) // PARAM_CARDS_PER_ROW)
+        row += card_rows * CARD_ROWSPAN
     return Workspace(name="控制器调参", tiles=tiles)
 
 
@@ -329,6 +387,7 @@ PRESET_BUILDERS = {
 
 
 __all__ = [
+    "ALIAS_PARAM_CHANNEL_NAMES",
     "CARD_COLSPAN",
     "CARD_ROWSPAN",
     "DASHBOARD_COLUMNS",
@@ -336,13 +395,17 @@ __all__ = [
     "DASHBOARD_ROW_HEIGHT",
     "DashboardLayout",
     "LAYOUT_VERSION",
+    "PARAM_CARDS_PER_ROW",
     "PARAM_CHANNEL_NAMES",
+    "PARAM_LOOP_GROUPS",
     "PRESET_BUILDERS",
+    "SECTION_ROWSPAN",
     "TILE_ATTITUDE",
     "TILE_BUTTON",
     "TILE_CHANNELS",
     "TILE_GAUGE",
     "TILE_PARAM",
+    "TILE_SECTION",
     "TILE_VALUE",
     "TILE_WAVE",
     "TileGeometry",
