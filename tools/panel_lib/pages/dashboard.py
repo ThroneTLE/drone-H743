@@ -71,6 +71,10 @@ DASHBOARD_TILE_GAP = 6
 # 没有真实窗口宽度时（测试、刚构造还没 map）用它算格子宽，保证几何可预期。
 DASHBOARD_NOMINAL_WIDTH = 1200
 DASHBOARD_STATE_KEY = "dashboard"
+# 通道表握手停滞多久算卡住。取 2 s：数传 57600 上一页（6 条 CH + 1 条 PAGE，
+# 约 600 B）在流占满带宽时最坏也就几百毫秒，2 s 没有任何一行进来就不是慢，
+# 是掉了。太短会在正常的慢链路上重复请求，白占本来就紧张的上行。
+DASHBOARD_SCHEMA_STALL_S = 2.0
 
 
 _ScrollHost = VerticalScrolledFrame
@@ -150,6 +154,10 @@ class DashboardPageMixin:
         self.dashboard_ring = TelemRing(capacity=DASHBOARD_RING_CAPACITY)
         self.dashboard_schema_pending_from: int | None = None
         self.dashboard_schema_reload_requested = False
+        # 握手进度计数（收线程只做 +1，不碰时钟）与看门狗的观察点
+        # (上次看到的计数, 观察时刻)。None = 这条链路上还没请求过。
+        self.dashboard_schema_progress = 0
+        self.dashboard_schema_watch: tuple[int, float] | None = None
         self.dashboard_stream_status: dict[str, str] = {}
         self.dashboard_frames_seen = 0
         self.dashboard_measured_hz = 0.0
@@ -532,12 +540,43 @@ class DashboardPageMixin:
             if not connected:
                 self.dashboard_stream_requested = False
             return
-        if not self.dashboard_schema.complete and self.dashboard_schema_pending_from is None:
-            self._dashboard_request_schema()
-        elif (self.dashboard_decoder.needs_schema_reload
-              and not self.dashboard_schema_reload_requested):
+        self._dashboard_drive_schema(now)
+
+    def _dashboard_drive_schema(self, now: float) -> None:
+        """通道表握手的推进器。
+
+        握手是分页的：每收到一行 `TELEM PAGE` 才请求下一页。原来没有任何超时，
+        于是**丢一行 PAGE 就永久卡住**——`pending_from` 停在那一页，界面停在
+        "等待通道表"，再也不会自己恢复。
+
+        掉行在数传出口上是常态而不是意外：文本回包和 40 Hz 二进制流挤同一条
+        深度 32、满时丢最旧的 `uartTxQueue`。USB 出口看不见这个问题，因为文本
+        是直写 CDC 的，根本不过那条队列。所以这里必须能自愈。
+        """
+        if (self.dashboard_decoder.needs_schema_reload
+                and not self.dashboard_schema_reload_requested):
             self.dashboard_schema_reload_requested = True
-            self._dashboard_request_schema()
+            self._dashboard_request_schema(now)
+            return
+        if self.dashboard_schema.complete:
+            return
+        watch = self.dashboard_schema_watch
+        if watch is None:
+            self._dashboard_request_schema(now)
+            return
+        seen, since = watch
+        if self.dashboard_schema_progress != seen:
+            # 还在往里进货，不算停滞，重新计时。
+            self.dashboard_schema_watch = (self.dashboard_schema_progress, now)
+            return
+        if (now - since) < DASHBOARD_SCHEMA_STALL_S:
+            return
+        resume = self.dashboard_schema.first_missing
+        if resume is None:
+            # 连表头都没到：整轮重来。
+            self._dashboard_request_schema(now)
+        else:
+            self._dashboard_resume_schema(now, resume)
 
     def _dashboard_stream_attached(self) -> bool:
         """本页是否已在**当前** transport 上开了流并挂上二进制 sink。"""
@@ -571,12 +610,29 @@ class DashboardPageMixin:
 
         return sink
 
-    def _dashboard_request_schema(self) -> None:
+    def _dashboard_request_schema(self, now: float | None = None) -> None:
+        """整轮重拉：丢掉半张表，从表头开始。"""
         self.dashboard_schema = TelemSchema()
         self.dashboard_schema_pending_from = 0
+        self.dashboard_schema_watch = (
+            self.dashboard_schema_progress,
+            now if now is not None else time.monotonic(),
+        )
         for command in ("TELEM?", "TELEM CH from=0"):
             if self._validation_command_allowed(command):
                 self.transport.send_line(command)
+
+    def _dashboard_resume_schema(self, now: float, from_index: int) -> None:
+        """从第一个缺口续拉，**保留已收到的通道**。
+
+        重发 `TELEM?` 会把已经拼好的部分推倒重来（表头到达即清空残表）。近百行
+        的握手在掉行的链路上因此永远收敛不了——每一轮都被下一次掉行打回原点。
+        """
+        self.dashboard_schema_pending_from = from_index
+        self.dashboard_schema_watch = (self.dashboard_schema_progress, now)
+        command = f"TELEM CH from={from_index}"
+        if self._validation_command_allowed(command):
+            self.transport.send_line(command)
 
     def _dashboard_handle_line(self, line: str) -> None:
         if not hasattr(self, "dashboard_schema"):
@@ -586,17 +642,40 @@ class DashboardPageMixin:
             return
         if not self.dashboard_schema.feed_line(line):
             return
+        # 有回包就算有进展。收线程只加计数、不读时钟：看门狗的计时归 Tk 线程，
+        # 两个线程各自只碰自己那一半，不需要锁。
+        self.dashboard_schema_progress += 1
         if not line.startswith("TELEM PAGE "):
-            return
-        next_page = self.dashboard_schema.next_page
-        self.dashboard_schema_pending_from = next_page
-        if next_page is not None and self._transport_connected():
-            command = f"TELEM CH from={next_page}"
-            if self._validation_command_allowed(command):
-                self.transport.send_line(command)
             return
         if self.dashboard_schema.complete:
             self._dashboard_adopt_schema()
+            return
+        requested = self.dashboard_schema_pending_from
+        target = self._dashboard_next_page()
+        self.dashboard_schema_pending_from = target
+        if target is None or not self._transport_connected():
+            # 翻到表尾了还不齐：剩下的洞交给停滞看门狗续拉。
+            return
+        if target == requested:
+            # 刚请求的这一页连它自己的首条都没送到。立刻重发就成了按链路速度
+            # 空转的热循环，交给看门狗按 DASHBOARD_SCHEMA_STALL_S 的节奏重试。
+            return
+        command = f"TELEM CH from={target}"
+        if self._validation_command_allowed(command):
+            self.transport.send_line(command)
+
+    def _dashboard_next_page(self) -> int | None:
+        """翻页目标：固件给的 `next=`，但已经齐了的前缀直接跳过去。
+
+        单取 `next=` 会把已补好的页再拉一遍；单取"第一个缺口"则会在某条通道
+        始终收不到时卡在原地、再也走不到表尾。取两者中靠后的那个，前进和补洞
+        就都不会互相挡路。
+        """
+        nxt = self.dashboard_schema.next_page
+        hole = self.dashboard_schema.first_missing
+        if nxt is None or hole is None:
+            return None
+        return max(nxt, hole)
 
     def _dashboard_adopt_schema(self) -> None:
         """通道表齐了：绑定解码器、按名重绑所有组件、发一次掩码。"""

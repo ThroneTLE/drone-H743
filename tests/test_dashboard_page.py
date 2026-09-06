@@ -368,6 +368,165 @@ def test_a_stale_schema_hash_triggers_a_full_reload(app) -> None:
     assert "TELEM?" in app.transport.lines
 
 
+# -------------------------------------------------------- 通道表握手（掉行链路）
+#
+# 2026-09-06 实机：换到数传（CP210x 57600）之后面板永久停在"等待通道表"，USB
+# 出口下同一版固件一切正常。差别在出口——文本回包在 UART 出口上和 40 Hz 二进制
+# 流挤同一条深度 32、满时丢最旧的 `uartTxQueue`；USB 出口的文本直写 CDC，根本
+# 不过那条队列。所以数传上掉行是常态，握手必须能自愈。
+#
+# 通道表从 64 路涨到 84 路之后握手从 11 个来回涨到 14 个、71 行涨到 98 行，
+# 一轮不掉行的概率随之塌掉，才让这个一直存在的脆弱点变成必现。
+
+PAGED_CHANNELS = 84
+PAGED_PAGE_SIZE = 6
+
+
+class PagedFirmware:
+    """按固件分页口径回包的假飞控 + 一条按 `drop` 掉行的链路。
+
+    通道数与页大小取 `App/Inc/app_telemetry.h` 的真实值，为的是让来回数和行数
+    与实机一致——这个缺陷本身就是被行数放大出来的。
+    """
+
+    def __init__(self, app, drop=lambda kind, index: False) -> None:
+        self.app = app
+        self.drop = drop
+        self.consumed = 0
+
+    def _reply(self, line: str):
+        if line == "TELEM?":
+            yield "header", 0, (
+                f"TELEM ver=3 n={PAGED_CHANNELS} rate=40 page={PAGED_PAGE_SIZE} "
+                f"hash=00000000 frame=body_flu contract=1"
+            )
+        elif line.startswith("TELEM CH from="):
+            start = int(line.split("=", 1)[1])
+            last = min(start + PAGED_PAGE_SIZE, PAGED_CHANNELS)
+            for index in range(start, last):
+                yield "ch", index, (
+                    f"TELEM CH idx={index} name=ch{index} unit=- "
+                    f"min=0.000 max=1.000 grp=g param=-"
+                )
+            nxt = last if last < PAGED_CHANNELS else -1
+            yield "page", start, (
+                f"TELEM PAGE from={start} count={last - start} next={nxt}"
+            )
+
+    def pump(self, budget: int = 400) -> None:
+        """应答面板迄今发出的每条请求；回包会同步触发它发下一条。"""
+        while self.consumed < len(self.app.transport.lines):
+            budget -= 1
+            assert budget > 0, "面板在按链路速度空转地重发请求"
+            line = self.app.transport.lines[self.consumed]
+            self.consumed += 1
+            for kind, index, text in self._reply(line):
+                if self.drop(kind, index):
+                    continue
+                self.app._handle_board_line(text)
+
+
+def run_handshake(app, firmware, *, ticks: int = 60, dt: float = 0.5) -> bool:
+    """跑 `ticks` 拍轮询，每拍推进假时钟 dt 秒。返回通道表是否拼齐。"""
+    now = 10_000.0
+    for _ in range(ticks):
+        app._dashboard_poll_tick(now)
+        firmware.pump()
+        if app.dashboard_schema.complete:
+            return True
+        now += dt
+    return app.dashboard_schema.complete
+
+
+def telem_requests(app) -> list[str]:
+    return [line for line in app.transport.lines
+            if line == "TELEM?" or line.startswith("TELEM CH from=")]
+
+
+def test_handshake_completes_on_a_clean_link(app) -> None:
+    select_dashboard(app)
+    app.transport.lines.clear()
+    firmware = PagedFirmware(app)
+
+    assert run_handshake(app, firmware)
+    assert app.dashboard_schema.channel_count == PAGED_CHANNELS
+    # 不掉行时一次翻页到底：14 页 + 一条表头，没有任何重试。
+    assert telem_requests(app).count("TELEM?") == 1
+    assert len(telem_requests(app)) == 1 + PAGED_CHANNELS // PAGED_PAGE_SIZE
+
+
+def test_a_lost_page_line_no_longer_wedges_the_handshake(app) -> None:
+    """丢一行 `TELEM PAGE` 是"永久等待通道表"的直接成因。
+
+    分页是 PAGE 行驱动的：那一行没到，下一页就永远不会被请求。原来这里没有
+    任何超时，界面再也不会自己恢复——拔插、切页签都救不回来，只能重启面板。
+    """
+    dropped = []
+
+    def drop(kind, index):
+        if kind == "page" and index == PAGED_PAGE_SIZE and not dropped:
+            dropped.append(index)
+            return True
+        return False
+
+    select_dashboard(app)
+    app.transport.lines.clear()
+    firmware = PagedFirmware(app, drop)
+
+    assert run_handshake(app, firmware), "掉一行 PAGE 就再也拼不齐 = 永久等待通道表"
+    assert dropped == [PAGED_PAGE_SIZE]
+    # 靠续拉恢复，不是靠整轮重来：`TELEM?` 只应当发过一次。
+    assert telem_requests(app).count("TELEM?") == 1
+
+
+def test_a_stalled_handshake_stays_stuck_without_the_watchdog(app, monkeypatch) -> None:
+    """把停滞时限拉到无穷大 = 修复前的行为。必须真的卡死，否则上面那条不算证据。"""
+    def drop(kind, index):
+        return kind == "page" and index == PAGED_PAGE_SIZE
+
+    monkeypatch.setattr(dashboard_page, "DASHBOARD_SCHEMA_STALL_S", float("inf"))
+    select_dashboard(app)
+    app.transport.lines.clear()
+    firmware = PagedFirmware(app, drop)
+
+    assert not run_handshake(app, firmware)
+    assert app.dashboard_schema.first_missing == 2 * PAGED_PAGE_SIZE
+
+
+def test_lossy_link_converges_by_refilling_holes_not_by_restarting(app) -> None:
+    """均匀掉行的链路上也要收敛，而且不能靠一遍遍从表头重来。
+
+    每次重试都清空残表的话，98 行里只要还有一行会掉，就永远拼不齐——这正是
+    实机上"帧率正常、通道表永远是 -"的样子。
+    """
+    seen = {"n": 0}
+
+    def drop(kind, index):
+        seen["n"] += 1
+        return seen["n"] % 9 == 0        # 约 11% 掉行，含 PAGE 行
+
+    select_dashboard(app)
+    app.transport.lines.clear()
+    firmware = PagedFirmware(app, drop)
+
+    assert run_handshake(app, firmware, ticks=120)
+    assert telem_requests(app).count("TELEM?") == 1
+    assert sorted(app.dashboard_schema.channels) == list(range(PAGED_CHANNELS))
+
+
+def test_resume_asks_for_the_hole_not_for_the_next_page(app) -> None:
+    """续拉的起点是第一个缺口。照固件的 next= 单调往后翻，洞永远补不上。"""
+    def drop(kind, index):
+        return kind == "ch" and index == 3
+
+    select_dashboard(app)
+    app.transport.lines.clear()
+    firmware = PagedFirmware(app, drop)
+    run_handshake(app, firmware, ticks=10)
+
+    assert "TELEM CH from=3" in app.transport.lines
+
+
 # ---------------------------------------------------------------- 数据路径
 
 

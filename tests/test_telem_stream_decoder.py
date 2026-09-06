@@ -454,6 +454,41 @@ def test_a_new_header_restarts_assembly_instead_of_merging(tmp_path) -> None:
     assert schema.channels == {}
 
 
+def test_the_same_header_again_keeps_what_was_already_assembled(tmp_path) -> None:
+    """表头**没变**时重发 `TELEM?` 不能把已拼好的半张表清掉。
+
+    2026-09-06 实机：数传出口上握手要 14 个来回、近百行文本，掉行是常态。
+    只要每次重试都从表头清零，残表就永远补不齐——面板永久停在"等待通道表"。
+    """
+    lines = schema_lines_from_firmware(tmp_path)
+    header, body = lines[0], lines[1:]
+    half = build_schema([header] + body[: len(body) // 2])
+    assert not half.complete
+    kept = dict(half.channels)
+    assert kept
+
+    half.feed_line(header)                       # 重试重发的表头
+    assert half.channels == kept
+    for line in body[len(body) // 2:]:
+        half.feed_line(line)
+    assert half.complete
+
+
+def test_first_missing_points_at_the_hole_not_at_the_end(tmp_path) -> None:
+    """续拉的起点。按固件的 next= 单调前进补不回中间掉的那一行。"""
+    lines = schema_lines_from_firmware(tmp_path)
+    schema = build_schema(lines)
+    assert schema.first_missing is None           # 表齐了就没有缺口
+
+    holed = [line for line in lines if "idx=5 " not in line]
+    assert len(holed) == len(lines) - 1
+    schema = build_schema(holed)
+    assert not schema.complete
+    assert schema.first_missing == 5
+
+    assert TelemSchema().first_missing is None    # 连表头都没到
+
+
 def test_fnv1a_matches_the_firmware_seed_and_prime() -> None:
     # 与 App/Src/app_telemetry.c 的 0x811C9DC5 / 0x01000193 同源的已知向量。
     assert fnv1a("") == 0x811C9DC5

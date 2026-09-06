@@ -133,6 +133,14 @@ class TelemSchema:
             body_frame != "body_flu" or frame_contract <= 0
         ):
             return False
+        arriving = (version, channel_count, rate_hz, reported_hash,
+                    body_frame, frame_contract)
+        # 表头换了就重新装配：上一轮的残表不能和新表混在一起。表头**没换**时
+        # 保留已收到的通道——数传出口上握手要 14 个来回、近百行文本，中途掉行
+        # 是常态，每次重试都清零的话残表永远补不齐（2026-09-06 实机：面板卡在
+        # "等待通道表"不动）。hash 覆盖整张表的全部字段，相等即可安全续拼。
+        if arriving != self.identity:
+            self.channels = {}
         self.version = version
         self.channel_count = channel_count
         self.rate_hz = rate_hz
@@ -140,10 +148,14 @@ class TelemSchema:
         self.reported_hash = reported_hash
         self.body_frame = body_frame
         self.frame_contract = frame_contract
-        # 表头到达即重新开始装配：上一轮的残表不能和新表混在一起。
-        self.channels = {}
         self.next_page = 0
         return True
+
+    @property
+    def identity(self) -> tuple:
+        """这张表是"哪一张"。字段与固件表头一一对应，用于判断能否续拼。"""
+        return (self.version, self.channel_count, self.rate_hz,
+                self.reported_hash, self.body_frame, self.frame_contract)
 
     def _feed_channel(self, line: str) -> bool:
         values = parse_kv(line)
@@ -180,6 +192,19 @@ class TelemSchema:
             and len(self.channels) == self.channel_count
             and set(self.channels) == set(range(self.channel_count))
         )
+
+    @property
+    def first_missing(self) -> int | None:
+        """还没收到的最小通道号；表齐了或还没表头则为 None。
+
+        续拉的起点。掉一行就从头重来是这条链路上永远拼不齐的原因。
+        """
+        if self.channel_count <= 0:
+            return None
+        for index in range(self.channel_count):
+            if index not in self.channels:
+                return index
+        return None
 
     def ordered(self) -> list[TelemChannel]:
         return [self.channels[i] for i in sorted(self.channels)]
