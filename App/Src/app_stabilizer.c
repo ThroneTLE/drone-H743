@@ -1526,6 +1526,16 @@ static void stabilizer_control_prepare(StabilizerContext *ctx,
     frame->led_arm_block_reason = APP_LED_ARM_BLOCK_NO_RC;
   } else if (frame->rc_link_ok == 0U) {
     frame->led_arm_block_reason = APP_LED_ARM_BLOCK_RC_LOSS;
+  } else if (APP_Stabilizer_IsImuFrameArmLocked() != 0U) {
+    /*
+     * 与下面 IMU 健康那一档同源、同理由：坐标迁移未完成的硬锁在
+     * stabilizer_rc_update_armed() 最开头就把 rc_armed 清零并返回，所以必须
+     * 排在 rc_armed 判定之前。缺了这一档时，拨杆已打、油门已收的正常状态会
+     * 一路掉进最后的 else，把"坐标迁移未完成"误报成"拨杆没打"——实机上
+     * 2026-09-05 抓到的正是这个：IMUFRAME arm_lock=1、RC norm arm=+1000、
+     * thr01=0，灯却闪 3 下说拨杆没打。
+     */
+    frame->led_arm_block_reason = APP_LED_ARM_BLOCK_FRAME;
   } else if (APP_ImuHealth_IsArmBlocked() != 0U) {
     /*
      * 必须排在 rc_armed 判定之前：采样链失效会把 rc_armed 强制清零，
