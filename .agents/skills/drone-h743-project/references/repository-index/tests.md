@@ -4,13 +4,13 @@
 
 Read this shard only when you need existing behavioral/architecture coverage or must choose focused regression tests.
 
-Source snapshot: `e92ba6cdce2a`. Indexed files: 126.
+Source snapshot: `b00b92209247`. Indexed files: 127.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
 | `tests/conftest.py` | 离线测试套件的全局硬件护栏与状态隔离。 两条路都要堵，而且必须在**收集之前**就装上： * 物理串口 —— `serial.Serial.open` * 烧录 / 调试探针 —— `subprocess.Popen`（openocd /… | `pytest_configure`, `isolate_panel_defaults` (+3) |
 | `tests/data.txt` | — | — |
-| `tests/golden/telem_frames_v1.bin` | — | — |
+| `tests/golden/telem_frames_v2.bin` | — | — |
 | `tests/test_acceptance_v2_runtime_contract.py` | — | `test_v2a_lease_and_esc_fail_safe_are_target_owned`, `test_v2a_stage_names_match_offline_engine_and_servo_delta_is_bounded` (+1) |
 | `tests/test_action_contract.py` | Contract tests for the Action safety state machine (``App/Src/app_action.c``). An Action is any task that spans time an… | `test_01_armed_interlock_refuses_to_start`, `test_02_hard_timeout_fires_after_the_link_dies` (+15) |
 | `tests/test_airframe_model_contract.py` | — | `test_airframe_constants_capture_measured_tether_geometry`, `test_coax_defaults_use_airframe_model_not_old_placeholder_mass` (+4) |
@@ -30,8 +30,9 @@ Source snapshot: `e92ba6cdce2a`. Indexed files: 126.
 | `tests/test_control_loop_blocking_contract.py` | S6 control contracts | `test_no_blocking`, `test_notice_buffer` (+4) |
 | `tests/test_control_scheduler.py` | — | `test_control_scheduler_host_harness`, `test_scheduler_is_pure_and_declares_real_timestamp_contract` |
 | `tests/test_controller_cascade_analysis.py` | — | `test_report_refuses_old_or_unknown_frame_logs` |
-| `tests/test_dashboard_layout.py` | R-T1-5：工作台布局模型（`panel_lib/dashboard/layout.py`）。 布局规则是纯数据变换，所以这一份**不需要显示环境**：吸附、越界钳制、重叠拒绝、 序列化往返、出厂预设，全部在没有 Tk 的情况下断言。页… | `test_clamp_pulls_a_tile_back_into_the_grid`, `test_overlap_is_rejected_rather_than_pushed_aside` (+14) |
-| `tests/test_dashboard_page.py` | R-T1-5：“状态监视”工作台页（`panel_lib/pages/dashboard.py` + `dashboard/`）。 全部用真实的 `DronePanel()` + FakeTransport 驱动，照 `test_flow… | `test_the_workbench_is_the_first_tab_and_selected_by_default`, `test_panel_entry_point_only_carries_the_mount` (+54) |
+| `tests/test_crsf_parser_resync.py` | CRSF 解析器的失步与重同步（`Driver/Src/drv_elrs.c`，宿主 gcc 直接编真实源码）。 为什么专门立一份：2026-09-06 实机取证发现遥控链路 **70% 错帧率**，而 SWD 直读 UART4 的 DM… | `test_a_clean_stream_decodes_every_frame`, `test_channel_values_survive_the_packing` (+7) |
+| `tests/test_dashboard_layout.py` | R-T1-5：工作台布局模型（`panel_lib/dashboard/layout.py`）。 布局规则是纯数据变换，所以这一份**不需要显示环境**：吸附、越界钳制、重叠拒绝、 序列化往返、出厂预设，全部在没有 Tk 的情况下断言。页… | `test_clamp_pulls_a_tile_back_into_the_grid`, `test_overlap_is_rejected_rather_than_pushed_aside` (+17) |
+| `tests/test_dashboard_page.py` | R-T1-5：“状态监视”工作台页（`panel_lib/pages/dashboard.py` + `dashboard/`）。 全部用真实的 `DronePanel()` + FakeTransport 驱动，照 `test_flow… | `test_the_workbench_is_the_first_tab_and_selected_by_default`, `test_panel_entry_point_only_carries_the_mount` (+59) |
 | `tests/test_dashboard_record_service.py` | R-T1-6（TK-05）：录制的文件完整性、后台写入与失败恢复。 对应改版报告 N10–N13。每一条都先在 `tools/panel_qa/baseline_observations.py` 里作为 **基线观测**记录下修复前的事实… | `test_a_second_recording_in_the_same_second_does_not_destroy_the_first`, `test_recording_never_overwrites_a_file_that_is_already_there` (+21) |
 | `tests/test_dashboard_resize.py` | 状态监视工作台的窗口 resize 合并器。 这个层不能靠肉眼判“似乎顺了一点”：Tk 拖动窗口时会连续发出大量 Configure 事件。这里用无 Tk 的假调度器钉住三件事：同一个 12 列格宽的像素抖动不重排、 多个事件合成一次布局… | `test_resize_skips_pixel_events_that_do_not_change_a_grid_cell`, `test_resize_coalesces_multiple_grid_changes_into_one_layout_pass` (+1) |
 | `tests/test_data_organization.py` | — | `test_date_directory_helpers_are_sortable_and_validate_dates`, `test_organizer_groups_dated_and_undated_items` (+1) |
@@ -81,7 +82,7 @@ Source snapshot: `e92ba6cdce2a`. Indexed files: 126.
 | `tests/test_imucal_context_diagnostics.py` | IMUCAL? 上下文校验的报错。 背景：2026-08-29 点"应用候选到 RAM"弹出 `target IMUCAL context reply is incomplete`。这句话把收到的行全扔了，分不清三种完全不同的情况：链路根… | `test_a_silent_target_is_reported_as_a_link_problem_not_a_calibration_one`, `test_a_valid_zero_reply_names_the_snapshot_as_the_cause` (+8) |
 | `tests/test_imucal_host_protocol.py` | — | `test_wire_abi_and_chunk_commands_match_firmware`, `test_status_parser_ignores_text_and_extracts_machine_fields` (+2) |
 | `tests/test_imuframe_param_protocol.py` | IMU frame correction persistence and command-safety contract | `test_protocol_reserves_a_stable_imuframe_request_id`, `test_orientation_lives_in_versioned_fcal_aggregate` (+5) |
-| `tests/test_led_status_contract.py` | — | `test_led_status_reports_arm_block_reasons_and_flow_health` |
+| `tests/test_led_status_contract.py` | LED 状态灯契约。 原来这一份只做字符串存在性检查（`assert "APP_LED_ARM_BLOCK_NO_RC" in header`）， 从来没有验证过原因**选择逻辑**。于是 2026-09-05 实机撞上这个：坐标迁移未完… | `test_led_status_reports_arm_block_reasons_and_flow_health`, `test_every_hard_arm_gate_has_its_own_led_reason` (+3) |
 | `tests/test_link_keepalive.py` | USB CDC 空闲探活回归测试。 背景（2026-08-28 ST-Link 实测确认）：飞控在 USB CDC 上是纯命令/响应通道—— 周期性 VOFA 遥测在 App/Src/app_vofa.c 里被 APP_AiWB2_IsS… | `test_firmware_has_no_unsolicited_usb_telemetry`, `test_link_health_check_drives_the_keepalive` (+17) |
 | `tests/test_mech.py` | — | `test_s6` |
 | `tests/test_nav_ekf_contract.py` | — | `test_quality_adaptive_flow_ekf_is_owned_by_the_flow_nav_service`, `test_nav_ekf_exposes_industry_consistency_metrics` (+2) |
@@ -124,8 +125,8 @@ Source snapshot: `e92ba6cdce2a`. Indexed files: 126.
 | `tests/test_servo_type_panel_contract.py` | R-S7-5 host contracts for servo type controls and transactions | `test_servo_type_protocol_ids_are_unique_and_forwarded`, `test_type_transaction_buttons_send_only_frozen_commands` (+2) |
 | `tests/test_servo_type_protocol.py` | S7 servo output type persistence and command protocol contracts | `test_servo_type_reuses_reserved_fcal_byte_without_abi_growth`, `test_servo_type_runtime_module_defaults_legacy_records_to_bus` (+4) |
 | `tests/test_stationary_drift.py` | 静止漂移自检。 背景：六面标定解的是"摆在六个姿态下读数对不对"，但用户真正在意的是"放着不动会 不会自己飘"。这两件事不等价。飞机不动时真实角速度就是 0、真实比力就是 1 g，所以 这个检查不需要转台 —— 读数偏多少就是误差多少，也… | `test_a_still_aircraft_reports_no_drift_and_one_g`, `test_the_window_must_be_long_enough_to_show_a_trend` (+12) |
-| `tests/test_telem_stream_contract.py` | R-T1-1：遥测流 v2（固件侧）契约测试。 三部分： 1. **黄金向量**：宿主 gcc 真编译 `app_telem_frame.c` + `app_proto.c`，让固件 自己的编码器把一组给定的 mask/values 编出… | `test_encoder_matches_the_golden_vectors_byte_for_byte`, `test_golden_vector_file_is_in_sync_with_the_firmware` (+10) |
-| `tests/test_telem_stream_decoder.py` | R-T1-2：上位机遥测流解码（`tools/panel_lib/telem_stream.py` + transport 二进制分支）。 四件事： 1. **黄金向量对称**：`tests/golden/telem_frames_v1.… | `test_transport_delivers_telemetry_payloads_as_bytes`, `test_v3_schema_preserves_body_frame_provenance` (+21) |
+| `tests/test_telem_stream_contract.py` | R-T1-1：遥测流 v2（固件侧）契约测试。 三部分： 1. **黄金向量**：宿主 gcc 真编译 `app_telem_frame.c` + `app_proto.c`，让固件 自己的编码器把一组给定的 mask/values 编出… | `test_encoder_matches_the_golden_vectors_byte_for_byte`, `test_golden_vector_file_is_in_sync_with_the_firmware` (+11) |
+| `tests/test_telem_stream_decoder.py` | R-T1-2：上位机遥测流解码（`tools/panel_lib/telem_stream.py` + transport 二进制分支）。 四件事： 1. **黄金向量对称**：`tests/golden/telem_frames_v2.… | `test_transport_delivers_telemetry_payloads_as_bytes`, `test_v3_schema_preserves_body_frame_provenance` (+25) |
 | `tests/test_telemetry_schema_contract.py` | Contract tests for the VOFA telemetry channel schema (``TELEM?``). The schema exists so the ground station never has to… | `test_header_reports_version_count_rate_and_hash`, `test_every_channel_reported_exactly_once_in_fill_order` (+13) |
 | `tests/test_tk_review_regressions.py` | Regressions for the V/D-line review findings (R-S1-4 … R-S1-7). Every test here exists because the reviewer found a cri… | `test_hovering_a_viewport_does_not_steal_focus_from_an_entry`, `test_every_keyboard_owner_class_is_protected` (+8) |
 | `tests/test_tk_v_revamp.py` | V 线 TK-01/TK-02 contracts against the real offline DronePanel | `test_theme_is_global_semantic_and_contrasted`, `test_matplotlib_pages_share_the_dark_chart_theme` (+3) |

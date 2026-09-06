@@ -140,6 +140,16 @@ static uint8_t Crsf_HandleFrame(const uint8_t *frame, uint8_t total_len)
 
 /* ---------- byte-level parser ---------- */
 
+void DRV_ELRS_ResetParser(void)
+{
+    /*
+     * 字节流出现已知断点时调用（DMA 重启）。不清计数，只丢掉手上的半帧：
+     * 半帧后面接上新流的字节，一定拼出一个长度合法、CRC 必错的假帧。
+     */
+    g_frame_index = 0U;
+    g_frame_len   = 0U;
+}
+
 uint8_t DRV_ELRS_ProcessByte(uint8_t byte)
 {
     if (g_frame_index == 0U) {
@@ -261,4 +271,5 @@ void DRV_ELRS_ClearRcUpdated(void)
 uint32_t DRV_ELRS_GetRcFrames(void)       { return g_rc_frames; }
 uint32_t DRV_ELRS_GetCrcErrors(void)      { return g_crc_errors; }
 uint32_t DRV_ELRS_GetLengthErrors(void)   { return g_length_errors; }
+uint32_t DRV_ELRS_GetTotalFrames(void)    { return g_total_frames; }
 uint32_t DRV_ELRS_GetFpsX10(void)         { return g_fps_x10; }

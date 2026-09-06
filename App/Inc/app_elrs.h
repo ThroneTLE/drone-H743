@@ -55,6 +55,38 @@ uint32_t APP_ELRS_GetRcFrames(void);
 uint32_t APP_ELRS_GetCrcErrors(void);
 const DRV_ELRS_LinkStats *APP_ELRS_GetLinkStats(void);
 
+/*
+ * UART4 收侧的分项计数。`crc_err` 只说"帧坏了"，说不出坏在哪一层，而这两层
+ * 的处置完全相反：
+ *
+ *   ORE（溢出）  = 固件没及时把 DMA 里的字节取走 —— 软件问题，改调用节奏或缓冲。
+ *   FE/NE（帧错 / 噪声） = 线上电平本身就不对 —— 波特率、走线、地线，改代码没用。
+ *   aborts       = ClearErrors() 因上面任一标志整条 DMA 重启的次数。**一次重启
+ *                  就丢掉整个未消费缓冲并让解析器失步**，所以它同时是 CRC 错的
+ *                  放大器，必须单独看得见。
+ *
+ * **这些计数不进任何命令回包，只能用 SWD 直读**（作者裁决 2026-09-06）。
+ * 能挂的那几个报告函数（`app_control_report_rc_live`、`app_control_report_uart_stats`
+ * 等）都被 D2/D4 的 SHA256 钉住，那些哈希证明的是"当年从 app_control.c 逐字节
+ * 搬过来、一个字符没动"；为一组排查用的计数去破坏那个证明不划算。
+ *
+ * 于是**符号名本身就是接口**：`tools/elrs_link_diag.py` 用 `nm` 从 ELF 找地址，
+ * 再以 HOTPLUG 方式读内存——不复位、不打断飞控。改名等于改接口，
+ * `tests/test_crsf_parser_resync.py` 有机检把关。
+ */
+typedef struct {
+    uint32_t overrun;    /* ORE */
+    uint32_t framing;    /* FE  */
+    uint32_t noise;      /* NE  */
+    uint32_t parity;     /* PE  */
+    uint32_t aborts;     /* 因错误标志整条重启 RX DMA 的次数 */
+    uint32_t restarts;   /* StartRxDma() 总次数（含首次） */
+    uint32_t events;     /* HAL RxEvent 回调次数 */
+    uint32_t start_fail; /* StartRxDma() 起不来的次数：恢复路径本身失灵 */
+} APP_ELRS_RxDiag;
+
+void APP_ELRS_GetRxDiag(APP_ELRS_RxDiag *out);
+
 #ifdef __cplusplus
 }
 #endif

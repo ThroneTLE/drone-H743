@@ -37,6 +37,8 @@ typedef struct {
 } DRV_ELRS_LinkStats;
 
 void     DRV_ELRS_Init(void);
+/* 丢掉解析器手上的半帧（字节流有已知断点时调用），计数与通道值不动。 */
+void     DRV_ELRS_ResetParser(void);
 uint8_t  DRV_ELRS_ProcessByte(uint8_t byte);
 uint8_t  DRV_ELRS_Crc8(const uint8_t *data, uint8_t len);
 
@@ -54,6 +56,8 @@ void     DRV_ELRS_ClearRcUpdated(void);
 uint32_t DRV_ELRS_GetRcFrames(void);
 uint32_t DRV_ELRS_GetCrcErrors(void);
 uint32_t DRV_ELRS_GetLengthErrors(void);
+/* CRC 通过的帧总数（含链路统计等非 RC 帧）。与 RcFrames 之差 = 非 RC 帧。 */
+uint32_t DRV_ELRS_GetTotalFrames(void);
 uint32_t DRV_ELRS_GetFpsX10(void);
 
 uint8_t  DRV_ELRS_BuildTelemetry(uint8_t type, const uint8_t *payload,

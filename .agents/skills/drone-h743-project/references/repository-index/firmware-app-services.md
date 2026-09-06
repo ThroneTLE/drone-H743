@@ -4,7 +4,7 @@
 
 Read this shard only when the task touches application behavior, RTOS task bodies, control flow, diagnostics, commands, or synchronous services.
 
-Source snapshot: `833c1aa79bf7`. Indexed files: 108.
+Source snapshot: `11e7cb861041`. Indexed files: 108.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -30,7 +30,7 @@ Source snapshot: `833c1aa79bf7`. Indexed files: 108.
 | `App/Inc/app_control_internal.h` | Application behavior and task-facing logic for control internal | — |
 | `App/Inc/app_control_scheduler.h`<br>`App/Src/app_control_scheduler.c` | Application behavior and task-facing logic for control scheduler | `APP_ControlScheduler_Reset`, `APP_ControlScheduler_Step`, `APP_ControlScheduler_Commit` |
 | `App/Inc/app_diag.h`<br>`App/Src/app_diag.c` | Application behavior and task-facing logic for diag | `APP_Diag_RecordStackOverflow`, `APP_Diag_RecordMallocFailed`, `APP_Diag_GetFaultInfo` |
-| `App/Inc/app_elrs.h`<br>`App/Src/app_elrs.c` | Application behavior and task-facing logic for elrs | `APP_ELRS_Init`, `APP_ELRS_Step`, `APP_ELRS_GetChannels`, `APP_ELRS_GetLastRcMs`, `APP_ELRS_IsRcFresh`, `APP_ELRS_SendTelemetryAttitude` (+9) |
+| `App/Inc/app_elrs.h`<br>`App/Src/app_elrs.c` | Application behavior and task-facing logic for elrs | `APP_ELRS_Init`, `APP_ELRS_Step`, `APP_ELRS_GetChannels`, `APP_ELRS_GetLastRcMs`, `APP_ELRS_IsRcFresh`, `APP_ELRS_SendTelemetryAttitude` (+10) |
 | `App/Inc/app_firmware_identity.h`<br>`App/Src/app_firmware_identity.c` | Application behavior and task-facing logic for firmware identity | `APP_FirmwareIdentity_IsRangeValid`, `APP_FirmwareIdentity_ComputeCrc32`, `APP_FirmwareIdentity_Get`, `APP_FirmwareIdentity_GetCrc32` |
 | `App/Inc/app_flash.h`<br>`App/Src/app_flash.c` | Application behavior and task-facing logic for flash | `APP_Flash_ReportStartup`, `APP_Flash_RefreshStatus`, `APP_Flash_GetStatus` |
 | `App/Inc/app_flash_service.h`<br>`App/Src/app_flash_service.c` | Application behavior and task-facing logic for flash service | `APP_FlashService_Init`, `APP_FlashService_ProbeJedecId`, `APP_FlashService_ReadStatus1`, `APP_FlashService_ReadStatus2`, `APP_FlashService_ReadStatus3`, `APP_FlashService_WriteEnableProbe` (+9) |
@@ -58,7 +58,7 @@ Source snapshot: `833c1aa79bf7`. Indexed files: 108.
 | `App/Inc/app_servo_type.h`<br>`App/Src/app_servo_type.c` | Application behavior and task-facing logic for servo type | `APP_ServoType_IsValid`, `APP_ServoType_Name`, `APP_ServoType_FromName`, `APP_ServoType_ResetActive`, `APP_ServoType_PublishActive`, `APP_ServoType_GetActive` (+1) |
 | `App/Inc/app_stabilizer.h`<br>`App/Src/app_stabilizer.c` | Application behavior and task-facing logic for stabilizer | `APP_Stabilizer_LatchImuFault`, `APP_Stabilizer_ClearImuFault`, `APP_Stabilizer_MarkImuSample`, `APP_Stabilizer_ReadVofaDebug`, `APP_Stabilizer_ReadValidationImuSnapshot`, `APP_Stabilizer_ReadFlowCompensationSnapshot` (+7) |
 | `App/Inc/app_tasks.h`<br>`App/Src/app_tasks.c` | Application behavior and task-facing logic for tasks | `APP_Task_LED_Init`, `APP_Task_LED_Step`, `APP_Task_GPS_Init`, `APP_Task_GPS_Step`, `APP_Task_OpticalFlow_Init`, `APP_Task_OpticalFlow_Step` (+10) |
-| `App/Inc/app_telem_frame.h`<br>`App/Src/app_telem_frame.c` | Application behavior and task-facing logic for telem frame | `APP_TelemFrame_PopCount`, `APP_TelemFrame_PayloadLength`, `APP_TelemFrame_Encode` |
+| `App/Inc/app_telem_frame.h`<br>`App/Src/app_telem_frame.c` | Application behavior and task-facing logic for telem frame | `APP_TelemFrame_PopCount`, `APP_TelemFrame_HeaderBytes`, `APP_TelemFrame_PayloadLength`, `APP_TelemFrame_Encode` |
 | `App/Src/app_telem_port.c` | Application behavior and task-facing logic for telem port | `APP_TelemStream_PortNowUs`, `APP_TelemStream_PortDelayMs`, `APP_TelemStream_PortServiceExports`, `APP_IMU_Capture_IsExportActive`, `APP_FlightLog_IsExportActive`, `APP_TelemStream_PortUsbReady` (+7) |
 | `App/Inc/app_telem_stream.h`<br>`App/Src/app_telem_stream.c` | Application behavior and task-facing logic for telem stream | `APP_TelemStream_Init`, `APP_TelemStream_Reset`, `APP_TelemStream_NoteCommandSource`, `APP_TelemStream_SetActive`, `APP_TelemStream_SetRate`, `APP_TelemStream_SetMask` (+17) |
 | `App/Inc/app_telemetry.h`<br>`App/Src/app_telemetry.c` | Application behavior and task-facing logic for telemetry | `APP_Telemetry_ChannelHasParam`, `APP_Telemetry_ChannelCount`, `APP_Telemetry_GetChannel`, `APP_Telemetry_SchemaHash`, `APP_Telemetry_ReportHeader`, `APP_Telemetry_ReportPage` |

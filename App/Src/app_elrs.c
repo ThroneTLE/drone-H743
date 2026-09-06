@@ -27,6 +27,15 @@ static uint8_t  tx_len;
 static uint32_t rx_events;
 static uint32_t rx_errors;
 static uint32_t rx_restarts;
+/* 分项计数：见 app_elrs.h 里 APP_ELRS_RxDiag 的说明。 */
+static uint32_t rx_err_overrun;
+static uint32_t rx_err_framing;
+static uint32_t rx_err_noise;
+static uint32_t rx_err_parity;
+static uint32_t rx_aborts;
+/* StartRxDma() 起不来的次数。恢复路径本身失灵是"链路整条死掉"的唯一解释，
+ * 必须和"帧偶尔坏"分开看：前者 total/rc 会一直是 0，后者只是比例变差。 */
+static uint32_t rx_start_fail;
 
 /* ---- helpers ---- */
 
@@ -64,15 +73,32 @@ static void ClearErrors(void)
 
     if ((err == HAL_UART_ERROR_NONE) && (error_flags == 0U)) return;
 
+    /* 先按标志分类再清，否则清完就分不出是哪一层坏的。 */
+    if ((error_flags & USART_ISR_ORE) != 0U) rx_err_overrun++;
+    if ((error_flags & USART_ISR_FE)  != 0U) rx_err_framing++;
+    if ((error_flags & USART_ISR_NE)  != 0U) rx_err_noise++;
+    if ((error_flags & USART_ISR_PE)  != 0U) rx_err_parity++;
+    rx_errors++;
+
     __HAL_UART_CLEAR_FLAG(&huart4,
                           UART_CLEAR_OREF | UART_CLEAR_NEF |
                           UART_CLEAR_PEF | UART_CLEAR_FEF |
                           UART_CLEAR_RTOF | UART_CLEAR_IDLEF);
+
+    /*
+     * 逢错就整条重整流（flush FIFO + Abort + 重启 DMA）。
+     *
+     * 看着很重，实测却是目前最好的一档：2026-09-06 试过只清标志不动 DMA，真帧率
+     * 从 527/s 掉到 280/s、错帧率反而升到 72%。原因是这条路径顺带干了两件别处
+     * 没人干的事——把 HAL 的 RxState 复位（否则 StartRxDma 永远 HAL_BUSY），
+     * 以及让 UART 停一小会儿，重新收到的第一个字节大概率落在 CRSF 的帧间空隙上，
+     * 相当于一次强制重同步。收窄它之前必须先把这两件事各自补上。
+     */
+    rx_aborts++;
     __HAL_UART_SEND_REQ(&huart4, UART_RXDATA_FLUSH_REQUEST);
     huart4.ErrorCode = HAL_UART_ERROR_NONE;
     dma_started = 0U;
     (void)HAL_UART_AbortReceive(&huart4);
-    rx_errors++;
 }
 
 static void StartRxDma(void)
@@ -85,12 +111,23 @@ static void StartRxDma(void)
         HAL_UARTEx_ReceiveToIdle_DMA(&huart4, dma_rx_buf, APP_ELRS_DMA_RX_SIZE);
     if (status != HAL_OK) {
         rx_errors++;
+        rx_start_fail++;
+        /*
+         * 起不来只有一个原因：HAL 的 RxState 不在 READY。下一拍再调还是 BUSY，
+         * 光靠重试永远出不来。必须在这里显式收尾——从前是靠 ClearErrors() 里
+         * 那个"逢错就 Abort"顺带把状态机复位的，把那条路径收窄之后，这里就是
+         * **唯一**的自愈点；缺了它，开机头几拍起不来就等于遥控链路整条死掉
+         * （实测 sfail=3：上电确实会失败几次）。
+         */
+        (void)HAL_UART_AbortReceive(&huart4);
         return;
     }
 
     __HAL_DMA_DISABLE_IT(huart4.hdmarx, DMA_IT_HT);
     SuppressRxIrqSources();
     BSP_Cache_InvalidateDCache(dma_rx_buf, APP_ELRS_DMA_RX_SIZE);
+    /* 重启 = 字节流断了一截，解析器手上的半帧已经无意义，留着必然拼出一个坏帧。 */
+    DRV_ELRS_ResetParser();
     dma_started = 1U;
     rx_restarts++;
 }
@@ -162,6 +199,12 @@ void APP_ELRS_Init(void)
     rx_events   = 0U;
     rx_errors   = 0U;
     rx_restarts = 0U;
+    rx_err_overrun = 0U;
+    rx_err_framing = 0U;
+    rx_err_noise   = 0U;
+    rx_err_parity  = 0U;
+    rx_aborts      = 0U;
+    rx_start_fail  = 0U;
 
     StartRxDma();
 }
@@ -173,14 +216,35 @@ void APP_ELRS_Step(void)
     /* consume new bytes from DMA circular buffer */
     BSP_Cache_InvalidateDCache(dma_rx_buf, APP_ELRS_DMA_RX_SIZE);
     uint16_t write_pos = DmaWritePos();
+    uint32_t consumed  = 0U;
 
     while (dma_rx_pos != write_pos) {
         if (DRV_ELRS_ProcessByte(dma_rx_buf[dma_rx_pos]) != 0U) {
             DRV_ELRS_MarkRcFrameTime(HAL_GetTick());
         }
         dma_rx_pos++;
+        consumed++;
         if (dma_rx_pos >= APP_ELRS_DMA_RX_SIZE)
             dma_rx_pos = 0U;
+    }
+
+    /*
+     * 帧间空闲 = 确定的重同步点。
+     *
+     * CRSF 是靠"地址字节"起头的字节流，没有转义也没有帧定界符，而
+     * `Crsf_IsCommonAddress()` 有 26% 的字节值会被当成地址。所以一旦失步，解析器
+     * 就在 payload 里一个字节一个字节地撞运气，一次失步能连打十几二十个假帧，
+     * 期间真帧全被吃掉——实测失步状态下 crc_err 高达 700/s 而真帧只剩 280/s。
+     *
+     * 但链路本身给了一个干净的定界：500 Hz 下 26 字节一帧只占 0.62 ms，帧与帧
+     * 之间有约 1.4 ms 空闲。本函数由 IMU 就绪信号量驱动、约 1 kHz 调用，所以
+     * "这一拍一个新字节都没来"就等价于"现在落在帧间空隙里"。此刻解析器手上若
+     * 还攥着半帧，那半帧永远等不到剩下的字节，留着只会和下一帧的头拼成假帧。
+     *
+     * 丢掉它，下一个字节就必然是真正的帧头——失步的代价从"十几帧"压回"一帧"。
+     */
+    if (consumed == 0U) {
+        DRV_ELRS_ResetParser();
     }
 
     if (DmaNeedsRestart() != 0U) {
@@ -312,3 +376,17 @@ void APP_ELRS_OnError(void)
 uint32_t APP_ELRS_GetRcFrames(void)  { return DRV_ELRS_GetRcFrames(); }
 uint32_t APP_ELRS_GetCrcErrors(void) { return DRV_ELRS_GetCrcErrors(); }
 const DRV_ELRS_LinkStats *APP_ELRS_GetLinkStats(void) { return DRV_ELRS_GetLinkStats(); }
+
+void APP_ELRS_GetRxDiag(APP_ELRS_RxDiag *out)
+{
+    if (out == NULL) return;
+
+    out->overrun  = rx_err_overrun;
+    out->framing  = rx_err_framing;
+    out->noise    = rx_err_noise;
+    out->parity   = rx_err_parity;
+    out->aborts   = rx_aborts;
+    out->restarts = rx_restarts;
+    out->events     = rx_events;
+    out->start_fail = rx_start_fail;
+}

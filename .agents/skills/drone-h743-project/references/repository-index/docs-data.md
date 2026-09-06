@@ -4,7 +4,7 @@
 
 Read this shard only when the task needs architecture rationale, controller math, historical evidence, captures, datasets, or agent-support documentation.
 
-Document snapshot: `dbd5ff785358`; aggregate snapshot: `c22f307d252d`. Covered files: 336.
+Document snapshot: `9835a2086d75`; aggregate snapshot: `c22f307d252d`. Covered files: 338.
 
 ## Documents and agent support
 
@@ -17,6 +17,7 @@ Document snapshot: `dbd5ff785358`; aggregate snapshot: `c22f307d252d`. Covered f
 | `.agents/skills/drone-h743-project/references/flu-coordinate-contract.md` | FLU Coordinate Contract | `Authority`, `Adapter Rules`, `Current Migration Status`, `Required Validation`, `Staged Physical Acceptance` |
 | `.agents/skills/drone-h743-project/references/h7-memory-domains.md` | STM32H743 Memory And Domain Notes For This Project | `先记住的结论`, `当前工程 `.ioc` 已暴露的主要内存区`, `项目内推荐的四区分工`, `1. ITCM`, `2. DTCM`, `3. D1 / AXI SRAM` (+5) |
 | `.agents/skills/drone-h743-project/references/modes/algorithm-validation.md` | 类别模式：算法验证 | `授权`, `判据（验收看这几条，不看"测试绿不绿"）`, `禁止（未经作者单独批准）`, `交付物` |
+| `.agents/skills/drone-h743-project/references/modes/frame-migration.md` | 类别模式：frame-migration（坐标系运行时迁移） | `为什么单独立一类`, `硬规矩`, `交付要求（在通用完成协议之上追加）`, `必跑` |
 | `.agents/skills/drone-h743-project/references/modes/protocol-telemetry.md` | 类别模式：协议 / 遥测改动 | `授权`, `判据`, `禁止（未经作者单独批准）`, `交付物` |
 | `.agents/skills/drone-h743-project/references/modes/tk-ui.md` | 类别模式：tk-ui | `适用`, `授权范围`, `必须保持`, `测试与判据`, `禁止`, `交付物` (+1) |
 | `.agents/skills/drone-h743-project/references/runtime-services.md` | Runtime Services And Background Work | `Ownership`, `Focused Validation` |
@@ -35,6 +36,7 @@ Document snapshot: `dbd5ff785358`; aggregate snapshot: `c22f307d252d`. Covered f
 | `doc/history/identification-and-tether-geometry-2026-07-25.md` | 系统辨识参数与结果记录 | `用户原话记录`, `坐标系与对称假设`, `质量与重心`, `舵机与推力矢量几何`, `关键点 z 坐标（原点 = 电路板中心，z+ 向上）`, `倾转机构` (+42) |
 | `doc/history/nonlinear-balance-controller-2026-07-25.md` | 非线性平衡式同轴倾转控制器 | `1. 控制目标`, `2. 坐标与已知物理量`, `3. 速度参考模型`, `4. 期望推力方向`, `5. 舵机与期望机体姿态耦合`, `6. SO(3) 姿态力矩` (+4) |
 | `doc/history/README.md` | 历史资料使用规则 | `保留内容` |
+| `doc/req-rf6-flu-runtime-migration.md` | R-F6 工单：FLU 运行时迁移（六 seam 收口） | `0. 这张工单要解决什么`, `1. 现状盘点`, `2. 子工单`, `R-F6-0 收口 seam 0 / seam 1 掩码位`, `R-F6-1 seam 2 导航口径成文 + 可执行测试`, `R-F6-2 seam 3 控制器内部表述迁移到 FLU ★核心` (+5) |
 | `doc/technical-spec.md` | drone-H743 技术规范与代码落地方案 | `1. 最终目的与范围`, `2. 角色与工作流`, `3. 架构与代码规范`, `4. 坐标与单位契约`, `5. 通信协议规范`, `6. 持久化规范` (+7) |
 | `doc/telemetry-protocol.md` | drone-H743 遥测协议 | `事实源`, `Schema v3`, ``$X` 遥测帧`, `坐标与单位`, `命令`, `Dashboard 契约` (+2) |
 

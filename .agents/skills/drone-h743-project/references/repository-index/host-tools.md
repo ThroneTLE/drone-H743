@@ -4,7 +4,7 @@
 
 Read this shard only when the task uses serial/TCP diagnostics, log analysis, identification, capture, calibration, or desktop UIs.
 
-Source snapshot: `a4b19451e3e6`; aggregate snapshot: `cf81711b8086`. Covered files: 5339.
+Source snapshot: `7f25eed70189`; aggregate snapshot: `24ea6555fa13`. Covered files: 5340.
 
 | File/module or scope | Content outline | Key entry points / size |
 |---|---|---|
@@ -16,6 +16,7 @@ Source snapshot: `a4b19451e3e6`; aggregate snapshot: `cf81711b8086`. Covered fil
 | `tools/decode_saleae_spi_csv.py` | Decode SPI bytes from a Saleae raw digital.csv export. Default mapping follows the current Saleae hookup: Channel 0 = C… | `parse_args`, `load_rows`, `decode`, `bits_to_bytes`, `fmt_bytes`, `main` |
 | `tools/drift_ab_check.py` | PIPELINE R-M3-2 · 静止漂移 A/B 采集与对比（只读）。 以 ~8Hz 轮询 `IMU?` 采集一段静止遥测，喂给 stationary_drift 分析器生成 DriftReport 并落盘，然后与最近一份历史基线（默… | `collect`, `main` |
 | `tools/drone_tcp_panel.py` | Ground-station panel for the drone-H743 Ai-WB2 transparent link | `firmware_update_link_gate`, `firmware_update_snapshot_advisory`, `airframe_record_from_line`, `ident_record_from_line`, `fit_ident_step`, `normalize_module_key` (+3) |
+| `tools/elrs_link_diag.py` | ELRS / CRSF 收链路分层计数 —— 用 SWD 直读，不占串口、不复位飞控。 这些计数**不进任何命令回包**（作者裁决 2026-09-06）：能挂的那几个报告函数都被 `tests/test_control_loop_blo… | `resolve_symbols`, `clusters`, `read_words`, `sample`, `main` |
 | `tools/esp8266_pwm_calibrator/.gitignore` | Host-side utility for .gitignore | — |
 | `tools/esp8266_pwm_calibrator/platformio.ini` | Host-side utility for platformio | — |
 | `tools/esp8266_pwm_calibrator/README.md` | ESP8266 PWM Calibrator | `Wiring`, `Build And Upload`, `Serial Protocol`, `GUI Workflow`, `OLED Status`, `Test Flow And Loss Coefficient` (+1) |
@@ -80,6 +81,6 @@ Source snapshot: `a4b19451e3e6`; aggregate snapshot: `cf81711b8086`. Covered fil
 | `tools/vofa_serial_capture.py` | Capture USART1/VOFA JustFloat telemetry from the flight controller. The firmware currently sends 28 little-endian float… | `RunningStats`, `build_parser`, `safe_text`, `split_lines`, `parse_frame`, `write_metadata` (+1) |
 | `tools/vofa_udp_bridge.py` | Bridge Ai-WB2 UDP transparent mode to fixed VOFA UDP ports. Why this exists: - Ai-WB2 auto transparent mode is configur… | `log`, `main` |
 | `tools/ground_station/ bundled tree` | Bundled application/runtime distribution; inspect an exact file only when maintaining that bundle | 5239 files / 135.6 MiB / .svg×854, .h×841, .cpp×635, .md×459, .py×257 |
-| `tools/panel_lib/ bundled tree` | Bundled application/runtime distribution; inspect an exact file only when maintaining that bundle | 29 files / 507.3 KiB / .py×29 |
+| `tools/panel_lib/ bundled tree` | Bundled application/runtime distribution; inspect an exact file only when maintaining that bundle | 29 files / 520.2 KiB / .py×29 |
 
 Open the smallest listed tool or bundle landmark first; do not preload bundled runtimes.
