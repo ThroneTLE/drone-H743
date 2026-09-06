@@ -27,17 +27,30 @@
 /*  控制律的 -K_R*e_R - K_w*e_w 结构保证——极性错了飞机会立刻发散，而不是    */
 /*  悄悄反向工作。                                                          */
 /*                                                                        */
-/*  姿态约定（已由实机确认，见 App/Src/app_sensor.c 的采集轴说明）：        */
-/*    roll_rad  > 0  →  机身右侧下沉                                       */
-/*    pitch_rad > 0  →  机头上仰                                           */
+/*  姿态约定：本层拿到的角度**口径由姿态融合的 convention 决定**，而它按    */
+/*  APP_Sensor_IsFluOrientationActive() 在 NED / NWU 之间切换：              */
+/*    roll_rad  > 0  →  机身右侧下沉   （两种口径相同）                     */
+/*    pitch_rad > 0  →  legacy(NED)=机头上仰；FLU(NWU)=机头**下俯**         */
 /*    gyro_x    > 0  →  正 roll 方向的角速率                               */
 /*    gyro_y    > 0  →  正 pitch 方向的角速率                              */
+/*  可执行证据见 tests/test_flu_seam1_estimator_frame.py。pitch 这一翻正是   */
+/*  半迁移互锁存在的原因，见 tests/test_flu_seam3_force_frame_derivation.py。*/
 /* ════════════════════════════════════════════════════════════════════════ */
 
 /*
  * 姿态角 → 力坐标系。控制律内部使用的力坐标系与实机姿态契约在 roll 上相差
- * 一个反号；此符号同时作用于实测姿态和目标姿态，因此在姿态误差中相消，
- * 不影响摇杆方向，只决定力矢量的分解方向。
+ * 一个反号。
+ *
+ * 这里曾经声称：此符号同时作用于实测姿态和目标姿态，所以会在姿态误差里
+ * 自动抵消掉。那是**错的**——姿态误差走 SO(3) 的
+ * e_R = 0.5*vee(R_d^T R_a - R_a^T R_d)，
+ * 是矩阵乘出来的非线性量；只把 Rz(psi)Ry(theta)Rx(phi) 里 Rx 的参数反号不是
+ * 相似变换（三个角同时反号才是），所以不相消，还会串到 pitch/yaw 通道。
+ * 实测（625 组，2026-09-06）：把这个常量改成 +1，beta 最大差 67.5 mrad、
+ * alpha 最大差 20.4 mrad，519/625 组输出符号翻转，而舵机角容差只有 0.8 mrad。
+ *
+ * 后果：R-F6-2 不可能"删掉常量而力矩不变"；且一旦改动，存档的
+ * ServoCalibration 极性随之失效，必须重新拆桨实测。
  */
 #define DRV_COAX_CTRL_FORCE_FRAME_ROLL_SIGN  (-1.0f)
 #define DRV_COAX_CTRL_FORCE_FRAME_PITCH_SIGN (1.0f)

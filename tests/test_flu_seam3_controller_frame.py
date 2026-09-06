@@ -21,7 +21,12 @@
 # bench question (props-off direction verification), not a host-test question.
 # This module deliberately does not assert their correctness -- only that they
 # exist, are isolated, keep gains positive, and are applied symmetrically to
-# actual and target attitude so they cancel in the attitude error.
+# actual and target attitude.
+#
+# Symmetry is NOT cancellation: the attitude error is the SO(3) expression
+# 0.5*vee(R_d^T R_a - R_a^T R_d), so flipping one Euler argument on both sides
+# is not a similarity transform and does not drop out.  Measured, executable
+# counter-evidence lives in tests/test_flu_seam3_force_frame_derivation.py.
 
 from __future__ import annotations
 
@@ -43,8 +48,9 @@ def test_frame_signs_and_gains() -> None:
     """Polarity lives in named frame constants, never in a gain.
 
     The force-frame sign must also be applied to *both* the measured and the
-    target attitude; applied to only one side it would bias the attitude error
-    instead of cancelling in it.
+    target attitude.  One-sided application would bias the attitude error
+    outright; symmetric application keeps the loop self-consistent, but the
+    sign still changes the output -- it is load-bearing, not inert.
     """
     source = read(CTRL_SOURCE)
     assert "#define DRV_COAX_CTRL_FORCE_FRAME_ROLL_SIGN  (-1.0f)" in source

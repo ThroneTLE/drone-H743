@@ -69,9 +69,11 @@ def test_control_law_is_negative_feedback_by_structure() -> None:
 def test_stick_polarity_lives_in_exactly_one_place() -> None:
     freertos = read("App/Src/app_stabilizer.c")
 
-    # The stick mapping is the only sign that changes pilot-facing direction;
-    # every other sign applies to measured and target attitude alike and
-    # therefore cancels in the attitude error.
+    # The stick mapping is the only sign that changes pilot-facing direction.
+    # The force-frame signs are applied to measured and target attitude alike,
+    # but that does NOT make them cancel -- see
+    # tests/test_flu_seam3_force_frame_derivation.py for the executable
+    # counter-evidence.
     assert "#define STABILIZER_RC_ATTITUDE_TARGET_PITCH_SIGN (-1.0f)" in freertos
     assert "#define STABILIZER_RC_ATTITUDE_TARGET_ROLL_SIGN  (-1.0f)" in freertos
     assert freertos.count("STABILIZER_RC_ATTITUDE_TARGET_PITCH_SIGN") == 2
@@ -156,7 +158,9 @@ int main(void)
      * specific direction. We only require a definite, repeatable sign here.
      */
     base_state(&att, &ref);
-    att.pitch_rad = 0.15f;              /* nose up */
+    /* Sign only -- whether +pitch is nose-up or nose-down depends on the
+     * estimator convention (NED vs NWU); this block pins relative signs. */
+    att.pitch_rad = 0.15f;
     DRV_COAX_CTRL_Run(&att, &ref, &out);
     nose_up_alpha = out.alpha_rad;
     CHECK(fabsf(nose_up_alpha) > 1.0e-3f, 7);
