@@ -4,7 +4,7 @@
 
 Read this shard only when you need existing behavioral/architecture coverage or must choose focused regression tests.
 
-Source snapshot: `bd01e564e16f`. Indexed files: 127.
+Source snapshot: `8b1319e30a93`. Indexed files: 128.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -63,6 +63,7 @@ Source snapshot: `bd01e564e16f`. Indexed files: 127.
 | `tests/test_flu_runtime_candidate_pipeline.py` | — | `test_frame_candidate_is_applied_once_before_any_estimator_consumer`, `test_frame_change_resets_state_and_selects_nwu_for_canonical_flu` (+4) |
 | `tests/test_flu_seam0_sensor_frame.py` | R-F0 seam 0 sensor FLU contract | `test_persisted_code_descriptor`, `test_mounting_comment_matches_v0` (+1) |
 | `tests/test_flu_seam1_estimator_frame.py` | R-F1 seam 1 estimator FLU contract | `test_convention_tracks_frame`, `test_flu_branch_no_sign_comp` (+3) |
+| `tests/test_flu_seam2_navigation_frame.py` | R-F6-1 seam 2 navigation frame contract. Seam 2 (navigation) was the only one of the six FLU runtime seams with no coor… | `test_svc_flow_nav_header_names_its_frames_units_and_timebases`, `test_drv_nav_ekf_header_disclaims_frame_ownership` (+3) |
 | `tests/test_flu_seam3_controller_frame.py` | R-F3 seam 3 controller FLU boundary contract | `test_frame_signs_and_gains`, `test_mount_outside_control_law` (+2) |
 | `tests/test_flu_seam4_rc_actuator_frame.py` | R-F4 seam 4 RC/actuator polarity contract | `test_stick_direction_has_exactly_one_decision_point`, `test_velocity_measurement_polarity_is_a_named_constant` (+3) |
 | `tests/test_flu_seam5_telemetry_frame.py` | R-F5 seam 5 telemetry/log frame contract | `test_replay_geometry_is_frozen`, `test_replay_converts_to_flu_only_on_recorded_provenance` (+5) |

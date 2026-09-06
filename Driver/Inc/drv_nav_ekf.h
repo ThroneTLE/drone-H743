@@ -7,6 +7,16 @@
 extern "C" {
 #endif
 
+/*
+ * R-F6-1（seam 2 导航口径，只钉现状不改数值）：
+ *
+ * 本驱动是一个纯 2D 线性卡尔曼滤波器（水平速度 + 加速度计零偏），不知道、
+ * 也不定义任何坐标系——`vel_m_s[2]`/`accel_bias_m_s2[2]` 的轴 0/轴 1 语义完全
+ * 由调用方（Services/Src/svc_flow_nav.c）决定：predict 吃 X/Y 比力，
+ * update 吃同一轴序的光流速度，本驱动只做数值滤波，不做任何旋转或重映射。
+ * 不要把这个头文件当作导航坐标系的权威定义；权威定义见
+ * Services/Inc/svc_flow_nav.h 与 Driver/Inc/drv_frame_contract.h。
+ */
 typedef struct {
     float process_accel_noise_m_s2;
     float bias_random_walk_m_s3;

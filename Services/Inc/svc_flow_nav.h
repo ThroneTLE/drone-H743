@@ -117,7 +117,21 @@ typedef enum {
     SVC_FLOW_NAV_SAMPLE_ACCEPTED
 } SVC_FLOW_NAV_SampleResult;
 
-/* Driver 解析出来的一帧原始数据，字段与 DRV_OPTICAL_FLOW_Frame 一一对应。 */
+/*
+ * Driver 解析出来的一帧原始数据，字段与 DRV_OPTICAL_FLOW_Frame 一一对应。
+ *
+ * R-F6-1（seam 2 导航口径，只钉现状不改数值）：
+ *   - flow_vel_x / flow_vel_y：MicoLink 光流传感器原始定点角速率
+ *     （int16，单位 0.01 rad/s），坐标系是传感器自身安装轴——Driver 层未成文，
+ *     不在本 seam 范围内。SVC_FlowNav 原样透传，自己不重映射轴。
+ *   - distance_mm：测距传感器读数，标量，不含机体轴信息。
+ *   - distance_received_ms / flow_received_ms：本板 HAL_GetTick() 时基（ms），
+ *     只用于新鲜度/超时判定，不用于积分步长。
+ *   - sensor_time_ms：传感器自带时钟（ms），与 distance_received_ms 不是同一条
+ *     时间轴；仅用于位移积分步长（见 SVC_FlowNav_GetLastIntegrationDtUs）。
+ *   - sample_interval_us：传感器上报的采样间隔，sensor_time_ms 差分退化时的
+ *     后备步长来源。
+ */
 typedef struct {
     uint8_t  frame_valid;
     uint8_t  distance_valid;
@@ -132,20 +146,51 @@ typedef struct {
     uint8_t  flow_quality;
 } SVC_FLOW_NAV_Sample;
 
-/* 控制环每拍喂进来的融合输入。 */
+/*
+ * 控制环每拍喂进来的融合输入。
+ *
+ * R-F6-1（只钉现状）：
+ *   - accel_x_m_s2 / accel_y_m_s2：水平比力换算出的加速度，由调用方
+ *     （app_stabilizer.c 的 stabilizer_compensated_imu_accel_nav_xy）用当前姿态
+ *     欧拉角旋转到一个**本地水平、无磁力计/GPS 参考**的世界系——偏航角是
+ *     上电后陀螺积分的相对值，不对应真北，因此不得称为 NED 或 ENU；
+ *     该世界系的 X/Y 轴指向跟随姿态源当前生效的约定（seam 0/1 迁移后为规范
+ *     FLU 前/左符号语义，legacy 分支为前/右）。本 Service 不重新定义、也不
+ *     改变这个约定，只按调用方给的值原样喂给 EKF。
+ *   - flow_vx_m_s / flow_vy_m_s：机体系光流地速，已由调用方做完旋转/偏置补偿，
+ *     但**未**旋转到导航系；X = 机体前向，Y = 机体右正（legacy 约定，
+ *     STABILIZER_VELOCITY_MEAS_Y_SIGN=+1，不是规范 FLU 的左正）——这是尚未
+ *     完成的 seam 3/4 残留，不由本 seam 修正。
+ *   - dt_sec：控制环节拍（秒），只喂给 EKF predict，不用于位移积分。
+ *   - now_ms：调用方的 HAL_GetTick()，与 SVC_FLOW_NAV_Sample 的
+ *     distance_received_ms/flow_received_ms 同一条时间轴。
+ */
 typedef struct {
-    float    accel_x_m_s2;   /* 导航系水平加速度，已由稳定环做完姿态补偿 */
+    float    accel_x_m_s2;
     float    accel_y_m_s2;
-    float    flow_vx_m_s;    /* 已做完旋转补偿的机体系光流速度 */
+    float    flow_vx_m_s;
     float    flow_vy_m_s;
     uint8_t  flow_valid;
     uint8_t  flow_quality;
     uint32_t flow_sample_ms;
-    float    dt_sec;         /* 控制环节拍，只给 EKF predict 用 */
+    float    dt_sec;
     uint32_t now_ms;
 } SVC_FLOW_NAV_FuseInput;
 
-/* 只读快照，供 App 组装 FLOW? / STATUS 报告。 */
+/*
+ * 只读快照，供 App 组装 FLOW? / STATUS 报告。
+ *
+ * R-F6-1（只钉现状）：
+ *   - height_m / height_raw_m：测距高度，标量，正值 = 离地高度增加（向上），
+ *     不是带符号的导航系 Z 坐标；由调用方（app_stabilizer.c）决定是否取负号
+ *     进入自己的 Z-down 内部表述（那一步是 R-F6-2 范围）。
+ *   - vertical_velocity_m_s：height_m 的时间导数，符号跟随 height_m——正值
+ *     表示高度增加（上升）。
+ *   - vx_m_s / vy_m_s：EKF 融合后的水平速度，与 SVC_FLOW_NAV_FuseInput 的
+ *     flow_vx_m_s/flow_vy_m_s 同一机体系约定（X 前 / Y 右正，legacy），
+ *     EKF 本身不做任何额外旋转。
+ *   - height_sample_ms / velocity_sample_ms：HAL_GetTick() 时基。
+ */
 typedef struct {
     uint8_t  height_valid;
     float    height_m;
@@ -187,11 +232,19 @@ uint32_t SVC_FlowNav_GetLastGoodMs(void);
 /* --- 估计侧（控制任务上下文） --- */
 /* 返回本拍光流量测是否被 EKF 接受。 */
 uint8_t SVC_FlowNav_Fuse(const SVC_FLOW_NAV_FuseInput *input);
+/*
+ * R-F6-1（只钉现状）：机体系水平速度，X 前 / Y 右正（legacy 约定，与
+ * SVC_FLOW_NAV_FuseInput.flow_vx_m_s/flow_vy_m_s 同一约定），未旋转到导航系。
+ */
 void SVC_FlowNav_GetVelocity(float *vx_m_s, float *vy_m_s);
+/*
+ * R-F6-1（只钉现状）：对 SVC_FlowNav_GetVelocity() 输出按传感器时基做限幅累计
+ * 积分，轴约定与速度一致（X 前 / Y 右正，legacy），不是带符号的导航系坐标。
+ */
 void SVC_FlowNav_GetPosition(float *x_m, float *y_m);
 /*
  * 未限幅的累计位移（里程计），与位置同源同步长，只是不做安全限幅，
- * 也不随控制模式切换归零。
+ * 也不随控制模式切换归零。轴约定同 SVC_FlowNav_GetPosition()。
  */
 void SVC_FlowNav_GetDisplacement(float *dx_m, float *dy_m);
 uint32_t SVC_FlowNav_GetIntegratedStepCount(void);

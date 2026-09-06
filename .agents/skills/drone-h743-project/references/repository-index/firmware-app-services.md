@@ -4,7 +4,7 @@
 
 Read this shard only when the task touches application behavior, RTOS task bodies, control flow, diagnostics, commands, or synchronous services.
 
-Source snapshot: `11e7cb861041`. Indexed files: 108.
+Source snapshot: `c9aa88a0f94d`. Indexed files: 108.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -65,7 +65,7 @@ Source snapshot: `11e7cb861041`. Indexed files: 108.
 | `App/Inc/app_uart.h`<br>`App/Src/app_uart.c` | Application behavior and task-facing logic for uart | `APP_UART_GetStats`, `APP_UART_GetRxEventStats`, `APP_UART_Task_Init`, `APP_UART_Task_Step`, `APP_UART_NotifyTxPending`, `APP_UART_OnRxEvent` (+2) |
 | `App/Inc/app_usb_cdc.h`<br>`App/Src/app_usb_cdc.c` | Application behavior and task-facing logic for usb cdc | `APP_USB_CDC_Write`, `APP_USB_CDC_Task_Step`, `APP_USB_CDC_SetConfigured`, `APP_USB_CDC_IsReady`, `APP_USB_CDC_OnReceive`, `APP_USB_CDC_OnTransmitComplete` (+1) |
 | `App/Inc/app_vofa.h`<br>`App/Src/app_vofa.c` | Application behavior and task-facing logic for vofa | `APP_VOFA_SendFloats`, `APP_VOFA_SendRaw` |
-| `Services/Inc/svc_flow_nav.h`<br>`Services/Src/svc_flow_nav.c` | Synchronous domain/data service for flow nav | `SVC_FlowNav_Init`, `SVC_FlowNav_Reset`, `SVC_FlowNav_PushSample`, `SVC_FlowNav_Age`, `SVC_FlowNav_GetHeight`, `SVC_FlowNav_GetSensorVelocity` (+12) |
+| `Services/Inc/svc_flow_nav.h`<br>`Services/Src/svc_flow_nav.c` | Synchronous domain/data service for flow nav | `SVC_FlowNav_Init`, `SVC_FlowNav_Reset`, `SVC_FlowNav_PushSample`, `SVC_FlowNav_Age`, `SVC_FlowNav_GetHeight`, `SVC_FlowNav_GetSensorVelocity` (+11) |
 | `Services/Inc/svc_param.h`<br>`Services/Src/svc_param.c` | Synchronous domain/data service for param | `SVC_Param_Init`, `SVC_Param_IsReady`, `SVC_Param_IsDirty`, `SVC_Param_GetGeneration`, `SVC_Param_LoadFromFlash`, `SVC_Param_GetBlob` (+3) |
 | `Services/Inc/svc_timestamp.h`<br>`Services/Src/svc_timestamp.c` | Synchronous domain/data service for timestamp | `SVC_Timestamp_Us`, `SVC_Timestamp_Init`, `SVC_Timestamp_Tick` |
 
