@@ -30,14 +30,14 @@ Navigation/world frames are separate. Name them explicitly; do not infer NED, EN
 
 ## Current Migration Status
 
-Runtime migration is incomplete while `DRV_FRAME_RUNTIME_MIGRATION_COMPLETE` is `0`.
-`DRV_FRAME_RUNTIME_MIGRATION_DONE_MASK` is `0x03U`: only bit0 (`SENSOR_TO_FLU`)
-and bit1 (`ESTIMATOR_ADAPTER`) are set, and both are bookkeeping — neither seam
-had a source behaviour change (author ruling 2026-08-30, option C), so setting
-the bits only records that reviewer-verified executable evidence exists
-(`tests/test_flu_seam0_sensor_frame.py`, `tests/test_flu_seam1_estimator_frame.py`).
-Seams 2-5 (navigation, controller, RC/actuator, telemetry/log) remain legacy
-and the arm lock stays engaged until all six bits are set.
+`DRV_FRAME_RUNTIME_MIGRATION_DONE_MASK` is `0x3FU`, so
+`DRV_FRAME_RUNTIME_MIGRATION_COMPLETE` evaluates to `1` and the migration arm
+lock is removed. This is an **Author-directed props-off validation override**
+(2026-09-06): the author explicitly required setting the mask before the V2
+physical pass in order to arm and manually validate the chain. It is **not
+flight release**, not proof that the props-off checks passed, and does not
+unfreeze M7. PIPELINE keeps those physical checks open until their observations
+are recorded.
 
 Known legacy boundaries include:
 

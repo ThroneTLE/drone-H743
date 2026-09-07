@@ -16,9 +16,8 @@
 #     replay renders those two channels under the older convention.
 #   * R-F5b added per-file provenance, but historical logs legitimately have
 #     none and must remain legacy FRD.
-#   * Full runtime migration still depends on the controller/RC representation
-#     and M6 physical direction verification; a canonical live display alone
-#     cannot flip the global completion mask.
+#   * The author explicitly set the global mask before props-off validation on
+#     2026-09-06.  That override is not evidence that seam 5 or M6 passed.
 
 from __future__ import annotations
 
@@ -32,6 +31,9 @@ CONTRACT = ROOT / "Driver" / "Inc" / "drv_frame_contract.h"
 STABILIZER = ROOT / "App" / "Src" / "app_stabilizer.c"
 LOG_HEADER = ROOT / "App" / "Inc" / "app_flight_log.h"
 TELEMETRY_PORT = ROOT / "App" / "Src" / "app_telem_port.c"
+FRAME_REFERENCE = (ROOT / ".agents" / "skills" / "drone-h743-project" /
+                   "references" / "flu-coordinate-contract.md")
+PIPELINE = ROOT / "PIPELINE.md"
 
 
 def read(path: Path) -> str:
@@ -103,8 +105,8 @@ def test_live_nav_telemetry_adapts_controller_legacy_xy_to_body_flu() -> None:
     assert "APP_TELEM_CH_POS_EST_Y] = vofa_debug.pos_est_m[1]" not in source
 
 
-def test_telemetry_seam_cannot_be_declared_done() -> None:
-    """A canonical live display alone cannot declare full runtime migration."""
+def test_telemetry_mask_override_does_not_claim_physical_acceptance() -> None:
+    """The author may arm for validation without fabricating seam-5 evidence."""
     contract = read(CONTRACT)
     done_match = re.search(
         r"^#define\s+DRV_FRAME_RUNTIME_MIGRATION_DONE_MASK\s+(0x[0-9A-Fa-f]+|\d+)U\s*$",
@@ -120,11 +122,14 @@ def test_telemetry_seam_cannot_be_declared_done() -> None:
     assert required_match is not None
     done_mask = int(done_match.group(1), 0)
     required_mask = int(required_match.group(1), 0)
-    # Seam 5 (telemetry/log) bit must not be set from live-display evidence
-    # alone: it requires the FlightLog/replay residue in this module to be
-    # resolved too (R-F6-4).
-    assert (done_mask & (1 << 5)) == 0
-    assert done_mask != required_mask
+    assert (done_mask & (1 << 5)) != 0
+    assert done_mask == required_mask
+    reference = " ".join(read(FRAME_REFERENCE).replace("**", "").split())
+    pipeline = read(PIPELINE)
+    assert "Author-directed props-off validation override" in reference
+    assert "not flight release" in reference
+    assert "先置 `DONE_MASK=0x3FU` 再手动验证" in pipeline
+    assert "不等于物理验收或解冻 M7" in pipeline
 
 
 def test_replay_declares_its_frame_contract() -> None:

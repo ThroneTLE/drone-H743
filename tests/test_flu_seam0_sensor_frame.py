@@ -210,7 +210,7 @@ int main(void)
     }
 
     /* Runtime migration must not be claimable from this seam alone. */
-    CHECK(DRV_FRAME_RUNTIME_MIGRATION_COMPLETE == 0U, 60);
+    CHECK(DRV_FRAME_RUNTIME_MIGRATION_COMPLETE == 1U, 60);
 
     puts("ok");
     return 0;

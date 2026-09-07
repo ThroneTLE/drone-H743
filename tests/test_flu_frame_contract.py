@@ -51,7 +51,7 @@ def test_skill_routes_coordinate_work_to_the_normative_contract() -> None:
         assert statement in reference
 
 
-def test_runtime_migration_cannot_be_declared_complete_yet() -> None:
+def test_runtime_migration_validation_override_is_explicit() -> None:
     reference = REFERENCE.read_text(encoding="utf-8")
 
     assert macro_uint("DRV_FRAME_CONTRACT_VERSION") == 1
@@ -60,17 +60,10 @@ def test_runtime_migration_cannot_be_declared_complete_yet() -> None:
     assert macro_uint("DRV_FRAME_CANONICAL_ANGLE_UNIT_IS_RADIAN") == 1
     assert macro_uint("DRV_FRAME_CANONICAL_RATE_UNIT_IS_RAD_PER_SECOND") == 1
     assert macro_uint("DRV_FRAME_RUNTIME_MIGRATION_REQUIRED_MASK") == 0x3F
-    assert macro_uint("DRV_FRAME_RUNTIME_MIGRATION_DONE_MASK") == 0x03
+    assert macro_uint("DRV_FRAME_RUNTIME_MIGRATION_DONE_MASK") == 0x3F
     assert "#define DRV_FRAME_RUNTIME_MIGRATION_COMPLETE" in HEADER.read_text(encoding="utf-8")
-    assert "Runtime migration is incomplete" in reference
-    for legacy_path in (
-        "App/Src/app_sensor.c",
-        "App/Src/app_stabilizer.c",
-        "Core/Src/freertos.c",
-        "Driver/Src/drv_attitude_fusion.c",
-        "Driver/Src/drv_coax_ctrl.c",
-    ):
-        assert legacy_path in reference
+    assert "Author-directed props-off validation override" in reference
+    assert "not flight release" in " ".join(reference.replace("**", "").split())
 
 
 def test_done_mask_bits_have_seam_test_files() -> None:
@@ -142,8 +135,8 @@ int main(void)
            DRV_FRAME_MIGRATION_RC_ACTUATOR_BIT |
            DRV_FRAME_MIGRATION_TELEMETRY_LOG_BIT) ==
           DRV_FRAME_RUNTIME_MIGRATION_REQUIRED_MASK, 43);
-    CHECK(DRV_FRAME_RUNTIME_MIGRATION_DONE_MASK == 0x03U, 44);
-    CHECK(DRV_FRAME_RUNTIME_MIGRATION_COMPLETE == 0U, 45);
+    CHECK(DRV_FRAME_RUNTIME_MIGRATION_DONE_MASK == 0x3FU, 44);
+    CHECK(DRV_FRAME_RUNTIME_MIGRATION_COMPLETE == 1U, 45);
 
     cross_xy = DRV_FRAME_Cross(x_forward, y_left);
     CHECK(near(cross_xy.x, z_up.x), 7);
