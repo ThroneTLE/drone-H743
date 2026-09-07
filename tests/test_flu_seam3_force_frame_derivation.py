@@ -106,9 +106,8 @@ OUTER_LOOP_HARNESS = r"""
  * convention the outer loop actually believes in -- it comes from the force
  * vector, so it is pinned to physics rather than to a stick mapping.
  *
- * Prints one "pitch roll" line for the forward (+X) demand, then one for the
- * +Y demand (R-F6-2 section 3: +Y is left, not right -- see the Python
- * docstring above the caller of this harness).
+ * Prints one "pitch roll" line for forward (+X), one for left (+Y), and one
+ * for right (-Y) in canonical FLU.
  */
 static void quietest(float ax, float ay, float *best_pitch, float *best_roll)
 {
@@ -156,6 +155,8 @@ int main(void)
     quietest(2.0f, 0.0f, &pitch, &roll);
     printf("%.9f %.9f\n", (double)pitch, (double)roll);
     quietest(0.0f, 2.0f, &pitch, &roll);
+    printf("%.9f %.9f\n", (double)pitch, (double)roll);
+    quietest(0.0f, -2.0f, &pitch, &roll);
     printf("%.9f %.9f\n", (double)pitch, (double)roll);
     return 0;
 }
@@ -285,7 +286,7 @@ def test_the_cancellation_claim_is_not_reasserted() -> None:
         assert "cancels in the attitude error" not in text, path
 
 
-def test_outer_loop_pitch_agrees_with_flu_but_roll_does_not(tmp_path: Path) -> None:
+def test_outer_loop_acceleration_directions_agree_with_flu(tmp_path: Path) -> None:
     """外环是被物理钉死的那一环，实测它认哪个姿态叫"到位"。
 
     内环对实测与目标一视同仁，所以口径怎么变都自洽，问不出东西。外环不然：
@@ -310,19 +311,26 @@ def test_outer_loop_pitch_agrees_with_flu_but_roll_does_not(tmp_path: Path) -> N
         pytest.skip("host gcc is unavailable")
 
     rows = _build_and_run(tmp_path, "outer", read(CTRL_SOURCE),
-                          harness=OUTER_LOOP_HARNESS, expect=2)
-    (fwd_pitch, fwd_roll), (ay_pitch, ay_roll) = rows
+                          harness=OUTER_LOOP_HARNESS, expect=3)
+    (fwd_pitch, fwd_roll), (left_pitch, left_roll), (right_pitch, right_roll) = rows
 
     # ax=+2（向前加速）：目标俯仰为正，且平衡点落在正 pitch —— FLU 机头下俯，自洽。
     assert fwd_pitch > 0.05, f"向前加速的平衡俯仰角变了：{fwd_pitch}"
     assert abs(fwd_roll) < 0.05, f"向前加速不该要求滚转：{fwd_roll}"
 
     # ay=+2（向左加速，见上文定性）：平衡点落在负 roll —— FLU 左翼下沉，自洽。
-    assert ay_roll < -0.05, (
-        f"ay=+2 的平衡滚转角变成 {ay_roll}。若这是有意的重导，"
+    assert left_roll < -0.05, (
+        f"ay=+2（左）的平衡滚转角变成 {left_roll}。若这是有意的重导，"
         "请连同 drv_coax_ctrl.h 的 seam 3 frame map 与本断言一起更新。"
     )
-    assert abs(ay_pitch) < 0.05, f"ay=+2 不该要求俯仰：{ay_pitch}"
+    assert abs(left_pitch) < 0.05, f"ay=+2（左）不该要求俯仰：{left_pitch}"
+
+    # R-F7 的旧复现把 legacy ay=+2 称作“向右”。迁移后右向必须编码为
+    # FLU ay=-2；真控制器此时平衡在正 roll，即右翼下沉。
+    assert right_roll > 0.05, (
+        f"ay=-2（右）的平衡滚转角应为正（右翼下沉），实际 {right_roll}"
+    )
+    assert abs(right_pitch) < 0.05, f"ay=-2（右）不该要求俯仰：{right_pitch}"
 
 
 def test_only_the_arm_lock_knows_about_flu(tmp_path: Path) -> None:
