@@ -105,11 +105,11 @@
 #define STABILIZER_XY_VEL_REF_MAX_M_S  0.40f     /* CH1/CH2 水平速度目标最大值 [m/s]    */
 /*
  * R-F6-2（2026-09-06）：seam2(svc_flow_nav)→seam3(drv_coax_ctrl) 的 Y 轴适配器。
- * 拆桨向右平移实测：原始光流 Y 为负，即 seam2 输出从传感器读数起就已经是
- * 左正（与规范 FLU 一致），并非本常量曾经声称的"右正"。此值因此保持 +1
- * （无操作透传），若未来 seam2 本身改标为右正，回来改本值，不要改别处符号。
+ * 2026-08-30 left_y 实录证明 seam2 输出仍是机体右正，而 seam3 已迁移为规范
+ * FLU 左正，所以只在这个具名边界取反。光流旋转补偿和诊断快照仍保留 seam2
+ * 的旧口径；不要把本常量重新散回那些上游计算。
  */
-#define STABILIZER_VELOCITY_MEAS_Y_SIGN (1.0f)
+#define STABILIZER_VELOCITY_MEAS_Y_SIGN (-1.0f)
 #define STABILIZER_XY_POS_ERR_MAX_M    0.50f     /* 水平位置外环单次误差限幅 [m]        */
 #define STABILIZER_Z_REF_RATE_MAX_M_S  0.30f     /* CH3 满杆高度目标积分速度 [m/s]       */
 #define STABILIZER_Z_REF_MAX_M         0.40f     /* 上电光流测高基准以上高度上限 [m]     */
@@ -556,7 +556,7 @@
 
     memset(debug, 0, sizeof(*debug));
     body_vx_m_s = *flow_vx_m_s;
-    body_vy_m_s = STABILIZER_VELOCITY_MEAS_Y_SIGN * (*flow_vy_m_s);
+    body_vy_m_s = *flow_vy_m_s;
     debug->sensor_velocity_m_s[0] = body_vx_m_s;
     debug->sensor_velocity_m_s[1] = body_vy_m_s;
 
@@ -581,7 +581,7 @@
     debug->corrected_velocity_m_s[0] = body_vx_m_s;
     debug->corrected_velocity_m_s[1] = body_vy_m_s;
     *flow_vx_m_s = body_vx_m_s;
-    *flow_vy_m_s = STABILIZER_VELOCITY_MEAS_Y_SIGN * body_vy_m_s;
+    *flow_vy_m_s = body_vy_m_s;
   }
 
   static void stabilizer_vofa_debug_publish(const StabilizerVofaDebug *debug)

@@ -94,10 +94,9 @@ typedef struct {
  * 横向口径说明：RC 摇杆意图的物理方向未经拆桨实测，仍按原假设"机体系右正"
  * 处理，属 seam 4（R-F6-3）范围，本注释不改这一半。但控制器参考系
  * （DRV_COAX_CTRL_Reference/AttitudeInput）已在 R-F6-2（2026-09-06）迁移为
- * 规范 FLU（X前/Y左/Z上）：拆桨向右平移实测显示光流 Y 从传感器读数起就
- * 一直是左正，因此这次迁移里 Y 未发生任何数值改动，只是改正了此前"Y 右正"
- * 的错误标注（见 doc/req-rf6-2-controller-flu-migration.md 第 3 节）。
- * RC 与控制器之间是否需要新的适配，属 R-F6-3 的判定范围。
+ * 规范 FLU（X前/Y左/Z上）：导航测量在 seam2→seam3 边界从右正取反为左正。
+ * RC 参考意图仍待 R-F6-3 用拆桨方向证据定性；在此之前不把摇杆符号混入
+ * R-F6-2，也不靠负增益补偿。
  */
 typedef struct {
     uint16_t us[APP_RC_FUNC_COUNT];    /* 映射后的原始脉宽，未反向 */

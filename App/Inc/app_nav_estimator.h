@@ -14,9 +14,9 @@ extern "C" {
  *
  * 本模块不持有、也不重新定义坐标系——它转发的
  * DRV_NAV_EKF_Diagnostics 里的 vel_m_s[2] 轴序与 Services/Inc/svc_flow_nav.h
- * 的 SVC_FLOW_NAV_FuseInput/State 一致（机体系 X 前 / Y 左正，与规范 FLU
- * 相同），不是导航系坐标。R-F6-1 曾错误地记为"右正"；R-F6-2（2026-09-06）
- * 拆桨向右平移实测原始光流 Y 为负，纠正为左正。
+ * 的 SVC_FLOW_NAV_FuseInput/State 一致（机体系 X 前 / Y 右正，legacy），
+ * 不是导航系坐标。R-F6-2 用 2026-08-30 的 left_y 实录确认该口径；进入
+ * 已迁移的 seam3 控制器前，由 App 层具名边界适配为规范 FLU 的 Y 左正。
  */
 void APP_NavEstimator_PublishVelocityEKF(void);
 void APP_NavEstimator_GetVelocityEKF(

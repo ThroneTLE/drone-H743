@@ -53,13 +53,11 @@ typedef struct {
      *
      * R-F6-2 (2026-09-06): migrated from the legacy local-level frame
      * (+X forward, +Y right, +Z down, z = -height above ground).  The +Y
-     * migration changed no runtime value -- a props-off lateral-translation
-     * test showed the raw optical-flow Y channel was already left-positive;
-     * every comment in this codebase claiming "+Y right" for this frame was
-     * simply wrong (see doc/req-rf6-2-controller-flu-migration.md section 3).
-     * Only +Z actually flipped sign (height above ground is now +z directly,
-     * no negation).  See DRV_COAX_CTRL_AttitudeInput for the full seam 3
-     * frame map.
+     * migration negates the legacy right-positive navigation Y at the named
+     * App seam2->seam3 boundary.  +Z also flips sign (height above ground is
+     * now +z directly, no negation).  See
+     * doc/req-rf6-2-controller-flu-migration.md section 3 and
+     * DRV_COAX_CTRL_AttitudeInput for the full seam 3 frame map.
      */
     float x_m;
     float y_m;
@@ -115,12 +113,10 @@ typedef struct {
      * rule about FLU's own X/Y/Z (see drv_frame_contract.h).  The four
      * constants are therefore deleted, not re-valued.
      *
-     * The +Y question was resolved by a props-off lateral-translation test
-     * (2026-09-06): moving the airframe right produced a NEGATIVE raw
-     * optical-flow Y reading, so local Y was already left-positive from the
-     * sensor up -- every comment in this chain claiming "local Y is right"
-     * was simply wrong.  See doc/req-rf6-2-controller-flu-migration.md
-     * section 3.  Only +Z actually changed (down-positive to up-positive).
+     * The +Y question is pinned by the 2026-08-30 left_y recording: seam2's
+     * navigation output is right-positive and is negated at the named App
+     * boundary before entering this FLU interface.  See
+     * doc/req-rf6-2-controller-flu-migration.md section 3.
      */
     float x_m;
     float y_m;

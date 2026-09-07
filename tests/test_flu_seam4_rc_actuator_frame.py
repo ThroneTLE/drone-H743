@@ -4,12 +4,10 @@
 # polarity contract and name the frames, do not perform a representation
 # migration that would cancel out at both ends.
 #
-# The RC lateral convention is body-right-positive, matching the controller's
-# own reference frame (X forward, Y right, Z down).  Migrating RC/velocity to
-# FLU left-positive would require adapting straight back to right-positive at
-# the controller input: adapters on both sides, zero observable change.  The
-# real cleanup waits for the controller reference frame itself, which M6
-# props-off direction verification gates.
+# The RC lateral convention is still body-right-positive, while the seam 3
+# controller interface is now canonical FLU left-positive.  Deciding and
+# adapting RC intent is seam 4 work and remains gated by M6 props-off direction
+# verification; R-F6-2 only adapts the navigation measurement boundary.
 #
 # So this module pins the polarity chain exactly as it stands:
 #   * stick direction is decided in exactly one place,
@@ -51,11 +49,8 @@ def test_stick_direction_has_exactly_one_decision_point() -> None:
 def test_velocity_measurement_polarity_is_a_named_constant() -> None:
     """Flow/fusion lateral polarity must not be folded into a gain."""
     source = read(STABILIZER)
-    assert "#define STABILIZER_VELOCITY_MEAS_Y_SIGN (1.0f)" in source
-    # R-F6-2 (2026-09-06): props-off lateral translation test showed local Y
-    # was already left-positive from the raw optical-flow reading, not
-    # right-positive as previously documented.
-    assert "左正（与规范 FLU 一致）" in source
+    assert "#define STABILIZER_VELOCITY_MEAS_Y_SIGN (-1.0f)" in source
+    assert "seam2(svc_flow_nav)→seam3(drv_coax_ctrl)" in source
 
 
 def test_yaw_stick_maps_to_a_rate_reference_without_a_hidden_sign() -> None:

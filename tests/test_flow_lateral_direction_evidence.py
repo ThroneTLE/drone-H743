@@ -110,15 +110,12 @@ def test_lateral_migration_sign_matches_the_declared_frame() -> None:
     stabilizer = read(STABILIZER)
     header = read(ROOT / "Driver" / "Inc" / "drv_coax_ctrl.h")
 
-    sign_is_plus_one = (
-        "#define STABILIZER_VELOCITY_MEAS_Y_SIGN (1.0f)" in stabilizer
-    )
-    header_claims_flu_left = ("+Y left" in header) or ("+Y 左" in header)
+    assert "#define STABILIZER_VELOCITY_MEAS_Y_SIGN (-1.0f)" in stabilizer
+    assert ("+Y left" in header) or ("+Y 左" in header)
 
-    assert not (sign_is_plus_one and header_claims_flu_left), (
-        "drv_coax_ctrl.h 声称位置/速度是规范 FLU（+Y 左），但 "
-        "STABILIZER_VELOCITY_MEAS_Y_SIGN 仍是 +1，喂进来的是右正量。"
-        "两者必须同时成立或同时不成立——要么把符号改成 -1 完成横向迁移，"
-        "要么把头文件改回「legacy 右正」。见 "
-        "doc/req-rf6-2-controller-flu-migration.md 第 3 节。"
-    )
+    # 该适配器只能出现在 seam2→seam3 的消费侧；光流补偿仍按 seam2 的
+    # right-positive 口径运行，否则诊断快照的既有 FLU 导出取反会被破坏。
+    compensation = stabilizer.split(
+        "static void stabilizer_compensate_flow_rotation", 1
+    )[1].split("static void stabilizer_vofa_debug_publish", 1)[0]
+    assert "STABILIZER_VELOCITY_MEAS_Y_SIGN" not in compensation

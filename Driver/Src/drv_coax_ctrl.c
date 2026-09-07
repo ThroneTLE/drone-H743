@@ -38,10 +38,10 @@
 /*  R-F6-2（2026-09-06，工单见                                              */
 /*  doc/req-rf6-2-controller-flu-migration.md）：位置/速度侧（Reference /   */
 /*  AttitudeInput 的 x_m/y_m/z_m、vx/vy/vz_m_s）已migrate到规范 FLU。       */
-/*  第 3 节定性结论：**local Y 从原始光流读数起就一直是左正**（拆桨向右平移 */
-/*  实测原始 flow_vy 为负），四处"local Y 是机体右"的注释全部是错的，Y 不   */
-/*  需要任何数值改动；只有 Z 真的从下正翻成了上正。姿态/角速率本来就已是    */
-/*  规范 FLU，因此力坐标系不再需要任何符号补偿——下面这条曾经的                */
+/*  第 3 节定性结论：2026-08-30 left_y 实录证明 seam2 的 local Y 是机体右正；*/
+/*  App 在 seam2→seam3 具名边界取反，使本控制器入口成为规范 FLU 左正。Z 也   */
+/*  从下正翻成了上正。姿态/角速率本来就已是规范 FLU，因此力坐标系不再需要  */
+/*  任何符号补偿——下面这条曾经的                                             */
 /*  DRV_COAX_CTRL_FORCE_FRAME_ROLL_SIGN / _PITCH_SIGN /                     */
 /*  DRV_COAX_CTRL_RATE_FRAME_ROLL_SIGN / _PITCH_SIGN 四个常量已删除，        */
 /*  coax_ctrl_rpy_matrix 直接吃 FLU 角度，不加任何符号：标准 ZYX 欧拉矩阵    */

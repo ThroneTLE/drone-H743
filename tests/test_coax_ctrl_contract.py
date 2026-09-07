@@ -230,7 +230,7 @@ def test_controller_wrapper_exposes_velocity_first_vector_control_inputs() -> No
     assert "ctx->position_ref_x_m += frame->reference.vx_m_s * frame->ctrl_dt_sec;" in freertos
     assert "frame->reference.x_m = ctx->position_ref_x_m;" in freertos
     assert "frame->reference.y_m = ctx->position_ref_y_m;" in freertos
-    assert "#define STABILIZER_VELOCITY_MEAS_Y_SIGN (1.0f)" in freertos
+    assert "#define STABILIZER_VELOCITY_MEAS_Y_SIGN (-1.0f)" in freertos
     assert "stabilizer_velocity_estimator_control_ok(&vel_estimator, now)" not in freertos
     assert "frame->attitude.vx_m_s = velocity_control_x_m_s;" in freertos
     assert "frame->attitude.vy_m_s = velocity_control_y_m_s;" in freertos

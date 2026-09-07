@@ -21,11 +21,9 @@ extern "C" {
  * These are SI control quantities; no HAL, RTOS, I/O, or frame conversion is
  * performed here.
  *
- * R-F6-2 (2026-09-06): +Z was down-positive before this migration; +Y was
- * never actually right-positive despite this file's prior comment saying so
- * (a props-off physical test showed the raw upstream signal was already
- * left-positive -- see doc/req-rf6-2-controller-flu-migration.md section 3),
- * so only +Z's sign and the up/down clamp branches below actually changed.
+ * R-F6-2 (2026-09-06): legacy +Y right and +Z down inputs are converted to
+ * +Y left and +Z up before entering this module.  See
+ * doc/req-rf6-2-controller-flu-migration.md section 3.
  *
  * The position and velocity steps are independent.  A caller may run the
  * position step at a slower rate and feed its velocity_sp to the velocity

@@ -13,11 +13,10 @@
 #     because FLU's own roll/pitch/yaw are defined as right-hand rotations
 #     about FLU's own axes (drv_frame_contract.h).
 #
-# The +Y question resolved to "no numeric change" -- a props-off lateral
-# translation test showed local Y was already left-positive from the raw
-# optical-flow reading, so every "+Y right" comment in this chain was simply
-# wrong.  Only +Z actually changed sign.  See section 3 of the migration doc
-# and tests/test_flu_seam3_force_frame_derivation.py for the executable
+# The +Y question is pinned by the 2026-08-30 left_y recording: seam2 remains
+# right-positive, so App negates it at the seam2->seam3 boundary.  +Z also
+# changes from down-positive to up-positive.  See section 3 of the migration
+# doc and tests/test_flu_seam3_force_frame_derivation.py for the executable
 # evidence that the deleted constants were load-bearing, not inert.
 
 from __future__ import annotations
@@ -284,13 +283,17 @@ def test_z_channel_migration_matches_old_exactly(tmp_path: Path) -> None:
         pytest.skip("host gcc is unavailable")
 
     old_source_result = subprocess.run(
-        ["git", "show", "HEAD:Driver/Src/drv_coax_ctrl.c"],
+        ["git", "show", "3a3fa6c8:Driver/Src/drv_coax_ctrl.c"],
         cwd=ROOT, check=True, capture_output=True,
     )
     old_source = old_source_result.stdout.decode("utf-8")
-    assert "DRV_COAX_CTRL_FORCE_FRAME_ROLL_SIGN" in old_source, (
-        "HEAD no longer has the pre-migration driver; regenerate this test's "
-        "baseline from the commit immediately before the R-F6-2 migration"
+    assert re.search(
+        r"^#define\s+DRV_COAX_CTRL_FORCE_FRAME_ROLL_SIGN\s+\(-1\.0f\)\s*$",
+        old_source,
+        re.MULTILINE,
+    ), (
+        "fixed pre-migration baseline 3a3fa6c8 no longer contains the "
+        "expected executable roll-sign definition"
     )
     new_source = read(CTRL_SOURCE)
 
