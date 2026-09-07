@@ -103,6 +103,7 @@
 #define STABILIZER_USE_DIRECT_ANGLE_SERVO 0U     /* 1=角度直驱舵机, 0=同轴控制器(永久) */
 #define STABILIZER_YAW_RATE_REF_MAX_RAD_S 1.04719758f /* CH4 偏航参考累加最大速率 [rad/s] */
 #define STABILIZER_XY_VEL_REF_MAX_M_S  0.40f     /* CH1/CH2 水平速度目标最大值 [m/s]    */
+#define STABILIZER_RC_VELOCITY_Y_TO_FLU_SIGN (-1.0f) /* CH1 右正 → FLU +Y 左正 */
 /*
  * R-F6-2（2026-09-06）：seam2(svc_flow_nav)→seam3(drv_coax_ctrl) 的 Y 轴适配器。
  * 2026-08-30 left_y 实录证明 seam2 输出仍是机体右正，而 seam3 已迁移为规范
@@ -157,7 +158,7 @@
  * 实机确认：原来 PITCH_SIGN = +1 时前推变成后倾，故取 -1。
  */
 #define STABILIZER_RC_ATTITUDE_TARGET_PITCH_SIGN (-1.0f)
-#define STABILIZER_RC_ATTITUDE_TARGET_ROLL_SIGN  (-1.0f)
+#define STABILIZER_RC_ATTITUDE_TARGET_ROLL_SIGN  (1.0f)
 
 /*
  * ============================================================================
@@ -1721,7 +1722,8 @@ static void stabilizer_control_compute(StabilizerContext *ctx,
           STABILIZER_XY_VEL_REF_MAX_M_S;
         frame->reference.vy_m_s =
         frame->rc.norm[APP_RC_FUNC_ROLL] *
-          STABILIZER_XY_VEL_REF_MAX_M_S;
+          STABILIZER_XY_VEL_REF_MAX_M_S *
+          STABILIZER_RC_VELOCITY_Y_TO_FLU_SIGN;
         frame->reference.horizontal_velocity_valid =
           ((velocity_loop_enabled != 0U) &&
            (nav_state.velocity_valid != 0U)) ? 1U : 0U;

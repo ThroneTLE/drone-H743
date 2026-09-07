@@ -75,7 +75,7 @@ def test_stick_polarity_lives_in_exactly_one_place() -> None:
     # tests/test_flu_seam3_force_frame_derivation.py for the executable
     # counter-evidence.
     assert "#define STABILIZER_RC_ATTITUDE_TARGET_PITCH_SIGN (-1.0f)" in freertos
-    assert "#define STABILIZER_RC_ATTITUDE_TARGET_ROLL_SIGN  (-1.0f)" in freertos
+    assert "#define STABILIZER_RC_ATTITUDE_TARGET_ROLL_SIGN  (1.0f)" in freertos
     assert freertos.count("STABILIZER_RC_ATTITUDE_TARGET_PITCH_SIGN") == 2
     assert freertos.count("STABILIZER_RC_ATTITUDE_TARGET_ROLL_SIGN") == 2
 

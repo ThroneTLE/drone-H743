@@ -4,7 +4,7 @@
 
 Read this shard only when you need existing behavioral/architecture coverage or must choose focused regression tests.
 
-Source snapshot: `44a412c3eed0`. Indexed files: 130.
+Source snapshot: `66b2a5136975`. Indexed files: 130.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -67,7 +67,7 @@ Source snapshot: `44a412c3eed0`. Indexed files: 130.
 | `tests/test_flu_seam2_navigation_frame.py` | R-F6-1 seam 2 navigation frame contract. Seam 2 (navigation) was the only one of the six FLU runtime seams with no coor… | `test_svc_flow_nav_header_names_its_frames_units_and_timebases`, `test_drv_nav_ekf_header_disclaims_frame_ownership` (+3) |
 | `tests/test_flu_seam3_controller_frame.py` | R-F6-2 seam 3 controller FLU migration contract | `test_force_frame_constants_are_deleted`, `test_geometry_consumes_flu_attitude_directly` (+4) |
 | `tests/test_flu_seam3_force_frame_derivation.py` | R-F6-2 核心矩阵重导：力坐标系符号常量到底在做什么。 这个模块存在的唯一理由，是仓库里曾经有一句被复述了四遍的论断： "此符号同时作用于实测姿态和目标姿态，因此在姿态误差中相消" 它是**错的**，而且不是无害的措辞问题——R-F6… | `test_force_frame_roll_sign_was_load_bearing_before_deletion`, `test_the_cancellation_claim_is_not_reasserted` (+3) |
-| `tests/test_flu_seam4_rc_actuator_frame.py` | R-F4 seam 4 RC/actuator polarity contract | `test_stick_direction_has_exactly_one_decision_point`, `test_velocity_measurement_polarity_is_a_named_constant` (+3) |
+| `tests/test_flu_seam4_rc_actuator_frame.py` | R-F4 seam 4 RC/actuator polarity contract | `test_stick_direction_has_exactly_one_decision_point`, `test_left_stick_reaches_the_flu_controller_with_left_positive_intent` (+4) |
 | `tests/test_flu_seam5_telemetry_frame.py` | R-F5 seam 5 telemetry/log frame contract | `test_replay_geometry_is_frozen`, `test_replay_converts_to_flu_only_on_recorded_provenance` (+5) |
 | `tests/test_ground_calibration.py` | — | `test_calibration_navigation_uses_function_names_instead_of_version_codes`, `test_sensor_group_collects_baro_imu_gps_flow_under_one_expandable_tab` (+19) |
 | `tests/test_ident_decoupled.py` | — | `test_ident_control_payload_and_decoupled_servo_takeover`, `test_ident_commands_exist_and_are_text_based` (+3) |

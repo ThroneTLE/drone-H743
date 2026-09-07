@@ -56,6 +56,7 @@ def test_controller_uses_named_rc_channels_for_references() -> None:
         "        frame->rc.norm[APP_RC_FUNC_ROLL] *"
         in freertos
     )
+    assert "STABILIZER_RC_VELOCITY_Y_TO_FLU_SIGN" in freertos
     assert "ctx->position_ref_x_m += frame->reference.vx_m_s * frame->ctrl_dt_sec;" in freertos
     assert "ctx->position_ref_y_m += frame->reference.vy_m_s * frame->ctrl_dt_sec;" in freertos
     assert "frame->reference.x_m = ctx->position_ref_x_m;" in freertos

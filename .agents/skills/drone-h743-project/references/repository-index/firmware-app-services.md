@@ -4,7 +4,7 @@
 
 Read this shard only when the task touches application behavior, RTOS task bodies, control flow, diagnostics, commands, or synchronous services.
 
-Source snapshot: `6492b4212147`. Indexed files: 108.
+Source snapshot: `9a8d1f828012`. Indexed files: 108.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
