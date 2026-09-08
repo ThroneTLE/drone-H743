@@ -178,10 +178,24 @@ def test_real_drone_panel_real_tcp_simulator_e2e() -> None:
         if app._dashboard_channel("sim_pos_x_kp") is None:
             app._dashboard_adopt_schema()
         assert app._dashboard_channel("sim_pos_x_kp") is not None
-        assert app._dashboard_send_param("sim_pos_x_kp", 0.93)
-        assert drain_until(lambda: abs((bridge.get_param("coax.pos_x_kp") or 0.0) - 0.93) < 1e-5)
+        for channel, parameter, value in (
+            ("sim_pos_x_kp", "coax.pos_x_kp", 0.93),
+            ("sim_vel_x_kp", "coax.vel_x_kp", 0.73),
+            ("sim_att_pitch_kp", "coax.att_pitch_kp", 1.13),
+            ("sim_rate_pitch_kp", "coax.rate_pitch_kp", 0.17),
+        ):
+            assert app._dashboard_send_param(channel, value)
+            assert drain_until(lambda parameter=parameter, value=value:
+                               abs((bridge.get_param(parameter) or 0.0) - value) < 1e-5)
         transport.send_line("TELEM STREAM on")
         assert drain_until(lambda: app.dashboard_frames_seen >= 1)
+        for channel, _parameter, value in (
+            ("sim_pos_x_kp", "coax.pos_x_kp", 0.93),
+            ("sim_vel_x_kp", "coax.vel_x_kp", 0.73),
+            ("sim_att_pitch_kp", "coax.att_pitch_kp", 1.13),
+            ("sim_rate_pitch_kp", "coax.rate_pitch_kp", 0.17),
+        ):
+            assert app._dashboard_latest(channel) == pytest.approx(value, rel=1e-4)
     finally:
         device.stop()
         transport.stop()

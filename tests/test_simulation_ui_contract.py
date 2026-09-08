@@ -11,7 +11,7 @@ def test_simulation_ui_has_animation_slow_motion_and_ab_controls() -> None:
     assert "保存 A 参数快照" in source
     assert "运行 B 并保存" in source
     assert "tuned_params = self.device.engine.bridge.parameter_snapshot()" in source
-    assert "A/B: pitch, pitch_rate, vx, x, z" in source
+    assert "A/B 五量对比" in source
     assert "thrust_scale" in source
     assert "target_px" in source
     assert ".mainloop()" in source

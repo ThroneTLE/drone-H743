@@ -1,6 +1,6 @@
 import pytest
 
-from tools.sim_xz.controller_bridge import ControllerBridge
+from tools.sim_xz.controller_bridge import ControllerBridge, _dependency_digest
 from tools.sim_xz.experiments import ExperimentKind, run_experiment
 
 
@@ -33,3 +33,12 @@ def test_parameter_change_changes_position_experiment(bridge: ControllerBridge) 
                            reset_controller=False)
     assert max(abs(a.x_m - b.x_m) for a, b in zip(baseline, tuned)) > 1e-4
     bridge.reset()
+
+
+def test_controller_build_digest_changes_when_a_control_dependency_changes(tmp_path) -> None:
+    dependency = tmp_path / "app_control_scheduler.c"
+    dependency.write_text("scheduler-v1", encoding="ascii")
+    first = _dependency_digest((dependency,))
+    dependency.write_text("scheduler-v2", encoding="ascii")
+    second = _dependency_digest((dependency,))
+    assert first != second

@@ -20,12 +20,13 @@ class SimulationApp(tk.Tk):
     def __init__(self, device: SimulatorDevice | None = None) -> None:
         super().__init__()
         self.title("R-SIM-1 X/Z 教学仿真")
-        self.geometry("980x640")
+        self.geometry("1180x900")
         self.device = device or SimulatorDevice()
         self._ui_queue: queue.Queue[object] = queue.Queue()
         self._ab_result = None
         self._baseline_config = None
         self._trajectory = deque(maxlen=1200)
+        self._last_trajectory_time = -1.0
         self._closing = False
         self._ab_thread: threading.Thread | None = None
         self.device.start()
@@ -72,9 +73,9 @@ class SimulationApp(tk.Tk):
         ttk.Button(side, text="运行 B 并保存", command=self._run_ab).pack(fill="x", pady=4)
         self.ab_status = tk.StringVar(value="A/B 空闲")
         ttk.Label(side, textvariable=self.ab_status, wraplength=250).pack(anchor="w")
-        self.ab_canvas = tk.Canvas(side, width=280, height=180, background="#0b1117",
+        self.ab_canvas = tk.Canvas(side, width=340, height=300, background="#0b1117",
                                    highlightthickness=0)
-        self.ab_canvas.pack(fill="x", pady=6)
+        self.ab_canvas.pack(fill="both", expand=True, pady=6)
         self.columnconfigure(0, weight=1)
         self.rowconfigure(0, weight=1)
 
@@ -83,6 +84,7 @@ class SimulationApp(tk.Tk):
 
     def _reset(self) -> None:
         self._trajectory.clear()
+        self._last_trajectory_time = -1.0
         self.device.reset()
 
     def _apply_targets(self) -> None:
@@ -163,7 +165,9 @@ class SimulationApp(tk.Tk):
         width, height = max(1, self.canvas.winfo_width()), max(1, self.canvas.winfo_height())
         ground, scale = height - 70, min(width / 4.0, (height - 100) / 2.5)
         x, z = width / 2 + state.x_m * scale, ground - state.z_m * scale
-        self._trajectory.append((state.x_m, state.z_m))
+        if state.time_s != self._last_trajectory_time:
+            self._trajectory.append((state.x_m, state.z_m))
+            self._last_trajectory_time = state.time_s
         self.canvas.create_line(20, ground, width - 20, ground, fill="#7f8c8d")
         self.canvas.create_line(width / 2, 20, width / 2, ground, fill="#273746")
         if len(self._trajectory) > 1:
@@ -204,23 +208,34 @@ class SimulationApp(tk.Tk):
     def _draw_ab_plot(self) -> None:
         canvas = self.ab_canvas
         canvas.delete("all")
-        canvas.create_text(6, 6, anchor="nw", text="A/B: pitch, pitch_rate, vx, x, z",
+        canvas.create_text(8, 6, anchor="nw", text="A/B 五量对比",
                            fill="#ecf0f1")
+        canvas.create_line(120, 10, 145, 10, fill="#ecf0f1", width=2)
+        canvas.create_text(150, 6, anchor="nw", text="A 实线", fill="#ecf0f1")
+        canvas.create_line(205, 10, 230, 10, fill="#ecf0f1", width=2, dash=(3, 2))
+        canvas.create_text(235, 6, anchor="nw", text="B 虚线", fill="#ecf0f1")
         result = self._ab_result
         if result is None:
             return
-        names = ("pitch_rad", "pitch_rate_rad_s", "vx_m_s", "x_m", "z_m")
+        names = (("pitch_rad", "俯仰", "rad"),
+                 ("pitch_rate_rad_s", "俯仰速率", "rad/s"),
+                 ("vx_m_s", "X速度", "m/s"),
+                 ("x_m", "X位置", "m"),
+                 ("z_m", "Z高度", "m"))
         colors = ("#f5b041", "#ec7063", "#5dade2", "#58d68d", "#af7ac5")
         width, height = max(1, canvas.winfo_width()), max(1, canvas.winfo_height())
-        for row, (name, color) in enumerate(zip(names, colors)):
+        plot_top, row_height = 32, max(32.0, (height - 38) / 5.0)
+        for row, ((name, label, unit), color) in enumerate(zip(names, colors)):
             values = [getattr(sample, name) for sample in result.baseline + result.tuned]
             lo, hi = min(values), max(values)
             span = max(hi - lo, 1.0e-6)
-            y0, y1 = 24 + row * 30, 46 + row * 30
+            y0 = plot_top + row * row_height + 12
+            y1 = plot_top + (row + 1) * row_height - 4
+            canvas.create_text(6, y0, anchor="w", text=f"{label} [{unit}]", fill=color)
             for samples, dash in ((result.baseline, ()), (result.tuned, (3, 2))):
                 points = []
                 for index, sample in enumerate(samples):
-                    px = 6 + index * (width - 12) / max(1, len(samples) - 1)
+                    px = 110 + index * (width - 116) / max(1, len(samples) - 1)
                     py = y1 - (getattr(sample, name) - lo) / span * (y1 - y0)
                     points.extend((px, py))
                 if len(points) >= 4:

@@ -4,7 +4,7 @@
 
 Read this shard only when the task uses serial/TCP diagnostics, log analysis, identification, capture, calibration, or desktop UIs.
 
-Source snapshot: `5bc61cae9969`; aggregate snapshot: `d61da66aa743`. Covered files: 5361.
+Source snapshot: `a72fbbd302e3`; aggregate snapshot: `d61da66aa743`. Covered files: 5361.
 
 | File/module or scope | Content outline | Key entry points / size |
 |---|---|---|

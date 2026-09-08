@@ -14,6 +14,22 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 SIM_ROOT = Path(__file__).resolve().parent
+_BUILD_FLAGS = ("-shared", "-std=c11", "-O2", "-Wall", "-Wextra", "-Werror")
+
+
+def _dependency_paths() -> tuple[Path, ...]:
+    return tuple(sorted({
+        SIM_ROOT / "sim_controller_bridge.c",
+        SIM_ROOT / "sim_controller_bridge.h",
+        ROOT / "App" / "Inc" / "app_control_scheduler.h",
+        ROOT / "App" / "Src" / "app_control_scheduler.c",
+        ROOT / "BSP" / "Inc" / "bsp_pwm.h",
+        ROOT / "Driver" / "Src" / "drv_coax_ctrl.c",
+        ROOT / "Driver" / "Src" / "drv_position_control.c",
+        ROOT / "Driver" / "Src" / "drv_attitude_control.c",
+        ROOT / "Driver" / "Src" / "drv_rate_control.c",
+        *((ROOT / "Driver" / "Inc").glob("*.h")),
+    }, key=str))
 
 
 class _CInput(ctypes.Structure):
@@ -60,17 +76,22 @@ class ControllerOutput:
         return self.thrust_upper_n + self.thrust_lower_n
 
 
-def _source_digest() -> str:
-    paths = [SIM_ROOT / "sim_controller_bridge.c", SIM_ROOT / "sim_controller_bridge.h",
-             ROOT / "Driver" / "Inc" / "drv_coax_ctrl.h",
-             ROOT / "Driver" / "Src" / "drv_coax_ctrl.c",
-             ROOT / "Driver" / "Src" / "drv_position_control.c",
-             ROOT / "Driver" / "Src" / "drv_attitude_control.c",
-             ROOT / "Driver" / "Src" / "drv_rate_control.c"]
+def _dependency_digest(paths: tuple[Path, ...], flags: tuple[str, ...] = _BUILD_FLAGS) -> str:
     digest = hashlib.sha256()
+    for flag in flags:
+        digest.update(flag.encode("ascii") + b"\0")
     for path in paths:
+        try:
+            identity = path.relative_to(ROOT)
+        except ValueError:
+            identity = path
+        digest.update(str(identity).encode("utf-8") + b"\0")
         digest.update(path.read_bytes())
     return digest.hexdigest()[:16]
+
+
+def _source_digest() -> str:
+    return _dependency_digest(_dependency_paths())
 
 
 def build_controller_library(instance_tag: str = "default") -> Path:
@@ -84,7 +105,7 @@ def build_controller_library(instance_tag: str = "default") -> Path:
     output = output_dir / f"controller_{_source_digest()}_{safe_tag}{suffix}"
     if output.exists():
         return output
-    command = [compiler, "-shared", "-std=c11", "-O2", "-Wall", "-Wextra", "-Werror",
+    command = [compiler, *_BUILD_FLAGS,
                "-I", str(ROOT / "Driver" / "Inc"), "-I", str(ROOT / "BSP" / "Inc"),
                "-I", str(SIM_ROOT), "-I", str(ROOT / "App" / "Inc"),
                str(SIM_ROOT / "sim_controller_bridge.c"),
