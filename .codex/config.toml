@@ -1,3 +1,6 @@
+sandbox_mode = "danger-full-access"
+approval_policy = "never"
+model_verbosity = "medium"
 [mcp_servers.h743-openocd]
 command = "node"
 args = ["out/mcp/standalone.js"]

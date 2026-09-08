@@ -53,7 +53,30 @@ static void app_optical_flow_try_init(uint32_t now_ms)
     }
 }
 
-/* Driver 帧 → Service 输入。这里只是搬字段，没有任何判决。 */
+/*
+ * ★ 光流安装方言的唯一边界 ★
+ *
+ * PMW3901 类传感器按 X前/Y右(FRD) 报数，规范机体系是 FLU（X前/Y左），故 Y 取负。
+ * 这是"芯片说了什么"变成"载具测到了什么"的那一刻，方言只应该死在这里。
+ *
+ * 为什么不放在下游：2026-09-07 之前它在 app_stabilizer.c 的
+ * stabilizer_compensate_flow_rotation() **末尾**做，而同一函数里的旋转补偿项是用
+ * 已经转成 FLU 的陀螺算的（APP_Sensor_ApplyFrameCorrection 早已把 accel/gyro 一起
+ * 转过），于是 FLU 的补偿向量被加到了尚未转换的 FRD 速度上：
+ *     X 前向两系同号 → 补偿正确，看不出任何问题；
+ *     Y 在 FLU 朝左、FRD 朝右 → 补偿反号，净效果是减了两倍。
+ * 手飞画圆时靠滚转产生向心加速度，φ ≈ -a_y/g，故 ω_x = dφ/dt 与 v_y **同相**，
+ * 错号的 Y 补偿正比于 ω_x，正好反相抵消真实横向速度：误差/信号 = 2(h+r_z)Ω²/g，
+ * h≈1 m 时 Ω≈2.2 rad/s（约 2.9 s 一圈）即完全抵消。实测表现就是传感器页原始光流
+ * 两轴都是正弦、状态页只剩 X，而且飞得慢或飞得低时会自己"变轻"，极易误判成已修好。
+ *
+ * 所以边界必须在混入任何机体量之前。从这里往下游——Service、EKF、控制器、遥测、
+ * 上位机——全部是规范 FLU，**任何一处都不许再出现 FrdToFlu/FluToFrd**；
+ * tests/test_flow_rotation_comp_frame.py 会挡住这种回潮。
+ *
+ * 例外：flow_vel_x/y 的**原始**计数照旧出现在 APP_OPTICAL_FLOW_Status 里（传感器
+ * 页显示用），那是"芯片原话"，不带坐标系语义，不要顺手把它也转了。
+ */
 static void app_flow_fill_sample(const BSP_OPTICAL_FLOW_Frame *frame,
                                  SVC_FLOW_NAV_Sample *sample)
 {
@@ -71,8 +94,10 @@ static void app_flow_fill_sample(const BSP_OPTICAL_FLOW_Frame *frame,
     sample->flow_received_ms = frame->flow_received_ms;
     sample->sensor_time_ms = frame->time_ms;
     sample->sample_interval_us = frame->sample_interval_us;
+    /* FRD → FLU：X 同向，Y 取负。INT16_MIN 取负会溢出，钳到 INT16_MAX。 */
     sample->flow_vel_x = frame->flow_vel_x;
-    sample->flow_vel_y = frame->flow_vel_y;
+    sample->flow_vel_y = (frame->flow_vel_y == INT16_MIN) ?
+                         INT16_MAX : (int16_t)(-frame->flow_vel_y);
     sample->flow_quality = frame->flow_quality;
 }
 

@@ -42,18 +42,22 @@ are recorded.
 Known legacy boundaries include:
 
 - `App/Src/app_sensor.c`: IMU chip axes to the current intermediate axes.
-- `App/Src/app_stabilizer.c`: Fusion input signs, startup attitude zero, RC intent, and controller input assembly.
+- `App/Src/app_stabilizer.c`: Fusion input signs, startup attitude zero, and controller input assembly. Optical-flow mounting is converted exactly once, at the exit of `stabilizer_compensate_flow_rotation`; nothing downstream may re-adapt it. RC intent no longer lives here — see `App/Src/app_rc_intent.c`.
+- `App/Src/app_rc_intent.c`: the only stick-to-FLU Adapter. Each sign is derived from the calibration wizard's physical prompt (`RC_WIZARD_STEPS`) plus this contract, not from bench trial and error.
 - `Core/Src/freertos.c`: current sensor-task alignment and legacy NED/FRD comments; this file remains CubeMX-owned.
 - `Driver/Src/drv_attitude_fusion.c`: x-io Fusion NED convention.
-- `Driver/Src/drv_coax_ctrl.c`: force-frame, rate-frame, and 90-degree servo mount adapters; servo polarity and travel now come from the runtime `ServoCalibration` (`pulse_sign`/`center_us`/`min_us`/`max_us`), not compile-time sign macros.
+- `Driver/Src/drv_coax_ctrl.c`: the force-frame and rate-frame sign macros are deleted; the controller consumes canonical FLU directly. Tilt-to-moment polarity is derived from measured geometry (`DRV_COAX_CTRL_TILT_MOMENT_POLARITY`, from `DRV_AIRFRAME_THRUST_POINT_TO_CG_Z_M`), yaw polarity is derived from rotor handedness (`DRV_COAX_CTRL_YAW_TORQUE_POLARITY`, from `DRV_AIRFRAME_LOWER_ROTOR_SPIN_SENSE`), the 90-degree servo mount map is fixed kinematics, and servo polarity/travel come from the runtime `ServoCalibration` (`pulse_sign`/`center_us`/`min_us`/`max_us`). No compile-time sign macro may reappear on this path.
+
+`DRV_AIRFRAME_LOWER_ROTOR_SPIN_SENSE` is currently **inferred, not measured** (2026-09-07, author-approved as provisional): it is back-solved from the author's observation that raising the yaw rate gain produces oscillation rather than divergence, which means the closed yaw loop is negative feedback. Confirm it by looking at the props or the motor wiring, then replace the provenance comment. If it turns out reversed, change that one constant — never the allocator or the RC mapping.
 - `tools/drone_tcp_panel.py`: artificial-horizon integration and accelerometer-angle display.
 - `tools/flight_log_rerun_replay.py`: current X-forward/Y-right/Z-down replay geometry.
 - Historical design documents under `doc/history/` may use legacy FRD/local-frame terminology; ask the user which dataset and firmware revision applies before using their values.
 
-Live status telemetry is an explicit observation-boundary exception: schema v3 declares
-`frame=body_flu` plus the frame-contract version, and converts controller legacy X-forward/Y-right
-velocity and position through `DRV_FRAME_FrdToFlu()` before publishing. This does not migrate the
-controller/RC runtime representation or reinterpret historical logs, so it does not complete seam 5.
+Telemetry is no longer an adapter boundary. Schema v3 still declares `frame=body_flu` plus the
+frame-contract version, but `App/Src/app_telem_port.c` now publishes velocity, position and the
+controller setpoint/error channels verbatim: the values reaching it are already canonical FLU, so a
+second `DRV_FRAME_FrdToFlu()` there would double-convert. Any reintroduced sign or conversion on the
+observation path is a defect, not an exception.
 
 `DRV_FRAME_RUNTIME_MIGRATION_DONE_MASK` tracks sensor, estimator, navigation, controller, RC/actuator, and telemetry/log seams independently. Completion is derived from that mask; do not set a bit without its matching test. Do not claim runtime FLU compliance or authorize free-flight testing while `DRV_FRAME_RUNTIME_MIGRATION_COMPLETE` evaluates to `0`.
 

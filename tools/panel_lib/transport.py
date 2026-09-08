@@ -52,7 +52,9 @@ def udp_payload_is_probably_text(data: bytes) -> bool:
     return (allowed / len(data)) >= 0.95
 
 
-def serial_device_identity_policy(identity: dict[str, object] | None) -> tuple[str, str]:
+def serial_device_identity_policy(
+    identity: dict[str, object] | None, *, allow_cp210: bool = False,
+) -> tuple[str, str]:
     """Classify a COM device for the application-CDC to ROM-DFU handoff."""
 
     if not identity:
@@ -65,9 +67,12 @@ def serial_device_identity_policy(identity: dict[str, object] | None) -> tuple[s
         "STLINK", "ST-LINK", "CH340", "CH341", "CP210", "FTDI", "FT232",
         "FT4232", "BLUETOOTH", " BLE ",
     )
-    matched = next((token for token in rejected_tokens if token in f" {combined} "), None)
+    matched = next((token for token in rejected_tokens
+                    if token in f" {combined} " and not (allow_cp210 and token == "CP210")), None)
     if matched is not None:
         return "rejected", f"检测到不允许的串口适配器：{matched.strip()}"
+    if allow_cp210 and "CP210" in combined:
+        return "allowed", "CP210 飞控数传链路（仅机械校准）"
     vid = identity.get("vid")
     pid = identity.get("pid")
     if vid == 0x0483 and pid == 0x5740:

@@ -35,31 +35,100 @@
 /*    gyro_y    > 0  →  正 pitch 方向的角速率                              */
 /*  可执行证据见 tests/test_flu_seam1_estimator_frame.py。                  */
 /*                                                                        */
-/*  R-F6-2（2026-09-06，工单见                                              */
-/*  doc/req-rf6-2-controller-flu-migration.md）：位置/速度侧（Reference /   */
-/*  AttitudeInput 的 x_m/y_m/z_m、vx/vy/vz_m_s）已migrate到规范 FLU。       */
-/*  第 3 节定性结论：2026-08-30 left_y 实录证明 seam2 的 local Y 是机体右正；*/
-/*  App 在 seam2→seam3 具名边界取反，使本控制器入口成为规范 FLU 左正。Z 也   */
-/*  从下正翻成了上正。姿态/角速率本来就已是规范 FLU，因此力坐标系不再需要  */
-/*  任何符号补偿——下面这条曾经的                                             */
+/*  入口口径：Reference / AttitudeInput 的 x_m/y_m/z_m、vx/vy/vz_m_s 与     */
+/*  姿态、角速率全部是规范 FLU。上游把安装差异消化在传感器出口的唯一        */
+/*  Adapter 里（光流见 app_stabilizer.c 的 stabilizer_compensate_flow_       */
+/*  rotation），本层不再有任何"再取一次反"的边界适配，也不得新增。          */
+/*  因此力坐标系不需要符号补偿，曾经的                                      */
 /*  DRV_COAX_CTRL_FORCE_FRAME_ROLL_SIGN / _PITCH_SIGN /                     */
-/*  DRV_COAX_CTRL_RATE_FRAME_ROLL_SIGN / _PITCH_SIGN 四个常量已删除，        */
-/*  coax_ctrl_rpy_matrix 直接吃 FLU 角度，不加任何符号：标准 ZYX 欧拉矩阵    */
-/*  公式对任何右手系都成立，FLU 的 roll/pitch/yaw 定义本来就是绕 FLU 自己    */
-/*  的 X/Y/Z 的右手旋转（见 drv_frame_contract.h），无需额外补偿。          */
+/*  DRV_COAX_CTRL_RATE_FRAME_ROLL_SIGN / _PITCH_SIGN 四个常量已删除：       */
+/*  coax_ctrl_rpy_matrix 直接吃 FLU 角度，标准 ZYX 欧拉矩阵公式对任何右手系 */
+/*  都成立，FLU 的 roll/pitch/yaw 本来就是绕自己 X/Y/Z 的右手旋转           */
+/*  （见 drv_frame_contract.h），无需额外补偿。                             */
+/*                                                                        */
+/*  出口口径：力矩 → 倾转 → 舵机这一段的符号也不再是常量开关。倾转到力矩的 */
+/*  极性由实测几何推出（DRV_COAX_CTRL_TILT_MOMENT_POLARITY），倾转到舵机的  */
+/*  90° 机构映射是固定运动学（coax_ctrl_body_tilt_to_servo_tilts），唯一    */
+/*  可变量是上位机机械标定写进来的 ServoCalibration。                       */
 /* ════════════════════════════════════════════════════════════════════════ */
 
 #define DRV_COAX_CTRL_FORCE_EPS_N          1.0e-4f
 #define DRV_COAX_CTRL_RATE_SCALE_EPS       1.0e-6f
 #define DRV_COAX_CTRL_SERVO_ANGLE_TOL_RAD  8.0e-4f
-#define DRV_COAX_CTRL_PROP9047_YAW_M_PER_N 0.0001f
+/*
+ * 桨的反扭矩系数：每 1 N 推力产生多少 N·m 反扭矩，单位是米。
+ * 净偏航力矩 Mz = k·(T_下 − T_上)；分配器反解 ΔT = Mz/k。
+ *
+ * ⚠ 2026-09-07 由 0.0001 改为 0.005。**这是个工程估计值，不是实测**——作者知情
+ * 并明确要求"先给一个合理的虚拟 K"。原值 0.0001 在 doc/ 中**查无出处**，既无
+ * 辨识记录也无引用来源。
+ *
+ * 估计依据：9047 桨 D = 0.2286 m，小型螺旋桨的 C_Q/C_T 约 0.02~0.03，
+ * 故 Q/T ≈ 0.02 × 0.2286 ≈ 5e-3 m。原值比这小约 50 倍。
+ * 旁证：按原值算，偏航最大角加速度只有 7e-4/0.005 = 0.14 rad/s²（8°/s²），
+ * 到 60°/s 要 7.5 秒——与作者能明显感觉到偏航力矩变化的实测不符。
+ *
+ * **改它不会让飞机变有劲**，k 只是"N·m 数字"与"推力差"之间的齿轮比：
+ *   物理动作 ΔT = rate_kp·e / k，力矩上限换算成推力差后是 k 无关的
+ *   （ΔT_max = 2·min(F/2, T_max − F/2) ≈ 7 N，只取决于实测的 F 与 T_max）。
+ * 它带来的是**单位变得可解释**：rate_kp/I_zz 才真的等于内环带宽，力矩上限
+ * 才真的对应一个可信的角加速度。
+ *
+ * 同步补偿：默认 rate.kp[2] 按同一比例放大，使物理行为逐位不变（见下方）。
+ * 但**持久化在 Flash 里的用户增益不会自动跟着换算**——按新 k 调过的值与按旧 k
+ * 调的值相差 50 倍，重新标定前请以本次为准重调。
+ *
+ * 待办：一次系留纯偏航台阶（固定推力差、记 gyro_z、取初始斜率）即可定住
+ * k/I_zz 这个比值——控制律真正需要的也只是这个比值。
+ */
+#define DRV_COAX_CTRL_PROP9047_YAW_M_PER_N 0.005f
 #define DRV_COAX_CTRL_SINGLE_MAX_THRUST_N 10.2f
 #define DRV_COAX_CTRL_THRUST_TABLE_POINTS  21U
 #define DRV_COAX_CTRL_GRAMS_PER_NEWTON     101.971621f
 #define DRV_COAX_CTRL_ROLL_EFFECTIVENESS   0.581f
 #define DRV_COAX_CTRL_PITCH_EFFECTIVENESS  0.569f
-#define DRV_COAX_CTRL_ROLL_MOMENT_SIGN     (-1.0f)
-#define DRV_COAX_CTRL_PITCH_MOMENT_SIGN    (-1.0f)
+/*
+ * 倾转 → 机体力矩的极性。它不是可调符号：值直接从实测机体几何读出来，
+ * 想改它只能重新测量飞机。
+ *
+ * 规范 FLU，推力大小 T，倾转角的正方向由 coax_ctrl_body_tilt_to_servo_tilts()
+ * 钉死（那里写明了机构运动学的实测依据）：
+ *     body_y_tilt > 0  →  推力轴倒向 +Y（左）  →  F_y = +T*sin(tilt)
+ *     body_x_tilt > 0  →  推力轴倒向 -X（后）  →  F_x = -T*sin(tilt)
+ * 取重心到推力作用点的矢量 r = (0, 0, r_z)，由 τ = r × F：
+ *     τ_roll  = -r_z * F_y = -r_z * T * sin(body_y_tilt)
+ *     τ_pitch =  r_z * F_x = -r_z * T * sin(body_x_tilt)
+ * 两轴共用同一个因子 -r_z，所以极性必然同号，不存在"一轴正一轴负"的组合。
+ * DRV_AIRFRAME_THRUST_POINT_TO_CG_Z_M < 0（推力作用点在重心下方），因此极性
+ * 为 +1：正倾转产生正的 FLU 力矩。
+ *
+ * 拿飞机而不是拿代码复核一遍：推力作用点在重心下方，把推力倒向左边等于把
+ * 机体下半部往左推，上半部就往右倒——右翼下沉，按 drv_frame_contract.h 正是
+ * +roll。这一步反直觉，但叉乘和实物是一致的。
+ *
+ * 只有符号来自几何；力臂与 EFFECTIVENESS 的**大小**来自 2026-07-25 的系统
+ * 辨识，两者职责不同，不要用调大小的理由去动符号。
+ */
+#define DRV_COAX_CTRL_TILT_MOMENT_POLARITY \
+    ((DRV_AIRFRAME_THRUST_POINT_TO_CG_Z_M < 0.0f) ? 1.0f : -1.0f)
+
+/*
+ * 偏航力矩极性。和倾转极性一样，它不是可调符号，而是由桨的旋向推出来的。
+ *
+ * 桨对机体的反作用力矩与自身旋向相反，两桨共轴反转，令 s = 下桨旋向：
+ *     Mz = -s_upper*ku*T_upper - s_lower*kl*T_lower
+ *        = s*(ku*T_upper - kl*T_lower)            (s_upper = -s)
+ *        = -s*(kl*T_lower - ku*T_upper)
+ * 因此本极性 = -s。s = -1（下桨俯视顺时针）时极性为 +1，即
+ *     Mz = +(kl*T_lower - ku*T_upper)
+ * ——正偏航力矩靠**加大下桨**推力获得。
+ *
+ * ⚠ 上游的 DRV_AIRFRAME_LOWER_ROTOR_SPIN_SENSE 目前是**反推值**（依据见该处
+ * 注释），所以这条链在拆桨看一眼之前只是自洽，不算实测确认。要改只改那个
+ * 常量，本文件与遥控映射都不该动。
+ */
+#define DRV_COAX_CTRL_YAW_TORQUE_POLARITY \
+    (-DRV_AIRFRAME_LOWER_ROTOR_SPIN_SENSE)
 #define DRV_COAX_CTRL_HORIZONTAL_ACCEL_LIMIT_M_S2 3.70f
 #define DRV_COAX_CTRL_VEL_D_ACCEL_LIMIT_M_S2 3.70f
 #define DRV_COAX_CTRL_POS_Z_I_ACCEL_LIMIT_M_S2 1.50f
@@ -97,6 +166,12 @@ typedef struct {
     float attitude_tilt_error_rad;
     float rate_error_rad_s[3];
     float moment_cmd_n_m[3];
+    /*
+     * 真正下发给差动推力分配器的偏航力矩：已按 coax_ctrl_yaw_limit_moment()
+     * 钳过。moment_cmd_n_m[2] 保持**未钳**的原始需求，遥测因此还能看出
+     * "要了多少 / 给了多少"的差距；分配器只能用这一个。
+     */
+    float yaw_moment_applied_n_m;
     float alpha_rad;
     float beta_rad;
     float total_force_n;
@@ -238,7 +313,8 @@ static float coax_ctrl_norm3(const float value[3])
 static float coax_ctrl_roll_moment_from_tilt(float total_force_n,
                                              float beta_rad)
 {
-    return DRV_COAX_CTRL_ROLL_MOMENT_SIGN *
+    /* 极性由几何推出（见 DRV_COAX_CTRL_TILT_MOMENT_POLARITY），不是经验值。 */
+    return DRV_COAX_CTRL_TILT_MOMENT_POLARITY *
            DRV_COAX_CTRL_ROLL_EFFECTIVENESS *
            coax_ctrl_params.roll_tilt_lever_arm_m *
            total_force_n *
@@ -249,7 +325,8 @@ static float coax_ctrl_pitch_moment_from_tilt(float total_force_n,
                                               float alpha_rad,
                                               float beta_rad)
 {
-    return DRV_COAX_CTRL_PITCH_MOMENT_SIGN *
+    /* 与 roll 共用同一个 -r_z 因子，因此必然同号。 */
+    return DRV_COAX_CTRL_TILT_MOMENT_POLARITY *
            DRV_COAX_CTRL_PITCH_EFFECTIVENESS *
            coax_ctrl_params.pitch_tilt_lever_arm_m *
            total_force_n *
@@ -849,6 +926,21 @@ static void coax_ctrl_compute_balance_solution(
     memcpy(solution->moment_cmd_n_m,
            coax_ctrl_state.rate_output.moment_unsat,
            sizeof(solution->moment_cmd_n_m));
+    /*
+     * 偏航必须用**钳过**的那份去分配。
+     *
+     * roll/pitch 走 coax_ctrl_solve_*_tilt_from_moment，那两个求解器内部会把
+     * 目标力矩夹进可达区间，所以喂未钳值无害；偏航是直接进差动推力分配器的，
+     * 中间没有任何一道钳位。而分配器的两路推力是**各自独立**钳到 [0, T_max]
+     * 的，一路撞上限时另一路不会补——总推力就这么悄悄少了。
+     *
+     * 现象是"一加偏航增益，桨憋死、升力维持不住"：上下桨共用同一个推力预算，
+     * 偏航力矩靠拉开两者的差获得，差拉过头时弱的那个趋近 0、强的那个撞满，
+     * 和 = F 的约束首先被牺牲掉。角速度环已经算出了这个上限并按它做抗饱和
+     * （rate_input.saturation_*[2]），只是结果一直没被分配器采用。
+     */
+    solution->yaw_moment_applied_n_m =
+        coax_ctrl_state.rate_output.moment_cmd[2];
     debug->yaw_angle_p_rad_s =
         -coax_ctrl_params.attitude.att_kp[2] * solution->attitude_error[2];
     debug->yaw_rate_d_rad_s = solution->rate_error_rad_s[2];
@@ -1074,8 +1166,14 @@ static void coax_ctrl_allocate_motor_thrust(float total_force_n,
         denom = DRV_COAX_CTRL_RATE_SCALE_EPS;
     }
 
-    const float upper_raw = (kl * total_force_n - yaw_torque_cmd) / denom;
-    const float lower_raw = (ku * total_force_n + yaw_torque_cmd) / denom;
+    /*
+     * 由 Mz = P*(kl*T_lower - ku*T_upper) 与 F = T_upper + T_lower 反解，
+     * P = DRV_COAX_CTRL_YAW_TORQUE_POLARITY = ±1，故 1/P = P。
+     * P=+1 时与历史实现逐位相同——这次只是把隐含假设变成可推导的。
+     */
+    const float yaw_torque = DRV_COAX_CTRL_YAW_TORQUE_POLARITY * yaw_torque_cmd;
+    const float upper_raw = (kl * total_force_n - yaw_torque) / denom;
+    const float lower_raw = (ku * total_force_n + yaw_torque) / denom;
 
     *upper_n = upper_raw;
     *lower_n = lower_raw;
@@ -1140,14 +1238,78 @@ void DRV_COAX_CTRL_GetDefaultParams(DRV_COAX_CTRL_Params *params)
     params->attitude.att_kp[2] = 1.0f / 0.15f;
     params->attitude.rate_limit_rad_s[0] = 3.49065850f;
     params->attitude.rate_limit_rad_s[1] = 3.49065850f;
-    params->attitude.rate_limit_rad_s[2] = 1.04719758f;
+    /*
+     * 偏航期望角速度上限：作者要求由 60°/s 放开到 200°/s（2026-09-07），
+     * 与 roll/pitch 取齐，用于验证"偏航几乎没反应是不是被这条钳位限住的"。
+     *
+     * 这是一次**放宽限幅**，按 AGENTS.md 规则 4 属需作者批准的变更，作者已明确
+     * 指示。放宽的直接后果：角度环输出不再被钳在 60°/s，同样的角度误差会要求
+     * 更大的角速度，进而更容易顶到分配器的偏航力矩上限（悬停约 7e-4 N·m）。
+     *
+     * 需要留意的是它**大概率不是**主因：角度环输出 omega_sp 要靠内环去跟，而
+     * 内环带宽只有约 0.0105 1/s，本来就到不了 60°/s。真正让"调角度 P 没反应"的
+     * 是 rate.kp[2]=0 时固件按除零保护拒收 coax.yaw_angle_kp（界面此前不显示这个
+     * 拒绝，本次一并修掉）。测完请按结论决定收回还是保留。
+     */
+    params->attitude.rate_limit_rad_s[2] = 3.49065850f;
     params->rate.kp[0] = 0.1104f;
     params->rate.kp[1] = 0.1138f;
-    params->rate.kp[2] = DRV_AIRFRAME_IZZ_KGM2 * 0.15f;
+    /*
+     * 系数 0.0105 = 偏航内环带宽 [1/s]，`rate.kp = I_zz * 带宽`。
+     *
+     * 这个数字看着别扭是有原因的：I_zz 在 2026-09-07 由 0.00035 改成 0.005
+     * （见 drv_airframe_model.h），若沿用原来的 0.15，默认增益会从 5.25e-5 跳到
+     * 7.5e-4 —— 而作者实测偏航内环 kp 到 1e-4 左右就抖振，7.5e-4 是那个阈值的
+     * 7 倍多，任何一次"恢复默认"都会让飞机在偏航上立刻发散。所以这里保持默认
+     * 增益的**数值**不变，只把系数改成它真实对应的带宽。
+     *
+     * 2026-09-07 二次修订：偏航反扭矩系数 k 由 1e-4 改成 5e-3（×50）之后，物理
+     * 动作 ΔT = rate_kp·e/k 会缩小 50 倍。为了让这次换算**逐位不改变飞机行为**，
+     * 这里把系数同比例放大 50 倍（0.0105 → 0.525），使 rate_kp/k 保持 0.525 不变。
+     *
+     * 于是内环带宽从"0.0105 1/s"变成"0.525 1/s"。**不是内环变快了**——是原来那个
+     * 0.0105 本身就是被错误的 k 扭曲出来的假数字；同一份物理行为，用可解释的 k
+     * 读出来就是 0.525 1/s（时间常数约 1.9 s）。
+     */
+    params->rate.kp[2] = DRV_AIRFRAME_IZZ_KGM2 * 0.525f;
     params->rate.integrator_limit[0] = 0.010f;
     params->rate.integrator_limit[1] = 0.010f;
     params->rate.integrator_limit[2] = 0.00020f;
-    params->rate.alpha_lpf_cutoff_rad_s = 188.495559f;
+    /*
+     * 角加速度低通截止：2026-09-07 由 188.495559（30 Hz）改为 18.8495559（3 Hz）。
+     *
+     * 起因是三个轴的 rate.kd 一加就发散。共因不在控制律里，在出口：TIM2 预分频
+     * 120、周期 19999 → 1 MHz 计数、20 ms 周期 = **50 Hz**，而两个 ESC 和两个舵机
+     * 全挂在 htim2 上（见 Core/Src/tim.c 与 BSP/Src/bsp_pwm.c）。角速率环 500 Hz
+     * 算 10 次只送得出去 1 次，纯死区时间约
+     *     零阶保持半帧 10 ms + 本环离散化 1 ms + 脉冲本身 1.5 ms ≈ 13 ms。
+     *
+     * D 是唯一逃不掉这段死区的项：D 力矩 kd·α 与惯性力矩 J·α 之比是 kd/J，**与
+     * 频率无关**；P 的回路增益按 1/ω 衰减、I 更快，只有 D 在高频不衰减，于是死区
+     * 造成的相位翻转只有 D 会撞上。绕刚体积分一圈的回路传函是
+     *     L(jω) = (kd/J)·H(jω)·e^(-jωT),  ∠L = -atan(ω/ω_c) - ω·T
+     * 令 ∠L = -180° 解出穿越频率，再要求 |L| < 1，就得到 kd/J 的起振门槛：
+     *     ω_c = 188.5 → ω_180 ≈ 182 rad/s，|H| = 0.72 → kd/J < 1.39
+     *     ω_c =  18.8 → ω_180 ≈ 132 rad/s，|H| = 0.14 → kd/J < 7.08
+     * 也就是说旧截止把 D 最有害的那一段（29 Hz 处相位已完全倒置）原样放了过去，
+     * 而执行器的 Nyquist 只有 25 Hz。横滚/俯仰 J = 0.051 时门槛 kd ≈ 0.07，偏航
+     * J = 0.005 时仅 ≈ 0.007 —— 按 kp 的量级（rate.kp[0] = 0.11）去试 kd，三个轴
+     * 会同时越线，这正是实测到的现象。
+     *
+     * 代价近乎为零：真正有用的阻尼只需要 kd/J ≈ 0.2~0.6，回路穿越在 2 rad/s 量级，
+     * 3 Hz 截止在那里只带来 6° 相位滞后、0.6% 幅值衰减；被滤掉的全是执行器本来就
+     * 跟不上的频段。附带效果是奈奎斯特自激门槛（kd/J < 2/a - 1，a = 1-exp(-ω_c·dt)）
+     * 从 5.37 抬到 54，彻底不再是约束。
+     *
+     * ⚠ Flash 里已持久化的配置存的是 Hz（app_control_config_store.c），不会跟着
+     * 这个默认值走；要让新截止生效需重置参数或显式下发
+     * angular_accel_lpf_cutoff_rad_s。
+     *
+     * 真正的天花板仍是 50 Hz 出口本身：ESC 被舵机拖在同一个定时器上，单把 ESC 挪
+     * 到独立定时器跑 400 Hz，死区就从 13 ms 降到 4 ms 以内，比任何调参都管用。那
+     * 属于 CubeMX 生成代码，须在 CubeMX 里重配，不能手改。
+     */
+    params->rate.alpha_lpf_cutoff_rad_s = 18.8495559f;
     for (uint32_t axis = 0U; axis < 3U; ++axis) {
         params->rate.large_error_threshold[axis] = 1.5f;
         params->rate.large_error_scale[axis] = 0.0f;
@@ -1438,10 +1600,26 @@ static void coax_ctrl_body_tilt_to_servo_tilts(float body_x_tilt_rad,
                                                float *servo_beta_tilt_rad)
 {
     /*
-     * The tilt-servo module is mounted 90 degrees CCW in top view.
-     * Keep controller coordinates as X-forward/Y-right:
-     *   servo 1 / alpha is now the left-right physical axis,
-     *   servo 2 / beta is now the front-back physical axis.
+     * 倾转机构运动学 —— 固定，不是可调符号。
+     *
+     * 倾转舵机组相对机体转了 90°：控制左右倾（body_y_tilt）的是 1 号舵机
+     * （alpha 通道），控制前后倾（body_x_tilt）的是 2 号舵机（beta 通道），
+     * 且两条连杆同手性，所以这里是两个同号的负号，而不是一正一负。
+     *
+     * 这两个负号 + 标定写入的 pulse_sign 共同决定了 body_*_tilt 的正方向。
+     * 以在册标定（data/calibration/servo_mechanical/2026-08-30，
+     * alpha_sign=beta_sign=-1）代入本函数与 DRV_COAX_CTRL_BodyTiltRadToServoPulses：
+     *     servo_alpha_us = center + body_y_tilt * k
+     *     servo_beta_us  = center + body_x_tilt * k
+     * 作者已实测确认该标定下"舵机脉宽加大 = 推力轴向左(+Y) / 向后(-X)"，
+     * 于是两个倾转量的正方向被钉死为：
+     *     body_y_tilt > 0  →  推力轴倒向 +Y（左）
+     *     body_x_tilt > 0  →  推力轴倒向 -X（后）
+     * 一个顺 +Y、一个逆 +X 看着别扭，但这正是让 τ = r × F 的 roll/pitch 两轴
+     * 共用同一个极性因子的定义（推导见 DRV_COAX_CTRL_TILT_MOMENT_POLARITY）。
+     *
+     * 分工：本函数与力矩律固定不变；换飞机、换舵机、连杆反装，全部只允许
+     * 改上位机标定写进来的 pulse_sign / center_us / min_us / max_us。
      */
     if (servo_alpha_tilt_rad != NULL) {
         *servo_alpha_tilt_rad = -body_y_tilt_rad;
@@ -1602,7 +1780,7 @@ void DRV_COAX_CTRL_RunScheduled(const DRV_COAX_CTRL_AttitudeInput *attitude,
     coax_ctrl_compute_balance_command(attitude, reference, schedule,
                                       &debug, &solution);
     /* 三轴力矩同出一套 SO(3) 控制律；分配器才是分叉点（倾转 vs 差动推力）。 */
-    yaw_torque_cmd = solution.moment_cmd_n_m[2];
+    yaw_torque_cmd = solution.yaw_moment_applied_n_m;
     coax_ctrl_allocate_motor_thrust(debug.total_force_n,
                                     yaw_torque_cmd,
                                     &thrust_upper_n,
@@ -1631,9 +1809,11 @@ void DRV_COAX_CTRL_RunScheduled(const DRV_COAX_CTRL_AttitudeInput *attitude,
     debug.motor_thrust_cmd_n[1] = output->thrust_lower_n;
     debug.motor_cmd_us[0] = (float)output->motor_upper_us;
     debug.motor_cmd_us[1] = (float)output->motor_lower_us;
+    /* 实际达成的偏航力矩：与分配式同一套极性，不能只在一边用。 */
     debug.yaw_torque_cmd =
-        (coax_ctrl_params.yaw_torque_lower_m_per_n * output->thrust_lower_n) -
-        (coax_ctrl_params.yaw_torque_upper_m_per_n * output->thrust_upper_n);
+        DRV_COAX_CTRL_YAW_TORQUE_POLARITY *
+        ((coax_ctrl_params.yaw_torque_lower_m_per_n * output->thrust_lower_n) -
+         (coax_ctrl_params.yaw_torque_upper_m_per_n * output->thrust_upper_n));
 
     achieved_total_force_n = output->thrust_upper_n + output->thrust_lower_n;
     output->moment_achieved_n_m[0] = coax_ctrl_roll_moment_from_tilt(

@@ -659,6 +659,6 @@ def test_the_panel_entry_point_did_not_grow() -> None:
     """`drone_tcp_panel.py` 只减不增：录制服务不许在那里加第四处挂载。"""
     source = (Path(__file__).resolve().parents[1] / "tools"
               / "drone_tcp_panel.py").read_text(encoding="utf-8")
-    assert source.count("_dashboard_") == 3
+    assert source.count("_dashboard_") == 2
     assert "record_service" not in source
     assert "TelemetryRecorder" not in source

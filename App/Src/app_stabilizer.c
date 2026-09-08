@@ -36,6 +36,7 @@
 #include "app_nav_estimator.h"
 #include "app_optical_flow.h"
 #include "app_rc_config.h"
+#include "app_rc_intent.h"
 #include "app_sensor.h"
 #include "app_messages.h"
 #include "app_servo_cal.h"
@@ -103,14 +104,6 @@
 #define STABILIZER_USE_DIRECT_ANGLE_SERVO 0U     /* 1=角度直驱舵机, 0=同轴控制器(永久) */
 #define STABILIZER_YAW_RATE_REF_MAX_RAD_S 1.04719758f /* CH4 偏航参考累加最大速率 [rad/s] */
 #define STABILIZER_XY_VEL_REF_MAX_M_S  0.40f     /* CH1/CH2 水平速度目标最大值 [m/s]    */
-#define STABILIZER_RC_VELOCITY_Y_TO_FLU_SIGN (-1.0f) /* CH1 右正 → FLU +Y 左正 */
-/*
- * R-F6-2（2026-09-06）：seam2(svc_flow_nav)→seam3(drv_coax_ctrl) 的 Y 轴适配器。
- * 2026-08-30 left_y 实录证明 seam2 输出仍是机体右正，而 seam3 已迁移为规范
- * FLU 左正，所以只在这个具名边界取反。光流旋转补偿和诊断快照仍保留 seam2
- * 的旧口径；不要把本常量重新散回那些上游计算。
- */
-#define STABILIZER_VELOCITY_MEAS_Y_SIGN (-1.0f)
 #define STABILIZER_XY_POS_ERR_MAX_M    0.50f     /* 水平位置外环单次误差限幅 [m]        */
 #define STABILIZER_Z_REF_RATE_MAX_M_S  0.30f     /* CH3 满杆高度目标积分速度 [m/s]       */
 #define STABILIZER_Z_REF_MAX_M         0.40f     /* 上电光流测高基准以上高度上限 [m]     */
@@ -149,16 +142,10 @@
 #define STABILIZER_USE_RC_DIRECT_TILT_SERVO 0U   /* 0=自稳定控制器(永久), 1=CH1/CH2直控舵机调试 */
 #define STABILIZER_RC_ATTITUDE_TARGET_LIMIT_RAD 0.349065850f /* CH6 姿态调试最大 ±20° */
 /*
- * 摇杆 → 目标姿态的极性。这是整条链路上唯一决定"摇杆方向"的符号。
- * 控制器内部的力坐标系符号（原 DRV_COAX_CTRL_FORCE_FRAME_ROLL_SIGN 等，
- * R-F6-2 已删除）对舵机输出是有实际影响的——SO(3) 姿态误差是非线性的，
- * 并不会像线性量那样互相抵消，见 tests/test_flu_seam3_force_frame_derivation.py
- * 的实测反例——只是这条影响恰好不改变"摇杆方向由这两个常量唯一决定"这一事实。
- * 约定：pitch 摇杆前推 → 目标 pitch < 0（机头下压）→ 飞机前倾。
- * 实机确认：原来 PITCH_SIGN = +1 时前推变成后倾，故取 -1。
+ * 摇杆 → 机体意图的极性不在本文件。它由 app_rc_intent 这一个 Adapter 决定，
+ * 每条都是「标定向导的物理提示 + drv_frame_contract.h」推出来的，本文件只按
+ * 名字调用，禁止在这里补符号。
  */
-#define STABILIZER_RC_ATTITUDE_TARGET_PITCH_SIGN (-1.0f)
-#define STABILIZER_RC_ATTITUDE_TARGET_ROLL_SIGN  (1.0f)
 
 /*
  * ============================================================================
@@ -264,7 +251,8 @@
 
   static float stabilizer_rc_yaw_rate_rad_s(float yaw_norm)
   {
-    return yaw_norm * STABILIZER_YAW_RATE_REF_MAX_RAD_S;
+    return APP_RcIntent_YawRateLeft(yaw_norm,
+                                    STABILIZER_YAW_RATE_REF_MAX_RAD_S);
   }
 
   static uint16_t stabilizer_motor_pulse_clamp(int32_t pulse_us)
@@ -314,12 +302,27 @@
     out[2] = (a[0] * b[1]) - (a[1] * b[0]);
   }
 
-  static void stabilizer_compensated_imu_accel_nav_xy(float accel_x_g,
+  /*
+   * IMU 比力 → **机头对齐的本地水平系**水平加速度。
+   *
+   * 只用 roll/pitch 把比力转平，**故意不乘 yaw**。这不是省事，是让它和同一
+   * 拍喂进 EKF 的光流速度处在同一个坐标系里：光流给的是机体水平地速，本函数
+   * 若再乘一次 yaw，就会把加速度转进"上电时刻朝向"的固定世界系，两者夹角等于
+   * 累计偏航角。2026-09-02 实录里偏航跑了 224°、七成样本超 ±10°，那样融合出来
+   * 的横向速度是错的（预测与观测互相对抗），而且偏航为 0 时完全看不出来。
+   * 下游（EKF、控制器目标姿态、遥测 frame=body_flu）本来就全是机头相对口径，
+   * 所以对齐到机头、而不是把其余部分改成固定世界系。
+   *
+   * 二阶残差已补：机头对齐系随偏航转动，速度分量的导数满足 dv/dt|分量 = a - ω×v。
+   * 该项在 svc_flow_nav.c 的 Fuse 里加（它把两轴耦合起来，属坐标系语义，不归
+   * drv_nav_ekf——后者被定义为 X/Y 互不串扰的纯数值 2D KF）。本函数只管转平，
+   * 不要在这里补 ω×v。
+   */
+  static void stabilizer_compensated_imu_accel_level_xy(float accel_x_g,
                                                        float accel_y_g,
                                                        float accel_z_g,
                                                        float roll_rad,
                                                        float pitch_rad,
-                                                       float yaw_rad,
                                                        const float gyro_rad_s[3],
                                                        const float alpha_rad_s2[3],
                                                        uint8_t alpha_valid,
@@ -347,8 +350,6 @@
     float sr;
     float cp;
     float sp;
-    float cy;
-    float sy;
     float rate_norm;
     float alpha_norm;
     float weight;
@@ -375,17 +376,17 @@
     sr = sinf(roll_rad);
     cp = cosf(pitch_rad);
     sp = sinf(pitch_rad);
-    cy = cosf(yaw_rad);
-    sy = sinf(yaw_rad);
 
+    /* Ry(pitch)*Rx(roll) only -- the heading-aligned level frame.  Adding a
+     * Rz(yaw) factor here is what used to put this vector in a different frame
+     * from the optical-flow velocity it is fused with. */
     *acc_x_m_s2 =
-      (cy * cp * f_cg_body_m_s2[0]) +
-      ((cy * sp * sr - sy * cr) * f_cg_body_m_s2[1]) +
-      ((cy * sp * cr + sy * sr) * f_cg_body_m_s2[2]);
+      (cp * f_cg_body_m_s2[0]) +
+      ((sp * sr) * f_cg_body_m_s2[1]) +
+      ((sp * cr) * f_cg_body_m_s2[2]);
     *acc_y_m_s2 =
-      (sy * cp * f_cg_body_m_s2[0]) +
-      ((sy * sp * sr + cy * cr) * f_cg_body_m_s2[1]) +
-      ((sy * sp * cr - cy * sr) * f_cg_body_m_s2[2]);
+      (cr * f_cg_body_m_s2[1]) -
+      (sr * f_cg_body_m_s2[2]);
 
     rate_norm = sqrtf(stabilizer_square_f32(omega[0]) +
                       stabilizer_square_f32(omega[1]) +
@@ -520,13 +521,13 @@
     next.valid = (valid != 0U) ? 1U : 0U;
     if ((debug != NULL) && (valid != 0U)) {
       next.sensor_velocity_flu_m_s[0] = debug->sensor_velocity_m_s[0];
-      next.sensor_velocity_flu_m_s[1] = -debug->sensor_velocity_m_s[1];
+      next.sensor_velocity_flu_m_s[1] = debug->sensor_velocity_m_s[1];
       next.optical_rot_comp_flu_m_s[0] = debug->optical_rot_comp_m_s[0];
-      next.optical_rot_comp_flu_m_s[1] = -debug->optical_rot_comp_m_s[1];
+      next.optical_rot_comp_flu_m_s[1] = debug->optical_rot_comp_m_s[1];
       next.offset_rot_comp_flu_m_s[0] = debug->offset_rot_comp_m_s[0];
-      next.offset_rot_comp_flu_m_s[1] = -debug->offset_rot_comp_m_s[1];
+      next.offset_rot_comp_flu_m_s[1] = debug->offset_rot_comp_m_s[1];
       next.corrected_velocity_flu_m_s[0] = debug->corrected_velocity_m_s[0];
-      next.corrected_velocity_flu_m_s[1] = -debug->corrected_velocity_m_s[1];
+      next.corrected_velocity_flu_m_s[1] = debug->corrected_velocity_m_s[1];
     }
 
     stabilizer_flow_comp_seqlock++;
@@ -556,17 +557,31 @@
     }
 
     memset(debug, 0, sizeof(*debug));
+
+    /*
+     * 入参已经是规范 FLU（X前/Y左）。方言转换归 svc_flow_nav.c 的采集边界所有，
+     * 就在整数计数变成 m/s 的那一行——**这里不要再转一次**。
+     *
+     * 2026-09-07 之前它在本函数末尾做，于是用 FLU 陀螺算出的 FLU 补偿向量被加到
+     * 了尚未转换的 FRD 速度上：X 前向两系同号看不出问题，Y 反号相当于减两倍。
+     * 手飞画圆时 ω_x 与 v_y 同相（φ ≈ -a_y/g），横向速度被整条抵消——传感器页
+     * 两轴都是正弦，状态页只剩 X。在这里补一次方言转换只会把同样的错挪个位置再犯
+     * 一遍，所以转换被移到了任何机体量混入之前的采集边界。本文件里**不允许出现任何
+     * 方言转换调用**，tests/test_flow_rotation_comp_frame.py 会挡住回潮。
+     */
     body_vx_m_s = *flow_vx_m_s;
     body_vy_m_s = *flow_vy_m_s;
     debug->sensor_velocity_m_s[0] = body_vx_m_s;
     debug->sensor_velocity_m_s[1] = body_vy_m_s;
 
     if (height_m > 0.0f) {
+      /* 视线旋转伪像 = ω × r_地面，FLU 下 r_地面 = (0, 0, -h)。 */
       debug->optical_rot_comp_m_s[0] =
         -STABILIZER_FLOW_ROT_COMP_GAIN * height_m * gyro_y_rad_s;
       debug->optical_rot_comp_m_s[1] =
          STABILIZER_FLOW_ROT_COMP_GAIN * height_m * gyro_x_rad_s;
 
+      /* 传感器相对 CG 的安装偏置：-(ω × r_安装)，偏置常量同样按 FLU 定义。 */
       debug->offset_rot_comp_m_s[0] =
         -((gyro_y_rad_s * STABILIZER_FLOW_SENSOR_OFFSET_Z_M) -
           (gyro_z_rad_s * STABILIZER_FLOW_SENSOR_OFFSET_Y_M));
@@ -581,6 +596,11 @@
                    debug->offset_rot_comp_m_s[1];
     debug->corrected_velocity_m_s[0] = body_vx_m_s;
     debug->corrected_velocity_m_s[1] = body_vy_m_s;
+
+    /*
+     * 出口无需转换：进出都是 FLU。顺带修好的还有遥测——这三个 debug 分量原先在
+     * 末尾被整体翻了一次 Y，地面站看到的补偿量一直是反的。
+     */
     *flow_vx_m_s = body_vx_m_s;
     *flow_vy_m_s = body_vy_m_s;
   }
@@ -1344,13 +1364,12 @@ static void stabilizer_imu_step(StabilizerContext *ctx,
       memset(&flow_status, 0, sizeof(flow_status));
       APP_OpticalFlow_GetStatus(&flow_status);
       if (ctx->attitude_zero_ready != 0U) {
-        stabilizer_compensated_imu_accel_nav_xy(
+        stabilizer_compensated_imu_accel_level_xy(
           msg->imu.accel_x_g,
           msg->imu.accel_y_g,
           msg->imu.accel_z_g,
           ctx->roll_control * STABILIZER_DEG_TO_RAD,
           ctx->pitch_control * STABILIZER_DEG_TO_RAD,
-          ctx->yaw_control * STABILIZER_DEG_TO_RAD,
           gyro_rad_s,
           alpha_rad_s2,
           alpha_valid,
@@ -1389,6 +1408,8 @@ static void stabilizer_imu_step(StabilizerContext *ctx,
         memset(&fuse_input, 0, sizeof(fuse_input));
         fuse_input.accel_x_m_s2 = imu_accel_x_m_s2;
         fuse_input.accel_y_m_s2 = imu_accel_y_m_s2;
+        /* 机头对齐系随偏航转动，Service 用它补 -ω_z × v 运动学项。 */
+        fuse_input.yaw_rate_rad_s = gyro_rad_s[2];
         fuse_input.flow_vx_m_s = flow_vx_m_s;
         fuse_input.flow_vy_m_s = flow_vy_m_s;
         fuse_input.flow_valid = flow_valid;
@@ -1414,8 +1435,7 @@ static void stabilizer_imu_step(StabilizerContext *ctx,
 
       SVC_FlowNav_GetVelocity(&nav_vx_m_s, &nav_vy_m_s);
       ctx->vofa_debug.vel_est_m_s[0] = nav_vx_m_s;
-      ctx->vofa_debug.vel_est_m_s[1] =
-        STABILIZER_VELOCITY_MEAS_Y_SIGN * nav_vy_m_s;
+      ctx->vofa_debug.vel_est_m_s[1] = nav_vy_m_s;
     }
     stabilizer_vofa_debug_publish(&ctx->vofa_debug);
   }
@@ -1673,8 +1693,7 @@ static void stabilizer_control_compute(StabilizerContext *ctx,
       SVC_FlowNav_GetPosition(&position_state_x_m, &position_state_y_m);
       SVC_FlowNav_GetState(&nav_state);
       velocity_control_x_m_s = nav_vx_m_s;
-      velocity_control_y_m_s = STABILIZER_VELOCITY_MEAS_Y_SIGN * nav_vy_m_s;
-      position_state_y_m *= STABILIZER_VELOCITY_MEAS_Y_SIGN;
+      velocity_control_y_m_s = nav_vy_m_s;
 
       frame->attitude.roll_rad = ctx->roll_control * STABILIZER_DEG_TO_RAD;
       frame->attitude.pitch_rad = ctx->pitch_control * STABILIZER_DEG_TO_RAD;
@@ -1707,23 +1726,20 @@ static void stabilizer_control_compute(StabilizerContext *ctx,
         frame->reference.manual_total_force_n =
           DRV_COAX_CTRL_MotorPulseToTotalThrust(frame->rc_throttle_motor_us);
         frame->reference.target_pitch_rad =
-          frame->rc.norm[APP_RC_FUNC_PITCH] *
-          STABILIZER_RC_ATTITUDE_TARGET_LIMIT_RAD *
-          STABILIZER_RC_ATTITUDE_TARGET_PITCH_SIGN;
+          APP_RcIntent_TargetPitch(
+            frame->rc.norm[APP_RC_FUNC_PITCH],
+            STABILIZER_RC_ATTITUDE_TARGET_LIMIT_RAD);
         frame->reference.target_roll_rad =
-          frame->rc.norm[APP_RC_FUNC_ROLL] *
-          STABILIZER_RC_ATTITUDE_TARGET_LIMIT_RAD *
-          STABILIZER_RC_ATTITUDE_TARGET_ROLL_SIGN;
+          APP_RcIntent_TargetRoll(
+            frame->rc.norm[APP_RC_FUNC_ROLL],
+            STABILIZER_RC_ATTITUDE_TARGET_LIMIT_RAD);
         frame->reference.horizontal_velocity_valid = 0U;
         velocity_loop_enabled = 0U;
       } else {
-        frame->reference.vx_m_s =
-        frame->rc.norm[APP_RC_FUNC_PITCH] *
-          STABILIZER_XY_VEL_REF_MAX_M_S;
-        frame->reference.vy_m_s =
-        frame->rc.norm[APP_RC_FUNC_ROLL] *
-          STABILIZER_XY_VEL_REF_MAX_M_S *
-          STABILIZER_RC_VELOCITY_Y_TO_FLU_SIGN;
+        frame->reference.vx_m_s = APP_RcIntent_ForwardVelocity(
+          frame->rc.norm[APP_RC_FUNC_PITCH], STABILIZER_XY_VEL_REF_MAX_M_S);
+        frame->reference.vy_m_s = APP_RcIntent_LeftVelocity(
+          frame->rc.norm[APP_RC_FUNC_ROLL], STABILIZER_XY_VEL_REF_MAX_M_S);
         frame->reference.horizontal_velocity_valid =
           ((velocity_loop_enabled != 0U) &&
            (nav_state.velocity_valid != 0U)) ? 1U : 0U;

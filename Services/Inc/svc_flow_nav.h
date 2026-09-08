@@ -121,9 +121,11 @@ typedef enum {
  * Driver 解析出来的一帧原始数据，字段与 DRV_OPTICAL_FLOW_Frame 一一对应。
  *
  * R-F6-1（seam 2 导航口径，只钉现状不改数值）：
- *   - flow_vel_x / flow_vel_y：MicoLink 光流传感器原始定点角速率
- *     （int16，单位 0.01 rad/s），坐标系是传感器自身安装轴——Driver 层未成文，
- *     不在本 seam 范围内。SVC_FlowNav 原样透传，自己不重映射轴。
+ *   - flow_vel_x / flow_vel_y：光流定点角速率（int16，单位 0.01 rad/s），
+ *     **已是规范 FLU（X 前 / Y 左）**。传感器自身按 X前/Y右(FRD) 报数，方言适配
+ *     在 app_optical_flow.c 的 app_flow_fill_sample() 里一次性完成——那是"芯片
+ *     原话"变成"载具量测"的唯一边界。SVC_FlowNav 原样透传，自己不重映射轴，
+ *     下游也不许再转（见 tests/test_flow_rotation_comp_frame.py）。
  *   - distance_mm：测距传感器读数，标量，不含机体轴信息。
  *   - distance_received_ms / flow_received_ms：本板 HAL_GetTick() 时基（ms），
  *     只用于新鲜度/超时判定，不用于积分步长。
@@ -151,17 +153,28 @@ typedef struct {
  *
  * R-F6-1（只钉现状）：
  *   - accel_x_m_s2 / accel_y_m_s2：水平比力换算出的加速度，由调用方
- *     （app_stabilizer.c 的 stabilizer_compensated_imu_accel_nav_xy）用当前姿态
- *     欧拉角旋转到一个**本地水平、无磁力计/GPS 参考**的世界系——偏航角是
- *     上电后陀螺积分的相对值，不对应真北，因此不得称为 NED 或 ENU；
- *     该世界系的 X/Y 轴指向跟随姿态源当前生效的约定（seam 0/1 迁移后为规范
- *     FLU 前/左符号语义，legacy 分支为前/右）。本 Service 不重新定义、也不
- *     改变这个约定，只按调用方给的值原样喂给 EKF。
- *   - flow_vx_m_s / flow_vy_m_s：机体系光流地速，已由调用方做完旋转/偏置补偿，
- *     但**未**旋转到导航系；X = 机体前向，Y = 机体右正（legacy）。R-F6-2
- *     用 2026-08-30 的 left_y 实录重新钉死了这一点：向左移动时规范 FLU 导出
- *     为正，而导出前明确对本 Service/控制器旧口径的 Y 取反。seam2 尚未置位，
- *     因此本 Service 不冒充 FLU；调用方在 seam2→seam3 边界完成右正→左正适配。
+ *     （app_stabilizer.c 的 stabilizer_compensated_imu_accel_level_xy）**只用
+ *     roll/pitch** 转平，得到**机头对齐的本地水平系**：X 前 / Y 左，随机体
+ *     偏航一起转。它不是固定世界系，更不是 NED/ENU——偏航是上电后陀螺积分的
+ *     相对值、会漂，不对应真北。
+ *     该函数刻意不乘 yaw：多乘一次就会把加速度送进"上电朝向"的固定世界系，
+ *     与下面机体系的光流速度差出一个累计偏航角，融合即失效（偏航为 0 时完全
+ *     看不出来）。两个输入必须同系是本 Service 的前提。
+ *   - flow_vx_m_s / flow_vy_m_s：调用方已在传感器出口完成安装标定、旋转与
+ *     偏置补偿；进入本 Service 时必须是规范机体 FLU（X 前/Y 左）。本 Service
+ *     与 EKF 不允许再知道传感器原始轴或安装符号。
+ *
+ *   - yaw_rate_rad_s：规范 FLU 机体偏航角速率 ω_z（正 = 机头左转），取自陀螺
+ *     Z 轴。上面那个"机头对齐系"是**随偏航转动的系**，所以速度分量的导数不等
+ *     于加速度：
+ *         dv/dt|分量 = a - ω × v,  ω = (0, 0, ω_z)
+ *         ω × v = (-ω_z*v_y, +ω_z*v_x, 0)
+ *     本 Service 据此在调用 EKF predict 前把加速度换成
+ *         a_eff = (a_x + ω_z*v_y,  a_y - ω_z*v_x)
+ *     用的是**当前**状态估计。它不是坐标变换、更不是符号补偿，而是旋转系里
+ *     少不掉的运动学项：不补的话，定速直飞中原地转向会被 EKF 读成"速度不变"，
+ *     而机头相对的速度分量其实正在互换。
+ *     留 0 等于退回不补偿的旧行为（memset 的调用方因此行为不变）。
  *   - dt_sec：控制环节拍（秒），只喂给 EKF predict，不用于位移积分。
  *   - now_ms：调用方的 HAL_GetTick()，与 SVC_FLOW_NAV_Sample 的
  *     distance_received_ms/flow_received_ms 同一条时间轴。
@@ -169,6 +182,7 @@ typedef struct {
 typedef struct {
     float    accel_x_m_s2;
     float    accel_y_m_s2;
+    float    yaw_rate_rad_s;
     float    flow_vx_m_s;
     float    flow_vy_m_s;
     uint8_t  flow_valid;
@@ -188,9 +202,15 @@ typedef struct {
  *   - vertical_velocity_m_s：height_m 的时间导数，符号跟随 height_m——正值
  *     表示高度增加（上升）。
  *   - vx_m_s / vy_m_s：EKF 融合后的水平速度，与 SVC_FLOW_NAV_FuseInput 的
- *     flow_vx_m_s/flow_vy_m_s 同一机体系约定（X 前 / Y 右正，legacy），
+ *     flow_vx_m_s/flow_vy_m_s 同一规范 FLU 约定（X 前 / Y 左），
  *     EKF 本身不做任何额外旋转。
  *   - height_sample_ms / velocity_sample_ms：HAL_GetTick() 时基。
+ *   - flow_vel_x_filtered / flow_vel_y_filtered：中值滤波后的定点计数，与
+ *     SVC_FLOW_NAV_Sample.flow_vel_x/y 同口径，同样已是规范 FLU。
+ *
+ * 光流方言在 app_optical_flow.c 的采集边界就转完了，本 Service 不旋转、不换轴。
+ * 对外给出的每一个速度向量——GetSensorVelocity、GetState、GetVelocity——都已经是
+ * 规范 FLU。**下游（App、控制器、遥测）不得再做任何 FrdToFlu/FluToFrd。**
  */
 typedef struct {
     uint8_t  height_valid;
@@ -234,13 +254,13 @@ uint32_t SVC_FlowNav_GetLastGoodMs(void);
 /* 返回本拍光流量测是否被 EKF 接受。 */
 uint8_t SVC_FlowNav_Fuse(const SVC_FLOW_NAV_FuseInput *input);
 /*
- * 机体系水平速度，X 前 / Y 右正（legacy，与
+ * 机体系水平速度，规范 FLU：X 前 / Y 左，与
  * SVC_FLOW_NAV_FuseInput.flow_vx_m_s/flow_vy_m_s 同一约定），未旋转到导航系。
  */
 void SVC_FlowNav_GetVelocity(float *vx_m_s, float *vy_m_s);
 /*
  * 对 SVC_FlowNav_GetVelocity() 输出按传感器时基做限幅累计
- * 积分，轴约定与速度一致（X 前 / Y 右正），不是带符号的导航系坐标。
+ * 积分，轴约定与速度一致（X 前 / Y 左），不是带符号的导航系坐标。
  */
 void SVC_FlowNav_GetPosition(float *x_m, float *y_m);
 /*

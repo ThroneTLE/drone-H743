@@ -167,7 +167,7 @@ with tempfile.TemporaryDirectory() as root:
         pytest.skip("Tk display unavailable")
     payload = result.stdout.strip().splitlines()[-1]
     report = json.loads(payload)
-    assert report["reports"] == 54
+    assert report["reports"] == 63
     assert report["bad"] == [], report["bad"]
 
 

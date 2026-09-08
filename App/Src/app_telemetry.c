@@ -126,7 +126,9 @@ static const APP_TelemChannel app_telem_channels[APP_TELEM_CH_COUNT] = {
     /*
      * 两个微分低通截止。它们不是"手感"参数：D 项吃的是差分噪声还是真信号
      * 全看这两个值，调 Kd 之前先把它定下来，所以必须和 Kd 摆在同一屏。
-     * 默认 188.4956 rad/s（30 Hz）与 20 Hz；0 表示不滤波（直接用原始差分）。
+     * 默认 18.8496 rad/s（3 Hz）与 20 Hz；0 表示不滤波（直接用原始差分）。
+     * 角加速度那个 3 Hz 不是保守，是被 50 Hz 的执行器出口逼出来的——推导见
+     * drv_coax_ctrl.c 里 alpha_lpf_cutoff_rad_s 默认值上方的注释。
      */
     [APP_TELEM_CH_ANGULAR_ACCEL_LPF] = {"angular_accel_lpf", "rad/s", "gain", 0.0f, 628.0f, "coax.angular_accel_lpf_cutoff_rad_s"},
     [APP_TELEM_CH_ACCEL_LPF]         = {"accel_lpf",         "Hz",    "gain", 0.0f, 100.0f, "coax.accel_lpf_cutoff_hz"},

@@ -191,7 +191,11 @@ STEP_D3_BODY_SHA256 = {
     # R-M5-5：新增 FLOW ZERO 子命令（清里程计），是本次授权的功能改动而非 D3 搬家
     # 走样，故重钉。其余两个函数体仍是 D3 父提交原样。
     "app_control_handle_flow": "697d5ad0f1bbbb7091eaed46188a264be692720004a3d5ec10a22cf59f6136a9",
-    "app_control_report_flow": "7be12a05196978c8655bbba1aeb15b5dfdeeb9f1ee2794814a4a6b6caef61e9f",
+    # 符号归一化（2026-09-06）：`FLOW comp` 的 source= 字段原样报的是
+    # controller_legacy_x_forward_y_right，而光流现在在传感器出口就已经转成
+    # 规范 FLU，那个标签会把上位机和后续实录一起带偏。这是被授权的口径修正，
+    # 不是 D3 搬家走样，故重钉。函数结构未变。
+    "app_control_report_flow": "8a4dc201743f61e3e24b3765ea8a64e9d598175dff01094ecc6b129ca5a6c706",
 }
 STEP_D3_ACCEPTANCE_BODY_SHA256 = (
     "55bdb96ca6630a2e7036c0e4932ec33822ff82f8e54f455242fe7a2df5f9fdb2"

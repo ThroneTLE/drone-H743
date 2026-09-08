@@ -193,7 +193,9 @@ int main(void)
     reset_case(&attitude, &reference);
     DRV_COAX_CTRL_GetParams(&params);
     params.attitude.att_kp[2] = 40.0f;
-    params.rate.kp[2] = 0.01f; /* deliberately exhaust differential authority */
+    /* deliberately exhaust differential authority; the value tracks the yaw
+     * reaction-torque coefficient k, which grew 50x on 2026-09-07 */
+    params.rate.kp[2] = 0.5f;
     DRV_COAX_CTRL_SetParams(&params);
     attitude.yaw_rad = 0.0f;
     reference.yaw_rad = 1.2f;
@@ -231,7 +233,14 @@ def test_yaw_is_produced_by_the_so3_law_not_a_separate_pd() -> None:
     assert "DRV_AttitudeControl_Step" in wrapper
     assert "DRV_RateControl_Step" in wrapper
     assert "coax_ctrl_state.rate_output.moment_unsat" in wrapper
-    assert "yaw_torque_cmd = solution.moment_cmd_n_m[2];" in wrapper
+    # 2026-09-07：分配器改用**钳过**的偏航力矩。`moment_cmd_n_m[2]` 仍是未钳的
+    # 原始需求（遥测据此还能看出"要了多少 vs 给了多少"），但它不再直接进分配器
+    # —— 那条路径会让分配器去撞电机上下限，从而悄悄牺牲总推力。
+    assert "yaw_torque_cmd = solution.yaw_moment_applied_n_m;" in wrapper
+    assert (
+        "solution->yaw_moment_applied_n_m =\n"
+        "        coax_ctrl_state.rate_output.moment_cmd[2];"
+    ) in wrapper
 
     # 旧参数名只作为显式换算 alias，不再冒充真实物理参数。
     assert 'strcmp(name, "coax.yaw_angle_kp")' in wrapper

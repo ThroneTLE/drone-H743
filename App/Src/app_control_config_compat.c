@@ -12,7 +12,14 @@
 #define APP_CONTROL_COMPAT_XY_ACCEL_MAX_M_S2      3.70f
 #define APP_CONTROL_COMPAT_Z_ACCEL_MAX_M_S2       3.70f
 #define APP_CONTROL_COMPAT_ACCEL_LPF_HZ           20.0f
-#define APP_CONTROL_COMPAT_ANGULAR_ACCEL_LPF_HZ   30.0f
+/*
+ * V18 的配置块里没有这个字段，所以这里不是"迁移历史值"，而是给缺失字段挑一个
+ * 落点——按惯例应当落在当前默认上。2026-09-07 随 drv_coax_ctrl.c 的默认值一起
+ * 由 30 Hz 改为 3 Hz：30 Hz 在 50 Hz 执行器出口下会让任何非零 rate.kd 发散，
+ * 留在迁移路径里就是个陷阱（推导见 drv_coax_ctrl.c 中 alpha_lpf_cutoff_rad_s
+ * 默认值上方）。
+ */
+#define APP_CONTROL_COMPAT_ANGULAR_ACCEL_LPF_HZ    3.0f
 #define APP_CONTROL_COMPAT_ROLL_PITCH_RATE_RAD_S  3.49065850f
 #define APP_CONTROL_COMPAT_YAW_RATE_RAD_S          1.04719758f
 

@@ -322,8 +322,8 @@ def test_validation_page_limits_target_writes_to_the_guarded_orientation_flow() 
     assert "B · 清空旧样本并重采 6 步" in body
     assert "C · 复验通过后写入 Flash" in body
     assert "PROTO_REQ_IMU_FRAME" in body
-    assert 'self.notebook.add(calibration, text="校准")' in SOURCE
-    assert 'self.calibration_notebook.add(validation_scroll, text="坐标系与极性")' in SOURCE
+    assert 'self.notebook.add(calibration, text="校准")' in (ROOT / "tools/panel_lib/shell.py").read_text(encoding="utf-8")
+    assert 'self.calibration_notebook.add(validation_scroll, text="坐标系与极性")' in (ROOT / "tools/panel_lib/shell.py").read_text(encoding="utf-8")
     assert "AIRFRAME_CALIBRATION_DIR" in SOURCE
     for forbidden in ("PROTO_REQ_SAVE", "PROTO_REQ_LOAD", "PROTO_REQ_DEFAULTS", "PROTO_REQ_PARAM_SET", "PROTO_REQ_PID_SET", "PROTO_REQ_SERVO_MOVE"):
         assert forbidden not in body
@@ -771,7 +771,7 @@ def test_stepper_tracks_the_phase_text() -> None:
 
 def test_workflow_pages_are_scrollable_and_default_to_compact_dpi() -> None:
     init = function_body(SOURCE, "    def __init__(self) -> None:")
-    build = function_body(SOURCE, "    def _build_ui(")
+    build = (ROOT / "tools/panel_lib/shell.py").read_text(encoding="utf-8")
     assert "VerticalScrolledFrame" in SOURCE
     assert "_configure_compact_scaling" in init
     for page in (

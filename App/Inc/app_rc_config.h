@@ -78,23 +78,18 @@ typedef struct {
  * 死区与端点标定，尚未乘任何机体极性，因此不承载 FLU/FRD 语义，也不受
  * Driver/Inc/drv_frame_contract.h 约束。
  *
- * 由摇杆空间到机体意图的转换只发生在一个地方：app_stabilizer.c 的
- * STABILIZER_RC_ATTITUDE_TARGET_PITCH_SIGN / _ROLL_SIGN。这两个常量是
- * 整条链路上唯一决定「摇杆方向」的符号——其余坐标符号同时作用于实测与
- * 目标姿态，但对舵机输出仍有实际影响（SO(3) 姿态误差是非线性的，并不会
- * 像线性量那样互相抵消，见 tests/test_flu_seam3_force_frame_derivation.py
- * 的实测反例），只是这份影响恰好不改变本文件描述的"摇杆方向唯一决定点"
- * 这一事实。
- * 其中 pitch 的取值经实机确认（+1 时前推变成后倾，故取 -1）。
+ * 由摇杆空间到规范 FLU 意图的转换只发生在 app_rc_intent Module。控制器、
+ * EKF 与执行器分配不允许再读取发射机方向或自行补符号。
  *
  * reversed 是**发射机侧**的通道反向，用于抵消不同发射机/摇杆接线差异。
  * 禁止用它补偿机体坐标系错误：那属于坐标符号改动，按 AGENTS.md 规则 4
  * 必须单独立项经作者批准，并由 M6 拆桨方向验收判定，不能在标定页顺手翻。
  *
- * 横向口径说明：APP_RcInputs.norm 保留发射机/向导口径（CH1 数值右正、左打
- * 为负），不改 RCMAP Flash ABI。R-F6-3 在 App 稳定环的具名边界把速度意图
- * 转为规范 FLU：左打 → vy_ref>0（+Y 左）；直接姿态意图则左打 → roll_target<0
- *（左翼下沉）。控制器和增益内部不承担摇杆符号适配。
+ * norm[] 的正方向由标定向导的物理提示定义，不由代码定义：
+ * tools/panel_lib/pages/rc_wizard.py 的 RC_WIZARD_STEPS 要求 pitch 前推、
+ * roll 右打、yaw 右转各自记为 +1。换发射机只会改这份标定，不会改代码。
+ * 把这三条摇杆方向翻译成规范 FLU 是 app_rc_intent 的唯一职责，本结构体不
+ * 承载 FLU 语义，也不改 RCMAP Flash ABI。
  */
 typedef struct {
     uint16_t us[APP_RC_FUNC_COUNT];    /* 映射后的原始脉宽，未反向 */

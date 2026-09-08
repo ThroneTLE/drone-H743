@@ -7,6 +7,7 @@ import time
 import tkinter as tk
 from datetime import datetime
 from tkinter import messagebox, ttk
+from ..mechanical_safety import mechanical_live_safety_gate
 
 from ..proto import (
     PROTO_REQ_IMU,
@@ -279,7 +280,7 @@ class MechanicalPageMixin:
         if not self.validation_props_removed_var.get() or not self.validation_power_safe_var.get():
             messagebox.showwarning("舵机机械校准安全门", "必须拆桨、固定机体，并确认电机不会启动。")
             return
-        gate_ok, reason = self._validation_live_safety_gate()
+        gate_ok, reason = mechanical_live_safety_gate(self)
         if not gate_ok:
             messagebox.showwarning("舵机机械校准安全门", reason)
             return
@@ -363,7 +364,7 @@ class MechanicalPageMixin:
         if not self.validation_props_removed_var.get() or not self.validation_power_safe_var.get():
             messagebox.showwarning("舵机机械校准安全门", "必须拆桨、固定机体，并确认电机不会启动。")
             return
-        gate_ok, reason = self._validation_live_safety_gate()
+        gate_ok, reason = mechanical_live_safety_gate(self)
         if not gate_ok:
             messagebox.showwarning("舵机机械校准安全门", reason)
             return
@@ -393,7 +394,7 @@ class MechanicalPageMixin:
         if not self.validation_props_removed_var.get() or not self.validation_power_safe_var.get():
             messagebox.showwarning("舵机机械校准安全门", "必须拆桨、固定机体，并确认电机不会启动。")
             return
-        gate_ok, reason = self._validation_live_safety_gate()
+        gate_ok, reason = mechanical_live_safety_gate(self)
         if not gate_ok:
             messagebox.showwarning("舵机机械校准安全门", reason)
             return

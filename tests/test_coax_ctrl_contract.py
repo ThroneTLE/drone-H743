@@ -204,11 +204,7 @@ def test_controller_wrapper_exposes_velocity_first_vector_control_inputs() -> No
     assert "debug->force_cmd_n[0]" in wrapper
     assert "debug->force_cmd_n[1]" in wrapper
     assert "STABILIZER_XY_VEL_REF_MAX_M_S" in freertos
-    assert (
-        "frame->reference.vx_m_s =\n"
-        "        frame->rc.norm[APP_RC_FUNC_PITCH] *"
-        in freertos
-    )
+    assert "APP_RcIntent_ForwardVelocity(" in freertos
     assert "static float stabilizer_rc_throttle_height_rate_m_s(float throttle_norm)" in freertos
     assert "return throttle_norm * STABILIZER_Z_REF_RATE_MAX_M_S;" in freertos
     assert "stabilizer_rc_throttle_thrust_bias_m_s2" not in freertos
@@ -230,7 +226,7 @@ def test_controller_wrapper_exposes_velocity_first_vector_control_inputs() -> No
     assert "ctx->position_ref_x_m += frame->reference.vx_m_s * frame->ctrl_dt_sec;" in freertos
     assert "frame->reference.x_m = ctx->position_ref_x_m;" in freertos
     assert "frame->reference.y_m = ctx->position_ref_y_m;" in freertos
-    assert "#define STABILIZER_VELOCITY_MEAS_Y_SIGN (-1.0f)" in freertos
+    assert "STABILIZER_VELOCITY_MEAS_Y_SIGN" not in freertos
     assert "stabilizer_velocity_estimator_control_ok(&vel_estimator, now)" not in freertos
     assert "frame->attitude.vx_m_s = velocity_control_x_m_s;" in freertos
     assert "frame->attitude.vy_m_s = velocity_control_y_m_s;" in freertos
@@ -282,10 +278,15 @@ def test_roll_pitch_physical_moment_gains_are_runtime_params() -> None:
     assert "params->attitude.att_kp[1] = 0.0660f / 0.1138f;" in wrapper
     assert "params->rate.kp[0] = 0.1104f;" in wrapper
     assert "params->rate.kp[1] = 0.1138f;" in wrapper
-    assert "params->rate.kp[2] = DRV_AIRFRAME_IZZ_KGM2 * 0.15f;" in wrapper
+    # 2026-09-07：I_zz 由 0.00035 改成 0.005 后，系数必须同步下调，否则默认偏航
+    # 增益会跟着涨 14.3 倍、越过作者实测的抖振阈值。形式仍是 `I_zz × 带宽`。
+    assert "params->rate.kp[2] = DRV_AIRFRAME_IZZ_KGM2 * 0.525f;" in wrapper
     assert 'strcmp(name, "coax.roll_angle_kp")' in wrapper
     assert 'strcmp(name, "coax.yaw_rate_kd")' in wrapper
-    assert "#define DRV_COAX_CTRL_PROP9047_YAW_M_PER_N 0.0001f" in wrapper
+    # 2026-09-07：作者裁定用一个物理上说得通的"虚拟 k"（0.005 ≈ C_Q/C_T × D）替换
+    # 原来查无出处的 1e-4，并同比放大默认 rate.kp[2] 使物理行为逐位不变。
+    # 该值仍是估计而非实测，溯源写在 drv_coax_ctrl.c 的宏定义处。
+    assert "#define DRV_COAX_CTRL_PROP9047_YAW_M_PER_N 0.005f" in wrapper
     assert "params->position.vel_kp[0] = 0.80f;" in wrapper
     assert "params->position.vel_kp[1] = 0.80f;" in wrapper
     assert "return (value >= 0.0f) ? 1U : 0U;" in wrapper
@@ -413,9 +414,9 @@ def test_vofa_exports_compact_slider_parameter_feedback() -> None:
     assert '(void)DRV_COAX_CTRL_GetParam("coax.pos_y_kp", &vofa_data[APP_TELEM_CH_POS_Y_KP]);' in freertos
     assert '(void)DRV_COAX_CTRL_GetParam("coax.vel_x_kd", &vofa_data[APP_TELEM_CH_VEL_X_KD]);' in freertos
     assert '(void)DRV_COAX_CTRL_GetParam("coax.vel_y_kd", &vofa_data[APP_TELEM_CH_VEL_Y_KD]);' in freertos
-    assert "vofa_data[APP_TELEM_CH_POS_EST_X] = position_flu.x;" in freertos
-    assert "vofa_data[APP_TELEM_CH_POS_EST_Y] = position_flu.y;" in freertos
-    assert "APP_TELEM_CH_POS_EST_Y] = vofa_debug.pos_est_m[1]" not in freertos
+    assert "vofa_data[APP_TELEM_CH_POS_EST_X] = vofa_debug.pos_est_m[0];" in freertos
+    assert "vofa_data[APP_TELEM_CH_POS_EST_Y] = vofa_debug.pos_est_m[1];" in freertos
+    assert "linear_sign" not in freertos
     assert '(void)DRV_COAX_CTRL_GetParam("coax.vel_loop_enable", &vofa_data[APP_TELEM_CH_VEL_LOOP_ENABLE]);' in freertos
     assert '(void)DRV_COAX_CTRL_GetParam("coax.roll_angle_kp", &vofa_data[APP_TELEM_CH_ROLL_ANGLE_KP]);' in freertos
     assert '(void)DRV_COAX_CTRL_GetParam("coax.pitch_angle_kp", &vofa_data[APP_TELEM_CH_PITCH_ANGLE_KP]);' in freertos
@@ -445,14 +446,11 @@ def test_control_protocol_accepts_colon_param_updates_and_reports_back() -> None
     # but not others, giving the UI and the control layer two different sign
     # conventions -- a display of -0.600 for an internally positive gain. Gains
     # are positive everywhere now, so this must stay a pass-through.
-    assert "app_control_ui_sign_for_param" in app_control
-    ui_sign = app_control.split("static float app_control_ui_sign_for_param", 1)[1]
-    ui_sign = ui_sign.split("static float app_control_param_to_ui_value", 1)[0]
-    assert "-1.0f" not in ui_sign
+    assert "app_control_ui_sign_for_param" not in app_control
     for gain in ("coax.roll_rate_kd", "coax.pitch_rate_kd",
                  "coax.roll_angle_kp", "coax.pitch_angle_kp",
                  "coax.yaw_angle_kp", "coax.yaw_rate_kd"):
-        assert f'strcmp(name, "{gain}") == 0' not in ui_sign
+        assert f'strcmp(name, "{gain}") == 0' not in app_control
     assert "app_control_param_from_ui_value(name, value)" in app_control
     assert "app_control_param_to_ui_value(name, value)" in app_control
     assert "app_control_report_coax_param_by_name(map[map_index].param_name);" in app_control

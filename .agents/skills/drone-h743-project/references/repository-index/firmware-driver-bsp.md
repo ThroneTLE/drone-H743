@@ -4,7 +4,7 @@
 
 Read this shard only when the task touches device protocols, reusable algorithms, buses, GPIO, DMA callbacks, cache hooks, or board bindings.
 
-Source snapshot: `f91683ab1021`. Indexed files: 76.
+Source snapshot: `3712b832ef26`. Indexed files: 76.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|

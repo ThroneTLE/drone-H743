@@ -532,7 +532,7 @@
   <div class="app">
     <header class="topbar">
       <div>
-        <div class="eyebrow">STM32H743 · 系统架构图 / 当前工作树快照</div>
+        <div class="eyebrow">STM32H743 · 系统架构图 / 2026-09-05 工作树快照</div>
         <h1>飞控架构学习与调试地图</h1>
         <p class="subtitle">从硬件信号到控制输出：点开任意层和模块，沿真实调用链理解“数据从哪来、在哪里变、出了问题先查哪”。</p>
       </div>
@@ -541,6 +541,7 @@
         <span class="chip">控制 500 Hz</span>
         <span class="chip">遥测默认 40 Hz</span>
         <span class="chip warn">主线 M5</span>
+        <span class="chip warn">R-S5-1 软件待审核</span>
         <span class="chip warn">FLU 迁移边界 0 / 6</span>
       </div>
     </header>
@@ -587,11 +588,11 @@
           </div>
           <div class="px4-map">
             <section class="system-zone zone-external">
-              <div class="zone-title" style="color:var(--amber)">GROUND / OPERATOR SIDE</div>
+              <div class="zone-title" style="color:var(--amber)">地面端 / 操作者</div>
               <div class="system-row" style="margin-top:28px">
                 <div class="row-label">地面与操作者</div>
                 <div class="row-nodes" style="--cols:4">
-                  <button class="sys-node" data-kind="ground" data-module="host-panel" data-system-tags="comms control storage"><b>Python Panel / Dashboard</b><small>校准、状态监视、命令、参数回显</small></button>
+                  <button class="sys-node" data-kind="ground" data-module="host-panel" data-system-tags="comms control storage"><b>Python 面板 / 仪表盘</b><small>校准、状态监视、命令、参数回显</small></button>
                   <button class="sys-node" data-kind="control" data-module="hw-rc" data-system-tags="control"><b>ELRS 发射机 / 接收机</b><small>人工摇杆、模式与解锁意图</small></button>
                   <button class="sys-node" data-kind="storage" data-module="host-analysis" data-system-tags="storage estimate control"><b>日志与离线分析</b><small>回放、系统辨识、同数据算法比较</small></button>
                   <button class="sys-node" data-kind="platform" data-module="host-tests" data-system-tags="estimate control comms storage"><b>测试与构建门</b><small>pytest 契约 + Debug 固件构建</small></button>
@@ -601,15 +602,15 @@
             <div class="system-arrow command">ASCII 命令 / $X 遥测 / CRSF RC / 日志导出</div>
 
             <section class="system-zone zone-flight-controller">
-              <div class="zone-title">STM32H743 FLIGHT CONTROLLER</div>
+              <div class="zone-title">STM32H743 飞行控制器</div>
 
               <div class="system-row">
-                <div class="row-label">通信与系统管理<br>Middleware services</div>
+                <div class="row-label">通信与系统管理<br>中间件与服务</div>
                 <div class="row-nodes" style="--cols:4">
-                  <button class="sys-node" data-kind="comms" data-module="app-comms" data-system-tags="comms"><b>UART / USB / Telemetry</b><small>链路、限速、帧编码、出口选择</small></button>
-                  <button class="sys-node" data-kind="comms" data-module="app-control" data-system-tags="comms control storage"><b>Command Router</b><small>命令解析、协议分派、固件端拒绝</small></button>
-                  <button class="sys-node" data-kind="storage" data-module="svc-param" data-system-tags="storage control"><b>Parameter Service</b><small>RAM 镜像、dirty、generation、双槽保存</small></button>
-                  <button class="sys-node" data-kind="storage" data-module="app-log" data-system-tags="storage estimate control"><b>Logging / Evidence</b><small>高频捕获、飞行日志、后台导出</small></button>
+                  <button class="sys-node" data-kind="comms" data-module="app-comms" data-system-tags="comms"><b>UART / USB / 遥测</b><small>链路、限速、帧编码、出口选择</small></button>
+                  <button class="sys-node" data-kind="comms" data-module="app-control" data-system-tags="comms control storage"><b>命令路由器</b><small>命令解析、协议分派、固件端拒绝</small></button>
+                  <button class="sys-node" data-kind="storage" data-module="svc-param" data-system-tags="storage control"><b>参数服务</b><small>RAM 镜像、dirty、generation、双槽保存</small></button>
+                  <button class="sys-node" data-kind="storage" data-module="app-log" data-system-tags="storage estimate control"><b>日志 / 证据</b><small>高频捕获、飞行日志、后台导出</small></button>
                 </div>
               </div>
 
@@ -624,44 +625,45 @@
               </div>
 
               <div class="system-row">
-                <div class="row-label">输入整形与状态估计<br>Estimation</div>
+                <div class="row-label">输入整形与状态估计<br>状态估计</div>
                 <div class="row-nodes" style="--cols:4">
-                  <button class="sys-node" data-kind="sensing" data-module="app-sensor" data-system-tags="estimate control"><b>Sensor Pipeline · 1 kHz</b><small>缩放、V0/V1、LPF、健康与时间戳</small></button>
-                  <button class="sys-node" data-kind="estimate" data-module="drv-fusion" data-system-tags="estimate control"><b>Attitude Estimator · ≈1 kHz</b><small>Fusion AHRS → quaternion / RPY</small></button>
-                  <button class="sys-node" data-kind="estimate" data-module="svc-flow" data-system-tags="estimate control"><b>Flow Navigation · 100 Hz / EKF</b><small>质量门、滤波、速度、位置与位移</small></button>
-                  <button class="sys-node" data-kind="control" data-module="app-rc" data-system-tags="control"><b>RC Mapping · 500 Hz</b><small>通道 → 归一化意图 / link freshness</small></button>
+                  <button class="sys-node" data-kind="sensing" data-module="app-sensor" data-system-tags="estimate control"><b>传感器流水线 · 1 kHz</b><small>缩放、V0/V1、LPF、健康与时间戳</small></button>
+                  <button class="sys-node" data-kind="estimate" data-module="drv-fusion" data-system-tags="estimate control"><b>姿态估计器 · ≈1 kHz</b><small>Fusion AHRS → 四元数 / RPY</small></button>
+                  <button class="sys-node" data-kind="estimate" data-module="svc-flow" data-system-tags="estimate control"><b>光流导航 · 100 Hz / EKF</b><small>质量门、滤波、速度、位置与位移</small></button>
+                  <button class="sys-node" data-kind="control" data-module="app-rc" data-system-tags="control"><b>RC 映射 · 500 Hz</b><small>通道 → 归一化意图 / 链路新鲜度</small></button>
                 </div>
               </div>
               <div class="system-arrow async">状态快照 + RC 意图 + 校准参数</div>
 
               <div class="system-row">
-                <div class="row-label">飞行控制栈<br>Guidance / Control</div>
-                <div class="row-nodes" style="--cols:4">
-                  <button class="sys-node" data-kind="control" data-module="app-stabilizer" data-system-tags="control estimate"><b>Reference & Safety</b><small>解锁四门、模式、位置/高度/偏航参考</small></button>
-                  <button class="sys-node" data-kind="control" data-module="drv-control" data-system-tags="control"><b>Position → Velocity</b><small>位置 P → v_sp → 速度 PID → a_sp</small></button>
-                  <button class="sys-node" data-kind="control" data-module="drv-control" data-system-tags="control"><b>Attitude → Rate</b><small>SO(3) 姿态 P → ω_sp → 角速度 PID → M_cmd</small></button>
-                  <button class="sys-node" data-kind="control" data-module="drv-control" data-system-tags="control"><b>Protection & Allocation</b><small>M_achieved + 逐方向饱和 → 电机差动 + 倾转反解</small></button>
+                <div class="row-label">飞行控制栈<br>制导 / 控制</div>
+                <div class="row-nodes" style="--cols:5">
+                  <button class="sys-node" data-kind="control" data-module="app-stabilizer" data-system-tags="control estimate"><b>参考生成与安全门</b><small>解锁四门、模式、参考；Step/Commit 调度</small></button>
+                  <button class="sys-node" data-kind="control" data-module="drv-position" data-system-tags="control"><b>位置 P → 速度 PID</b><small>p → v_sp → a_sp · 50/100 Hz</small></button>
+                  <button class="sys-node" data-kind="control" data-module="drv-attitude" data-system-tags="control"><b>SO(3) 姿态 P</b><small>F_d → R_d；e_R → ω_sp · 250 Hz</small></button>
+                  <button class="sys-node" data-kind="control" data-module="drv-rate" data-system-tags="control"><b>角速度 PID</b><small>ω_sp − ω → M_cmd · 500 Hz</small></button>
+                  <button class="sys-node" data-kind="control" data-module="drv-allocator" data-system-tags="control"><b>保护与同轴分配</b><small>M_achieved + 逐方向饱和 → 差动/倾转</small></button>
                 </div>
               </div>
               <div class="system-arrow command">motor_upper/lower_us + servo_alpha/beta_us</div>
 
               <div class="system-row">
-                <div class="row-label">执行器管理<br>Actuator layer</div>
+                <div class="row-label">执行器管理<br>执行器层</div>
                 <div class="row-nodes" style="--cols:4">
-                  <button class="sys-node" data-kind="actuation" data-module="app-output" data-system-tags="control"><b>Owner Arbitration</b><small>normal / calibration / jog / bench / acceptance</small></button>
-                  <button class="sys-node" data-kind="actuation" data-module="app-output" data-system-tags="control"><b>Mechanical Adapter</b><small>center / min / max / pulse_sign</small></button>
-                  <button class="sys-node" data-kind="actuation" data-module="bsp-output" data-system-tags="control"><b>PWM Output</b><small>ESC + PWM servo timers</small></button>
-                  <button class="sys-node" data-kind="actuation" data-module="bsp-uart" data-system-tags="control comms"><b>Bus Servo Output</b><small>UART4 half-duplex, ≤100 Hz</small></button>
+                  <button class="sys-node" data-kind="actuation" data-module="app-output" data-system-tags="control"><b>控制权仲裁</b><small>正常 / 标定 / 点动 / 台架 / 验收</small></button>
+                  <button class="sys-node" data-kind="actuation" data-module="app-output" data-system-tags="control"><b>机械参数适配</b><small>中心 / 最小 / 最大 / pulse_sign</small></button>
+                  <button class="sys-node" data-kind="actuation" data-module="bsp-output" data-system-tags="control"><b>PWM 输出</b><small>ESC + PWM 舵机定时器</small></button>
+                  <button class="sys-node" data-kind="actuation" data-module="bsp-uart" data-system-tags="control comms"><b>总线舵机输出</b><small>UART4 半双工，≤100 Hz</small></button>
                 </div>
               </div>
 
               <div class="system-arrow async">Driver API → BSP board binding → HAL peripheral</div>
               <div class="system-row">
-                <div class="row-label">平台与设备抽象<br>Platform</div>
+                <div class="row-label">平台与设备抽象<br>平台层</div>
                 <div class="row-nodes" style="--cols:4">
-                  <button class="sys-node" data-kind="platform" data-module="drv-imu" data-system-tags="estimate"><b>Sensor Drivers</b><small>IMU / baro / mag / optical flow protocols</small></button>
-                  <button class="sys-node" data-kind="platform" data-module="drv-io" data-system-tags="control comms storage"><b>I/O Drivers</b><small>ELRS / servo / motor / GD25Q32</small></button>
-                  <button class="sys-node" data-kind="platform" data-module="bsp-sensors" data-system-tags="estimate control comms storage"><b>BSP + DMA / Cache</b><small>具体总线、GPIO、回调与 H7 一致性</small></button>
+                  <button class="sys-node" data-kind="platform" data-module="drv-imu" data-system-tags="estimate"><b>传感器驱动</b><small>IMU / 气压计 / 磁力计 / 光流协议</small></button>
+                  <button class="sys-node" data-kind="platform" data-module="drv-io" data-system-tags="control comms storage"><b>输入输出驱动</b><small>ELRS / 舵机 / 电机 / GD25Q32</small></button>
+                  <button class="sys-node" data-kind="platform" data-module="bsp-sensors" data-system-tags="estimate control comms storage"><b>BSP + DMA / 缓存</b><small>具体总线、GPIO、回调与 H7 一致性</small></button>
                   <button class="sys-node" data-kind="platform" data-module="core-init" data-system-tags="estimate control comms storage"><b>CubeMX / HAL / FreeRTOS</b><small>时钟、引脚、外设、任务与中断</small></button>
                 </div>
               </div>
@@ -669,14 +671,14 @@
 
             <div class="system-arrow">SPI / I²C / UART / PWM / GPIO / EXTI</div>
             <section class="system-zone zone-external">
-              <div class="zone-title" style="color:var(--amber)">PHYSICAL AIRFRAME</div>
+              <div class="zone-title" style="color:var(--amber)">物理机体</div>
               <div class="system-row" style="margin-top:28px">
                 <div class="row-label">传感器与执行器</div>
                 <div class="row-nodes" style="--cols:4">
                   <button class="sys-node" data-kind="sensing" data-module="hw-imu" data-system-tags="estimate control"><b>IMU / Baro / Mag</b><small>惯性、气压与磁场</small></button>
                   <button class="sys-node" data-kind="sensing" data-module="hw-flow" data-system-tags="estimate control"><b>Optical Flow / Range</b><small>地面相对速度与高度</small></button>
-                  <button class="sys-node" data-kind="actuation" data-module="hw-actuator" data-system-tags="control"><b>Coaxial Motors</b><small>总推力 + 上下桨差动偏航</small></button>
-                  <button class="sys-node" data-kind="actuation" data-module="hw-actuator" data-system-tags="control"><b>Tilt Servos</b><small>α / β 倾转 → roll / pitch 力矩</small></button>
+                  <button class="sys-node" data-kind="actuation" data-module="hw-actuator" data-system-tags="control"><b>同轴双电机</b><small>总推力 + 上下桨差动偏航</small></button>
+                  <button class="sys-node" data-kind="actuation" data-module="hw-actuator" data-system-tags="control"><b>倾转舵机</b><small>α / β 倾转 → 横滚 / 俯仰力矩</small></button>
                 </div>
               </div>
             </section>
@@ -693,7 +695,7 @@
             <div class="legend"><span><i class="dot"></i>当前层</span><span><i class="dot call"></i>所选数据流</span><span><i class="dot async"></i>队列/中断交接</span></div>
           </div>
 
-          <div class="notice"><strong>读图前先记住</strong><span>这是 2026-09-04 未提交工作树的架构快照。源码中仍有过期注释，例如稳定环尾部写“50 Hz”，但真正的控制周期常量是 2 ms（500 Hz）；FLU 规范已经建立，但运行时迁移掩码仍是 0，不能把“某个出口已经是 FLU”理解成全链完成。</span></div>
+          <div class="notice"><strong>读图前先记住</strong><span>这是 2026-09-05 最新工作树的架构快照。四环级联软件已进入真实运行路径，但 R-S5-1 仍是“待审核”，尚无匹配 V10/CFG V19 的实录性能证据；FLU 运行时迁移掩码仍为 0，不能据此宣称控制收敛达标或可以飞。</span></div>
 
           <div class="flow-toolbar" id="flowToolbar" aria-label="关键数据流选择"></div>
           <div class="architecture" id="architecture"></div>
@@ -727,10 +729,10 @@
             </div>
           </div>
           <div class="index-snapshot">
-            <b>已同步到 2026-09-04 当前工作树</b>
-            <span>仓库索引快照 <code>ee3410198a4e</code></span>
+            <b>已同步到 2026-09-05 当前工作树</b>
+            <span>本页读取的索引基线 <code>2d37ad25218a</code></span>
             <span>已移除：独立 TFmini 测距、纯 IMU 积分导航</span>
-            <span>已纳入：三轴 SO(3) 偏航、遥测流、舵机类型与安全仲裁</span>
+            <span>已纳入：四环级联、多速率 Step/Commit、实现力矩反馈、遥测流与舵机类型</span>
           </div>
           <div class="search-row">
             <input id="moduleSearch" type="search" placeholder="搜索模块名、职责、文件或调试关键词…" aria-label="搜索架构模块">
@@ -774,7 +776,7 @@
       {id:'hardware', order:'L0', name:'硬件 / 信号', rule:'真实世界与电信号', color:'#ffbd62', summary:'传感器、接收机、存储器和执行器。这里产生原始事实，也承受最终控制输出。', beginner:'软件最终只能读取电信号、发出电信号。排查任何问题时，先确认“硬件有没有真的产生/执行这件事”，再往上看软件。', modules:['hw-imu','hw-flow','hw-rc','hw-flash','hw-actuator']},
       {id:'core', order:'L1', name:'CORE / HAL 平台层', rule:'CubeMX 所有：时钟、引脚、RTOS 对象', color:'#72a8ff', summary:'MCU 平台启动、外设初始化、中断入口和 FreeRTOS 对象。', beginner:'这一层像房屋的水电和总配电箱。它不决定“怎么飞”，只负责让 SPI、UART、定时器、DMA 和任务真正存在。', modules:['core-init','core-rtos','core-isr']},
       {id:'bsp', order:'L2', name:'BSP 板级层', rule:'把通用驱动绑定到这块板', color:'#8bdc7b', summary:'指定某个设备究竟使用哪路 SPI/UART、哪个 GPIO、怎样维护缓存和 DMA。', beginner:'DRIVER 知道“怎样和一类芯片说话”，BSP 告诉它“这块板上具体接在哪”。', modules:['bsp-sensors','bsp-uart','bsp-output','bsp-storage']},
-      {id:'driver', order:'L3', name:'DRIVER 驱动层', rule:'器件协议 + 可复用算法', color:'#62e6d0', summary:'读取芯片协议、执行姿态融合、导航 EKF、三轴控制与执行器换算。', beginner:'DRIVER 是可复用的专业零件：懂 ICM42688、光流帧、SO(3)、EKF 或电机推力模型，但不负责整个飞行流程。', modules:['drv-imu','drv-fusion','drv-flow','drv-nav','drv-control','drv-io']},
+      {id:'driver', order:'L3', name:'DRIVER 驱动层', rule:'器件协议 + 可复用算法', color:'#62e6d0', summary:'读取芯片协议、执行姿态融合、导航 EKF、四环级联与同轴执行器换算。', beginner:'DRIVER 是可复用的专业零件：懂 ICM42688、光流帧、SO(3)、EKF 或电机推力模型，但不负责整个飞行流程。', modules:['drv-imu','drv-fusion','drv-flow','drv-nav','drv-position','drv-attitude','drv-rate','drv-allocator','drv-io']},
       {id:'service', order:'L4', name:'SERVICES 服务层', rule:'同步、无任务的领域服务', color:'#c297ff', summary:'维护共享领域状态：光流导航、参数镜像、统一微秒时间戳。', beginner:'SERVICE 没有自己的线程。别人调用它时，它在调用者的任务里立即完成工作；它负责跨模块的一致规则和状态。', modules:['svc-flow','svc-param','svc-time']},
       {id:'app', order:'L5', name:'APP 应用与任务层', rule:'任务、行为、安全、装配、通信', color:'#ff7979', summary:'把传感器、算法、控制、安全、通信和后台操作装成一台会运行的飞控。', beginner:'APP 是“总导演”：什么时候采、什么时候算、能不能解锁、输出给谁、慢操作交给哪个任务，都在这里决定。', modules:['app-sensor','app-stabilizer','app-control','app-nav','app-rc','app-output','app-comms','app-log','app-cal']},
       {id:'host', order:'L6', name:'HOST 上位机工具', rule:'学习、诊断、证据与回放', color:'#f09be0', summary:'PC 上的 Python 面板、日志分析工具、测试和构建门；它们观察与配置飞控，但不是飞行安全的最终裁决者。', beginner:'上位机帮助人理解飞控、发送命令和保存证据。即使上位机崩溃或断开，危险动作也必须由固件自己的超时和安全门停止。', modules:['host-panel','host-analysis','host-tests']},
@@ -785,7 +787,7 @@
       {id:'hw-flow', layer:'hardware', name:'MTF-01P 光流 + 组合测距', short:'地面相对速度与高度', summary:'通过串口输出 MicoLink/MSP 帧，当前实测采样周期约 10 ms（100 Hz）。', beginner:'它像向下看的鼠标：图像纹理移动可以估算水平速度，同时组合测距提供离地高度。光照、纹理、距离和旋转都会影响结果。', context:'硬件 / UART DMA', rate:'传感器时间轴约 100 Hz', inputs:['地面纹理','光照','高度','机体旋转'], outputs:['flow_vel_x/y','quality','distance_mm','sensor_time_ms'], calls:['bsp-sensors','drv-flow'], responsibilities:['输出原始光流和高度帧','提供独立传感器时间轴','质量值只代表可用程度，不是速度本身'], debug:['先看帧率、校验错误、quality、distance_valid','质量低时不要先改 EKF；先检查表面纹理、距离、镜头和供电','旋转时出现假平移要继续查稳定环的旋转补偿'], files:['Driver/Inc/drv_optical_flow.h','BSP/Inc/bsp_optical_flow.h','Services/Inc/svc_flow_nav.h']},
       {id:'hw-rc', layer:'hardware', name:'ELRS 接收机', short:'操作者意图输入', summary:'CRSF/ELRS 串口帧提供 16 通道、链路统计和最近有效帧时间。', beginner:'遥控器给出的只是通道脉宽。它还不是“向前飞”这种机体意图，必须先经过通道映射、端点标定、反向与死区处理。', context:'UART DMA + Stabilizer 高频步进', rate:'接收机帧率决定；状态机约 1 kHz 被服务', inputs:['发射机摇杆/开关'], outputs:['16 通道 μs','链路新鲜度','链路统计'], calls:['bsp-uart','drv-io','app-rc'], responsibilities:['提供原始 RC 通道','链路丢失时提供明确的时间戳事实'], debug:['先看是否收到帧和 last_rc_ms','再查 RCMAP 映射与 calibrated 标志','不要用发射机 reversed 补偿机体系极性错误'], files:['Driver/Inc/drv_elrs.h','App/Inc/app_elrs.h','App/Inc/app_rc_config.h']},
       {id:'hw-flash', layer:'hardware', name:'GD25Q32 外部 Flash', short:'参数与飞行日志的非易失存储', summary:'SPI Flash 保存参数双槽记录、飞行日志、导出数据和维护操作。', beginner:'Flash 写入慢、擦除更慢，所以不能在 500 Hz 控制环里直接做。正确做法是投递请求给后台任务。', context:'BackgroundTask 独占慢操作', rate:'事件驱动；擦写为毫秒级慢操作', inputs:['参数记录','飞行日志块','维护请求'], outputs:['持久化记录','读取/校验结果'], calls:['bsp-storage','drv-io','svc-param','app-log'], responsibilities:['断电后保存数据','扇区擦除与页写入','通过版本和 CRC 区分有效记录'], debug:['查 JEDEC ID、bus mutex、CRC 和版本迁移','参数 RAM 生效不等于 Flash 已提交','日志丢包优先查擦除时机和后台队列，不要怪 IMU'], files:['Driver/Inc/drv_gd25q32.h','App/Inc/app_flash_service.h','App/Inc/app_flight_log.h']},
-      {id:'hw-actuator', layer:'hardware', name:'双电机 + 双倾转舵机', short:'把力矩命令变成真实运动', summary:'上下同轴桨提供总推力与差动偏航力矩；α/β 倾转机构提供 roll/pitch 力矩。', beginner:'控制器只算“想要多少力和力矩”；执行器分配器再决定两个电机、两个舵机各自该动多少。两者不能混为一谈。', context:'500 Hz 控制决策；舵机总线≤100 Hz', rate:'ESC PWM；舵机命令最多 100 Hz', inputs:['motor_upper/lower_us','servo_alpha/beta_us'], outputs:['总推力','偏航反扭矩差','倾转 roll/pitch 力矩'], calls:['bsp-output','drv-control','app-output'], responsibilities:['执行最终控制命令','受机械中心/方向/行程和饱和限制'], debug:['先拆桨确认输出方向和安全门','偏航弱时同时看总推力余量、上下桨差动和 yaw utilization','舵机方向错要查 pulse_sign，不能靠负控制增益补偿'], files:['Driver/Inc/drv_airframe_model.h','Driver/Inc/drv_motor.h','Driver/Inc/drv_servo.h']},
+      {id:'hw-actuator', layer:'hardware', name:'双电机 + 双倾转舵机', short:'把力矩命令变成真实运动', summary:'上下同轴桨提供总推力与差动偏航力矩；α/β 倾转机构提供横滚/俯仰力矩。', beginner:'控制器只算“想要多少力和力矩”；执行器分配器再决定两个电机、两个舵机各自该动多少。两者不能混为一谈。', context:'500 Hz 控制决策；舵机总线≤100 Hz', rate:'ESC PWM；舵机命令最多 100 Hz', inputs:['motor_upper/lower_us','servo_alpha/beta_us'], outputs:['总推力','偏航反扭矩差','倾转横滚/俯仰力矩'], calls:['bsp-output','drv-allocator','app-output'], responsibilities:['执行最终控制命令','受机械中心/方向/行程和饱和限制'], debug:['先拆桨确认输出方向和安全门','偏航弱时同时看总推力余量、上下桨差动和偏航利用率','舵机方向错要查 pulse_sign，不能靠负控制增益补偿'], files:['Driver/Inc/drv_airframe_model.h','Driver/Inc/drv_motor.h','Driver/Inc/drv_servo.h']},
 
       {id:'core-init', layer:'core', name:'main / 外设初始化', short:'启动 MCU 和所有外设', summary:'CubeMX 生成时钟、GPIO、SPI、I2C、UART、TIM、DMA、NVIC 初始化。', beginner:'如果某个串口、DMA 或定时器从根上没配对，上层代码再正确也不会工作。此层由 .ioc/CubeMX 管理，禁止手工把生成代码当普通源码维护。', context:'上电启动', rate:'一次性初始化', inputs:['drone-H743.ioc'], outputs:['HAL handles','时钟/引脚/外设状态'], calls:['bsp-sensors','bsp-uart','bsp-output'], responsibilities:['完成芯片级资源配置','建立 HAL 外设句柄'], debug:['核对 .ioc 是硬件配置真源','引脚/时钟/DMA/NVIC 变更必须回 CubeMX','检查生成后 USER CODE 区是否仍正确'], files:['drone-H743.ioc','Core/Src/main.c','Core/Src/*_init.c']},
       {id:'core-rtos', layer:'core', name:'freertos.c / RTOS 对象', short:'创建任务、队列、信号量和互斥锁', summary:'创建 6 个任务、4 个消息队列、IMU 就绪信号量，以及后台和 Flash 同步对象。', beginner:'RTOS 把不同速度、不同实时性的工作拆开。关键原则是：快任务不能等待慢任务；它们通过队列、信号量和只读快照交接。', context:'启动后创建；任务永久运行', rate:'见“任务与速率”视图', inputs:['CMSIS-RTOS2 配置'], outputs:['线程句柄','队列','信号量','互斥锁'], calls:['app-sensor','app-stabilizer','app-comms','app-log'], responsibilities:['定义任务优先级和栈','建立传感器→稳定控制与后台请求/响应通道'], debug:['用 RTOS? 查栈剩余量、堆、队列占用和故障锁存','队列满时分清“丢旧保新”与“必须可靠交付”两类语义'], files:['Core/Src/freertos.c','App/Inc/app_tasks.h']},
@@ -800,7 +802,10 @@
       {id:'drv-fusion', layer:'driver', name:'drv_attitude_fusion', short:'加速度 + 陀螺 → 姿态', summary:'包装 x-io Fusion AHRS，支持 NED/NWU 约定，输出四元数、欧拉角和融合健康指标。', beginner:'陀螺短时间很灵敏但会漂，加速度长期能指出重力方向但会受运动干扰。姿态融合把两者取长补短。', context:'StabilizerTask 的 IMU step', rate:'每个有效 IMU 样本，约 1 kHz', inputs:['校准后 accel/gyro','dt','frame convention'], outputs:['quaternion','roll/pitch/yaw','acceleration_error','recovery flags'], calls:['drv-imu','app-stabilizer'], responsibilities:['姿态传播与加速度修正','动态加速度拒绝和恢复','明确四元数方向与坐标约定'], debug:['姿态跳变先核对 dt、单位和坐标约定','静止漂移查 gyro bias/温度，不先改姿态控制器','高动力时 accel ignored 可能是正确保护行为'], files:['Driver/Src/drv_attitude_fusion.c','Driver/Inc/drv_attitude_fusion.h']},
       {id:'drv-flow', layer:'driver', name:'drv_optical_flow', short:'只解析光流协议帧', summary:'负责 MicoLink/MSP 字节流、校验和帧字段，不做质量门、滤波或 EKF。', beginner:'Driver 只回答“设备这帧说了什么、帧是不是完整”。至于这帧值不值得信、怎样滤波，属于 Service。', context:'UART 回调 + SensorTask service', rate:'约 100 Hz 新帧', inputs:['UART 字节流'], outputs:['原始 flow frame'], calls:['bsp-sensors','svc-flow'], responsibilities:['协议同步与校验','维护最近完整帧','统计 frame/checksum 错误'], debug:['frame_err/checksum 错先查串口与协议','数据能解析但不被采用，转查 svc_flow_nav 的门控'], files:['Driver/Src/drv_optical_flow.c','Driver/Inc/drv_optical_flow.h']},
       {id:'drv-nav', layer:'driver', name:'drv_nav_ekf', short:'可复用水平速度 EKF 内核', summary:'提供预测、光流速度更新、协方差与诊断；门控策略由 svc_flow_nav 统一拥有。', beginner:'EKF 用 IMU 加速度预测速度，再用光流测量拉回漂移。它像一个“带不确定度的融合器”，不是传感器驱动。', context:'由 svc_flow_nav 在 StabilizerTask 中调用', rate:'predict 约 1 kHz；控制相关更新约 500 Hz', inputs:['水平加速度','光流速度','量测噪声','dt'], outputs:['vx/vy','covariance','innovation diagnostics'], calls:['svc-flow'], responsibilities:['状态与协方差传播','量测更新','提供算法诊断'], debug:['速度发散先看输入单位/frame/dt','p_u 很大说明不确定度高，不等于代码崩溃','量测被拒要回到 Service 的质量/时效/步长门'], files:['Driver/Src/drv_nav_ekf.c','Driver/Inc/drv_nav_ekf.h']},
-      {id:'drv-control', layer:'driver', name:'四环级联 + drv_coax_ctrl', short:'位置 P / 速度 PID / SO(3) 姿态 P / 角速度 PID / 同轴分配', summary:'按 50/100/250/500 Hz 把状态和参考变成 a_sp、R_d、ω_sp、M_cmd、实现力矩和执行器目标；yaw 与 roll/pitch 共用同一姿态/角速度控制链，只在分配器分叉。', beginner:'四环分别负责位置、速度、姿态和角速度；最后同轴分配器才决定 roll/pitch 走倾转、yaw 走上下桨差动。', context:'StabilizerTask control compute', rate:'位置50 / 速度100 / 姿态250 / 角速度500 Hz', inputs:['姿态/角速度','位置/速度/测量加速度','RC 参考','真实 dt','饱和反馈'], outputs:['v_sp','a_sp','ω_sp','M_cmd/M_achieved','电机/舵机脉宽'], calls:['app-stabilizer','bsp-output','hw-actuator'], responsibilities:['多速率级联与积分生命周期','测量导数 LPF','SO(3) 姿态误差','物理分配与逐方向 anti-windup','机械 pulse_sign 在分配之后应用'], debug:['依次看位置/速度 P-I-D-FF、a_sp','再看 e_R、ω_sp、角速度 P-I-D-FF','最后看 M_cmd/M_achieved、逐轴饱和与执行器限位'], files:['Driver/Src/drv_position_control.c','Driver/Src/drv_attitude_control.c','Driver/Src/drv_rate_control.c','Driver/Src/drv_coax_ctrl.c','App/Src/app_control_scheduler.c']},
+      {id:'drv-position', layer:'driver', name:'位置 P + 速度 PID', short:'位置误差生成速度目标，速度误差生成加速度目标', summary:'位置环按 50 Hz 计算 v_sp = Kpos·(p_sp−p)+v_ff；速度环按 100 Hz 计算 a_sp = Kp·e_v + I − Kd·a_meas + a_ff，并执行速度、加速度与积分限幅。', beginner:'位置环只回答“应该往哪边、以多快靠近目标”；速度环再回答“为了达到这个速度，需要多大加速度”。这里不直接算舵机角度。', context:'StabilizerTask 内的多速率调度', rate:'位置 50 Hz；速度 100 Hz，且外环要求新导航样本', inputs:['p_sp / p','v_ff / v','测量加速度','上周期执行器饱和'], outputs:['v_sp','a_sp','逐轴 P/I/D/FF','平动饱和'], calls:['app-stabilizer','drv-attitude'], responsibilities:['位置 P 与速度 PID 分离','XY 向量限幅和 Z 上下行独立限幅','只阻止饱和方向继续积分，反向积分可释放','无效测量冻结积分和导数滤波'], debug:['先看 p_sp−p 和 v_sp 是否被限幅','再看速度 P/I/D/FF 与 a_sp','若积分退不出来，检查上一周期逐方向饱和是否接反'], files:['Driver/Src/drv_position_control.c','Driver/Inc/drv_position_control.h','App/Src/app_control_scheduler.c']},
+      {id:'drv-attitude', layer:'driver', name:'SO(3) 姿态 P', short:'目标合力与偏航生成 R_d，姿态误差生成 ω_sp', summary:'同轴装配器先把期望合力与偏航变成目标旋转矩阵 R_d；纯姿态模块计算 e_R = ½(R_dᵀR−RᵀR_d)∨，再以 ω_sp = ω_ff−Katt·e_R 生成三轴角速度目标。', beginner:'这一环不直接输出力矩，它把“机体应该朝哪里”转换成“机体应该以多快转过去”。横滚、俯仰、偏航三轴共用同一个 SO(3) 误差。', context:'StabilizerTask 内的多速率调度', rate:'250 Hz', inputs:['实际 R','目标 R_d','目标系角速度 ω_d','三轴速率限制'], outputs:['e_R','ω_ff','ω_sp','速率限幅标记'], calls:['drv-position','drv-rate'], responsibilities:['保持旋转矩阵和坐标边界显式','三轴统一负反馈符号','逐轴限制角速度目标','不在本模块做执行器分配'], debug:['先验证 R 与 R_d 在同一坐标定义','检查 e_R 符号和 ω_ff 坐标变换','若只有偏航异常，不要恢复独立偏航 PD；继续沿三轴链检查'], files:['Driver/Src/drv_attitude_control.c','Driver/Inc/drv_attitude_control.h','Driver/Src/drv_coax_ctrl.c']},
+      {id:'drv-rate', layer:'driver', name:'角速度 PID', short:'角速度误差闭环生成三轴力矩命令', summary:'以 e_ω = ω_sp−ω 计算 M = Kp·e_ω + I − Kd·α_filtered + Kff·J·α_ff + ω×Jω；500 Hz 更新积分和角加速度滤波，非更新拍只重算输出而不改状态。', beginner:'这是最靠近执行器的反馈环。姿态环说“要转多快”，角速度环根据实际转速差直接调力矩，所以通常比只靠角度误差更容易压住快速扰动。', context:'StabilizerTask control compute', rate:'500 Hz', inputs:['ω_sp / ω','测量角加速度','Jxx/Jyy/Jzz','上周期逐方向饱和'], outputs:['三轴 P/I/D/FF','M_cmd','力矩限幅标记'], calls:['drv-attitude','drv-allocator'], responsibilities:['三轴角速度闭环','测量角加速度 LPF','刚体耦合前馈 ω×Jω','逐方向抗积分饱和和状态复位'], debug:['依次看 e_ω、P/I/D/FF，再看 M_cmd','高频噪声先查 α_filtered 和 D 项，不先降姿态环','饱和时确认同方向积分冻结、反方向释放'], files:['Driver/Src/drv_rate_control.c','Driver/Inc/drv_rate_control.h','Driver/Src/drv_coax_ctrl.c']},
+      {id:'drv-allocator', layer:'driver', name:'同轴保护与执行器分配', short:'把合力/三轴力矩变成上下桨推力和 α/β 倾转', summary:'drv_coax_ctrl 负责合力→目标姿态、三轴力矩边界与物理分配；横滚/俯仰走倾转解析反解，偏航走上下桨差动。分配后用最终电机推力和机械脉宽反算 M_achieved，并把逐方向饱和反馈给下一拍 PID。', beginner:'执行器能力有限，命令不一定都能实现。这里必须同时告诉上游“我实际做到了多少”和“哪个方向已经顶到头”，否则积分器会继续累加。', context:'StabilizerTask control compute', rate:'每个控制提交拍 500 Hz', inputs:['F_d','M_cmd[3]','电机推力上限','舵机中心/方向/行程'], outputs:['上下桨推力与 PWM','α/β 舵机脉宽','M_achieved[3]','推力/倾转/偏航差动饱和'], calls:['drv-rate','app-output','bsp-output','hw-actuator'], responsibilities:['力矩限制与水平缩放保护','偏航只在分配层与横滚/俯仰分叉','机械脉宽量化/裁剪后反算真实倾角','向平动环和角速度环闭合饱和反馈'], debug:['先比较 M_cmd 与 M_achieved','再分辨推力、倾转还是偏航差动饱和','零命令不应因数值残差误报饱和','窄舵机行程与电机裁剪都必须反映到实现力矩'], files:['Driver/Src/drv_coax_ctrl.c','Driver/Inc/drv_coax_ctrl.h','Driver/Inc/drv_airframe_model.h']},
       {id:'drv-io', layer:'driver', name:'drv_elrs / servo / motor / gd25q32', short:'RC、执行器与存储协议', summary:'一组面向器件/协议的可复用驱动：CRSF、串行舵机、电机换算、外部 Flash。', beginner:'它们各自只懂自己的协议或数学，不决定什么时候解锁、什么时候保存参数。时序与安全由 App 负责。', context:'UARTTask / BackgroundTask / StabilizerTask', rate:'按事件或调用者节拍', inputs:['字节流','脉宽/角度','Flash 操作'], outputs:['RC 通道','舵机命令','Flash 状态'], calls:['bsp-uart','bsp-storage','app-rc','app-output','svc-param'], responsibilities:['隔离器件协议细节','提供可复用、可测试 API'], debug:['协议层出错看 CRC/帧状态','生命周期或安全问题回 App，不要塞回 Driver'], files:['Driver/Src/drv_elrs.c','Driver/Src/drv_servo.c','Driver/Src/drv_motor.c','Driver/Src/drv_gd25q32.c']},
 
       {id:'svc-flow', layer:'service', name:'svc_flow_nav', short:'光流导航数据的唯一数学出口', summary:'统一拥有高度 LPF、速度中值、质量/时效/合理性门、EKF、位置和累计位移。', beginner:'这里把“协议解析出的原始帧”加工成“控制器可以相信的导航量”。同一个判据只放这里，避免 App、面板和控制器各算一份。', context:'无任务；SensorTask push + Stabilizer fuse', rate:'新帧约 100 Hz；融合约 1 kHz/500 Hz', inputs:['原始 flow frame','姿态补偿后加速度','旋转补偿后速度'], outputs:['height','sensor velocity','EKF velocity','position','displacement','diagnostics'], calls:['drv-flow','drv-nav','app-nav','app-stabilizer'], responsibilities:['质量门 45；45–80 低信任度','传感器时间轴积分位置/里程','控制模式 reset 与里程 reset 生命周期分离'], debug:['先看 sample result：hold/stale/rejected/warmup/accepted','再看质量、时效、高度步长和速度步长','位置积分必须使用 sensor_time，不使用主机轮询时间'], files:['Services/Src/svc_flow_nav.c','Services/Inc/svc_flow_nav.h']},
@@ -808,20 +813,20 @@
       {id:'svc-time', layer:'service', name:'svc_timestamp', short:'TIM17 扩展成 64 位微秒时钟', summary:'TIM17 1 MHz 计数，溢出 ISR 维护高字，为采样、日志和性能测量提供统一时间。', beginner:'不同模块必须共享同一把时钟，才能判断样本间隔、延迟、超时和日志对齐，否则“看起来同时”的数据其实无法比较。', context:'任意任务读取；TIM17 ISR 更新', rate:'1 μs tick；65.536 ms 溢出', inputs:['TIM17 counter/overflow'], outputs:['uint64_t microseconds'], calls:['core-isr','app-sensor','app-log','app-comms'], responsibilities:['统一单调时间基准','避免 32 位短周期回绕'], debug:['dt 异常先查 TIM17 prescaler/period 与溢出回调','不要混用 sensor_time、HAL_GetTick 和主机墙钟'], files:['Services/Src/svc_timestamp.c','Services/Inc/svc_timestamp.h']},
 
       {id:'app-sensor', layer:'app', name:'SensorTask + app_sensor + imu_health', short:'1 kHz 数据源与预处理流水线', summary:'等待 DRDY，读取 IMU，缩放、启动期 gyro bias、安装方向映射、二阶 LPF、健康评估，再投递采样队列。', beginner:'这是飞控的“感官输入流水线”。任何姿态和控制都依赖它准时、同单位、同坐标地产出新鲜样本。', context:'SensorTask / Normal priority', rate:'1 kHz 中断驱动；20 ms 超时轮询兜底', inputs:['BSP IMU raw','V0 orientation','baro/mag/flow service'], outputs:['SensorSampleQueue','imuDataReadySemaphore','raw capture'], calls:['drv-imu','bsp-sensors','svc-time','app-stabilizer'], responsibilities:['先队列 Put，再 semaphore Release','队列满时丢最旧帧保最新','LPF gyro 80 Hz / accel 40 Hz','100 ms 窗口健康评估'], debug:['先看 irq_rate、poll_rate、read_fail、sample age','若 DRDY 丢失，不能把 50 Hz 兜底当健康','这里的旧注释可能仍写 NED，要以 frame contract 和实际 adapter 为准'], files:['Core/Src/freertos.c','App/Src/app_sensor.c','App/Src/app_imu_health.c','App/Inc/app_messages.h']},
-      {id:'app-stabilizer', layer:'app', name:'app_stabilizer', short:'姿态、导航、控制与安全的实时装配器', summary:'消费传感器队列；约 1 kHz 做姿态/导航更新，2 ms 一次做 control prepare → compute → commit。', beginner:'它不是单一算法，而是实时“总装线”：把最新姿态、RC、导航和参数拼成控制器输入，再经过安全仲裁决定能否真正写执行器。', context:'StabilizerTask / Normal priority', rate:'IMU step≈1 kHz；control=500 Hz', inputs:['SensorSampleQueue','RC snapshot','flow/nav state','calibration snapshot'], outputs:['controller reference','actuator targets','VOFA latest sample','flight log snapshot','validation snapshots'], calls:['drv-fusion','svc-flow','drv-control','app-rc','app-output','app-log'], responsibilities:['prepare：RC/安全/参考/模式','compute：导航参考与控制器','commit：舵机仲裁、电机安全输出、日志观察','保持控制热路径无阻塞 I/O'], debug:['按 prepare→compute→commit 分段查','有控制量但没动作先看 commit 的安全门和仲裁','实时问题查 sample age、control dt、队列覆盖和阻塞调用'], files:['App/Src/app_stabilizer.c','App/Inc/app_stabilizer.h']},
+      {id:'app-stabilizer', layer:'app', name:'app_stabilizer + control_scheduler', short:'姿态、导航、四环调度、控制与安全的实时装配器', summary:'消费传感器队列；约 1 kHz 做姿态/导航更新，2 ms 一次做 prepare → compute → commit。调度器先用 Step 给出到期环，只有真实执行后 Commit 才推进相应时间戳。', beginner:'它不是单一算法，而是实时“总装线”：把最新姿态、RC、导航和参数拼成控制器输入，再经过安全仲裁决定能否真正写执行器。Step/Commit 分开，可避免“判断到期但这一拍没执行，却被误记为已经执行”。', context:'StabilizerTask / 普通优先级', rate:'IMU 更新≈1 kHz；角速度500 / 姿态250 / 速度100 / 位置50 Hz', inputs:['SensorSampleQueue','RC snapshot','flow/nav state','calibration snapshot'], outputs:['controller reference','各环 due/dt','actuator targets','VOFA latest sample','flight log snapshot'], calls:['drv-fusion','svc-flow','drv-position','drv-attitude','drv-rate','drv-allocator','app-rc','app-output','app-log'], responsibilities:['prepare：RC/安全/参考/模式','Step 只轮询到期，Commit 只登记真实执行','导航样本 token 只比较身份，不与 HAL/TIM17 跨时钟比较','compute：四环级联；commit：执行器仲裁与日志观察','保持控制热路径无阻塞 I/O'], debug:['按 prepare→scheduler Step→compute→scheduler Commit→actuator commit 分段查','外环不跑时同时看到期时间和 navigation_sample_new','时间戳倒退会触发 fault 并重置状态','有控制量但没动作先看最终 commit 的安全门和仲裁'], files:['App/Src/app_stabilizer.c','App/Inc/app_stabilizer.h','App/Src/app_control_scheduler.c','App/Inc/app_control_scheduler.h']},
       {id:'app-control', layer:'app', name:'app_control + app_cmd_*', short:'文本命令、参数与诊断控制面', summary:'解析 USB/UART ASCII 命令，分派 IMUCAL、SERVOCAL、RCMAP、FLOW、TELEM、系统诊断等命令族。', beginner:'这是“操作员控制台”的固件端，不是飞行控制器。它修改配置、查询状态、启动安全动作，但不能绕过固件内的安全门。', context:'UARTTask / USB 通信任务上下文', rate:'事件驱动；UARTTask 最长 20 ms tick', inputs:['ASCII line','$X binary frame','command source'], outputs:['结构化文本回复','参数/动作请求','遥测配置'], calls:['app-comms','svc-param','app-cal','svc-flow'], responsibilities:['协议 ID 与命令分派','危险操作在固件端二次拒绝','控制环事件文本由通信任务补发'], debug:['命令无回复先分链路、解析、分派、回包队列四段','控制环里禁止直接 APP_Control_QueueText','新增命令要同步 CAPS、协议 ID 和上位机允许清单'], files:['App/Src/app_control.c','App/Src/app_control_core.c','App/Src/app_cmd_*.c','App/Inc/app_proto.h']},
       {id:'app-nav', layer:'app', name:'app_optical_flow + app_nav_estimator', short:'设备生命周期、坐标补偿与诊断发布', summary:'管理光流初始化/恢复和健康；把 Service 状态组装成 App 快照，并在 Stabilizer 中完成姿态/旋转补偿。', beginner:'Service 负责数学，App 负责“设备现在是否在线、这份数据在哪个坐标系、怎样交给控制器和诊断”。', context:'SensorTask + StabilizerTask', rate:'service 每 IMU 循环；新帧约 100 Hz', inputs:['BSP flow frame','attitude/gyro','svc_flow_nav state'], outputs:['补偿后速度','height sample','EKF diagnostics','FLOW? 报告'], calls:['bsp-sensors','svc-flow','app-stabilizer'], responsibilities:['初始化重试和掉线恢复','机体旋转补偿','发布速度来源与健康状态'], debug:['设备离线看 App lifecycle；帧坏看 Driver；估计坏看 Service','旋转补偿必须带 frame 与姿态来源'], files:['App/Src/app_optical_flow.c','App/Src/app_nav_estimator.c','App/Src/app_stabilizer.c']},
       {id:'app-rc', layer:'app', name:'app_elrs + app_rc_config', short:'RC 字节流 → 归一化操作者意图', summary:'高频推进 ELRS 状态机，读取 16 通道，并按持久化 RCMAP 解析 throttle/roll/pitch/yaw/arm/mode。', beginner:'原始 CH1/CH2 没有固定含义。RCMAP 决定哪个通道是什么、端点多大、是否反向；稳定环再把归一化摇杆变成姿态/速度参考。', context:'StabilizerTask 高频调用；命令任务更新配置', rate:'ELRS step≈1 kHz；resolve=500 Hz', inputs:['CRSF bytes','RCMAP snapshot'], outputs:['normalized RC inputs','link freshness','arm/mode intent'], calls:['drv-io','svc-param','app-stabilizer'], responsibilities:['单一映射与端点校准','500 ms RC loss timeout','低油门上升沿参与解锁'], debug:['先看 raw channel，再看 mapped us/norm，最后看 reference','摇杆正确但动作反向，查“摇杆空间→机体意图”唯一符号点'], files:['App/Src/app_elrs.c','App/Src/app_rc_config.c','App/Inc/app_rc_config.h']},
       {id:'app-output', layer:'app', name:'舵机类型 / 点动 / 标定 / 反馈', short:'执行器类型选择与安全仲裁', summary:'在总线/PWM 两类舵机间选择出口，管理机械标定、保持点动、反馈台架和命令节流。', beginner:'控制器算出的目标不能直接写舵机。这里先决定“谁现在拥有舵机”：标定、验收、反馈台架、正常控制或点动，并保证超时后归还。', context:'StabilizerTask 提交阶段 + UARTTask 命令', rate:'仲裁 500 Hz；总线发送≤100 Hz；反馈每舵机约50 Hz', inputs:['控制器舵机目标','标定候选','点动/台架请求'], outputs:['PWM 脉宽或总线移动','反馈样本','事件通告'], calls:['drv-io','bsp-output','app-stabilizer'], responsibilities:['明确仲裁优先级','机械 pulse_sign/center/min/max','500 μs/s 标定点动与 120 s 超时','控制环只缓存事件，通信任务发送文本'], debug:['目标正确但舵机不动：查当前所有者、舵机类型、总线忙碌、脉宽限位','标定和正常控制互相抢占时查优先级和释放原因'], files:['App/Src/app_servo_type.c','App/Src/app_servo_jog.c','App/Src/app_servo_cal.c','App/Src/app_servo_feedback.c']},
-      {id:'app-comms', layer:'app', name:'UARTTask + USB CDC + 遥测', short:'命令与观测出口', summary:'UARTTask 统一轮询收发、维护串口、USB CDC 和命令；VOFA_Task 独立按默认 40 Hz 发送遥测。', beginner:'命令是“你想让飞控做什么”，遥测是“飞控告诉你现在怎样”。两者可共用链路，但必须防止高频遥测挤掉关键回复。', context:'UARTTask 普通优先级；VOFA_Task 低优先级', rate:'UART 事件驱动/最长等待20 ms；遥测40 Hz；全量刷新1 Hz', inputs:['USB/UART 字节','最新样本','通道掩码'], outputs:['文本回复','$X 二进制遥测','CSV 上位机数据流'], calls:['app-control','app-stabilizer','drv-control','svc-time'], responsibilities:['RX DMA 与行缓冲','遥测掩码/帧编码/出口选择','导出时独占 CDC，暂停普通遥测','57600 baud 默认带宽≤60%'], debug:['无数据先分接收、解析器、发送队列、物理出口','遥测卡顿不应影响控制；若影响说明发生了上下文越界','USB 拔出会自动关闭遥测流，不是假装继续发送'], files:['App/Src/app_uart.c','App/Src/app_usb_cdc.c','App/Src/app_telem_stream.c','App/Src/app_telem_port.c','App/Src/app_telemetry.c']},
+      {id:'app-comms', layer:'app', name:'UARTTask + USB CDC + 遥测', short:'命令与观测出口', summary:'UARTTask 统一轮询收发、维护串口、USB CDC 和命令；VOFA_Task 独立按默认 40 Hz 发送遥测。', beginner:'命令是“你想让飞控做什么”，遥测是“飞控告诉你现在怎样”。两者可共用链路，但必须防止高频遥测挤掉关键回复。', context:'UARTTask 普通优先级；VOFA_Task 低优先级', rate:'UART 事件驱动/最长等待20 ms；遥测40 Hz；全量刷新1 Hz', inputs:['USB/UART 字节','最新样本','通道掩码'], outputs:['文本回复','$X 二进制遥测','CSV 上位机数据流'], calls:['app-control','app-stabilizer','drv-position','drv-attitude','drv-rate','drv-allocator','svc-time'], responsibilities:['RX DMA 与行缓冲','遥测掩码/帧编码/出口选择','导出时独占 CDC，暂停普通遥测','57600 baud 默认带宽≤60%'], debug:['无数据先分接收、解析器、发送队列、物理出口','遥测卡顿不应影响控制；若影响说明发生了上下文越界','USB 拔出会自动关闭遥测流，不是假装继续发送'], files:['App/Src/app_uart.c','App/Src/app_usb_cdc.c','App/Src/app_telem_stream.c','App/Src/app_telem_port.c','App/Src/app_telemetry.c']},
       {id:'app-log', layer:'app', name:'飞行日志 / IMU 捕获 / 后台存储', short:'高频观测与慢速存储分离', summary:'控制/采样热路径只写 RAM 快照或缓冲，BackgroundTask 负责 Flash 扇区/块操作，低优先级任务负责 USB 导出。', beginner:'记录系统不能为了“保存证据”破坏被观察的实时系统。正确结构是快端只复制，慢端异步落盘和导出。', context:'Sensor/Stabilizer 生产；Background/VOFA 消费', rate:'IMU 捕获1 kHz；飞行日志约125 Hz；后台事件驱动', inputs:['原始/滤波后 IMU','姿态','控制调试量','执行器输出'], outputs:['Flash 日志','USB 导出','解析用版本化记录'], calls:['hw-flash','svc-time','app-comms'], responsibilities:['日志格式版本与坐标来源标记','预擦除/块写避免控制期阻塞','旧版本日志保持可解析'], debug:['丢记录看 dropped_records/sequence/扇区切换','回放方向异常先看头部坐标来源标记','高频频谱只能用原始 IMU 捕获'], files:['App/Src/app_flight_log.c','App/Src/app_imu_capture.c','App/Src/app_background.c','tools/flight_log_receive.py']},
       {id:'app-cal', layer:'app', name:'飞行校准 / 验收 / 动作管理', short:'校准事务、验收动作与安全生命周期', summary:'管理 V0/V1/V2 RAM 候选、COMMIT/回读、动作超时、心跳和执行器验收模式。', beginner:'校准不是“算出一个数字就结束”，而是候选预览、锁定危险动作、人工确认、写入 Flash、重启回读和证据留存的一整套事务。', context:'通信任务发起；控制/后台任务推进', rate:'事件驱动 + 500 Hz 安全服务', inputs:['操作者命令','传感器样本','机械确认'], outputs:['活动/持久化标定','解锁阻断','验收观测'], calls:['svc-param','app-stabilizer','app-output','app-control'], responsibilities:['RAM 预览与 Flash 提交分开','候选期间禁止解锁','动作必须有固件端超时/心跳','审核状态只由 PIPELINE 证据推进'], debug:['先区分候选/活动/持久化状态','面板退出不能留下危险动作','实机验收不能由上位机测试代替'], files:['App/Src/app_flight_calibration.c','App/Src/app_acceptance.c','App/Src/app_action.c','App/Src/app_servo_cal.c']},
       {id:'host-panel', layer:'host', name:'drone_tcp_panel + panel_lib', short:'校准、状态监视与命令交互工作台', summary:'Python/Tk 上位机通过 USB CDC、UART 或 TCP 与飞控通信，提供校准向导、状态页、可编排仪表盘和参数回显。', beginner:'面板是“仪表与操作台”，不是飞控本体。它可以建议、显示和发命令，但解锁、危险动作拒绝与超时必须由固件最终决定。', context:'PC Python 进程', rate:'UI/协议各自限速；仪表按遥测流更新', inputs:['文本回复','$X telemetry','用户操作'], outputs:['ASCII command','CSV/界面状态','校准工作流'], calls:['app-comms','app-control','app-cal'], responsibilities:['传输层与页面逻辑分离','解析固件真实输出格式','危险命令经过允许清单和新鲜状态门','浏览历史证据时保持只读'], debug:['连接失败先查 USB 指纹和当前端口，不猜 COM 号','页面无值先查 firmware stream、parser、state binding','上位机显示不能替代固件安全判断'], files:['tools/drone_tcp_panel.py','tools/panel_lib/transport.py','tools/panel_lib/pages/','tools/panel_lib/dashboard/']},
       {id:'host-analysis', layer:'host', name:'采集 / 回放 / 系统辨识工具', short:'把实录数据变成可比较证据', summary:'负责飞行日志接收、版本化解析、Rerun 回放、系统辨识、IMU 振动与校准数据分析。', beginner:'这些工具回答“真实运行时发生了什么”。算法结论必须在同一份实录数据上和基线比较，自己编的输入只能证明程序能跑。', context:'PC 离线或串口采集进程', rate:'按采集协议或离线批处理', inputs:['Flash 日志','遥测 CSV','捕获数据','元数据'], outputs:['报告','图表','候选参数','回放场景'], calls:['app-log','host-panel'], responsibilities:['保持日志版本向后兼容','按坐标来源标记选择解释','数据和派生报告统一放在 data/','同数据基线对比'], debug:['解析失败先看版本/头部/记录尺寸/CRC','回放方向异常先看坐标来源标记','不要用重采后的另一份数据冒充 A/B'], files:['tools/flight_log_receive.py','tools/flight_log_rerun_replay.py','tools/flight_log_sysid.py','tools/vofa_serial_capture.py']},
-      {id:'host-tests', layer:'host', name:'pytest + CMake Debug 构建门', short:'把架构边界和行为约束变成可执行检查', summary:'源码契约测试、上位机 gcc 真逻辑装置和固件 Debug 构建共同防止分层、坐标、安全与协议回退。', beginner:'测试不只是检查某个函数答案。这里很多测试在守“谁能调用谁、字段有没有版本、控制环有没有阻塞、旧路径会不会复活”。', context:'PC 构建 / CI', rate:'每项变更后全量运行', inputs:['源码','契约测试数据','上位机测试装置'], outputs:['pytest 结果','固件 ELF','警告/错误'], calls:['core-init','app-stabilizer','drv-control','svc-flow'], responsibilities:['行为改动必须有契约测试','全量 pytest + Debug 构建零警告','软件测试不能代替需要实机的验收门'], debug:['测试红先判断是行为回归、契约更新还是工作树中另一项未完成改动','不要通过删除判据或放宽安全门制造绿色'], files:['tests/','CMakeLists.txt','CMakePresets.json']},
+      {id:'host-tests', layer:'host', name:'pytest + CMake Debug 构建门', short:'把架构边界和行为约束变成可执行检查', summary:'源码契约测试、上位机 gcc 真逻辑装置和固件 Debug 构建共同防止分层、坐标、安全与协议回退。', beginner:'测试不只是检查某个函数答案。这里很多测试在守“谁能调用谁、字段有没有版本、控制环有没有阻塞、旧路径会不会复活”。', context:'PC 构建 / CI', rate:'每项变更后全量运行', inputs:['源码','契约测试数据','上位机测试装置'], outputs:['pytest 结果','固件 ELF','警告/错误'], calls:['core-init','app-stabilizer','drv-position','drv-attitude','drv-rate','drv-allocator','svc-flow'], responsibilities:['行为改动必须有契约测试','全量 pytest + Debug 构建零警告','软件测试不能代替需要实机的验收门'], debug:['测试红先判断是行为回归、契约更新还是工作树中另一项未完成改动','不要通过删除判据或放宽安全门制造绿色'], files:['tests/','CMakeLists.txt','CMakePresets.json']},
     ];
 
-    // 由 2026-09-04 当前工作树的生成索引整理。这里按“可独立理解的源码单元”聚合 .c/.h，
+    // 由 2026-09-05 当前工作树的生成索引整理。这里按“可独立理解的源码单元”聚合 .c/.h，
     // 不再列出已删除的 app_rangefinder / bsp_rangefinder / drv_tfmini / drv_imu_nav。
     const sourceModules = [
       {layer:'app', owner:'app-sensor', name:'传感器采样流水线', short:'读取 IMU、缩放、方向映射、滤波并发布 1 kHz 样本；健康模块独立判断能否解锁。', files:['App/Src/app_sensor.c','App/Inc/app_sensor.h','App/Src/app_imu_health.c','App/Inc/app_imu_health.h']},
@@ -829,6 +834,7 @@
       {layer:'app', owner:'app-nav', name:'光流设备与导航发布', short:'管理光流设备生命周期、恢复、状态快照和 EKF 速度发布；高度来自光流模块自带的组合测距。', files:['App/Src/app_optical_flow.c','App/Inc/app_optical_flow.h','App/Src/app_nav_estimator.c','App/Inc/app_nav_estimator.h'], change:'最新：不再保留独立 TFmini 路径'},
       {layer:'app', owner:'app-rc', name:'ELRS 与 RC 映射', short:'推进 ELRS 状态机，并把 16 路原始通道映射为油门、横滚、俯仰、偏航、解锁和模式意图。', files:['App/Src/app_elrs.c','App/Inc/app_elrs.h','App/Src/app_rc_config.c','App/Inc/app_rc_config.h']},
       {layer:'app', owner:'app-control', name:'命令入口与分派内核', short:'接收文本行、识别命令族并分派；核心公共回包与定时补发逻辑和大入口分离。', files:['App/Src/app_control.c','App/Inc/app_control.h','App/Src/app_control_core.c','App/Inc/app_control_internal.h']},
+      {layer:'app', owner:'app-control', name:'控制参数存储与旧版本迁移', short:'以 CFG V19 保存四环参数，加载时继续兼容 V18/V17/V16/V15，并把旧物理语义显式换算到当前参数。', files:['App/Src/app_control_config_store.c','App/Inc/app_control_config_store.h','App/Src/app_control_config_compat.c','App/Inc/app_control_config_compat.h'], change:'最新：CFG V19 + 四代旧格式兼容'},
       {layer:'app', owner:'app-control', name:'诊断与系统命令', short:'承载 IMU/RTOS/Flash 等诊断查询、系统状态与启动维护类命令。', files:['App/Src/app_cmd_diag.c','App/Src/app_cmd_system.c']},
       {layer:'app', owner:'app-nav', name:'光流命令', short:'读取光流补偿快照，处理 FLOW 查询、归零和校准相关控制面。', files:['App/Src/app_cmd_flow.c']},
       {layer:'app', owner:'app-cal', name:'IMU / RC / 舵机校准命令', short:'把 IMUCAL、RCMAP、SERVOCAL、SERVOTYPE 拆成独立命令域，避免继续膨胀 app_control.c。', files:['App/Src/app_cmd_imucal.c','App/Src/app_cmd_rcmap.c','App/Src/app_cmd_servocal.c','App/Src/app_cmd_servotype.c'], change:'最新：新增舵机类型命令域'},
@@ -839,7 +845,7 @@
       {layer:'app', owner:'app-output', name:'舵机点动、标定与反馈', short:'管理保持点动、即时移动、机械标定、反馈采样和反馈台架，所有权在稳定环提交点仲裁。', files:['App/Src/app_servo_jog.c','App/Inc/app_servo_jog.h','App/Src/app_servo_cal.c','App/Inc/app_servo_cal.h','App/Src/app_servo_feedback.c','App/Inc/app_servo_feedback.h','App/Src/app_servo_feedback_bench.c','App/Inc/app_servo_feedback_bench.h']},
       {layer:'app', owner:'app-cal', name:'飞行校准、验收与动作生命周期', short:'管理 RAM 候选、活动值、Flash 提交、验收阶段、心跳和危险动作超时。', files:['App/Src/app_flight_calibration.c','App/Inc/app_flight_calibration.h','App/Src/app_acceptance.c','App/Inc/app_acceptance.h','App/Src/app_action.c','App/Inc/app_action.h']},
       {layer:'app', owner:'app-log', name:'后台请求与 Flash 应用服务', short:'后台任务串行处理参数保存和 Flash 慢操作；应用服务提供带状态与安全边界的诊断接口。', files:['App/Src/app_background.c','App/Inc/app_background.h','App/Src/app_flash.c','App/Inc/app_flash.h','App/Src/app_flash_service.c','App/Inc/app_flash_service.h']},
-      {layer:'app', owner:'app-log', name:'飞行日志与全速 IMU 捕获', short:'把控制与传感热路径中的观测先写入 RAM，再由后台落盘或经 USB 导出；格式保持版本兼容。', files:['App/Src/app_flight_log.c','App/Inc/app_flight_log.h','App/Src/app_imu_capture.c','App/Inc/app_imu_capture.h'], change:'最新：日志 v9 / 512 B 记录'},
+      {layer:'app', owner:'app-log', name:'飞行日志与全速 IMU 捕获', short:'把控制与传感热路径中的观测先写入 RAM，再由后台落盘或经 USB 导出；V10 记录四环和分配反馈，并继续扫描/导出 V7/V8、解析 V9。', files:['App/Src/app_flight_log.c','App/Inc/app_flight_log.h','App/Src/app_imu_capture.c','App/Inc/app_imu_capture.h'], change:'最新：FlightLog V10 / 776 B，旧版本继续可读'},
       {layer:'app', owner:'app-sensor', name:'气压计、磁力计与 GPS 应用状态', short:'管理各低速传感器的初始化、周期服务、健康状态和诊断报告，不参与姿态融合器内部数学。', files:['App/Src/app_baro.c','App/Inc/app_baro.h','App/Src/app_mag.c','App/Inc/app_mag.h','App/Src/app_gps.c','App/Inc/app_gps.h']},
       {layer:'app', owner:'app-control', name:'启动、安全诊断与固件身份', short:'负责 ROM DFU 安全判定、RTOS 故障锁存以及固件 CRC/身份信息。', files:['App/Src/app_boot.c','App/Inc/app_boot.h','App/Src/app_diag.c','App/Inc/app_diag.h','App/Src/app_firmware_identity.c','App/Inc/app_firmware_identity.h']},
       {layer:'app', owner:'app-comms', name:'Ai-WB2 网络链路', short:'管理无线模块电源、AT/透传状态和套接字连接，为 TCP/UDP 上位机链路提供固件端适配。', files:['App/Src/app_aiwb2.c','App/Inc/app_aiwb2.h']},
@@ -856,7 +862,11 @@
       {layer:'driver', owner:'drv-fusion', name:'姿态融合适配器', short:'封装 x-io Fusion AHRS，处理约定、更新与健康诊断；加速度方向拒绝阈值当前为 10°。', files:['Driver/Src/drv_attitude_fusion.c','Driver/Inc/drv_attitude_fusion.h'], change:'最新：加速度拒绝阈值 10°'},
       {layer:'driver', owner:'drv-flow', name:'光流协议驱动', short:'只负责 MicoLink/MSP 字节流、校验和字段，不做滤波、质量判定或状态估计。', files:['Driver/Src/drv_optical_flow.c','Driver/Inc/drv_optical_flow.h']},
       {layer:'driver', owner:'drv-nav', name:'水平导航 EKF 内核', short:'预测水平速度、融合光流量测并输出协方差与新息诊断；采用策略由服务层决定。', files:['Driver/Src/drv_nav_ekf.c','Driver/Inc/drv_nav_ekf.h']},
-      {layer:'driver', owner:'drv-control', name:'四环级联与同轴分配', short:'位置 P、速度 PID、SO(3) 姿态 P、角速度 PID、实现力矩与逐方向饱和反馈。', files:['Driver/Src/drv_position_control.c','Driver/Src/drv_attitude_control.c','Driver/Src/drv_rate_control.c','Driver/Src/drv_coax_ctrl.c','Driver/Inc/drv_coax_ctrl.h'], change:'最新：R-S5-1 多速率完整级联'},
+      {layer:'app', owner:'app-stabilizer', name:'四环多速率调度', short:'Step 轮询 500/250/100/50 Hz 到期状态，Commit 只推进真实执行的环；导航 token 不跨时钟比较。', files:['App/Src/app_control_scheduler.c','App/Inc/app_control_scheduler.h'], change:'最新：两阶段调度修复假消费 due'},
+      {layer:'driver', owner:'drv-position', name:'位置 P 与速度 PID', short:'生成 v_sp 与 a_sp，含速度/加速度限幅、测量加速度 LPF 和逐方向抗积分饱和。', files:['Driver/Src/drv_position_control.c','Driver/Inc/drv_position_control.h'], change:'最新：反向积分可从饱和中释放'},
+      {layer:'driver', owner:'drv-attitude', name:'SO(3) 姿态 P', short:'由三轴姿态误差 e_R 和坐标变换后的前馈生成 ω_sp；偏航不再另走独立 PD。', files:['Driver/Src/drv_attitude_control.c','Driver/Inc/drv_attitude_control.h']},
+      {layer:'driver', owner:'drv-rate', name:'角速度 PID', short:'500 Hz 力矩闭环，含角加速度 LPF、Jα 前馈、ω×Jω 与逐方向抗积分饱和。', files:['Driver/Src/drv_rate_control.c','Driver/Inc/drv_rate_control.h']},
+      {layer:'driver', owner:'drv-allocator', name:'同轴保护与执行器分配', short:'倾转负责横滚/俯仰、差动推力负责偏航，并从最终推力和机械脉宽反算实现力矩。', files:['Driver/Src/drv_coax_ctrl.c','Driver/Inc/drv_coax_ctrl.h','Driver/Inc/drv_airframe_model.h'], change:'最新：M_achieved 反映电机与机械裁剪'},
       {layer:'driver', owner:'drv-imu', name:'机体系契约', short:'机器可读的唯一 FLU 坐标定义与转换入口；当前运行时迁移掩码仍为 0。', files:['Driver/Inc/drv_frame_contract.h']},
       {layer:'driver', owner:'drv-io', name:'ELRS / CRSF 驱动', short:'解析接收机字节帧、CRC、16 通道和链路统计，不决定通道业务含义。', files:['Driver/Src/drv_elrs.c','Driver/Inc/drv_elrs.h']},
       {layer:'driver', owner:'drv-io', name:'串行舵机驱动', short:'实现总线舵机原始帧、读写、移动、反馈、ID 和波特率等器件协议。', files:['Driver/Src/drv_servo.c','Driver/Inc/drv_servo.h']},
@@ -890,9 +900,9 @@
     ];
 
     const flows = [
-      {id:'imu', name:'IMU → 姿态 → 控制', desc:'最高实时性主链：中断只唤醒，SensorTask 产生新鲜样本，Stabilizer 先更新姿态/导航，再以 500 Hz 算控制和提交执行器。', path:['hw-imu','core-isr','bsp-sensors','drv-imu','app-sensor','drv-fusion','app-stabilizer','drv-control','app-output','bsp-output','hw-actuator']},
-      {id:'rc', name:'RC → 解锁 → 执行器', desc:'操作者意图链：原始通道必须经过协议解析、RCMAP 和安全门，才会形成参考或允许电机输出。', path:['hw-rc','bsp-uart','drv-io','app-rc','app-stabilizer','drv-control','app-output','bsp-output','hw-actuator']},
-      {id:'flow', name:'光流 → EKF → 水平控制', desc:'光流协议、设备生命周期、数学服务和控制坐标补偿分层。出问题时按这一顺序定位，不要在四处复制过滤逻辑。', path:['hw-flow','bsp-sensors','drv-flow','app-nav','svc-flow','drv-nav','app-stabilizer','drv-control']},
+      {id:'imu', name:'IMU → 姿态 → 控制', desc:'最高实时性主链：中断只唤醒，SensorTask 产生新鲜样本，Stabilizer 先更新姿态/导航，再按 500/250/100/50 Hz 调度四环并提交执行器。', path:['hw-imu','core-isr','bsp-sensors','drv-imu','app-sensor','drv-fusion','app-stabilizer','drv-position','drv-attitude','drv-rate','drv-allocator','app-output','bsp-output','hw-actuator']},
+      {id:'rc', name:'RC → 解锁 → 执行器', desc:'操作者意图链：原始通道必须经过协议解析、RCMAP 和安全门，才会形成参考或允许电机输出。', path:['hw-rc','bsp-uart','drv-io','app-rc','app-stabilizer','drv-position','drv-attitude','drv-rate','drv-allocator','app-output','bsp-output','hw-actuator']},
+      {id:'flow', name:'光流 → EKF → 水平控制', desc:'光流协议、设备生命周期、数学服务和控制坐标补偿分层。出问题时按这一顺序定位，不要在四处复制过滤逻辑。', path:['hw-flow','bsp-sensors','drv-flow','app-nav','svc-flow','drv-nav','app-stabilizer','drv-position','drv-attitude','drv-rate','drv-allocator']},
       {id:'param', name:'命令 → 参数 → Flash', desc:'实时参数先进入 RAM；慢速保存请求过后台队列进入 Flash。控制环只读快照，不等待擦写。', path:['app-comms','app-control','svc-param','app-log','bsp-storage','drv-io','hw-flash']},
       {id:'telemetry', name:'状态 → 遥测 → 上位机', desc:'Stabilizer 发布最新快照，低优先级遥测任务按掩码采样、编码，经 USB/UART 发出；导出期间会暂停普通遥测。', path:['app-stabilizer','app-comms','bsp-uart','core-isr']},
       {id:'log', name:'热路径 → 日志 → 导出', desc:'热路径只写 RAM/队列，后台再写 Flash，导出走低优先级通信；这样记录不会改变被记录对象的实时节奏。', path:['hw-imu','app-sensor','app-stabilizer','app-log','svc-time','bsp-storage','hw-flash','app-comms']},
@@ -909,9 +919,9 @@
 
     const debugRoutes = [
       {id:'attitude', title:'姿态漂移、跳变或方向不对', hint:'先证明输入、时间和坐标正确，再看 Fusion。', steps:[['hw-imu','查原始 accel/gyro、温度、供电、振动和 DRDY'],['app-sensor','查安装方向、V0/V1 应用、LPF 与实际采样率'],['svc-time','查 dt 是否来自同一微秒时钟且无异常跳变'],['drv-fusion','查 convention、四元数、accel rejection/recovery'],['app-stabilizer','查 zero offset、sample age 与发布快照']]},
-      {id:'control', title:'有姿态数据，但控制方向或响应异常', hint:'把“状态、参考、误差、力矩、分配、硬件输出”六段拆开看。', steps:[['app-stabilizer','确认 attitude 与 reference 的 frame、单位、符号和新鲜度'],['drv-control','依次看 e_R、e_ω、moment_cmd 和保护 scale'],['drv-control','检查 thrust/moment/yaw utilization 与分配残差'],['app-output','检查当前执行器 owner、pulse_sign、center/min/max'],['bsp-output','最后确认实际 PWM/总线命令和物理动作']]},
+      {id:'control', title:'有姿态数据，但控制方向或响应异常', hint:'按四环顺序拆开看，不要从执行器反猜控制器。', steps:[['app-stabilizer','确认参考、状态、frame、单位、新鲜度和四环 due/dt'],['drv-position','依次看位置误差、v_sp、速度 P/I/D/FF 与 a_sp'],['drv-attitude','看 R_d、e_R、ω_ff 与 ω_sp'],['drv-rate','看 e_ω、角速度 P/I/D/FF 与 M_cmd'],['drv-allocator','比较 M_cmd/M_achieved，并检查逐方向饱和、推力和倾转裁剪'],['app-output','检查控制权、pulse_sign、center/min/max 与最终硬件出口']]},
       {id:'rc', title:'遥控器有信号但不能解锁/无动作', hint:'RC 数据“收到”不等于已经变成合法控制意图。', steps:[['hw-rc','确认接收机帧、链路质量和 last_rc 时间'],['drv-io','确认 CRSF 解析、CRC 和通道值'],['app-rc','确认 RCMAP、端点、deadband、reversed 与归一化值'],['app-stabilizer','逐项查 IMU frame、IMU health、RC fresh、低油门上升沿四门'],['app-output','确认没有 calibration/acceptance/bench 占用执行器']]},
-      {id:'yaw', title:'偏航很弱、饱和或表现怪异', hint:'偏航靠上下桨差动，权限受总推力余量强烈限制。', steps:[['app-stabilizer','查 yaw/yaw_ref/yaw_rate_ref 是否同一 FLU 语义'],['drv-control','查 e_R[2]、e_ω[2]、M_d[2] 与 Izz/增益'],['drv-control','查 yaw_limit、moment_utilization 和 protection_flags'],['hw-actuator','查上下桨总推力与差动推力是否已到单桨上限'],['app-log','用同一份实录数据对比指令、限幅前后与实际角速度']]},
+      {id:'yaw', title:'偏航很弱、饱和或表现怪异', hint:'偏航控制律与横滚/俯仰同属三轴 SO(3)+角速度 PID，但执行器只靠上下桨差动。', steps:[['app-stabilizer','查 yaw/yaw_ref/yaw_rate_ref 的坐标语义和调度状态'],['drv-attitude','查 e_R[2]、ω_ff[2] 与 ω_sp[2]'],['drv-rate','查 e_ω[2]、三项反馈、Izz 与 M_cmd[2]'],['drv-allocator','比较 M_cmd[2]/M_achieved[2]，查偏航差动和单桨上限'],['hw-actuator','查上下桨总推力余量与实际差动方向'],['app-log','只用同一份匹配版本实录对比指令、饱和前后与实际角速度']]},
       {id:'flow', title:'光流速度跳、静止漂或 EKF 不收', hint:'先判断帧是否存在，再判断它为何不被信任。', steps:[['hw-flow','查纹理、光照、距离、镜头和 100 Hz 传感器时间'],['drv-flow','查 frame/checksum 错误和原始字段'],['app-nav','查设备 lifecycle、height valid 和旋转补偿'],['svc-flow','查 quality 45、噪声锚点 80、时效/步长门和中值窗'],['drv-nav','查 innovation、noise、covariance、stale/decay 状态']]},
       {id:'telemetry', title:'命令没回复或遥测断了', hint:'把接收、解析、排队、发送和上位机解析分成五段。', steps:[['bsp-uart','确认物理 UART/USB 与 DMA 事件'],['app-comms','查 RX bytes/lines/overflow、stream active 和 active sink'],['app-control','确认命令被正确分派并生成回复'],['app-comms','查 uartTxQueue、USB ready、带宽和导出互斥'],['core-rtos','用 RTOS? 查队列占用、栈与 fault']]},
       {id:'flash', title:'参数改了但重启丢失', hint:'RAM 生效与 Flash 提交是两件事。', steps:[['app-control','确认 Set/Apply 成功且参数名映射正确'],['svc-param','看 dirty、generation、active/persisted'],['app-log','确认 save 请求进入 backgroundReqQueue 并得到 response'],['bsp-storage','查 mutex、SPI、Cache 和操作超时'],['hw-flash','查记录版本、CRC、双槽选择和断电恢复']]},
@@ -944,12 +954,13 @@
       {id:'g-flowapp',module:'app-nav',kind:'sensing',layer:'APP',title:'光流生命周期',sub:'初始化 · 健康 · 旋转补偿',x:495,y:500,w:195,h:64,tags:'estimate control'},
       {id:'g-flownav',module:'svc-flow',kind:'estimate',layer:'SERVICES',title:'光流导航 + EKF',sub:'质量门 · 速度 · 位置 · 位移',x:730,y:500,w:195,h:64,tags:'estimate control'},
       {id:'g-state',module:'app-stabilizer',kind:'estimate',layer:'APP 快照',title:'飞行器状态',sub:'姿态 · 角速度 · 高度 · vxy · pxy',x:970,y:360,w:190,h:78,tags:'estimate control comms storage'},
-      {id:'g-outer',module:'drv-control',kind:'control',layer:'DRIVER',title:'位置 P / 速度 PID',sub:'p → v_sp → a_sp · 50/100 Hz',x:1185,y:250,w:175,h:64,tags:'control'},
-      {id:'g-so3',module:'drv-control',kind:'control',layer:'DRIVER',title:'SO(3) P / 角速度 PID',sub:'e_R → ω_sp → M_cmd · 250/500 Hz',x:1185,y:360,w:175,h:64,tags:'control'},
-      {id:'g-alloc',module:'drv-control',kind:'control',layer:'DRIVER',title:'保护与同轴分配',sub:'M_achieved · 逐方向饱和 · 差动/倾转',x:1185,y:470,w:175,h:70,tags:'control'},
-      {id:'g-owner',module:'app-output',kind:'actuation',layer:'APP',title:'执行器仲裁',sub:'正常 / 点动 / 标定 / 台架',x:1185,y:590,w:175,h:66,tags:'control'},
-      {id:'g-output',module:'bsp-output',kind:'actuation',layer:'BSP',title:'PWM / 总线输出',sub:'ESC · PWM 舵机 · UART4',x:1185,y:700,w:175,h:64,tags:'control'},
-      {id:'g-actuator',module:'hw-actuator',kind:'actuation',layer:'硬件',title:'电机 + 倾转舵机',sub:'总推力 · 偏航差动 · 横滚/俯仰',x:1380,y:700,w:170,h:76,tags:'control'},
+      {id:'g-outer',module:'drv-position',kind:'control',layer:'DRIVER',title:'位置 P / 速度 PID',sub:'p → v_sp → a_sp · 50/100 Hz',x:1185,y:245,w:175,h:64,tags:'control'},
+      {id:'g-attitude',module:'drv-attitude',kind:'control',layer:'DRIVER',title:'SO(3) 姿态 P',sub:'F_d → R_d；e_R → ω_sp · 250 Hz',x:1185,y:345,w:175,h:64,tags:'control'},
+      {id:'g-rate',module:'drv-rate',kind:'control',layer:'DRIVER',title:'角速度 PID',sub:'ω_sp − ω → M_cmd · 500 Hz',x:1185,y:445,w:175,h:64,tags:'control'},
+      {id:'g-alloc',module:'drv-allocator',kind:'control',layer:'DRIVER',title:'保护与同轴分配',sub:'M_achieved · 逐方向饱和 · 差动/倾转',x:1185,y:545,w:175,h:70,tags:'control'},
+      {id:'g-owner',module:'app-output',kind:'actuation',layer:'APP',title:'执行器仲裁',sub:'正常 / 点动 / 标定 / 台架',x:1185,y:650,w:175,h:66,tags:'control'},
+      {id:'g-output',module:'bsp-output',kind:'actuation',layer:'BSP',title:'PWM / 总线输出',sub:'ESC · PWM 舵机 · UART4',x:1185,y:750,w:175,h:64,tags:'control'},
+      {id:'g-actuator',module:'hw-actuator',kind:'actuation',layer:'硬件',title:'电机 + 倾转舵机',sub:'总推力 · 偏航差动 · 横滚/俯仰',x:1380,y:750,w:170,h:76,tags:'control'},
       {id:'g-log',module:'app-log',kind:'storage',layer:'APP',title:'飞行日志 / IMU 捕获',sub:'旁路复制 · 坐标来源标记',x:970,y:560,w:190,h:66,tags:'storage estimate control'},
       {id:'g-bg',module:'app-log',kind:'storage',layer:'APP 任务',title:'后台任务',sub:'异步擦写 · 参数保存',x:730,y:690,w:195,h:64,tags:'storage'},
       {id:'g-flashbus',module:'bsp-storage',kind:'platform',layer:'DRIVER/BSP',title:'GD25Q32 + Flash 总线',sub:'SPI · 互斥锁 · CRC · 版本',x:970,y:790,w:190,h:64,tags:'storage'},
@@ -976,15 +987,17 @@
       {from:'g-flownav',to:'g-state',label:'高度 / vxy / pxy',kind:'estimate',tags:'estimate control',fromSide:'right',toSide:'bottom',via:[[945,532],[1065,532]]},
       {from:'g-ref',to:'g-outer',label:'位置 / 速度参考',kind:'control',tags:'control'},
       {from:'g-state',to:'g-outer',label:'估计状态',kind:'estimate',tags:'estimate control',fromSide:'right',toSide:'left',via:[[1170,399],[1170,282]]},
-      {from:'g-outer',to:'g-so3',label:'加速度 → 目标姿态',kind:'control',tags:'control',fromSide:'bottom',toSide:'top'},
-      {from:'g-state',to:'g-so3',label:'R / ω 反馈',kind:'estimate',tags:'estimate control'},
-      {from:'g-so3',to:'g-alloc',label:'F_d + M_d[3]',kind:'control',tags:'control',fromSide:'bottom',toSide:'top'},
+      {from:'g-outer',to:'g-attitude',label:'a_sp → F_d → R_d',kind:'control',tags:'control',fromSide:'bottom',toSide:'top'},
+      {from:'g-state',to:'g-attitude',label:'R 姿态反馈',kind:'estimate',tags:'estimate control'},
+      {from:'g-attitude',to:'g-rate',label:'ω_sp',kind:'control',tags:'control',fromSide:'bottom',toSide:'top'},
+      {from:'g-state',to:'g-rate',label:'ω 角速度反馈',kind:'estimate',tags:'estimate control',fromSide:'right',toSide:'left',via:[[1170,420],[1170,477]]},
+      {from:'g-rate',to:'g-alloc',label:'F_d + M_cmd[3]',kind:'control',tags:'control',fromSide:'bottom',toSide:'top'},
       {from:'g-alloc',to:'g-owner',label:'电机 + 舵机目标',kind:'control',tags:'control',fromSide:'bottom',toSide:'top'},
       {from:'g-owner',to:'g-output',label:'安全仲裁后的胜出目标',kind:'actuation',tags:'control',fromSide:'bottom',toSide:'top'},
       {from:'g-output',to:'g-actuator',label:'PWM / UART4',kind:'actuation',tags:'control'},
       {from:'g-param',to:'g-sensorpipe',label:'标定参数快照',kind:'storage',tags:'storage estimate',type:'async',fromSide:'bottom',toSide:'top',via:[[827,270],[592,270]]},
       {from:'g-param',to:'g-ref',label:'RC / 安全配置',kind:'storage',tags:'storage control',type:'async',fromSide:'bottom',toSide:'top'},
-      {from:'g-param',to:'g-so3',label:'控制器参数',kind:'storage',tags:'storage control',type:'async',fromSide:'right',toSide:'top',via:[[1100,60],[1272,60]]},
+      {from:'g-param',to:'g-rate',label:'四环参数快照',kind:'storage',tags:'storage control',type:'async',fromSide:'right',toSide:'top',via:[[1100,60],[1272,60]]},
       {from:'g-state',to:'g-telem',label:'最新快照',kind:'comms',tags:'comms estimate',type:'observe',fromSide:'top',toSide:'bottom'},
       {from:'g-sensorpipe',to:'g-log',label:'原始 / 滤波后 IMU',kind:'storage',tags:'storage estimate',type:'observe',fromSide:'bottom',toSide:'left',via:[[592,610],[950,610]]},
       {from:'g-state',to:'g-log',label:'姿态 / 导航',kind:'storage',tags:'storage estimate',type:'observe',fromSide:'bottom',toSide:'top'},
@@ -1004,14 +1017,15 @@
       'g-rc','g-elrs','g-rcmap','g-ref',
       'g-imu','g-sensorio','g-sensorpipe','g-fusion',
       'g-flowhw','g-flowdrv','g-flowapp','g-flownav','g-state',
-      'g-outer','g-so3','g-alloc','g-owner','g-output','g-actuator'
+      'g-outer','g-attitude','g-rate','g-alloc','g-owner','g-output','g-actuator'
     ]);
     const graphMainEdges = new Set([
       'g-rc>g-elrs','g-elrs>g-rcmap','g-rcmap>g-ref',
       'g-imu>g-sensorio','g-sensorio>g-sensorpipe','g-sensorpipe>g-fusion','g-fusion>g-state',
       'g-flowhw>g-flowdrv','g-flowdrv>g-flowapp','g-flowapp>g-flownav','g-flownav>g-state',
-      'g-ref>g-outer','g-state>g-outer','g-outer>g-so3','g-state>g-so3',
-      'g-so3>g-alloc','g-alloc>g-owner','g-owner>g-output','g-output>g-actuator'
+      'g-ref>g-outer','g-state>g-outer','g-outer>g-attitude','g-state>g-attitude',
+      'g-attitude>g-rate','g-state>g-rate','g-rate>g-alloc','g-alloc>g-owner',
+      'g-owner>g-output','g-output>g-actuator'
     ]);
     const layerMap = Object.fromEntries(layers.map(x => [x.id,x]));
     const moduleMap = Object.fromEntries(modules.map(x => [x.id,x]));

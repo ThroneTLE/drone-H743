@@ -185,8 +185,8 @@ def test_the_workbench_is_the_first_tab_and_selected_by_default(app) -> None:
 def test_panel_entry_point_only_carries_the_mount() -> None:
     """`drone_tcp_panel.py` 只减不增：本页在那里只允许留三处挂载调用。"""
     source = (ROOT / "tools" / "drone_tcp_panel.py").read_text(encoding="utf-8")
-    assert source.count("_dashboard_") == 3
-    assert "self._dashboard_mount(self.notebook)" in source
+    assert source.count("_dashboard_") == 2
+    assert "self._dashboard_mount(self.notebook)" in (ROOT / "tools/panel_lib/shell.py").read_text(encoding="utf-8")
     assert "self._dashboard_handle_line(line)" in source
     assert "self._dashboard_poll_tick(now)" in source
     # 退役的那一页一点痕迹都不许留。
@@ -710,6 +710,61 @@ def test_matching_echo_confirms_and_a_clamped_echo_diverges(app) -> None:
     assert tracker.note_echo(5.0, now + 1.0) == "follow"
     assert tracker.state == dash_tiles.PARAM_STATE_DIVERGED
     assert tracker.display == pytest.approx(5.0)
+
+
+def test_a_rejected_write_says_so_immediately_instead_of_blaming_the_link(
+    app,
+) -> None:
+    """固件回 ERR 时必须立刻判红并说出原因，不能等回显超时、更不能说反话。
+
+    2026-09-07 作者把偏航角度增益调到 100 却"毫无反应"：`rate_kp[2]` 为 0 时固件
+    按除零保护拒收 `coax.yaw_angle_kp`，并如实回了 `ERR param target`——但
+    Dashboard 那时**完全不看 OK/ERR 行**，只能靠 0.75 s 回显超时间接变红，而那条
+    路的措辞是"未收到飞控回显"。飞控明明回了，界面却说没收到，于是"飞控拒绝"和
+    "数传丢包"看起来一模一样。
+
+    这条同时钉两件事：判红是**立刻**的（不等超时），并且理由是飞控给的那个。
+    """
+    card = param_card(app, "rate_roll_kd")
+    tracker = card.tracker
+    now = time.monotonic()
+
+    tracker.note_sent(100.0, now)
+    assert tracker.state == dash_tiles.PARAM_STATE_PENDING
+    assert tracker.reason is None
+
+    tracker.note_rejected("飞控拒绝了这个值")
+    assert tracker.state == dash_tiles.PARAM_STATE_DIVERGED
+    assert tracker.reason == "飞控拒绝了这个值"
+
+    # 下一次写入必须清掉旧理由，否则它会指向一个已经不存在的值。
+    tracker.note_sent(1.0, now + 1.0)
+    assert tracker.reason is None
+    # 成功回显同样要清掉。
+    tracker.note_rejected("飞控拒绝了这个值")
+    tracker.note_sent(1.0, now + 2.0)
+    assert tracker.note_echo(1.0, now + 2.04) == "follow"
+    assert tracker.state == dash_tiles.PARAM_STATE_CONFIRMED
+    assert tracker.reason is None
+
+
+def test_firmware_param_error_reaches_the_matching_dashboard_slider(app) -> None:
+    """`ERR param target <固件参数名>` 要能按参数名反查到滑块。
+
+    参数页和 Dashboard 是两套控件。只在参数页标红，等于让 Dashboard 继续显示一个
+    飞控没接受的值——而调增益的人看的正是 Dashboard。
+    """
+    card = param_card(app, "rate_roll_kd")
+    channel = app._dashboard_channel("rate_roll_kd")
+    assert channel is not None and channel.param
+
+    card.tracker.note_sent(100.0, time.monotonic())
+    assert app._dashboard_note_param_error(channel.param, "飞控拒绝了这个值") is True
+    assert card.tracker.state == dash_tiles.PARAM_STATE_DIVERGED
+    assert card.tracker.reason == "飞控拒绝了这个值"
+
+    # 不认识的参数名不能误伤别的滑块。
+    assert app._dashboard_note_param_error("coax.not_a_real_param", "x") is False
 
 
 def test_a_stale_echo_right_after_sending_does_not_diverge(app) -> None:

@@ -52,18 +52,23 @@ def read(path: Path) -> str:
 
 def test_svc_flow_nav_header_names_its_frames_units_and_timebases() -> None:
     header = read(SVC_HEADER)
-    assert "MicoLink 光流传感器原始定点角速率" in header
+    assert "光流定点角速率" in header
     assert "flow_vel_x / flow_vel_y" in header
     assert "0.01 rad/s" in header
+    # 2026-09-07：原文说传感器轴系"Driver 层未成文，不在本 seam 范围内"，
+    # 这个留白正是横向速度被抵消那个缺陷的温床。现在必须点名边界在哪。
+    assert "app_flow_fill_sample" in header
+    assert "已是规范 FLU" in header
     assert "sensor_time_ms" in header and "distance_received_ms" in header
     assert "不是同一条" in header  # the two timebases are named as distinct
 
-    # FuseInput: nav-frame accel vs. body-frame flow velocity must be
-    # distinguished, and the world frame must not be claimed as NED/ENU.
-    assert "不得称为 NED 或 ENU" in header
-    assert "机体系光流地速" in header
-    assert "Y = 机体右正（legacy）" in header
-    assert "seam2→seam3" in header
+    # FuseInput: 两路输入必须被说成**同一个**机头对齐的本地水平系（这是 EKF
+    # 能融合它们的前提），而且不许冒充 NED/ENU。
+    assert "机头对齐" in header
+    assert "更不是 NED/ENU" in header
+    assert "刻意不乘 yaw" in header
+    assert "进入本 Service 时必须是规范机体 FLU" in header
+    assert "EKF 不允许再知道传感器原始轴" in header
 
     # State: height sign and vx/vy convention must be named explicitly.
     assert "不是带符号的导航系 Z 坐标" in header
@@ -84,8 +89,8 @@ def test_drv_nav_ekf_header_disclaims_frame_ownership() -> None:
 def test_app_nav_estimator_header_points_to_the_service_convention() -> None:
     header = read(ESTIMATOR_HEADER)
     assert "不持有、也不重新定义坐标系" in header
-    assert "机体系 X 前 / Y 右正" in header
-    assert "legacy" in header
+    assert "规范机体 FLU：X 前 / Y 左" in header
+    assert "标定 Adapter" in header
 
 
 # --------------------------------------------------------------- real recordings

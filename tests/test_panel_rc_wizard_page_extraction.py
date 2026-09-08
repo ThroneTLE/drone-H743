@@ -1,3 +1,4 @@
+# CP210 mechanical gate update: behavioral guards covered by test_mechanical_cp210_gate.py.
 """S6 RC page extraction contract."""
 
 from __future__ import annotations
@@ -93,12 +94,12 @@ UNTOUCHED_PAGE_AST_SHA256 = {
     "_mechanical_local_target": "9f151f75ecdee6a72f283491518fb793abbaee323a1616a1b84032e16d7bd156",
     "_mechanical_target_matches_local": "7a959f7bd8f9fcf114d521e56f1369342bad5a2e2f1557053f8c55f421e99427",
     "_mechanical_read_target": "e5f4c3d944d72bc3aac93eb6e70e278b95a9560412ee2dac47350c2f0ea59cbf",
-    "_mechanical_apply_target": "bc9b9b3f31e451919c580c89e44b089a7bbd2d2e41aec5fe5d079fe8aa9bfef6",
+    "_mechanical_apply_target": "6f7fbfc7ee70b1326d35d61864323ded331fae346bdfa118096f55c80a32902f",
     "_mechanical_revert_target": "0536ff47b7aacfd7de2938baf6b8e2d4d4c75b76dc9cd801da1a93a878967e26",
     "_mechanical_commit_target": "dc5c31afddf057cdd754628527d6ae4825bab0dd12348e0e9be1bbd0daa29e4c",
     "_mechanical_handle_target_line": "d97d2de7c02932f7163bad3a37caeb4696d0b2a2eacf82427ba71aa24aaa5230",
-    "_mechanical_move": "5d375849112026204ab10ebff4eaf4a7d99ff1f287bab24a48e00e0c78d48183",
-    "_mechanical_nudge_center": "44b1f0da89a2b39e291c8520f994d197fccd99760d25a700469bd25d821633bf",
+    "_mechanical_move": "0e021c2f275be8bc1531275a8cef1210536b4a6002012f980664dfab92005d2b",
+    "_mechanical_nudge_center": "697e45805c5fb159cd4c409a1656cb08515169d1a2d9599be3afbc4734fbc265",
     "_mechanical_jog_stop": "bd1fc4be0f2a5c43eb1968f7929e4de85ee93fb1183307f4fe80231926295170",
     "_mechanical_save_evidence": "090a8861825e49b5b1c3440138e9260fb09d8b80e093eecaa07852939574e9f2",
     "_build_flow_range_calibration_page": "b82cfc6332ac43ec89dcea660fc61a76080e7bd4fe203c1ad7a9d18fcbd7b448",

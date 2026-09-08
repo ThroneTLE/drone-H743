@@ -92,7 +92,11 @@ int main(void) {
     r.direct_attitude_target_valid=r.manual_total_force_valid=1U;
     r.manual_total_force_n=13.0f;
     DRV_COAX_CTRL_RunScheduled(&a,&r,&s,&o);
-    CHECK(o.servo_alpha_us == 1450U, 7);
+    /* +roll rate is damped with a -roll moment; with the geometry-derived
+     * polarity that is beta < 0, and pulse_sign=+1 drives the pulse up into
+     * the narrowed max travel.  The point of the check is the clamp, not the
+     * direction -- but the direction has to stay derivable, so pin it. */
+    CHECK(o.servo_alpha_us == 1550U, 7);
     CHECK(fabsf(o.beta_rad) < 0.08f, 8);
     CHECK(o.saturation_negative[0] != 0U, 9);
 

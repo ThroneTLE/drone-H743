@@ -11,6 +11,7 @@ import threading
 import time
 
 from .connection_state import ReceivedMessage, receive_context
+from .serial_transfer import claim_transfer, is_stop_command
 
 
 WRITE_DEADLINE_S = 0.5
@@ -29,6 +30,7 @@ class SerialSession:
     finished: bool = False
     close_done: threading.Event = field(default_factory=threading.Event)
     close_error: str | None = None
+    transfer: object | None = None
 
 
 @dataclass(frozen=True)
@@ -85,6 +87,14 @@ class SerialSessionMixin:
     def connection_generation(self):
         with self.lock:
             return self._connection_generation
+
+    @property
+    def transfer_active(self):
+        with self.lock:
+            return self._session is not None and self._session.transfer is not None
+
+    def claim_transfer(self, failure_type=OSError):
+        return claim_transfer(self, failure_type)
 
     def start(self, port_name, baudrate):
         from . import transport as wire
@@ -166,6 +176,8 @@ class SerialSessionMixin:
             if session.finished:
                 return
             session.finished = True
+            if session.transfer is not None:
+                session.transfer.abort(f"{phase}: {reason}")
             session.stop.set()
             session.sends.put(None)
             info = DisconnectInfo(session.name, session.generation, phase, reason,
@@ -208,11 +220,24 @@ class SerialSessionMixin:
     def send_line(self, line):
         return self._enqueue((line.rstrip("\r\n") + "\r\n").encode("utf-8"))
 
-    def _enqueue(self, data):
+    def _enqueue(self, data, *, owner=None, completed=None):
         with self.lock:
             if self._session is None or self._session.finished:
                 return False
-            self._session.sends.put_nowait((self._send_generation, data))
+            active = self._session.transfer
+            if owner is not None and (active is not owner or owner.session is not self._session):
+                return False
+            if owner is not None and owner.error and data.strip() != b"FLOG CANCEL":
+                return False
+            if active is not None and owner is None:
+                if not is_stop_command(data):
+                    return False
+                active.abort("停止命令中断日志导出")
+                self._session.sends.put_nowait((self._send_generation, b"FLOG CANCEL\r\n"))
+            item = (self._send_generation, data)
+            if owner is not None:
+                item += (owner, completed)
+            self._session.sends.put_nowait(item)
         return True
 
     def cancel_pending_sends(self):
@@ -240,9 +265,17 @@ class SerialSessionMixin:
                 continue
             if item is None:
                 break
-            generation, frame = item
+            generation, frame, *transfer_info = item
+            owner, completed = transfer_info if transfer_info else (None, None)
             with self.lock:
-                if generation != self._send_generation or self._session is not session or session.finished:
+                if (generation != self._send_generation or self._session is not session or session.finished
+                        or (owner is not None and session.transfer is not owner)):
+                    if completed is not None:
+                        completed.set()
+                    continue
+                if owner is not None and owner.error and frame.strip() != b"FLOG CANCEL":
+                    if completed is not None:
+                        completed.set()
                     continue
                 session.writing = True
             phase = "write"
@@ -272,6 +305,8 @@ class SerialSessionMixin:
                 timer.cancel()
                 with self.lock:
                     session.writing = False
+                if completed is not None:
+                    completed.set()
 
     def _read_loop(self, session):
         buffer = bytearray()
@@ -288,6 +323,10 @@ class SerialSessionMixin:
                 context = receive_context(self, received_at=received_at, generation=session.generation)
                 if session.stop.is_set():
                     break
+                lease = session.transfer
+                if lease is not None and lease.feed(chunk):
+                    buffer.clear()
+                    continue
                 buffer += chunk
                 phase = "receive dispatch"
                 self._consume_buffer(buffer, context=context)

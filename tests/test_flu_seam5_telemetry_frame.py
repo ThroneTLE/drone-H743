@@ -92,17 +92,16 @@ def test_logged_attitude_source_is_pinned() -> None:
     assert "flog_snapshot.yaw_deg = ctx->yaw_control;" in source
 
 
-def test_live_nav_telemetry_adapts_controller_legacy_xy_to_body_flu() -> None:
-    """状态监视的 X/Y 必须遵守 X前、Y左，不能泄漏控制器的 Y右口径。"""
+def test_live_nav_telemetry_does_not_readapt_canonical_flu() -> None:
+    """状态监视只能透传上游 FLU，禁止第二次翻 Y。"""
     source = read(TELEMETRY_PORT)
     assert '#include "drv_frame_contract.h"' in source
-    assert source.count("DRV_FRAME_FrdToFlu(") >= 2
-    assert "vofa_data[APP_TELEM_CH_VEL_EST_X] = velocity_flu.x;" in source
-    assert "vofa_data[APP_TELEM_CH_VEL_EST_Y] = velocity_flu.y;" in source
-    assert "vofa_data[APP_TELEM_CH_POS_EST_X] = position_flu.x;" in source
-    assert "vofa_data[APP_TELEM_CH_POS_EST_Y] = position_flu.y;" in source
-    assert "APP_TELEM_CH_VEL_EST_Y] = vofa_debug.vel_est_m_s[1]" not in source
-    assert "APP_TELEM_CH_POS_EST_Y] = vofa_debug.pos_est_m[1]" not in source
+    assert "DRV_FRAME_FrdToFlu(" not in source
+    assert "vofa_data[APP_TELEM_CH_VEL_EST_X] = vofa_debug.vel_est_m_s[0];" in source
+    assert "vofa_data[APP_TELEM_CH_VEL_EST_Y] = vofa_debug.vel_est_m_s[1];" in source
+    assert "vofa_data[APP_TELEM_CH_POS_EST_X] = vofa_debug.pos_est_m[0];" in source
+    assert "vofa_data[APP_TELEM_CH_POS_EST_Y] = vofa_debug.pos_est_m[1];" in source
+    assert "linear_sign" not in source
 
 
 def test_telemetry_mask_override_does_not_claim_physical_acceptance() -> None:

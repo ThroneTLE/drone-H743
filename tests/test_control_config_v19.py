@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 HARNESS = r"""
 #include "app_control_config_compat.h"
+#include "drv_airframe_model.h"
 #include <math.h>
 #include <string.h>
 
@@ -41,7 +42,10 @@ int main(void) {
           now.vel_y_kd == 0.0f && now.vel_z_kd == 0.0f, 6);
     CHECK(NEAR(now.rate_roll_kp * now.att_roll_kp, old.roll_angle_kp), 7);
     CHECK(NEAR(now.rate_pitch_kp * now.att_pitch_kp, old.pitch_angle_kp), 8);
-    CHECK(NEAR((now.rate_yaw_kp * now.att_yaw_kp) / 0.00035f,
+    /* Use the constant, not a literal: the divisor in the migration formula IS
+     * I_zz, so hard-coding it silently drifts whenever the inertia is
+     * re-estimated (this line is what went red when I_zz moved on 2026-09-07). */
+    CHECK(NEAR((now.rate_yaw_kp * now.att_yaw_kp) / DRV_AIRFRAME_IZZ_KGM2,
                old.yaw_angle_kp), 9);
 
     APP_ControlCoaxTunableParamsV17 v17 = {0};

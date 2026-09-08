@@ -1441,32 +1441,16 @@ static void app_control_format_float(float value, char *buffer, uint32_t size)
                    (unsigned int)abs(scaled % 1000000));
 }
 
-/*
- * UI 与内部表示的符号换算。
- *
- * 历史上部分增益内部存负值，这里再翻一次让界面显示正数——于是"符号"这件事
- * 在 UI 层和控制层各有一套约定，两者不一致时极难发现（界面显示 -0.600 而
- * 内部实际是 +0.600 之类）。现在增益内部一律为正，UI 直接显示内部值，不再
- * 做任何翻转：只保留这个函数作为单一换算入口，恒返回 +1。
- *
- * 极性的唯一真相在 Driver/Src/drv_coax_ctrl.c 的"极性约定"块和
- * Core/Src/freertos.c 的摇杆映射常数，由 tests/test_coax_sign_convention.py
- * 锁定。
- */
-static float app_control_ui_sign_for_param(const char *name)
-{
-    (void)name;
-    return 1.0f;
-}
-
 static float app_control_param_to_ui_value(const char *name, float internal_value)
 {
-    return internal_value * app_control_ui_sign_for_param(name);
+    (void)name;
+    return internal_value;
 }
 
 static float app_control_param_from_ui_value(const char *name, float ui_value)
 {
-    return ui_value * app_control_ui_sign_for_param(name);
+    (void)name;
+    return ui_value;
 }
 
 static void app_control_report_coax_param(const char *name, float value)

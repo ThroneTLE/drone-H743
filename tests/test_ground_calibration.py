@@ -72,6 +72,8 @@ SERVO_DEBUG_AST_SHA256 = {
 
 
 def function_body(name: str) -> str:
+    if name == "_build_ui":
+        return (ROOT / "tools/panel_lib/shell.py").read_text(encoding="utf-8")
     if name == "_build_mechanical_calibration_page" or name.startswith("_mechanical_"):
         source = MECHANICAL_PAGE_SOURCE
     elif name == "_build_vibration_filter_page":
@@ -218,7 +220,7 @@ def test_mechanical_page_is_guarded_and_only_claims_a_matching_target_readback()
     save = function_body("_mechanical_save_evidence")
     assert "已拆除全部桨叶" in page
     assert "validate_servo_geometry" in values
-    assert "_validation_live_safety_gate" in move
+    assert "mechanical_live_safety_gate(self)" in move
     # 点动必须走保持型 SERVO JOG：一次性 SERVO MOVE 会被稳定环 500ms 强制刷新拉回。
     assert "SERVO JOG" in move
     assert "SERVO MOVE" not in move
@@ -237,7 +239,7 @@ def test_mechanical_page_jog_ux_covers_flu_guides_trim_and_release() -> None:
     assert "中点微调" in page
     assert "结束点动" in page
     # 中点微调与点动同一安全门；微调后中心仍满足两侧 ≥50 µs 几何约束。
-    assert "_validation_live_safety_gate" in nudge
+    assert "mechanical_live_safety_gate(self)" in nudge
     assert "minimum + 50" in nudge and "maximum - 50" in nudge
     assert "SERVO JOG" in nudge
     assert '"SERVO JOG STOP"' in stop

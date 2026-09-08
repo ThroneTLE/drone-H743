@@ -104,13 +104,10 @@ def translate_severity(severity: str) -> str:
     return translations.get(severity, severity)
 
 
-class FlightLogSysidUI(tk.Tk):
+class FlightLogSysidUIView(ttk.Frame):
     # 中文注释：这个类只做离线日志分析 UI，不连接串口、不改参数、不触碰飞控板。
-    def __init__(self, initial_csv: Path | None = None) -> None:
-        super().__init__()
-        self.title("H743 飞行日志系统辨识")
-        self.geometry("1320x840")
-        self.minsize(1120, 700)
+    def __init__(self, master, initial_csv: Path | None = None) -> None:
+        super().__init__(master)
 
         self.csv_path: Path | None = None
         self.analysis: sysid.FlightLogAnalysis | None = None
@@ -524,6 +521,15 @@ def short_gain_label(group: sysid.GainGroupSummary) -> str:
         f"Z{format_cell(params.get('pos_z_kp'), 1)}"
     )
 
+
+
+class FlightLogSysidUI(tk.Tk):
+    def __init__(self, initial_csv: Path | None = None) -> None:
+        super().__init__()
+        self.title("H743 飞行日志系统辨识")
+        self.geometry("1320x840")
+        self.view = FlightLogSysidUIView(self, initial_csv)
+        self.view.pack(fill=tk.BOTH, expand=True)
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="打开 H743 飞行日志系统辨识中文 UI。")

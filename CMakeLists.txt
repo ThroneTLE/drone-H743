@@ -121,6 +121,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     App/Src/app_gps.c
     App/Src/app_optical_flow.c
     App/Src/app_rc_config.c
+    App/Src/app_rc_intent.c
     App/Src/app_ident.c
     App/Src/app_servo_cal.c
     App/Src/app_servo_bus_guard.c

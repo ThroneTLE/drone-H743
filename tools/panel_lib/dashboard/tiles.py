@@ -179,6 +179,21 @@ class ParamEchoTracker:
         self.sent: float | None = None
         self.last_send = -1e9
         self.display: float | None = None
+        #: 飞控明说的拒绝理由。为空时才回落到按状态推断的措辞。
+        self.reason: str | None = None
+
+    def note_rejected(self, reason: str) -> None:
+        """飞控回了 `ERR param target`：立刻判红，并说出真正的原因。
+
+        没有这条时，被拒绝的写入只能靠 PARAM_ECHO_TIMEOUT_S 超时间接发现，
+        而那条路的措辞是"未收到飞控回显"——在这里是**假话**：飞控回了，回的是
+        拒绝。操作者因此分不清"飞控不接受这个值"和"数传丢包"，只能干等 0.75 s
+        再猜。2026-09-07 作者把偏航角度增益调到 100 却毫无反应，正是撞在这上面：
+        `rate_kp[2]` 为 0 时固件按除零保护拒绝了 `coax.yaw_angle_kp`，界面却一直
+        显示 100。
+        """
+        self.state = PARAM_STATE_DIVERGED
+        self.reason = reason
 
     def may_send(self, now: float) -> bool:
         """拖动中是否到了下一次可发的时刻。松手那一发不走这里。"""
@@ -188,6 +203,8 @@ class ParamEchoTracker:
         self.sent = float(value)
         self.last_send = now
         self.state = PARAM_STATE_PENDING
+        # 新的一次写入：上一次的拒绝理由已经过期，留着会指向错误的值。
+        self.reason = None
         # 不把“PC 已发出”伪装成“飞控已应用”。display 只由 note_echo 写入，
         # 因而大字始终是最后一条真实遥测回显（或尚未知的空值）。
 
@@ -225,6 +242,7 @@ class ParamEchoTracker:
         if abs(echoed - self.sent) <= PARAM_ECHO_TOLERANCE * scale:
             self.state = PARAM_STATE_CONFIRMED
             self.display = float(echoed)
+            self.reason = None
             return "follow"
 
         if since_send < PARAM_ECHO_GRACE_S:
@@ -678,7 +696,8 @@ class ParamTile(DashboardTile):
         value = tracker.display if tracker is not None else None
         self.value_var.set("—" if value is None else f"{value:.4g}")
         self.state_var.set(state)
-        self._set_feedback_visual(state)
+        self._set_feedback_visual(
+            state, tracker.reason if tracker is not None else None)
         self.value_label.configure(style={
             PARAM_STATE_CONFIRMED: DASH_METRIC_PASS_STYLE,
             PARAM_STATE_DIVERGED: DASH_METRIC_FAIL_STYLE,

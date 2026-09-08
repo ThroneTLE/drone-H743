@@ -25,6 +25,28 @@ from .geometry import LeafPage, probe_geometry
 
 OFFLINE_TITLE = "OFFLINE QA — SIMULATED TRANSPORT — NO HARDWARE"
 
+# QA 窗口停放的屏幕外坐标。
+#
+# 为什么不能只靠 alpha=0：alpha 只让像素透明，窗口仍然是 mapped 的，于是在
+# Windows 上照样占任务栏按钮、照样抢输入焦点——改一行固件跑一次 pytest，QA 窗口
+# 就会弹出来打断你正在敲的东西。
+#
+# 为什么不能干脆一直 withdraw：withdraw 状态下 Tk 不给窗口做真实布局，
+# winfo_width() 之类恒为 1，所有几何/布局断言会一起失效。窗口必须 mapped，
+# 那就只能把它挪出可视区。
+QA_OFFSCREEN_X = -10000
+QA_OFFSCREEN_Y = -10000
+
+
+def park_offscreen(panel: tk.Misc) -> None:
+    """把窗口挪到屏幕外并从任务栏摘掉；保持 mapped 以便布局仍然成立。"""
+    panel.geometry(f"+{QA_OFFSCREEN_X}+{QA_OFFSCREEN_Y}")
+    try:
+        # Windows 专有：工具窗口不进任务栏、不进 Alt-Tab。
+        panel.attributes("-toolwindow", True)
+    except tk.TclError:                          # pragma: no cover - 非 Windows
+        pass
+
 # 这几种**文本**看起来像"这台机器没有图形环境"。但只看文本不够——见下。
 _NO_DISPLAY_MARKERS = (
     "no display name",
@@ -52,6 +74,9 @@ def display_available() -> bool:
         except BaseException:                    # noqa: BLE001 - 探测失败就是没有
             _DISPLAY_CONFIRMED = False
         else:
+            # 探测窗口也会在桌面上闪一下——它比 QA 窗口更容易被忽略，因为它
+            # 只活几毫秒。收起来再销毁。
+            probe.withdraw()
             probe.destroy()
             _DISPLAY_CONFIRMED = True
     return _DISPLAY_CONFIRMED
@@ -263,6 +288,8 @@ class OfflinePanel:
         self.transport = panel.transport
         panel.title(OFFLINE_TITLE)
         panel.attributes("-alpha", 0.0)
+        # 先挪出屏幕再 deiconify：顺序反了会先在桌面上闪一下再跳走。
+        park_offscreen(panel)
         panel.deiconify()
         self.resize(*size)
 
@@ -331,6 +358,7 @@ class OfflinePanel:
         panel = self.panel
         pages: list[LeafPage] = []
         groups = {
+            id(getattr(panel, "logs_group_tab", None)): getattr(panel, "logs_notebook", None),
             id(getattr(panel, "calibration_group_tab", None)): getattr(
                 panel, "calibration_notebook", None),
             id(getattr(panel, "sensor_group_tab", None)): getattr(
@@ -358,9 +386,15 @@ class OfflinePanel:
         return probe_geometry(self, **kwargs)
 
     def screenshot(self, path: Path) -> Path:
-        """抓当前窗口。alpha=0 的窗口截不出内容，所以抓之前先恢复不透明。"""
+        """抓当前窗口。
+
+        窗口平时停在屏幕外且 alpha=0，两者都截不出内容，所以这里临时挪回原点
+        并恢复不透明，抓完立刻挪回去。这是**唯一**允许 QA 窗口出现在可视区的
+        路径，而且只在调用方明确要图时才走到。
+        """
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
+        self.panel.geometry("+0+0")
         self.panel.attributes("-alpha", 1.0)
         self.panel.update()
         try:
@@ -373,6 +407,7 @@ class OfflinePanel:
                panel.winfo_rooty() + panel.winfo_height())
         ImageGrab.grab(bbox=box).save(path)
         self.panel.attributes("-alpha", 0.0)
+        park_offscreen(self.panel)
         return path
 
     # ---------------------------------------------------------------- 收尾

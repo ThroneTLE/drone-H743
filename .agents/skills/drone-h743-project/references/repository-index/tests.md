@@ -4,139 +4,146 @@
 
 Read this shard only when you need existing behavioral/architecture coverage or must choose focused regression tests.
 
-Source snapshot: `f7c5e06240fc`. Indexed files: 130.
+Source snapshot: `a6f9bcdaaf03`. Indexed files: 137.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
-| `tests/conftest.py` | 离线测试套件的全局硬件护栏与状态隔离。 两条路都要堵，而且必须在**收集之前**就装上： * 物理串口 —— `serial.Serial.open` * 烧录 / 调试探针 —— `subprocess.Popen`（openocd /… | `pytest_configure`, `isolate_panel_defaults` (+3) |
+| `tests/conftest.py` | 离线测试套件的全局硬件护栏与状态隔离。 两条路都要堵，而且必须在**收集之前**就装上： * 物理串口 —— `serial.Serial.open` * 烧录 / 调试探针 —— `subprocess.Popen`（openocd /… | `pytest_configure` (+4) |
 | `tests/data.txt` | — | — |
 | `tests/golden/telem_frames_v2.bin` | — | — |
-| `tests/test_acceptance_v2_runtime_contract.py` | — | `test_v2a_lease_and_esc_fail_safe_are_target_owned`, `test_v2a_stage_names_match_offline_engine_and_servo_delta_is_bounded` (+1) |
-| `tests/test_action_contract.py` | Contract tests for the Action safety state machine (``App/Src/app_action.c``). An Action is any task that spans time an… | `test_01_armed_interlock_refuses_to_start`, `test_02_hard_timeout_fires_after_the_link_dies` (+15) |
-| `tests/test_airframe_model_contract.py` | — | `test_airframe_constants_capture_measured_tether_geometry`, `test_coax_defaults_use_airframe_model_not_old_placeholder_mass` (+4) |
-| `tests/test_aiwb2_prompt_contract.py` | — | `test_aiwb2_prompt_symbol_is_preserved_for_transparent_entry`, `test_wifi_diag_escapes_transparent_mode_before_at_queries` (+3) |
-| `tests/test_attitude_fusion_contract.py` | — | `test_xio_fusion_is_vendored_and_replaces_height_gated_attitude`, `test_attitude_fusion_runtime` |
+| `tests/test_acceptance_v2_runtime_contract.py` | — | `test_v2a_lease_and_esc_fail_safe_are_target_owned` (+2) |
+| `tests/test_action_contract.py` | Contract tests for the Action safety state machine (``App/Src/app_action.c``). An Action is any task that spans time an… | `test_01_armed_interlock_refuses_to_start` (+16) |
+| `tests/test_airframe_model_contract.py` | — | `test_airframe_constants_capture_measured_tether_geometry` (+5) |
+| `tests/test_aiwb2_prompt_contract.py` | — | `test_aiwb2_prompt_symbol_is_preserved_for_transparent_entry` (+4) |
+| `tests/test_attitude_fusion_contract.py` | — | `test_xio_fusion_is_vendored_and_replaces_height_gated_attitude` (+1) |
 | `tests/test_attitude_ident_pid.py` | — | `test_closed_loop_attitude_ident_script_fits_synthetic_prbs` |
-| `tests/test_attitude_rate_control.py` | Host-gcc contract tests for the pure SO(3) attitude/rate cascade | `test_attitude_rate_host_harness`, `test_controller_modules_are_pure_and_so3_based` |
-| `tests/test_balance_controller_model.py` | — | `test_identified_attitude_gains_stabilize_with_80_ms_delay`, `test_velocity_pi_has_critical_poles_and_bounded_step_response` |
+| `tests/test_attitude_rate_control.py` | Host-gcc contract tests for the pure SO(3) attitude/rate cascade | `test_attitude_rate_host_harness` (+1) |
+| `tests/test_balance_controller_model.py` | — | `test_identified_attitude_gains_stabilize_with_80_ms_delay` (+1) |
 | `tests/test_balance_controller_runtime.py` | — | `test_real_controller_runtime_math` |
 | `tests/test_baro_contract.py` | — | `test_baro_ok_requires_real_spl06_who_am_i_not_only_spi_success` |
-| `tests/test_cascade_controller_contract.py` | R-S5-1 integration contract for the real coax-controller entry path | `test_scheduled_cascade_and_allocator_feedback_on_host`, `test_real_app_path_uses_scheduler_and_no_extra_acceleration_pid` |
-| `tests/test_cascade_review_regressions.py` | Regression tests for the 919fcfd9 software-review findings | `test_allocator_lifecycle_antiwindup_and_param_regressions`, `test_time_domains_telemetry_and_z_measurement_are_explicit` (+1) |
-| `tests/test_coax_ctrl_contract.py` | — | `test_servo_output_compensates_90_degree_ccw_mounting`, `test_tilt_limit_is_twenty_eight_degrees_in_driver_controller` (+15) |
-| `tests/test_coax_sign_convention.py` | Sign-convention self-check for the coaxial attitude controller. This is a legacy runtime-adapter test, not the canonica… | `test_gains_are_positive_so_polarity_errors_cannot_be_masked`, `test_control_law_is_negative_feedback_by_structure` (+3) |
-| `tests/test_coax_yaw_so3_contract.py` | 偏航并入 SO(3) 控制律的契约。 偏航 PD（2026-07-24，`85a5cacb`）比 SO(3) 控制器（2026-07-25，`2d1d2cd2`）早一天， 当天的设计记录 §1 明写「Z 高度环、偏航控制和双电机推力分配保… | `test_yaw_is_produced_by_the_so3_law_not_a_separate_pd`, `test_yaw_so3_runtime_matches_legacy_pd_in_hover` |
-| `tests/test_control_config_v19.py` | CFG V19 cascade migration contract; synthetic records are unit tests only | `test_v18_v17_v15_migration_math_on_host`, `test_cfg_v19_store_is_extracted_and_backward_compatible` |
-| `tests/test_control_loop_blocking_contract.py` | S6 control contracts | `test_no_blocking`, `test_notice_buffer` (+4) |
-| `tests/test_control_scheduler.py` | — | `test_control_scheduler_host_harness`, `test_scheduler_is_pure_and_declares_real_timestamp_contract` |
+| `tests/test_cascade_controller_contract.py` | R-S5-1 integration contract for the real coax-controller entry path | `test_scheduled_cascade_and_allocator_feedback_on_host` (+1) |
+| `tests/test_cascade_review_regressions.py` | Regression tests for the 919fcfd9 software-review findings | `test_allocator_lifecycle_antiwindup_and_param_regressions` (+2) |
+| `tests/test_coax_ctrl_contract.py` | — | `test_servo_output_compensates_90_degree_ccw_mounting` (+16) |
+| `tests/test_coax_sign_convention.py` | Sign-convention self-check for the coaxial attitude controller. This is a legacy runtime-adapter test, not the canonica… | `test_gains_are_positive_so_polarity_errors_cannot_be_masked` (+6) |
+| `tests/test_coax_yaw_so3_contract.py` | 偏航并入 SO(3) 控制律的契约。 偏航 PD（2026-07-24，`85a5cacb`）比 SO(3) 控制器（2026-07-25，`2d1d2cd2`）早一天， 当天的设计记录 §1 明写「Z 高度环、偏航控制和双电机推力分配保… | `test_yaw_is_produced_by_the_so3_law_not_a_separate_pd` (+1) |
+| `tests/test_control_config_v19.py` | CFG V19 cascade migration contract; synthetic records are unit tests only | `test_v18_v17_v15_migration_math_on_host` (+1) |
+| `tests/test_control_loop_blocking_contract.py` | S6 control contracts | `test_no_blocking` (+5) |
+| `tests/test_control_scheduler.py` | — | `test_control_scheduler_host_harness` (+1) |
 | `tests/test_controller_cascade_analysis.py` | — | `test_report_refuses_old_or_unknown_frame_logs` |
-| `tests/test_crsf_parser_resync.py` | CRSF 解析器的失步与重同步（`Driver/Src/drv_elrs.c`，宿主 gcc 直接编真实源码）。 为什么专门立一份：2026-09-06 实机取证发现遥控链路 **70% 错帧率**，而 SWD 直读 UART4 的 DM… | `test_a_clean_stream_decodes_every_frame`, `test_channel_values_survive_the_packing` (+9) |
-| `tests/test_dashboard_layout.py` | R-T1-5：工作台布局模型（`panel_lib/dashboard/layout.py`）。 布局规则是纯数据变换，所以这一份**不需要显示环境**：吸附、越界钳制、重叠拒绝、 序列化往返、出厂预设，全部在没有 Tk 的情况下断言。页… | `test_clamp_pulls_a_tile_back_into_the_grid`, `test_overlap_is_rejected_rather_than_pushed_aside` (+17) |
-| `tests/test_dashboard_page.py` | R-T1-5：“状态监视”工作台页（`panel_lib/pages/dashboard.py` + `dashboard/`）。 全部用真实的 `DronePanel()` + FakeTransport 驱动，照 `test_flow… | `test_the_workbench_is_the_first_tab_and_selected_by_default`, `test_panel_entry_point_only_carries_the_mount` (+59) |
-| `tests/test_dashboard_record_service.py` | R-T1-6（TK-05）：录制的文件完整性、后台写入与失败恢复。 对应改版报告 N10–N13。每一条都先在 `tools/panel_qa/baseline_observations.py` 里作为 **基线观测**记录下修复前的事实… | `test_a_second_recording_in_the_same_second_does_not_destroy_the_first`, `test_recording_never_overwrites_a_file_that_is_already_there` (+21) |
-| `tests/test_dashboard_resize.py` | 状态监视工作台的窗口 resize 合并器。 这个层不能靠肉眼判“似乎顺了一点”：Tk 拖动窗口时会连续发出大量 Configure 事件。这里用无 Tk 的假调度器钉住三件事：同一个 12 列格宽的像素抖动不重排、 多个事件合成一次布局… | `test_resize_skips_pixel_events_that_do_not_change_a_grid_cell`, `test_resize_coalesces_multiple_grid_changes_into_one_layout_pass` (+1) |
-| `tests/test_data_organization.py` | — | `test_date_directory_helpers_are_sortable_and_validate_dates`, `test_organizer_groups_dated_and_undated_items` (+1) |
-| `tests/test_documentation_contract.py` | Current documentation stays small, routed, and distinct from history | `test_current_document_map_has_one_small_human_entry`, `test_retired_guides_do_not_return` (+7) |
-| `tests/test_drone_validation_v0.py` | — | `test_snapshot_parser_requires_provenance_and_never_invents_zeroes`, `test_snapshot_parser_normalizes_target_units_without_claiming_flu` (+37) |
-| `tests/test_evidence_write_protection.py` | 历史验收证据不可变性契约。 2026-08-29 实际发生过一次证据破坏：面板启动时自动加载了 2026-08-28 的历史 验收会话，随后自动保存把 workflow.json 的 target_state_at_save（14 个键的… | `test_session_autosave_refuses_to_write_while_browsing_history`, `test_workflow_autosave_refuses_to_write_while_browsing_history` (+2) |
-| `tests/test_firmware_build_gate.py` | 烧录前必须先编译，且编译失败绝不能继续烧录。 背景：USB DFU 一键烧录默认烧的是 build/Debug/drone-H743.elf。如果改完源码 忘了编译，就会把上一次的旧固件刷进飞控，而且现场很难看出来——固件"烧成功了"，… | `test_build_failure_raises_instead_of_returning_a_stale_elf`, `test_missing_cmake_is_reported_as_a_build_error` (+19) |
-| `tests/test_flash_bdd.py` | — | `test_bdd_flash_diagnostics_flow_is_app_service_to_gd25q32_driver`, `test_bdd_h743_cache_setting_matches_runtime_cache_enable` |
-| `tests/test_flash_layering.py` | — | `test_app_uses_flash_service_not_bsp_flash_api`, `test_bsp_flash_bus_has_no_device_level_flash_api` (+3) |
-| `tests/test_flash_timing_measurement.py` | R-M1-3 block-erase timing measurement and throughput contracts | `test_firmware_probe_is_thin_and_keeps_normal_polling_default`, `test_page_program_count_matches_real_sector_layout_and_batching` (+6) |
-| `tests/test_flight_acceptance_v2.py` | — | `test_complete_v2a_passes_but_never_releases_flight`, `test_thresholds_strict` (+15) |
-| `tests/test_flight_calibration_param_contract.py` | Versioned aggregate flight-calibration parameter contract | `test_fcal_schema_owns_v0_v1_and_reserved_v2_fields`, `test_imuframe_commit_updates_the_aggregate_instead_of_replacing_it` (+1) |
-| `tests/test_flight_log_block_erase_contract.py` | R-M1-3 block-erase + queue contracts for flight-log pipeline | `test_rate_and_trigger_divider_is_exact_125hz_quadrature`, `test_queue_capacity_is_64_and_record_queue_storage_matches` (+5) |
-| `tests/test_flight_log_contract.py` | — | `test_flight_log_region_leaves_reserved_flash_sectors`, `test_flight_log_uses_app_flash_service_only` (+6) |
-| `tests/test_flight_log_frame_provenance.py` | R-F5b flight-log frame provenance and version migration | `test_sector_header_declares_provenance_in_reserved_area`, `test_stabilizer_fills_snapshot_provenance_from_existing_sources` (+4) |
-| `tests/test_flight_log_paths.py` | — | `test_canonical_data_tree_is_root_scoped`, `test_receive_uses_canonical_flight_log_dir` (+8) |
-| `tests/test_flight_log_receive.py` | — | `test_v8_528_byte_sector_is_accepted_by_flash_scanner`, `test_export_block_parser_validates_crc` (+19) |
-| `tests/test_flight_log_rerun_replay.py` | — | `test_latest_csv_and_segment_helpers`, `test_split_segments_and_summary_fields` (+5) |
-| `tests/test_flight_log_sysid.py` | — | `test_default_channels_include_flow_and_actual_servo_bus_data`, `test_analyze_flight_log_segments_groups_and_flags` (+1) |
-| `tests/test_flight_log_sysid_ui.py` | — | `test_ui_helpers_are_importable_without_starting_tk`, `test_ui_exposes_expected_flight_log_views` |
-| `tests/test_flight_log_waveform_ui.py` | — | `test_waveform_ui_helpers_do_not_start_tk`, `test_waveform_ui_exposes_folder_file_channel_plot_workflow` |
-| `tests/test_flight_log_workbench.py` | — | `test_workbench_helpers_build_segment_labels_and_presets`, `test_workbench_rerun_command_uses_isolated_wrapper` (+1) |
-| `tests/test_flight_validation.py` | — | `test_fixed_stages_document_the_requested_flu_actions`, `test_static_stage_reports_statistics_axis_sign_and_pass` (+18) |
-| `tests/test_flow_lateral_direction_evidence.py` | 光流横向方向：用 2026-08-30 的地面实录把控制器系 Y 的正方向钉死。 R-F6-2 卡在一个问题上：控制器系的 `y_m` / `vy_m_s` 到底是机体**右**正还是 **左**正。仓库里五处注释说"右正"，`15d83… | `test_recording_is_the_flu_ground_evidence`, `test_moving_left_reads_positive_in_the_flu_export` (+2) |
-| `tests/test_flow_monitor_page.py` | R-S1-2：“传感器 · 光流”实时监控页。 这里全部用真实的 `DronePanel()` 驱动，不做源码文本断言（那部分在 `tests/test_ground_calibration.py`）。钉四件事： 1. 轮询有自己的可见性… | `test_flow_poll_only_runs_while_the_flow_tab_is_selected`, `test_flow_poll_does_not_depend_on_the_calibration_collect_switch` (+14) |
-| `tests/test_flow_nav_service_contract.py` | R-M5-5：光流导航 Service（Services/Src/svc_flow_nav.c）契约测试。 分两部分： 1. 行为部分用宿主 gcc 真编译 svc_flow_nav.c + drv_nav_ekf.c，跑一个 C 桩子，… | `test_flow_nav_service_behaviour_on_host_gcc`, `test_driver_layer_stays_a_pure_frame_parser` (+8) |
-| `tests/test_flow_yaw_gyro_capture.py` | M5 台架实测暴露的缺陷：旋转补偿阶永远拿不到偏航角速度。 2026-08-30 现场证据：`flow_range_20260830_200716.json` 里 299 个实采样本， `gyro_z_dps` **无一非 null**，… | `test_firmware_still_emits_bare_gz_in_mdps`, `test_every_known_gyro_spelling_lands_in_dps` (+1) |
-| `tests/test_flu_frame_contract.py` | — | `test_skill_routes_coordinate_work_to_the_normative_contract`, `test_runtime_migration_validation_override_is_explicit` (+2) |
-| `tests/test_flu_runtime_candidate_pipeline.py` | — | `test_frame_candidate_is_applied_once_before_any_estimator_consumer`, `test_frame_change_resets_state_and_selects_nwu_for_canonical_flu` (+4) |
-| `tests/test_flu_seam0_sensor_frame.py` | R-F0 seam 0 sensor FLU contract | `test_persisted_code_descriptor`, `test_mounting_comment_matches_v0` (+1) |
-| `tests/test_flu_seam1_estimator_frame.py` | R-F1 seam 1 estimator FLU contract | `test_convention_tracks_frame`, `test_flu_branch_no_sign_comp` (+3) |
-| `tests/test_flu_seam2_navigation_frame.py` | R-F6-1 seam 2 navigation frame contract. Seam 2 (navigation) was the only one of the six FLU runtime seams with no coor… | `test_svc_flow_nav_header_names_its_frames_units_and_timebases`, `test_drv_nav_ekf_header_disclaims_frame_ownership` (+3) |
-| `tests/test_flu_seam3_controller_frame.py` | R-F6-2 seam 3 controller FLU migration contract | `test_force_frame_constants_are_deleted`, `test_geometry_consumes_flu_attitude_directly` (+4) |
-| `tests/test_flu_seam3_force_frame_derivation.py` | R-F6-2 核心矩阵重导：力坐标系符号常量到底在做什么。 这个模块存在的唯一理由，是仓库里曾经有一句被复述了四遍的论断： "此符号同时作用于实测姿态和目标姿态，因此在姿态误差中相消" 它是**错的**，而且不是无害的措辞问题——R-F6… | `test_force_frame_roll_sign_was_load_bearing_before_deletion`, `test_the_cancellation_claim_is_not_reasserted` (+3) |
-| `tests/test_flu_seam4_rc_actuator_frame.py` | R-F4 seam 4 RC/actuator polarity contract | `test_stick_direction_has_exactly_one_decision_point`, `test_left_stick_reaches_the_flu_controller_with_left_positive_intent` (+4) |
-| `tests/test_flu_seam5_telemetry_frame.py` | R-F5 seam 5 telemetry/log frame contract | `test_replay_geometry_is_frozen`, `test_replay_converts_to_flu_only_on_recorded_provenance` (+5) |
-| `tests/test_ground_calibration.py` | — | `test_calibration_navigation_uses_function_names_instead_of_version_codes`, `test_sensor_group_collects_baro_imu_gps_flow_under_one_expandable_tab` (+19) |
-| `tests/test_ident_decoupled.py` | — | `test_ident_control_payload_and_decoupled_servo_takeover`, `test_ident_commands_exist_and_are_text_based` (+3) |
-| `tests/test_imu_aaf_contract.py` | Contract tests for the ICM-42688 anti-alias filter and accelerometer range. The AAF is an analogue filter ahead of the… | `test_accel_range_is_16g_to_avoid_vibration_clipping`, `test_scaling_is_derived_from_configured_range_not_hardcoded` (+3) |
-| `tests/test_imu_attitude_tuner.py` | — | `test_persistent_openocd_telnet_word_parser`, `test_decode_openocd_message_layout` (+4) |
-| `tests/test_imu_axis_alignment_contract.py` | Legacy IMU intermediate-axis adapter checks. The canonical body-frame contract is Driver/Inc/drv_frame_contract.h. Thes… | `test_legacy_imu_mount_axis_adapter_is_documented`, `test_imu_axes_are_rotated_to_legacy_intermediate_frame` (+1) |
-| `tests/test_imu_calibration_runtime.py` | — | `test_driver_math`, `test_snapshot_publish` (+8) |
-| `tests/test_imu_capture_contract.py` | Contract tests for the full-rate raw IMU capture path. The capture exists to record undecimated pre-LPF samples for vib… | `test_capture_buffer_lives_outside_dtcm`, `test_producer_hook_is_non_blocking` (+9) |
-| `tests/test_imu_health_guard.py` | IMU 采样链静默降级的检测与拦截。 背景（2026-08-28 实测）：Sensor_Task 在 DRDY 中断没来时会退到 20ms 轮询兜底。 兜底成功会把 imu_drdy_miss_count 清零，于是"中断永久失效"被当成… | `test_poll_fallback_no_longer_clears_the_drdy_miss_counter`, `test_irq_branch_still_clears_the_counter_and_marks_the_sample` (+18) |
-| `tests/test_imu_metrology.py` | — | `test_sample_requires_finite_and_complete_provenance`, `test_accel_six_face_fits_bias_and_full_3x3_correction` (+22) |
-| `tests/test_imu_nav_estimator.py` | — | `test_level_static_acceleration_becomes_zero_linear_nav_accel`, `test_tilted_static_acceleration_becomes_zero_linear_nav_accel` (+3) |
-| `tests/test_imu_timing_contract.py` | — | `test_stabilizer_uses_drdy_timed_fusion_ahrs`, `test_sensor_task_uses_irq_edge_timestamp_and_poll_fallback` (+13) |
-| `tests/test_imu_vibration_ui.py` | Tests for the vibration capture UI helpers. The UI is a thin driver over tools/imu_vibration_capture.py. These tests co… | `test_test_steps_cover_the_documented_sweep`, `test_spinning_steps_require_frame_confirmation` (+4) |
-| `tests/test_imucal_candidate_protocol.py` | IMUCAL split contracts | `test_upload_runtime`, `test_protocol_contract` (+3) |
-| `tests/test_imucal_context_diagnostics.py` | IMUCAL? 上下文校验的报错。 背景：2026-08-29 点"应用候选到 RAM"弹出 `target IMUCAL context reply is incomplete`。这句话把收到的行全扔了，分不清三种完全不同的情况：链路根… | `test_a_silent_target_is_reported_as_a_link_problem_not_a_calibration_one`, `test_a_valid_zero_reply_names_the_snapshot_as_the_cause` (+8) |
-| `tests/test_imucal_host_protocol.py` | — | `test_wire_abi_and_chunk_commands_match_firmware`, `test_status_parser_ignores_text_and_extracts_machine_fields` (+2) |
-| `tests/test_imuframe_param_protocol.py` | IMU frame correction persistence and command-safety contract | `test_protocol_reserves_a_stable_imuframe_request_id`, `test_orientation_lives_in_versioned_fcal_aggregate` (+5) |
-| `tests/test_led_status_contract.py` | LED 状态灯契约。 原来这一份只做字符串存在性检查（`assert "APP_LED_ARM_BLOCK_NO_RC" in header`）， 从来没有验证过原因**选择逻辑**。于是 2026-09-05 实机撞上这个：坐标迁移未完… | `test_led_status_reports_arm_block_reasons_and_flow_health`, `test_every_hard_arm_gate_has_its_own_led_reason` (+3) |
-| `tests/test_link_keepalive.py` | USB CDC 空闲探活回归测试。 背景（2026-08-28 ST-Link 实测确认）：飞控在 USB CDC 上是纯命令/响应通道—— 周期性 VOFA 遥测在 App/Src/app_vofa.c 里被 APP_AiWB2_IsS… | `test_firmware_has_no_unsolicited_usb_telemetry`, `test_link_health_check_drives_the_keepalive` (+17) |
+| `tests/test_crsf_parser_resync.py` | CRSF 解析器的失步与重同步（`Driver/Src/drv_elrs.c`，宿主 gcc 直接编真实源码）。 为什么专门立一份：2026-09-06 实机取证发现遥控链路 **70% 错帧率**，而 SWD 直读 UART4 的 DM… | `test_a_clean_stream_decodes_every_frame` (+10) |
+| `tests/test_dashboard_layout.py` | R-T1-5：工作台布局模型（`panel_lib/dashboard/layout.py`）。 布局规则是纯数据变换，所以这一份**不需要显示环境**：吸附、越界钳制、重叠拒绝、 序列化往返、出厂预设，全部在没有 Tk 的情况下断言。页… | `test_clamp_pulls_a_tile_back_into_the_grid` (+18) |
+| `tests/test_dashboard_page.py` | R-T1-5：“状态监视”工作台页（`panel_lib/pages/dashboard.py` + `dashboard/`）。 全部用真实的 `DronePanel()` + FakeTransport 驱动，照 `test_flow… | `test_the_workbench_is_the_first_tab_and_selected_by_default` (+62) |
+| `tests/test_dashboard_record_service.py` | R-T1-6（TK-05）：录制的文件完整性、后台写入与失败恢复。 对应改版报告 N10–N13。每一条都先在 `tools/panel_qa/baseline_observations.py` 里作为 **基线观测**记录下修复前的事实… | `test_a_second_recording_in_the_same_second_does_not_destroy_the_first` (+22) |
+| `tests/test_dashboard_resize.py` | 状态监视工作台的窗口 resize 合并器。 这个层不能靠肉眼判“似乎顺了一点”：Tk 拖动窗口时会连续发出大量 Configure 事件。这里用无 Tk 的假调度器钉住三件事：同一个 12 列格宽的像素抖动不重排、 多个事件合成一次布局… | `test_resize_skips_pixel_events_that_do_not_change_a_grid_cell` (+2) |
+| `tests/test_data_organization.py` | — | `test_date_directory_helpers_are_sortable_and_validate_dates` (+2) |
+| `tests/test_documentation_contract.py` | Current documentation stays small, routed, and distinct from history | `test_current_document_map_has_one_small_human_entry` (+8) |
+| `tests/test_drone_validation_v0.py` | — | `test_snapshot_parser_requires_provenance_and_never_invents_zeroes` (+38) |
+| `tests/test_evidence_write_protection.py` | 历史验收证据不可变性契约。 2026-08-29 实际发生过一次证据破坏：面板启动时自动加载了 2026-08-28 的历史 验收会话，随后自动保存把 workflow.json 的 target_state_at_save（14 个键的… | `test_session_autosave_refuses_to_write_while_browsing_history` (+3) |
+| `tests/test_firmware_build_gate.py` | 烧录前必须先编译，且编译失败绝不能继续烧录。 背景：USB DFU 一键烧录默认烧的是 build/Debug/drone-H743.elf。如果改完源码 忘了编译，就会把上一次的旧固件刷进飞控，而且现场很难看出来——固件"烧成功了"，… | `test_build_failure_raises_instead_of_returning_a_stale_elf` (+20) |
+| `tests/test_flash_bdd.py` | — | `test_bdd_flash_diagnostics_flow_is_app_service_to_gd25q32_driver` (+1) |
+| `tests/test_flash_layering.py` | — | `test_app_uses_flash_service_not_bsp_flash_api` (+4) |
+| `tests/test_flash_timing_measurement.py` | R-M1-3 block-erase timing measurement and throughput contracts | `test_firmware_probe_is_thin_and_keeps_normal_polling_default` (+7) |
+| `tests/test_flight_acceptance_v2.py` | — | `test_complete_v2a_passes_but_never_releases_flight` (+16) |
+| `tests/test_flight_calibration_param_contract.py` | Versioned aggregate flight-calibration parameter contract | `test_fcal_schema_owns_v0_v1_and_reserved_v2_fields` (+2) |
+| `tests/test_flight_log_block_erase_contract.py` | R-M1-3 block-erase + queue contracts for flight-log pipeline | `test_rate_and_trigger_divider_is_exact_125hz_quadrature` (+6) |
+| `tests/test_flight_log_contract.py` | — | `test_flight_log_region_leaves_reserved_flash_sectors` (+7) |
+| `tests/test_flight_log_frame_provenance.py` | R-F5b flight-log frame provenance and version migration | `test_sector_header_declares_provenance_in_reserved_area` (+5) |
+| `tests/test_flight_log_paths.py` | — | `test_canonical_data_tree_is_root_scoped` (+9) |
+| `tests/test_flight_log_receive.py` | — | `test_v8_528_byte_sector_is_accepted_by_flash_scanner` (+20) |
+| `tests/test_flight_log_rerun_replay.py` | — | `test_latest_csv_and_segment_helpers` (+6) |
+| `tests/test_flight_log_sysid.py` | — | `test_default_channels_include_flow_and_actual_servo_bus_data` (+2) |
+| `tests/test_flight_log_sysid_ui.py` | — | `test_ui_helpers_are_importable_without_starting_tk` (+1) |
+| `tests/test_flight_log_waveform_ui.py` | — | `test_waveform_ui_helpers_do_not_start_tk` (+1) |
+| `tests/test_flight_log_workbench.py` | — | `test_workbench_helpers_build_segment_labels_and_presets` (+2) |
+| `tests/test_flight_validation.py` | — | `test_fixed_stages_document_the_requested_flu_actions` (+19) |
+| `tests/test_flow_lateral_direction_evidence.py` | 光流横向方向：用 2026-08-30 的地面实录把控制器系 Y 的正方向钉死。 R-F6-2 卡在一个问题上：控制器系的 `y_m` / `vy_m_s` 到底是机体**右**正还是 **左**正。仓库里五处注释说"右正"，`15d83… | `test_recording_is_the_flu_ground_evidence` (+3) |
+| `tests/test_flow_monitor_page.py` | R-S1-2：“传感器 · 光流”实时监控页。 这里全部用真实的 `DronePanel()` 驱动，不做源码文本断言（那部分在 `tests/test_ground_calibration.py`）。钉四件事： 1. 轮询有自己的可见性… | `test_flow_poll_only_runs_while_the_flow_tab_is_selected` (+15) |
+| `tests/test_flow_nav_service_contract.py` | R-M5-5：光流导航 Service（Services/Src/svc_flow_nav.c）契约测试。 分两部分： 1. 行为部分用宿主 gcc 真编译 svc_flow_nav.c + drv_nav_ekf.c，跑一个 C 桩子，… | `test_flow_nav_service_behaviour_on_host_gcc` (+9) |
+| `tests/test_flow_rotation_comp_frame.py` | 光流方言边界契约（2026-09-07）。 实测现象：手飞画圆时，传感器页的原始光流两轴都是干净的正弦，状态页却只剩 X 的 正弦、Y 被压到接近 0。 根因不在 EKF（`drv_nav_ekf.c` 的 4 维状态 X/Y 完全镜像）… | `test_dialect_boundary_lives_where_the_driver_frame_becomes_a_sample` (+5) |
+| `tests/test_flow_yaw_gyro_capture.py` | M5 台架实测暴露的缺陷：旋转补偿阶永远拿不到偏航角速度。 2026-08-30 现场证据：`flow_range_20260830_200716.json` 里 299 个实采样本， `gyro_z_dps` **无一非 null**，… | `test_firmware_still_emits_bare_gz_in_mdps` (+2) |
+| `tests/test_flu_frame_contract.py` | — | `test_skill_routes_coordinate_work_to_the_normative_contract` (+3) |
+| `tests/test_flu_nav_frame_alignment.py` | EKF 的两路输入必须处在同一个坐标系里。 背景：`SVC_FlowNav_Fuse` 用 IMU 水平加速度做预测、用光流水平速度做更新，两者 按同一组 X/Y 直接对应。光流给的是**机体水平地速**；而 IMU 那一路曾经在转平之后… | `test_imu_level_adapter_takes_no_yaw` (+7) |
+| `tests/test_flu_runtime_candidate_pipeline.py` | — | `test_frame_candidate_is_applied_once_before_any_estimator_consumer` (+5) |
+| `tests/test_flu_seam0_sensor_frame.py` | R-F0 seam 0 sensor FLU contract | `test_persisted_code_descriptor` (+2) |
+| `tests/test_flu_seam1_estimator_frame.py` | R-F1 seam 1 estimator FLU contract | `test_convention_tracks_frame` (+4) |
+| `tests/test_flu_seam2_navigation_frame.py` | R-F6-1 seam 2 navigation frame contract. Seam 2 (navigation) was the only one of the six FLU runtime seams with no coor… | `test_svc_flow_nav_header_names_its_frames_units_and_timebases` (+4) |
+| `tests/test_flu_seam3_controller_frame.py` | R-F6-2 seam 3 controller FLU migration contract | `test_force_frame_constants_are_deleted` (+5) |
+| `tests/test_flu_seam3_force_frame_derivation.py` | R-F6-2 核心矩阵重导：力坐标系符号常量到底在做什么。 这个模块存在的唯一理由，是仓库里曾经有一句被复述了四遍的论断： "此符号同时作用于实测姿态和目标姿态，因此在姿态误差中相消" 它是**错的**，而且不是无害的措辞问题——R-F6… | `test_force_frame_roll_sign_was_load_bearing_before_deletion` (+4) |
+| `tests/test_flu_seam4_rc_actuator_frame.py` | R-F4 seam 4 RC/actuator polarity contract | `test_stick_direction_has_exactly_one_decision_point` (+7) |
+| `tests/test_flu_seam5_telemetry_frame.py` | R-F5 seam 5 telemetry/log frame contract | `test_replay_geometry_is_frozen` (+6) |
+| `tests/test_ground_calibration.py` | — | `test_calibration_navigation_uses_function_names_instead_of_version_codes` (+20) |
+| `tests/test_ident_decoupled.py` | — | `test_ident_control_payload_and_decoupled_servo_takeover` (+4) |
+| `tests/test_imu_aaf_contract.py` | Contract tests for the ICM-42688 anti-alias filter and accelerometer range. The AAF is an analogue filter ahead of the… | `test_accel_range_is_16g_to_avoid_vibration_clipping` (+4) |
+| `tests/test_imu_attitude_tuner.py` | — | `test_persistent_openocd_telnet_word_parser` (+5) |
+| `tests/test_imu_axis_alignment_contract.py` | Legacy IMU intermediate-axis adapter checks. The canonical body-frame contract is Driver/Inc/drv_frame_contract.h. Thes… | `test_legacy_imu_mount_axis_adapter_is_documented` (+2) |
+| `tests/test_imu_calibration_runtime.py` | — | `test_driver_math` (+9) |
+| `tests/test_imu_capture_contract.py` | Contract tests for the full-rate raw IMU capture path. The capture exists to record undecimated pre-LPF samples for vib… | `test_capture_buffer_lives_outside_dtcm` (+10) |
+| `tests/test_imu_health_guard.py` | IMU 采样链静默降级的检测与拦截。 背景（2026-08-28 实测）：Sensor_Task 在 DRDY 中断没来时会退到 20ms 轮询兜底。 兜底成功会把 imu_drdy_miss_count 清零，于是"中断永久失效"被当成… | `test_poll_fallback_no_longer_clears_the_drdy_miss_counter` (+19) |
+| `tests/test_imu_metrology.py` | — | `test_sample_requires_finite_and_complete_provenance` (+23) |
+| `tests/test_imu_nav_estimator.py` | — | `test_level_static_acceleration_becomes_zero_linear_nav_accel` (+4) |
+| `tests/test_imu_timing_contract.py` | — | `test_stabilizer_uses_drdy_timed_fusion_ahrs` (+14) |
+| `tests/test_imu_vibration_ui.py` | Tests for the vibration capture UI helpers. The UI is a thin driver over tools/imu_vibration_capture.py. These tests co… | `test_test_steps_cover_the_documented_sweep` (+5) |
+| `tests/test_imucal_candidate_protocol.py` | IMUCAL split contracts | `test_upload_runtime` (+4) |
+| `tests/test_imucal_context_diagnostics.py` | IMUCAL? 上下文校验的报错。 背景：2026-08-29 点"应用候选到 RAM"弹出 `target IMUCAL context reply is incomplete`。这句话把收到的行全扔了，分不清三种完全不同的情况：链路根… | `test_a_silent_target_is_reported_as_a_link_problem_not_a_calibration_one` (+9) |
+| `tests/test_imucal_host_protocol.py` | — | `test_wire_abi_and_chunk_commands_match_firmware` (+3) |
+| `tests/test_imuframe_param_protocol.py` | IMU frame correction persistence and command-safety contract | `test_protocol_reserves_a_stable_imuframe_request_id` (+6) |
+| `tests/test_led_status_contract.py` | LED 状态灯契约。 原来这一份只做字符串存在性检查（`assert "APP_LED_ARM_BLOCK_NO_RC" in header`）， 从来没有验证过原因**选择逻辑**。于是 2026-09-05 实机撞上这个：坐标迁移未完… | `test_led_status_reports_arm_block_reasons_and_flow_health` (+4) |
+| `tests/test_link_keepalive.py` | USB CDC 空闲探活回归测试。 背景（2026-08-28 ST-Link 实测确认）：飞控在 USB CDC 上是纯命令/响应通道—— 周期性 VOFA 遥测在 App/Src/app_vofa.c 里被 APP_AiWB2_IsS… | `test_firmware_has_no_unsolicited_usb_telemetry` (+18) |
+| `tests/test_log_pages.py` | Existing log decoders/analysis through the new embedded Tk workspace | `test_import_waveform_and_analysis_reuse_existing_tools` (+8) |
+| `tests/test_log_pages_geometry.py` | Three sizes x three simulated DPI scales, using the real panel and pages | `test_log_controls_remain_reachable` |
 | `tests/test_mech.py` | — | `test_s6` |
-| `tests/test_nav_ekf_contract.py` | — | `test_quality_adaptive_flow_ekf_is_owned_by_the_flow_nav_service`, `test_nav_ekf_exposes_industry_consistency_metrics` (+2) |
-| `tests/test_optical_flow_contract.py` | — | `test_micolink_parser_accepts_live_range_and_flow_payload_shape`, `test_micolink_parser_rejects_bad_checksum_and_oversize_payload` (+10) |
-| `tests/test_panel_autoconnect.py` | 记住上次的连接并在启动时自动连回去。 关键点是**按什么认板子**：Windows 给 USB 串口分配的 COM 号会变（本机就出现过同一块 飞控在 COM30/31/32 之间跳），而 ST-Link、蓝牙串口、CH340 会占掉腾出… | `test_fingerprint_is_stable_across_com_renumbering`, `test_two_boards_of_the_same_model_get_different_fingerprints` (+14) |
-| `tests/test_panel_connection_reliability.py` | H1/H2/H4: real transport and Tk boundaries with no physical device access | `test_slow_io_does_not_block_ui_queries_cancel_or_stop`, `test_read_failure_closes_port_and_preserves_reason` (+17) |
-| `tests/test_panel_d_data_contract.py` | D 线 TK-03/TK-04 contracts: values must say what state they represent | `test_d_modules_are_imported_in_all_three_panel_contexts`, `test_parameter_capabilities_match_the_driver_table` (+12) |
-| `tests/test_panel_drift_page_extraction.py` | S6 stationary-drift page extraction ownership and compatibility contract | `test_drift_page_mixin_owns_only_its_builder_and_handlers`, `test_legacy_panel_forwards_the_drift_page_without_wrappers` (+3) |
-| `tests/test_panel_flow_page_extraction.py` | R-S6-1 增量11（收官）：光流与测距页搬进 panel_lib/pages/flow_ranging.py。 搬家的判据只有一条——行为零变更。这里用三种独立方式钉： 1. 逐方法 AST 哈希与搬家前逐字节一致（哈希取自父提交 9… | `test_flow_mixin_owns_every_moved_method_with_the_pre_move_ast`, `test_page_constant_has_exactly_one_definition` (+3) |
-| `tests/test_panel_proto_extraction.py` | S6 panel protocol extraction ownership and compatibility contract | `test_proto_module_owns_the_protocol_table_and_parsing_helpers`, `test_legacy_panel_forwards_every_proto_symbol_without_wrappers` (+2) |
-| `tests/test_panel_qa_harness.py` | R-S1-3（TK-00）：无硬件 QA 测试基础的**装置契约**。 这份文件只证明装置本身可信，**不证明产品正确**。区别很重要：报告里 N01–N13 那些 缺陷在这里一条都不会被断言成“已修”，它们由各自的实现包先写红灯再修绿。… | `test_opening_a_physical_serial_port_fails_immediately`, `test_running_a_flashing_tool_fails_immediately` (+18) |
-| `tests/test_panel_qa_review_regressions.py` | R-S1-3 返修：关闭 2026-09-04 软件审核的 Q1~Q6。 审核对象是 `3269a7fe`。六条的共同点是：**装置声称的保证比它实际做到的强**，而且原来 那批测试恰好都绕过了差额——`test_a_qa_session… | `test_every_data_path_constant_is_redirected`, `test_the_output_directories_the_review_named_are_isolated` (+15) |
-| `tests/test_panel_rc_wizard_page_extraction.py` | S6 RC page extraction contract | `test_method_ownership`, `test_method_ast` (+5) |
-| `tests/test_panel_state_extraction.py` | S6 panel-state persistence extraction ownership and compatibility contract | `test_state_module_owns_persistence_and_logging_implementation`, `test_legacy_panel_forwards_every_state_symbol_without_wrappers` (+2) |
-| `tests/test_panel_transport_extraction.py` | S6 panel transport extraction ownership and compatibility contract | `test_transport_module_owns_moved_definitions`, `test_legacy_panel_forwards_the_transport_api_without_wrappers` (+1) |
-| `tests/test_panel_v1_page_extraction.py` | S6 V1-metrology page extraction ownership and compatibility contract | `test_v1_page_mixin_owns_the_builder_and_every_v1_handler`, `test_all_24_methods_match_the_post_increment4_ast` (+4) |
-| `tests/test_pipeline_contract.py` | — | `test_pipeline_exists_with_required_sections`, `test_mainline_nodes_match_between_diagram_and_gate_table` (+5) |
-| `tests/test_position_control.py` | R-S5-1 pure translational controller contract. The executable part compiles the real Driver C module with host gcc. The… | `test_position_control_source_is_pure_and_documented`, `test_position_control_host_gcc` |
-| `tests/test_project_index_contract.py` | — | `test_repository_index_is_current`, `test_repository_index_has_hard_context_limits` (+1) |
-| `tests/test_proto_frame_resync.py` | 修 bug：`$X` 解析器有两处会永久停摆的重同步空洞。 发现于 2026-09-03，R-T1-2 的模糊测试。缺陷早于遥测流工作，命中的是所有 `$X` 帧共用的 `TransportBase._consume_buffer`，**… | `test_intact_stream_still_decodes_every_frame`, `test_a_corrupt_direction_byte_only_costs_its_own_frame` (+7) |
-| `tests/test_rc_mapping.py` | 遥控通道映射与端点标定。 背景：通道号原来是 app_stabilizer.c 里的 6 个 #define（CH1..CH6），端点是 1000/1500/2000 三个字面量。换发射机、改通道顺序、或者摇杆行程不标准，都得改代码 重烧… | `test_moving_one_stick_identifies_that_channel`, `test_a_still_transmitter_is_not_bound_to_anything` (+62) |
-| `tests/test_rc_mapping_contract.py` | — | `test_freertos_documents_fixed_elrs_channel_map`, `test_controller_uses_named_rc_channels_for_references` (+7) |
-| `tests/test_record_service_review_regressions.py` | R-T1-6 返修：关闭 2026-09-04 软件审核的 R1~R4。 审核对象是 `63223acd`。四条都不是"再多测一点"能发现的，它们各自对应第一版实现里 一个具体的结构错误： R1 Tk 线程仍在做 I/O 和等待。`sta… | `test_start_does_no_disk_io_on_the_calling_thread`, `test_stop_returns_immediately_while_the_writer_is_stuck` (+9) |
-| `tests/test_rom_dfu_boot_contract.py` | Safety and reset-context contract for the STM32H743 factory USB DFU path | `test_boot_command_is_explicit_scheduled_and_safety_gated`, `test_reset_magic_moves_the_rom_jump_out_of_the_freertos_task` (+2) |
-| `tests/test_rom_dfu_host.py` | — | `test_cli_discovery_prefers_path_and_finds_common_cubeclt_layout`, `test_v0_image_gate_accepts_only_nonempty_elf_or_hex` (+9) |
-| `tests/test_scope_canvas.py` | `panel_lib/scope.py` 的 `ScopeCanvas` 与 min/max 抽稀。 从 `tests/test_scope_page.py` 迁过来（R-T1-5 让 `pages/scope.py` 退役，但 **画布… | `test_min_max_decimation_keeps_the_extremes`, `test_short_series_are_not_decimated` (+2) |
-| `tests/test_sensor_biquad_contract.py` | Contract tests for the 2nd-order Butterworth sensor filter. The filter was upgraded from a 1st-order IIR because measur… | `test_filter_is_second_order_biquad`, `test_cutoffs_match_the_measured_blade_band` (+3) |
-| `tests/test_sensor_orientation_runtime.py` | Runtime IMU orientation selection at the raw-to-airframe seam | `test_public_api_uses_one_byte_legacy_sentinel_and_stable_descriptors`, `test_runtime_applies_one_proper_rotation_after_legacy_mapping` |
-| `tests/test_service_param_background_contract.py` | — | `test_services_layer_contains_only_param_service`, `test_background_task_and_queues_are_named_as_background_not_storage` (+3) |
-| `tests/test_servo_bus_guard_contract.py` | R-S7-3 contract: bus-only servo paths are inert in PWM mode | `test_guard_owns_pwm_selection_and_all_bus_only_commands`, `test_control_has_one_minimal_pwm_rejection_before_bus_dispatch` (+5) |
-| `tests/test_servo_cal_contract.py` | — | `test_servo_cal_uses_release_startup_save_and_restore_without_center_save`, `test_servo_cal_requires_disarmed_low_throttle_rc_gate_and_corner_hold` (+2) |
-| `tests/test_servo_debug_page_contract.py` | R-S7-4 host contracts for BUS-only controls and PWM JOG routing | `test_pwm_jog_has_no_bus_command_and_bus_move_is_unchanged`, `test_active_pwm_stays_gated_when_candidate_is_changed_to_bus` (+1) |
-| `tests/test_servo_debug_theme.py` | Servo dark-theme contrast and PWM gates | `test_dark_spinboxes`, `test_subtle_borders` (+1) |
-| `tests/test_servo_dma_contract.py` | — | `test_stabilizer_uses_nonblocking_servo_dma_path`, `test_stabilizer_selects_pwm_or_bus_without_running_bus_only_services` (+8) |
-| `tests/test_servo_feedback_bench_contract.py` | — | `test_driver_uses_manual_prad_request_and_fixed_length_dma_receive`, `test_uart7_fixed_length_rx_complete_is_routed_to_servo_driver` (+3) |
-| `tests/test_servo_feedback_runtime_contract.py` | — | `test_runtime_feedback_uses_deterministic_50_hz_per_servo_slots`, `test_runtime_feedback_snapshot_carries_quality_metadata` |
-| `tests/test_servo_jog_contract.py` | SERVO JOG（保持型地面点动）契约测试。 背景（M4 台架实测缺陷）：稳定环 commit 以 3µs 死区 + 500ms 强制刷新持续流式 下发舵机目标，一次性 SERVO MOVE 慢移会在下一次强制刷新被拉回中点。修复后的… | `test_servo_jog_runtime_behaviour`, `test_stabilizer_commit_arbitrates_jog_after_higher_priority_owners` (+3) |
-| `tests/test_servo_mechanical_calibration.py` | Persistent servo-mechanical calibration and flow-compensation evidence | `test_servo_mechanical_fields_reuse_fcal_reserved_space_without_abi_growth`, `test_servocal_protocol_has_preview_revert_commit_and_param_confirmation` (+3) |
-| `tests/test_servo_pwm_immediate_move_contract.py` | R-S7-7：PWM 调试页即时移动通路 与 标定页慢速点动 的解耦契约。 缺陷背景（R-S7-4 遗留）：PWM 模式下 servo_debug.py 的「移动此舵机」下发裸 `SERVO JOG <ch> <us>`，而该命令的斜坡速… | `test_pwm_debug_move_uses_immediate_path_not_the_calibration_slew`, `test_pwm_debug_move_all_sends_immediate_for_every_slot` (+5) |
-| `tests/test_servo_type_panel_contract.py` | R-S7-5 host contracts for servo type controls and transactions | `test_servo_type_protocol_ids_are_unique_and_forwarded`, `test_type_transaction_buttons_send_only_frozen_commands` (+2) |
-| `tests/test_servo_type_protocol.py` | S7 servo output type persistence and command protocol contracts | `test_servo_type_reuses_reserved_fcal_byte_without_abi_growth`, `test_servo_type_runtime_module_defaults_legacy_records_to_bus` (+4) |
-| `tests/test_stationary_drift.py` | 静止漂移自检。 背景：六面标定解的是"摆在六个姿态下读数对不对"，但用户真正在意的是"放着不动会 不会自己飘"。这两件事不等价。飞机不动时真实角速度就是 0、真实比力就是 1 g，所以 这个检查不需要转台 —— 读数偏多少就是误差多少，也… | `test_a_still_aircraft_reports_no_drift_and_one_g`, `test_the_window_must_be_long_enough_to_show_a_trend` (+12) |
-| `tests/test_telem_stream_contract.py` | R-T1-1：遥测流 v2（固件侧）契约测试。 三部分： 1. **黄金向量**：宿主 gcc 真编译 `app_telem_frame.c` + `app_proto.c`，让固件 自己的编码器把一组给定的 mask/values 编出… | `test_encoder_matches_the_golden_vectors_byte_for_byte`, `test_golden_vector_file_is_in_sync_with_the_firmware` (+11) |
-| `tests/test_telem_stream_decoder.py` | R-T1-2：上位机遥测流解码（`tools/panel_lib/telem_stream.py` + transport 二进制分支）。 四件事： 1. **黄金向量对称**：`tests/golden/telem_frames_v2.… | `test_transport_delivers_telemetry_payloads_as_bytes`, `test_v3_schema_preserves_body_frame_provenance` (+25) |
-| `tests/test_telemetry_schema_contract.py` | Contract tests for the VOFA telemetry channel schema (``TELEM?``). The schema exists so the ground station never has to… | `test_header_reports_version_count_rate_and_hash`, `test_every_channel_reported_exactly_once_in_fill_order` (+13) |
-| `tests/test_tk_review_regressions.py` | Regressions for the V/D-line review findings (R-S1-4 … R-S1-7). Every test here exists because the reviewer found a cri… | `test_hovering_a_viewport_does_not_steal_focus_from_an_entry`, `test_every_keyboard_owner_class_is_protected` (+8) |
-| `tests/test_tk_v_revamp.py` | V 线 TK-01/TK-02 contracts against the real offline DronePanel | `test_theme_is_global_semantic_and_contrasted`, `test_matplotlib_pages_share_the_dark_chart_theme` (+3) |
-| `tests/test_usb_v0_transport_contract.py` | — | `test_usb_route`, `test_mirror` (+2) |
-| `tests/test_v0_guidance_flow.py` | V0 引导可达性回归测试。 V0 页的四项准备清单（连接/快照/零偏/安全输出）与 A/B/C 按钮全部由 _validation_refresh_readiness 依据实时 stabilizer snapshot 解锁，页面文案也明确… | `test_v0_page_polls_as_soon_as_it_is_visible`, `test_v0_page_does_not_poll_while_disconnected` (+6) |
-| `tests/test_v1_evidence_table.py` | V1 采集页的证据表格。 背景：2026-08-29 的会话里同时躺着三条 50 Hz 的降级采集和两条重复的 accel_pos_x， 表格是平铺的，既看不出哪些步骤还没采、也删不掉，点"分析"只会抛一句不知道说的是谁 的 "采样率仅… | `test_every_planned_step_gets_a_row_even_before_it_is_captured`, `test_a_degraded_capture_is_flagged_before_the_user_clicks_analyse` (+15) |
-| `tests/test_v1_metrology_session.py` | — | `test_v4_exact_abi_header_sample_and_temperature_conversion`, `test_v3_40_46_decoder_remains_read_compatible_but_not_v1` (+16) |
-| `tests/test_validation_snapshot_contract.py` | — | `test_public_snapshot_contains_the_read_only_validation_payload`, `test_snapshot_is_published_after_the_legacy_pipeline_annotations` (+4) |
+| `tests/test_mechanical_cp210_gate.py` | Regression for the author's CP210x COM10 telemetry-link screenshot | `test_cp210_move_allowed_but_firmware_upgrade_still_rejected` (+1) |
+| `tests/test_nav_ekf_contract.py` | — | `test_quality_adaptive_flow_ekf_is_owned_by_the_flow_nav_service` (+3) |
+| `tests/test_optical_flow_contract.py` | — | `test_micolink_parser_accepts_live_range_and_flow_payload_shape` (+11) |
+| `tests/test_panel_autoconnect.py` | 记住上次的连接并在启动时自动连回去。 关键点是**按什么认板子**：Windows 给 USB 串口分配的 COM 号会变（本机就出现过同一块 飞控在 COM30/31/32 之间跳），而 ST-Link、蓝牙串口、CH340 会占掉腾出… | `test_fingerprint_is_stable_across_com_renumbering` (+15) |
+| `tests/test_panel_connection_reliability.py` | H1/H2/H4: real transport and Tk boundaries with no physical device access | `test_slow_io_does_not_block_ui_queries_cancel_or_stop` (+18) |
+| `tests/test_panel_d_data_contract.py` | D 线 TK-03/TK-04 contracts: values must say what state they represent | `test_d_modules_are_imported_in_all_three_panel_contexts` (+13) |
+| `tests/test_panel_drift_page_extraction.py` | S6 stationary-drift page extraction ownership and compatibility contract | `test_drift_page_mixin_owns_only_its_builder_and_handlers` (+4) |
+| `tests/test_panel_flow_page_extraction.py` | R-S6-1 增量11（收官）：光流与测距页搬进 panel_lib/pages/flow_ranging.py。 搬家的判据只有一条——行为零变更。这里用三种独立方式钉： 1. 逐方法 AST 哈希与搬家前逐字节一致（哈希取自父提交 9… | `test_flow_mixin_owns_every_moved_method_with_the_pre_move_ast` (+4) |
+| `tests/test_panel_proto_extraction.py` | S6 panel protocol extraction ownership and compatibility contract | `test_proto_module_owns_the_protocol_table_and_parsing_helpers` (+3) |
+| `tests/test_panel_qa_harness.py` | R-S1-3（TK-00）：无硬件 QA 测试基础的**装置契约**。 这份文件只证明装置本身可信，**不证明产品正确**。区别很重要：报告里 N01–N13 那些 缺陷在这里一条都不会被断言成“已修”，它们由各自的实现包先写红灯再修绿。… | `test_opening_a_physical_serial_port_fails_immediately` (+20) |
+| `tests/test_panel_qa_review_regressions.py` | R-S1-3 返修：关闭 2026-09-04 软件审核的 Q1~Q6。 审核对象是 `3269a7fe`。六条的共同点是：**装置声称的保证比它实际做到的强**，而且原来 那批测试恰好都绕过了差额——`test_a_qa_session… | `test_every_data_path_constant_is_redirected` (+16) |
+| `tests/test_panel_rc_wizard_page_extraction.py` | S6 RC page extraction contract | `test_method_ownership` (+6) |
+| `tests/test_panel_state_extraction.py` | S6 panel-state persistence extraction ownership and compatibility contract | `test_state_module_owns_persistence_and_logging_implementation` (+3) |
+| `tests/test_panel_transport_extraction.py` | S6 panel transport extraction ownership and compatibility contract | `test_transport_module_owns_moved_definitions` (+2) |
+| `tests/test_panel_v1_page_extraction.py` | S6 V1-metrology page extraction ownership and compatibility contract | `test_v1_page_mixin_owns_the_builder_and_every_v1_handler` (+5) |
+| `tests/test_pipeline_contract.py` | — | `test_pipeline_exists_with_required_sections` (+6) |
+| `tests/test_position_control.py` | R-S5-1 pure translational controller contract. The executable part compiles the real Driver C module with host gcc. The… | `test_position_control_source_is_pure_and_documented` (+1) |
+| `tests/test_project_index_contract.py` | — | `test_repository_index_is_current` (+2) |
+| `tests/test_proto_frame_resync.py` | 修 bug：`$X` 解析器有两处会永久停摆的重同步空洞。 发现于 2026-09-03，R-T1-2 的模糊测试。缺陷早于遥测流工作，命中的是所有 `$X` 帧共用的 `TransportBase._consume_buffer`，**… | `test_intact_stream_still_decodes_every_frame` (+8) |
+| `tests/test_pwm_frame_rate_contract.py` | 执行器出口帧率契约（2026-09-07）。 改动的动机是延迟，不是功能：四路 PWM 原来共用 TIM2 的 50 Hz 帧，500 Hz 的角速率 环算 10 次只送得出去 1 次，零阶保持平均延迟 10 ms。这段死区是整条控制回路… | `test_actuator_pins_are_unchanged` (+3) |
+| `tests/test_rc_mapping.py` | 遥控通道映射与端点标定。 背景：通道号原来是 app_stabilizer.c 里的 6 个 #define（CH1..CH6），端点是 1000/1500/2000 三个字面量。换发射机、改通道顺序、或者摇杆行程不标准，都得改代码 重烧… | `test_moving_one_stick_identifies_that_channel` (+63) |
+| `tests/test_rc_mapping_contract.py` | — | `test_freertos_documents_fixed_elrs_channel_map` (+8) |
+| `tests/test_record_service_review_regressions.py` | R-T1-6 返修：关闭 2026-09-04 软件审核的 R1~R4。 审核对象是 `63223acd`。四条都不是"再多测一点"能发现的，它们各自对应第一版实现里 一个具体的结构错误： R1 Tk 线程仍在做 I/O 和等待。`sta… | `test_start_does_no_disk_io_on_the_calling_thread` (+10) |
+| `tests/test_rom_dfu_boot_contract.py` | Safety and reset-context contract for the STM32H743 factory USB DFU path | `test_boot_command_is_explicit_scheduled_and_safety_gated` (+3) |
+| `tests/test_rom_dfu_host.py` | — | `test_cli_discovery_prefers_path_and_finds_common_cubeclt_layout` (+10) |
+| `tests/test_scope_canvas.py` | `panel_lib/scope.py` 的 `ScopeCanvas` 与 min/max 抽稀。 从 `tests/test_scope_page.py` 迁过来（R-T1-5 让 `pages/scope.py` 退役，但 **画布… | `test_min_max_decimation_keeps_the_extremes` (+3) |
+| `tests/test_sensor_biquad_contract.py` | Contract tests for the 2nd-order Butterworth sensor filter. The filter was upgraded from a 1st-order IIR because measur… | `test_filter_is_second_order_biquad` (+4) |
+| `tests/test_sensor_orientation_runtime.py` | Runtime IMU orientation selection at the raw-to-airframe seam | `test_public_api_uses_one_byte_legacy_sentinel_and_stable_descriptors` (+1) |
+| `tests/test_service_param_background_contract.py` | — | `test_services_layer_contains_only_param_service` (+4) |
+| `tests/test_servo_bus_guard_contract.py` | R-S7-3 contract: bus-only servo paths are inert in PWM mode | `test_guard_owns_pwm_selection_and_all_bus_only_commands` (+6) |
+| `tests/test_servo_cal_contract.py` | — | `test_servo_cal_uses_release_startup_save_and_restore_without_center_save` (+3) |
+| `tests/test_servo_debug_page_contract.py` | R-S7-4 host contracts for BUS-only controls and PWM JOG routing | `test_pwm_jog_has_no_bus_command_and_bus_move_is_unchanged` (+2) |
+| `tests/test_servo_debug_theme.py` | Servo dark-theme contrast and PWM gates | `test_dark_spinboxes` (+2) |
+| `tests/test_servo_dma_contract.py` | — | `test_stabilizer_uses_nonblocking_servo_dma_path` (+9) |
+| `tests/test_servo_feedback_bench_contract.py` | — | `test_driver_uses_manual_prad_request_and_fixed_length_dma_receive` (+4) |
+| `tests/test_servo_feedback_runtime_contract.py` | — | `test_runtime_feedback_uses_deterministic_50_hz_per_servo_slots` (+1) |
+| `tests/test_servo_jog_contract.py` | SERVO JOG（保持型地面点动）契约测试。 背景（M4 台架实测缺陷）：稳定环 commit 以 3µs 死区 + 500ms 强制刷新持续流式 下发舵机目标，一次性 SERVO MOVE 慢移会在下一次强制刷新被拉回中点。修复后的… | `test_servo_jog_runtime_behaviour` (+4) |
+| `tests/test_servo_mechanical_calibration.py` | Persistent servo-mechanical calibration and flow-compensation evidence | `test_servo_mechanical_fields_reuse_fcal_reserved_space_without_abi_growth` (+4) |
+| `tests/test_servo_pwm_immediate_move_contract.py` | R-S7-7：PWM 调试页即时移动通路 与 标定页慢速点动 的解耦契约。 缺陷背景（R-S7-4 遗留）：PWM 模式下 servo_debug.py 的「移动此舵机」下发裸 `SERVO JOG <ch> <us>`，而该命令的斜坡速… | `test_pwm_debug_move_uses_immediate_path_not_the_calibration_slew` (+6) |
+| `tests/test_servo_type_panel_contract.py` | R-S7-5 host contracts for servo type controls and transactions | `test_servo_type_protocol_ids_are_unique_and_forwarded` (+3) |
+| `tests/test_servo_type_protocol.py` | S7 servo output type persistence and command protocol contracts | `test_servo_type_reuses_reserved_fcal_byte_without_abi_growth` (+5) |
+| `tests/test_shared_log_transfer.py` | Single-reader export over the already-open serial session, using FLOG fixtures | `test_current_connection_can_be_borrowed_without_reopen` (+6) |
+| `tests/test_stationary_drift.py` | 静止漂移自检。 背景：六面标定解的是"摆在六个姿态下读数对不对"，但用户真正在意的是"放着不动会 不会自己飘"。这两件事不等价。飞机不动时真实角速度就是 0、真实比力就是 1 g，所以 这个检查不需要转台 —— 读数偏多少就是误差多少，也… | `test_a_still_aircraft_reports_no_drift_and_one_g` (+13) |
+| `tests/test_telem_stream_contract.py` | R-T1-1：遥测流 v2（固件侧）契约测试。 三部分： 1. **黄金向量**：宿主 gcc 真编译 `app_telem_frame.c` + `app_proto.c`，让固件 自己的编码器把一组给定的 mask/values 编出… | `test_encoder_matches_the_golden_vectors_byte_for_byte` (+12) |
+| `tests/test_telem_stream_decoder.py` | R-T1-2：上位机遥测流解码（`tools/panel_lib/telem_stream.py` + transport 二进制分支）。 四件事： 1. **黄金向量对称**：`tests/golden/telem_frames_v2.… | `test_transport_delivers_telemetry_payloads_as_bytes` (+26) |
+| `tests/test_telemetry_schema_contract.py` | Contract tests for the VOFA telemetry channel schema (``TELEM?``). The schema exists so the ground station never has to… | `test_header_reports_version_count_rate_and_hash` (+14) |
+| `tests/test_tk_review_regressions.py` | Regressions for the V/D-line review findings (R-S1-4 … R-S1-7). Every test here exists because the reviewer found a cri… | `test_hovering_a_viewport_does_not_steal_focus_from_an_entry` (+9) |
+| `tests/test_tk_v_revamp.py` | V 线 TK-01/TK-02 contracts against the real offline DronePanel | `test_theme_is_global_semantic_and_contrasted` (+4) |
+| `tests/test_usb_v0_transport_contract.py` | — | `test_usb_route` (+3) |
+| `tests/test_v0_guidance_flow.py` | V0 引导可达性回归测试。 V0 页的四项准备清单（连接/快照/零偏/安全输出）与 A/B/C 按钮全部由 _validation_refresh_readiness 依据实时 stabilizer snapshot 解锁，页面文案也明确… | `test_v0_page_polls_as_soon_as_it_is_visible` (+7) |
+| `tests/test_v1_evidence_table.py` | V1 采集页的证据表格。 背景：2026-08-29 的会话里同时躺着三条 50 Hz 的降级采集和两条重复的 accel_pos_x， 表格是平铺的，既看不出哪些步骤还没采、也删不掉，点"分析"只会抛一句不知道说的是谁 的 "采样率仅… | `test_every_planned_step_gets_a_row_even_before_it_is_captured` (+16) |
+| `tests/test_v1_metrology_session.py` | — | `test_v4_exact_abi_header_sample_and_temperature_conversion` (+17) |
+| `tests/test_validation_snapshot_contract.py` | — | `test_public_snapshot_contains_the_read_only_validation_payload` (+5) |
 
 Open the smallest listed interface first (normally a header or test), then its implementation only if needed.

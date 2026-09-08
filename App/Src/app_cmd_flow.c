@@ -167,7 +167,7 @@ void app_control_report_flow(void)
     }
     APP_Control_QueueText(
         "FLOW comp valid=%u sample_ms=%lu contract=%u orientation=%u "
-        "source=controller_legacy_x_forward_y_right export=canonical_flu "
+        "source=calibrated_body_flu export=canonical_flu "
         "sensor_vx_mm_s=%ld sensor_vy_mm_s=%ld "
         "corr_vx_mm_s=%ld corr_vy_mm_s=%ld\r\n",
         (unsigned int)snapshot.valid,

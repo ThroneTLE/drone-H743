@@ -39,7 +39,18 @@ def pytest_configure(config):
 
     def counting_init(self, *args, **kwargs):
         config._tk_root_count += 1
-        return original_tk_init(self, *args, **kwargs)
+        result = original_tk_init(self, *args, **kwargs)
+        # 兜底：**任何**在测试里建出来的 Tk root 一律先收起来。
+        #
+        # 这条不是装饰。跑一次固件测试会建 17 个 root，只要有一个没人收，桌面上
+        # 就会弹出窗口、抢走焦点，把正在敲字的人打断——2026-09-07 作者就是这么
+        # 撞上的。需要真实布局的装置（tools/panel_qa/harness.py）自己会挪到屏幕外
+        # 再 deiconify；除它以外，没有任何测试有理由让窗口上屏。
+        try:
+            self.withdraw()
+        except Exception:                        # pragma: no cover - root 建了一半
+            pass
+        return result
 
     tkinter.Tk.__init__ = counting_init
     config._tk_init_original = original_tk_init

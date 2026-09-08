@@ -68,7 +68,10 @@ int main(void) {
 
     DRV_COAX_CTRL_ResetParams();
     DRV_COAX_CTRL_GetParams(&p);
-    p.rate.kp[2] = 0.01f;
+    /* Deliberately drive yaw past what the allocator can deliver.  The value
+     * tracks the reaction-torque coefficient k: it grew 50x on 2026-09-07, so
+     * the moment limit grew with it and the old 0.01 no longer saturates. */
+    p.rate.kp[2] = 0.5f;
     p.attitude.att_kp[2] = 40.0f;
     DRV_COAX_CTRL_SetParams(&p);
     memset(&s, 0, sizeof(s));
@@ -77,7 +80,22 @@ int main(void) {
     r.yaw_rad = 1.2f;
     DRV_COAX_CTRL_RunScheduled(&a, &r, &s, &o);
     DRV_COAX_CTRL_GetLastDebug(&d);
-    CHECK(o.yaw_differential_saturated != 0U, 5);
+    /* When the yaw demand exceeds authority, TOTAL THRUST MUST SURVIVE INTACT.
+     *
+     * This used to assert o.yaw_differential_saturated != 0, i.e. "let the
+     * allocator run into the motor bounds".  That is exactly the behaviour
+     * fixed on 2026-09-07: the two rotors are clamped independently, so when
+     * one hits its limit the other does not make up the difference and
+     * upper+lower silently falls below F -- felt as "raise the yaw gain and the
+     * lift collapses / a rotor stalls".  The yaw moment is now clamped to the
+     * achievable range before allocation, so the allocator no longer leaves the
+     * range and the lift is preserved; "the demand was too big" is reported
+     * honestly by the rate-loop saturation flag on the next line. */
+    /* Bound the actual loss rather than the allocator's flag: at the limit one
+     * rotor sits exactly on T_max, so a 1-ULP clip can still raise
+     * yaw_differential_saturated.  That is harmless -- what must not happen is
+     * losing thrust, and this bounds it to 1e-5 N. */
+    CHECK(fabsf((o.thrust_upper_n + o.thrust_lower_n) - d.total_force_n) < 1.0e-5f, 5);
     CHECK(o.saturation_positive[2] != 0U, 6);
     CHECK(fabsf(o.moment_achieved_n_m[2]) < fabsf(d.moment_cmd_n_m[2]), 7);
     CHECK(fabsf(o.moment_achieved_n_m[2] - d.moment_achieved_n_m[2]) < 1.0e-8f, 8);

@@ -47,7 +47,7 @@ def test_gains_are_positive_so_polarity_errors_cannot_be_masked() -> None:
                  "params->attitude.att_kp[1] = 0.0660f / 0.1138f;",
                  "params->rate.kp[0] = 0.1104f;",
                  "params->rate.kp[1] = 0.1138f;",
-                 "params->rate.kp[2] = DRV_AIRFRAME_IZZ_KGM2 * 0.15f;"):
+                 "params->rate.kp[2] = DRV_AIRFRAME_IZZ_KGM2 * 0.525f;"):
         assert line in source, line
 
     # Magnitude is taken at use, so a negative value entered from the UI cannot
@@ -67,17 +67,15 @@ def test_control_law_is_negative_feedback_by_structure() -> None:
 
 
 def test_stick_polarity_lives_in_exactly_one_place() -> None:
-    freertos = read("App/Src/app_stabilizer.c")
-
-    # The stick mapping is the only sign that changes pilot-facing direction.
-    # The force-frame signs are applied to measured and target attitude alike,
-    # but that does NOT make them cancel -- see
-    # tests/test_flu_seam3_force_frame_derivation.py for the executable
-    # counter-evidence.
-    assert "#define STABILIZER_RC_ATTITUDE_TARGET_PITCH_SIGN (-1.0f)" in freertos
-    assert "#define STABILIZER_RC_ATTITUDE_TARGET_ROLL_SIGN  (1.0f)" in freertos
-    assert freertos.count("STABILIZER_RC_ATTITUDE_TARGET_PITCH_SIGN") == 2
-    assert freertos.count("STABILIZER_RC_ATTITUDE_TARGET_ROLL_SIGN") == 2
+    stabilizer = read("App/Src/app_stabilizer.c")
+    intent = read("App/Src/app_rc_intent.c")
+    assert '#include "app_rc_intent.h"' in stabilizer
+    assert "STABILIZER_RC_ATTITUDE_TARGET_PITCH_SIGN" not in stabilizer
+    assert "STABILIZER_RC_ATTITUDE_TARGET_ROLL_SIGN" not in stabilizer
+    for function in ("APP_RcIntent_ForwardVelocity", "APP_RcIntent_LeftVelocity",
+                     "APP_RcIntent_TargetPitch", "APP_RcIntent_TargetRoll",
+                     "APP_RcIntent_YawRateLeft"):
+        assert function in intent
 
 
 def test_sign_convention_is_documented_in_one_block() -> None:
@@ -98,6 +96,65 @@ def test_sign_convention_is_documented_in_one_block() -> None:
     assert "coax_ctrl_servo_calibration.pulse_sign[" in source
     assert "DRV_COAX_CTRL_SERVO_ALPHA_SIGN" not in source
     assert "DRV_COAX_CTRL_SERVO_BETA_SIGN" not in source
+    assert "DRV_COAX_CTRL_ROLL_MOMENT_SIGN" not in source
+    assert "DRV_COAX_CTRL_PITCH_MOMENT_SIGN" not in source
+
+
+def test_tilt_moment_polarity_is_derived_from_measured_geometry() -> None:
+    """极性必须由几何算出来，不能是一个可以随手翻的字面量。
+
+    这两个符号历史上就是一对 `-1.0f` 常量。它们既没有推导，也没有任何东西
+    挡住"照着现象翻一下试试"——而力矩极性翻错的表现恰好是正反馈，跟增益太
+    大很像，很容易被误诊。现在它由重心到推力作用点的实测几何推出：重新量过
+    飞机才可能改变它，改代码不行。
+    """
+    source = read("Driver/Src/drv_coax_ctrl.c")
+    model = read("Driver/Inc/drv_airframe_model.h")
+
+    assert "DRV_AIRFRAME_THRUST_POINT_TO_CG_Z_M" in model
+    assert (
+        "(DRV_AIRFRAME_THRUST_POINT_Z_M - DRV_AIRFRAME_CG_Z_M)" in model
+    ), "r_z 必须由两个实测常量相减得到"
+
+    polarity = source.split("#define DRV_COAX_CTRL_TILT_MOMENT_POLARITY", 1)[1]
+    polarity = polarity.split("\n\n", 1)[0]
+    assert "DRV_AIRFRAME_THRUST_POINT_TO_CG_Z_M" in polarity, (
+        "极性必须引用实测几何，不能写成裸符号"
+    )
+
+    # 两轴共用同一个 -r_z 因子，所以只允许有一个极性常量。
+    assert source.count("DRV_COAX_CTRL_TILT_MOMENT_POLARITY *") == 2
+
+
+def test_yaw_polarity_is_derived_from_rotor_handedness_and_marked_inferred() -> None:
+    """偏航极性同样必须可推导；而且这次的上游是**反推值**，必须写明。
+
+    分配式 `lower = (ku*F + Mz)/(ku+kl)` 里原本藏着一个没人写出来的假设：
+    "加大下桨 = 正偏航"。它等价于断言下桨旋向，属于机械事实，不该以隐含形式
+    存在。现在它由 DRV_AIRFRAME_LOWER_ROTOR_SPIN_SENSE 推出。
+
+    该常量目前不是量出来的，是从"角速度环高增益抖振（=负反馈）"反推的，所以
+    这里额外要求注释把这件事说清楚——一个未经实测的值伪装成实测值，比没有这个
+    值更危险。
+    """
+    model = read("Driver/Inc/drv_airframe_model.h")
+    source = read("Driver/Src/drv_coax_ctrl.c")
+
+    assert "DRV_AIRFRAME_LOWER_ROTOR_SPIN_SENSE" in model
+    # 溯源必须明说是反推、并留下证实/推翻的办法。
+    provenance = model.split("DRV_AIRFRAME_LOWER_ROTOR_SPIN_SENSE", 1)[0]
+    provenance = provenance[provenance.rindex("/*"):]
+    assert "反推" in provenance, "反推值必须标注，不能冒充实测"
+    assert "抖振" in provenance, "必须留下推理依据"
+    assert "拆桨" in provenance, "必须留下证实/推翻的办法"
+
+    polarity = source.split("#define DRV_COAX_CTRL_YAW_TORQUE_POLARITY", 1)[1]
+    polarity = polarity.split("\n\n", 1)[0]
+    assert "DRV_AIRFRAME_LOWER_ROTOR_SPIN_SENSE" in polarity, (
+        "偏航极性必须引用旋向常量，不能写成裸符号"
+    )
+    # 分配与"已达成力矩"必须用同一套极性，只改一边等于自己骗自己。
+    assert source.count("DRV_COAX_CTRL_YAW_TORQUE_POLARITY *") == 2
 
 
 # ── runtime checks: physical direction, using the real controller ──
@@ -130,6 +187,7 @@ int main(void)
     DRV_COAX_CTRL_Reference ref;
     DRV_COAX_CTRL_Output out;
     DRV_COAX_CTRL_Params params;
+    DRV_COAX_CTRL_ServoCalibration cal;
     float level_alpha, level_beta;
     float nose_up_alpha, right_down_beta;
     float stick_fwd_alpha, stick_right_beta;
@@ -257,6 +315,121 @@ int main(void)
     /* Named-parameter entry must reject a negative gain too. */
     CHECK(DRV_COAX_CTRL_SetParam("coax.pitch_angle_kp", -0.5f) == 0U, 19);
     CHECK(DRV_COAX_CTRL_SetParam("coax.pitch_angle_kp", 0.5f) != 0U, 20);
+
+    /*
+     * E. TILT -> MOMENT POLARITY FOLLOWS MEASURED GEOMETRY.
+     * The thrust point sits below the CG, so tau = r x F makes a positive tilt
+     * produce a positive FLU moment on both axes. Re-measure the airframe and
+     * this expectation has to move with it -- which is the whole reason the
+     * polarity is derived rather than written down as a sign.
+     */
+    CHECK(DRV_AIRFRAME_THRUST_POINT_TO_CG_Z_M < 0.0f, 21);
+
+    DRV_COAX_CTRL_GetDefaultParams(&params);
+    DRV_COAX_CTRL_SetParams(&params);
+    DRV_COAX_CTRL_ResetState();
+    base_state(&att, &ref);
+    ref.target_roll_rad = 0.15f;
+    DRV_COAX_CTRL_Run(&att, &ref, &out);
+    CHECK(fabsf(out.beta_rad) > 1.0e-4f, 22);
+    CHECK(out.beta_rad * out.moment_achieved_n_m[0] > 0.0f, 23);
+
+    /*
+     * F. THE CHAIN MUST REACH THE SERVO THE RIGHT WAY ROUND.
+     *
+     * Everything above compares moments against the same model that produced
+     * them, so a whole-chain inversion stays self-consistent and passes. That
+     * is exactly how the positive-feedback bug survived a green suite. This
+     * block instead compares against a physical fact the firmware cannot
+     * derive -- the author's bench observation of the persisted calibration
+     * (data/calibration/servo_mechanical/2026-08-30, pulse_sign = -1/-1):
+     *
+     *     alpha pulse up -> thrust axis moves left (+Y)
+     *     beta  pulse up -> thrust axis moves rear (-X)
+     *
+     * Right-wing-down is corrected by tilting the thrust right (-Y), so the
+     * alpha pulse must go DOWN. Nose-down is corrected by tilting the thrust
+     * forward (+X), so the beta pulse must go DOWN.
+     */
+    memset(&cal, 0, sizeof(cal));
+    cal.center_us[DRV_COAX_CTRL_SERVO_ALPHA_INDEX] = 1530U;
+    cal.center_us[DRV_COAX_CTRL_SERVO_BETA_INDEX] = 1500U;
+    cal.min_us[DRV_COAX_CTRL_SERVO_ALPHA_INDEX] = 1000U;
+    cal.min_us[DRV_COAX_CTRL_SERVO_BETA_INDEX] = 1000U;
+    cal.max_us[DRV_COAX_CTRL_SERVO_ALPHA_INDEX] = 2000U;
+    cal.max_us[DRV_COAX_CTRL_SERVO_BETA_INDEX] = 2000U;
+    cal.pulse_sign[DRV_COAX_CTRL_SERVO_ALPHA_INDEX] = -1;
+    cal.pulse_sign[DRV_COAX_CTRL_SERVO_BETA_INDEX] = -1;
+    CHECK(DRV_COAX_CTRL_SetServoCalibration(&cal) != 0U, 24);
+
+    DRV_COAX_CTRL_ResetState();
+    base_state(&att, &ref);
+    att.roll_rad = 0.15f;               /* right wing down */
+    DRV_COAX_CTRL_Run(&att, &ref, &out);
+    CHECK(out.servo_alpha_us <
+          cal.center_us[DRV_COAX_CTRL_SERVO_ALPHA_INDEX], 25);
+
+    DRV_COAX_CTRL_ResetState();
+    base_state(&att, &ref);
+    att.pitch_rad = 0.15f;              /* FLU: nose down */
+    DRV_COAX_CTRL_Run(&att, &ref, &out);
+    CHECK(out.servo_beta_us <
+          cal.center_us[DRV_COAX_CTRL_SERVO_BETA_INDEX], 26);
+
+    /*
+     * G. THE MECHANICAL CALIBRATION IS THE ONLY VARIABLE.
+     * Flip pulse_sign alone -- as a reversed linkage would -- and only the
+     * pulse direction may flip. Nothing in the control law is allowed to
+     * notice, which is what makes "calibrate once, reuse the firmware" true.
+     */
+    cal.pulse_sign[DRV_COAX_CTRL_SERVO_ALPHA_INDEX] = 1;
+    cal.pulse_sign[DRV_COAX_CTRL_SERVO_BETA_INDEX] = 1;
+    CHECK(DRV_COAX_CTRL_SetServoCalibration(&cal) != 0U, 27);
+
+    DRV_COAX_CTRL_ResetState();
+    base_state(&att, &ref);
+    att.roll_rad = 0.15f;
+    DRV_COAX_CTRL_Run(&att, &ref, &out);
+    CHECK(out.servo_alpha_us >
+          cal.center_us[DRV_COAX_CTRL_SERVO_ALPHA_INDEX], 28);
+
+    DRV_COAX_CTRL_ResetState();
+    base_state(&att, &ref);
+    att.pitch_rad = 0.15f;
+    DRV_COAX_CTRL_Run(&att, &ref, &out);
+    CHECK(out.servo_beta_us >
+          cal.center_us[DRV_COAX_CTRL_SERVO_BETA_INDEX], 29);
+
+    /*
+     * H. YAW POLARITY FOLLOWS THE ROTOR HANDEDNESS CONSTANT.
+     * A rotor's reaction torque on the body opposes its own spin, so which
+     * motor must speed up for +yaw is decided by the handedness, not by a
+     * sign buried in the allocator.  With the shipped value (lower rotor
+     * clockwise seen from above) a positive yaw moment must come from adding
+     * thrust to the LOWER rotor.
+     *
+     * NOTE: that handedness is currently INFERRED, not measured -- see
+     * DRV_AIRFRAME_LOWER_ROTOR_SPIN_SENSE.  This check pins the chain, not
+     * the physical fact.
+     */
+    CHECK(DRV_AIRFRAME_LOWER_ROTOR_SPIN_SENSE < 0.0f, 30);
+
+    DRV_COAX_CTRL_GetDefaultParams(&params);
+    DRV_COAX_CTRL_SetParams(&params);
+    DRV_COAX_CTRL_ResetState();
+    base_state(&att, &ref);
+    att.gyro_z_rad_s = -0.5f;           /* yawing right -> +yaw moment wanted */
+    DRV_COAX_CTRL_Run(&att, &ref, &out);
+    {
+        DRV_COAX_CTRL_Debug debug;
+        DRV_COAX_CTRL_GetLastDebug(&debug);
+        CHECK(debug.moment_cmd_n_m[2] > 0.0f, 31);
+        CHECK(out.thrust_lower_n > out.thrust_upper_n, 32);
+        /* Achieved torque must be reported with the same polarity it was
+         * allocated with; reporting one and allocating the other is exactly
+         * how a whole-chain inversion stays invisible. */
+        CHECK(debug.yaw_torque_cmd > 0.0f, 33);
+    }
 
     printf("ok\n");
     return 0;

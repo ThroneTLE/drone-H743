@@ -170,13 +170,10 @@ def time_axis_for_segment(frame: "replay.pd.DataFrame", time_choice: str) -> tup
     return time_choice, values
 
 
-class FlightLogWorkbench(tk.Tk):
+class FlightLogWorkbenchView(ttk.Frame):
     # 中文注释：集成工作台只读本地日志；Rerun 回放通过隔离脚本弹出新窗口。
-    def __init__(self, initial_path: Path | None = None) -> None:
-        super().__init__()
-        self.title("H743 飞行日志工作台")
-        self.geometry("1540x940")
-        self.minsize(1240, 760)
+    def __init__(self, master, initial_path: Path | None = None) -> None:
+        super().__init__(master)
 
         self.folder_path = DEFAULT_LOG_DIR
         self.csv_path: Path | None = None
@@ -205,10 +202,6 @@ class FlightLogWorkbench(tk.Tk):
         self.refresh_files()
         if initial_path is not None:
             self.open_initial(initial_path)
-        else:
-            latest = replay.latest_csv_in(DEFAULT_LOG_DIR)
-            if latest is not None:
-                self.load_csv(latest)
 
     def _build_ui(self) -> None:
         root = ttk.Frame(self, padding=10)
@@ -467,6 +460,9 @@ class FlightLogWorkbench(tk.Tk):
         except Exception as exc:
             messagebox.showerror("读取失败", str(exc))
             return
+        self.display_csv(csv_path, frame)
+
+    def display_csv(self, csv_path, frame) -> None:
         self.csv_path = csv_path
         self.frame = frame
         self.folder_path = csv_path.parent
@@ -697,6 +693,15 @@ class FlightLogWorkbench(tk.Tk):
         self.clipboard_append(text)
         self.status_var.set(f"已复制：{text}")
 
+
+
+class FlightLogWorkbench(tk.Tk):
+    def __init__(self, initial_path: Path | None = None) -> None:
+        super().__init__()
+        self.title("H743 飞行日志工作台")
+        self.geometry("1540x940")
+        self.view = FlightLogWorkbenchView(self, initial_path)
+        self.view.pack(fill=tk.BOTH, expand=True)
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="H743 飞行日志 All-in-One 工作台")

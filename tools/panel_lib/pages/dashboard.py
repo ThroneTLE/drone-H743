@@ -798,6 +798,35 @@ class DashboardPageMixin:
             self.dashboard_param_trackers[name] = tracker
         return tracker
 
+    def _dashboard_note_param_error(self, param: str, reason: str) -> bool:
+        """把固件的 `ERR param target <param>` 接到对应的滑块上。
+
+        Dashboard 以前**根本不看** OK/ERR 回复，被拒绝的写入只能等 0.75 s 回显
+        超时才变红，而且措辞是"未收到飞控回显"——飞控明明回了。这里按固件参数名
+        反查通道，立刻判红并写出真正的原因。
+
+        入参是**固件参数名**（`coax.yaw_angle_kp`），不是通道名，所以要反查：
+        通道表里 `channel.param` 才是发给飞控的那个名字。
+        """
+        target = (param or "").strip()
+        if not target:
+            return False
+        schema = getattr(self, "dashboard_schema", None)
+        if schema is None:
+            return False
+        for channel in schema.channels.values():
+            if getattr(channel, "param", "") != target:
+                continue
+            tracker = self.dashboard_param_trackers.get(channel.name)
+            if tracker is None:
+                # 没人动过这个滑块就没有 tracker；此时无须凭空建一个。
+                return False
+            tracker.note_rejected(reason)
+            for tile in self.dashboard_tiles:
+                tile.refresh()
+            return True
+        return False
+
     def _dashboard_send_param(self, name: str, value: float) -> bool:
         channel = self._dashboard_channel(name)
         if channel is None or not channel.is_parameter:

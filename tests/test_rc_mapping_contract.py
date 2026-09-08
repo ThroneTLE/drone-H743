@@ -46,17 +46,9 @@ def test_controller_uses_named_rc_channels_for_references() -> None:
     assert "#define STABILIZER_Z_POS_ERR_MAX_M     0.35f" in freertos
     assert "STABILIZER_Z_THRUST_BIAS_MAX_M_S2" not in freertos
     assert "#define STABILIZER_YAW_RATE_REF_MAX_RAD_S 1.04719758f" in freertos
-    assert (
-        "frame->reference.vx_m_s =\n"
-        "        frame->rc.norm[APP_RC_FUNC_PITCH] *"
-        in freertos
-    )
-    assert (
-        "frame->reference.vy_m_s =\n"
-        "        frame->rc.norm[APP_RC_FUNC_ROLL] *"
-        in freertos
-    )
-    assert "STABILIZER_RC_VELOCITY_Y_TO_FLU_SIGN" in freertos
+    assert "APP_RcIntent_ForwardVelocity(" in freertos
+    assert "APP_RcIntent_LeftVelocity(" in freertos
+    assert "STABILIZER_RC_VELOCITY_Y_TO_FLU_SIGN" not in freertos
     assert "ctx->position_ref_x_m += frame->reference.vx_m_s * frame->ctrl_dt_sec;" in freertos
     assert "ctx->position_ref_y_m += frame->reference.vy_m_s * frame->ctrl_dt_sec;" in freertos
     assert "frame->reference.x_m = ctx->position_ref_x_m;" in freertos
@@ -172,7 +164,8 @@ def test_disarmed_pwm_disables_output_without_changing_throttle_limits() -> None
     assert "BSP_PWM_Status BSP_PWM_DisableEsc(uint32_t channel);" in header
     assert "pulse_us < BSP_PWM_ESC_MIN_US" in source
     assert "BSP_PWM_Status BSP_PWM_DisableEsc(uint32_t channel)" in source
-    assert "__HAL_TIM_SET_COMPARE(&htim2, tim_channel, 0U);" in source
+    # ESC 自 2026-09-07 起走 TIM5（PA0/PA1 的 AF2，引脚未变），舵机仍在 TIM2。
+    assert "__HAL_TIM_SET_COMPARE(&htim5, tim_channel, 0U);" in source
     assert "if (percent == 0U) {\n        return BSP_PWM_ESC_STOP_US;\n    }" not in source
     assert "BSP_PWM_DisableEsc(1);" in freertos
     assert "BSP_PWM_DisableEsc(2);" in freertos
@@ -217,7 +210,7 @@ def test_yaw_stick_integrates_reference_and_wraps_at_pi_boundary() -> None:
     assert "while (angle_rad > STABILIZER_PI)" in freertos
     assert "while (angle_rad < -STABILIZER_PI)" in freertos
     assert "static float stabilizer_rc_yaw_rate_rad_s(float yaw_norm)" in freertos
-    assert "return yaw_norm * STABILIZER_YAW_RATE_REF_MAX_RAD_S;" in freertos
+    assert "APP_RcIntent_YawRateLeft(yaw_norm," in freertos
     assert "float yaw_ref_rad;" in freertos
     assert "uint8_t yaw_ref_ready;" in freertos
     assert freertos.count("yaw_ref_ready = 0U;") >= 2

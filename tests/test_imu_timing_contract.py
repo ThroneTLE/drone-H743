@@ -248,7 +248,9 @@ def test_nav_gravity_compensation_uses_absolute_attitude_not_boot_zero() -> None
     assert "nav_input" not in freertos
     assert "ctx->roll_control * STABILIZER_DEG_TO_RAD," in freertos
     assert "ctx->pitch_control * STABILIZER_DEG_TO_RAD," in freertos
-    assert "ctx->yaw_control * STABILIZER_DEG_TO_RAD," in freertos
+    # yaw 不再传进这个适配器：加速度只转平到机头对齐的本地水平系，好和同一拍
+    # 的光流速度同系。见 tests/test_flu_nav_frame_alignment.py。
+    assert "stabilizer_compensated_imu_accel_level_xy(" in freertos
 
 
 def test_imu_spi_timeout_is_short_but_not_overly_aggressive() -> None:

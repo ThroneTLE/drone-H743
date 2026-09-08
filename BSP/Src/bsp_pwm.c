@@ -14,22 +14,32 @@ static uint8_t start_status[BSP_PWM_TIM_CHANNEL_COUNT];
 
 static uint8_t pwm_started;
 
-static uint32_t pwm_tim_channel(uint32_t channel)
+/*
+ * 一个帧里必须留得下最长脉冲，否则占空比会撞到 100%、输出退化成常高电平。
+ * ESC：2500 us 帧装 1940 us 脉冲，余量 560 us。舵机：20000 us 帧装 2500 us。
+ */
+_Static_assert(BSP_PWM_ESC_FRAME_US > BSP_PWM_ESC_MAX_US,
+               "ESC frame too short for the maximum pulse");
+_Static_assert(BSP_PWM_SERVO_FRAME_US > BSP_PWM_SERVO_MAX_US,
+               "servo frame too short for the maximum pulse");
+_Static_assert((BSP_PWM_ESC_CHANNEL_COUNT + BSP_PWM_SERVO_CHANNEL_COUNT) ==
+                   BSP_PWM_TIM_CHANNEL_COUNT,
+               "start_status must cover every driven channel");
+
+/* ESC 两路在 TIM5 上（PA0/PA1）。 */
+static uint32_t pwm_esc_tim_channel(uint32_t channel)
 {
     switch (channel) {
     case 1U:
         return TIM_CHANNEL_1;
     case 2U:
         return TIM_CHANNEL_2;
-    case 3U:
-        return TIM_CHANNEL_3;
-    case 4U:
-        return TIM_CHANNEL_4;
     default:
         return 0U;
     }
 }
 
+/* 舵机两路留在 TIM2 上（PA2/PA3）。 */
 static uint32_t pwm_servo_tim_channel(uint32_t channel)
 {
     switch (channel) {
@@ -46,9 +56,27 @@ BSP_PWM_Status BSP_PWM_Init(void)
 {
     uint32_t channel;
 
-    for (channel = 1U; channel <= BSP_PWM_TIM_CHANNEL_COUNT; channel++) {
-        HAL_StatusTypeDef status = HAL_TIM_PWM_Start(&htim2, pwm_tim_channel(channel));
+    /*
+     * 帧率归 BSP，不靠 CubeMX 的 Period 初值（见 bsp_pwm.h）。时基 1 MHz，
+     * 所以 ARR = 帧长(us) - 1。必须在 PWM_Start 之前写，此时计数器还在 0，
+     * 不会出现"计数值已超过新 ARR、要绕一整圈才回卷"的情况。
+     */
+    __HAL_TIM_SET_AUTORELOAD(&htim5, BSP_PWM_ESC_FRAME_US - 1U);
+    __HAL_TIM_SET_AUTORELOAD(&htim2, BSP_PWM_SERVO_FRAME_US - 1U);
+
+    for (channel = 1U; channel <= BSP_PWM_ESC_CHANNEL_COUNT; channel++) {
+        HAL_StatusTypeDef status =
+            HAL_TIM_PWM_Start(&htim5, pwm_esc_tim_channel(channel));
         start_status[channel - 1U] = (uint8_t)status;
+        if (status != HAL_OK) {
+            return BSP_PWM_ERROR;
+        }
+    }
+    for (channel = 1U; channel <= BSP_PWM_SERVO_CHANNEL_COUNT; channel++) {
+        HAL_StatusTypeDef status =
+            HAL_TIM_PWM_Start(&htim2, pwm_servo_tim_channel(channel));
+        /* 诊断口 BSP_PWM_GetStartStatus(1..4) 的含义不变：1/2=ESC，3/4=舵机。 */
+        start_status[BSP_PWM_ESC_CHANNEL_COUNT + channel - 1U] = (uint8_t)status;
         if (status != HAL_OK) {
             return BSP_PWM_ERROR;
         }
@@ -67,7 +95,7 @@ BSP_PWM_Status BSP_PWM_Init(void)
 
 BSP_PWM_Status BSP_PWM_SetEscPulse(uint32_t channel, uint16_t pulse_us)
 {
-    uint32_t tim_channel = pwm_tim_channel(channel);
+    uint32_t tim_channel = pwm_esc_tim_channel(channel);
 
     if ((channel == 0U) ||
         (channel > BSP_PWM_ESC_CHANNEL_COUNT) ||
@@ -84,13 +112,13 @@ BSP_PWM_Status BSP_PWM_SetEscPulse(uint32_t channel, uint16_t pulse_us)
     }
 
     esc_pulses_us[channel - 1U] = pulse_us;
-    __HAL_TIM_SET_COMPARE(&htim2, tim_channel, pulse_us);
+    __HAL_TIM_SET_COMPARE(&htim5, tim_channel, pulse_us);
     return BSP_PWM_OK;
 }
 
 BSP_PWM_Status BSP_PWM_DisableEsc(uint32_t channel)
 {
-    uint32_t tim_channel = pwm_tim_channel(channel);
+    uint32_t tim_channel = pwm_esc_tim_channel(channel);
 
     if ((channel == 0U) || (channel > BSP_PWM_ESC_CHANNEL_COUNT)) {
         return BSP_PWM_INVALID_PARAM;
@@ -104,7 +132,7 @@ BSP_PWM_Status BSP_PWM_DisableEsc(uint32_t channel)
     }
 
     esc_pulses_us[channel - 1U] = 0U;
-    __HAL_TIM_SET_COMPARE(&htim2, tim_channel, 0U);
+    __HAL_TIM_SET_COMPARE(&htim5, tim_channel, 0U);
     return BSP_PWM_OK;
 }
 

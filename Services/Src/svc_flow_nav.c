@@ -525,6 +525,11 @@ SVC_FLOW_NAV_SampleResult SVC_FlowNav_PushSample(
         return SVC_FLOW_NAV_SAMPLE_WARMUP;
     }
 
+    /*
+     * 单位换算：v = 计数 * 0.01 * 高度。
+     * 输入的 flow_vel_x/y 已经是规范 FLU 计数（方言适配在
+     * app_optical_flow.c 的采集边界完成），本 Service 不旋转、不换轴。
+     */
     sensor_vx_m_s = (float)flow_nav_ctx.filtered_flow_vel_x * 0.01f *
                     flow_nav_ctx.height_m;
     sensor_vy_m_s = (float)flow_nav_ctx.filtered_flow_vel_y * 0.01f *
@@ -679,9 +684,25 @@ uint8_t SVC_FlowNav_Fuse(const SVC_FLOW_NAV_FuseInput *input)
     }
 
     if (imu_bridge_ok != 0U) {
+        /*
+         * 机头对齐系是随偏航转动的系，速度分量的导数不等于加速度：
+         *     dv/dt|分量 = a - ω × v,  ω = (0, 0, ω_z)
+         * 展开 ω × v = (-ω_z*v_y, +ω_z*v_x, 0)，故按下式换成等效加速度。
+         * 用当前状态估计，不是上一拍的量。
+         *
+         * 这一项留给 EKF 自己做是错的：drv_nav_ekf 被明确定义为 X/Y 互不串
+         * 扰的纯数值 2D KF（tests/test_flu_seam2_navigation_frame.py 钉住），
+         * 而这里恰恰是一个把两轴耦合起来的项——它属于坐标系语义，归本 Service。
+         */
+        const float omega_z = input->yaw_rate_rad_s;
+        const float accel_x_eff = input->accel_x_m_s2 +
+                                  (omega_z * flow_nav_ctx.ekf.vel_m_s[1]);
+        const float accel_y_eff = input->accel_y_m_s2 -
+                                  (omega_z * flow_nav_ctx.ekf.vel_m_s[0]);
+
         DRV_NAV_EKF_Predict(&flow_nav_ctx.ekf,
-                            input->accel_x_m_s2,
-                            input->accel_y_m_s2,
+                            accel_x_eff,
+                            accel_y_eff,
                             dt_sec);
     } else {
         float decay_hz = SVC_FLOW_NAV_EKF_FLOW_LOST_DECAY_HZ;

@@ -10,11 +10,14 @@ R-F6-2 卡在一个问题上：控制器系的 `y_m` / `vy_m_s` 到底是机体*
   * 面板的 `left_y` 阶段提示语是"向机体左侧移动（+Y）"——**物理方向已知**；
   * 该阶段记录的 `vy_m_s` 取自 `FLOW comp` 的 `sensor_vy_mm_s`，也就是
     `snapshot.sensor_velocity_flu_m_s[1]`（导出前已声明 `export=canonical_flu`）；
-  * `app_stabilizer.c` 生成该字段时做了取反：
-    `sensor_velocity_flu_m_s[1] = -debug->sensor_velocity_m_s[1]`。
+  * 旧实现曾在快照出口手写取反；随后集中到光流处理函数**出口**的具名 Adapter，
+    但那已经晚了——同一函数里的旋转补偿用的是早已转成 FLU 的陀螺，补偿被加在
+    尚未转换的 FRD 速度上，Y 反号（2026-09-07 修复）。现在这个变换钉在
+    `app_optical_flow.c::app_flow_fill_sample()`，即驱动帧变成 Service 样本、
+    任何机体量混入**之前**的那一行，之后全链只透传 FLU。
 
-于是链条闭合：向**左**移 → FLU 导出为**正**（符合 +Y 左）→ 取反前的控制器系
-Y 为**负** → **控制器系 Y 是右正**。
+于是链条闭合：向**左**移 → FLU 导出为**正**（符合 +Y 左）。这份实录既钉住
+传感器安装 Adapter，也防止任何下游 Module 再次翻转 Y。
 
 时间线核对过：那处取反由 `e5d65322` 于 2026-08-30 00:23 引入，实录在同日
 19:57 / 20:07，晚 19 小时；此后 `sensor_velocity_m_s` 链路再未改动。作者亦确认
@@ -38,11 +41,6 @@ RECORDING = (ROOT / "data" / "calibration" / "flow_range" / "2026-08-30" /
 STABILIZER = ROOT / "App" / "Src" / "app_stabilizer.c"
 FLOW_CMD = ROOT / "App" / "Src" / "app_cmd_flow.c"
 FLOW_PAGE = ROOT / "tools" / "panel_lib" / "pages" / "flow_ranging.py"
-
-FLU_EXPORT_NEGATION = (
-    "sensor_velocity_flu_m_s[1] = -debug->sensor_velocity_m_s[1]"
-)
-
 
 def read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
@@ -83,39 +81,36 @@ def test_moving_left_reads_positive_in_the_flu_export(recording: dict) -> None:
     assert all(v > 0.0 for v in moving), moving
 
 
-def test_controller_frame_y_is_right_positive() -> None:
-    """闭合链条：向左 → FLU 正 → 取反前的控制器系 Y 为负 → 控制器系 Y 右正。
+def test_flow_is_converted_once_before_navigation_math() -> None:
+    """安装方言只准出现在采集边界，之后全链必须是 FLU。
 
-    这条钉住的是**取反本身存在**。它在，`sensor_vy_mm_s` 才等于
-    −(控制器系 Y)，上面那条实录断言才能推出"控制器系 Y 右正"。
-    谁要改这个结论，得先解释这一行为什么可以删。
+    2026-09-07：判据从"补偿函数里恰好 4 次 FrdToFlu"改为"稳定器里一次都没有"。
+    原判据钉的是缺陷本身——转换发生在补偿之后，Y 因此反号。
     """
     stabilizer = read(STABILIZER)
-    assert FLU_EXPORT_NEGATION in stabilizer
-    assert "corrected_velocity_flu_m_s[1] = -debug->corrected_velocity_m_s[1]" in stabilizer
-    # 固件自己也这么标注，且这条串是评审与实录的溯源依据。
-    assert "source=controller_legacy_x_forward_y_right export=canonical_flu" in read(FLOW_CMD)
-
-
-def test_lateral_migration_sign_matches_the_declared_frame() -> None:
-    """seam 3 若声称位置/速度是规范 FLU（+Y 左），横向适配符号必须跟着翻。
-
-    控制器系 Y 是右正（上面三条已证），所以把 `Reference`/`AttitudeInput` 的
-    `y_m`/`vy_m_s` 迁到规范 FLU（+Y 左）**必须**同时把 seam2→seam3 的适配器
-    `STABILIZER_VELOCITY_MEAS_Y_SIGN` 由 `+1` 改成 `-1`；只改注释不改符号，
-    等于把一个右正的量贴上"左正"的标签。
-
-    这一条是 R-F6-2 审核退回的第 ④ 项：`15d83454` 只改了标签。
-    """
-    stabilizer = read(STABILIZER)
-    header = read(ROOT / "Driver" / "Inc" / "drv_coax_ctrl.h")
-
-    assert "#define STABILIZER_VELOCITY_MEAS_Y_SIGN (-1.0f)" in stabilizer
-    assert ("+Y left" in header) or ("+Y 左" in header)
-
-    # 该适配器只能出现在 seam2→seam3 的消费侧；光流补偿仍按 seam2 的
-    # right-positive 口径运行，否则诊断快照的既有 FLU 导出取反会被破坏。
+    flow_app = read(ROOT / "App" / "Src" / "app_optical_flow.c")
     compensation = stabilizer.split(
         "static void stabilizer_compensate_flow_rotation", 1
     )[1].split("static void stabilizer_vofa_debug_publish", 1)[0]
-    assert "STABILIZER_VELOCITY_MEAS_Y_SIGN" not in compensation
+
+    # 补偿函数进出都是 FLU，自己不做任何转换。
+    assert "FrdToFlu" not in compensation
+    assert "*flow_vy_m_s = body_vy_m_s;" in compensation
+    assert "STABILIZER_VELOCITY_MEAS_Y_SIGN" not in stabilizer
+
+    # 变换在采集边界，且只此一处。
+    fill = flow_app.split("static void app_flow_fill_sample")[1].split("\n}")[0]
+    assert "-frame->flow_vel_y" in fill
+    assert "source=calibrated_body_flu export=canonical_flu" in read(FLOW_CMD)
+
+
+def test_navigation_controller_and_snapshot_do_not_readapt_y() -> None:
+    """转换一次以后，EKF、控制器和快照都只能直接透传 FLU Y。"""
+    stabilizer = read(STABILIZER)
+    header = read(ROOT / "Driver" / "Inc" / "drv_coax_ctrl.h")
+    assert ("+Y left" in header) or ("+Y 左" in header)
+    assert "fuse_input.flow_vy_m_s = flow_vy_m_s;" in stabilizer
+    assert "ctx->vofa_debug.vel_est_m_s[1] = nav_vy_m_s;" in stabilizer
+    assert "velocity_control_y_m_s = nav_vy_m_s;" in stabilizer
+    assert "position_state_y_m *= " not in stabilizer
+    assert "sensor_velocity_flu_m_s[1] = debug->sensor_velocity_m_s[1]" in stabilizer

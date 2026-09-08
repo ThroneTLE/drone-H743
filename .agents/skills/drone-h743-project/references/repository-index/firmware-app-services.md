@@ -4,7 +4,7 @@
 
 Read this shard only when the task touches application behavior, RTOS task bodies, control flow, diagnostics, commands, or synchronous services.
 
-Source snapshot: `9a8d1f828012`. Indexed files: 108.
+Source snapshot: `b6c9fe55570e`. Indexed files: 110.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -49,6 +49,7 @@ Source snapshot: `9a8d1f828012`. Indexed files: 108.
 | `App/Inc/app_optical_flow.h`<br>`App/Src/app_optical_flow.c` | Application behavior and task-facing logic for optical flow | `APP_OpticalFlow_Init`, `APP_OpticalFlow_Step`, `APP_OpticalFlow_ServiceRecovery`, `APP_OpticalFlow_GetVelocity`, `APP_OpticalFlow_GetVelocitySample`, `APP_OpticalFlow_GetHeightSample` (+4) |
 | `App/Inc/app_proto.h`<br>`App/Src/app_proto.c` | Application behavior and task-facing logic for proto | `APP_Proto_BuildFrame`, `APP_Proto_Init`, `APP_Proto_IsReceiving`, `APP_Proto_ConsumeByte` |
 | `App/Inc/app_rc_config.h`<br>`App/Src/app_rc_config.c` | Application behavior and task-facing logic for rc config | `APP_RcConfig_Defaults`, `APP_RcConfig_Validate`, `APP_RcConfig_FunctionName`, `APP_RcConfig_FunctionFromName`, `APP_RcConfig_Normalize`, `APP_RcConfig_Throttle01` (+5) |
+| `App/Inc/app_rc_intent.h`<br>`App/Src/app_rc_intent.c` | Application behavior and task-facing logic for rc intent | `APP_RcIntent_ForwardVelocity`, `APP_RcIntent_LeftVelocity`, `APP_RcIntent_TargetPitch`, `APP_RcIntent_TargetRoll`, `APP_RcIntent_YawRateLeft` |
 | `App/Inc/app_sensor.h`<br>`App/Src/app_sensor.c` | Application behavior and task-facing logic for sensor | `APP_IMU_RawToScaled`, `APP_IMU_ConvertBaro`, `APP_Sensor_LpfInit`, `APP_Sensor_LpfApply`, `APP_Sensor_LpfApply3f`, `APP_Sensor_CalibrateGyroBias` (+13) |
 | `App/Inc/app_servo_bus_guard.h`<br>`App/Src/app_servo_bus_guard.c` | Application behavior and task-facing logic for servo bus guard | `APP_ServoBusGuard_IsPwmMode`, `APP_ServoBusGuard_IsBusOnlyCommand` |
 | `App/Inc/app_servo_cal.h`<br>`App/Src/app_servo_cal.c` | Application behavior and task-facing logic for servo cal | `APP_ServoCal_Init`, `APP_ServoCal_Step`, `APP_ServoCal_IsActive`, `APP_ServoCal_GetState`, `APP_ServoCal_TakeNotice` |
@@ -59,7 +60,7 @@ Source snapshot: `9a8d1f828012`. Indexed files: 108.
 | `App/Inc/app_stabilizer.h`<br>`App/Src/app_stabilizer.c` | Application behavior and task-facing logic for stabilizer | `APP_Stabilizer_LatchImuFault`, `APP_Stabilizer_ClearImuFault`, `APP_Stabilizer_MarkImuSample`, `APP_Stabilizer_ReadVofaDebug`, `APP_Stabilizer_ReadValidationImuSnapshot`, `APP_Stabilizer_ReadFlowCompensationSnapshot` (+7) |
 | `App/Inc/app_tasks.h`<br>`App/Src/app_tasks.c` | Application behavior and task-facing logic for tasks | `APP_Task_LED_Init`, `APP_Task_LED_Step`, `APP_Task_GPS_Init`, `APP_Task_GPS_Step`, `APP_Task_OpticalFlow_Init`, `APP_Task_OpticalFlow_Step` (+10) |
 | `App/Inc/app_telem_frame.h`<br>`App/Src/app_telem_frame.c` | Application behavior and task-facing logic for telem frame | `APP_TelemFrame_PopCount`, `APP_TelemFrame_HeaderBytes`, `APP_TelemFrame_PayloadLength`, `APP_TelemFrame_Encode` |
-| `App/Src/app_telem_port.c` | Application behavior and task-facing logic for telem port | `APP_TelemStream_PortNowUs`, `APP_TelemStream_PortDelayMs`, `APP_TelemStream_PortServiceExports`, `APP_IMU_Capture_IsExportActive`, `APP_FlightLog_IsExportActive`, `APP_TelemStream_PortUsbReady` (+7) |
+| `App/Src/app_telem_port.c` | Application behavior and task-facing logic for telem port | `APP_TelemStream_PortNowUs`, `APP_TelemStream_PortDelayMs`, `APP_TelemStream_PortServiceExports`, `APP_IMU_Capture_IsExportActive`, `APP_FlightLog_IsExportActive`, `APP_TelemStream_PortUsbReady` (+6) |
 | `App/Inc/app_telem_stream.h`<br>`App/Src/app_telem_stream.c` | Application behavior and task-facing logic for telem stream | `APP_TelemStream_Init`, `APP_TelemStream_Reset`, `APP_TelemStream_NoteCommandSource`, `APP_TelemStream_SetActive`, `APP_TelemStream_SetRate`, `APP_TelemStream_SetMask` (+17) |
 | `App/Inc/app_telemetry.h`<br>`App/Src/app_telemetry.c` | Application behavior and task-facing logic for telemetry | `APP_Telemetry_ChannelHasParam`, `APP_Telemetry_ChannelCount`, `APP_Telemetry_GetChannel`, `APP_Telemetry_SchemaHash`, `APP_Telemetry_ReportHeader`, `APP_Telemetry_ReportPage` |
 | `App/Inc/app_uart.h`<br>`App/Src/app_uart.c` | Application behavior and task-facing logic for uart | `APP_UART_GetStats`, `APP_UART_GetRxEventStats`, `APP_UART_Task_Init`, `APP_UART_Task_Step`, `APP_UART_NotifyTxPending`, `APP_UART_OnRxEvent` (+2) |

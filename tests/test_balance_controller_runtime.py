@@ -94,14 +94,22 @@ int main(void)
     reference.vx_m_s = 0.8f;
     DRV_COAX_CTRL_Run(&attitude, &reference, &output);
     DRV_COAX_CTRL_GetLastDebug(&debug);
-    CHECK(output.alpha_rad < 0.0f, 10);
+    /*
+     * Tilt-to-moment polarity is now derived from the measured geometry
+     * (DRV_COAX_CTRL_TILT_MOMENT_POLARITY): the thrust point is below the CG,
+     * so a positive tilt makes a positive FLU moment.  Flying forward needs
+     * nose-down (+pitch), so the rotor axis must tilt REARWARD -- alpha > 0.
+     * That is counter-intuitive and it is exactly what the old -1 model got
+     * backwards; checks 12/13 are about the attitude target and are unchanged.
+     */
+    CHECK(output.alpha_rad > 0.0f, 10);
     CHECK(fabsf(output.beta_rad) < 1.0e-4f, 11);
     CHECK(debug.desired_attitude_rpy_rad[1] > 0.0f, 12);
     CHECK(debug.moment_cmd_n_m[1] > 0.0f, 13);
-    CHECK(output.servo_beta_us > DRV_COAX_CTRL_SERVO_BETA_CENTER_US, 14);
+    CHECK(output.servo_beta_us < DRV_COAX_CTRL_SERVO_BETA_CENTER_US, 14);
     CHECK(nearly_equal(
         debug.moment_achieved_n_m[1],
-        -0.569f * DRV_AIRFRAME_PITCH_THRUST_LEVER_ARM_M *
+        0.569f * DRV_AIRFRAME_PITCH_THRUST_LEVER_ARM_M *
             debug.total_force_n * sinf(output.alpha_rad) * cosf(output.beta_rad),
         1.0e-5f), 15);
     {
@@ -155,19 +163,24 @@ int main(void)
      * debug/reporting), so checks 22/26/27 are unaffected; beta_rad,
      * moment_cmd_n_m[0] and servo_alpha_us flip, confirmed against the real
      * compiled controller (2026-09-06).
+     *
+     * 2026-09-06: the tilt-to-moment polarity is now derived from measured
+     * geometry rather than a -1 macro, so beta_rad and servo_alpha_us flip once
+     * more.  The attitude-side checks 22/23/26/27 are again unaffected -- they
+     * describe what the aircraft should do, not how the actuator gets there.
      */
     reset_case(&attitude, &reference);
     reference.vy_m_s = 0.8f;
     DRV_COAX_CTRL_Run(&attitude, &reference, &output);
     DRV_COAX_CTRL_GetLastDebug(&debug);
-    CHECK(output.beta_rad > 0.0f, 20);
+    CHECK(output.beta_rad < 0.0f, 20);
     CHECK(fabsf(output.alpha_rad) < 1.0e-4f, 21);
     CHECK(debug.desired_attitude_rpy_rad[0] < 0.0f, 22);
     CHECK(debug.moment_cmd_n_m[0] < 0.0f, 23);
-    CHECK(output.servo_alpha_us < DRV_COAX_CTRL_SERVO_ALPHA_CENTER_US, 24);
+    CHECK(output.servo_alpha_us > DRV_COAX_CTRL_SERVO_ALPHA_CENTER_US, 24);
     CHECK(nearly_equal(
         debug.moment_achieved_n_m[0],
-        -0.581f * DRV_AIRFRAME_ROLL_THRUST_LEVER_ARM_M *
+        0.581f * DRV_AIRFRAME_ROLL_THRUST_LEVER_ARM_M *
             debug.total_force_n * sinf(output.beta_rad),
         1.0e-5f), 25);
     {
@@ -187,7 +200,7 @@ int main(void)
     DRV_COAX_CTRL_GetLastDebug(&debug);
     CHECK(debug.pos_p_m_s2[0] > 0.05f, 28);
     CHECK(debug.velocity_p_m_s2[0] > 0.05f, 29);
-    CHECK(output.alpha_rad <= 0.0f, 30);
+    CHECK(output.alpha_rad >= 0.0f, 30);
 
     reset_case(&attitude, &reference);
     reference.x_m = 0.20f;
@@ -200,7 +213,7 @@ int main(void)
     CHECK(nearly_equal(debug.vel_d_m_s2[0], 0.0f, 1.0e-6f), 71);
     CHECK(nearly_equal(debug.accel_out_m_s2[0], 0.0f, 1.0e-6f), 72);
     CHECK(nearly_equal(debug.target_attitude_rp_rad[1], 0.10f, 1.0e-5f), 73);
-    CHECK(output.alpha_rad < 0.0f, 74);
+    CHECK(output.alpha_rad > 0.0f, 74);
 
     reset_case(&attitude, &reference);
     attitude.x_m = -1.0f;
@@ -241,20 +254,22 @@ int main(void)
     DRV_COAX_CTRL_GetLastDebug(&debug);
     CHECK(nearly_equal(debug.target_attitude_rp_rad[0], 0.10f, 1.0e-5f), 75);
     CHECK(nearly_equal(debug.desired_attitude_rpy_rad[0], 0.10f, 1.0e-5f), 76);
-    CHECK(output.beta_rad < 0.0f, 77);
-    CHECK(output.servo_alpha_us > DRV_COAX_CTRL_SERVO_ALPHA_CENTER_US, 78);
+    CHECK(output.beta_rad > 0.0f, 77);
+    CHECK(output.servo_alpha_us < DRV_COAX_CTRL_SERVO_ALPHA_CENTER_US, 78);
 
+    /* Disturbance, not command: nose-down measured must be pushed back up, so
+     * the tilt is the mirror of check 74's commanded nose-down. */
     reset_case(&attitude, &reference);
     attitude.pitch_rad = 0.10f;
     DRV_COAX_CTRL_Run(&attitude, &reference, &output);
-    CHECK(output.alpha_rad > 0.0f, 31);
-    CHECK(output.servo_beta_us < DRV_COAX_CTRL_SERVO_BETA_CENTER_US, 32);
+    CHECK(output.alpha_rad < 0.0f, 31);
+    CHECK(output.servo_beta_us > DRV_COAX_CTRL_SERVO_BETA_CENTER_US, 32);
 
-    /* R-F6-2: same reasoning as checks 20-24/77-78. */
+    /* Likewise the mirror of check 77's commanded right-wing-down. */
     reset_case(&attitude, &reference);
     attitude.roll_rad = 0.10f;
     DRV_COAX_CTRL_Run(&attitude, &reference, &output);
-    CHECK(output.beta_rad > 0.0f, 33);
+    CHECK(output.beta_rad < 0.0f, 33);
 
     reset_case(&attitude, &reference);
     DRV_COAX_CTRL_GetParams(&params);
@@ -262,13 +277,14 @@ int main(void)
     params.attitude.att_kp[1] = 0.0f;
     params.rate.kp[1] = 0.0f;
     DRV_COAX_CTRL_SetParams(&params);
-    /* APP attitude convention: increasing roll has gyro_x < 0. */
+    /* Canonical FLU: gyro_x > 0 IS the +roll direction (drv_frame_contract.h).
+     * A negative roll rate must therefore be damped with a positive moment. */
     attitude.gyro_x_rad_s = -0.70f;
     DRV_COAX_CTRL_Run(&attitude, &reference, &output);
     DRV_COAX_CTRL_GetLastDebug(&debug);
     CHECK(debug.rate_error_rad_s[0] > 0.0f, 34);
     CHECK(debug.moment_cmd_n_m[0] > 0.0f, 35);
-    CHECK(output.beta_rad < 0.0f, 36);
+    CHECK(output.beta_rad > 0.0f, 36);
 
     reset_case(&attitude, &reference);
     reference.vx_m_s = 0.8f;

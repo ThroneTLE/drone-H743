@@ -4,7 +4,7 @@
 
 Read this shard only when the task touches CubeMX output, pins/clocks/peripherals, startup/linker layout, USB, build configuration, HAL, FreeRTOS internals, or vendor code.
 
-Source snapshot: `867dfcdee1c6`; aggregate snapshot: `13fc4f243386`. Covered files: 1428.
+Source snapshot: `0db7a78a2935`; aggregate snapshot: `13fc4f243386`. Covered files: 1428.
 
 | File/module or scope | Content outline | Key entry points / size |
 |---|---|---|
@@ -23,7 +23,7 @@ Source snapshot: `867dfcdee1c6`; aggregate snapshot: `13fc4f243386`. Covered fil
 | `Core/Src/syscalls.c` | CubeMX/HAL platform module for syscalls | — |
 | `Core/Src/sysmem.c` | CubeMX/HAL platform module for sysmem | — |
 | `Core/Src/system_stm32h7xx.c` | CubeMX/HAL platform module for system stm32h7xx | — |
-| `Core/Inc/tim.h`<br>`Core/Src/tim.c` | CubeMX/HAL platform module for tim | `MX_TIM1_Init`, `MX_TIM2_Init`, `MX_TIM8_Init`, `MX_TIM17_Init`, `HAL_TIM_MspPostInit` |
+| `Core/Inc/tim.h`<br>`Core/Src/tim.c` | CubeMX/HAL platform module for tim | `MX_TIM1_Init`, `MX_TIM2_Init`, `MX_TIM5_Init`, `MX_TIM8_Init`, `MX_TIM17_Init`, `HAL_TIM_MspPostInit` |
 | `Core/Inc/usart.h`<br>`Core/Src/usart.c` | CubeMX/HAL platform module for usart | `MX_UART4_Init`, `MX_UART5_Init`, `MX_UART7_Init`, `MX_UART8_Init`, `MX_USART1_UART_Init`, `MX_USART2_UART_Init` |
 | `USB_DEVICE/App/usb_device.h`<br>`USB_DEVICE/App/usb_device.c` | CubeMX USB device integration for usb device | `MX_USB_DEVICE_Init` |
 | `USB_DEVICE/App/usbd_cdc_if.h`<br>`USB_DEVICE/App/usbd_cdc_if.c` | CubeMX USB device integration for usbd cdc if | — |

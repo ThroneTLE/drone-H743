@@ -192,10 +192,43 @@ def offline(tmp_path_factory):
             session.destroy()
 
 
-def test_the_harness_builds_the_real_panel_with_all_eighteen_leaf_pages(offline) -> None:
+def test_the_qa_window_never_shows_up_on_the_desktop(offline) -> None:
+    """QA 窗口必须停在屏幕外，而且必须仍然是 mapped 的。
+
+    两个条件缺一不可，这正是以前那版没做对的地方：
+      * 只有 alpha=0 就 deiconify()——像素透明了，可窗口还在任务栏里、还会抢
+        焦点。改一行固件跑一次 pytest，桌面上就冒出个"上位机"打断输入
+        （2026-09-07 作者反馈）。
+      * 反过来一直 withdraw 也不行——Tk 不给未映射的窗口做真实布局，
+        winfo_width() 恒为 1，这份文件里所有几何断言会一起变成空壳。
+
+    所以判据是"挪出可视区"而不是"藏起来"。
+    """
+    panel = offline.panel
+    panel.update_idletasks()
+
+    # 仍然 mapped：布局是真的，几何断言才有意义。
+    assert panel.winfo_ismapped(), "窗口被彻底藏起来会让所有布局断言失效"
+    assert panel.winfo_width() > 1, panel.winfo_width()
+    assert panel.winfo_height() > 1, panel.winfo_height()
+
+    # 但整个窗口矩形必须落在屏幕之外。
+    left, top = panel.winfo_rootx(), panel.winfo_rooty()
+    right = left + panel.winfo_width()
+    bottom = top + panel.winfo_height()
+    assert right <= 0 or bottom <= 0, (
+        f"QA 窗口出现在可视区: ({left},{top})-({right},{bottom})"
+    )
+
+    # 而且是全透明的，双保险。
+    assert float(panel.attributes("-alpha")) == 0.0
+
+
+def test_the_harness_builds_the_real_panel_with_all_twenty_one_leaf_pages(offline) -> None:
     pages = offline.leaf_pages()
-    assert len(pages) == 18
+    assert len(pages) == 21
     labels = [page.label for page in pages]
+    assert sum(label.startswith("日志 / ") for label in labels) == 3
     # 分组页签本身不算叶页，它的子页才算。
     assert any(label.startswith("校准 / ") for label in labels)
     assert any(label.startswith("传感器 / ") for label in labels)
@@ -293,7 +326,7 @@ with tempfile.TemporaryDirectory() as root:
     assert payload["scale"] == 1.5
     assert payload["dpi"] == 1.5
     assert isinstance(payload["font"], int)
-    assert payload["reports"] == 18
+    assert payload["reports"] == 21
     assert all(scale == 1.5 for scale in payload["scales"])
 
 

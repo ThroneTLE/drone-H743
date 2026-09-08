@@ -1372,7 +1372,8 @@ def receive_dump(
 class FlightLogGui:
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
-        self.root.title("FlightLog USART1 Receiver")
+        if isinstance(root, (tk.Tk, tk.Toplevel)):
+            self.root.title("FlightLog USART1 Receiver")
         self.events: queue.Queue[tuple[str, object]] = queue.Queue()
         self.worker: threading.Thread | None = None
         self.cancel_requested = False
@@ -1385,7 +1386,7 @@ class FlightLogGui:
 
         self._build()
         self._refresh_ports()
-        self.root.after(100, self._poll_events)
+        self.poll_after_id = self.root.after(100, self._poll_events)
 
     def _build(self) -> None:
         frame = ttk.Frame(self.root, padding=10)
@@ -1493,7 +1494,9 @@ class FlightLogGui:
                     self.progress_var.set(100.0 * float(done) / float(total or 1))
                 elif kind == "done":
                     result = payload
-                    self._append_log(f"done: {result.records} records, {result.total_bytes} bytes")
+                    self._append_log(f"complete={result.complete}: {result.records} records, missing={result.missing_bytes} bytes")
+                    if hasattr(self, "on_result"):
+                        self.on_result(result)
                     self.receive_btn.configure(state="normal")
                     self.cancel_btn.configure(state="disabled")
                 elif kind == "error":
@@ -1502,7 +1505,7 @@ class FlightLogGui:
                     self.cancel_btn.configure(state="disabled")
         except queue.Empty:
             pass
-        self.root.after(100, self._poll_events)
+        self.poll_after_id = self.root.after(100, self._poll_events)
 
 
 def main() -> int:

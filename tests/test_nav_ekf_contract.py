@@ -113,7 +113,7 @@ def test_velocity_control_uses_flow_ekf_with_limited_compensated_imu_bridge() ->
     assert "#define STABILIZER_IMU_LEVER_ARM_Z_M (-0.10f)" in freertos
     assert "#define STABILIZER_IMU_RATE_WEIGHT_SOFT_RAD_S 2.0f" in freertos
     assert "#define STABILIZER_IMU_ALPHA_WEIGHT_SOFT_RAD_S2 20.0f" in freertos
-    assert "stabilizer_compensated_imu_accel_nav_xy(" in freertos
+    assert "stabilizer_compensated_imu_accel_level_xy(" in freertos
     assert "stabilizer_cross3(alpha, r_imu_m, alpha_cross_r);" in freertos
     assert "stabilizer_cross3(omega, omega_cross_r, omega_cross_omega_cross_r);" in freertos
     assert "f_cg_body_m_s2[axis] = f_body_m_s2[axis] -" in freertos
@@ -142,7 +142,8 @@ def test_velocity_control_uses_flow_ekf_with_limited_compensated_imu_bridge() ->
     assert "nav_state.velocity_valid" in freertos
     assert "attitude.vx_m_s = velocity_control_x_m_s;" in freertos
     assert "attitude.vy_m_s = velocity_control_y_m_s;" in freertos
-    assert "STABILIZER_VELOCITY_MEAS_Y_SIGN * nav_vy_m_s" in freertos
+    assert "STABILIZER_VELOCITY_MEAS_Y_SIGN" not in freertos
+    assert "velocity_control_y_m_s = nav_vy_m_s;" in freertos
     assert "reference.ax_m_s2 = 0.0f;" in freertos
     assert "reference.ay_m_s2 = 0.0f;" in freertos
     assert "predict_leak_hz" in read("Driver/Inc/drv_nav_ekf.h")

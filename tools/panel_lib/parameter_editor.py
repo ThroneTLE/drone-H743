@@ -398,6 +398,11 @@ class ParameterEditorMixin:
         if line.startswith("ERR param target") and len(tokens) >= 4:
             name = tokens[3]
             self._parameter_mark_error(name, "飞控拒绝目标值")
+            # 同一条 ERR 也要送到 Dashboard 的滑块：参数页和 Dashboard 是两套
+            # 控件，只在参数页标红等于让 Dashboard 继续显示一个飞控没接受的值。
+            notify = getattr(self, "_dashboard_note_param_error", None)
+            if callable(notify):
+                notify(name, "飞控拒绝了这个值")
             return
         if line.startswith("ERR usage PARAM SET"):
             name = self._last_param_edit_name or self.param_name_var.get().strip()
