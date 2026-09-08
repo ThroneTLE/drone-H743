@@ -10,6 +10,7 @@ import time
 from tools.panel_lib.proto import PROTO_DIR_TO_FC
 
 from .experiments import ExperimentKind, SimulationEngine
+from .clocking import SimulationClock
 from .protocol import FrameDecoder, SimulatorProtocol
 
 
@@ -69,8 +70,8 @@ class SimulatorDevice:
             with self._lock:
                 self._socket = sock
             self.decoder = FrameDecoder(PROTO_DIR_TO_FC)
-            last_step = time.monotonic()
-            last_telem = last_step
+            last_telem = time.monotonic()
+            clock = SimulationClock(self.engine, last_telem)
             try:
                 while not self.stop_event.is_set():
                     timeout = min(0.05, self.engine.dt_s / max(self.time_scale, 0.05))
@@ -86,13 +87,11 @@ class SimulatorDevice:
                             for response in self.protocol.handle_frame(frame.function, frame.payload):
                                 sock.sendall(response)
                     now = time.monotonic()
-                    if self.time_scale > 0.0 and now - last_step >= self.engine.dt_s / self.time_scale:
-                        self.engine.step()
-                        last_step = now
-                        if (self.protocol.stream_enabled and
-                                now - last_telem >= 1.0 / self.protocol.stream_rate_hz):
-                            sock.sendall(self.protocol.telemetry_frame())
-                            last_telem = now
+                    clock.advance(now, self.time_scale)
+                    if (self.protocol.stream_enabled and
+                            now - last_telem >= 1.0 / self.protocol.stream_rate_hz):
+                        sock.sendall(self.protocol.telemetry_frame())
+                        last_telem = now
             except OSError:
                 pass
             finally:
