@@ -147,7 +147,7 @@ flowchart TB
 
 | 日期 | 范围 | 证据 | 结果 | 对状态的影响 |
 |---|---|---|---|---|
-| 2026-09-08 | R-SIM-2 上位机仿真标题栏与自动启动连接 | data/simulation/2026-09-08/launcher-review.md、launcher-tests.txt、launcher-panel.png；110 passed in 82.15s；最终恢复/标识复验7 passed in 15.26s | 真实上位机按钮→独立GUI进程→回环TCP→自动运行和参数回显，停止回收恢复；已有设备不接管；0串口/0probe | R-SIM-2待审核，无实机操作 |
+| 2026-09-08 | R-SIM-2 上位机仿真标题栏与自动启动连接 | data/simulation/2026-09-08/launcher-review.md、launcher-tests.txt、launcher-panel.png；110 passed in 82.15s；最终恢复/标识复验7 passed in 15.26s；快进同步原工作区后启动联调4 passed in 15.06s、索引current | 真实上位机按钮→独立GUI进程→回环TCP→自动运行和参数回显，停止回收恢复；已有设备不接管；0串口/0probe | R-SIM-2待审核，无实机操作 |
 | 2026-09-08 | R-SIM-2前置修bug：Windows仿真时间推进过慢 | 一键启动E2E修前1 failed,106 passed；独立回环4s后t_us=256000，定位select毫秒等待在Windows被量化；新增SimulationClock及3项测试；修后时钟+启动7 passed in 12.43s | 按墙钟累计执行固定1ms子步，慢放只缩放累计时间；原测试手工step未覆盖OS等待；0串口/0probe | 独立fix提交，不改控制律和实机路径 |
 | 2026-09-08 | R-SIM-1 父任务直接返修与界面完善 | data/simulation/2026-09-08/refinement-review.md、refinement-tests.txt、refinement-full-tests.txt、ui-refinement.png；52 passed in 17.94s；全仓2 failed, 1333 passed, 4 skipped in 252.45s（历史CSV缺失与新增产物后索引待刷新）；Debug：ninja: no work to do. | 修复非有限输入/状态与点击快照；三栏界面、竖直机体、T/Fx/Fz矢量标注、五量刻度曲线；索引/Pipeline复验10 passed in 4.81s；0串口/0probe | R-SIM-1保持待审核；定时任务暂停 |
 | 2026-09-08 | R-SIM-1 修bug：非有限输入与A/B任务快照 | tests/test_simulation_review_boundaries.py；修前8 failed, 3 passed in 1.10s，修后11 passed in 0.89s；此前只测普通正数和显式传参，未覆盖非有限状态与线程延迟读取 | 目标非有限值拒绝、状态非有限值暂停、点击时冻结A/B参数和tau；0串口/0probe | 两项最终复核P2软件修复；R-SIM-1仍待审核 |
