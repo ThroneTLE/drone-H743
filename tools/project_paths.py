@@ -37,6 +37,7 @@ FLOW_RANGE_CALIBRATION_DIR = CALIBRATION_ROOT / "flow_range"
 
 TELEMETRY_DIR = DATA_ROOT / "telemetry"
 ANALYSIS_ROOT = DATA_ROOT / "analysis"
+SIMULATION_DIR = DATA_ROOT / "simulation"
 # PIPELINE M1 底层健康基线报告（tools/m1_baseline_check.py 产出）
 M1_BASELINE_ANALYSIS_DIR = ANALYSIS_ROOT / "m1_baseline"
 FLIGHT_LOG_ANALYSIS_DIR = ANALYSIS_ROOT / "flight_logs"

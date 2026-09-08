@@ -4,7 +4,7 @@
 
 Read this shard only when the task uses serial/TCP diagnostics, log analysis, identification, capture, calibration, or desktop UIs.
 
-Source snapshot: `308f9047653d`; aggregate snapshot: `d61da66aa743`. Covered files: 5349.
+Source snapshot: `170c63b52a9e`; aggregate snapshot: `d61da66aa743`. Covered files: 5361.
 
 | File/module or scope | Content outline | Key entry points / size |
 |---|---|---|
@@ -72,6 +72,18 @@ Source snapshot: `308f9047653d`; aggregate snapshot: `d61da66aa743`. Covered fil
 | `tools/run_flight_log_rerun_replay.ps1` | Host-side utility for run flight log rerun replay | — |
 | `tools/saleae_imu_spi_capture.py` | Capture the ICM42688 SPI bus with Saleae Logic 2 Automation. Default channel mapping follows the current Saleae hookup:… | `parse_args`, `add_spi_analyzer`, `export_capture`, `load_digital_csv`, `summarize_edges`, `main` |
 | `tools/servo_baud_sweep.py` | Sweep Zhongling bus-servo baud rates from a PC serial adapter. This is meant for recovering a servo after its ID or bau… | `parse_args`, `read_reply`, `write_command`, `send_at_baud`, `main` |
+| `tools/sim_xz/__init__.py` | Host-only X/Z teaching simulator for R-SIM-1 | — |
+| `tools/sim_xz/__main__.py` | Host-side utility for main | — |
+| `tools/sim_xz/app.py` | Tk front end for the host-only simulator | `SimulationApp`, `main` |
+| `tools/sim_xz/assets/r_sim_ui_preview.svg` | Host-side utility for r sim ui preview | — |
+| `tools/sim_xz/controller_bridge.py` | ctypes bridge to the real pure-C cascade and allocator | `ControllerOutput`, `build_controller_library`, `ControllerBridge` |
+| `tools/sim_xz/device.py` | TCP client device process. The existing ground station remains the server | `SimulatorDevice` |
+| `tools/sim_xz/experiments.py` | Approved R-SIM-1 experiments and A/B result production | `ExperimentKind`, `SimulationSample`, `ExperimentTargets`, `run_experiment`, `ABResult`, `run_ab` (+2) |
+| `tools/sim_xz/physics.py` | Deterministic X/Z plant and actuator model; controller equations stay in C | `SimulationState`, `XZPlant` |
+| `tools/sim_xz/protocol.py` | Existing $X text protocol adapter for the simulated device | `InboundFrame`, `FrameDecoder`, `SimulatorProtocol` |
+| `tools/sim_xz/README.md` | R-SIM-1 X/Z teaching simulator | `Start`, `Experiments`, `Boundaries` |
+| `tools/sim_xz/sim_controller_bridge.c` | Host-side utility for sim controller bridge | — |
+| `tools/sim_xz/sim_controller_bridge.h` | Host-side utility for sim controller bridge | — |
 | `tools/stationary_drift.py` | 静止漂移自检：飞机不动放 30~60 秒，看它自己以为发生了什么。 为什么需要这一项： 六面标定解出来的是"摆在六个姿态下读数对不对"，但用户真正在意的是"放着不动 时它会不会自己飘"。这两件事不等价 —— 系数写对了、静止时照样可能因为… | `DriftSample`, `DriftReport`, `analyze_drift`, `summarise`, `compare`, `report_to_dict` (+4) |
 | `tools/synex_config_builder.py` | Inspect and build Synex Qt INI configurations without editing @Variant text | `inspect_config`, `finalize_config`, `roundtrip`, `main` |
 | `tools/tcp_bidirectional_test.py` | Bidirectional TCP <-> WiFi module <-> CH340 serial test. Topology: PC (TCP server :6666) <--WiFi--> Ai-WB2 <--UART--> C… | `ts`, `main` |
