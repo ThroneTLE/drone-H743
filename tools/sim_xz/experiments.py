@@ -7,7 +7,7 @@ import json
 import math
 import threading
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, astuple
 from datetime import date, datetime
 from enum import Enum
 from pathlib import Path
@@ -64,7 +64,7 @@ def run_experiment(bridge: ControllerBridge, kind: ExperimentKind,
                    plant: XZPlant | None = None,
                    reset_controller: bool = True,
                    targets: ExperimentTargets | None = None) -> list[SimulationSample]:
-    if duration_s <= 0.0 or dt_s <= 0.0:
+    if not all(math.isfinite(v) and v > 0.0 for v in (duration_s, dt_s)):
         raise ValueError("duration_s and dt_s must be positive")
     plant = plant or XZPlant.from_bridge(bridge)
     if reset_controller:
@@ -155,6 +155,7 @@ class SimulationEngine:
         self.kind = ExperimentKind.POSITION_STEP
         self.targets = ExperimentTargets()
         self.running = False
+        self.pause_reason = ""
         self._lock = threading.RLock()
 
     def set_kind(self, kind: ExperimentKind) -> None:
@@ -163,7 +164,8 @@ class SimulationEngine:
 
     def set_targets(self, position_step_m: float, velocity_step_m_s: float,
                     pitch_step_deg: float) -> None:
-        if position_step_m <= 0.0 or velocity_step_m_s <= 0.0 or pitch_step_deg <= 0.0:
+        if not all(math.isfinite(v) and v > 0.0
+                   for v in (position_step_m, velocity_step_m_s, pitch_step_deg)):
             raise ValueError("experiment targets must be positive")
         with self._lock:
             self.targets = ExperimentTargets(position_step_m, velocity_step_m_s,
@@ -177,6 +179,8 @@ class SimulationEngine:
 
     def reset(self) -> None:
         with self._lock:
+            self.pause_reason = ""
+            self.running = False
             self.bridge.reset()
             self.plant.reset(z_m=1.0, thrust_n=self.plant.hover_thrust_n)
 
@@ -185,6 +189,10 @@ class SimulationEngine:
             if not self.running:
                 return self.plant.state
             state = self.plant.state
+            if not all(math.isfinite(v) for v in astuple(state)):
+                self.running = False
+                self.pause_reason = "状态含非有限值，请复位"
+                return state
             step_kwargs: dict[str, float | int] = {
                 "x_m": state.x_m, "z_m": state.z_m, "vx_m_s": state.vx_m_s,
                 "vz_m_s": state.vz_m_s, "pitch_rad": state.pitch_rad,
@@ -198,9 +206,15 @@ class SimulationEngine:
             command = self.bridge.step(**step_kwargs,
                                        **_reference(self.kind, state, self.targets))
             next_state = self.plant.step(command, self.dt_s)
+            if not all(math.isfinite(v) for v in astuple(next_state)):
+                self.running = False
+                self.pause_reason = "计算产生非有限值，请复位"
+                self.plant.state = state
+                return state
             if (next_state.z_m <= 0.0 or next_state.z_m >= 3.0 or
                     abs(next_state.x_m) >= 10.0 or abs(next_state.pitch_rad) >= math.pi / 2.0):
                 self.running = False
+                self.pause_reason = "已到教学场景边界，请复位或减小目标"
             return next_state
 
     def snapshot(self) -> SimulationState:

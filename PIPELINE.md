@@ -146,6 +146,7 @@ flowchart TB
 
 | 日期 | 范围 | 证据 | 结果 | 对状态的影响 |
 |---|---|---|---|---|
+| 2026-09-08 | R-SIM-1 修bug：非有限输入与A/B任务快照 | tests/test_simulation_review_boundaries.py；修前8 failed, 3 passed in 1.10s，修后11 passed in 0.89s；此前只测普通正数和显式传参，未覆盖非有限状态与线程延迟读取 | 目标非有限值拒绝、状态非有限值暂停、点击时冻结A/B参数和tau；0串口/0probe | 两项最终复核P2软件修复；R-SIM-1仍待审核 |
 | 2026-09-08 | R-SIM-1 父任务最终离线复核（57a2f141） | data/simulation/2026-09-08/final-review.md；独立21 passed in 11.86s，0串口/0probe，实际A/B截图与四环TCP回读检查 | 核心功能有证据；非有限目标未拒绝、A/B点击快照边界两项P2未关闭；未重复全仓/固件/实机 | 保持待审核；作者要求停止定时跟进 |
 | 2026-09-08 | R-SIM-1 派发前置：作者附加需求授权与 simulation 类别模式 | 新增 references/modes/simulation.md，登记 R-SIM-1 与附加需求入口，更新模式路由及索引；python -m pytest tests/test_pipeline_contract.py -q 原文：7 passed in 1.25s；Physical serial open attempts: 0；Flashing/probe tool invocation attempts: 0 | 派发前置契约通过；未实现功能，未运行本项全量/构建，不作实机结论 | R-SIM-1 进行中，移交 Luna 继续实施 |
 | 2026-09-08 | R-SIM-1 最终关键链路复核 | `DronePanel + TcpTransport + SimulatorDevice` 真实本机链路完成参数控件 -> `PROTO_REQ_PARAM_SET` -> C 回读 -> TELEM decoder；四个 Kp 参数逐一回读并进入遥测；A/B 点击时原子快照 B 参数，冻结 A 的 kind/targets/model，五量为 `pitch/pitch_rate/vx/x/z`；主画布有历史轨迹、目标标记、FLU 推力箭头和随机体 pitch 的倾转机构；中文 UI、`--host/--port`、可调电机 tau、异常恢复、关闭不导出、唯一 run id；控制依赖+编译 flags 指纹测试；针对性契约 `21 passed`；真实 A/B Tk 截图 `data/simulation/2026-09-08/r_sim_ui_screenshot.png`；全量既有结果保持 `1307 passed, 4 skipped, 1 failed`（缺历史 CSV）；Physical serial open attempts: 0；Flashing/probe attempts: 0 | host-only 软件功能交付，未做实机/真实飞行数据验收；缺失历史 CSV 仍是既有外部前置，不造数据 | R-SIM-1 待审核 |

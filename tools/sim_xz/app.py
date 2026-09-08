@@ -28,6 +28,7 @@ class SimulationApp(tk.Tk):
         self._trajectory = deque(maxlen=1200)
         self._last_trajectory_time = -1.0
         self._closing = False
+        self._ab_busy = False
         self._ab_thread: threading.Thread | None = None
         self.device.start()
         self._build_widgets()
@@ -101,6 +102,9 @@ class SimulationApp(tk.Tk):
             self.status.set("模型参数无效")
 
     def _save_a(self) -> None:
+        if self._ab_busy:
+            self.ab_status.set("请等待本次 A/B 结束再更新 A")
+            return
         self._baseline_params = self.device.engine.bridge.parameter_snapshot()
         targets = self.device.engine.targets
         self._baseline_config = {
@@ -127,14 +131,18 @@ class SimulationApp(tk.Tk):
                 self._baseline_config["model"] != current_model):
             self.ab_status.set("实验类型/目标/模型已变更，请重新保存 A")
             return
+        # Freeze the complete job before handing it to another thread.
+        baseline_params = dict(self._baseline_params)
+        tuned_params = self.device.engine.bridge.parameter_snapshot()
+        thrust_tau_s = self.device.engine.plant.thrust_tau_s
+        self._ab_busy = True
         self.ab_status.set("A/B 运行中...")
         def work() -> None:
             try:
-                tuned_params = self.device.engine.bridge.parameter_snapshot()
                 result = run_ab(self.device.engine.bridge, kind,
-                                baseline_params=self._baseline_params,
+                                baseline_params=baseline_params,
                                 tuned_params=tuned_params, targets=targets,
-                                thrust_tau_s=self.device.engine.plant.thrust_tau_s,
+                                thrust_tau_s=thrust_tau_s,
                                 duration_s=3.0)
                 if self._closing:
                     return
@@ -149,6 +157,7 @@ class SimulationApp(tk.Tk):
     def _render(self) -> None:
         try:
             item = self._ui_queue.get_nowait()
+            self._ab_busy = False
             if isinstance(item, tuple):
                 if item and item[0] == "error":
                     self.ab_status.set(str(item[1]))
