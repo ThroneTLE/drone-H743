@@ -4,7 +4,7 @@
 
 Read this shard only when the task uses serial/TCP diagnostics, log analysis, identification, capture, calibration, or desktop UIs.
 
-Source snapshot: `f6b542615e7c`; aggregate snapshot: `b60d93e4d2d3`. Covered files: 5367.
+Source snapshot: `78bcc264a52d`; aggregate snapshot: `b60d93e4d2d3`. Covered files: 5367.
 
 | File/module or scope | Content outline | Key entry points / size |
 |---|---|---|
@@ -72,7 +72,7 @@ Source snapshot: `f6b542615e7c`; aggregate snapshot: `b60d93e4d2d3`. Covered fil
 | `tools/run_flight_log_rerun_replay.ps1` | Host-side utility for run flight log rerun replay | — |
 | `tools/saleae_imu_spi_capture.py` | Capture the ICM42688 SPI bus with Saleae Logic 2 Automation. Default channel mapping follows the current Saleae hookup:… | `parse_args`, `add_spi_analyzer`, `export_capture`, `load_digital_csv`, `summarize_edges`, `main` |
 | `tools/servo_baud_sweep.py` | Sweep Zhongling bus-servo baud rates from a PC serial adapter. This is meant for recovering a servo after its ID or bau… | `parse_args`, `read_reply`, `write_command`, `send_at_baud`, `main` |
-| `tools/sim_xz/__init__.py` | Host-only X/Z teaching simulator for R-SIM-1 | — |
+| `tools/sim_xz/__init__.py` | Public simulator API; metadata imports must not initialize its runtime. The panel also runs as tools/drone_tcp_panel.py… | `__getattr__` |
 | `tools/sim_xz/__main__.py` | Host-side utility for main | — |
 | `tools/sim_xz/actuators.py` | Delayed, asymmetric first-order actuator response; no control equations | `lag`, `TiltActuator` |
 | `tools/sim_xz/app.py` | Tk front end for the host-only simulator | `SimulationApp`, `main` |

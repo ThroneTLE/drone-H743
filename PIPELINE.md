@@ -148,6 +148,7 @@ flowchart TB
 
 | 日期 | 范围 | 证据 | 结果 | 对状态的影响 |
 |---|---|---|---|---|
+| 2026-09-08 | 修bug：直接命令行启动上位机缺少tools模块 | data/simulation/2026-09-08/cli-startup-review.md、cli-startup-before.txt、cli-startup-after.txt；2 failed,1 passed→13 passed in 19.34s | sim_xz包改按需加载，参数目录不连带导入协议；补脚本路径独立进程测试；索引/Pipeline复验10 passed in 2.95s，Debug无重编译；0串口/0probe | R-SIM-3保持待审核，独立fix提交 |
 | 2026-09-08 | R-SIM-3 完整P–PID–P–PID及高度P–PID | data/simulation/2026-09-08/cascade-height-review.md、cascade-height-tests.txt、cascade-horizontal.png、cascade-height.png；69 passed in 37.01s；索引/桥接复验16 passed in 6.31s，Debug无重编译 | 12增益真实回读、6项I/D改变C输出、高度模式、执行器时延/静态曲线/上限；保留实际限速；0串口/0probe；估计边界明确 | R-SIM-3待审核 |
 | 2026-09-08 | R-SIM-2 上位机仿真标题栏与自动启动连接 | data/simulation/2026-09-08/launcher-review.md、launcher-tests.txt、launcher-panel.png；110 passed in 82.15s；最终恢复/标识复验7 passed in 15.26s；快进同步原工作区后启动联调4 passed in 15.06s、索引current | 真实上位机按钮→独立GUI进程→回环TCP→自动运行和参数回显，停止回收恢复；已有设备不接管；0串口/0probe | R-SIM-2待审核，无实机操作 |
 | 2026-09-08 | R-SIM-2前置修bug：Windows仿真时间推进过慢 | 一键启动E2E修前1 failed,106 passed；独立回环4s后t_us=256000，定位select毫秒等待在Windows被量化；新增SimulationClock及3项测试；修后时钟+启动7 passed in 12.43s | 按墙钟累计执行固定1ms子步，慢放只缩放累计时间；原测试手工step未覆盖OS等待；0串口/0probe | 独立fix提交，不改控制律和实机路径 |

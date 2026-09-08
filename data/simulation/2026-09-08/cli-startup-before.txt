@@ -1,0 +1,103 @@
+FF.                                                                      [100%]
+================================== FAILURES ===================================
+_____ test_direct_script_builds_panel_from_an_unrelated_working_directory _____
+
+tmp_path = WindowsPath('C:/Users/23259/AppData/Local/Temp/pytest-of-23259/pytest-1580/test_direct_script_builds_pane0')
+
+    def test_direct_script_builds_panel_from_an_unrelated_working_directory(tmp_path):
+        code = r'''
+    import runpy, sys, tkinter as tk
+    from pathlib import Path
+    script=Path(sys.argv[1])
+    # A direct python /path/tools/drone_tcp_panel.py supplies tools/, not repo/.
+    sys.path.insert(0,str(script.parent))
+    ns=runpy.run_path(str(script),run_name="cli_startup_regression")
+    Panel=ns["DronePanel"]
+    for name in ("_restore_last_connection","_save_panel_state",
+                 "_validation_load_latest_artifact","_v1_load_latest_session"):
+        setattr(Panel,name,lambda self:None)
+    Panel._load_panel_state=lambda self:{}
+    original=tk.Tk.__init__
+    def hidden(self,*args,**kwargs):
+        original(self,*args,**kwargs)
+        self.withdraw()
+    tk.Tk.__init__=hidden
+    app=Panel()
+    assert app.simulation_bar.start_button.cget("text")
+    app.destroy()
+    print("DIRECT_SCRIPT_WINDOW_OK")
+    '''
+        result = subprocess.run([sys.executable, '-I', '-c', code,
+                                 str(ROOT/'tools/drone_tcp_panel.py')],
+                                cwd=tmp_path, capture_output=True, text=True,
+                                encoding='utf-8', errors='replace', timeout=30)
+>       assert result.returncode == 0, result.stdout + result.stderr
+E       AssertionError: Traceback (most recent call last):
+E           File "D:\stm32hal\drone-H743\tools\drone_tcp_panel.py", line 1383, in _build_ui
+E             from .panel_lib.shell import build_ui
+E         ImportError: attempted relative import with no known parent package
+E         
+E         During handling of the above exception, another exception occurred:
+E         
+E         Traceback (most recent call last):
+E           File "D:\stm32hal\drone-H743\tools\panel_lib\simulation_launcher.py", line 15, in <module>
+E             from ..sim_xz.control_catalog import EXPERIMENT_LABELS
+E         ImportError: attempted relative import beyond top-level package
+E         
+E         During handling of the above exception, another exception occurred:
+E         
+E         Traceback (most recent call last):
+E           File "<string>", line 18, in <module>
+E           File "D:\stm32hal\drone-H743\tools\drone_tcp_panel.py", line 1152, in __init__
+E             self._build_ui()
+E           File "D:\stm32hal\drone-H743\tools\drone_tcp_panel.py", line 1385, in _build_ui
+E             from panel_lib.shell import build_ui
+E           File "D:\stm32hal\drone-H743\tools\panel_lib\shell.py", line 6, in <module>
+E             from .simulation_launcher import mount_simulation_bar
+E           File "D:\stm32hal\drone-H743\tools\panel_lib\simulation_launcher.py", line 17, in <module>
+E             from sim_xz.control_catalog import EXPERIMENT_LABELS
+E           File "D:\stm32hal\drone-H743\tools\sim_xz\__init__.py", line 6, in <module>
+E             from .protocol import SimulatorProtocol
+E           File "D:\stm32hal\drone-H743\tools\sim_xz\protocol.py", line 10, in <module>
+E             from tools.panel_lib.proto import (PROTO_DIR_FROM_FC, PROTO_DIR_TO_FC, PROTO_HEADER,
+E         ModuleNotFoundError: No module named 'tools'
+E         
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['D:\\ANACON\\python.exe', '-I', '-c', '\nimport runpy, sys, tkinter as tk\nfrom pathlib import ...lib.proto import (PROTO_DIR_FROM_FC, PROTO_DIR_TO_FC, PROTO_HEADER,\nModuleNotFoundError: No module named \'tools\'\n').returncode
+
+tests\test_panel_direct_script_startup.py:36: AssertionError
+_____________ test_catalog_import_does_not_load_simulator_runtime _____________
+
+tmp_path = WindowsPath('C:/Users/23259/AppData/Local/Temp/pytest-of-23259/pytest-1580/test_catalog_import_does_not_l0')
+
+    def test_catalog_import_does_not_load_simulator_runtime(tmp_path):
+        code = r'''
+    import sys
+    sys.path.insert(0,sys.argv[1])
+    from sim_xz.control_catalog import EXPERIMENT_LABELS
+    assert "height_step" in EXPERIMENT_LABELS.values()
+    assert "sim_xz.protocol" not in sys.modules
+    assert "sim_xz.controller_bridge" not in sys.modules
+    '''
+        result=subprocess.run([sys.executable,'-I','-c',code,str(ROOT/'tools')],
+                              cwd=tmp_path,capture_output=True,text=True,timeout=15)
+>       assert result.returncode == 0, result.stdout+result.stderr
+E       AssertionError: Traceback (most recent call last):
+E           File "<string>", line 4, in <module>
+E           File "D:\stm32hal\drone-H743\tools\sim_xz\__init__.py", line 6, in <module>
+E             from .protocol import SimulatorProtocol
+E           File "D:\stm32hal\drone-H743\tools\sim_xz\protocol.py", line 10, in <module>
+E             from tools.panel_lib.proto import (PROTO_DIR_FROM_FC, PROTO_DIR_TO_FC, PROTO_HEADER,
+E         ModuleNotFoundError: No module named 'tools'
+E         
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['D:\\ANACON\\python.exe', '-I', '-c', '\nimport sys\nsys.path.insert(0,sys.argv[1])\nfrom sim_x...lib.proto import (PROTO_DIR_FROM_FC, PROTO_DIR_TO_FC, PROTO_HEADER,\nModuleNotFoundError: No module named \'tools\'\n').returncode
+
+tests\test_panel_direct_script_startup.py:51: AssertionError
+Physical serial open attempts: 0
+Flashing/probe tool invocation attempts: 0
+Tk display available at session start: True; Tk roots created: 0
+=========================== short test summary info ===========================
+FAILED tests/test_panel_direct_script_startup.py::test_direct_script_builds_panel_from_an_unrelated_working_directory
+FAILED tests/test_panel_direct_script_startup.py::test_catalog_import_does_not_load_simulator_runtime
+2 failed, 1 passed in 1.89s
