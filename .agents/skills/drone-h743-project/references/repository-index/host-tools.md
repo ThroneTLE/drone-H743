@@ -4,7 +4,7 @@
 
 Read this shard only when the task uses serial/TCP diagnostics, log analysis, identification, capture, calibration, or desktop UIs.
 
-Source snapshot: `78bcc264a52d`; aggregate snapshot: `b60d93e4d2d3`. Covered files: 5367.
+Source snapshot: `dbffe2a8cf04`; aggregate snapshot: `30628635169e`. Covered files: 5367.
 
 | File/module or scope | Content outline | Key entry points / size |
 |---|---|---|
@@ -85,7 +85,7 @@ Source snapshot: `78bcc264a52d`; aggregate snapshot: `b60d93e4d2d3`. Covered fil
 | `tools/sim_xz/physics.py` | Deterministic X/Z plant and actuator model; controller equations stay in C | `SimulationState`, `XZPlant` |
 | `tools/sim_xz/presentation.py` | Tk presentation only: no controller, network or experiment mutation | `PresentationMixin` |
 | `tools/sim_xz/protocol.py` | Existing $X text protocol adapter for the simulated device | `InboundFrame`, `FrameDecoder`, `SimulatorProtocol` |
-| `tools/sim_xz/README.md` | R-SIM-1 X/Z teaching simulator | `上位机一键启动（推荐）`, `手动启动（可选）`, `Start`, `Experiments`, `Boundaries`, `界面与操作（2026-09-08 复核修订）` (+2) |
+| `tools/sim_xz/README.md` | R-SIM-1 X/Z teaching simulator | `上位机一键启动（推荐）`, `手动启动（可选）`, `Start`, `Experiments`, `Boundaries`, `界面与操作（2026-09-08 复核修订）` (+3) |
 | `tools/sim_xz/sim_controller_bridge.c` | Host-side utility for sim controller bridge | — |
 | `tools/sim_xz/sim_controller_bridge.h` | Host-side utility for sim controller bridge | — |
 | `tools/stationary_drift.py` | 静止漂移自检：飞机不动放 30~60 秒，看它自己以为发生了什么。 为什么需要这一项： 六面标定解出来的是"摆在六个姿态下读数对不对"，但用户真正在意的是"放着不动 时它会不会自己飘"。这两件事不等价 —— 系数写对了、静止时照样可能因为… | `DriftSample`, `DriftReport`, `analyze_drift`, `summarise`, `compare`, `report_to_dict` (+4) |
@@ -97,6 +97,6 @@ Source snapshot: `78bcc264a52d`; aggregate snapshot: `b60d93e4d2d3`. Covered fil
 | `tools/vofa_serial_capture.py` | Capture USART1/VOFA JustFloat telemetry from the flight controller. The firmware currently sends 28 little-endian float… | `RunningStats`, `build_parser`, `safe_text`, `split_lines`, `parse_frame`, `write_metadata` (+1) |
 | `tools/vofa_udp_bridge.py` | Bridge Ai-WB2 UDP transparent mode to fixed VOFA UDP ports. Why this exists: - Ai-WB2 auto transparent mode is configur… | `log`, `main` |
 | `tools/ground_station/ bundled tree` | Bundled application/runtime distribution; inspect an exact file only when maintaining that bundle | 5239 files / 135.6 MiB / .svg×854, .h×841, .cpp×635, .md×459, .py×257 |
-| `tools/panel_lib/ bundled tree` | Bundled application/runtime distribution; inspect an exact file only when maintaining that bundle | 40 files / 616.8 KiB / .py×40 |
+| `tools/panel_lib/ bundled tree` | Bundled application/runtime distribution; inspect an exact file only when maintaining that bundle | 40 files / 616.9 KiB / .py×40 |
 
 Open the smallest listed tool or bundle landmark first; do not preload bundled runtimes.

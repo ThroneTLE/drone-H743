@@ -21,7 +21,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 class SimulationBar(ttk.LabelFrame):
     def __init__(self, parent, panel, *, process_factory=None, headless=False):
-        super().__init__(parent, text='仿真 · X–Z / 水平 P—PID—P—PID · 高度 P—PID', padding=(10, 6))
+        super().__init__(parent, text='仿真 · X–Z / 水平平动 P—PID · 高度 P—PID · 俯仰姿态 P—PID', padding=(10, 6))
         self.panel = panel
         self.process_factory = process_factory or subprocess.Popen
         self.headless = headless
@@ -164,10 +164,10 @@ class SimulationBar(ttk.LabelFrame):
         p = self.panel
         self.previous_workspace = p.dashboard_layout.active
         self.workspaces = simulation_workspaces()
-        self.workspace = self.workspaces[0]
-        p.dashboard_layout.active = len(p.dashboard_layout.workspaces)
-        if EXPERIMENT_LABELS[self.experiment_var.get()] == 'height_step':
-            p.dashboard_layout.active += 1
+        selected = EXPERIMENT_LABELS[self.experiment_var.get()]
+        offset = {'height_step': 1, 'pitch_step': 2}.get(selected, 0)
+        self.workspace = self.workspaces[offset]
+        p.dashboard_layout.active = len(p.dashboard_layout.workspaces) + offset
         p.dashboard_layout.workspaces.extend(self.workspaces)
         p.dashboard_workspace_var.set(p.dashboard_layout.active)
         p._dashboard_rebuild_workspace_bar()

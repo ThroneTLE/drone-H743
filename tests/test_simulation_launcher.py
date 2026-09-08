@@ -39,7 +39,7 @@ def test_one_click_starts_child_connects_streams_and_stop_reaps(panel):
     assert panel.port_var.get() > 0
     assert str(panel.link_status_label.cget("textvariable")) == str(bar.link_status)
     assert "仿真数据" in bar.link_status.get()
-    assert panel.dashboard_layout.active_workspace().name == '二维仿真'
+    assert panel.dashboard_layout.active_workspace().name == '水平平动 · P—PID'
     bar.start()  # Repeated click must not launch a second process.
     assert bar.process is child
     # Check motion with the real default gains before deliberately writing test values.
@@ -49,7 +49,7 @@ def test_one_click_starts_child_connects_streams_and_stop_reaps(panel):
         assert panel._dashboard_send_param(channel[0], value)
         pump(panel, lambda channel=channel, value=value:
              abs((panel._dashboard_latest(channel[0]) or 0)-value)<1e-4)
-    assert len(bar.workspaces)==2
+    assert len(bar.workspaces)==3
     height_workspace=bar.workspaces[1]
     assert {'sim_pos_z_kp','sim_vel_z_ki','sim_vel_z_kd'} <= set(height_workspace.bound_channels())
 
@@ -107,6 +107,6 @@ def test_titlebar_height_choice_starts_vertical_experiment(panel):
     bar.start_button.invoke()
     pump(panel, lambda: bar.connected_once and panel.dashboard_schema.complete
          and (panel._dashboard_latest('sim_z') or 0)>1.01)
-    assert panel.dashboard_layout.active_workspace().name=='高度 P—速度 PID'
+    assert panel.dashboard_layout.active_workspace().name=='高度 · P—PID'
     assert panel._dashboard_send_param('sim_vel_z_ki',.12)
     pump(panel, lambda: abs((panel._dashboard_latest('sim_vel_z_ki') or 0)-.12)<1e-4)

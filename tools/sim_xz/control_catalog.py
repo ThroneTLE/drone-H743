@@ -27,5 +27,11 @@ HORIZONTAL_GROUPS = (
 VERTICAL_GROUP = (('sim_pos_z_kp', '高度 P'), ('sim_vel_z_kp', '垂直速度 P'),
                   ('sim_vel_z_ki', '垂直速度 I'), ('sim_vel_z_kd', '垂直速度 D'))
 
+PARAMETER_GROUPS = {
+    'horizontal': HORIZONTAL_GROUPS[0],
+    'vertical': VERTICAL_GROUP,
+    'attitude': HORIZONTAL_GROUPS[1],
+}
+
 EXPERIMENT_LABELS = {'位置阶跃 · X': 'position_step', '速度阶跃 · X': 'velocity_step',
                      '俯仰阶跃': 'pitch_step', '高度阶跃 · Z': 'height_step'}
