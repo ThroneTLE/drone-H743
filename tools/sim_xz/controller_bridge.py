@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ctypes
+import re
 import hashlib
 import os
 import shutil
@@ -91,7 +92,15 @@ def _dependency_digest(paths: tuple[Path, ...], flags: tuple[str, ...] = _BUILD_
 
 
 def _source_digest() -> str:
-    return _dependency_digest(_dependency_paths())
+    return _dependency_digest(_dependency_paths(), (*_BUILD_FLAGS, *_model_defines()))
+
+
+def _model_defines() -> list[str]:
+    source = (ROOT / "Driver/Src/drv_coax_ctrl.c").read_text(encoding="utf-8")
+    value = re.search(r"^#define\s+DRV_COAX_CTRL_PITCH_EFFECTIVENESS\s+([0-9.eE+-]+f?)\s*$", source, re.MULTILINE)
+    if value is None:
+        raise RuntimeError("Cannot resolve source pitch effectiveness; refusing an invented model value")
+    return ["-DSIM_PITCH_EFFECTIVENESS=" + value.group(1)]
 
 
 def build_controller_library(instance_tag: str = "default") -> Path:
@@ -105,7 +114,7 @@ def build_controller_library(instance_tag: str = "default") -> Path:
     output = output_dir / f"controller_{_source_digest()}_{safe_tag}{suffix}"
     if output.exists():
         return output
-    command = [compiler, *_BUILD_FLAGS,
+    command = [compiler, *_BUILD_FLAGS, *_model_defines(),
                "-I", str(ROOT / "Driver" / "Inc"), "-I", str(ROOT / "BSP" / "Inc"),
                "-I", str(SIM_ROOT), "-I", str(ROOT / "App" / "Inc"),
                str(SIM_ROOT / "sim_controller_bridge.c"),
@@ -128,7 +137,13 @@ class ControllerBridge:
         self._lib.sim_controller_reset_params.argtypes = []
         for name in ("sim_controller_mass_kg", "sim_controller_gravity_m_s2",
                      "sim_controller_pitch_inertia_kgm2", "sim_controller_pitch_lever_arm_m",
-                     "sim_controller_tilt_tau_s"):
+                     "sim_controller_tilt_tau_s",
+                     "sim_controller_tilt_gain",
+                     "sim_controller_tilt_delay_s",
+                     "sim_controller_tilt_tau_decrease_s",
+                     "sim_controller_max_total_thrust_n",
+                     "sim_controller_servo_limit_rad",
+                     "sim_controller_pitch_pulse_direction", "sim_controller_pitch_effectiveness"):
             getattr(self._lib, name).restype = ctypes.c_float
         self._lib.sim_controller_param_count.restype = ctypes.c_uint32
         self._lib.sim_controller_param_name.argtypes = [ctypes.c_uint32]
@@ -150,7 +165,14 @@ class ControllerBridge:
                     "gravity_m_s2": float(self._lib.sim_controller_gravity_m_s2()),
                     "pitch_inertia_kgm2": float(self._lib.sim_controller_pitch_inertia_kgm2()),
                     "pitch_lever_arm_m": float(self._lib.sim_controller_pitch_lever_arm_m()),
-                    "tilt_tau_s": float(self._lib.sim_controller_tilt_tau_s())}
+                    "tilt_tau_s": float(self._lib.sim_controller_tilt_tau_s()),
+                    "tilt_gain": float(self._lib.sim_controller_tilt_gain()),
+                    "tilt_delay_s": float(self._lib.sim_controller_tilt_delay_s()),
+                    "tilt_tau_decrease_s": float(self._lib.sim_controller_tilt_tau_decrease_s()),
+                    "max_total_thrust_n": float(self._lib.sim_controller_max_total_thrust_n()),
+                    "servo_limit_rad": float(self._lib.sim_controller_servo_limit_rad()),
+                    "pitch_pulse_direction": float(self._lib.sim_controller_pitch_pulse_direction()),
+                    "pitch_effectiveness": float(self._lib.sim_controller_pitch_effectiveness())}
 
     def parameter_snapshot(self) -> dict[str, float]:
         with self._lock:

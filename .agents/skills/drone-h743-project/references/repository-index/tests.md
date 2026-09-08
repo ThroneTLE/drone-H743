@@ -4,7 +4,7 @@
 
 Read this shard only when you need existing behavioral/architecture coverage or must choose focused regression tests.
 
-Source snapshot: `72d173707528`. Indexed files: 146.
+Source snapshot: `178e27a40584`. Indexed files: 148.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -134,13 +134,15 @@ Source snapshot: `72d173707528`. Indexed files: 146.
 | `tests/test_servo_type_panel_contract.py` | R-S7-5 host contracts for servo type controls and transactions | `test_servo_type_protocol_ids_are_unique_and_forwarded` (+3) |
 | `tests/test_servo_type_protocol.py` | S7 servo output type persistence and command protocol contracts | `test_servo_type_reuses_reserved_fcal_byte_without_abi_growth` (+5) |
 | `tests/test_shared_log_transfer.py` | Single-reader export over the already-open serial session, using FLOG fixtures | `test_current_connection_can_be_borrowed_without_reopen` (+6) |
+| `tests/test_simulation_actuators.py` | — | `test_delay_and_static_gain_match_fopdt_response` (+2) |
 | `tests/test_simulation_clock.py` | — | `test_windows_coarse_timer_preserves_simulation_speed` (+2) |
 | `tests/test_simulation_controller_bridge.py` | — | `test_bridge_exposes_real_runtime_parameters` (+2) |
 | `tests/test_simulation_experiments.py` | — | `test_three_approved_experiments_produce_five_state_channels` (+1) |
-| `tests/test_simulation_launcher.py` | Actual panel startup, loopback child lifecycle, and no hardware switching | `test_one_click_starts_child_connects_streams_and_stop_reaps` (+3) |
+| `tests/test_simulation_full_cascade.py` | The simulator exposes and executes the actual planar P-PID-P-PID cascade | `test_full_gains_are_bound_to_existing_c_parameters_and_visible` (+4) |
+| `tests/test_simulation_launcher.py` | Actual panel startup, loopback child lifecycle, and no hardware switching | `test_one_click_starts_child_connects_streams_and_stop_reaps` (+4) |
 | `tests/test_simulation_physics.py` | — | `test_hover_does_not_accumulate_vertical_acceleration` (+4) |
 | `tests/test_simulation_protocol.py` | — | `test_frame_decoder_accepts_fragmented_real_protocol_frame` (+4) |
-| `tests/test_simulation_review_boundaries.py` | Regression cases from the 2026-09-08 final review | `test_nonfinite_target_is_rejected_without_changing_active_targets` (+2) |
+| `tests/test_simulation_review_boundaries.py` | Regression cases from the 2026-09-08 final review | `test_nonfinite_target_is_rejected_without_changing_active_targets` (+3) |
 | `tests/test_simulation_tcp.py` | — | `test_simulator_is_tcp_client_and_answers_caps_on_loopback` (+3) |
 | `tests/test_simulation_ui_contract.py` | Exercise actual Tk views rather than checking widget-name strings | `test_controls_and_five_chart_rows_fit` (+4) |
 | `tests/test_stationary_drift.py` | 静止漂移自检。 背景：六面标定解的是"摆在六个姿态下读数对不对"，但用户真正在意的是"放着不动会 不会自己飘"。这两件事不等价。飞机不动时真实角速度就是 0、真实比力就是 1 g，所以 这个检查不需要转台 —— 读数偏多少就是误差多少，也… | `test_a_still_aircraft_reports_no_drift_and_one_g` (+13) |

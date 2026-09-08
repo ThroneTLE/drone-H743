@@ -84,6 +84,7 @@ flowchart TB
 
 | REQ | 节点 | 需求 | 验收判据 | 状态 |
 |---|---|---|---|---|
+| R-SIM-3 | 作者授权附加需求 | 〔码〕补全二维仿真的P–PID–P–PID及高度P–PID，X/Z完整增益回显与高度阶跃；保留真实控制律、执行器延迟/方向动态/推力曲线与饱和；模式simulation+tk-ui | 12项实际C增益可调与回读；6项I/D分别影响C输出；高度阶跃及限速行为；实际上位机子进程高度场景；模型来源/估计边界、截图与离线测试 | 待审核 |
 | R-SIM-2 | 作者授权附加需求 | 〔码〕上位机仿真标题栏：一键开启本机TCP、启动并连接仿真窗口，提供停止与状态；类别模式simulation+tk-ui | 真实DronePanel按钮到独立仿真进程、参数回显与自动时间推进；已连设备不被切换；重复启动无重复进程；失败/停止/主窗口关闭回收自有资源；禁止两巨文件增长与实机操作 | 待审核 |
 | R-SIM-1 | 作者授权附加需求 | 〔码〕X–Z 教学仿真与现有上位机对接：同源 C 四环/分配/调度、二维物理、TCP 模拟设备、Tk 动画、三阶跃与 A/B。类别模式：simulation；作者于 2026-09-08 授权补写本模式及附加 REQ；本项为 host-only，不要求实机/实录基线 | 四环参数真实生效回显并影响模拟轨迹；俯仰/速度/位置三实验与 Z 约束符合批准计划；真实上位机 TCP 端到端、物理/C 对拍/UI 测试；交付阶段执行直接契约、可用的全量 pytest、Debug、索引/PIPELINE/FLU；交付 simulation 产物与测试原文；不替代实机证据 | 待审核 |
 | R-M1-1 | M1 | 〔机〕60s 实机健康基线报告 | `tools/m1_baseline_check.py` verdict=PASS，报告入 `data/analysis/m1_baseline/` | ✅ |
@@ -147,6 +148,7 @@ flowchart TB
 
 | 日期 | 范围 | 证据 | 结果 | 对状态的影响 |
 |---|---|---|---|---|
+| 2026-09-08 | R-SIM-3 完整P–PID–P–PID及高度P–PID | data/simulation/2026-09-08/cascade-height-review.md、cascade-height-tests.txt、cascade-horizontal.png、cascade-height.png；69 passed in 37.01s；索引/桥接复验16 passed in 6.31s，Debug无重编译 | 12增益真实回读、6项I/D改变C输出、高度模式、执行器时延/静态曲线/上限；保留实际限速；0串口/0probe；估计边界明确 | R-SIM-3待审核 |
 | 2026-09-08 | R-SIM-2 上位机仿真标题栏与自动启动连接 | data/simulation/2026-09-08/launcher-review.md、launcher-tests.txt、launcher-panel.png；110 passed in 82.15s；最终恢复/标识复验7 passed in 15.26s；快进同步原工作区后启动联调4 passed in 15.06s、索引current | 真实上位机按钮→独立GUI进程→回环TCP→自动运行和参数回显，停止回收恢复；已有设备不接管；0串口/0probe | R-SIM-2待审核，无实机操作 |
 | 2026-09-08 | R-SIM-2前置修bug：Windows仿真时间推进过慢 | 一键启动E2E修前1 failed,106 passed；独立回环4s后t_us=256000，定位select毫秒等待在Windows被量化；新增SimulationClock及3项测试；修后时钟+启动7 passed in 12.43s | 按墙钟累计执行固定1ms子步，慢放只缩放累计时间；原测试手工step未覆盖OS等待；0串口/0probe | 独立fix提交，不改控制律和实机路径 |
 | 2026-09-08 | R-SIM-1 父任务直接返修与界面完善 | data/simulation/2026-09-08/refinement-review.md、refinement-tests.txt、refinement-full-tests.txt、ui-refinement.png；52 passed in 17.94s；全仓2 failed, 1333 passed, 4 skipped in 252.45s（历史CSV缺失与新增产物后索引待刷新）；Debug：ninja: no work to do. | 修复非有限输入/状态与点击快照；三栏界面、竖直机体、T/Fx/Fz矢量标注、五量刻度曲线；索引/Pipeline复验10 passed in 4.81s；0串口/0probe | R-SIM-1保持待审核；定时任务暂停 |

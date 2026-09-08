@@ -4,6 +4,7 @@ import tkinter as tk
 from tkinter import ttk
 
 from .experiments import ExperimentKind
+from .control_catalog import EXPERIMENT_LABELS
 
 BG = '#10171f'
 PANEL = '#17212c'
@@ -13,9 +14,7 @@ GRID = '#253341'
 TEAL = '#55d6be'
 GOLD = '#f2bd68'
 BLUE = '#70b7ed'
-KINDS = {'位置阶跃 · X': ExperimentKind.POSITION_STEP,
-         '速度阶跃 · X': ExperimentKind.VELOCITY_STEP,
-         '俯仰阶跃': ExperimentKind.PITCH_STEP}
+KINDS = {label: ExperimentKind(value) for label, value in EXPERIMENT_LABELS.items()}
 FONT = 'Microsoft YaHei UI'
 
 
@@ -47,7 +46,7 @@ class PresentationMixin:
         header = ttk.Frame(self, padding=(20, 14))
         header.grid(row=0, column=0, columnspan=3, sticky='ew', padx=12, pady=(12, 10))
         ttk.Label(header, text='XZ  /  飞行控制实验室', font=(FONT, 18, 'bold')).pack(side='left')
-        ttk.Label(header, text='二维教学仿真  ·  同源 C 控制器', style='Muted.TLabel').pack(side='right')
+        ttk.Label(header, text='X–Z 平面约束  ·  同源 C 控制器', style='Muted.TLabel').pack(side='right')
         controls = ttk.Frame(self, padding=16)
         controls.grid(row=1, column=0, sticky='nsew', padx=(12, 10))
         scene = ttk.Frame(self, padding=12)
@@ -60,8 +59,8 @@ class PresentationMixin:
         self.rowconfigure(1, weight=1)
 
         ttk.Label(controls, text='01  实验设置', style='Title.TLabel').pack(anchor='w')
-        self.kind = tk.StringVar(value=ExperimentKind.POSITION_STEP.value)
-        self.experiment_name = tk.StringVar(value=next(iter(KINDS)))
+        self.kind = tk.StringVar(value=self.device.engine.kind.value)
+        self.experiment_name = tk.StringVar(value=next(label for label, kind in KINDS.items() if kind is self.device.engine.kind))
         combo = ttk.Combobox(controls, textvariable=self.experiment_name, values=list(KINDS),
                              state='readonly', width=21)
         combo.pack(fill='x', pady=(12, 10))
@@ -73,8 +72,9 @@ class PresentationMixin:
         targets = ttk.Frame(controls)
         targets.pack(fill='x')
         self.target_x, self.target_vx, self.target_pitch = [tk.StringVar(value=v) for v in ('0.5', '0.2', '3.0')]
+        self.target_height = tk.StringVar(value='0.3')
         for row, (label, variable) in enumerate((('位移  /  m', self.target_x),
-                ('速度  /  m/s', self.target_vx), ('俯仰  /  °', self.target_pitch))):
+                ('速度  /  m/s', self.target_vx), ('俯仰  /  °', self.target_pitch), ('高度增量  /  m', self.target_height))):
             ttk.Label(targets, text=label, style='Muted.TLabel').grid(row=row, column=0, sticky='w', pady=4)
             ttk.Entry(targets, textvariable=variable, width=9).grid(row=row, column=1, sticky='e', pady=4)
         targets.columnconfigure(1, weight=1)
@@ -92,13 +92,14 @@ class PresentationMixin:
             ttk.Radiobutton(speeds, text=f'{v:g}×', value=v, variable=self.scale,
                             command=lambda: setattr(self.device, 'time_scale', self.scale.get())).pack(side='left', padx=3)
         ttk.Separator(controls).pack(fill='x', pady=12)
-        ttk.Label(controls, text='02  模型假设', style='Title.TLabel').pack(anchor='w')
+        ttk.Label(controls, text='02  动力模型', style='Title.TLabel').pack(anchor='w')
         ttk.Label(controls, text='电机响应时间常数  /  s', style='Muted.TLabel').pack(anchor='w', pady=(10, 4))
         self.motor_tau = tk.StringVar(value=f'{self.device.engine.plant.thrust_tau_s:.3f}')
-        ttk.Entry(controls, textvariable=self.motor_tau, width=9).pack(fill='x')
-        ttk.Button(controls, text='应用模型假设', command=self._apply_model).pack(fill='x', pady=6)
-        ttk.Label(controls, text='越大，推力响应越慢。\n该值是教学假设，可自行比较。',
-                  style='Muted.TLabel').pack(anchor='w')
+        model_row = ttk.Frame(controls)
+        model_row.pack(fill='x')
+        ttk.Entry(model_row, textvariable=self.motor_tau, width=9).pack(side='left',fill='x',expand=True)
+        ttk.Button(model_row, text='应用', command=self._apply_model).pack(side='right',padx=(6,0))
+        ttk.Label(controls, text='电机 τ 待辨识；参数来源见说明。', style='Muted.TLabel').pack(anchor='w',pady=6)
 
         scene_head = ttk.Frame(scene)
         scene_head.pack(fill='x', pady=(2, 8))
@@ -127,7 +128,7 @@ class PresentationMixin:
         footer = ttk.Frame(self, padding=(16, 9))
         footer.grid(row=2, column=0, columnspan=3, sticky='ew', padx=12, pady=(10, 12))
         ttk.Label(footer, textvariable=self.status, style='Muted.TLabel').pack(side='left')
-        ttk.Label(footer, text='仅用于理解响应 · 不代表实机性能', style='Muted.TLabel').pack(side='right')
+        ttk.Label(footer, text='模型参数含估计值 · 不代表实机验收', style='Muted.TLabel').pack(side='right')
 
     def _draw_scene(self, state):
         c = self.canvas
@@ -154,7 +155,8 @@ class PresentationMixin:
         if len(self._trajectory) > 1:
             c.create_line(*[v for x, z in self._trajectory for v in point(x, z)], fill=GOLD, width=2)
         target_x = self.device.engine.targets.position_step_m if self.device.engine.kind is ExperimentKind.POSITION_STEP and state.time_s >= 1 else (0 if self.device.engine.kind is ExperimentKind.POSITION_STEP else state.x_m)
-        tx, tz = point(target_x, 1)
+        target_z = 1 + (self.device.engine.targets.height_step_m if self.device.engine.kind is ExperimentKind.HEIGHT_STEP and state.time_s >= 1 else 0)
+        tx, tz = point(target_x, target_z)
         c.create_oval(tx-9, tz-9, tx+9, tz+9, outline=TEAL, width=2, dash=(3, 3))
         c.create_text(tx, tz-20, text='目标', fill=TEAL, font=(FONT, 9))
         x, z = point(state.x_m, state.z_m)
@@ -205,6 +207,9 @@ class PresentationMixin:
             c.create_text(w-40,16,text='B',anchor='w',fill=TEAL)
         fields = [('pitch_rad','俯仰角','°',180/math.pi), ('pitch_rate_rad_s','俯仰角速度','°/s',180/math.pi),
                   ('vx_m_s','X 速度','m/s',1), ('x_m','X 位置','m',1), ('z_m','Z 高度','m',1)]
+        if (getattr(result, "kind", self.device.engine.kind) if result else self.device.engine.kind) is ExperimentKind.HEIGHT_STEP:
+            fields = [('z_m','Z 高度','m',1), ('vz_m_s','垂直速度','m/s',1),
+                      ('pitch_rad','俯仰角','°',180/math.pi), ('vx_m_s','X 速度','m/s',1), ('x_m','X 位置','m',1)]
         row_h = (h-62)/5
         for row,(key,label,unit,factor) in enumerate(fields):
             top=36+row*row_h

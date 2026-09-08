@@ -57,6 +57,44 @@ float sim_controller_tilt_tau_s(void)
     return DRV_AIRFRAME_SERVO_BETA_ACTUATOR_TAU_INCREASE_S;
 }
 
+float sim_controller_pitch_effectiveness(void)
+{
+    return SIM_PITCH_EFFECTIVENESS;
+}
+
+float sim_controller_tilt_gain(void)
+{
+    return DRV_AIRFRAME_SERVO_BETA_ACTUATOR_GAIN;
+}
+
+float sim_controller_tilt_delay_s(void)
+{
+    return DRV_AIRFRAME_SERVO_BETA_ACTUATOR_DELAY_S;
+}
+
+float sim_controller_tilt_tau_decrease_s(void)
+{
+    return DRV_AIRFRAME_SERVO_BETA_ACTUATOR_TAU_DECREASE_S;
+}
+
+float sim_controller_max_total_thrust_n(void)
+{
+    return DRV_AIRFRAME_MAX_TOTAL_FORCE_N;
+}
+
+float sim_controller_servo_limit_rad(void)
+{
+    return DRV_COAX_CTRL_SERVO_LIMIT_DEG * 0.017453292519943295f;
+}
+
+float sim_controller_pitch_pulse_direction(void)
+{
+    uint16_t a0, b0, a1, b1;
+    DRV_COAX_CTRL_BodyTiltRadToServoPulses(0.0f, 0.0f, &a0, &b0);
+    DRV_COAX_CTRL_BodyTiltRadToServoPulses(0.01f, 0.0f, &a1, &b1);
+    return b1 >= b0 ? 1.0f : -1.0f;
+}
+
 uint32_t sim_controller_param_count(void)
 {
     return DRV_COAX_CTRL_ParamCount();
@@ -132,8 +170,11 @@ void sim_controller_step(const SimControllerInput *input,
                                 sim_navigation_token, &scheduled);
     DRV_COAX_CTRL_GetLastDebug(&debug);
     memset(output, 0, sizeof(*output));
-    output->thrust_upper_n = controller_output.thrust_upper_n;
-    output->thrust_lower_n = controller_output.thrust_lower_n;
+    /* The motor table describes two rotors at the same pulse: divide by two
+     * to obtain each rotor's static achievable thrust after PWM quantization.
+     * The plant then applies actuator dynamics, rather than using ideal force. */
+    output->thrust_upper_n = 0.5f * DRV_COAX_CTRL_MotorPulseToTotalThrust(controller_output.motor_upper_us);
+    output->thrust_lower_n = 0.5f * DRV_COAX_CTRL_MotorPulseToTotalThrust(controller_output.motor_lower_us);
     output->pitch_tilt_rad = controller_output.alpha_rad;
     output->roll_tilt_rad = controller_output.beta_rad;
     memcpy(output->moment_achieved_n_m, controller_output.moment_achieved_n_m,

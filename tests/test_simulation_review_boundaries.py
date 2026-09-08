@@ -75,3 +75,11 @@ def test_ab_job_freezes_click_time_inputs_before_thread_runs(monkeypatch, tmp_pa
     assert captured['baseline_params']['coax.pos_x_kp'] == 0.5
     assert captured['tuned_params']['coax.pos_x_kp'] == 0.9
     assert captured['thrust_tau_s'] == 0.08
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), -1.])
+def test_height_target_rejects_invalid_input(value):
+    engine=SimulationEngine()
+    before=engine.targets
+    with pytest.raises(ValueError):
+        engine.set_targets(.5,.2,3,value)
+    assert engine.targets==before

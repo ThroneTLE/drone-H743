@@ -15,7 +15,7 @@ from tools.sim_xz.experiments import SimulationEngine
 from tools.sim_xz.protocol import FrameDecoder
 from tools.sim_xz.controller_bridge import ControllerBridge
 from tools.sim_xz.physics import SimulationState
-from tools.sim_xz.protocol import SimulatorProtocol
+from tools.sim_xz.protocol import SimulatorProtocol, CHANNELS
 
 
 class _DronePanelLoopback:
@@ -122,7 +122,7 @@ def test_real_drone_panel_param_control_reaches_c_and_telem_ring() -> None:
     transport = _DronePanelLoopback(app, protocol)
     app.transport = transport
     try:
-        for response in protocol.handle_line("TELEM?") + protocol.handle_line("TELEM CH from=6"):
+        for response in sum((protocol.handle_line("TELEM?" if offset == 0 else f"TELEM CH from={offset}") for offset in range(0, len(CHANNELS), 6)), []):
             transport._deliver(response)
         app.update_idletasks()
         assert app.dashboard_schema.complete

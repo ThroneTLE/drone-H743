@@ -20,6 +20,7 @@ class ExperimentKind(str, Enum):
     POSITION_STEP = "position_step"
     VELOCITY_STEP = "velocity_step"
     PITCH_STEP = "pitch_step"
+    HEIGHT_STEP = "height_step"
 
 
 @dataclass(frozen=True)
@@ -43,12 +44,15 @@ class ExperimentTargets:
     position_step_m: float = 0.5
     velocity_step_m_s: float = 0.2
     pitch_step_rad: float = math.radians(3.0)
+    height_step_m: float = 0.3
 
 
 def _reference(kind: ExperimentKind, state: SimulationState,
                targets: ExperimentTargets | None = None) -> dict[str, float | int]:
     targets = targets or ExperimentTargets()
     active = state.time_s >= 1.0
+    if kind is ExperimentKind.HEIGHT_STEP:
+        return {"target_x_m": 0.0, "target_z_m": 1.0 + (targets.height_step_m if active else 0.0)}
     if kind is ExperimentKind.POSITION_STEP:
         return {"target_x_m": targets.position_step_m if active else 0.0, "target_z_m": 1.0}
     if kind is ExperimentKind.VELOCITY_STEP:
@@ -121,6 +125,7 @@ def run_ab(bridge: ControllerBridge, kind: ExperimentKind,
         ExperimentKind.POSITION_STEP: "coax.pos_x_kp",
         ExperimentKind.VELOCITY_STEP: "coax.vel_x_kp",
         ExperimentKind.PITCH_STEP: "coax.att_pitch_kp",
+        ExperimentKind.HEIGHT_STEP: "coax.pos_z_kp",
     }[kind]
     baseline_params = dict(baseline_params or bridge.parameter_snapshot())
     tuned_params = dict(tuned_params or baseline_params)
@@ -166,16 +171,19 @@ class SimulationEngine:
 
     def set_kind(self, kind: ExperimentKind) -> None:
         with self._lock:
-            self.kind = kind
+            if self.kind is not kind:
+                self.kind = kind
+                self.reset()
 
     def set_targets(self, position_step_m: float, velocity_step_m_s: float,
-                    pitch_step_deg: float) -> None:
+                    pitch_step_deg: float, height_step_m: float | None = None) -> None:
+        height_step_m = self.targets.height_step_m if height_step_m is None else height_step_m
         if not all(math.isfinite(v) and v > 0.0
-                   for v in (position_step_m, velocity_step_m_s, pitch_step_deg)):
+                   for v in (position_step_m, velocity_step_m_s, pitch_step_deg, height_step_m)):
             raise ValueError("experiment targets must be positive")
         with self._lock:
             self.targets = ExperimentTargets(position_step_m, velocity_step_m_s,
-                                             math.radians(pitch_step_deg))
+                                             math.radians(pitch_step_deg), height_step_m)
 
     def set_model_assumptions(self, thrust_tau_s: float) -> None:
         if thrust_tau_s <= 0.0 or not math.isfinite(thrust_tau_s):
@@ -244,10 +252,10 @@ def write_ab_artifact(result: ABResult, root: Path) -> tuple[Path, Path]:
     with csv_path.open("w", newline="", encoding="ascii") as handle:
         writer = csv.writer(handle)
         writer.writerow(["time_s", "baseline_x_m", "tuned_x_m", "baseline_z_m", "tuned_z_m",
-                         "baseline_vx_m_s", "tuned_vx_m_s", "baseline_pitch_rad", "tuned_pitch_rad",
+                         "baseline_vx_m_s", "tuned_vx_m_s", "baseline_vz_m_s", "tuned_vz_m_s", "baseline_pitch_rad", "tuned_pitch_rad",
                          "baseline_pitch_rate_rad_s", "tuned_pitch_rate_rad_s"])
         for base, tuned in zip(result.baseline, result.tuned):
             writer.writerow([base.time_s, base.x_m, tuned.x_m, base.z_m, tuned.z_m,
-                             base.vx_m_s, tuned.vx_m_s, base.pitch_rad, tuned.pitch_rad,
+                             base.vx_m_s, tuned.vx_m_s, base.vz_m_s, tuned.vz_m_s, base.pitch_rad, tuned.pitch_rad,
                              base.pitch_rate_rad_s, tuned.pitch_rate_rad_s])
     return json_path, csv_path

@@ -17,16 +17,19 @@ from tools.panel_lib.telem_stream import TelemSchema
 
 from .controller_bridge import ControllerBridge
 from .physics import SimulationState
+from .control_catalog import GAIN_CHANNELS
 
 CHANNELS = (("sim_x", "m", "nav", -2.0, 2.0, "-"),
             ("sim_z", "m", "nav", 0.0, 3.0, "-"),
             ("sim_vx", "m/s", "nav", -2.0, 2.0, "-"),
             ("sim_vz", "m/s", "nav", -2.0, 2.0, "-"),
             ("sim_pitch", "rad", "attitude", -1.0, 1.0, "-"),
-            ("sim_pos_x_kp", "1/s", "gain", 0.0, 10.0, "coax.pos_x_kp"),
-            ("sim_vel_x_kp", "1/s", "gain", 0.0, 10.0, "coax.vel_x_kp"),
-            ("sim_att_pitch_kp", "1/s", "gain", 0.0, 10.0, "coax.att_pitch_kp"),
-            ("sim_rate_pitch_kp", "N.m/(rad/s)", "gain", 0.0, 1.0, "coax.rate_pitch_kp"))
+) + GAIN_CHANNELS + (
+    ("sim_pitch_rate", "rad/s", "attitude", -5., 5., "-"),
+    ("sim_thrust", "N", "actuator", 0., 20., "-"),
+    ("sim_tilt", "rad", "actuator", -1., 1., "-"),
+)
+
 
 
 def _fnv1a(text: str, seed: int = 0x811C9DC5) -> int:
@@ -129,12 +132,10 @@ class SimulatorProtocol:
 
     def telemetry_frame(self) -> bytes:
         state = self.snapshot_provider()
-        all_values = (state.x_m, state.z_m, state.vx_m_s, state.vz_m_s,
-                      state.pitch_rad,
-                      self.bridge.get_param("coax.pos_x_kp") or 0.0,
-                      self.bridge.get_param("coax.vel_x_kp") or 0.0,
-                      self.bridge.get_param("coax.att_pitch_kp") or 0.0,
-                      self.bridge.get_param("coax.rate_pitch_kp") or 0.0)
+        parameters = self.bridge.parameter_snapshot()
+        all_values = ((state.x_m, state.z_m, state.vx_m_s, state.vz_m_s, state.pitch_rad)
+                      + tuple(parameters[channel[5]] for channel in GAIN_CHANNELS)
+                      + (state.pitch_rate_rad_s, state.thrust_n, state.pitch_tilt_rad))
         indices = [index for index in range(len(CHANNELS)) if self.stream_mask & (1 << index)]
         values = tuple(all_values[index] for index in indices)
         payload = struct.pack("<BBHIIHHQ", 2, 1, self.sequence & 0xFFFF,

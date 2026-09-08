@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import pytest
 
 from tools.drone_tcp_panel import DronePanel
+from tools.sim_xz.control_catalog import GAIN_CHANNELS
 
 
 @pytest.fixture
@@ -41,10 +42,17 @@ def test_one_click_starts_child_connects_streams_and_stop_reaps(panel):
     assert panel.dashboard_layout.active_workspace().name == '二维仿真'
     bar.start()  # Repeated click must not launch a second process.
     assert bar.process is child
-    assert panel._dashboard_send_param('sim_pos_x_kp', .91)
-    pump(panel, lambda: abs((panel._dashboard_latest('sim_pos_x_kp') or 0)-.91)<1e-4)
-    # Autostart advances the actual remote simulation, not just the connection label.
+    # Check motion with the real default gains before deliberately writing test values.
     pump(panel, lambda: abs(panel._dashboard_latest('sim_vx') or 0)>1e-6)
+    for offset, channel in enumerate(GAIN_CHANNELS):
+        value=.05 + offset*.001
+        assert panel._dashboard_send_param(channel[0], value)
+        pump(panel, lambda channel=channel, value=value:
+             abs((panel._dashboard_latest(channel[0]) or 0)-value)<1e-4)
+    assert len(bar.workspaces)==2
+    height_workspace=bar.workspaces[1]
+    assert {'sim_pos_z_kp','sim_vel_z_ki','sim_vel_z_kd'} <= set(height_workspace.bound_channels())
+
     bar.stop_button.invoke()
     pump(panel, lambda: child.poll() is not None)
     assert not panel.tcp_transport.is_connected
@@ -90,3 +98,15 @@ def test_destroy_reaps_owned_child(panel):
     child.wait(timeout=5)
     assert child.poll() is not None
     assert not bar.pending
+
+
+def test_titlebar_height_choice_starts_vertical_experiment(panel):
+    bar=panel.simulation_bar
+    bar.headless=True
+    bar.experiment_var.set('高度阶跃 · Z')
+    bar.start_button.invoke()
+    pump(panel, lambda: bar.connected_once and panel.dashboard_schema.complete
+         and (panel._dashboard_latest('sim_z') or 0)>1.01)
+    assert panel.dashboard_layout.active_workspace().name=='高度 P—速度 PID'
+    assert panel._dashboard_send_param('sim_vel_z_ki',.12)
+    pump(panel, lambda: abs((panel._dashboard_latest('sim_vel_z_ki') or 0)-.12)<1e-4)

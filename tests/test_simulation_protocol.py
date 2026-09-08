@@ -6,7 +6,7 @@ from tools.panel_lib.transport import build_proto_frame
 from tools.panel_lib.telem_stream import TelemSchema
 from tools.sim_xz.controller_bridge import ControllerBridge
 from tools.sim_xz.physics import SimulationState
-from tools.sim_xz.protocol import FrameDecoder, SimulatorProtocol
+from tools.sim_xz.protocol import FrameDecoder, SimulatorProtocol, CHANNELS
 
 
 def test_frame_decoder_accepts_fragmented_real_protocol_frame() -> None:
@@ -54,7 +54,7 @@ def test_schema_lines_recompute_the_reported_hash() -> None:
     protocol = SimulatorProtocol(bridge, lambda: SimulationState())
     schema = TelemSchema()
     decoder = FrameDecoder()
-    for raw in protocol.handle_line("TELEM?") + protocol.handle_line("TELEM CH from=6"):
+    for raw in sum((protocol.handle_line("TELEM?" if offset == 0 else f"TELEM CH from={offset}") for offset in range(0, len(CHANNELS), 6)), []):
         for frame in decoder.feed(raw):
             schema.feed_line(frame.payload.decode("utf-8"))
     assert schema.complete

@@ -11,18 +11,24 @@ import tkinter as tk
 from tkinter import ttk
 
 
+try:
+    from ..sim_xz.control_catalog import EXPERIMENT_LABELS
+except ImportError:
+    from sim_xz.control_catalog import EXPERIMENT_LABELS
+
 ROOT = Path(__file__).resolve().parents[2]
 
 
 class SimulationBar(ttk.LabelFrame):
     def __init__(self, parent, panel, *, process_factory=None, headless=False):
-        super().__init__(parent, text='仿真 · X–Z 教学实验', padding=(10, 6))
+        super().__init__(parent, text='仿真 · X–Z / 水平 P—PID—P—PID · 高度 P—PID', padding=(10, 6))
         self.panel = panel
         self.process_factory = process_factory or subprocess.Popen
         self.headless = headless
         self.process = None
         self.listener = None
         self.workspace = None
+        self.workspaces = []
         self.pending = False
         self.connected_once = False
         self.log_file = None
@@ -38,12 +44,17 @@ class SimulationBar(ttk.LabelFrame):
         self.start_button.pack(side='left')
         self.stop_button = ttk.Button(self, text='停止仿真', command=self.stop, state='disabled')
         self.stop_button.pack(side='left', padx=8)
+        self.experiment_var = tk.StringVar(value=next(iter(EXPERIMENT_LABELS)))
+        self.experiment_combo = ttk.Combobox(self, textvariable=self.experiment_var,
+                                             values=list(EXPERIMENT_LABELS), state='readonly', width=17)
+        self.experiment_combo.pack(side='left', padx=(0,8))
         ttk.Label(self, textvariable=self.status).pack(side='left', padx=8)
         panel.bind('<Destroy>', self._destroyed, add='+')
 
     def _buttons(self, active):
         self.start_button.state(['disabled'] if active else ['!disabled'])
         self.stop_button.state(['!disabled'] if active else ['disabled'])
+        self.experiment_combo.configure(state='disabled' if active else 'readonly')
 
     def start(self):
         if self.pending or self.process is not None:
@@ -97,7 +108,7 @@ class SimulationBar(ttk.LabelFrame):
         self.log_path = folder / f'launcher_{datetime.now():%H%M%S_%f}.log'
         self.log_file = self.log_path.open('w', encoding='utf-8')
         command = [sys.executable, '-m', 'tools.sim_xz', '--host', '127.0.0.1',
-                   '--port', str(port), '--autostart']
+                   '--port', str(port), '--autostart', '--experiment', EXPERIMENT_LABELS[self.experiment_var.get()]]
         if self.headless:
             command.append('--headless')
         self.process = self.process_factory(command, cwd=str(ROOT), stdin=subprocess.DEVNULL,
@@ -148,34 +159,32 @@ class SimulationBar(ttk.LabelFrame):
         self._schedule()
 
     def _install_workspace(self):
-        from .dashboard.layout import Workspace, TileSpec, TILE_WAVE, TILE_PARAM
+        from .simulation_workspaces import simulation_workspaces
         p = self.panel
         self.previous_workspace = p.dashboard_layout.active
-        self.workspace = Workspace('二维仿真', [
-            TileSpec(TILE_PARAM, i*3, 0, 3, 2, [name], {'title': title})
-            for i, (name, title) in enumerate((
-                ('sim_pos_x_kp', '位置环 Kp'), ('sim_vel_x_kp', '速度环 Kp'),
-                ('sim_att_pitch_kp', '角度环 Kp'), ('sim_rate_pitch_kp', '角速度环 Kp')))
-        ] + [
-            TileSpec(TILE_WAVE, 0, 2, 6, 4, ['sim_pitch'], {'title': '俯仰响应 / rad'}),
-            TileSpec(TILE_WAVE, 6, 2, 6, 4, ['sim_vx'], {'title': '水平速度 / m/s'}),
-        ])
-        p.dashboard_layout.workspaces.append(self.workspace)
-        p.dashboard_layout.active = len(p.dashboard_layout.workspaces)-1
+        self.workspaces = simulation_workspaces()
+        self.workspace = self.workspaces[0]
+        p.dashboard_layout.active = len(p.dashboard_layout.workspaces)
+        if EXPERIMENT_LABELS[self.experiment_var.get()] == 'height_step':
+            p.dashboard_layout.active += 1
+        p.dashboard_layout.workspaces.extend(self.workspaces)
         p.dashboard_workspace_var.set(p.dashboard_layout.active)
         p._dashboard_rebuild_workspace_bar()
         p._dashboard_rebuild_tiles()
 
     def _remove_workspace(self):
         p = self.panel
-        if self.workspace is not None and self.workspace in p.dashboard_layout.workspaces:
-            p.dashboard_layout.workspaces.remove(self.workspace)
+        if self.workspaces:
+            for workspace in self.workspaces:
+                if workspace in p.dashboard_layout.workspaces:
+                    p.dashboard_layout.workspaces.remove(workspace)
             p.dashboard_layout.active = min(self.previous_workspace, len(p.dashboard_layout.workspaces)-1)
             p.dashboard_workspace_var.set(p.dashboard_layout.active)
             p._dashboard_rebuild_workspace_bar()
             p._dashboard_rebuild_tiles()
             p._dashboard_persist()
         self.workspace = None
+        self.workspaces = []
 
     @staticmethod
     def _reap(process):

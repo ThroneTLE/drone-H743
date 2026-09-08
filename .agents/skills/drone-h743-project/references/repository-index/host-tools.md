@@ -4,7 +4,7 @@
 
 Read this shard only when the task uses serial/TCP diagnostics, log analysis, identification, capture, calibration, or desktop UIs.
 
-Source snapshot: `12990d4afd3d`; aggregate snapshot: `e9ac7e20ef9b`. Covered files: 5364.
+Source snapshot: `f6b542615e7c`; aggregate snapshot: `b60d93e4d2d3`. Covered files: 5367.
 
 | File/module or scope | Content outline | Key entry points / size |
 |---|---|---|
@@ -74,16 +74,18 @@ Source snapshot: `12990d4afd3d`; aggregate snapshot: `e9ac7e20ef9b`. Covered fil
 | `tools/servo_baud_sweep.py` | Sweep Zhongling bus-servo baud rates from a PC serial adapter. This is meant for recovering a servo after its ID or bau… | `parse_args`, `read_reply`, `write_command`, `send_at_baud`, `main` |
 | `tools/sim_xz/__init__.py` | Host-only X/Z teaching simulator for R-SIM-1 | — |
 | `tools/sim_xz/__main__.py` | Host-side utility for main | — |
+| `tools/sim_xz/actuators.py` | Delayed, asymmetric first-order actuator response; no control equations | `lag`, `TiltActuator` |
 | `tools/sim_xz/app.py` | Tk front end for the host-only simulator | `SimulationApp`, `main` |
 | `tools/sim_xz/assets/r_sim_ui_preview.svg` | Host-side utility for r sim ui preview | — |
 | `tools/sim_xz/clocking.py` | Accumulate wall time without assuming sub-millisecond OS timer precision | `SimulationClock` |
+| `tools/sim_xz/control_catalog.py` | Presentation catalog of the real C P-PID-P-PID and vertical P-PID gains. Ranges describe slider travel, not replacement… | — |
 | `tools/sim_xz/controller_bridge.py` | ctypes bridge to the real pure-C cascade and allocator | `ControllerOutput`, `build_controller_library`, `ControllerBridge` |
 | `tools/sim_xz/device.py` | TCP client device process. The existing ground station remains the server | `SimulatorDevice` |
 | `tools/sim_xz/experiments.py` | Approved R-SIM-1 experiments and A/B result production | `ExperimentKind`, `SimulationSample`, `ExperimentTargets`, `run_experiment`, `ABResult`, `run_ab` (+2) |
 | `tools/sim_xz/physics.py` | Deterministic X/Z plant and actuator model; controller equations stay in C | `SimulationState`, `XZPlant` |
 | `tools/sim_xz/presentation.py` | Tk presentation only: no controller, network or experiment mutation | `PresentationMixin` |
 | `tools/sim_xz/protocol.py` | Existing $X text protocol adapter for the simulated device | `InboundFrame`, `FrameDecoder`, `SimulatorProtocol` |
-| `tools/sim_xz/README.md` | R-SIM-1 X/Z teaching simulator | `上位机一键启动（推荐）`, `手动启动（可选）`, `Start`, `Experiments`, `Boundaries`, `界面与操作（2026-09-08 复核修订）` |
+| `tools/sim_xz/README.md` | R-SIM-1 X/Z teaching simulator | `上位机一键启动（推荐）`, `手动启动（可选）`, `Start`, `Experiments`, `Boundaries`, `界面与操作（2026-09-08 复核修订）` (+2) |
 | `tools/sim_xz/sim_controller_bridge.c` | Host-side utility for sim controller bridge | — |
 | `tools/sim_xz/sim_controller_bridge.h` | Host-side utility for sim controller bridge | — |
 | `tools/stationary_drift.py` | 静止漂移自检：飞机不动放 30~60 秒，看它自己以为发生了什么。 为什么需要这一项： 六面标定解出来的是"摆在六个姿态下读数对不对"，但用户真正在意的是"放着不动 时它会不会自己飘"。这两件事不等价 —— 系数写对了、静止时照样可能因为… | `DriftSample`, `DriftReport`, `analyze_drift`, `summarise`, `compare`, `report_to_dict` (+4) |
@@ -95,6 +97,6 @@ Source snapshot: `12990d4afd3d`; aggregate snapshot: `e9ac7e20ef9b`. Covered fil
 | `tools/vofa_serial_capture.py` | Capture USART1/VOFA JustFloat telemetry from the flight controller. The firmware currently sends 28 little-endian float… | `RunningStats`, `build_parser`, `safe_text`, `split_lines`, `parse_frame`, `write_metadata` (+1) |
 | `tools/vofa_udp_bridge.py` | Bridge Ai-WB2 UDP transparent mode to fixed VOFA UDP ports. Why this exists: - Ai-WB2 auto transparent mode is configur… | `log`, `main` |
 | `tools/ground_station/ bundled tree` | Bundled application/runtime distribution; inspect an exact file only when maintaining that bundle | 5239 files / 135.6 MiB / .svg×854, .h×841, .cpp×635, .md×459, .py×257 |
-| `tools/panel_lib/ bundled tree` | Bundled application/runtime distribution; inspect an exact file only when maintaining that bundle | 39 files / 615.1 KiB / .py×39 |
+| `tools/panel_lib/ bundled tree` | Bundled application/runtime distribution; inspect an exact file only when maintaining that bundle | 40 files / 616.8 KiB / .py×40 |
 
 Open the smallest listed tool or bundle landmark first; do not preload bundled runtimes.

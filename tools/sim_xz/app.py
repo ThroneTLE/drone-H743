@@ -55,7 +55,7 @@ class SimulationApp(PresentationMixin, tk.Tk):
     def _apply_targets(self) -> None:
         try:
             self.device.engine.set_targets(float(self.target_x.get()), float(self.target_vx.get()),
-                                           float(self.target_pitch.get()))
+                                           float(self.target_pitch.get()), float(self.target_height.get()))
         except ValueError:
             self.status.set("目标必须是有限正数，例如 0.5、0.2、3")
         else:
@@ -152,6 +152,9 @@ class SimulationApp(PresentationMixin, tk.Tk):
         self.save_a_button.state(["disabled"] if self._ab_busy else ["!disabled"])
         self.run_b_button.state(["disabled"] if self._ab_busy else ["!disabled"])
         if all(math.isfinite(v) for v in (state.x_m, state.z_m, state.pitch_rad, state.pitch_rate_rad_s, state.vx_m_s)):
+            if state.time_s < self._last_trajectory_time:
+                self._trajectory.clear()
+                self._history.clear()
             if state.time_s != self._last_trajectory_time:
                 self._trajectory.append((state.x_m, state.z_m))
                 self._history.append(state)
@@ -172,8 +175,10 @@ def main() -> None:
     parser.add_argument("--port", type=int, default=6666)
     parser.add_argument("--autostart", action="store_true", help="Start once after the initial loopback connection")
     parser.add_argument("--headless", action="store_true", help="Run without Tk for offline integration tests")
+    parser.add_argument("--experiment", choices=[kind.value for kind in ExperimentKind], default=ExperimentKind.POSITION_STEP.value)
     args = parser.parse_args()
     device = SimulatorDevice(host=args.host, port=args.port, autostart=args.autostart)
+    device.engine.set_kind(ExperimentKind(args.experiment))
     if args.headless:
         device.start()
         try:
