@@ -1,5 +1,15 @@
 # R-SIM-1 X/Z teaching simulator
 
+这是一个纯电脑端的 X/Z 二维教学仿真器。它用于观察控制器、参数和上位机协议的关系，不替代实机飞行、标定或验收证据。
+
+## 中文操作说明
+
+1. 先启动现有地面站 TCP 服务端，默认监听 `127.0.0.1:6666`；端口不同则使用 `--host` 和 `--port`。
+2. 在仓库根目录运行 `python -m tools.sim_xz --host 127.0.0.1 --port 6666`。
+3. 点击“开始 / 暂停”，选择位置、速度或俯仰实验；实验目标和电机时间常数可以在窗口中修改。
+4. 在地面站参数控件中修改四环参数，先点击“保存 A 参数快照”，再点击“运行 B 并保存”。A/B 会锁定实验类型、目标、物理模型和完整参数快照。
+5. 关闭窗口会停止 TCP 客户端和 A/B 导出；每次导出使用唯一 run id，不覆盖同日结果。
+
 This is a host-only teaching tool. It does not provide flight evidence, calibration evidence, or a hardware substitute.
 
 ## Start

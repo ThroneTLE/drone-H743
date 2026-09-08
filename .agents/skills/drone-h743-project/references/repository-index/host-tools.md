@@ -4,7 +4,7 @@
 
 Read this shard only when the task uses serial/TCP diagnostics, log analysis, identification, capture, calibration, or desktop UIs.
 
-Source snapshot: `170c63b52a9e`; aggregate snapshot: `d61da66aa743`. Covered files: 5361.
+Source snapshot: `5bc61cae9969`; aggregate snapshot: `d61da66aa743`. Covered files: 5361.
 
 | File/module or scope | Content outline | Key entry points / size |
 |---|---|---|
@@ -81,7 +81,7 @@ Source snapshot: `170c63b52a9e`; aggregate snapshot: `d61da66aa743`. Covered fil
 | `tools/sim_xz/experiments.py` | Approved R-SIM-1 experiments and A/B result production | `ExperimentKind`, `SimulationSample`, `ExperimentTargets`, `run_experiment`, `ABResult`, `run_ab` (+2) |
 | `tools/sim_xz/physics.py` | Deterministic X/Z plant and actuator model; controller equations stay in C | `SimulationState`, `XZPlant` |
 | `tools/sim_xz/protocol.py` | Existing $X text protocol adapter for the simulated device | `InboundFrame`, `FrameDecoder`, `SimulatorProtocol` |
-| `tools/sim_xz/README.md` | R-SIM-1 X/Z teaching simulator | `Start`, `Experiments`, `Boundaries` |
+| `tools/sim_xz/README.md` | R-SIM-1 X/Z teaching simulator | `中文操作说明`, `Start`, `Experiments`, `Boundaries` |
 | `tools/sim_xz/sim_controller_bridge.c` | Host-side utility for sim controller bridge | — |
 | `tools/sim_xz/sim_controller_bridge.h` | Host-side utility for sim controller bridge | — |
 | `tools/stationary_drift.py` | 静止漂移自检：飞机不动放 30~60 秒，看它自己以为发生了什么。 为什么需要这一项： 六面标定解出来的是"摆在六个姿态下读数对不对"，但用户真正在意的是"放着不动 时它会不会自己飘"。这两件事不等价 —— 系数写对了、静止时照样可能因为… | `DriftSample`, `DriftReport`, `analyze_drift`, `summarise`, `compare`, `report_to_dict` (+4) |

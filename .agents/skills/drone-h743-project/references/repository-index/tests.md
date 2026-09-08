@@ -4,7 +4,7 @@
 
 Read this shard only when you need existing behavioral/architecture coverage or must choose focused regression tests.
 
-Source snapshot: `b6fb24ef73d7`. Indexed files: 143.
+Source snapshot: `ff2427814b47`. Indexed files: 143.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -138,7 +138,7 @@ Source snapshot: `b6fb24ef73d7`. Indexed files: 143.
 | `tests/test_simulation_experiments.py` | — | `test_three_approved_experiments_produce_five_state_channels` (+1) |
 | `tests/test_simulation_physics.py` | — | `test_hover_does_not_accumulate_vertical_acceleration` (+4) |
 | `tests/test_simulation_protocol.py` | — | `test_frame_decoder_accepts_fragmented_real_protocol_frame` (+4) |
-| `tests/test_simulation_tcp.py` | — | `test_simulator_is_tcp_client_and_answers_caps_on_loopback` (+2) |
+| `tests/test_simulation_tcp.py` | — | `test_simulator_is_tcp_client_and_answers_caps_on_loopback` (+3) |
 | `tests/test_simulation_ui_contract.py` | — | `test_simulation_ui_has_animation_slow_motion_and_ab_controls` (+1) |
 | `tests/test_stationary_drift.py` | 静止漂移自检。 背景：六面标定解的是"摆在六个姿态下读数对不对"，但用户真正在意的是"放着不动会 不会自己飘"。这两件事不等价。飞机不动时真实角速度就是 0、真实比力就是 1 g，所以 这个检查不需要转台 —— 读数偏多少就是误差多少，也… | `test_a_still_aircraft_reports_no_drift_and_one_g` (+13) |
 | `tests/test_telem_stream_contract.py` | R-T1-1：遥测流 v2（固件侧）契约测试。 三部分： 1. **黄金向量**：宿主 gcc 真编译 `app_telem_frame.c` + `app_proto.c`，让固件 自己的编码器把一组给定的 mask/values 编出… | `test_encoder_matches_the_golden_vectors_byte_for_byte` (+12) |

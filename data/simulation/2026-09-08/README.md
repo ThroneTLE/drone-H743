@@ -6,8 +6,9 @@ The implementation and launch instructions are in `tools/sim_xz/README.md`. The 
 
 Verified in this worktree:
 
-- Focused simulation contracts: `19 passed`, including the real `DronePanel()` parameter-control and telemetry-decoder route.
+- Focused simulation contracts: `20 passed`, including the real `DronePanel + TcpTransport + SimulatorDevice` parameter-control and telemetry-decoder route.
 - Full repository pytest: `1307 passed, 4 skipped, 1 failed`; the remaining failure is an unrelated existing FLU regression that requires the missing historical CSV `data/flight_logs/2026-09-02/rm1_3_block_queue/flightlog_20260902_202552.csv`.
 - Debug firmware build: no work after the successful link, with last linked FLASH usage `400388 B` and zero warnings.
 - Physical serial open attempts: `0`.
 - Flashing/probe tool invocation attempts: `0`.
+- Real Tk window screenshot: `r_sim_ui_screenshot.png`.

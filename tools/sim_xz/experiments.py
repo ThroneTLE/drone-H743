@@ -8,7 +8,7 @@ import math
 import threading
 import uuid
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from enum import Enum
 from pathlib import Path
 
@@ -112,6 +112,7 @@ def run_ab(bridge: ControllerBridge, kind: ExperimentKind,
            tuned_params: dict[str, float] | None = None,
            baseline_params: dict[str, float] | None = None,
            targets: ExperimentTargets | None = None,
+           thrust_tau_s: float = 0.08,
            duration_s: float = 4.0, dt_s: float = 0.001) -> ABResult:
     parameter = parameter or {
         ExperimentKind.POSITION_STEP: "coax.pos_x_kp",
@@ -130,9 +131,15 @@ def run_ab(bridge: ControllerBridge, kind: ExperimentKind,
     baseline_value = baseline_params.get(parameter)
     if baseline_value is None:
         raise KeyError(parameter)
-    baseline = tuple(run_experiment(baseline_bridge, kind, duration_s, dt_s, targets=targets))
+    baseline_plant = XZPlant.from_bridge(baseline_bridge)
+    tuned_plant = XZPlant.from_bridge(tuned_bridge)
+    baseline_plant.thrust_tau_s = thrust_tau_s
+    tuned_plant.thrust_tau_s = thrust_tau_s
+    baseline = tuple(run_experiment(baseline_bridge, kind, duration_s, dt_s,
+                                    plant=baseline_plant, targets=targets))
     tuned_value = tuned_params.get(parameter, baseline_value)
-    tuned = tuple(run_experiment(tuned_bridge, kind, duration_s, dt_s, targets=targets))
+    tuned = tuple(run_experiment(tuned_bridge, kind, duration_s, dt_s,
+                                 plant=tuned_plant, targets=targets))
     return ABResult(kind, parameter, baseline_value, tuned_value,
                     baseline_params, tuned_params, baseline, tuned)
 
@@ -161,6 +168,12 @@ class SimulationEngine:
         with self._lock:
             self.targets = ExperimentTargets(position_step_m, velocity_step_m_s,
                                              math.radians(pitch_step_deg))
+
+    def set_model_assumptions(self, thrust_tau_s: float) -> None:
+        if thrust_tau_s <= 0.0 or not math.isfinite(thrust_tau_s):
+            raise ValueError("motor time constant must be positive")
+        with self._lock:
+            self.plant.thrust_tau_s = thrust_tau_s
 
     def reset(self) -> None:
         with self._lock:
@@ -199,7 +212,9 @@ def write_ab_artifact(result: ABResult, root: Path) -> tuple[Path, Path]:
     run_dir = root / date.today().isoformat()
     run_dir.mkdir(parents=True, exist_ok=True)
     stem = result.kind.value
-    json_path, csv_path = run_dir / f"{stem}_ab.json", run_dir / f"{stem}_ab.csv"
+    run_id = f"{datetime.now().strftime('%H%M%S_%f')}_{uuid.uuid4().hex[:8]}"
+    json_path = run_dir / f"{stem}_ab_{run_id}.json"
+    csv_path = run_dir / f"{stem}_ab_{run_id}.csv"
     json_path.write_text(json.dumps({"simulation": True, "kind": stem,
         "parameter": result.parameter, "baseline_value": result.baseline_value,
         "tuned_value": result.tuned_value, "baseline_params": result.baseline_params,

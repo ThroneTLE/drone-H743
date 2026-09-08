@@ -11,6 +11,7 @@ from tools.panel_lib.proto import PROTO_MSG_TELEM_FRAME
 from tools.panel_lib.transport import build_proto_frame
 from tools.panel_lib.transport import TcpTransport
 from tools.sim_xz.device import SimulatorDevice
+from tools.sim_xz.experiments import SimulationEngine
 from tools.sim_xz.protocol import FrameDecoder
 from tools.sim_xz.controller_bridge import ControllerBridge
 from tools.sim_xz.physics import SimulationState
@@ -132,4 +133,56 @@ def test_real_drone_panel_param_control_reaches_c_and_telem_ring() -> None:
         assert app.dashboard_decoder.stats.frames_ok >= 1
         assert app.dashboard_frames_seen >= 1
     finally:
+        app.destroy()
+
+
+def test_real_drone_panel_real_tcp_simulator_e2e() -> None:
+    try:
+        app = panel.DronePanel()
+    except tk.TclError as exc:
+        pytest.skip(f"Tk display unavailable: {exc}")
+    bridge = ControllerBridge(instance_tag="real_drone_panel_tcp")
+    rx: queue.Queue[object] = queue.Queue()
+    transport = TcpTransport(rx)
+    probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    probe.bind(("127.0.0.1", 0))
+    port = probe.getsockname()[1]
+    probe.close()
+    engine = SimulationEngine(bridge=bridge)
+    device = SimulatorDevice(port=port, engine=engine)
+    transport.start("127.0.0.1", port)
+    app.transport = transport
+    transport.set_binary_sink(lambda function, payload: app._dashboard_on_binary_frame(
+        function, payload, transport=transport))
+    app.validation_session_active = False
+    device.start()
+
+    def drain_until(predicate, timeout=4.0) -> bool:
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            try:
+                item = rx.get(timeout=0.05)
+            except queue.Empty:
+                continue
+            payload = getattr(item, "payload", item)
+            if isinstance(payload, tuple) and len(payload) == 3 and payload[0] == "proto":
+                app._handle_proto_frame(int(payload[1]), str(payload[2]))
+            if predicate():
+                return True
+        return predicate()
+
+    try:
+        assert drain_until(lambda: transport.is_connected)
+        transport.send_line("TELEM?")
+        assert drain_until(lambda: app.dashboard_schema.complete)
+        if app._dashboard_channel("sim_pos_x_kp") is None:
+            app._dashboard_adopt_schema()
+        assert app._dashboard_channel("sim_pos_x_kp") is not None
+        assert app._dashboard_send_param("sim_pos_x_kp", 0.93)
+        assert drain_until(lambda: abs((bridge.get_param("coax.pos_x_kp") or 0.0) - 0.93) < 1e-5)
+        transport.send_line("TELEM STREAM on")
+        assert drain_until(lambda: app.dashboard_frames_seen >= 1)
+    finally:
+        device.stop()
+        transport.stop()
         app.destroy()
