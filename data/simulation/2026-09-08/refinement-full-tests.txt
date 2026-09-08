@@ -1,0 +1,92 @@
+........................................................................ [  5%]
+........................................................................ [ 10%]
+........................................................................ [ 16%]
+........................................................................ [ 21%]
+........................................................................ [ 26%]
+........................................................................ [ 32%]
+........................................sss..s........................F. [ 37%]
+........................................................................ [ 43%]
+........................................................................ [ 48%]
+........................................................................ [ 53%]
+........................................................................ [ 59%]
+........................................................................ [ 64%]
+..........................................................F............. [ 69%]
+........................................................................ [ 75%]
+........................................................................ [ 80%]
+........................................................................ [ 86%]
+........................................................................ [ 91%]
+........................................................................ [ 96%]
+...........................................                              [100%]
+================================== FAILURES ===================================
+________________ test_z_channel_migration_matches_old_exactly _________________
+
+tmp_path = WindowsPath('C:/Users/23259/AppData/Local/Temp/pytest-of-23259/pytest-1565/test_z_channel_migration_match0')
+
+    def test_z_channel_migration_matches_old_exactly(tmp_path: Path) -> None:
+        """Real recorded height, remapped per the table, must give identical output.
+    
+        Attitude is held level so the (separately proven) FORCE_FRAME removal
+        cannot contribute any difference here -- this isolates the Z-channel
+        remap: app_stabilizer's two negations, the gravity/accel force formula
+        sign in coax_ctrl_compute_balance_solution, and the up/down clamp
+        direction in drv_position_control_limit_z.
+        """
+        if shutil.which("gcc") is None:
+            pytest.skip("host gcc is unavailable")
+    
+        old_source_result = subprocess.run(
+            ["git", "show", "3a3fa6c8:Driver/Src/drv_coax_ctrl.c"],
+            cwd=ROOT, check=True, capture_output=True,
+        )
+        old_source = old_source_result.stdout.decode("utf-8")
+        assert re.search(
+            r"^#define\s+DRV_COAX_CTRL_FORCE_FRAME_ROLL_SIGN\s+\(-1\.0f\)\s*$",
+            old_source,
+            re.MULTILINE,
+        ), (
+            "fixed pre-migration baseline 3a3fa6c8 no longer contains the "
+            "expected executable roll-sign definition"
+        )
+        new_source = read(CTRL_SOURCE)
+    
+>       old_rows = _build_and_run_z_channel(tmp_path, "old", old_source, "-1.0f")
+
+tests\test_flu_seam3_controller_frame.py:300: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\test_flu_seam3_controller_frame.py:230: in _build_and_run_z_channel
+    heights, dts = _load_real_height_samples()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+limit = 400
+
+    def _load_real_height_samples(limit: int = 400) -> tuple[list[float], list[float]]:
+>       with open(FLIGHT_LOG_CSV, newline="", encoding="utf-8") as handle:
+E       FileNotFoundError: [Errno 2] No such file or directory: 'C:\\Users\\23259\\.codex\\worktrees\\641f\\drone-H743\\data\\flight_logs\\2026-09-02\\rm1_3_block_queue\\flightlog_20260902_202552.csv'
+
+tests\test_flu_seam3_controller_frame.py:204: FileNotFoundError
+______________________ test_repository_index_is_current _______________________
+
+    def test_repository_index_is_current() -> None:
+        result = subprocess.run(
+            [sys.executable, str(GENERATOR), "--check"],
+            cwd=ROOT,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            timeout=30,
+        )
+>       assert result.returncode == 0, result.stdout
+E       AssertionError: Repository index is stale: docs-data.md, README.md
+E         Run: python .agents/skills/drone-h743-project/scripts/update_repository_index.py
+E         
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['D:\\ANACON\\python.exe', 'C:\\Users\\23259\\.codex\\worktrees\\641f\\drone-H743\\.agents\\skil...is stale: docs-data.md, README.md\nRun: python .agents/skills/drone-h743-project/scripts/update_repository_index.py\n').returncode
+
+tests\test_project_index_contract.py:23: AssertionError
+Physical serial open attempts: 0
+Flashing/probe tool invocation attempts: 0
+Tk display available at session start: True; Tk roots created: 35
+=========================== short test summary info ===========================
+FAILED tests/test_flu_seam3_controller_frame.py::test_z_channel_migration_matches_old_exactly
+FAILED tests/test_project_index_contract.py::test_repository_index_is_current
+2 failed, 1333 passed, 4 skipped in 252.45s (0:04:12)

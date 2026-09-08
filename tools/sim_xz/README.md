@@ -34,3 +34,15 @@ The A/B artifact contains a complete parameter snapshot and five comparison chan
 ## Boundaries
 
 The C bridge is compiled from the real host-pure controller sources. Python owns only the deterministic plant, actuator assumptions, experiment orchestration, TCP adaptation, and Tk snapshots. Drag and thrust time constant are teaching assumptions; tilt time constant, mass, gravity, inertia, and lever arm come from the C-side airframe model. No serial, flash, reset, or target-board command is used.
+
+
+## 界面与操作（2026-09-08 复核修订）
+
+界面按“实验设置 → 侧视场景 → 响应对比”分栏。机体竖直绘制，上端朝上，同轴双桨在重心下方；机体长轴不等同于水平 X 坐标轴。合推力 T 从桨盘处发出，Fx/Fz 是世界坐标水平/竖直分量，推力箭头随姿态和倾转角变化。示意图尺寸不是机械设计尺寸。
+
+- 左栏选择中文实验、应用目标；从上位机启动本机 TCP 监听后，点击开始。未连接会明确提示。
+- 场景显示米制坐标、俯仰角和推力，暂停保持轨迹，复位清除轨迹与控制器状态，保留调参。
+- 尚未生成 A/B 时，右栏显示实时响应；保存 A 后在上位机修改参数，再运行 B。结果使用点击时的快照，后台运行中禁止改写 A。
+- 五条曲线为俯仰角（度）、俯仰角速度（度/秒）、X速度、X位置、Z高度；金色实线为A，青色虚线为B。每条纵轴独立缩放，读数须结合刻度。
+- 输入 nan/inf 会被拒绝，非有限状态或场景越界会暂停并说明原因。导出JSON附带实验目标、模型假设与积分步长。
+- 此版支持至少1100×740窗口；已做三尺寸、三Tk缩放的离线布局检查，不等同跨显示器DPI实测。

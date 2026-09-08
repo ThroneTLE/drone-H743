@@ -7,7 +7,7 @@ import json
 import math
 import threading
 import uuid
-from dataclasses import dataclass, astuple
+from dataclasses import dataclass, astuple, asdict
 from datetime import date, datetime
 from enum import Enum
 from pathlib import Path
@@ -99,6 +99,9 @@ class ABResult:
     tuned_params: dict[str, float]
     baseline: tuple[SimulationSample, ...]
     tuned: tuple[SimulationSample, ...]
+    targets: ExperimentTargets
+    model: dict[str, float]
+    dt_s: float
 
     @property
     def peak_abs_delta(self) -> dict[str, float]:
@@ -141,7 +144,10 @@ def run_ab(bridge: ControllerBridge, kind: ExperimentKind,
     tuned = tuple(run_experiment(tuned_bridge, kind, duration_s, dt_s,
                                  plant=tuned_plant, targets=targets))
     return ABResult(kind, parameter, baseline_value, tuned_value,
-                    baseline_params, tuned_params, baseline, tuned)
+                    baseline_params, tuned_params, baseline, tuned,
+                    targets or ExperimentTargets(),
+                    {**baseline_bridge.physical_model(), "thrust_tau_s": thrust_tau_s,
+                     "linear_drag": baseline_plant.linear_drag, "pitch_damping": baseline_plant.pitch_damping}, dt_s)
 
 
 class SimulationEngine:
@@ -232,7 +238,8 @@ def write_ab_artifact(result: ABResult, root: Path) -> tuple[Path, Path]:
     json_path.write_text(json.dumps({"simulation": True, "kind": stem,
         "parameter": result.parameter, "baseline_value": result.baseline_value,
         "tuned_value": result.tuned_value, "baseline_params": result.baseline_params,
-        "tuned_params": result.tuned_params, "peak_abs_delta": result.peak_abs_delta},
+        "tuned_params": result.tuned_params, "peak_abs_delta": result.peak_abs_delta,
+        "targets": asdict(result.targets), "model": result.model, "dt_s": result.dt_s},
         indent=2) + "\n", encoding="utf-8")
     with csv_path.open("w", newline="", encoding="ascii") as handle:
         writer = csv.writer(handle)
