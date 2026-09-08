@@ -16,7 +16,7 @@ from .protocol import FrameDecoder, SimulatorProtocol
 
 class SimulatorDevice:
     def __init__(self, host: str = "127.0.0.1", port: int = 6666,
-                 engine: SimulationEngine | None = None) -> None:
+                 engine: SimulationEngine | None = None, autostart: bool = False) -> None:
         self.host, self.port = host, port
         self.engine = engine or SimulationEngine()
         self.protocol = SimulatorProtocol(self.engine.bridge, self.engine.snapshot)
@@ -26,6 +26,7 @@ class SimulatorDevice:
         self._socket: socket.socket | None = None
         self._lock = threading.RLock()
         self.time_scale = 1.0
+        self._autostart_pending = autostart
 
     @property
     def connected(self) -> bool:
@@ -69,6 +70,9 @@ class SimulatorDevice:
                 continue
             with self._lock:
                 self._socket = sock
+            if self._autostart_pending:
+                self.engine.running = True
+                self._autostart_pending = False
             self.decoder = FrameDecoder(PROTO_DIR_TO_FC)
             last_telem = time.monotonic()
             clock = SimulationClock(self.engine, last_telem)

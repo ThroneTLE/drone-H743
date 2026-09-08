@@ -139,7 +139,7 @@ class SimulationApp(PresentationMixin, tk.Tk):
         state = self.device.engine.snapshot()
         connected = self.device.connected
         if self._link_state is not connected:
-            self.status.set(f"已连接 {getattr(self.device, "host", "127.0.0.1")}:{getattr(self.device, "port", 6666)} · 参数由上位机调节" if connected
+            self.status.set(f"已连接 {getattr(self.device, 'host', '127.0.0.1')}:{getattr(self.device, 'port', 6666)} · 参数由上位机调节" if connected
                             else "等待上位机 TCP 监听；仿真保持暂停")
             self._link_state = connected
         self.metrics.set(f"X {state.x_m:+.2f} m    Z {state.z_m:.2f} m    俯仰 {math.degrees(state.pitch_rad):+.1f}°")
@@ -170,8 +170,21 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="R-SIM-1 X/Z teaching simulator")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=6666)
+    parser.add_argument("--autostart", action="store_true", help="Start once after the initial loopback connection")
+    parser.add_argument("--headless", action="store_true", help="Run without Tk for offline integration tests")
     args = parser.parse_args()
-    SimulationApp(SimulatorDevice(host=args.host, port=args.port)).mainloop()
+    device = SimulatorDevice(host=args.host, port=args.port, autostart=args.autostart)
+    if args.headless:
+        device.start()
+        try:
+            while device.thread and device.thread.is_alive():
+                device.stop_event.wait(0.1)
+        except KeyboardInterrupt:
+            pass
+        finally:
+            device.stop()
+    else:
+        SimulationApp(device).mainloop()
 
 
 if __name__ == "__main__":

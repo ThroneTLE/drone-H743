@@ -3,6 +3,7 @@ import tkinter as tk
 from tkinter import ttk
 from .viewport import VerticalScrolledFrame, FixedActionViewport
 from .pages.logs import mount_logs
+from .simulation_launcher import mount_simulation_bar
 
 
 def build_ui(self):
@@ -10,6 +11,7 @@ def build_ui(self):
     root.pack(fill=tk.BOTH, expand=True)
 
     self._build_connection_bar(root)
+    mount_simulation_bar(self, root)
 
     body = ttk.PanedWindow(root, orient=tk.VERTICAL)
     body.pack(fill=tk.BOTH, expand=True, pady=(10, 0))

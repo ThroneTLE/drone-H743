@@ -4,7 +4,7 @@
 
 Read this shard only when you need existing behavioral/architecture coverage or must choose focused regression tests.
 
-Source snapshot: `5322401f43ae`. Indexed files: 144.
+Source snapshot: `6cb7d70dbd6e`. Indexed files: 146.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -134,8 +134,10 @@ Source snapshot: `5322401f43ae`. Indexed files: 144.
 | `tests/test_servo_type_panel_contract.py` | R-S7-5 host contracts for servo type controls and transactions | `test_servo_type_protocol_ids_are_unique_and_forwarded` (+3) |
 | `tests/test_servo_type_protocol.py` | S7 servo output type persistence and command protocol contracts | `test_servo_type_reuses_reserved_fcal_byte_without_abi_growth` (+5) |
 | `tests/test_shared_log_transfer.py` | Single-reader export over the already-open serial session, using FLOG fixtures | `test_current_connection_can_be_borrowed_without_reopen` (+6) |
+| `tests/test_simulation_clock.py` | — | `test_windows_coarse_timer_preserves_simulation_speed` (+2) |
 | `tests/test_simulation_controller_bridge.py` | — | `test_bridge_exposes_real_runtime_parameters` (+2) |
 | `tests/test_simulation_experiments.py` | — | `test_three_approved_experiments_produce_five_state_channels` (+1) |
+| `tests/test_simulation_launcher.py` | Actual panel startup, loopback child lifecycle, and no hardware switching | `test_one_click_starts_child_connects_streams_and_stop_reaps` (+3) |
 | `tests/test_simulation_physics.py` | — | `test_hover_does_not_accumulate_vertical_acceleration` (+4) |
 | `tests/test_simulation_protocol.py` | — | `test_frame_decoder_accepts_fragmented_real_protocol_frame` (+4) |
 | `tests/test_simulation_review_boundaries.py` | Regression cases from the 2026-09-08 final review | `test_nonfinite_target_is_rejected_without_changing_active_targets` (+2) |
