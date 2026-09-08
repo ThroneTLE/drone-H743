@@ -78,6 +78,7 @@ class SimulationBar(ttk.LabelFrame):
         p.host_var.set('127.0.0.1')
         p.port_var.set(0)  # Let the OS reserve a free port; do not probe then race a bind.
         p._start()
+        p._dashboard_reset_session()
         self.generation = p.tcp_transport._send_generation
         self.pending = True
         self.previous_link_variable = p.link_status_label.cget('textvariable')
@@ -215,6 +216,7 @@ class SimulationBar(ttk.LabelFrame):
             self.panel.tcp_transport.stop()
             if not self.disposed:
                 self.panel._parameter_on_disconnect()
+                self.panel._dashboard_reset_session()
                 mode, host, port = self.previous
                 self.panel.transport_var.set(mode)
                 self.panel.host_var.set(host)

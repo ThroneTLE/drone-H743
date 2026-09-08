@@ -1,0 +1,28 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+____________ test_stopping_simulator_clears_its_telemetry_session _____________
+
+    def test_stopping_simulator_clears_its_telemetry_session():
+        app=DronePanel()
+        try:
+            bar=app.simulation_bar
+            bar.headless=True
+            bar.start()
+            deadline=time.monotonic()+15
+            while time.monotonic()<deadline and app.dashboard_frames_seen<3:
+                app.update()
+                time.sleep(.015)
+            assert app.dashboard_frames_seen>=3
+            assert app._dashboard_latest('sim_pos_x_kp') is not None
+            bar.stop()
+>           assert app.dashboard_frames_seen==0
+E           assert 15 == 0
+E            +  where 15 = <tools.drone_tcp_panel.DronePanel object .>.dashboard_frames_seen
+
+tests\test_simulation_session_reset.py:19: AssertionError
+Physical serial open attempts: 0
+Flashing/probe tool invocation attempts: 0
+Tk display available at session start: True; Tk roots created: 1
+=========================== short test summary info ===========================
+FAILED tests/test_simulation_session_reset.py::test_stopping_simulator_clears_its_telemetry_session
+1 failed in 5.97s

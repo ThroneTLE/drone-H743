@@ -148,6 +148,7 @@ flowchart TB
 
 | 日期 | 范围 | 证据 | 结果 | 对状态的影响 |
 |---|---|---|---|---|
+| 2026-09-08 | 修bug：停止仿真后遗留遥测会话 | data/simulation/2026-09-08/session-reset-before.txt、session-reset-after.txt；真实流后停止仍保留frames_seen及参数样本，1 failed→相关16 passed in 24.68s | 原测试只查连接/进程回收，未查遥测清理；复用_dashboard_reset_session清序号/样本/schema，不改控制器增益；0串口/0probe | 独立fix，R-SIM-3保持待审核 |
 | 2026-09-08 | 修bug：直接命令行启动上位机缺少tools模块 | data/simulation/2026-09-08/cli-startup-review.md、cli-startup-before.txt、cli-startup-after.txt；2 failed,1 passed→13 passed in 19.34s | sim_xz包改按需加载，参数目录不连带导入协议；补脚本路径独立进程测试；索引/Pipeline复验10 passed in 2.95s，Debug无重编译；0串口/0probe | R-SIM-3保持待审核，独立fix提交 |
 | 2026-09-08 | R-SIM-3 完整P–PID–P–PID及高度P–PID | data/simulation/2026-09-08/cascade-height-review.md、cascade-height-tests.txt、cascade-horizontal.png、cascade-height.png；69 passed in 37.01s；索引/桥接复验16 passed in 6.31s，Debug无重编译 | 12增益真实回读、6项I/D改变C输出、高度模式、执行器时延/静态曲线/上限；保留实际限速；0串口/0probe；估计边界明确 | R-SIM-3待审核 |
 | 2026-09-08 | R-SIM-2 上位机仿真标题栏与自动启动连接 | data/simulation/2026-09-08/launcher-review.md、launcher-tests.txt、launcher-panel.png；110 passed in 82.15s；最终恢复/标识复验7 passed in 15.26s；快进同步原工作区后启动联调4 passed in 15.06s、索引current | 真实上位机按钮→独立GUI进程→回环TCP→自动运行和参数回显，停止回收恢复；已有设备不接管；0串口/0probe | R-SIM-2待审核，无实机操作 |
