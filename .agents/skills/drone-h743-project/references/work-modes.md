@@ -80,6 +80,8 @@
 
 ## 类别层：已有的类别模式
 
+- 教学仿真（作者明确授权的独立电脑仿真）：[modes/simulation.md](modes/simulation.md)
+
 - 算法验证：[modes/algorithm-validation.md](modes/algorithm-validation.md)
 - 协议 / 遥测改动：[modes/protocol-telemetry.md](modes/protocol-telemetry.md)
 - Tk 上位机 UI / 布局 / 记录：[modes/tk-ui.md](modes/tk-ui.md)

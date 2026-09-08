@@ -4,7 +4,7 @@
 
 Read this shard only when the task needs architecture rationale, controller math, historical evidence, captures, datasets, or agent-support documentation.
 
-Document snapshot: `b911a39045ef`; aggregate snapshot: `c22f307d252d`. Covered files: 339.
+Document snapshot: `076d535cfbff`; aggregate snapshot: `3915380322b5`. Covered files: 340.
 
 ## Documents and agent support
 
@@ -19,6 +19,7 @@ Document snapshot: `b911a39045ef`; aggregate snapshot: `c22f307d252d`. Covered f
 | `.agents/skills/drone-h743-project/references/modes/algorithm-validation.md` | 类别模式：算法验证 | `授权`, `判据（验收看这几条，不看"测试绿不绿"）`, `禁止（未经作者单独批准）`, `交付物` |
 | `.agents/skills/drone-h743-project/references/modes/frame-migration.md` | 类别模式：frame-migration（坐标系运行时迁移） | `为什么单独立一类`, `硬规矩`, `交付要求（在通用完成协议之上追加）`, `必跑` |
 | `.agents/skills/drone-h743-project/references/modes/protocol-telemetry.md` | 类别模式：协议 / 遥测改动 | `授权`, `判据`, `禁止（未经作者单独批准）`, `交付物` |
+| `.agents/skills/drone-h743-project/references/modes/simulation.md` | 类别模式：教学仿真（R-SIM-1） | `授权来源与适用范围`, `授权与边界`, `架构三件套`, `完成判据` |
 | `.agents/skills/drone-h743-project/references/modes/tk-ui.md` | 类别模式：tk-ui | `适用`, `授权范围`, `必须保持`, `测试与判据`, `禁止`, `交付物` (+1) |
 | `.agents/skills/drone-h743-project/references/runtime-services.md` | Runtime Services And Background Work | `Ownership`, `Focused Validation` |
 | `.agents/skills/drone-h743-project/references/work-modes.md` | 执行者工作模式 | `三层结构`, `默认层：常规 REQ 执行`, `横切层：修 bug 模式`, `进入条件（满足任一）`, `不进入`, `流程（顺序不可省）` (+2) |
