@@ -18,10 +18,10 @@ CHANNEL_NAMES = [
     "FC_Time_s",
     "Vel_X_m_s",
     "Vel_Y_m_s",
-    "Roll_Rate_KD",
-    "Pitch_Rate_KD",
-    "Yaw_Angle_KP",
-    "Yaw_Rate_KD",
+    "Reserved_7",
+    "Reserved_8",
+    "Reserved_9",
+    "Reserved_10",
     "Pos_X_KP",
     "Pos_Y_KP",
     "Vel_X_KD",
@@ -29,10 +29,10 @@ CHANNEL_NAMES = [
     "Pos_X_m",
     "Pos_Y_m",
     "Vel_Loop_Enable",
-    "Roll_Angle_KP",
-    "Pitch_Angle_KP",
+    "Reserved_18",
+    "Reserved_19",
     "Pos_Z_KP",
-    "Pos_Z_KI",
+    "Reserved_21",
     "Vel_Z_KD",
     "IMU_Accel_Error_deg",
     "IMU_Accel_Ignored",
@@ -152,10 +152,10 @@ def finalize_config(source: Path, output: Path) -> int:
     assert reread.value("ChannelNames/name15") == "Pos_X_m"
     assert reread.value("ChannelNames/name16") == "Pos_Y_m"
     assert reread.value("ChannelNames/name17") == "Vel_Loop_Enable"
-    assert reread.value("ChannelNames/name18") == "Roll_Angle_KP"
-    assert reread.value("ChannelNames/name19") == "Pitch_Angle_KP"
+    assert reread.value("ChannelNames/name18") == "Reserved_18"
+    assert reread.value("ChannelNames/name19") == "Reserved_19"
     assert reread.value("ChannelNames/name20") == "Pos_Z_KP"
-    assert reread.value("ChannelNames/name21") == "Pos_Z_KI"
+    assert reread.value("ChannelNames/name21") == "Reserved_21"
     assert reread.value("ChannelNames/name22") == "Vel_Z_KD"
     assert reread.value("ChannelNames/name23") == "IMU_Accel_Error_deg"
     assert reread.value("ChannelNames/name24") == "IMU_Accel_Ignored"

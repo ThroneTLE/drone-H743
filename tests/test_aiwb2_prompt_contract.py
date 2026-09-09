@@ -61,7 +61,7 @@ def test_usart1_wifi_udp_pid_tuning_path_is_text_line_based() -> None:
     assert 'aiwb2_starts_with(line, "PARAM ")' in app_aiwb2
     assert 'aiwb2_starts_with(line, "PID ")' in app_aiwb2
     assert "APP_Control_ProcessLine(normalized);" in app_uart
-    assert "DRV_COAX_CTRL_SetParam(kp_name, kp)" in app_control
+    assert "ERR retired PID use PARAM? or PARAM SET" in app_control
     assert "DRV_COAX_CTRL_SetParam(name, value)" in app_control
 
     assert "class UdpTransport" in transport
@@ -70,33 +70,11 @@ def test_usart1_wifi_udp_pid_tuning_path_is_text_line_based() -> None:
     assert "self.structured_protocol_supported = False" in panel
 
 
-def test_vofa_pid_slider_colon_lines_are_control_payloads() -> None:
+def test_current_parameter_lines_are_control_payloads() -> None:
     app_aiwb2 = read("App/Src/app_aiwb2.c")
     app_control = read("App/Src/app_control.c")
-
-    assert "aiwb2_is_pid_slider_payload" in app_aiwb2
-    assert '"roll_angle_kp"' in app_aiwb2
-    assert '"pitch_angle_kp"' in app_aiwb2
-    assert '"roll_rate_kd"' in app_aiwb2
-    assert '"pitch_rate_kd"' in app_aiwb2
-    assert '"Pitch_kp"' not in app_aiwb2
-    assert '"Roll_kp"' not in app_aiwb2
-    assert '"pos_x_kp"' in app_aiwb2
-    assert '"pos_y_kp"' in app_aiwb2
-    assert '"vel_x_kd"' in app_aiwb2
-    assert '"vel_y_kd"' in app_aiwb2
-    assert '"accel_xy"' not in app_aiwb2
-    assert '"accel_z"' not in app_aiwb2
-    assert '"vel_loop_x_kp"' not in app_aiwb2
-    assert '"vel_loop_x_ki"' not in app_aiwb2
-    assert '"vel_loop_out"' not in app_aiwb2
-    assert '"vel_loop_i"' not in app_aiwb2
-    assert '"vel_loop_enable"' in app_aiwb2
-    assert "(aiwb2_is_pid_slider_payload(line) != 0U)" in app_aiwb2
-    assert '"roll_angle_kp",  "coax.roll_angle_kp"' in app_control
-    assert '"pitch_angle_kp", "coax.pitch_angle_kp"' in app_control
-    assert '"roll_rate_kd",   "coax.roll_rate_kd"' in app_control
-    assert '"pitch_rate_kd",  "coax.pitch_rate_kd"' in app_control
-    assert '"Pitch_kp"' not in app_control
-    assert '"Roll_kp"' not in app_control
+    assert 'strncmp(line, "coax.", 5U)' in app_aiwb2
+    assert "(aiwb2_is_param_payload(line) != 0U)" in app_aiwb2
+    assert "app_control_handle_pid_slider_line" not in app_control
+    assert "app_control_handle_param_value_line(line)" in app_control
     assert "app_control_after_param_separator" in app_control

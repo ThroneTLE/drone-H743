@@ -157,7 +157,7 @@ def test_input_state_lookups_equal_the_palette(app):
 
 def test_the_five_semantic_states_are_distinguishable_without_colour(app):
     """禁用 / 未支持 / 过期(草稿) / 待确认 / 失败：各自有文字，且互不相同。"""
-    from tools.panel_lib.parameter_model import ParameterState
+    from tools.panel_lib.parameter_model import ParameterState, validate_parameter_text
 
     def status(**kwargs) -> str:
         state = ParameterState(name=kwargs.pop("name", "coax.att_roll_kp"))
@@ -167,7 +167,7 @@ def test_the_five_semantic_states_are_distinguishable_without_colour(app):
 
     texts = {
         # 只读 = 固件不可写；用真实的只读能力项，不是伪造的
-        "未支持": app.pid_ki_status_var.get(),
+        "未支持": validate_parameter_text("coax.removed_parameter", "1")[1],
         "失败": status(error="超出范围"),
         "待确认": status(pending="1.5"),
         "过期": status(draft="1.5", draft_source="local"),
@@ -178,7 +178,7 @@ def test_the_five_semantic_states_are_distinguishable_without_colour(app):
         assert text.strip(), f"{label} 态没有任何文字，只能靠颜色区分"
     assert len(set(texts.values())) == len(texts), f"存在文字相同的状态：{texts}"
     # "未支持" 必须自己说清楚不可写，不能只是灰一点。
-    assert "不支持" in texts["未支持"] or "只读" in texts["未支持"]
+    assert "不在当前固件能力表" in texts["未支持"]
 
 
 # --------------------------------------------------------------------------

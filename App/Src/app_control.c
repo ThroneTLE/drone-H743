@@ -155,8 +155,6 @@ const void *app_control_internal_config_view(void)
 }
 
 static void app_control_handle_param(char **tokens, uint32_t count);
-static void app_control_report_pid_legacy(void);
-static uint8_t app_control_handle_pid_slider_line(const char *line);
 static APP_FlashService_Status app_control_save_config(void);
 void APP_Control_QueueText(const char *format, ...);
 static uint8_t app_control_send_boot_scheduled(void);
@@ -2874,16 +2872,16 @@ static void app_control_handle_ident(char **tokens, uint32_t count)
         const char *kd_text;
 
         if (count < 3U) {
-            APP_Control_QueueText("ERR usage IDENT APPLY roll|pitch [kp=<v>] [kd=<v>]\r\n");
+            APP_Control_QueueText("ERR usage IDENT APPLY roll|pitch rate_kp=<v>\r\n");
             return;
         }
-        kp_text = app_control_token_value(tokens, count, "kp");
+        kp_text = app_control_token_value(tokens, count, "rate_kp");
         kd_text = app_control_token_value(tokens, count, "kd");
-        if ((kp_text == NULL) && (kd_text == NULL)) {
-            APP_Control_QueueText("ERR usage IDENT APPLY roll|pitch [kp=<v>] [kd=<v>]\r\n");
+        if ((count != 4U) || (kp_text == NULL) || (kd_text != NULL)) {
+            APP_Control_QueueText("ERR usage IDENT APPLY roll|pitch rate_kp=<v>\r\n");
             return;
         }
-        (void)APP_Ident_ApplyPid(tokens[2], kp_text, kd_text);
+        (void)APP_Ident_ApplyRateKp(tokens[2], kp_text);
         return;
     }
 
@@ -3093,157 +3091,6 @@ static void app_control_handle_baro(char **tokens, uint32_t count)
     APP_Control_QueueText("OK baro stream=0 (streaming removed)\r\n");
 }
 
-static void app_control_handle_pid(char **tokens, uint32_t count)
-{
-    const char *kp_text;
-    const char *kd_text;
-    float kp;
-    float kd;
-    const char *kp_name;
-    const char *kd_name;
-    uint8_t axis_has_kp = 0U;
-
-    if ((count == 1U) || ((count >= 2U) && (strcmp(tokens[1], "?") == 0)) ||
-        ((count >= 2U) && (strcmp(tokens[1], "GET") == 0))) {
-        app_control_report_pid_legacy();
-        return;
-    }
-
-    if ((count < 3U) || (strcmp(tokens[1], "SET") != 0)) {
-        APP_Control_QueueText("ERR usage PID SET roll|pitch|yaw [kp=<float>] [kd=<float>]\r\n");
-        return;
-    }
-
-    if (strcmp(tokens[2], "roll") == 0) {
-        kp_name = "coax.roll_angle_kp";
-        kd_name = "coax.roll_rate_kd";
-        axis_has_kp = 1U;
-    } else if (strcmp(tokens[2], "pitch") == 0) {
-        kp_name = "coax.pitch_angle_kp";
-        kd_name = "coax.pitch_rate_kd";
-        axis_has_kp = 1U;
-    } else if (strcmp(tokens[2], "yaw") == 0) {
-        kp_name = "coax.yaw_angle_kp";
-        kd_name = "coax.yaw_rate_kd";
-        axis_has_kp = 1U;
-    } else {
-        APP_Control_QueueText("ERR pid axis %s\r\n", tokens[2]);
-        return;
-    }
-
-    kp_text = app_control_token_value(tokens, count, "kp");
-    kd_text = app_control_token_value(tokens, count, "kd");
-
-    if ((kp_text == NULL) && (kd_text == NULL)) {
-        APP_Control_QueueText("ERR usage PID SET roll|pitch|yaw [kp=<float>] [kd=<float>]\r\n");
-        return;
-    }
-
-    if (kp_text != NULL) {
-        if (axis_has_kp == 0U) {
-            APP_Control_QueueText("ERR pid kp unused for %s\r\n", tokens[2]);
-            return;
-        }
-        if (app_control_parse_f32(kp_text, &kp) == 0U) {
-            APP_Control_QueueText("ERR usage PID SET roll|pitch|yaw [kp=<float>] [kd=<float>]\r\n");
-            return;
-        }
-        kp = app_control_param_from_ui_value(kp_name, kp);
-        if (DRV_COAX_CTRL_SetParam(kp_name, kp) == 0U) {
-            APP_Control_QueueText("ERR pid target %s\r\n", tokens[2]);
-            return;
-        }
-        app_control_schedule_flash_autosave();
-    }
-
-    if (kd_text != NULL) {
-        if (app_control_parse_f32(kd_text, &kd) == 0U) {
-            APP_Control_QueueText("ERR usage PID SET roll|pitch|yaw [kp=<float>] [kd=<float>]\r\n");
-            return;
-        }
-        kd = app_control_param_from_ui_value(kd_name, kd);
-        if (DRV_COAX_CTRL_SetParam(kd_name, kd) != 0U) {
-            app_control_schedule_flash_autosave();
-        }
-    }
-
-    APP_Control_QueueText("OK pid axis=%s target=coax\r\n", tokens[2]);
-    if (kp_name != NULL) {
-        app_control_report_coax_param_by_name(kp_name);
-    }
-    app_control_report_coax_param_by_name(kd_name);
-    app_control_report_pid_legacy();
-}
-
-static uint8_t app_control_handle_pid_slider_line(const char *line)
-{
-    typedef struct {
-        const char *slider_name;
-        const char *param_name;
-    } APP_ControlPidSliderMap;
-
-    static const APP_ControlPidSliderMap map[] = {
-        { "roll_angle_kp",  "coax.roll_angle_kp"  },
-        { "pitch_angle_kp", "coax.pitch_angle_kp" },
-        { "roll_rate_kd",   "coax.roll_rate_kd"   },
-        { "pitch_rate_kd",  "coax.pitch_rate_kd"  },
-        { "yaw_angle_kp",   "coax.yaw_angle_kp"   },
-        { "yaw_rate_kd",    "coax.yaw_rate_kd"    },
-        { "pos_x_kp",       "coax.pos_x_kp"       },
-        { "pos_y_kp",       "coax.pos_y_kp"       },
-        { "pos_z_kp",       "coax.pos_z_kp"       },
-        { "pos_z_ki",       "coax.pos_z_ki"       },
-        { "vel_x_kd",       "coax.vel_x_kd"       },
-        { "vel_y_kd",       "coax.vel_y_kd"       },
-        { "vel_z_kd",       "coax.vel_z_kd"       },
-        { "vel_loop_enable", "coax.vel_loop_enable" },
-        { "aw_angle_kp",    "coax.yaw_angle_kp"   },
-        { "aw_rate_kd",     "coax.yaw_rate_kd"    },
-    };
-
-    char value_text[24];
-
-    if ((line == NULL) || (*line == '\0')) {
-        return 0U;
-    }
-
-    for (uint32_t map_index = 0U; map_index < (sizeof(map) / sizeof(map[0])); ++map_index) {
-        float value;
-
-        if (app_control_named_value_line(line,
-                                         map[map_index].slider_name,
-                                         value_text,
-                                         (uint32_t)sizeof(value_text)) == 0U) {
-            continue;
-        }
-
-        if ((value_text[0] == '\0') ||
-            (app_control_parse_f32(value_text, &value) == 0U)) {
-            return 0U;
-        }
-
-        if (strcmp(map[map_index].param_name, "coax.tilt_limit_rad") == 0) {
-            if ((value <= 0.0f) || (value > APP_CONTROL_TILT_LIMIT_MAX_DEG)) {
-                APP_Control_QueueText("ERR angle range\r\n");
-                return 1U;
-            }
-            value *= APP_CONTROL_DEG_TO_RAD;
-        }
-
-        value = app_control_param_from_ui_value(map[map_index].param_name, value);
-        if (DRV_COAX_CTRL_SetParam(map[map_index].param_name, value) == 0U) {
-            APP_Control_QueueText("ERR pid slider %s\r\n", map[map_index].slider_name);
-        } else {
-            app_control_schedule_flash_autosave();
-            app_control_report_coax_param_by_name(map[map_index].param_name);
-            app_control_report_pid_legacy();
-        }
-        return 1U;
-    }
-
-    return 0U;
-}
-
 static uint8_t app_control_handle_param_value_line(const char *line)
 {
     char value_text[24];
@@ -3280,54 +3127,12 @@ static uint8_t app_control_handle_param_value_line(const char *line)
 
         app_control_schedule_flash_autosave();
         app_control_report_coax_param_by_name(name);
-        app_control_report_pid_legacy();
         return 1U;
     }
 
     return 0U;
 }
 
-
-static void app_control_report_pid_legacy(void)
-{
-    float kp;
-    float kd;
-    char kp_text[24];
-    char kd_text[24];
-
-    (void)DRV_COAX_CTRL_GetParam("coax.roll_angle_kp", &kp);
-    (void)DRV_COAX_CTRL_GetParam("coax.roll_rate_kd", &kd);
-    kp = app_control_param_to_ui_value("coax.roll_angle_kp", kp);
-    kd = app_control_param_to_ui_value("coax.roll_rate_kd", kd);
-    app_control_format_float(kp, kp_text, (uint32_t)sizeof(kp_text));
-    app_control_format_float(kd, kd_text, (uint32_t)sizeof(kd_text));
-    app_control_queue_proto_text(APP_PROTO_MSG_PID_RECORD,
-                                 "PID axis=roll kp=%s ki=0 kd=%s source=coax\r\n",
-                                 kp_text,
-                                 kd_text);
-
-    (void)DRV_COAX_CTRL_GetParam("coax.pitch_angle_kp", &kp);
-    (void)DRV_COAX_CTRL_GetParam("coax.pitch_rate_kd", &kd);
-    kp = app_control_param_to_ui_value("coax.pitch_angle_kp", kp);
-    kd = app_control_param_to_ui_value("coax.pitch_rate_kd", kd);
-    app_control_format_float(kp, kp_text, (uint32_t)sizeof(kp_text));
-    app_control_format_float(kd, kd_text, (uint32_t)sizeof(kd_text));
-    app_control_queue_proto_text(APP_PROTO_MSG_PID_RECORD,
-                                 "PID axis=pitch kp=%s ki=0 kd=%s source=coax\r\n",
-                                 kp_text,
-                                 kd_text);
-
-    (void)DRV_COAX_CTRL_GetParam("coax.yaw_angle_kp", &kp);
-    (void)DRV_COAX_CTRL_GetParam("coax.yaw_rate_kd", &kd);
-    kp = app_control_param_to_ui_value("coax.yaw_angle_kp", kp);
-    kd = app_control_param_to_ui_value("coax.yaw_rate_kd", kd);
-    app_control_format_float(kp, kp_text, (uint32_t)sizeof(kp_text));
-    app_control_format_float(kd, kd_text, (uint32_t)sizeof(kd_text));
-    app_control_queue_proto_text(APP_PROTO_MSG_PID_RECORD,
-                                 "PID axis=yaw kp=%s ki=0 kd=%s source=coax\r\n",
-                                 kp_text,
-                                 kd_text);
-}
 
 static void app_control_handle_param(char **tokens, uint32_t count)
 {
@@ -3381,7 +3186,6 @@ static void app_control_handle_param(char **tokens, uint32_t count)
                              (uint32_t)sizeof(formatted));
     APP_Control_QueueText("OK param name=%s value=%s\r\n", name, formatted);
     app_control_report_coax_param_by_name(name);
-    app_control_report_pid_legacy();
 }
 
 void APP_Control_Init(void)
@@ -3611,7 +3415,7 @@ static void app_control_dispatch_tokens(char **tokens, uint32_t count, uint8_t e
     } else if (strcmp(tokens[0], "AIRFRAME?") == 0) {
         app_control_report_airframe();
     } else if (strcmp(tokens[0], "PID?") == 0) {
-        app_control_report_pid_legacy();
+        APP_Control_QueueText("ERR retired PID use PARAM? or PARAM SET\r\n");
     } else if (strcmp(tokens[0], "CONFIG?") == 0) {
         app_control_report_config();
     } else if ((strcmp(tokens[0], "WIFI?") == 0) ||
@@ -3645,7 +3449,7 @@ static void app_control_dispatch_tokens(char **tokens, uint32_t count, uint8_t e
     } else if (strcmp(tokens[0], "PARAM") == 0) {
         app_control_handle_param(tokens, count);
     } else if (strcmp(tokens[0], "PID") == 0) {
-        app_control_handle_pid(tokens, count);
+        APP_Control_QueueText("ERR retired PID use PARAM? or PARAM SET\r\n");
     } else if (strcmp(tokens[0], "MOTOR?") == 0) {
         app_control_report_motor();
     } else if (strcmp(tokens[0], "MOTOR") == 0) {
@@ -3743,9 +3547,6 @@ void APP_Control_ProcessLine(const char *line)
         return;
     }
 
-    if (app_control_handle_pid_slider_line(line) != 0U) {
-        return;
-    }
 
     if (app_control_handle_param_value_line(line) != 0U) {
         return;

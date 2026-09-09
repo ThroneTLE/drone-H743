@@ -313,8 +313,8 @@ int main(void)
     CHECK(out.alpha_rad * nose_up_alpha > 0.0f, 18);
 
     /* Named-parameter entry must reject a negative gain too. */
-    CHECK(DRV_COAX_CTRL_SetParam("coax.pitch_angle_kp", -0.5f) == 0U, 19);
-    CHECK(DRV_COAX_CTRL_SetParam("coax.pitch_angle_kp", 0.5f) != 0U, 20);
+    CHECK(DRV_COAX_CTRL_SetParam("coax.att_pitch_kp", -0.5f) == 0U, 19);
+    CHECK(DRV_COAX_CTRL_SetParam("coax.att_pitch_kp", 0.5f) != 0U, 20);
 
     /*
      * E. TILT -> MOMENT POLARITY FOLLOWS MEASURED GEOMETRY.

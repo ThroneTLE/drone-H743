@@ -113,8 +113,8 @@ DEFAULT_CHANNELS = (
     ("vel_est_x", "m/s", -5.0, 5.0, "nav", "-"),
     ("vel_est_y", "m/s", -5.0, 5.0, "nav", "-"),
     ("flow_height", "m", 0.0, 5.0, "nav", "-"),
-    ("roll_rate_kd", "-", 0.0, 10.0, "gain", "coax.roll_rate_kd"),
-    ("pitch_rate_kd", "-", 0.0, 10.0, "gain", "coax.pitch_rate_kd"),
+    ("rate_roll_kp", "-", 0.0, 10.0, "gain", "coax.rate_roll_kp"),
+    ("rate_pitch_kp", "-", 0.0, 10.0, "gain", "coax.rate_pitch_kp"),
 )
 
 

@@ -25,6 +25,29 @@ def pump(app, condition, timeout=15):
     raise AssertionError(app.simulation_bar.status.get())
 
 
+def test_current_quick_editor_roundtrips_all_24_gains_over_real_tcp(panel):
+    bar = panel.simulation_bar
+    bar.headless = True
+    bar.start()
+    pump(panel, lambda: bar.connected_once and panel.dashboard_schema.complete)
+    desired = {name: .01 + i * .001 for i, name in enumerate(panel.quick_parameter_vars)}
+    assert len(desired) == 24
+    for name, value in desired.items():
+        panel.quick_parameter_vars[name].set(f"{value:.6f}")
+    panel._send_pid_values()
+
+    def all_echoed():
+        for name, value in desired.items():
+            state = panel.param_states.get(name)
+            if state is None or state.target is None or abs(float(state.target) - value) > 1e-6:
+                return False
+            if state.pending is not None:
+                return False
+        return True
+
+    pump(panel, all_echoed)
+
+
 def test_one_click_starts_child_connects_streams_and_stop_reaps(panel):
     bar = panel.simulation_bar
     bar.headless = True  # Same executable/device path, without a visible test window.

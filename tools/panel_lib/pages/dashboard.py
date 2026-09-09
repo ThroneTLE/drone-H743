@@ -805,7 +805,7 @@ class DashboardPageMixin:
         超时才变红，而且措辞是"未收到飞控回显"——飞控明明回了。这里按固件参数名
         反查通道，立刻判红并写出真正的原因。
 
-        入参是**固件参数名**（`coax.yaw_angle_kp`），不是通道名，所以要反查：
+        入参是**固件参数名**（`coax.att_yaw_kp`），不是通道名，所以要反查：
         通道表里 `channel.param` 才是发给飞控的那个名字。
         """
         target = (param or "").strip()

@@ -161,62 +161,13 @@ for _row in _CAPABILITY_ROWS:
         value_kind=_kind,
     )
 
-# PID SET exposes six derived controller values through DRV_COAX_CTRL_GetParam/
-# SetParam.  They are real firmware names, but intentionally do not appear in
-# the raw offset table because each is computed from more than one field.
-PID_VIRTUAL_CAPABILITIES = {
-    name: ParameterCapability(name=name, unit="gain", maximum=COAX_PARAM_ABS_LIMIT)
-    for name in (
-        "coax.roll_angle_kp", "coax.pitch_angle_kp", "coax.yaw_angle_kp",
-        "coax.roll_rate_kd", "coax.pitch_rate_kd", "coax.yaw_rate_kd",
-    )
-}
-
-
-# PID's legacy quick editor uses friendly names, but its wire command only has
-# kp/kd.  KI is intentionally absent from this map: it is not a PID SET field.
-PID_PARAMETER_ALIASES = {
-    "pid.roll.kp": "coax.roll_angle_kp",
-    "pid.pitch.kp": "coax.pitch_angle_kp",
-    "pid.roll.kd": "coax.roll_rate_kd",
-    "pid.pitch.kd": "coax.pitch_rate_kd",
-    "pid.yaw.kp": "coax.yaw_angle_kp",
-    "pid.yaw.kd": "coax.yaw_rate_kd",
-    "pid.pos.x.kp": "coax.pos_x_kp",
-    "pid.pos.y.kp": "coax.pos_y_kp",
-    "pid.pos.z.kp": "coax.pos_z_kp",
-    # This is the old position integrator, not a new velocity I term.
-    "pid.pos.z.ki": "coax.pos_z_ki",
-    "pid.vel.x.kp": "coax.vel_x_kp",
-    "pid.vel.y.kp": "coax.vel_y_kp",
-    "pid.vel.z.kp": "coax.vel_z_kp",
-    "pid.vel.x.ki": "coax.vel_x_ki",
-    "pid.vel.y.ki": "coax.vel_y_ki",
-    "pid.vel.z.ki": "coax.vel_z_ki",
-    "pid.vel.x.kd": "coax.vel_x_kd",
-    "pid.vel.y.kd": "coax.vel_y_kd",
-    "pid.vel.z.kd": "coax.vel_z_kd",
-    "pid.vel_loop.enable": "coax.vel_loop_enable",
-}
-
-PID_QUICK_ALIASES = {
-    "pid.roll.kp": "coax.roll_angle_kp",
-    "pid.roll.kd": "coax.roll_rate_kd",
-    "pid.pitch.kp": "coax.pitch_angle_kp",
-    "pid.pitch.kd": "coax.pitch_rate_kd",
-    "pid.yaw.kp": "coax.yaw_angle_kp",
-    "pid.yaw.kd": "coax.yaw_rate_kd",
-}
-
-
 def canonical_parameter_name(name: str) -> str:
-    lowered = name.strip().lower()
-    return PID_PARAMETER_ALIASES.get(lowered, lowered)
+    return name.strip().lower()
 
 
 def parameter_capability(name: str) -> ParameterCapability | None:
     canonical = canonical_parameter_name(name)
-    return PARAMETER_CAPABILITIES.get(canonical) or PID_VIRTUAL_CAPABILITIES.get(canonical)
+    return PARAMETER_CAPABILITIES.get(canonical)
 
 
 def validate_parameter_text(
@@ -255,9 +206,6 @@ __all__ = [
     "COAX_PARAM_ABS_LIMIT",
     "COAX_TILT_LIMIT_RAD",
     "PARAMETER_CAPABILITIES",
-    "PID_VIRTUAL_CAPABILITIES",
-    "PID_PARAMETER_ALIASES",
-    "PID_QUICK_ALIASES",
     "ParameterCapability",
     "ParameterState",
     "canonical_parameter_name",

@@ -119,7 +119,7 @@ def test_header_reports_version_count_rate_and_hash(schema_lines: list[str]) -> 
 
     fields = parse_kv(header)
     # v3：状态监视的轴向数据统一为机体 FLU，并携带契约版本。
-    assert fields["ver"] == "3"
+    assert fields["ver"] == "4"
     assert fields["frame"] == "body_flu"
     assert fields["contract"] == "1"
     assert int(fields["n"]) > 0
@@ -150,10 +150,10 @@ def test_every_channel_reported_exactly_once_in_fill_order(
 # invalidates historical captures.
 HISTORICAL_WIRE_ORDER = [
     "roll", "pitch", "yaw", "flow_height", "uptime", "vel_est_x", "vel_est_y",
-    "roll_rate_kd", "pitch_rate_kd", "yaw_angle_kp", "yaw_rate_kd",
+    "reserved_7", "reserved_8", "reserved_9", "reserved_10",
     "pos_x_kp", "pos_y_kp", "vel_x_kd", "vel_y_kd",
     "pos_est_x", "pos_est_y", "vel_loop_enable",
-    "roll_angle_kp", "pitch_angle_kp", "pos_z_kp", "pos_z_ki", "vel_z_kd",
+    "reserved_18", "reserved_19", "pos_z_kp", "reserved_21", "vel_z_kd",
     "fusion_acc_err", "fusion_acc_ignored", "fusion_acc_recovery",
     "fusion_acc_corrections", "fusion_acc_norm_rej",
 ]
@@ -276,17 +276,11 @@ def test_schema_hash_covers_frame_provenance(tmp_path: Path) -> None:
 
 
 PARAM_CHANNELS = {
-    "roll_rate_kd": "coax.roll_rate_kd",
-    "pitch_rate_kd": "coax.pitch_rate_kd",
-    "yaw_angle_kp": "coax.yaw_angle_kp",
-    "yaw_rate_kd": "coax.yaw_rate_kd",
     "pos_x_kp": "coax.pos_x_kp",
     "pos_y_kp": "coax.pos_y_kp",
     "vel_x_kd": "coax.vel_x_kd",
     "vel_y_kd": "coax.vel_y_kd",
     "vel_loop_enable": "coax.vel_loop_enable",
-    "roll_angle_kp": "coax.roll_angle_kp",
-    "pitch_angle_kp": "coax.pitch_angle_kp",
     "pos_z_kp": "coax.pos_z_kp",
     "vel_z_kd": "coax.vel_z_kd",
     # v2 追加的真名增益（通道 64 起）。上面 13 条是单环 PD 时代的换算 alias，
@@ -344,8 +338,8 @@ def test_schema_hash_changes_when_a_param_binding_changes(tmp_path: Path) -> Non
     baseline = build_and_run(tmp_path / "param_base")
 
     source = read("App/Src/app_telemetry.c")
-    assert '"coax.roll_rate_kd"' in source
-    mutated = source.replace('"coax.roll_rate_kd"}', '"coax.pitch_rate_kd"}', 1)
+    assert '"coax.rate_roll_kp"' in source
+    mutated = source.replace('"coax.rate_roll_kp"}', '"coax.rate_pitch_kp"}', 1)
     assert mutated != source
 
     changed = build_and_run(tmp_path / "param_mutated", telemetry_source=mutated)

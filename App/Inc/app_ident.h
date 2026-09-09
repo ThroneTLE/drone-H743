@@ -75,7 +75,7 @@ uint8_t APP_Ident_StartPrbs(const char *axis,
                             uint32_t bit_ms,
                             uint32_t duration_ms,
                             uint32_t seed);
-uint8_t APP_Ident_ApplyPid(const char *axis, const char *kp_text, const char *kd_text);
+uint8_t APP_Ident_ApplyRateKp(const char *axis, const char *value_text);
 void APP_Ident_Update(uint32_t now_ms);
 void APP_Ident_GetServoTargets(uint16_t *alpha_us, uint16_t *beta_us);
 void APP_Ident_Observe(const APP_IdentObserve *obs);

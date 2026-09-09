@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field, replace
+from .parameter_layout_migration import migrate_parameter_bindings
 
 
 DASHBOARD_COLUMNS = 12
@@ -121,6 +122,7 @@ class TileSpec:
         options = raw.get("options", {})
         if isinstance(options, dict):
             spec.options = dict(options)
+        spec.bindings, spec.options = migrate_parameter_bindings(spec.bindings, spec.options)
         return clamp_tile(spec)
 
 
@@ -262,25 +264,6 @@ class DashboardLayout:
 
 # ------------------------------------------------------------------ 出厂预设
 
-# 单环 PD 时代留下的、**名字与实际含义对不上**的通道（app_telemetry.c 通道
-# 7..22 里的一部分）。出厂预设一律不摆它们：
-#
-#   roll_rate_kd  实际是 rate.kp[0]           —— 角速度环的 P，不是 D
-#   roll_angle_kp 实际是 rate.kp[0]*att_kp[0] —— 两个环增益的乘积
-#   pos_z_ki      固件参数表里根本不存在，遥测值恒为 0，滑块拖不动任何东西
-#
-# 拖 `roll_angle_kp` 会为了保住那个乘积去反向改 `att_kp`，拖 `roll_rate_kd` 又
-# 会反过来改回去 —— 两个滑块互相偷改对方（DRV_COAX_CTRL_SetParam 的特判分支）。
-# 它们保留在通道表里只为不重排历史编号，需要时仍可从组件的通道下拉里选出来。
-#
-# 历史 14 个通道里的另外 7 个（pos_x/y/z_kp、vel_x/y/z_kd、vel_loop_enable）
-# 名副其实，直连参数表字段，照常进预设。
-ALIAS_PARAM_CHANNEL_NAMES = (
-    "roll_rate_kd", "pitch_rate_kd", "yaw_rate_kd",
-    "roll_angle_kp", "pitch_angle_kp", "yaw_angle_kp",
-    "pos_z_ki",
-)
-
 # 四个串级环的增益分组，用固件参数表里的**真名**（通道 64 起）。顺序就是串级
 # 从外到内：位置 → 速度 → 角度 → 角速度。这也是调参时唯一安全的推进顺序
 # （内环没稳之前动外环，看到的响应不是外环的），所以分块顺序照抄它。
@@ -387,7 +370,6 @@ PRESET_BUILDERS = {
 
 
 __all__ = [
-    "ALIAS_PARAM_CHANNEL_NAMES",
     "CARD_COLSPAN",
     "CARD_ROWSPAN",
     "DASHBOARD_COLUMNS",

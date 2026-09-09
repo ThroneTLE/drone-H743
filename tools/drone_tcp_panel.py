@@ -2800,7 +2800,7 @@ class DronePanel(ValidationV0PageMixin, EvidenceMixin, AcceptanceV2PageMixin, Vi
         actions = ttk.Frame(fit)
         actions.pack(fill=tk.X, pady=(8, 0))
         ttk.Button(actions, text="Fit", command=self._ident_fit).pack(side=tk.LEFT)
-        ttk.Button(actions, text="Apply", command=self._ident_apply_fit).pack(side=tk.LEFT, padx=4)
+        ttk.Button(actions, text="四环调参说明", command=self._ident_apply_fit).pack(side=tk.LEFT, padx=4)
         ttk.Button(actions, text="Save", command=lambda: self._send_proto_once(PROTO_REQ_SAVE, "SAVE")).pack(side=tk.LEFT)
 
         live = ttk.LabelFrame(left, text="Live", padding=10)
@@ -2885,33 +2885,7 @@ class DronePanel(ValidationV0PageMixin, EvidenceMixin, AcceptanceV2PageMixin, Vi
         )
         edit.columnconfigure(1, weight=1)
 
-        pid = ttk.LabelFrame(right, text="PID 快速编辑", padding=10)
-        pid.pack(fill=tk.X, pady=(10, 0))
-        self.pid_vars: dict[str, dict[str, tk.StringVar]] = {}
-        ttk.Label(pid, text="轴").grid(row=0, column=0, sticky=tk.W)
-        for col, term in enumerate(("kp", "ki", "kd"), start=1):
-            label = "KI（只读）" if term == "ki" else term.upper()
-            ttk.Label(pid, text=label).grid(row=0, column=col, sticky=tk.W)
-        self.pid_widgets = {}
-        for row, axis in enumerate(("roll", "pitch", "yaw"), start=1):
-            ttk.Label(pid, text=axis).grid(row=row, column=0, sticky=tk.W, pady=4)
-            self.pid_vars[axis] = {}
-            self.pid_widgets[axis] = {}
-            for col, term in enumerate(("kp", "ki", "kd"), start=1):
-                var = tk.StringVar(value="")
-                self.pid_vars[axis][term] = var
-                entry = ttk.Entry(pid, textvariable=var, width=10)
-                entry.grid(row=row, column=col, sticky=tk.EW, padx=(4, 0), pady=4)
-                self.pid_widgets[axis][term] = entry
-                if term == "ki":
-                    entry.configure(state=tk.DISABLED)
-        ttk.Button(pid, text="发送 PID", command=self._send_pid_values).grid(row=4, column=0, columnspan=2, sticky=tk.EW, pady=(8, 0))
-        ttk.Button(pid, text="读取 PID", command=lambda: self._send_proto(PROTO_REQ_PID, "PID?")).grid(row=4, column=2, columnspan=2, sticky=tk.EW, padx=(6, 0), pady=(8, 0))
-        ttk.Label(pid, textvariable=self.pid_ki_status_var, style="Muted.TLabel").grid(
-            row=5, column=0, columnspan=4, sticky=tk.W, pady=(5, 0)
-        )
-        for col in range(1, 4):
-            pid.columnconfigure(col, weight=1)
+        self._build_cascade_editor(right)
 
     def _build_command_page(self, parent: ttk.Frame) -> None:
         quick = ttk.LabelFrame(parent, text="兼容 / 调试命令", padding=10)
@@ -2922,7 +2896,6 @@ class DronePanel(ValidationV0PageMixin, EvidenceMixin, AcceptanceV2PageMixin, Vi
             ("CONFIG?", "CONFIG?"),
             ("PARAM?", "PARAM?"),
             ("AIRFRAME?", "AIRFRAME?"),
-            ("PID?", "PID?"),
             ("BARO?", "BARO?"),
             ("GPS?", "GPS?"),
             ("MAG?", "MAG?"),
@@ -2947,7 +2920,7 @@ class DronePanel(ValidationV0PageMixin, EvidenceMixin, AcceptanceV2PageMixin, Vi
         text.insert(
             tk.END,
             "面板会解析现有固件行: READY, HW FLASH/SPL06/ICM42688, STATUS flash/baro/imu, UART1, CFG, OK/ERR。\n"
-            "也预留解析: BARO pressure=... temp=... alt=..., PARAM name=... value=..., PID axis=roll kp=...。\n"
+            "也预留解析: BARO pressure=... temp=... alt=..., PARAM name=... value=..., 当前四环 PARAM 参数。\n"
             "未知行不会报错，会保留在原始命令日志里，方便固件侧逐步补命令。\n",
         )
         text.configure(state=tk.DISABLED)
@@ -3095,7 +3068,7 @@ class DronePanel(ValidationV0PageMixin, EvidenceMixin, AcceptanceV2PageMixin, Vi
         self._append(f"> {line}")
         if not self.transport.send_line(line):
             self._append("[上位机] 发送失败")
-        elif line in {"PING", "STATUS?", "CONFIG?", "PARAM?", "PID?", "BARO?", "FLOW?", "GPS?", "MAG?", "AIRFRAME?"}:
+        elif line in {"PING", "STATUS?", "CONFIG?", "PARAM?", "BARO?", "FLOW?", "GPS?", "MAG?", "AIRFRAME?"}:
             sent_at = time.monotonic()
             self.after(CMD_REPLY_TIMEOUT_MS, lambda sent=line, start=sent_at: self._warn_if_no_reply(sent, start))
 
@@ -3196,7 +3169,6 @@ class DronePanel(ValidationV0PageMixin, EvidenceMixin, AcceptanceV2PageMixin, Vi
     def _read_all_params(self) -> None:
         self._send_proto(PROTO_REQ_CONFIG, "CONFIG?")
         self._send_proto(PROTO_REQ_PARAMS, "PARAM?")
-        self._send_proto(PROTO_REQ_PID, "PID?")
         self._request_airframe()
 
     def _request_airframe(self) -> None:
@@ -4568,18 +4540,11 @@ class DronePanel(ValidationV0PageMixin, EvidenceMixin, AcceptanceV2PageMixin, Vi
             return
         self.ident_fit_var.set(
             f"K={fit['K']:.5f} tau={fit['tau']:.3f}s L={fit['L']:.3f}s "
-            f"kp={fit['kp']:.5f} kd={fit['kd']:.5f}"
+            "仅显示执行器响应拟合，四环参数请在参数页设置"
         )
 
     def _ident_apply_fit(self) -> None:
-        if self.ident_last_fit is None:
-            self._ident_fit()
-        if self.ident_last_fit is None:
-            return
-        axis = self.ident_axis_var.get()
-        fit = self.ident_last_fit
-        payload = f"IDENT APPLY {axis} kp={fit['kp']:.6f} kd={fit['kd']:.6f}"
-        self._send_proto(PROTO_REQ_IDENT, payload)
+        self.ident_fit_var.set("旧单环拟合不直接写入四环；请在参数页分别设置角度 P 与角速度 PID")
 
     def _ident_open_folder(self) -> None:
         path = self.ident_save_dir

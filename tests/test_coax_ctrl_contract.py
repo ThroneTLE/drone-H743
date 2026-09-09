@@ -136,8 +136,8 @@ def test_mbd_controller_gains_are_runtime_coax_params() -> None:
     assert '"coax." #field' in wrapper
     assert "coax_tiltrotor_controller_codegen(" not in wrapper
     assert "DRV_COAX_CTRL_SetParam(name, value)" in app_control
-    assert '{ "pos_z_kp",       "coax.pos_z_kp"       }' in app_control
-    assert '{ "pos_z_ki",       "coax.pos_z_ki"       }' in app_control
+    assert '{ "pos_z_kp",       "coax.pos_z_kp"       }' not in app_control
+    assert '{ "pos_z_ki",       "coax.pos_z_ki"       }' not in app_control
     assert "PARAM name=%s value=%s" in app_control
 
 
@@ -281,8 +281,8 @@ def test_roll_pitch_physical_moment_gains_are_runtime_params() -> None:
     # 2026-09-07：I_zz 由 0.00035 改成 0.005 后，系数必须同步下调，否则默认偏航
     # 增益会跟着涨 14.3 倍、越过作者实测的抖振阈值。形式仍是 `I_zz × 带宽`。
     assert "params->rate.kp[2] = DRV_AIRFRAME_IZZ_KGM2 * 0.525f;" in wrapper
-    assert 'strcmp(name, "coax.roll_angle_kp")' in wrapper
-    assert 'strcmp(name, "coax.yaw_rate_kd")' in wrapper
+    assert 'strcmp(name, "coax.roll_angle_kp")' not in wrapper
+    assert 'strcmp(name, "coax.yaw_rate_kd")' not in wrapper
     # 2026-09-07：作者裁定用一个物理上说得通的"虚拟 k"（0.005 ≈ C_Q/C_T × D）替换
     # 原来查无出处的 1e-4，并同比放大默认 rate.kp[2] 使物理行为逐位不变。
     # 该值仍是估计而非实测，溯源写在 drv_coax_ctrl.c 的宏定义处。
@@ -402,7 +402,7 @@ def test_vofa_exports_compact_slider_parameter_feedback() -> None:
 
     # 帧长仍由通道表推出来：采样函数拒绝任何与表长不符的 count。
     assert "(values == NULL) || (count != (uint32_t)APP_TELEM_CH_COUNT)" in freertos
-    assert '(void)DRV_COAX_CTRL_GetParam("coax.roll_rate_kd", &vofa_data[APP_TELEM_CH_ROLL_RATE_KD]);' in freertos
+    assert 'vofa_data[APP_TELEM_CH_RESERVED_7] = 0.0f;' in freertos
     assert "vofa_data[APP_TELEM_CH_ROLL_RATE_KD] = -vofa_data[APP_TELEM_CH_ROLL_RATE_KD];" not in freertos
     assert "vofa_data[APP_TELEM_CH_PITCH_RATE_KD] = -vofa_data[APP_TELEM_CH_PITCH_RATE_KD];" not in freertos
     # 审核实机复核（2026-09-03）：app_control_ui_sign_for_param 对所有参数返回 +1，
@@ -418,10 +418,10 @@ def test_vofa_exports_compact_slider_parameter_feedback() -> None:
     assert "vofa_data[APP_TELEM_CH_POS_EST_Y] = vofa_debug.pos_est_m[1];" in freertos
     assert "linear_sign" not in freertos
     assert '(void)DRV_COAX_CTRL_GetParam("coax.vel_loop_enable", &vofa_data[APP_TELEM_CH_VEL_LOOP_ENABLE]);' in freertos
-    assert '(void)DRV_COAX_CTRL_GetParam("coax.roll_angle_kp", &vofa_data[APP_TELEM_CH_ROLL_ANGLE_KP]);' in freertos
-    assert '(void)DRV_COAX_CTRL_GetParam("coax.pitch_angle_kp", &vofa_data[APP_TELEM_CH_PITCH_ANGLE_KP]);' in freertos
+    assert 'vofa_data[APP_TELEM_CH_RESERVED_18] = 0.0f;' in freertos
+    assert 'vofa_data[APP_TELEM_CH_RESERVED_19] = 0.0f;' in freertos
     assert '(void)DRV_COAX_CTRL_GetParam("coax.pos_z_kp", &vofa_data[APP_TELEM_CH_POS_Z_KP]);' in freertos
-    assert "vofa_data[APP_TELEM_CH_POS_Z_KI] = 0.0f;" in freertos
+    assert "vofa_data[APP_TELEM_CH_RESERVED_21] = 0.0f;" in freertos
     assert '(void)DRV_COAX_CTRL_GetParam("coax.vel_z_kd", &vofa_data[APP_TELEM_CH_VEL_Z_KD]);' in freertos
     assert "vofa_data[APP_TELEM_CH_ROLL_ANGLE_KP] = -vofa_data[APP_TELEM_CH_ROLL_ANGLE_KP];" not in freertos
     assert "vofa_data[APP_TELEM_CH_PITCH_ANGLE_KP] = -vofa_data[APP_TELEM_CH_PITCH_ANGLE_KP];" not in freertos
@@ -441,7 +441,7 @@ def test_control_protocol_accepts_colon_param_updates_and_reports_back() -> None
     assert "0xBCU" in app_control
     assert "0x9AU" in app_control
     assert "app_control_report_coax_param_by_name(name);" in app_control
-    assert "app_control_report_pid_legacy();" in app_control
+    assert "app_control_report_pid_legacy();" not in app_control
     # The UI no longer flips any parameter's sign. It used to invert some gains
     # but not others, giving the UI and the control layer two different sign
     # conventions -- a display of -0.600 for an internally positive gain. Gains
@@ -453,17 +453,17 @@ def test_control_protocol_accepts_colon_param_updates_and_reports_back() -> None
         assert f'strcmp(name, "{gain}") == 0' not in app_control
     assert "app_control_param_from_ui_value(name, value)" in app_control
     assert "app_control_param_to_ui_value(name, value)" in app_control
-    assert "app_control_report_coax_param_by_name(map[map_index].param_name);" in app_control
-    assert '"roll_angle_kp",  "coax.roll_angle_kp"' in app_control
-    assert '"pitch_angle_kp", "coax.pitch_angle_kp"' in app_control
-    assert '"roll_rate_kd",   "coax.roll_rate_kd"' in app_control
-    assert '"yaw_angle_kp",   "coax.yaw_angle_kp"' in app_control
+    assert "app_control_handle_pid_slider_line" not in app_control
+    assert '"roll_angle_kp",  "coax.roll_angle_kp"' not in app_control
+    assert '"pitch_angle_kp", "coax.pitch_angle_kp"' not in app_control
+    assert '"roll_rate_kd",   "coax.roll_rate_kd"' not in app_control
+    assert '"yaw_angle_kp",   "coax.yaw_angle_kp"' not in app_control
     assert '"Pitch_kp"' not in app_control
     assert '"Roll_kp"' not in app_control
-    assert '"pos_x_kp",       "coax.pos_x_kp"' in app_control
-    assert '"pos_y_kp",       "coax.pos_y_kp"' in app_control
-    assert '"vel_x_kd",       "coax.vel_x_kd"' in app_control
-    assert '"vel_y_kd",       "coax.vel_y_kd"' in app_control
+    assert '"pos_x_kp",       "coax.pos_x_kp"' not in app_control
+    assert '"pos_y_kp",       "coax.pos_y_kp"' not in app_control
+    assert '"vel_x_kd",       "coax.vel_x_kd"' not in app_control
+    assert '"vel_y_kd",       "coax.vel_y_kd"' not in app_control
     assert '"vel_loop_x_kp",  "coax.vel_loop_x_kp"' not in app_control
 
 
@@ -481,10 +481,10 @@ def test_synex_channels_exclude_executor_model_params() -> None:
     assert '"Pos_Y_m"' in builder
     assert '"Vel_X_KI"' not in builder
     assert '"Vel_Y_KI"' not in builder
-    assert '"Roll_Angle_KP"' in builder
-    assert '"Pitch_Angle_KP"' in builder
+    assert '"Reserved_18"' in builder
+    assert '"Reserved_19"' in builder
     assert '"Pos_Z_KP"' in builder
-    assert '"Pos_Z_KI"' in builder
+    assert '"Reserved_21"' in builder
     assert '"Vel_Z_KD"' in builder
     assert '"coax_pos_x_kp",' in capture
     assert '"coax_pos_y_kp",' in capture
@@ -492,10 +492,10 @@ def test_synex_channels_exclude_executor_model_params() -> None:
     assert '"coax_vel_y_kd",' in capture
     assert '"pos_x_m",' in capture
     assert '"pos_y_m",' in capture
-    assert '"coax_roll_angle_kp",' in capture
-    assert '"coax_pitch_angle_kp",' in capture
+    assert '"reserved_18",' in capture
+    assert '"reserved_19",' in capture
     assert '"coax_pos_z_kp",' in capture
-    assert '"coax_pos_z_ki",' in capture
+    assert '"reserved_21",' in capture
     assert '"coax_vel_z_kd",' in capture
     assert '"Single_Max_Thrust_N"' not in builder
     assert '"Yaw_Torque_Upper_MPN"' not in builder

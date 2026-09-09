@@ -14,9 +14,7 @@
  * 填充代码用 APP_TELEM_CH_* 枚举名下标，因此"顺序一致"由枚举保证，
  * 本表只负责元数据。
  *
- * 旧增益通道名作为显式换算 alias 保留在线路上，避免重排历史编号；V19 的
- * 真实物理参数名由 DRV_COAX_CTRL_ParamCount/ParamName 报告。pos_z_ki 只保留
- * 只读零值占位，旧位置积分不会偷换成新速度积分。
+ * 旧增益槽位仅保留编号，reserved 通道无参数绑定。当前增益使用现代通道。
  */
 static const APP_TelemChannel app_telem_channels[APP_TELEM_CH_COUNT] = {
     [APP_TELEM_CH_ROLL]        = {"roll",        "deg",   "attitude", -180.0f, 180.0f, "-"},
@@ -27,10 +25,10 @@ static const APP_TelemChannel app_telem_channels[APP_TELEM_CH_COUNT] = {
     [APP_TELEM_CH_VEL_EST_X]   = {"vel_est_x",   "m/s",   "nav",        -5.0f,   5.0f, "-"},
     [APP_TELEM_CH_VEL_EST_Y]   = {"vel_est_y",   "m/s",   "nav",        -5.0f,   5.0f, "-"},
 
-    [APP_TELEM_CH_ROLL_RATE_KD]    = {"roll_rate_kd",    "-", "gain", 0.0f, 10.0f, "coax.roll_rate_kd"},
-    [APP_TELEM_CH_PITCH_RATE_KD]   = {"pitch_rate_kd",   "-", "gain", 0.0f, 10.0f, "coax.pitch_rate_kd"},
-    [APP_TELEM_CH_YAW_ANGLE_KP]    = {"yaw_angle_kp",    "-", "gain", 0.0f, 10.0f, "coax.yaw_angle_kp"},
-    [APP_TELEM_CH_YAW_RATE_KD]     = {"yaw_rate_kd",     "-", "gain", 0.0f, 10.0f, "coax.yaw_rate_kd"},
+    [APP_TELEM_CH_RESERVED_7] = {"reserved_7", "-", "reserved", 0.0f, 1.0f, "-"},
+    [APP_TELEM_CH_RESERVED_8] = {"reserved_8", "-", "reserved", 0.0f, 1.0f, "-"},
+    [APP_TELEM_CH_RESERVED_9] = {"reserved_9", "-", "reserved", 0.0f, 1.0f, "-"},
+    [APP_TELEM_CH_RESERVED_10] = {"reserved_10", "-", "reserved", 0.0f, 1.0f, "-"},
     [APP_TELEM_CH_POS_X_KP]        = {"pos_x_kp",        "-", "gain", 0.0f, 10.0f, "coax.pos_x_kp"},
     [APP_TELEM_CH_POS_Y_KP]        = {"pos_y_kp",        "-", "gain", 0.0f, 10.0f, "coax.pos_y_kp"},
     [APP_TELEM_CH_VEL_X_KD]        = {"vel_x_kd",        "-", "gain", 0.0f, 10.0f, "coax.vel_x_kd"},
@@ -40,10 +38,10 @@ static const APP_TelemChannel app_telem_channels[APP_TELEM_CH_COUNT] = {
     [APP_TELEM_CH_POS_EST_Y] = {"pos_est_y", "m", "nav", -10.0f, 10.0f, "-"},
 
     [APP_TELEM_CH_VEL_LOOP_ENABLE] = {"vel_loop_enable", "-", "gain", 0.0f,  1.0f, "coax.vel_loop_enable"},
-    [APP_TELEM_CH_ROLL_ANGLE_KP]   = {"roll_angle_kp",   "-", "gain", 0.0f, 10.0f, "coax.roll_angle_kp"},
-    [APP_TELEM_CH_PITCH_ANGLE_KP]  = {"pitch_angle_kp",  "-", "gain", 0.0f, 10.0f, "coax.pitch_angle_kp"},
+    [APP_TELEM_CH_RESERVED_18] = {"reserved_18", "-", "reserved", 0.0f, 1.0f, "-"},
+    [APP_TELEM_CH_RESERVED_19] = {"reserved_19", "-", "reserved", 0.0f, 1.0f, "-"},
     [APP_TELEM_CH_POS_Z_KP]        = {"pos_z_kp",        "-", "gain", 0.0f, 10.0f, "coax.pos_z_kp"},
-    [APP_TELEM_CH_POS_Z_KI]        = {"pos_z_ki",        "-", "legacy", 0.0f, 1.0f, "-"},
+    [APP_TELEM_CH_RESERVED_21] = {"reserved_21", "-", "reserved", 0.0f, 1.0f, "-"},
     [APP_TELEM_CH_VEL_Z_KD]        = {"vel_z_kd",        "-", "gain", 0.0f, 10.0f, "coax.vel_z_kd"},
 
     [APP_TELEM_CH_FUSION_ACC_ERR]           = {"fusion_acc_err",         "deg",   "fusion", 0.0f,  180.0f, "-"},

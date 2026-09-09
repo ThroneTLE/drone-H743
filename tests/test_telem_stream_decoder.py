@@ -398,7 +398,7 @@ def test_schema_assembles_from_the_real_firmware_reply(tmp_path) -> None:
 
     assert schema.complete
     assert schema.next_page is None
-    assert schema.version == 3
+    assert schema.version == 4
     assert schema.body_frame == "body_flu"
     assert schema.frame_contract == 1
     assert schema.rate_hz == 40
@@ -412,12 +412,12 @@ def test_schema_exposes_the_parameter_binding_for_sliders(tmp_path) -> None:
     schema = build_schema(schema_lines_from_firmware(tmp_path))
     by_name = {channel.name: channel for channel in schema.ordered()}
 
-    assert by_name["roll_rate_kd"].param == "coax.roll_rate_kd"
-    assert by_name["roll_rate_kd"].is_parameter
+    assert by_name["rate_roll_kp"].param == "coax.rate_roll_kp"
+    assert by_name["rate_roll_kp"].is_parameter
     assert not by_name["roll"].is_parameter
     # 滑块由通道表数据驱动生成，上位机不再自备一张增益表。
     sliders = [c.name for c in schema.ordered() if c.is_parameter]
-    assert len(sliders) == 33
+    assert len(sliders) == 27
 
     # 名字相近但含义完全不同的一对，必须各自绑到自己的参数上：
     # `roll_rate_kd` 是单环时代的 alias，写的是角速度环的 **P**（rate.kp[0]）；
@@ -425,7 +425,7 @@ def test_schema_exposes_the_parameter_binding_for_sliders(tmp_path) -> None:
     # 两者绑串了，调 D 的人实际在调 P，而且没有任何人会报错。
     assert by_name["rate_roll_kd"].param == "coax.rate_roll_kd"
     assert by_name["rate_roll_kd"].unit == "kg.m^2"
-    assert by_name["roll_rate_kd"].param != by_name["rate_roll_kd"].param
+    assert by_name["rate_roll_kp"].param != by_name["rate_roll_kd"].param
 
 
 def test_changing_any_metadata_field_changes_the_computed_hash(tmp_path) -> None:
@@ -436,7 +436,7 @@ def test_changing_any_metadata_field_changes_the_computed_hash(tmp_path) -> None
         ("name=roll ", "name=rollX "),
         ("unit=deg ", "unit=rad "),
         ("grp=attitude ", "grp=att "),
-        ("param=coax.roll_rate_kd", "param=coax.pitch_rate_kd"),
+        ("param=coax.rate_roll_kp", "param=coax.rate_pitch_kp"),
     ):
         mutated = [line.replace(old, new, 1) for line in lines]
         assert mutated != lines, old

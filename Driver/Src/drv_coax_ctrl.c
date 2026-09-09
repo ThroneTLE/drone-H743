@@ -1376,35 +1376,6 @@ uint8_t DRV_COAX_CTRL_GetParam(const char *name, float *value)
     }
 
     DRV_COAX_CTRL_Init();
-    if (strcmp(name, "coax.roll_angle_kp") == 0) {
-        *value = coax_ctrl_params.rate.kp[0] *
-                 coax_ctrl_params.attitude.att_kp[0];
-        return 1U;
-    }
-    if (strcmp(name, "coax.pitch_angle_kp") == 0) {
-        *value = coax_ctrl_params.rate.kp[1] *
-                 coax_ctrl_params.attitude.att_kp[1];
-        return 1U;
-    }
-    if (strcmp(name, "coax.roll_rate_kd") == 0) {
-        *value = coax_ctrl_params.rate.kp[0];
-        return 1U;
-    }
-    if (strcmp(name, "coax.pitch_rate_kd") == 0) {
-        *value = coax_ctrl_params.rate.kp[1];
-        return 1U;
-    }
-    if (strcmp(name, "coax.yaw_angle_kp") == 0) {
-        *value = (coax_ctrl_params.rate.kp[2] *
-                  coax_ctrl_params.attitude.att_kp[2]) /
-                 coax_ctrl_params.yaw_inertia;
-        return 1U;
-    }
-    if (strcmp(name, "coax.yaw_rate_kd") == 0) {
-        *value = coax_ctrl_params.rate.kp[2] /
-                 coax_ctrl_params.yaw_inertia;
-        return 1U;
-    }
     if (entry == NULL) {
         return 0U;
     }
@@ -1422,50 +1393,6 @@ uint8_t DRV_COAX_CTRL_SetParam(const char *name, float value)
     }
     DRV_COAX_CTRL_Init();
     candidate = coax_ctrl_params;
-    if (strcmp(name, "coax.roll_angle_kp") == 0) {
-        if ((candidate.rate.kp[0] <= DRV_COAX_CTRL_RATE_SCALE_EPS) &&
-            (value > 0.0f)) return 0U;
-        candidate.attitude.att_kp[0] = value / fmaxf(candidate.rate.kp[0],
-                                                     DRV_COAX_CTRL_RATE_SCALE_EPS);
-        return coax_ctrl_try_set_params(&candidate);
-    }
-    if (strcmp(name, "coax.pitch_angle_kp") == 0) {
-        if ((candidate.rate.kp[1] <= DRV_COAX_CTRL_RATE_SCALE_EPS) &&
-            (value > 0.0f)) return 0U;
-        candidate.attitude.att_kp[1] = value / fmaxf(candidate.rate.kp[1],
-                                                     DRV_COAX_CTRL_RATE_SCALE_EPS);
-        return coax_ctrl_try_set_params(&candidate);
-    }
-    if ((strcmp(name, "coax.roll_rate_kd") == 0) ||
-        (strcmp(name, "coax.pitch_rate_kd") == 0)) {
-        const uint32_t axis = (name[5] == 'r') ? 0U : 1U;
-        const float kr = candidate.rate.kp[axis] *
-                         candidate.attitude.att_kp[axis];
-        if ((value <= DRV_COAX_CTRL_RATE_SCALE_EPS) &&
-            (kr > DRV_COAX_CTRL_RATE_SCALE_EPS)) return 0U;
-        candidate.rate.kp[axis] = value;
-        candidate.attitude.att_kp[axis] =
-            kr / fmaxf(value, DRV_COAX_CTRL_RATE_SCALE_EPS);
-        return coax_ctrl_try_set_params(&candidate);
-    }
-    if (strcmp(name, "coax.yaw_angle_kp") == 0) {
-        if ((candidate.rate.kp[2] <= DRV_COAX_CTRL_RATE_SCALE_EPS) &&
-            (value > 0.0f)) return 0U;
-        candidate.attitude.att_kp[2] =
-            (candidate.yaw_inertia * value) /
-            fmaxf(candidate.rate.kp[2], DRV_COAX_CTRL_RATE_SCALE_EPS);
-        return coax_ctrl_try_set_params(&candidate);
-    }
-    if (strcmp(name, "coax.yaw_rate_kd") == 0) {
-        const float kr = candidate.rate.kp[2] *
-                         candidate.attitude.att_kp[2];
-        if (((candidate.yaw_inertia * value) <= DRV_COAX_CTRL_RATE_SCALE_EPS) &&
-            (kr > DRV_COAX_CTRL_RATE_SCALE_EPS)) return 0U;
-        candidate.rate.kp[2] = candidate.yaw_inertia * value;
-        candidate.attitude.att_kp[2] =
-            kr / fmaxf(candidate.rate.kp[2], DRV_COAX_CTRL_RATE_SCALE_EPS);
-        return coax_ctrl_try_set_params(&candidate);
-    }
     if (coax_ctrl_param_value_valid(entry, value) == 0U) {
         return 0U;
     }

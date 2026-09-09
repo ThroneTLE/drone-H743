@@ -47,8 +47,8 @@ class SegmentFit:
     rms_error_deg: float
     suggested_kr: float
     suggested_kw: float
-    param_kp: float
-    param_kd: float
+    att_kp: float
+    rate_kp: float
 
 
 def split_segments(df: pd.DataFrame) -> list[tuple[int, int]]:
@@ -196,9 +196,9 @@ def analyze(csv_path: Path, inertia_kg_m2: float, target_zeta: float) -> list[Se
                 rms_error_deg=rms_error_deg,
                 suggested_kr=float(suggested_kr),
                 suggested_kw=float(suggested_kw),
-                # Firmware stores the negative of UI-positive moment gains.
-                param_kp=float(-suggested_kr),
-                param_kd=float(-suggested_kw),
+                # P-P equivalent moment gains: kr = attitude P * rate P.
+                att_kp=float(suggested_kr / suggested_kw),
+                rate_kp=float(suggested_kw),
             )
         )
     return fits
@@ -227,17 +227,17 @@ def main() -> int:
         args.out.parent.mkdir(parents=True, exist_ok=True)
         args.out.write_text(text + "\n", encoding="utf-8")
     print(text)
-    print("\nSuggested PARAM commands:")
+    print("\nP-P equivalent only (assumes rate I/D=0; not an automatic tuning result):")
     best_by_axis: dict[str, SegmentFit] = {}
     for fit in sorted(fits, key=lambda item: item.fit_pct, reverse=True):
         best_by_axis.setdefault(fit.axis, fit)
     for axis, fit in best_by_axis.items():
         print(
-            f"PARAM SET coax.{axis}_angle_kp {fit.param_kp:.4f}  "
+            f"PARAM SET coax.att_{axis}_kp {fit.att_kp:.4f}  "
             f"# kr={fit.suggested_kr:.4f} N*m/rad, fit={fit.fit_pct:.1f}%"
         )
         print(
-            f"PARAM SET coax.{axis}_rate_kd {fit.param_kd:.4f}   "
+            f"PARAM SET coax.rate_{axis}_kp {fit.rate_kp:.4f}   "
             f"# kw={fit.suggested_kw:.4f} N*m*s/rad"
         )
     return 0

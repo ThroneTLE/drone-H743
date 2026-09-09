@@ -4,7 +4,7 @@
 
 Read this shard only when the task uses serial/TCP diagnostics, log analysis, identification, capture, calibration, or desktop UIs.
 
-Source snapshot: `dbffe2a8cf04`; aggregate snapshot: `30628635169e`. Covered files: 5367.
+Source snapshot: `f75d5176238c`; aggregate snapshot: `afb0f8baaec2`. Covered files: 5369.
 
 | File/module or scope | Content outline | Key entry points / size |
 |---|---|---|
@@ -50,13 +50,13 @@ Source snapshot: `dbffe2a8cf04`; aggregate snapshot: `30628635169e`. Covered fil
 | `tools/m1_baseline_check.py` | PIPELINE M1 底层与原始数据健康 · 实机基线采集器。 通过 USB CDC 裸文本命令通道（APP_Control_ProcessLine）以固定频率轮询 `IMU?`，在静止条件下累计一段时间的证据，输出结构化 JSON 报… | `poll_once`, `run`, `main` |
 | `tools/organize_data.py` | Move canonical project data into sortable YYYY-MM-DD subdirectories | `CategoryRule`, `MovePlan`, `plan_category`, `build_plan`, `apply_plan`, `parse_args` (+1) |
 | `tools/panel_lib/__init__.py` | Reusable implementation modules for :mod:`tools.drone_tcp_panel` | — |
+| `tools/panel_lib/cascade_editor.py` | Compact current-parameter editor; wire names come from the capability table | `build_cascade_editor` |
 | `tools/panel_lib/connection_state.py` | Host receive provenance; monotonic seconds, never target uptime or UI time. Boundary: immutable queue messages and pure… | `ReceiveContext`, `ReceivedMessage`, `receive_context`, `snapshot_receipt`, `snapshot_is_current` |
 | `tools/panel_lib/evidence.py` | V0 validation evidence persistence, restoration, and write guards | `validation_history_artifacts`, `validation_sample_from_snapshot`, `validation_samples_from_csv`, `signed_permutation_descriptor`, `EvidenceMixin` |
 | `tools/panel_lib/link_activity.py` | Busy reasons shared with the existing keepalive policy | `keepalive_suppressed_reason` |
 | `tools/panel_lib/log_jobs.py` | Queue background file work back to Tk; discard superseded/closed results | `LogJobs` |
 | `tools/panel_lib/log_layout.py` | Wrap existing toolbars without copying their controls or actions | `wrap_toolbars` |
 | `tools/panel_lib/log_receive_view.py` | FlightLog reception using the main panel's current serial connection | `ReceiverView` |
-| `tools/panel_lib/log_views.py` | Embedded adapters for the existing log tools; no analysis reimplementation | `WaveformView`, `AnalysisView` |
 | `tools/panel_qa/__init__.py` | R-S1-3（TK-00）：上位机无硬件 QA 测试基础。 改版报告的每一条问题都是在“真实 `DronePanel` + 模拟 transport”上复现的，可是 复现装置当时散在 `data/analysis/tk_revamp/20… | — |
 | `tools/panel_qa/baseline_observations.py` | R-S1-3（TK-00）：改版报告 N01–N13 的**基线观测**脚本。 这不是回归测试，也**不会**被 pytest 收集。它回答的是一个只有运行才能回答的问题： 报告写在基线 `6f7a440e` 上的那些现象，在**当前**… | `run`, `main` |
 | `tools/panel_qa/fixtures.py` | 协议夹具：键名从固件源码的格式串里抽出来，不许手打。 SKILL.md「Validation」写死了这条：主机工具解析固件输出时，测试夹具必须钉在**真实 发出的格式**上，因为固件从没发过的字段名不会报错，只会安静地永远匹配不上。改版… | `firmware_format_keys`, `gps_status_line`, `gps_position_line`, `telemetry_schema_lines`, `telemetry_frame` |
@@ -97,6 +97,6 @@ Source snapshot: `dbffe2a8cf04`; aggregate snapshot: `30628635169e`. Covered fil
 | `tools/vofa_serial_capture.py` | Capture USART1/VOFA JustFloat telemetry from the flight controller. The firmware currently sends 28 little-endian float… | `RunningStats`, `build_parser`, `safe_text`, `split_lines`, `parse_frame`, `write_metadata` (+1) |
 | `tools/vofa_udp_bridge.py` | Bridge Ai-WB2 UDP transparent mode to fixed VOFA UDP ports. Why this exists: - Ai-WB2 auto transparent mode is configur… | `log`, `main` |
 | `tools/ground_station/ bundled tree` | Bundled application/runtime distribution; inspect an exact file only when maintaining that bundle | 5239 files / 135.6 MiB / .svg×854, .h×841, .cpp×635, .md×459, .py×257 |
-| `tools/panel_lib/ bundled tree` | Bundled application/runtime distribution; inspect an exact file only when maintaining that bundle | 40 files / 616.9 KiB / .py×40 |
+| `tools/panel_lib/ bundled tree` | Bundled application/runtime distribution; inspect an exact file only when maintaining that bundle | 42 files / 617.9 KiB / .py×42 |
 
 Open the smallest listed tool or bundle landmark first; do not preload bundled runtimes.

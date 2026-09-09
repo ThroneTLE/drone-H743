@@ -243,8 +243,8 @@ def test_yaw_is_produced_by_the_so3_law_not_a_separate_pd() -> None:
     ) in wrapper
 
     # 旧参数名只作为显式换算 alias，不再冒充真实物理参数。
-    assert 'strcmp(name, "coax.yaw_angle_kp")' in wrapper
-    assert 'strcmp(name, "coax.yaw_rate_kd")' in wrapper
+    assert 'strcmp(name, "coax.yaw_angle_kp")' not in wrapper
+    assert 'strcmp(name, "coax.yaw_rate_kd")' not in wrapper
 
     # 偏航权限进入保护缩放。
     assert "coax_ctrl_yaw_limit_moment" in wrapper

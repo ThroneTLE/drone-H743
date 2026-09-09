@@ -12,7 +12,6 @@ import json
 from tools.panel_lib.dashboard.layout import (
     DASHBOARD_COLUMNS,
     DASHBOARD_MAX_ROWS,
-    ALIAS_PARAM_CHANNEL_NAMES,
     PARAM_CHANNEL_NAMES,
     PARAM_LOOP_GROUPS,
     TILE_PARAM,
@@ -196,7 +195,7 @@ def test_the_preset_uses_real_gain_names_not_the_legacy_aliases() -> None:
     """
     bound = set(controller_tuning_workspace().bound_channels())
 
-    assert not bound & set(ALIAS_PARAM_CHANNEL_NAMES), "预设里混进了换算 alias"
+    assert not bound & {"roll_rate_kd", "pitch_rate_kd", "yaw_rate_kd", "roll_angle_kp", "pitch_angle_kp", "yaw_angle_kp", "pos_z_ki"}, "预设里混进了换算 alias"
     # 尤其是这两条：名字只差词序，含义一个是 P 一个是 D。
     assert "rate_roll_kd" in bound
     assert "roll_rate_kd" not in bound

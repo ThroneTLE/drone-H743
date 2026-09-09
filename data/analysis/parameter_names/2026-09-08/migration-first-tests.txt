@@ -1,0 +1,395 @@
+......................................FF....................F....F..FFF. [  5%]
+......FF................................................................ [ 10%]
+........................................................................ [ 15%]
+........................................................................ [ 20%]
+........................................................................ [ 26%]
+........................................................................ [ 31%]
+........................................................................ [ 36%]
+........................................................................ [ 41%]
+........................................................................ [ 47%]
+........................................................................ [ 52%]
+........................................................................ [ 57%]
+........................................................................ [ 62%]
+.............................................................F.......... [ 67%]
+........................................................................ [ 73%]
+........................................................................ [ 78%]
+...F.................................................................... [ 83%]
+........................................................................ [ 88%]
+....F
+================================== FAILURES ===================================
+___________ test_usart1_wifi_udp_pid_tuning_path_is_text_line_based ___________
+
+    def test_usart1_wifi_udp_pid_tuning_path_is_text_line_based() -> None:
+        usart = read("Core/Src/usart.c")
+        app_uart = read("App/Src/app_uart.c")
+        app_aiwb2 = read("App/Src/app_aiwb2.c")
+        app_control = read("App/Src/app_control.c")
+        panel = read("tools/drone_tcp_panel.py")
+        transport = read("tools/panel_lib/transport.py")
+    
+        assert "huart1.Init.Mode = UART_MODE_TX_RX;" in usart
+        assert "DMA_REQUEST_USART1_RX" in usart
+        assert "DMA_REQUEST_USART1_TX" in usart
+        assert "HAL_UARTEx_ReceiveToIdle_DMA(&huart1" in app_uart
+        assert "HAL_UART_Transmit_DMA(&huart1" in app_uart
+    
+        assert 'strcmp(line, "PARAM?") == 0' in app_aiwb2
+        assert 'strcmp(line, "PID?") == 0' in app_aiwb2
+        assert 'aiwb2_starts_with(line, "PARAM ")' in app_aiwb2
+        assert 'aiwb2_starts_with(line, "PID ")' in app_aiwb2
+        assert "APP_Control_ProcessLine(normalized);" in app_uart
+>       assert "DRV_COAX_CTRL_SetParam(kp_name, kp)" in app_control
+E       assert 'DRV_COAX_CTRL_SetParam(kp_name, kp)' in '#include "app_control.h"\n#include "app_control_config_store.h"\n#include "app_control_internal.h"\n\n#include "app_a...APP_ControlConfig *config)\n{\n    if (config == NULL) {\n        return;\n    }\n\n    *config = control_config;\n}\n'
+
+tests\test_aiwb2_prompt_contract.py:64: AssertionError
+____________ test_vofa_pid_slider_colon_lines_are_control_payloads ____________
+
+    def test_vofa_pid_slider_colon_lines_are_control_payloads() -> None:
+        app_aiwb2 = read("App/Src/app_aiwb2.c")
+        app_control = read("App/Src/app_control.c")
+    
+        assert "aiwb2_is_pid_slider_payload" in app_aiwb2
+>       assert '"roll_angle_kp"' in app_aiwb2
+E       assert '"roll_angle_kp"' in '#include "app_aiwb2.h"\n\n#include "app_control.h"\n#include "app_maint_uart.h"\n#include "bsp_aiwb2_power.h"\n#inclu...|| (aiwb2_command_index >= count)) {\n        return "";\n    }\n\n    return commands[aiwb2_command_index].text;\n}\n'
+
+tests\test_aiwb2_prompt_contract.py:78: AssertionError
+______________ test_mbd_controller_gains_are_runtime_coax_params ______________
+
+    def test_mbd_controller_gains_are_runtime_coax_params() -> None:
+        header = read("Driver/Inc/drv_coax_ctrl.h")
+        wrapper = read("Driver/Src/drv_coax_ctrl.c")
+        app_control = read("App/Src/app_control.c")
+    
+        assert "DRV_COAX_CTRL_Params" in header
+        assert "DRV_COAX_CTRL_SetParam" in header
+        assert 'DRV_COAX_CTRL_NAMED_PARAM_ENTRY("att_roll_kp"' in wrapper
+        assert 'DRV_COAX_CTRL_NAMED_PARAM_ENTRY("att_pitch_kp"' in wrapper
+        assert 'DRV_COAX_CTRL_NAMED_PARAM_ENTRY("rate_roll_kp"' in wrapper
+        assert 'DRV_COAX_CTRL_NAMED_PARAM_ENTRY("vel_z_ki"' in wrapper
+        assert 'DRV_COAX_CTRL_PARAM_ENTRY(vel_loop_x_kp)' not in wrapper
+        assert 'DRV_COAX_CTRL_PARAM_ENTRY(mass_kg)' not in wrapper
+        assert 'DRV_COAX_CTRL_PARAM_ENTRY(gravity_m_s2)' not in wrapper
+        assert 'DRV_COAX_CTRL_PARAM_ENTRY(tilt_lever_arm_m)' not in wrapper
+        assert 'DRV_COAX_CTRL_PARAM_ENTRY(yaw_inertia)' not in wrapper
+        assert 'DRV_COAX_CTRL_PARAM_ENTRY(motor_single_max_thrust_n)' not in wrapper
+        assert 'DRV_COAX_CTRL_PARAM_ENTRY(yaw_torque_upper_m_per_n)' not in wrapper
+        assert 'DRV_COAX_CTRL_PARAM_ENTRY(yaw_torque_lower_m_per_n)' not in wrapper
+        assert "params->vel_loop_enable = 1.0f;" in wrapper
+        assert "params->position.pos_kp[0] = 0.375f;" in wrapper
+        assert "params->position.pos_kp[1] = 0.375f;" in wrapper
+        assert "params->position.vel_ki[2]" not in wrapper
+        assert "params->position.vel_kp[0] = 0.80f;" in wrapper
+        assert "params->position.vel_kp[1] = 0.80f;" in wrapper
+        # vel_loop_x/y_kp/ki/kd ��δ��������ɣ�����ͬ������һ��ɾ����
+        assert "vel_loop_x" not in wrapper
+        assert "vel_loop_y" not in wrapper
+        assert '"coax." #field' in wrapper
+        assert "coax_tiltrotor_controller_codegen(" not in wrapper
+        assert "DRV_COAX_CTRL_SetParam(name, value)" in app_control
+>       assert '{ "pos_z_kp",       "coax.pos_z_kp"       }' in app_control
+E       assert '{ "pos_z_kp",       "coax.pos_z_kp"       }' in '#include "app_control.h"\n#include "app_control_config_store.h"\n#include "app_control_internal.h"\n\n#include "app_a...APP_ControlConfig *config)\n{\n    if (config == NULL) {\n        return;\n    }\n\n    *config = control_config;\n}\n'
+
+tests\test_coax_ctrl_contract.py:139: AssertionError
+__________ test_roll_pitch_physical_moment_gains_are_runtime_params ___________
+
+    def test_roll_pitch_physical_moment_gains_are_runtime_params() -> None:
+        wrapper = read("Driver/Src/drv_coax_ctrl.c")
+    
+        header = read("Driver/Inc/drv_coax_ctrl.h")
+        assert "DRV_AttitudeControl_Params attitude;" in header
+        assert "DRV_RateControl_Params rate;" in header
+        assert "params->attitude.att_kp[0] = 0.0671f / 0.1104f;" in wrapper
+        assert "params->attitude.att_kp[1] = 0.0660f / 0.1138f;" in wrapper
+        assert "params->rate.kp[0] = 0.1104f;" in wrapper
+        assert "params->rate.kp[1] = 0.1138f;" in wrapper
+        # 2026-09-07��I_zz �� 0.00035 �ĳ� 0.005 ��ϵ������ͬ���µ�������Ĭ��ƫ��
+        # ���������� 14.3 ����Խ������ʵ��Ķ�����ֵ����ʽ���� `I_zz �� ����`��
+        assert "params->rate.kp[2] = DRV_AIRFRAME_IZZ_KGM2 * 0.525f;" in wrapper
+>       assert 'strcmp(name, "coax.roll_angle_kp")' in wrapper
+E       assert 'strcmp(name, "coax.roll_angle_kp")' in '#include "drv_coax_ctrl.h"\n\n#include "bsp_pwm.h"\n#include "drv_airframe_model.h"\n\n#include <math.h>\n#include <s...OAX_CTRL_Debug *debug)\n{\n    if (debug == NULL) {\n        return;\n    }\n\n    *debug = coax_ctrl_last_debug;\n}\n'
+
+tests\test_coax_ctrl_contract.py:284: AssertionError
+_____________ test_vofa_exports_compact_slider_parameter_feedback _____________
+
+    def test_vofa_exports_compact_slider_parameter_feedback() -> None:
+        # R-T1-1��ͨ��װ��� Core/Src/freertos.c �ᵽ App/Src/app_telem_port.c��
+        # �������Ա���ԭ�ھ�������ͨ���� 2026-09-03 ������ȨͳһΪ FLU��
+        freertos = read("App/Src/app_telem_port.c")
+    
+        # ֡������ͨ�����Ƴ��������������ܾ��κ������������ count��
+        assert "(values == NULL) || (count != (uint32_t)APP_TELEM_CH_COUNT)" in freertos
+>       assert '(void)DRV_COAX_CTRL_GetParam("coax.roll_rate_kd", &vofa_data[APP_TELEM_CH_ROLL_RATE_KD]);' in freertos
+E       assert '(void)DRV_COAX_CTRL_GetParam("coax.roll_rate_kd", &vofa_data[APP_TELEM_CH_ROLL_RATE_KD]);' in '/*\n * app_telem_port.c ���� ң������Ŀ���ƽ̨ʵ�֡�\n *\n * ������ app_telem_stream.c ���������� Port �����ڷɿ��ϵ���أ�ȡʱ�䡢�ó�\n * CPU���������⡢����������...y(const char *text)\n{\n    if (text == NULL) {\n        return;\n    }\n\n    APP_Control_QueueText("%s", text);\n}\n'
+
+tests\test_coax_ctrl_contract.py:405: AssertionError
+_____ test_control_protocol_accepts_colon_param_updates_and_reports_back ______
+
+    def test_control_protocol_accepts_colon_param_updates_and_reports_back() -> None:
+        app_control = read("App/Src/app_control.c")
+    
+        assert "app_control_handle_param_value_line(line)" in app_control
+        assert "app_control_after_param_separator" in app_control
+        assert "0xEFU" in app_control
+        assert "0xBCU" in app_control
+        assert "0x9AU" in app_control
+        assert "app_control_report_coax_param_by_name(name);" in app_control
+>       assert "app_control_report_pid_legacy();" in app_control
+E       assert 'app_control_report_pid_legacy();' in '#include "app_control.h"\n#include "app_control_config_store.h"\n#include "app_control_internal.h"\n\n#include "app_a...APP_ControlConfig *config)\n{\n    if (config == NULL) {\n        return;\n    }\n\n    *config = control_config;\n}\n'
+
+tests\test_coax_ctrl_contract.py:444: AssertionError
+______________ test_synex_channels_exclude_executor_model_params ______________
+
+    def test_synex_channels_exclude_executor_model_params() -> None:
+        builder = read("tools/synex_config_builder.py")
+        capture = read("tools/vofa_serial_capture.py")
+    
+        assert '"Pitch_kp"' not in builder
+        assert '"Roll_kp"' not in builder
+        assert '"Pos_X_KP"' in builder
+        assert '"Pos_Y_KP"' in builder
+        assert '"Vel_X_KD"' in builder
+        assert '"Vel_Y_KD"' in builder
+        assert '"Pos_X_m"' in builder
+        assert '"Pos_Y_m"' in builder
+        assert '"Vel_X_KI"' not in builder
+        assert '"Vel_Y_KI"' not in builder
+        assert '"Roll_Angle_KP"' in builder
+        assert '"Pitch_Angle_KP"' in builder
+        assert '"Pos_Z_KP"' in builder
+        assert '"Pos_Z_KI"' in builder
+        assert '"Vel_Z_KD"' in builder
+        assert '"coax_pos_x_kp",' in capture
+        assert '"coax_pos_y_kp",' in capture
+        assert '"coax_vel_x_kd",' in capture
+        assert '"coax_vel_y_kd",' in capture
+        assert '"pos_x_m",' in capture
+        assert '"pos_y_m",' in capture
+>       assert '"coax_roll_angle_kp",' in capture
+E       assert '"coax_roll_angle_kp",' in '"""Capture USART1/VOFA JustFloat telemetry from the flight controller.\n\nThe firmware currently sends 28 little-endi...path}")\n    print(f"Meta: {meta_path}")\n    return 0\n\n\nif __name__ == "__main__":\n    raise SystemExit(main())\n'
+
+tests\test_coax_ctrl_contract.py:495: AssertionError
+___________________ test_controller_sign_convention_runtime ___________________
+
+tmp_path = WindowsPath('C:/Users/23259/AppData/Local/Temp/pytest-of-23259/pytest-1588/test_controller_sign_conventio0')
+
+    def test_controller_sign_convention_runtime(tmp_path: Path) -> None:
+        gcc = shutil.which("gcc")
+        if gcc is None:
+            pytest.skip("host gcc is unavailable")
+    
+        stub_dir = tmp_path / "stub"
+        stub_dir.mkdir()
+        (stub_dir / "bsp_pwm.h").write_text(
+            "#ifndef BSP_PWM_H\n#define BSP_PWM_H\n"
+            "#define BSP_PWM_ESC_MIN_US 1000U\n"
+            "#define BSP_PWM_ESC_MAX_US 2000U\n#endif\n",
+            encoding="ascii",
+        )
+    
+        harness = tmp_path / "sign_harness.c"
+        harness.write_text(SIGN_HARNESS, encoding="ascii")
+        executable = tmp_path / "sign_harness.exe"
+    
+        subprocess.run(
+            [gcc, "-std=c11", "-Wall", "-Wextra", "-Werror",
+             f"-I{stub_dir}", f"-I{ROOT / 'Driver' / 'Inc'}",
+             str(ROOT / "Driver" / "Src" / "drv_coax_ctrl.c"),
+             str(ROOT / "Driver" / "Src" / "drv_position_control.c"),
+             str(ROOT / "Driver" / "Src" / "drv_attitude_control.c"),
+             str(ROOT / "Driver" / "Src" / "drv_rate_control.c"),
+             str(harness), "-lm", "-o", str(executable)],
+            check=True, capture_output=True, text=True)
+    
+        result = subprocess.run([str(executable)], capture_output=True, text=True)
+>       assert result.returncode == 0, f"sign check failed: {result.stdout.strip()}"
+E       AssertionError: sign check failed: FAIL 20
+E       assert 20 == 0
+E        +  where 20 = CompletedProcess(args=['C:\\Users\\23259\\AppData\\Local\\Temp\\pytest-of-23259\\pytest-1588\\test_controller_sign_conventio0\\sign_harness.exe'], returncode=20, stdout='FAIL 20\n', stderr='').returncode
+
+tests\test_coax_sign_convention.py:469: AssertionError
+____________ test_yaw_is_produced_by_the_so3_law_not_a_separate_pd ____________
+
+    def test_yaw_is_produced_by_the_so3_law_not_a_separate_pd() -> None:
+        wrapper = read("Driver/Src/drv_coax_ctrl.c")
+    
+        # �� PD ���䷴�����Լ������������ʧ��
+        assert "coax_ctrl_compute_yaw_torque_cmd" not in wrapper
+        assert "coax_ctrl_wrap_pi" not in wrapper
+        assert "reference->yaw_rad - attitude->yaw_rad" not in wrapper
+    
+        # ����ͬ����̬ P -> ���ٶ� PID���������ŷֲ档
+        assert "DRV_AttitudeControl_Step" in wrapper
+        assert "DRV_RateControl_Step" in wrapper
+        assert "coax_ctrl_state.rate_output.moment_unsat" in wrapper
+        # 2026-09-07������������**ǯ��**��ƫ�����ء�`moment_cmd_n_m[2]` ����δǯ��
+        # ԭʼ����ң��ݴ˻��ܿ���"Ҫ�˶��� vs ���˶���"������������ֱ�ӽ�������
+        # ���� ����·�����÷�����ȥײ��������ޣ��Ӷ�����������������
+        assert "yaw_torque_cmd = solution.yaw_moment_applied_n_m;" in wrapper
+        assert (
+            "solution->yaw_moment_applied_n_m =\n"
+            "        coax_ctrl_state.rate_output.moment_cmd[2];"
+        ) in wrapper
+    
+        # �ɲ�����ֻ��Ϊ��ʽ���� alias������ð����ʵ����������
+>       assert 'strcmp(name, "coax.yaw_angle_kp")' in wrapper
+E       assert 'strcmp(name, "coax.yaw_angle_kp")' in '#include "drv_coax_ctrl.h"\n\n#include "bsp_pwm.h"\n#include "drv_airframe_model.h"\n\n#include <math.h>\n#include <s...OAX_CTRL_Debug *debug)\n{\n    if (debug == NULL) {\n        return;\n    }\n\n    *debug = coax_ctrl_last_debug;\n}\n'
+
+tests\test_coax_yaw_so3_contract.py:246: AssertionError
+______________________ test_repository_index_is_current _______________________
+
+    def test_repository_index_is_current() -> None:
+        result = subprocess.run(
+            [sys.executable, str(GENERATOR), "--check"],
+            cwd=ROOT,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            timeout=30,
+        )
+>       assert result.returncode == 0, result.stdout
+E       AssertionError: Repository index is stale: firmware-app-services.md, firmware-driver-bsp.md, tests.md, host-tools.md, platform-build.md, docs-data.md, README.md
+E         Run: python .agents/skills/drone-h743-project/scripts/update_repository_index.py
+E         
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['D:\\ANACON\\python.exe', 'D:\\stm32hal\\drone-H743\\.agents\\skills\\drone-h743-project\\scrip...build.md, docs-data.md, README.md\nRun: python .agents/skills/drone-h743-project/scripts/update_repository_index.py\n').returncode
+
+tests\test_project_index_contract.py:23: AssertionError
+______________ test_vofa_stream_sends_compact_dashboard_channels ______________
+
+    def test_vofa_stream_sends_compact_dashboard_channels() -> None:
+        # R-T1-1��ͨ��װ��ᵽ App/Src/app_telem_port.c��
+        # ���Ź�һ����2026-09-06�������겻��������ת������ֵ���ﱾ�ļ�ʱ���ǹ淶
+        # FLU�������ٵ�һ�� FrdToFlu �����ȡ�������Զ��Ե���"ԭ��͸��"��
+        freertos = read("App/Src/app_telem_port.c") + read("App/Src/app_stabilizer.c")
+    
+        assert "(values == NULL) || (count != (uint32_t)APP_TELEM_CH_COUNT)" in freertos
+        assert "DRV_SERVO_Diag servo_diag;" not in freertos
+        assert "BSP_BusServo_GetDiag(&servo_diag);" not in freertos
+        assert "vofa_data[APP_TELEM_CH_TIME] = (float)(SVC_Timestamp_Us() / 1000ULL) * 0.001f;" in freertos
+        assert "vofa_data[APP_TELEM_CH_VEL_EST_X] = vofa_debug.vel_est_m_s[0];" in freertos
+        assert "vofa_data[APP_TELEM_CH_VEL_EST_Y] = vofa_debug.vel_est_m_s[1];" in freertos
+        assert "DRV_FRAME_FrdToFlu" not in read("App/Src/app_telem_port.c")
+>       assert '(void)DRV_COAX_CTRL_GetParam("coax.roll_rate_kd", &vofa_data[APP_TELEM_CH_ROLL_RATE_KD]);' in freertos
+E       assert '(void)DRV_COAX_CTRL_GetParam("coax.roll_rate_kd", &vofa_data[APP_TELEM_CH_ROLL_RATE_KD]);' in '/*\n * app_telem_port.c ���� ң������Ŀ���ƽ̨ʵ�֡�\n *\n * ������ app_telem_stream.c ���������� Port �����ڷɿ��ϵ���أ�ȡʱ�䡢�ó�\n * CPU���������⡢����������...�� 2�����̶����ڣ�50Hz������������\n   * �����������̬������������ IMU ����죬���ʼ�� 50Hz ���¡�\n   */\n    stabilizer_control_step(&ctx);\n  }\n}\n'
+
+tests\test_servo_dma_contract.py:146: AssertionError
+_______________________ test_stream_policy_on_host_gcc ________________________
+
+tmp_path = WindowsPath('C:/Users/23259/AppData/Local/Temp/pytest-of-23259/pytest-1588/test_stream_policy_on_host_gcc0')
+
+    def test_stream_policy_on_host_gcc(tmp_path) -> None:
+>       output = compile_and_run(
+            tmp_path,
+            STREAM_HARNESS,
+            [
+                APP_SRC / "app_telem_stream.c",
+                APP_SRC / "app_telem_frame.c",
+                APP_SRC / "app_proto.c",
+                APP_SRC / "app_telemetry.c",
+            ],
+        )
+
+tests\test_telem_stream_contract.py:803: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\test_telem_stream_contract.py:295: in compile_and_run
+    executable = compile_harness(tmp_path, harness, sources)
+tests\test_telem_stream_contract.py:281: in compile_harness
+    subprocess.run(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+input = None, capture_output = True, timeout = None, check = True
+popenargs = (['D:\\mingw64\\bin\\gcc.EXE', '-std=c11', '-Wall', '-Wextra', '-Werror', '-ID:\\stm32hal\\drone-H743\\App\\Inc', ...],)
+kwargs = {'stderr': -1, 'stdout': -1, 'text': True}
+process = <Popen: returncode: 1 args: ['D:\\mingw64\\bin\\gcc.EXE', '-std=c11', '-Wall...>
+stdout = ''
+stderr = "C:\\Users\\23259\\AppData\\Local\\Temp\\pytest-of-23259\\pytest-1588\\test_stream_policy_on_host_gcc0\\harness.c: In ... ^~~~~~~~~~~~~~~~~~~~~~~~~~\n                                                               APP_TELEM_CH_RATE_YAW_KD\n"
+retcode = 1
+
+    def run(*popenargs,
+            input=None, capture_output=False, timeout=None, check=False, **kwargs):
+        """Run command with arguments and return a CompletedProcess instance.
+    
+        The returned instance will have attributes args, returncode, stdout and
+        stderr. By default, stdout and stderr are not captured, and those attributes
+        will be None. Pass stdout=PIPE and/or stderr=PIPE in order to capture them,
+        or pass capture_output=True to capture both.
+    
+        If check is True and the exit code was non-zero, it raises a
+        CalledProcessError. The CalledProcessError object will have the return code
+        in the returncode attribute, and output & stderr attributes if those streams
+        were captured.
+    
+        If timeout is given, and the process takes too long, a TimeoutExpired
+        exception will be raised.
+    
+        There is an optional argument "input", allowing you to
+        pass bytes or a string to the subprocess's stdin.  If you use this argument
+        you may not also use the Popen constructor's "stdin" argument, as
+        it will be used internally.
+    
+        By default, all communication is in bytes, and therefore any "input" should
+        be bytes, and the stdout and stderr will be bytes. If in text mode, any
+        "input" should be a string, and stdout and stderr will be strings decoded
+        according to locale encoding, or by "encoding" if set. Text mode is
+        triggered by setting any of text, encoding, errors or universal_newlines.
+    
+        The other arguments are the same as for the Popen constructor.
+        """
+        if input is not None:
+            if kwargs.get('stdin') is not None:
+                raise ValueError('stdin and input arguments may not both be used.')
+            kwargs['stdin'] = PIPE
+    
+        if capture_output:
+            if kwargs.get('stdout') is not None or kwargs.get('stderr') is not None:
+                raise ValueError('stdout and stderr arguments may not be used '
+                                 'with capture_output.')
+            kwargs['stdout'] = PIPE
+            kwargs['stderr'] = PIPE
+    
+        with Popen(*popenargs, **kwargs) as process:
+            try:
+                stdout, stderr = process.communicate(input, timeout=timeout)
+            except TimeoutExpired as exc:
+                process.kill()
+                if _mswindows:
+                    # Windows accumulates the output in a single blocking
+                    # read() call run on child threads, with the timeout
+                    # being done in a join() on those threads.  communicate()
+                    # _after_ kill() is required to collect that and add it
+                    # to the exception.
+                    exc.stdout, exc.stderr = process.communicate()
+                else:
+                    # POSIX _communicate already populated the output so
+                    # far into the TimeoutExpired exception.
+                    process.wait()
+                raise
+            except:  # Including KeyboardInterrupt, communicate handled that.
+                process.kill()
+                # We don't call process.wait() as .__exit__ does that for us.
+                raise
+            retcode = process.poll()
+            if check and retcode:
+>               raise CalledProcessError(retcode, process.args,
+                                         output=stdout, stderr=stderr)
+E               subprocess.CalledProcessError: Command '['D:\\mingw64\\bin\\gcc.EXE', '-std=c11', '-Wall', '-Wextra', '-Werror', '-ID:\\stm32hal\\drone-H743\\App\\Inc', '-ID:\\stm32hal\\drone-H743\\Driver\\Inc', 'D:\\stm32hal\\drone-H743\\App\\Src\\app_telem_stream.c', 'D:\\stm32hal\\drone-H743\\App\\Src\\app_telem_frame.c', 'D:\\stm32hal\\drone-H743\\App\\Src\\app_proto.c', 'D:\\stm32hal\\drone-H743\\App\\Src\\app_telemetry.c', 'C:\\Users\\23259\\AppData\\Local\\Temp\\pytest-of-23259\\pytest-1588\\test_stream_policy_on_host_gcc0\\harness.c', '-o', 'C:\\Users\\23259\\AppData\\Local\\Temp\\pytest-of-23259\\pytest-1588\\test_stream_policy_on_host_gcc0\\harness.exe']' returned non-zero exit status 1.
+
+D:\ANACON\Lib\subprocess.py:571: CalledProcessError
+Physical serial open attempts: 0
+Flashing/probe tool invocation attempts: 0
+Tk display available at session start: True; Tk roots created: 38
+=========================== short test summary info ===========================
+FAILED tests/test_aiwb2_prompt_contract.py::test_usart1_wifi_udp_pid_tuning_path_is_text_line_based
+FAILED tests/test_aiwb2_prompt_contract.py::test_vofa_pid_slider_colon_lines_are_control_payloads
+FAILED tests/test_coax_ctrl_contract.py::test_mbd_controller_gains_are_runtime_coax_params
+FAILED tests/test_coax_ctrl_contract.py::test_roll_pitch_physical_moment_gains_are_runtime_params
+FAILED tests/test_coax_ctrl_contract.py::test_vofa_exports_compact_slider_parameter_feedback
+FAILED tests/test_coax_ctrl_contract.py::test_control_protocol_accepts_colon_param_updates_and_reports_back
+FAILED tests/test_coax_ctrl_contract.py::test_synex_channels_exclude_executor_model_params
+FAILED tests/test_coax_sign_convention.py::test_controller_sign_convention_runtime
+FAILED tests/test_coax_yaw_so3_contract.py::test_yaw_is_produced_by_the_so3_law_not_a_separate_pd
+FAILED tests/test_project_index_contract.py::test_repository_index_is_current
+FAILED tests/test_servo_dma_contract.py::test_vofa_stream_sends_compact_dashboard_channels
+FAILED tests/test_telem_stream_contract.py::test_stream_policy_on_host_gcc - ...
+!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 12 failures !!!!!!!!!!!!!!!!!!!!!!!!!!
+12 failed, 1217 passed in 260.43s (0:04:20)

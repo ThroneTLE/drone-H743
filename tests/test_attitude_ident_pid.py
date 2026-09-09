@@ -51,8 +51,9 @@ def test_closed_loop_attitude_ident_script_fits_synthetic_prbs(tmp_path: Path) -
     assert fit.fit_pct > 85.0
     assert fit.wn_rad_s == pytest_approx_rel(wn, rel=0.18)
     assert fit.suggested_kr > 0.0
-    assert fit.param_kp < 0.0
-    assert fit.param_kd < 0.0
+    assert fit.att_kp > 0.0
+    assert fit.rate_kp == fit.suggested_kw
+    assert fit.att_kp * fit.rate_kp == pytest_approx_rel(fit.suggested_kr, rel=1e-12)
 
 
 def pytest_approx_rel(value: float, rel: float):

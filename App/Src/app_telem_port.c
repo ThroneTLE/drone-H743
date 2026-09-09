@@ -123,10 +123,10 @@ uint8_t APP_TelemStream_PortSample(float *values, uint32_t count)
     vofa_data[APP_TELEM_CH_TIME] = (float)(SVC_Timestamp_Us() / 1000ULL) * 0.001f;
     vofa_data[APP_TELEM_CH_VEL_EST_X] = vofa_debug.vel_est_m_s[0];
     vofa_data[APP_TELEM_CH_VEL_EST_Y] = vofa_debug.vel_est_m_s[1];
-    (void)DRV_COAX_CTRL_GetParam("coax.roll_rate_kd", &vofa_data[APP_TELEM_CH_ROLL_RATE_KD]);
-    (void)DRV_COAX_CTRL_GetParam("coax.pitch_rate_kd", &vofa_data[APP_TELEM_CH_PITCH_RATE_KD]);
-    (void)DRV_COAX_CTRL_GetParam("coax.yaw_angle_kp", &vofa_data[APP_TELEM_CH_YAW_ANGLE_KP]);
-    (void)DRV_COAX_CTRL_GetParam("coax.yaw_rate_kd", &vofa_data[APP_TELEM_CH_YAW_RATE_KD]);
+    vofa_data[APP_TELEM_CH_RESERVED_7] = 0.0f;
+    vofa_data[APP_TELEM_CH_RESERVED_8] = 0.0f;
+    vofa_data[APP_TELEM_CH_RESERVED_9] = 0.0f;
+    vofa_data[APP_TELEM_CH_RESERVED_10] = 0.0f;
     (void)DRV_COAX_CTRL_GetParam("coax.pos_x_kp", &vofa_data[APP_TELEM_CH_POS_X_KP]);
     (void)DRV_COAX_CTRL_GetParam("coax.pos_y_kp", &vofa_data[APP_TELEM_CH_POS_Y_KP]);
     (void)DRV_COAX_CTRL_GetParam("coax.vel_x_kd", &vofa_data[APP_TELEM_CH_VEL_X_KD]);
@@ -134,10 +134,10 @@ uint8_t APP_TelemStream_PortSample(float *values, uint32_t count)
     vofa_data[APP_TELEM_CH_POS_EST_X] = vofa_debug.pos_est_m[0];
     vofa_data[APP_TELEM_CH_POS_EST_Y] = vofa_debug.pos_est_m[1];
     (void)DRV_COAX_CTRL_GetParam("coax.vel_loop_enable", &vofa_data[APP_TELEM_CH_VEL_LOOP_ENABLE]);
-    (void)DRV_COAX_CTRL_GetParam("coax.roll_angle_kp", &vofa_data[APP_TELEM_CH_ROLL_ANGLE_KP]);
-    (void)DRV_COAX_CTRL_GetParam("coax.pitch_angle_kp", &vofa_data[APP_TELEM_CH_PITCH_ANGLE_KP]);
+    vofa_data[APP_TELEM_CH_RESERVED_18] = 0.0f;
+    vofa_data[APP_TELEM_CH_RESERVED_19] = 0.0f;
     (void)DRV_COAX_CTRL_GetParam("coax.pos_z_kp", &vofa_data[APP_TELEM_CH_POS_Z_KP]);
-    vofa_data[APP_TELEM_CH_POS_Z_KI] = 0.0f;
+    vofa_data[APP_TELEM_CH_RESERVED_21] = 0.0f;
     (void)DRV_COAX_CTRL_GetParam("coax.vel_z_kd", &vofa_data[APP_TELEM_CH_VEL_Z_KD]);
     vofa_data[APP_TELEM_CH_FUSION_ACC_ERR] = msg.fusion_acceleration_error_deg;
     vofa_data[APP_TELEM_CH_FUSION_ACC_IGNORED] = (float)msg.fusion_accelerometer_ignored;
@@ -171,10 +171,7 @@ uint8_t APP_TelemStream_PortSample(float *values, uint32_t count)
             (float)ctrl_debug.saturation_negative[axis];
     }
     /*
-     * 真名增益回显。这些直接读参数表，不经过 app_control 的 alias 换算——
-     * alias（roll_rate_kd 等）会把两个环的增益乘在一起，滑块拿到乘积就永远
-     * 对不上自己那一项。GetParam 失败时保持 0：读不到就显示 0，比显示上一拍
-     * 的陈旧值安全。
+     * 当前四环增益直接读取参数表，各个环的 P/I/D 不进行派生换算。
      */
     (void)DRV_COAX_CTRL_GetParam("coax.rate_roll_kp",  &vofa_data[APP_TELEM_CH_RATE_ROLL_KP]);
     (void)DRV_COAX_CTRL_GetParam("coax.rate_pitch_kp", &vofa_data[APP_TELEM_CH_RATE_PITCH_KP]);

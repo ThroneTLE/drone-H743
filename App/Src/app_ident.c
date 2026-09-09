@@ -742,30 +742,22 @@ void APP_IdentAtt_Stop(const char *reason)
     ident_att_finish((reason == 0) ? "command" : reason, 1U);
 }
 
-uint8_t APP_Ident_ApplyPid(const char *axis, const char *kp_text, const char *kd_text)
+uint8_t APP_Ident_ApplyRateKp(const char *axis, const char *value_text)
 {
-    const char *kd_name;
+    const char *name;
     char *endptr;
-
-    if (strcmp(axis, "roll") == 0) {
-        kd_name = "coax.roll_rate_kd";
-    } else if (strcmp(axis, "pitch") == 0) {
-        kd_name = "coax.pitch_rate_kd";
-    } else {
-        APP_Control_QueueText("ERR ident apply axis %s\r\n", (axis == 0) ? "" : axis);
+    if ((axis == NULL) || (value_text == NULL)) return 0U;
+    if (strcmp(axis, "roll") == 0) name = "coax.rate_roll_kp";
+    else if (strcmp(axis, "pitch") == 0) name = "coax.rate_pitch_kp";
+    else {
+        APP_Control_QueueText("ERR ident apply axis %s\r\n", axis);
         return 0U;
     }
-
-    if (kp_text != 0) {
-        APP_Control_QueueText("ERR ident apply kp unused\r\n");
+    float value = strtof(value_text, &endptr);
+    if ((endptr == value_text) || (*endptr != '\0') ||
+        (DRV_COAX_CTRL_SetParam(name, value) == 0U)) {
+        APP_Control_QueueText("ERR ident apply rate_kp\r\n");
         return 0U;
-    }
-    if (kd_text != 0) {
-        float value = strtof(kd_text, &endptr);
-        if ((endptr == kd_text) || (*endptr != '\0') || (DRV_COAX_CTRL_SetParam(kd_name, value) == 0U)) {
-            APP_Control_QueueText("ERR ident apply kd\r\n");
-            return 0U;
-        }
     }
     APP_Control_QueueText("OK ident apply axis=%s\r\n", axis);
     return 1U;

@@ -27,10 +27,10 @@ typedef enum {
     APP_TELEM_CH_TIME,              /* 飞控运行时间戳 */
     APP_TELEM_CH_VEL_EST_X,         /* 融合 X 速度估计 */
     APP_TELEM_CH_VEL_EST_Y,         /* 融合 Y 速度估计 */
-    APP_TELEM_CH_ROLL_RATE_KD,      /* 以下为参数回显，供上位机滑块反馈 */
-    APP_TELEM_CH_PITCH_RATE_KD,
-    APP_TELEM_CH_YAW_ANGLE_KP,
-    APP_TELEM_CH_YAW_RATE_KD,
+    APP_TELEM_CH_RESERVED_7,      /* 以下为参数回显，供上位机滑块反馈 */
+    APP_TELEM_CH_RESERVED_8,
+    APP_TELEM_CH_RESERVED_9,
+    APP_TELEM_CH_RESERVED_10,
     APP_TELEM_CH_POS_X_KP,
     APP_TELEM_CH_POS_Y_KP,
     APP_TELEM_CH_VEL_X_KD,
@@ -38,10 +38,10 @@ typedef enum {
     APP_TELEM_CH_POS_EST_X,         /* 融合 X 位置估计 */
     APP_TELEM_CH_POS_EST_Y,         /* 融合 Y 位置估计 */
     APP_TELEM_CH_VEL_LOOP_ENABLE,   /* 速度环使能标志 */
-    APP_TELEM_CH_ROLL_ANGLE_KP,
-    APP_TELEM_CH_PITCH_ANGLE_KP,
+    APP_TELEM_CH_RESERVED_18,
+    APP_TELEM_CH_RESERVED_19,
     APP_TELEM_CH_POS_Z_KP,
-    APP_TELEM_CH_POS_Z_KI,
+    APP_TELEM_CH_RESERVED_21,
     APP_TELEM_CH_VEL_Z_KD,
     APP_TELEM_CH_FUSION_ACC_ERR,    /* 以下为 Fusion 加速度拒绝/恢复诊断 */
     APP_TELEM_CH_FUSION_ACC_IGNORED,
@@ -87,12 +87,7 @@ typedef enum {
     /*
      * 以下 20 路是串级四环的**真实**增益回显（通道 64 起，需要宽掩码帧）。
      *
-     * 在此之前面板上能拖的 14 个滑块里有 6 个是单环 PD 时代的换算 alias：
-     * `roll_rate_kd` 实际写的是 `rate.kp[0]`（角速度环的 P），`roll_angle_kp`
-     * 是 `rate.kp[0] * att_kp[0]` 的乘积，拖任意一个都会为了保住乘积去偷改另一个
-     * 环的增益。角速度环真正的 I/D（`rate_*_ki` / `rate_*_kd`）此前没有任何 UI
-     * 入口，默认值又是 0，于是那一环实际跑的是纯 P。这一批把 46 项参数表里
-     * 调参真正要动的那些按真名摆上来，alias 保留只为不重排历史通道号。
+     * 旧派生增益槽位已退役为 reserved；当前通道直接绑定独立四环参数。
      */
     APP_TELEM_CH_RATE_ROLL_KP,
     APP_TELEM_CH_RATE_PITCH_KP,
@@ -136,7 +131,7 @@ _Static_assert((int)APP_TELEM_CH_COUNT <= 128,
  * v3（坐标纠错）：表头新增 `frame=body_flu contract=<version>`，轴向通道
  * 统一为规范 FLU，并把坐标来源纳入 SchemaHash。
  */
-#define APP_TELEM_SCHEMA_VERSION 3U
+#define APP_TELEM_SCHEMA_VERSION 4U
 
 /* 单次 TELEM CH 请求最多回几条通道行。
  *

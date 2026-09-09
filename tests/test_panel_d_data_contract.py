@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from tools import panel_qa
-from tools.panel_lib.parameter_model import PARAMETER_CAPABILITIES, PID_QUICK_ALIASES
+from tools.panel_lib.parameter_model import PARAMETER_CAPABILITIES
 from tools.panel_qa import fixtures as qa_fixtures
 
 
@@ -55,9 +55,8 @@ def app(offline):
                     "enabled": 1, "new_id": index + 1, "baud": 4}
         for name, value in defaults.items():
             values[name].set(value)
-    for terms in panel.pid_vars.values():
-        for variable in terms.values():
-            variable.set("")
+    for variable in panel.quick_parameter_vars.values():
+        variable.set("")
     for variable in panel.servo_validation_vars:
         variable.set("")
     yield panel
@@ -87,10 +86,9 @@ def test_parameter_capabilities_match_the_driver_table() -> None:
     assert PARAMETER_CAPABILITIES["coax.tilt_limit_rad"].unit == "rad"
 
 
-def test_pid_quick_names_are_real_driver_get_set_names() -> None:
-    source = DRIVER_PARAMS.read_text(encoding="utf-8")
-    for name in set(PID_QUICK_ALIASES.values()):
-        assert f'"{name}"' in source
+def test_cascade_quick_names_are_real_driver_table_names(app) -> None:
+    assert len(app.quick_parameter_vars) == 24
+    assert set(app.quick_parameter_vars) <= _driver_parameter_names()
 
 
 def test_invalid_servo_input_is_field_error_and_sends_nothing(app) -> None:
@@ -113,24 +111,52 @@ def test_servo_action_validates_only_the_fields_that_action_needs(app) -> None:
     assert [payload.decode() for _, payload in app.transport.frames] == ["SERVO MODE 0 2"]
 
 
-def test_pid_quick_editor_never_emits_unsupported_ki(app) -> None:
-    app.pid_vars["roll"]["ki"].set("0.1")
+def test_cascade_quick_editor_sends_real_integral_gain(app) -> None:
+    app.quick_parameter_vars["coax.rate_roll_ki"].set("0.1")
     app._send_pid_values()
-
-    assert app.transport.frames == []
-    assert str(app.pid_widgets["roll"]["ki"].cget("state")) == "disabled"
-    assert app.params["pid.roll.ki"]["error"]
-    assert "pid.roll.ki" in app.param_editor_status_var.get()
-
-
-def test_pid_quick_editor_preserves_the_existing_kp_kd_payload(app) -> None:
-    app.pid_vars["roll"]["kp"].set("1.2")
-    app.pid_vars["roll"]["kd"].set("0.3")
-    app._send_pid_values()
-
     assert [payload.decode() for _, payload in app.transport.frames] == [
-        "PID SET roll kp=1.2 kd=0.3"
-    ]
+        "PARAM SET coax.rate_roll_ki 0.1"]
+
+
+def test_cascade_quick_editor_keeps_attitude_and_rate_independent(app) -> None:
+    app.quick_parameter_vars["coax.att_roll_kp"].set("1.2")
+    app.quick_parameter_vars["coax.rate_roll_kp"].set("0.3")
+    app._send_pid_values()
+    assert [payload.decode() for _, payload in app.transport.frames] == [
+        "PARAM SET coax.att_roll_kp 1.2", "PARAM SET coax.rate_roll_kp 0.3"]
+
+
+def test_cascade_quick_editor_preserves_draft_and_does_not_send_offline(app) -> None:
+    name = "coax.rate_pitch_ki"
+    app._set_param(name, "0.1", "PARAM", dirty=False)
+    app.quick_parameter_vars[name].set("0.2")
+    app._set_param(name, "0.2", "local", dirty=True)
+    app._set_param(name, "0.15", "PARAM", dirty=False)
+    assert app.quick_parameter_vars[name].get() == "0.2"
+    app.transport.is_connected = False
+    app._send_pid_values()
+    assert not app.transport.frames
+    assert app.param_states[name].draft == "0.2"
+
+
+@pytest.mark.parametrize("scale", panel_qa.SCALES)
+def test_cascade_editor_layout_at_three_sizes(scale, tmp_path):
+    from tools.panel_qa.geometry import collect_clipped_controls
+    with panel_qa.isolated_environment(tmp_path):
+        session = panel_qa.OfflinePanel.launch(scale=scale)
+        try:
+            page = next(p for p in session.leaf_pages() if p.label == "参数 / PID")
+            for size in panel_qa.WINDOW_SIZES:
+                session.resize(*size)
+                session.select(page)
+                tabs = session.panel.cascade_notebook
+                for tab in tabs.tabs():
+                    tabs.select(tab)
+                    session.panel.update()
+                    assert not collect_clipped_controls(session.panel, tabs.master)
+            assert not session.callback_errors
+        finally:
+            session.destroy()
 
 
 def test_parameter_target_echo_does_not_overwrite_a_local_draft(app) -> None:

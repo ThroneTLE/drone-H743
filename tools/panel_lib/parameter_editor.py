@@ -15,11 +15,9 @@ from .proto import (
     PROTO_REQ_SERVO_ID,
     PROTO_REQ_SERVO_MODE,
     PROTO_REQ_SERVO_MOVE,
-    PROTO_REQ_PID_SET,
     parse_kv,
 )
 from .parameter_model import (
-    PID_QUICK_ALIASES,
     ParameterState,
     canonical_parameter_name,
     parameter_capability,
@@ -28,7 +26,7 @@ from .parameter_model import (
 
 
 _INTEGER_RE = re.compile(r"^[+-]?\d+$")
-PID_QUICK_TERMS = ("kp", "kd")
+PID_QUICK_TERMS = ("kp", "ki", "kd")
 PID_DISPLAY_TERMS = ("kp", "ki", "kd")
 
 
@@ -43,7 +41,7 @@ class ParameterEditorMixin:
         self.param_editor_status_var = tk.StringVar(value="目标值来自飞控；草稿未发送")
         self.param_value_error_var = tk.StringVar(value="")
         self.pid_widgets: dict[str, dict[str, tk.Widget]] = {}
-        self.pid_ki_status_var = tk.StringVar(value="KI：当前固件 PID SET 不支持，保持只读")
+        self.pid_ki_status_var = tk.StringVar(value="位置/角度为 P，速度/角速度为 PID；参数独立回读")
         self._last_param_stage_ok = False
         self._last_param_edit_name = ""
 
@@ -167,51 +165,18 @@ class ParameterEditorMixin:
             if key not in {"ok", "st", "count"}:
                 self._set_param(key, item_value, "PARAM", dirty=False)
 
+    def _build_cascade_editor(self, parent) -> None:
+        from .cascade_editor import build_cascade_editor
+        build_cascade_editor(self, parent)
+
     def _update_pid_line(self, line: str) -> None:
-        values = parse_kv(line)
-        tokens = line.split()
-        axis = values.get("axis")
-        if axis is None and len(tokens) >= 2 and "=" not in tokens[1]:
-            axis = tokens[1].lower()
-        if axis is None:
-            group = (values.get("group") or values.get("target") or "").lower()
-            try:
-                index = int(values.get("index", "-1"))
-            except ValueError:
-                index = -1
-            if group in {"rate", "angle"} and 0 <= index < 3:
-                axis = ("roll", "pitch", "yaw")[index]
-
-        if axis in getattr(self, "pid_vars", {}):
-            for term in PID_DISPLAY_TERMS:
-                if term in values:
-                    self.pid_vars[axis][term].set(values[term])
-                    self._set_param(f"pid.{axis}.{term}", values[term], "PID", dirty=False)
-            return
-
-        for key, value in values.items():
-            if key in {"axis", "ok", "st"}:
-                continue
-            lowered = key.lower().replace("_", ".")
-            if lowered.startswith("pid."):
-                name = lowered
-            elif "." in lowered:
-                name = f"pid.{lowered}"
-            else:
-                name = f"pid.{key}"
-            self._set_param(name, value, "PID", dirty=False)
-            self._sync_pid_quick_var(name, value)
+        self._parameter_set_status("旧 PID 报文已停用，请使用当前固件和 PARAM?")
 
     def _sync_pid_quick_var(self, name: str, value: str) -> None:
-        lowered = name.lower()
-        alias = lowered if lowered in PID_QUICK_ALIASES else None
-        if alias is None:
-            alias = next((item for item, actual in PID_QUICK_ALIASES.items() if actual == lowered), None)
-        if alias is None:
-            return
-        parts = alias.split(".")
-        if len(parts) == 3 and parts[1] in getattr(self, "pid_vars", {}) and parts[2] in self.pid_vars[parts[1]]:
-            self.pid_vars[parts[1]][parts[2]].set(value)
+        variable = getattr(self, "quick_parameter_vars", {}).get(name)
+        state = self.param_states.get(name)
+        if variable is not None and state is not None and not state.dirty:
+            variable.set(value)
 
     def _on_param_select(self, _event: tk.Event) -> None:
         selection = self.param_tree.selection()
@@ -360,34 +325,23 @@ class ParameterEditorMixin:
         self._send_proto_once(function, payload, payload)
 
     def _send_pid_values(self) -> None:
-        for axis, terms in self.pid_vars.items():
-            parts: list[str] = []
-            for term in PID_QUICK_TERMS:
-                value = terms[term].get().strip()
-                if not value:
-                    continue
-                alias = f"pid.{axis}.{term}"
-                valid, reason = validate_parameter_text(alias, value)
-                if not valid:
-                    self._parameter_mark_error(alias, reason, focus=True)
-                    continue
-                parts.append(f"{term}={value}")
-                self._set_param(alias, value, "local", dirty=True)
-            ki_value = terms["ki"].get().strip()
-            if ki_value:
-                self._parameter_mark_error(
-                    f"pid.{axis}.ki",
-                    "固件 PID SET 只接受 kp/kd；KI 当前不可写",
-                    focus=not parts,
-                )
-            if not parts:
+        for name, variable in self.quick_parameter_vars.items():
+            value = variable.get().strip()
+            if not value:
                 continue
-            payload = f"PID SET {axis} {' '.join(parts)}"
-            for term in PID_QUICK_TERMS:
-                value = terms[term].get().strip()
-                if value and validate_parameter_text(f"pid.{axis}.{term}", value)[0]:
-                    self._mark_param_pending(f"pid.{axis}.{term}", value)
-            self._send_proto(PROTO_REQ_PID_SET, payload, payload)
+            state = self._parameter_state(name)
+            if value == state.target and not state.dirty:
+                continue
+            self._set_param(name, value, "local", dirty=True)
+            valid, reason = validate_parameter_text(name, value)
+            if not valid:
+                self._parameter_mark_error(name, reason)
+                continue
+            if not self._transport_connected():
+                self._parameter_mark_error(name, "连接不可用，草稿保留且未发送")
+                continue
+            self._mark_param_pending(name, value)
+            self._send_proto(PROTO_REQ_PARAM_SET, f"PARAM SET {name} {value}")
 
     def _parameter_handle_result_line(self, line: str) -> None:
         """Consume existing OK/ERR text without inventing request IDs."""
@@ -409,14 +363,6 @@ class ParameterEditorMixin:
             if name:
                 self._parameter_mark_error(name, "PARAM SET 参数格式被飞控拒绝")
             return
-        if line.startswith("ERR pid "):
-            axis = values.get("axis") or (tokens[3] if len(tokens) > 3 else "")
-            if axis in getattr(self, "pid_vars", {}):
-                for term in PID_QUICK_TERMS:
-                    self._parameter_mark_error(
-                        f"pid.{axis}.{term}", "PID SET 被飞控拒绝"
-                    )
-
     def _parameter_on_disconnect(self) -> None:
         for state in self.param_states.values():
             if state.pending is not None:

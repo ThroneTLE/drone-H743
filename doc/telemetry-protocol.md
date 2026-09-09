@@ -11,12 +11,12 @@
 - 命令：`App/Src/app_cmd_telem.c`
 - 主机解码：`tools/panel_lib/telem_stream.py`
 
-## Schema v3
+## Schema v4
 
 `TELEM?` 返回表头，当前必须包含：
 
 ```text
-TELEM ver=3 n=<count> rate=<hz> page=<count> hash=<8hex> frame=body_flu contract=1
+TELEM ver=4 n=<count> rate=<hz> page=<count> hash=<8hex> frame=body_flu contract=1
 ```
 
 `TELEM CH from=<n>` 分页返回：
@@ -38,18 +38,15 @@ R-S5-1 在既有 28 路后追加 36 路级联调试通道，表长达到 u64 mas
 增益回显**：角速度环 `rate_*_kp/ki/kd`、姿态环 `att_*_kp`、速度环 `vel_*_kp/ki`、
 两个微分低通截止 `angular_accel_lpf` / `accel_lpf`。
 
-通道 7..22 里的 6 个旧增益名是单环 PD 时代的**换算 alias**，保留只为不重排历史
-编号，不要用它们调参：`roll_rate_kd` 实际写的是角速度环的 P（`rate.kp[0]`），
-`roll_angle_kp` 是 `rate.kp[0] * att_kp[0]` 的乘积，改任意一个都会为了保住乘积去
-反向改另一个环的增益。`pos_z_ki` 在固件参数表里不存在，恒为只读 0。
+通道 7、8、9、10、18、19、21 已退役为 reserved_<编号>，无参数绑定、值为零。
+保留编号以免移动其他通道；旧增益名称不再可查询或写入，所有调参使用当前四环名称。
 
-默认实时掩码仍为原 12 路，参数变化通道从 13 路增至 33 路。稳态帧不含参数通道
-且实时通道全在低 64 位，因此稳态仍是 24 字节头、81 B/帧；每秒一次的全量刷新帧
-带上全部参数通道（含通道 >= 64），是 32 字节头、221 B。40 Hz 合计 3380 B/s，
-占数传 57600 的 58.7%，仍在 60% 门限内（余量 76 B/s——再加参数通道前先看这个数）。
+默认实时掩码仍为原 12 路，参数通道共 27 路。稳态帧仍是 24 字节头、81 B/帧；
+每秒一次的全量刷新帧是 32 字节头、197 B。40 Hz 合计 3356 B/s，
+占数传 57600 的 58.3%，低于 60% 门限。
 新增级联通道按需启用，不进入 UART 默认档。
 
-主机对 schema v3 缺失或错误的 frame/contract 整表拒绝；v1/v2 只按
+主机对 schema v3/v4 缺失或错误的 frame/contract 整表拒绝；v1/v2 只按
 `legacy_unspecified` 兼容读取，绝不倒推成 FLU。
 
 ## `$X` 遥测帧
@@ -143,3 +140,7 @@ python -m pytest tests/test_dashboard_page.py -q
 - 参数写入到飞控回显的面板往返延迟小于 150 ms；`LOAD/DEFAULTS` 后控件收敛到飞控值。
 - 固件通道表或 frame provenance 变化后，旧 hash 被拒绝，面板重拉 schema 且通道不串位。
 - USB 高速档若由独立 REQ 启用：500 Hz × 8 路持续 60 秒无 seq 缺口，导出互斥前后流能安全停/恢复。
+
+## R-PARAM-1 在线参数名称收口（2026-09-08）
+
+作者授权撤销旧参数名称兼容。在线仅使用 PARAM? / PARAM SET coax.<当前参数名>；旧 PID?、PID SET 与裸旧滑块名不再接受。旧 function ID 保留编号但返回明确 ERR，不复用。schema 升至 v4：旧增益槽位保留为 reserved_<编号>、无参数绑定、值为零，当前四环增益仍使用已有现代通道，后续通道编号不变。schema hash 随元数据变化，旧 hash 数据不得进入新会话。IDENT APPLY 改用 rate_kp=<值>，旧 kp/kd 字段拒绝。历史 Flash CFG 及带版本日志解码不变；它们不构成在线名称兼容。

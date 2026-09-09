@@ -143,12 +143,12 @@ def test_vofa_stream_sends_compact_dashboard_channels() -> None:
     assert "vofa_data[APP_TELEM_CH_VEL_EST_X] = vofa_debug.vel_est_m_s[0];" in freertos
     assert "vofa_data[APP_TELEM_CH_VEL_EST_Y] = vofa_debug.vel_est_m_s[1];" in freertos
     assert "DRV_FRAME_FrdToFlu" not in read("App/Src/app_telem_port.c")
-    assert '(void)DRV_COAX_CTRL_GetParam("coax.roll_rate_kd", &vofa_data[APP_TELEM_CH_ROLL_RATE_KD]);' in freertos
+    assert 'vofa_data[APP_TELEM_CH_RESERVED_7] = 0.0f;' in freertos
     assert '(void)DRV_COAX_CTRL_GetParam("coax.vel_loop_enable", &vofa_data[APP_TELEM_CH_VEL_LOOP_ENABLE]);' in freertos
-    assert '(void)DRV_COAX_CTRL_GetParam("coax.roll_angle_kp", &vofa_data[APP_TELEM_CH_ROLL_ANGLE_KP]);' in freertos
-    assert '(void)DRV_COAX_CTRL_GetParam("coax.pitch_angle_kp", &vofa_data[APP_TELEM_CH_PITCH_ANGLE_KP]);' in freertos
+    assert 'vofa_data[APP_TELEM_CH_RESERVED_18] = 0.0f;' in freertos
+    assert 'vofa_data[APP_TELEM_CH_RESERVED_19] = 0.0f;' in freertos
     assert '(void)DRV_COAX_CTRL_GetParam("coax.pos_z_kp", &vofa_data[APP_TELEM_CH_POS_Z_KP]);' in freertos
-    assert "vofa_data[APP_TELEM_CH_POS_Z_KI] = 0.0f;" in freertos
+    assert "vofa_data[APP_TELEM_CH_RESERVED_21] = 0.0f;" in freertos
     assert '(void)DRV_COAX_CTRL_GetParam("coax.vel_z_kd", &vofa_data[APP_TELEM_CH_VEL_Z_KD]);' in freertos
     assert "osDelay(ms);" in freertos
 

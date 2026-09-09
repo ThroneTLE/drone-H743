@@ -537,8 +537,8 @@ static int test_default_mask_and_steady_state_frame(void)
 
 static int test_only_the_changed_parameter_is_echoed(void)
 {
-    APP_TelemMask roll_bit = APP_TelemMask_FromBit((uint32_t)APP_TELEM_CH_ROLL_RATE_KD);
-    APP_TelemMask pitch_bit = APP_TelemMask_FromBit((uint32_t)APP_TELEM_CH_PITCH_RATE_KD);
+    APP_TelemMask roll_bit = APP_TelemMask_FromBit((uint32_t)APP_TELEM_CH_RATE_ROLL_KP);
+    APP_TelemMask pitch_bit = APP_TelemMask_FromBit((uint32_t)APP_TELEM_CH_RATE_PITCH_KP);
 
     reset_world();
     APP_TelemStream_NoteCommandSource(APP_TELEM_SINK_UART);
@@ -548,7 +548,7 @@ static int test_only_the_changed_parameter_is_echoed(void)
     APP_TelemStream_Tick();   /* 稳态帧 */
     CHECK(APP_TelemMask_IsEmpty(APP_TelemMask_And(frame_mask(), param_mask())) != 0U, 200);
 
-    port_values[APP_TELEM_CH_ROLL_RATE_KD] = 1.25f;
+    port_values[APP_TELEM_CH_RATE_ROLL_KP] = 1.25f;
     APP_TelemStream_Tick();
     CHECK(mask_equal(APP_TelemMask_And(frame_mask(), param_mask()), roll_bit), 201);
     CHECK(APP_TelemMask_IsEmpty(APP_TelemMask_And(frame_mask(), pitch_bit)) != 0U, 202);
@@ -558,7 +558,7 @@ static int test_only_the_changed_parameter_is_echoed(void)
     CHECK(APP_TelemMask_IsEmpty(APP_TelemMask_And(frame_mask(), param_mask())) != 0U, 203);
 
     /* 值没变就不置位，哪怕重复写同一个数。 */
-    port_values[APP_TELEM_CH_ROLL_RATE_KD] = 1.25f;
+    port_values[APP_TELEM_CH_RATE_ROLL_KP] = 1.25f;
     APP_TelemStream_Tick();
     CHECK(APP_TelemMask_IsEmpty(APP_TelemMask_And(frame_mask(), param_mask())) != 0U, 204);
     return 0;
@@ -834,8 +834,8 @@ def test_channel_assembly_moved_verbatim_into_the_port_module() -> None:
     for statement in (
         "vofa_data[APP_TELEM_CH_ROLL] = msg.roll_deg;",
         "vofa_data[APP_TELEM_CH_TIME] = (float)(SVC_Timestamp_Us() / 1000ULL) * 0.001f;",
-        '(void)DRV_COAX_CTRL_GetParam("coax.roll_rate_kd", &vofa_data[APP_TELEM_CH_ROLL_RATE_KD]);',
-        '(void)DRV_COAX_CTRL_GetParam("coax.yaw_angle_kp", &vofa_data[APP_TELEM_CH_YAW_ANGLE_KP]);',
+        'vofa_data[APP_TELEM_CH_RESERVED_7] = 0.0f;',
+        'vofa_data[APP_TELEM_CH_RESERVED_9] = 0.0f;',
         "vofa_data[APP_TELEM_CH_FUSION_ACC_NORM_REJECTED] = (float)msg.fusion_accel_norm_rejected;",
     ):
         assert statement in port, statement
@@ -919,15 +919,15 @@ def test_default_configuration_fits_the_telemetry_link() -> None:
     params = len(re.findall(r'"(coax\.[\w.]+)"', table_block))
 
     assert realtime == 12
-    assert params == 33, "13 个 legacy alias + 20 路真名增益"
+    assert params == 27, "27 current parameters; retired slots have no binding"
 
     steady_bytes = 9 + 24 + 4 * realtime
     refresh_bytes = 9 + 32 + 4 * (realtime + params)
     assert steady_bytes == 81
-    assert refresh_bytes == 221
+    assert refresh_bytes == 197
 
     total = 39 * steady_bytes + refresh_bytes
-    assert total == 3380
+    assert total == 3356
     assert total <= 0.60 * 5760
     # 对照：改造前的 JustFloat 定长帧。
     assert 116 * 40 == 4640
@@ -955,3 +955,4 @@ def test_the_full_refresh_frame_still_fits_one_uart_message() -> None:
     assert refresh_payload <= max_payload, (
         f"全量刷新帧 {refresh_payload} B 放不进 UART 出口上限 {max_payload} B"
     )
+

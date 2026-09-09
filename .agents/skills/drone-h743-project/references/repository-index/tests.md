@@ -4,7 +4,7 @@
 
 Read this shard only when you need existing behavioral/architecture coverage or must choose focused regression tests.
 
-Source snapshot: `2cd937d2ec7e`. Indexed files: 151.
+Source snapshot: `a44774af64ae`. Indexed files: 152.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -31,6 +31,7 @@ Source snapshot: `2cd937d2ec7e`. Indexed files: 151.
 | `tests/test_control_scheduler.py` | — | `test_control_scheduler_host_harness` (+1) |
 | `tests/test_controller_cascade_analysis.py` | — | `test_report_refuses_old_or_unknown_frame_logs` |
 | `tests/test_crsf_parser_resync.py` | CRSF 解析器的失步与重同步（`Driver/Src/drv_elrs.c`，宿主 gcc 直接编真实源码）。 为什么专门立一份：2026-09-06 实机取证发现遥控链路 **70% 错帧率**，而 SWD 直读 UART4 的 DM… | `test_a_clean_stream_decodes_every_frame` (+10) |
+| `tests/test_current_parameter_names.py` | R-PARAM-1: execute real C name lookup; no legacy online conversion | `test_real_c_rejects_old_names_without_mutating_current_params` (+4) |
 | `tests/test_dashboard_layout.py` | R-T1-5：工作台布局模型（`panel_lib/dashboard/layout.py`）。 布局规则是纯数据变换，所以这一份**不需要显示环境**：吸附、越界钳制、重叠拒绝、 序列化往返、出厂预设，全部在没有 Tk 的情况下断言。页… | `test_clamp_pulls_a_tile_back_into_the_grid` (+18) |
 | `tests/test_dashboard_page.py` | R-T1-5：“状态监视”工作台页（`panel_lib/pages/dashboard.py` + `dashboard/`）。 全部用真实的 `DronePanel()` + FakeTransport 驱动，照 `test_flow… | `test_the_workbench_is_the_first_tab_and_selected_by_default` (+62) |
 | `tests/test_dashboard_record_service.py` | R-T1-6（TK-05）：录制的文件完整性、后台写入与失败恢复。 对应改版报告 N10–N13。每一条都先在 `tools/panel_qa/baseline_observations.py` 里作为 **基线观测**记录下修复前的事实… | `test_a_second_recording_in_the_same_second_does_not_destroy_the_first` (+22) |
@@ -97,7 +98,7 @@ Source snapshot: `2cd937d2ec7e`. Indexed files: 151.
 | `tests/test_optical_flow_contract.py` | — | `test_micolink_parser_accepts_live_range_and_flow_payload_shape` (+11) |
 | `tests/test_panel_autoconnect.py` | 记住上次的连接并在启动时自动连回去。 关键点是**按什么认板子**：Windows 给 USB 串口分配的 COM 号会变（本机就出现过同一块 飞控在 COM30/31/32 之间跳），而 ST-Link、蓝牙串口、CH340 会占掉腾出… | `test_fingerprint_is_stable_across_com_renumbering` (+15) |
 | `tests/test_panel_connection_reliability.py` | H1/H2/H4: real transport and Tk boundaries with no physical device access | `test_slow_io_does_not_block_ui_queries_cancel_or_stop` (+18) |
-| `tests/test_panel_d_data_contract.py` | D 线 TK-03/TK-04 contracts: values must say what state they represent | `test_d_modules_are_imported_in_all_three_panel_contexts` (+13) |
+| `tests/test_panel_d_data_contract.py` | D 线 TK-03/TK-04 contracts: values must say what state they represent | `test_d_modules_are_imported_in_all_three_panel_contexts` (+15) |
 | `tests/test_panel_direct_script_startup.py` | Reproduce Python's script-path layout, without repository-root PYTHONPATH | `test_direct_script_builds_panel_from_an_unrelated_working_directory` (+2) |
 | `tests/test_panel_drift_page_extraction.py` | S6 stationary-drift page extraction ownership and compatibility contract | `test_drift_page_mixin_owns_only_its_builder_and_handlers` (+4) |
 | `tests/test_panel_flow_page_extraction.py` | R-S6-1 增量11（收官）：光流与测距页搬进 panel_lib/pages/flow_ranging.py。 搬家的判据只有一条——行为零变更。这里用三种独立方式钉： 1. 逐方法 AST 哈希与搬家前逐字节一致（哈希取自父提交 9… | `test_flow_mixin_owns_every_moved_method_with_the_pre_move_ast` (+4) |
@@ -141,7 +142,7 @@ Source snapshot: `2cd937d2ec7e`. Indexed files: 151.
 | `tests/test_simulation_controller_bridge.py` | — | `test_bridge_exposes_real_runtime_parameters` (+2) |
 | `tests/test_simulation_experiments.py` | — | `test_three_approved_experiments_produce_five_state_channels` (+1) |
 | `tests/test_simulation_full_cascade.py` | The simulator exposes and executes the actual planar P-PID-P-PID cascade | `test_full_gains_are_bound_to_existing_c_parameters_and_visible` (+4) |
-| `tests/test_simulation_launcher.py` | Actual panel startup, loopback child lifecycle, and no hardware switching | `test_one_click_starts_child_connects_streams_and_stop_reaps` (+4) |
+| `tests/test_simulation_launcher.py` | Actual panel startup, loopback child lifecycle, and no hardware switching | `test_current_quick_editor_roundtrips_all_24_gains_over_real_tcp` (+5) |
 | `tests/test_simulation_physics.py` | — | `test_hover_does_not_accumulate_vertical_acceleration` (+4) |
 | `tests/test_simulation_protocol.py` | — | `test_frame_decoder_accepts_fragmented_real_protocol_frame` (+4) |
 | `tests/test_simulation_review_boundaries.py` | Regression cases from the 2026-09-08 final review | `test_nonfinite_target_is_rejected_without_changing_active_targets` (+3) |
