@@ -76,7 +76,7 @@ def test_current_architecture_does_not_restore_the_old_blueprint() -> None:
 
 def test_telemetry_document_is_current_and_old_plan_is_unreferenced() -> None:
     protocol = read("doc/telemetry-protocol.md")
-    assert "Schema v3" in protocol
+    assert "Schema v4" in protocol
     assert "frame=body_flu contract=1" in protocol
     assert "APP_PROTO_MSG_TELEM_FRAME = 0x2230" in protocol
     checked = (

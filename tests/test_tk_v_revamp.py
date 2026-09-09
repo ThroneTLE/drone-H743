@@ -200,5 +200,5 @@ def test_stop_and_key_actions_are_present_without_deleting_controls(qa):
         if isinstance(widget, ttk.Button)
     ]
     assert labels.count("停止") >= 3  # connection stop + one fixed servo stop per slot
-    assert {"Fit", "Apply", "Save", "Open CSV Folder", "Pause VOFA", "Resume VOFA"} <= set(labels)
+    assert {"Fit", "四环调参说明", "Save", "Open CSV Folder", "Pause VOFA", "Resume VOFA"} <= set(labels)
     assert "重置累计位移" in labels
