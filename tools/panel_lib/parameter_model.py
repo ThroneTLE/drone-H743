@@ -9,6 +9,18 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from decimal import Decimal, InvalidOperation
+
+
+def parameter_values_equal(left: str | None, right: str) -> bool:
+    """Compare numeric spelling exactly, without accepting a different value."""
+    if left is None:
+        return False
+    try:
+        lhs, rhs = Decimal(left), Decimal(right)
+    except InvalidOperation:
+        return left == right
+    return lhs.is_finite() and rhs.is_finite() and lhs == rhs
 
 
 @dataclass(frozen=True)

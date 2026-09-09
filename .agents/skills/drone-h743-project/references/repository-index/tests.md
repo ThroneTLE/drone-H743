@@ -4,7 +4,7 @@
 
 Read this shard only when you need existing behavioral/architecture coverage or must choose focused regression tests.
 
-Source snapshot: `a44774af64ae`. Indexed files: 152.
+Source snapshot: `02e155e56e19`. Indexed files: 153.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -109,6 +109,7 @@ Source snapshot: `a44774af64ae`. Indexed files: 152.
 | `tests/test_panel_state_extraction.py` | S6 panel-state persistence extraction ownership and compatibility contract | `test_state_module_owns_persistence_and_logging_implementation` (+3) |
 | `tests/test_panel_transport_extraction.py` | S6 panel transport extraction ownership and compatibility contract | `test_transport_module_owns_moved_definitions` (+2) |
 | `tests/test_panel_v1_page_extraction.py` | S6 V1-metrology page extraction ownership and compatibility contract | `test_v1_page_mixin_owns_the_builder_and_every_v1_handler` (+5) |
+| `tests/test_parameter_numeric_echo.py` | Real C six-decimal replies must confirm equivalent user numeric text | `test_equivalent_real_c_reply_clears_pending` (+1) |
 | `tests/test_pipeline_contract.py` | — | `test_pipeline_exists_with_required_sections` (+6) |
 | `tests/test_position_control.py` | R-S5-1 pure translational controller contract. The executable part compiles the real Driver C module with host gcc. The… | `test_position_control_source_is_pure_and_documented` (+1) |
 | `tests/test_project_index_contract.py` | — | `test_repository_index_is_current` (+2) |

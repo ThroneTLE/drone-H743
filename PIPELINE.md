@@ -84,7 +84,7 @@ flowchart TB
 
 | REQ | 节点 | 需求 | 验收判据 | 状态 |
 |---|---|---|---|---|
-| R-PARAM-1 | 作者授权附加需求 | 〔码〕作者明确要求上位机全部在线旧参数迁移，固件拒绝旧名称；模式protocol-telemetry+tk-ui；允许撤销旧PID/滑块命令和旧增益遥测绑定，历史存储读取保留 | 当前四环参数端到端一致；旧名称读写拒绝；历史配置不重解释；离线契约、全量pytest、Debug与索引 | 进行中 |
+| R-PARAM-1 | 作者授权附加需求 | 〔码〕作者明确要求上位机全部在线旧参数迁移，固件拒绝旧名称；模式protocol-telemetry+tk-ui；允许撤销旧PID/滑块命令和旧增益遥测绑定，历史存储读取保留 | 当前四环参数端到端一致；旧名称读写拒绝；历史配置不重解释；离线契约、全量pytest、Debug与索引 | 待审核 |
 | R-SIM-3 | 作者授权附加需求 | 〔码〕补全二维仿真的P–PID–P–PID及高度P–PID，X/Z完整增益回显与高度阶跃；保留真实控制律、执行器延迟/方向动态/推力曲线与饱和；模式simulation+tk-ui | 12项实际C增益可调与回读；6项I/D分别影响C输出；高度阶跃及限速行为；实际上位机子进程高度场景；模型来源/估计边界、截图与离线测试 | 待审核 |
 | R-SIM-2 | 作者授权附加需求 | 〔码〕上位机仿真标题栏：一键开启本机TCP、启动并连接仿真窗口，提供停止与状态；类别模式simulation+tk-ui | 真实DronePanel按钮到独立仿真进程、参数回显与自动时间推进；已连设备不被切换；重复启动无重复进程；失败/停止/主窗口关闭回收自有资源；禁止两巨文件增长与实机操作 | 待审核 |
 | R-SIM-1 | 作者授权附加需求 | 〔码〕X–Z 教学仿真与现有上位机对接：同源 C 四环/分配/调度、二维物理、TCP 模拟设备、Tk 动画、三阶跃与 A/B。类别模式：simulation；作者于 2026-09-08 授权补写本模式及附加 REQ；本项为 host-only，不要求实机/实录基线 | 四环参数真实生效回显并影响模拟轨迹；俯仰/速度/位置三实验与 Z 约束符合批准计划；真实上位机 TCP 端到端、物理/C 对拍/UI 测试；交付阶段执行直接契约、可用的全量 pytest、Debug、索引/PIPELINE/FLU；交付 simulation 产物与测试原文；不替代实机证据 | 待审核 |
@@ -149,6 +149,7 @@ flowchart TB
 
 | 日期 | 范围 | 证据 | 结果 | 对状态的影响 |
 |---|---|---|---|---|
+| 2026-09-08 | R-PARAM-1 横切修bug：等值参数回显确认 | data/analysis/parameter_names/2026-09-08/echo-fix.md；真实C复现0.2→0.200000仍pending；修前4 failed；全量full-tests.txt 1399 passed，末次草稿保护相关parameter-echo-final.txt 34 passed；Debug零警告；模式横切修bug+tk-ui | 根因字符串比较，既有测试请求/回包同格式未覆盖；改精确十进制相等，不增加容差，不覆盖发送后新草稿；独立fix提交；0串口/0探针 | R-PARAM-1置待审核；保留历史版本读取；其他节点不变 |
 | 2026-09-08 | R-PARAM-1 作者授权在线旧参数退役 | data/analysis/parameter_names/2026-09-08/review.md；layout-tests.txt 48 passed；final-focus-tests.txt 26 passed，含24参数真实TCP；Debug零警告；模式默认+protocol-telemetry+tk-ui | 当前名称单源、旧名拒绝、schema v4与24增益编辑实现；另发现字符串回显确认缺陷，已固定证据，后续独立fix | R-PARAM-1保持进行中，待回显修复后统一交审；无实机操作 |
 | 2026-09-08 | R-SIM-3 水平/高度/姿态三组参数独立性 | data/simulation/2026-09-08/axis-parameter-review.md、axis-parameter-tests.txt；28 passed in 37.59s，后续16 passed in 24.68s | X/Z字段原已独立；界面拆三组各4参数，双向C字段隔离与模式切换保留通过；索引/Pipeline复验10 passed in 2.89s，Debug无重编译；不解除物理耦合；0串口/0probe | R-SIM-3保持待审核 |
 | 2026-09-08 | 修bug：停止仿真后遗留遥测会话 | data/simulation/2026-09-08/session-reset-before.txt、session-reset-after.txt；真实流后停止仍保留frames_seen及参数样本，1 failed→相关16 passed in 24.68s | 原测试只查连接/进程回收，未查遥测清理；复用_dashboard_reset_session清序号/样本/schema，不改控制器增益；0串口/0probe | 独立fix，R-SIM-3保持待审核 |

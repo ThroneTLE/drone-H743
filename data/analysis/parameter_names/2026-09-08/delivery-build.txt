@@ -1,0 +1,19 @@
+[1/6] Building C object CMakeFiles/drone-H743.dir/App/Src/app_cmd_telem.c.obj
+[2/6] Building C object CMakeFiles/drone-H743.dir/App/Src/app_telemetry.c.obj
+[3/6] Building C object CMakeFiles/drone-H743.dir/App/Src/app_telem_stream.c.obj
+[4/6] Building C object CMakeFiles/drone-H743.dir/App/Src/app_telem_port.c.obj
+[5/6] Building C object CMakeFiles/drone-H743.dir/Core/Src/freertos.c.obj
+[6/6] Linking C executable drone-H743.elf
+Memory region         Used Size  Region Size  %age Used
+         DTCMRAM:      109320 B       128 KB     83.40%
+
+             RAM:      360256 B       512 KB     68.71%
+
+          RAM_D2:       23296 B       288 KB      7.90%
+
+          RAM_D3:           0 B        64 KB      0.00%
+
+         ITCMRAM:           0 B        64 KB      0.00%
+
+           FLASH:      396620 B         2 MB     18.91%
+

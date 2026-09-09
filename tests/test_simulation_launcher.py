@@ -33,7 +33,7 @@ def test_current_quick_editor_roundtrips_all_24_gains_over_real_tcp(panel):
     desired = {name: .01 + i * .001 for i, name in enumerate(panel.quick_parameter_vars)}
     assert len(desired) == 24
     for name, value in desired.items():
-        panel.quick_parameter_vars[name].set(f"{value:.6f}")
+        panel.quick_parameter_vars[name].set(f"{value:g}")
     panel._send_pid_values()
 
     def all_echoed():

@@ -21,6 +21,7 @@ from .parameter_model import (
     ParameterState,
     canonical_parameter_name,
     parameter_capability,
+    parameter_values_equal,
     validate_parameter_text,
 )
 
@@ -127,13 +128,13 @@ class ParameterEditorMixin:
         else:
             state.target = value
             state.target_source = source
-            if state.pending == value:
+            if parameter_values_equal(state.pending, value):
                 state.pending = None
                 state.error = None
-                if state.draft == value:
+                if parameter_values_equal(state.draft, value):
                     state.draft = None
                     state.draft_source = ""
-            elif state.draft == value:
+            elif state.pending is None and parameter_values_equal(state.draft, value):
                 state.draft = None
                 state.draft_source = ""
             state.error = state.error if state.pending is not None else None

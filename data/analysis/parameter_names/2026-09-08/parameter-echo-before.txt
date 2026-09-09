@@ -1,0 +1,8 @@
+request=0.2 C_reply=0.200000 target=0.200000 pending=0.2 draft=0.2
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "D:\stm32hal\drone-H743\build\reproduce_parameter_echo.py", line 17, in <module>
+    assert state.pending is None, 'Equal numeric reply leaves editor pending'
+           ^^^^^^^^^^^^^^^^^^^^^
+AssertionError: Equal numeric reply leaves editor pending

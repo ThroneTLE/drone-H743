@@ -1,0 +1,96 @@
+FFFF                                                                     [100%]
+================================== FAILURES ===================================
+______________ test_equivalent_real_c_reply_clears_pending[0.2] _______________
+
+requested_text = '0.2'
+
+    @pytest.mark.parametrize("requested_text", ("0.2", "2e-1", "+0.2000"))
+    def test_equivalent_real_c_reply_clears_pending(requested_text):
+        source = (Path(__file__).resolve().parents[1] / "App/Src/app_control.c").read_text(encoding="utf-8")
+        assert '"%s%d.%06u"' in source  # Actual firmware wire precision.
+        bridge = ControllerBridge(instance_tag="numeric_echo")
+        bridge.reset_params()
+        name = "coax.rate_pitch_ki"
+        assert bridge.set_param(name, float(requested_text))
+        reply = f"{bridge.get_param(name):.6f}"
+        editor = EditorProbe()
+        editor._set_param(name, requested_text, "local", True)
+        editor._mark_param_pending(name, requested_text)
+        editor._set_param(name, reply, "PARAM", False)
+        state = editor.param_states[name]
+>       assert state.pending is None
+E       AssertionError: assert '0.2' is None
+E        +  where '0.2' = ParameterState(name='coax.rate_pitch_ki', target='0.200000', draft='0.2', pending='0.2', error=None, target_source='PARAM', draft_source='local').pending
+
+tests\test_parameter_numeric_echo.py:38: AssertionError
+______________ test_equivalent_real_c_reply_clears_pending[2e-1] ______________
+
+requested_text = '2e-1'
+
+    @pytest.mark.parametrize("requested_text", ("0.2", "2e-1", "+0.2000"))
+    def test_equivalent_real_c_reply_clears_pending(requested_text):
+        source = (Path(__file__).resolve().parents[1] / "App/Src/app_control.c").read_text(encoding="utf-8")
+        assert '"%s%d.%06u"' in source  # Actual firmware wire precision.
+        bridge = ControllerBridge(instance_tag="numeric_echo")
+        bridge.reset_params()
+        name = "coax.rate_pitch_ki"
+        assert bridge.set_param(name, float(requested_text))
+        reply = f"{bridge.get_param(name):.6f}"
+        editor = EditorProbe()
+        editor._set_param(name, requested_text, "local", True)
+        editor._mark_param_pending(name, requested_text)
+        editor._set_param(name, reply, "PARAM", False)
+        state = editor.param_states[name]
+>       assert state.pending is None
+E       AssertionError: assert '2e-1' is None
+E        +  where '2e-1' = ParameterState(name='coax.rate_pitch_ki', target='0.200000', draft='2e-1', pending='2e-1', error=None, target_source='PARAM', draft_source='local').pending
+
+tests\test_parameter_numeric_echo.py:38: AssertionError
+____________ test_equivalent_real_c_reply_clears_pending[+0.2000] _____________
+
+requested_text = '+0.2000'
+
+    @pytest.mark.parametrize("requested_text", ("0.2", "2e-1", "+0.2000"))
+    def test_equivalent_real_c_reply_clears_pending(requested_text):
+        source = (Path(__file__).resolve().parents[1] / "App/Src/app_control.c").read_text(encoding="utf-8")
+        assert '"%s%d.%06u"' in source  # Actual firmware wire precision.
+        bridge = ControllerBridge(instance_tag="numeric_echo")
+        bridge.reset_params()
+        name = "coax.rate_pitch_ki"
+        assert bridge.set_param(name, float(requested_text))
+        reply = f"{bridge.get_param(name):.6f}"
+        editor = EditorProbe()
+        editor._set_param(name, requested_text, "local", True)
+        editor._mark_param_pending(name, requested_text)
+        editor._set_param(name, reply, "PARAM", False)
+        state = editor.param_states[name]
+>       assert state.pending is None
+E       AssertionError: assert '+0.2000' is None
+E        +  where '+0.2000' = ParameterState(name='coax.rate_pitch_ki', target='0.200000', draft='+0.2000', pending='+0.2000', error=None, target_source='PARAM', draft_source='local').pending
+
+tests\test_parameter_numeric_echo.py:38: AssertionError
+______ test_old_reply_does_not_confirm_new_target_or_overwrite_new_draft ______
+
+    def test_old_reply_does_not_confirm_new_target_or_overwrite_new_draft():
+        editor = EditorProbe()
+        name = "coax.rate_pitch_ki"
+        editor._set_param(name, "0.2", "local", True)
+        editor._mark_param_pending(name, "0.2")
+        editor._set_param(name, "0.3", "local", True)
+        editor._set_param(name, "0.100000", "PARAM", False)
+        assert editor.param_states[name].pending == "0.2"
+        editor._set_param(name, "0.200000", "PARAM", False)
+>       assert editor.param_states[name].pending is None
+E       AssertionError: assert '0.2' is None
+E        +  where '0.2' = ParameterState(name='coax.rate_pitch_ki', target='0.200000', draft='0.3', pending='0.2', error=None, target_source='PARAM', draft_source='local').pending
+
+tests\test_parameter_numeric_echo.py:52: AssertionError
+Physical serial open attempts: 0
+Flashing/probe tool invocation attempts: 0
+Tk display available at session start: True; Tk roots created: 0
+=========================== short test summary info ===========================
+FAILED tests/test_parameter_numeric_echo.py::test_equivalent_real_c_reply_clears_pending[0.2]
+FAILED tests/test_parameter_numeric_echo.py::test_equivalent_real_c_reply_clears_pending[2e-1]
+FAILED tests/test_parameter_numeric_echo.py::test_equivalent_real_c_reply_clears_pending[+0.2000]
+FAILED tests/test_parameter_numeric_echo.py::test_old_reply_does_not_confirm_new_target_or_overwrite_new_draft
+4 failed in 2.06s
