@@ -125,6 +125,10 @@ DRV_IMU_Status BSP_IMU_Init(void)
     };
     const uint32_t candidate_count =
         (uint32_t)(sizeof(candidates) / sizeof(candidates[0]));
+    DRV_IMU_Status probe_status[sizeof(candidates) / sizeof(candidates[0])];
+    uint8_t        probe_chip_id[sizeof(candidates) / sizeof(candidates[0])];
+    /* 一颗都没探到时的默认错误码；探到但配置失败会被真实错误码覆盖。 */
+    DRV_IMU_Status init_error = DRV_IMU_BAD_ID;
     uint32_t i;
 
     if (imu_initialized != 0U) { return DRV_IMU_OK; }
@@ -147,42 +151,60 @@ DRV_IMU_Status BSP_IMU_Init(void)
     imu_ctx = NULL;
 
     /*
-     * 逐个探测。**任何一颗探不到都不是致命错误**，继续试下一颗；
-     * 全部探不到才返回失败，由上层决定拒飞还是降级（decoupling-spec D1-3）。
-     * 每次探测都记账，诊断命令能直接说出"哪颗在、读到的 ID 是多少"。
+     * 第一轮：逐个探测并记账。**任何一颗探不到都不是致命错误**，继续试下一颗；
+     * 诊断命令因此能直接说出"哪颗在、读到的 ID 是多少"。
      */
     for (i = 0U; i < candidate_count; i++) {
         const DRV_IMU_Ops *ops = candidates[i].ops;
         uint8_t chip_id = 0U;
+
+        probe_status[i] = DRV_IMU_BAD_ID;
+        probe_chip_id[i] = 0U;
+
+        if ((ops == NULL) || (ops->probe == NULL) || (ops->init == NULL)) {
+            continue;
+        }
+
+        probe_status[i] = ops->probe(candidates[i].ctx, &chip_id);
+        probe_chip_id[i] = chip_id;
+        SVC_IMU_SelectionRecord(&imu_selection, ops->kind, chip_id,
+                                probe_status[i]);
+    }
+
+    /*
+     * 第二轮：按优先级逐个 init，**谁先配置成功谁上岗**。
+     *
+     * 探到 ≠ 能用：BMI270 要上传 328 字节配置固件，BMI088 有一串带回读重试的
+     * 寄存器配置，两者都可能在 probe 之后失败。以前这里只 init 第一颗探到的芯片，
+     * 失败就直接返回——采样任务外层重试时又选回同一颗，无限重试，
+     * 旁边那颗完好的备用 IMU 一次都轮不到。板上有两颗 IMU 的意义就没了。
+     */
+    for (i = 0U; i < candidate_count; i++) {
         DRV_IMU_Status status;
 
-        if ((ops == NULL) || (ops->probe == NULL)) { continue; }
+        if (probe_status[i] != DRV_IMU_OK) { continue; }
 
-        status = ops->probe(candidates[i].ctx, &chip_id);
-        SVC_IMU_SelectionRecord(&imu_selection, ops->kind, chip_id, status);
-
-        if ((status == DRV_IMU_OK) && (imu_ops == NULL)) {
-            imu_ops = ops;
-            imu_ctx = candidates[i].ctx;
-        }
-    }
-
-    if (imu_ops == NULL) {
-        return DRV_IMU_BAD_ID;
-    }
-
-    {
-        DRV_IMU_Status status = imu_ops->init(imu_ctx, &imu_config);
+        status = candidates[i].ops->init(candidates[i].ctx, &imu_config);
         if (status != DRV_IMU_OK) {
-            /* 初始化失败时不要留一个"选中但没配好"的半吊子状态。 */
-            imu_ops = NULL;
-            imu_ctx = NULL;
-            return status;
+            init_error = status;
+            continue;   /* 换下一颗，不要卡在这颗上 */
         }
+
+        imu_ops = candidates[i].ops;
+        imu_ctx = candidates[i].ctx;
+        SVC_IMU_SelectionCommit(&imu_selection, imu_ops->kind, probe_chip_id[i]);
+        imu_initialized = 1U;
+        return DRV_IMU_OK;
     }
 
-    imu_initialized = 1U;
-    return DRV_IMU_OK;
+    /*
+     * 走到这里说明没有一颗能用。区分两种失败，好让诊断说得准：
+     * 压根没探到任何芯片 → BAD_ID（多半是接线或片选错了）；
+     * 探到了但都配置失败 → 原样回报最后那颗的错误码。
+     */
+    imu_ops = NULL;
+    imu_ctx = NULL;
+    return init_error;
 }
 
 DRV_IMU_Status BSP_IMU_ReadRaw(DRV_IMU_RawData *raw)

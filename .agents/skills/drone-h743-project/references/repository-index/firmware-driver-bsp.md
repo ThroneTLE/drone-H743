@@ -4,7 +4,7 @@
 
 Read this shard only when the task touches device protocols, reusable algorithms, buses, GPIO, DMA callbacks, cache hooks, or board bindings.
 
-Source snapshot: `34282d41e6de`. Indexed files: 92.
+Source snapshot: `0c1e294fda7b`. Indexed files: 90.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -53,7 +53,6 @@ Source snapshot: `34282d41e6de`. Indexed files: 92.
 | `BSP/Inc/bsp_optical_flow.h`<br>`BSP/Src/bsp_optical_flow.c` | Board resource binding for optical flow | `BSP_OPTICAL_FLOW_Init`, `BSP_OPTICAL_FLOW_Service`, `BSP_OPTICAL_FLOW_OnUartRxCplt`, `BSP_OPTICAL_FLOW_OnUartRxEvent`, `BSP_OPTICAL_FLOW_OnUartError`, `BSP_OPTICAL_FLOW_GetStatus` (+4) |
 | `BSP/Inc/bsp_pwm.h`<br>`BSP/Src/bsp_pwm.c` | Board resource binding for pwm | `BSP_PWM_Init`, `BSP_PWM_SetEscPulse`, `BSP_PWM_SetEscPercent`, `BSP_PWM_DisableEsc`, `BSP_PWM_SetServoPulse`, `BSP_PWM_PercentToPulse` (+3) |
 | `BSP/Inc/bsp_spi.h`<br>`BSP/Src/bsp_spi.c` | Board resource binding for spi | `BSP_SPI_RegisterFlashDevice` |
-| `BSP/Inc/bsp_spl06.h`<br>`BSP/Src/bsp_spl06.c` | Board resource binding for spl06 | — |
 | `BSP/Inc/bsp_system.h`<br>`BSP/Src/bsp_system.c` | Board resource binding for system | `BSP_System_Init`, `BSP_Cache_Enable`, `BSP_Cache_Disable`, `BSP_System_GetClockInfo` |
 | `BSP/Inc/bsp_uart.h`<br>`BSP/Src/bsp_uart.c` | Board resource binding for uart | `BSP_UART_Release_USART1_ForExternalDebug`, `BSP_UART_Transmit_USART1`, `BSP_UART_Transmit_UART8`, `BSP_UART_GetUSART1TxCount` |
 

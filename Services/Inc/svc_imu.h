@@ -135,13 +135,26 @@ typedef struct {
 void SVC_IMU_SelectionReset(SVC_IMU_Selection *selection);
 
 /*
- * 记一次探测结果。probe 成功且当前还没选中任何芯片时，这一颗即被选中
- * （即"探测顺序 = 优先级"，顺序由 BSP 决定）。
+ * 记一次探测结果。**只记账，不选中。**
+ *
+ * 这两件事必须分开：probe 成功只说明"总线上有这颗芯片、ID 对得上"，不代表它能用。
+ * BMI270 要上传 328 字节配置固件，BMI088 有一串带回读重试的寄存器配置，这些都可能
+ * 在 probe 之后失败。早先这里探到就选中，于是主 IMU 配置失败时，备用的那颗
+ * 永远得不到机会——采样任务外层重试又选回同一颗，无限循环。
+ *
+ * 现在的契约是：BSP 先把所有候选探一遍并记账，再按优先级逐个 init，
+ * 谁先 init 成功谁才被 SVC_IMU_SelectionCommit 选中。
+ * 于是 selection->selected 的含义是"正在跑的那颗"，诊断不会与实际跑的芯片对不上。
  */
 void SVC_IMU_SelectionRecord(SVC_IMU_Selection *selection,
                              DRV_IMU_ChipKind kind,
                              uint8_t chip_id,
                              DRV_IMU_Status status);
+
+/* 敲定选型：init 成功之后才调，同时按芯片种类装好默认安装旋转。 */
+void SVC_IMU_SelectionCommit(SVC_IMU_Selection *selection,
+                             DRV_IMU_ChipKind kind,
+                             uint8_t chip_id);
 
 const char *SVC_IMU_ChipName(DRV_IMU_ChipKind kind);
 

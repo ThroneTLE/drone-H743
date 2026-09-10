@@ -145,15 +145,17 @@ APP_FlashService_Status APP_FlashService_Init(void)
      *                只影响诊断页的显示，不影响参数与日志。
      * 任何一路失败都不能把整机卡在初始化里（decoupling-spec D1-3）。
      */
+    status = flash_service_lock();
+    if (status != DRV_GD25Q32_OK) {
+        return status;
+    }
+
+    /* 三个后端的绑定与探测都在锁内完成，免得别的任务撞见半绑定状态。 */
     DRV_INTFLASH_SetBus(BSP_Board_GetIntFlashBus());
     (void)DRV_SDBLOCK_Init(BSP_Board_GetSdBlockBus());
 
     flash_service_bind();
     bus = flash_device.bus;
-    status = flash_service_lock();
-    if (status != DRV_GD25Q32_OK) {
-        return status;
-    }
 
     status = DRV_GD25Q32_Init(&flash_device, &bus);
     BSP_FlashBus_RegisterDmaDevice(&flash_device);
@@ -261,11 +263,21 @@ APP_FlashService_Status APP_FlashService_ClearProtection(uint8_t *status1_before
     return status;
 }
 
-APP_FlashService_Status APP_FlashService_ReadData(uint32_t address, uint8_t *data, uint32_t length)
+/* ------------------------------------------------ 数据通路：核心（不加锁） */
+
+/*
+ * 下面这三个 *_unlocked 函数**必须在持锁状态下调用**。
+ *
+ * 拆出来的唯一原因是 flashBusMutex 不是递归锁（Core/Src/freertos.c 里创建时只给了
+ * .name，没有 osMutexRecursive）。PageProgram 要复用 WriteData 的逻辑、ReadDataFast
+ * 要复用 ReadData 的逻辑，如果它们互相调用公开入口，同一个任务就会二次获取同一把锁，
+ * 直接卡死 10 秒然后返回 TIMEOUT。所以公开入口只负责"加锁—调核心—解锁"，
+ * 复用一律走核心。
+ */
+static APP_FlashService_Status flash_read_unlocked(uint32_t address, uint8_t *data,
+                                                   uint32_t length)
 {
     uint32_t physical = 0U;
-
-    if ((data == NULL) || (length == 0U)) { return DRV_GD25Q32_INVALID_ARG; }
 
     if (APP_FlashService_BackendFor(address) == APP_FLASH_BACKEND_INTERNAL) {
         if (flash_param_physical(address, &physical) == 0U) {
@@ -275,6 +287,72 @@ APP_FlashService_Status APP_FlashService_ReadData(uint32_t address, uint8_t *dat
     }
 
     return flash_from_sdblock(DRV_SDBLOCK_Read(address, data, length));
+}
+
+static APP_FlashService_Status flash_write_unlocked(uint32_t address,
+                                                    const uint8_t *data,
+                                                    uint32_t length)
+{
+    uint32_t physical = 0U;
+
+    if (APP_FlashService_BackendFor(address) == APP_FLASH_BACKEND_INTERNAL) {
+        if (flash_param_physical(address, &physical) == 0U) {
+            return DRV_GD25Q32_INVALID_ARG;
+        }
+        return flash_from_intflash(DRV_INTFLASH_Write(physical, data, length));
+    }
+
+    return flash_from_sdblock(DRV_SDBLOCK_Write(address, data, length));
+}
+
+static APP_FlashService_Status flash_erase_unlocked(uint32_t address, uint32_t length)
+{
+    uint32_t physical = 0U;
+
+    if (APP_FlashService_BackendFor(address) == APP_FLASH_BACKEND_INTERNAL) {
+        /* 参数区只接受扇区擦除：块擦除会跨过槽边界，语义无法保证。 */
+        if (length != APP_FLASH_SERVICE_SECTOR_SIZE) {
+            return DRV_GD25Q32_INVALID_ARG;
+        }
+        if (flash_param_physical(address, &physical) == 0U) {
+            return DRV_GD25Q32_INVALID_ARG;
+        }
+        /*
+         * 片内擦除粒度是 128 KB，这里一次擦掉整个物理扇区。
+         * 因为一个逻辑参数槽独占一个物理扇区，"擦一个逻辑扇区"与
+         * "擦整个物理扇区"作用范围相同，另一个槽不受影响。
+         */
+        return flash_from_intflash(DRV_INTFLASH_EraseSector(physical));
+    }
+
+    return flash_from_sdblock(DRV_SDBLOCK_Erase(address, length));
+}
+
+/* ------------------------------------------------ 数据通路：公开入口（加锁） */
+
+/*
+ * ================================ 锁保护的是什么 ================================
+ * 换后端之前，这几个入口打给 SPI NOR，每次都持 flashBusMutex。换成"片内 Flash +
+ * SD 裸块"之后锁一度被漏掉了，而 SD 后端比 NOR 更需要它：drv_sdblock 内部有一个
+ * **全局共享的 512 字节块缓冲**，不足整块的写是"读回整块 → 改中间几字节 → 写回"。
+ *
+ * 锁的粒度必须是**整笔事务**，不能只锁单次 HAL 调用。HAL 自己的 busy 状态挡不住
+ * 这个窗口：后台日志任务读完块 A、HAL 已经返回、还没来得及 memcpy 出去，通信任务
+ * 的 FLASH VERIFY 抢进来把同一个缓冲读成块 B——两边都拿到别人的数据，而且状态码
+ * 全是 OK。日志写的读改写序列被这样插一脚，则是直接把邻居字节写坏。
+ */
+APP_FlashService_Status APP_FlashService_ReadData(uint32_t address, uint8_t *data, uint32_t length)
+{
+    APP_FlashService_Status status;
+
+    if ((data == NULL) || (length == 0U)) { return DRV_GD25Q32_INVALID_ARG; }
+
+    status = flash_service_lock();
+    if (status != DRV_GD25Q32_OK) { return status; }
+
+    status = flash_read_unlocked(address, data, length);
+    flash_service_unlock();
+    return status;
 }
 
 APP_FlashService_Status APP_FlashService_ReadDataFast(uint32_t address, uint8_t *data, uint32_t length)
@@ -288,43 +366,35 @@ APP_FlashService_Status APP_FlashService_ReadDataFast(uint32_t address, uint8_t 
 
 APP_FlashService_Status APP_FlashService_EraseSector(uint32_t address)
 {
-    uint32_t physical = 0U;
+    APP_FlashService_Status status = flash_service_lock();
 
-    if (APP_FlashService_BackendFor(address) == APP_FLASH_BACKEND_INTERNAL) {
-        if (flash_param_physical(address, &physical) == 0U) {
-            return DRV_GD25Q32_INVALID_ARG;
-        }
-        /*
-         * 片内擦除粒度是 128 KB，这里一次擦掉整个物理扇区。
-         * 因为一个逻辑参数槽独占一个物理扇区，"擦一个逻辑扇区"与
-         * "擦整个物理扇区"作用范围相同，另一个槽不受影响。
-         */
-        return flash_from_intflash(DRV_INTFLASH_EraseSector(physical));
-    }
+    if (status != DRV_GD25Q32_OK) { return status; }
 
-    return flash_from_sdblock(
-        DRV_SDBLOCK_Erase(address, APP_FLASH_SERVICE_SECTOR_SIZE));
+    status = flash_erase_unlocked(address, APP_FLASH_SERVICE_SECTOR_SIZE);
+    flash_service_unlock();
+    return status;
 }
 
 APP_FlashService_Status APP_FlashService_EraseBlock32K(uint32_t address)
 {
-    if (APP_FlashService_BackendFor(address) == APP_FLASH_BACKEND_INTERNAL) {
-        /* 参数区不接受块擦除：会跨过槽边界，语义无法保证。 */
-        return DRV_GD25Q32_INVALID_ARG;
-    }
+    APP_FlashService_Status status = flash_service_lock();
 
-    return flash_from_sdblock(
-        DRV_SDBLOCK_Erase(address, APP_FLASH_SERVICE_BLOCK32K_SIZE));
+    if (status != DRV_GD25Q32_OK) { return status; }
+
+    status = flash_erase_unlocked(address, APP_FLASH_SERVICE_BLOCK32K_SIZE);
+    flash_service_unlock();
+    return status;
 }
 
 APP_FlashService_Status APP_FlashService_EraseBlock64K(uint32_t address)
 {
-    if (APP_FlashService_BackendFor(address) == APP_FLASH_BACKEND_INTERNAL) {
-        return DRV_GD25Q32_INVALID_ARG;
-    }
+    APP_FlashService_Status status = flash_service_lock();
 
-    return flash_from_sdblock(
-        DRV_SDBLOCK_Erase(address, APP_FLASH_SERVICE_BLOCK64K_SIZE));
+    if (status != DRV_GD25Q32_OK) { return status; }
+
+    status = flash_erase_unlocked(address, APP_FLASH_SERVICE_BLOCK64K_SIZE);
+    flash_service_unlock();
+    return status;
 }
 
 APP_FlashService_Status APP_FlashService_PageProgram(uint32_t address,
@@ -339,18 +409,16 @@ APP_FlashService_Status APP_FlashService_WriteData(uint32_t address,
                                                    const uint8_t *data,
                                                    uint32_t length)
 {
-    uint32_t physical = 0U;
+    APP_FlashService_Status status;
 
     if ((data == NULL) || (length == 0U)) { return DRV_GD25Q32_INVALID_ARG; }
 
-    if (APP_FlashService_BackendFor(address) == APP_FLASH_BACKEND_INTERNAL) {
-        if (flash_param_physical(address, &physical) == 0U) {
-            return DRV_GD25Q32_INVALID_ARG;
-        }
-        return flash_from_intflash(DRV_INTFLASH_Write(physical, data, length));
-    }
+    status = flash_service_lock();
+    if (status != DRV_GD25Q32_OK) { return status; }
 
-    return flash_from_sdblock(DRV_SDBLOCK_Write(address, data, length));
+    status = flash_write_unlocked(address, data, length);
+    flash_service_unlock();
+    return status;
 }
 
 void APP_FlashService_Invalidate(void)

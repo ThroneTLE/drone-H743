@@ -107,6 +107,8 @@ void BSP_Board_Init(void)
     baro_bus.hspi        = NULL;
     baro_bus.cs_port     = NULL;
     baro_bus.cs_pin      = 0U;
+    baro_bus.miso_port   = NULL;   /* I2C 没有 MISO，诊断电平报"不适用" */
+    baro_bus.miso_pin    = 0U;
     baro_bus.hi2c        = &hi2c2;
     baro_bus.i2c_address = BSP_BARO_I2C_ADDRESS;
     baro_bus.timeout_ms  = 100U;
@@ -127,11 +129,12 @@ void BSP_Board_Init(void)
     /* 参数落片内 Flash：擦写后必须失效 D-Cache，否则读回旧内容。 */
     intflash_bus.cache_invalidate = BSP_Cache_InvalidateDCache;
 
-    /* 飞行日志落 SD 裸块；SDMMC 走片内 IDMA，同样需要缓存维护。 */
+    /*
+     * 飞行日志落 SD 裸块。这里**故意不挂缓存维护回调**：阻塞版 HAL_SD_ReadBlocks
+     * 是 CPU 轮询 FIFO 搬运，不是 DMA，做维护反而会丢数据。原委见 drv_sdblock.h。
+     */
     sdblock_bus.hsd              = &hsd1;
     sdblock_bus.timeout_ms       = 1000U;
-    sdblock_bus.cache_clean      = BSP_Cache_CleanDCache;
-    sdblock_bus.cache_invalidate = BSP_Cache_InvalidateDCache;
 
     /*
      * 磁罗盘接 I2C2：板载 QMC5883L(0x0D) 与气压计(0x77) 同总线，地址不冲突。

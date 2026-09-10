@@ -70,14 +70,31 @@ const DRV_BARO_Device *BSP_BARO_GetDevice(void)
     return &baro_dev;
 }
 
+/*
+ * 电平取自**当前绑定的总线**，不再写死某块板子的引脚标签。
+ * 以前这里直接用 Press_cs_* 宏，那是老板子 SPI4 的 CubeMX 标签；MicoAir 上气压计
+ * 改挂 I2C2，这个标签不再生成，函数会连编译都过不去。
+ */
 void BSP_BARO_DebugReadLevels(uint8_t *cs_level, uint8_t *miso_level)
 {
-    if (cs_level != NULL) {
-        *cs_level = (uint8_t)HAL_GPIO_ReadPin(Press_cs_GPIO_Port, Press_cs_Pin);
+    uint8_t cs = BSP_BARO_LEVEL_NOT_APPLICABLE;
+    uint8_t miso = BSP_BARO_LEVEL_NOT_APPLICABLE;
+
+    baro_bind_bus();
+
+    if (baro_dev.bus.hi2c == NULL) {
+        if (baro_dev.bus.cs_port != NULL) {
+            cs = (uint8_t)HAL_GPIO_ReadPin(baro_dev.bus.cs_port,
+                                           baro_dev.bus.cs_pin);
+        }
+        if (baro_dev.bus.miso_port != NULL) {
+            miso = (uint8_t)HAL_GPIO_ReadPin(baro_dev.bus.miso_port,
+                                             baro_dev.bus.miso_pin);
+        }
     }
-    if (miso_level != NULL) {
-        *miso_level = (uint8_t)HAL_GPIO_ReadPin(GPIOE, GPIO_PIN_5);
-    }
+
+    if (cs_level != NULL)   { *cs_level = cs; }
+    if (miso_level != NULL) { *miso_level = miso; }
 }
 
 void BSP_BARO_Invalidate(void)

@@ -33,13 +33,29 @@ static void spl06_delay_ms(DRV_BARO_Device *dev, uint32_t delay_ms)
     }
 }
 
+/*
+ * 总线二选一：hi2c 非空走 I2C，否则走 SPI。判据放在这一个函数里，
+ * 下面每个搬运入口都问它，避免"某条路径漏判"再次发生。
+ */
+static uint8_t spl06_is_i2c(const DRV_BARO_Device *dev)
+{
+    return (dev->bus.hi2c != NULL) ? 1U : 0U;
+}
+
+static uint16_t spl06_i2c_addr8(const DRV_BARO_Device *dev)
+{
+    return (uint16_t)((uint16_t)dev->bus.i2c_address << 1U);
+}
+
 static void spl06_cs_low(DRV_BARO_Device *dev)
 {
+    if (spl06_is_i2c(dev)) { return; }   /* I2C 没有片选 */
     HAL_GPIO_WritePin(dev->bus.cs_port, dev->bus.cs_pin, GPIO_PIN_RESET);
 }
 
 static void spl06_cs_high(DRV_BARO_Device *dev)
 {
+    if (spl06_is_i2c(dev)) { return; }
     HAL_GPIO_WritePin(dev->bus.cs_port, dev->bus.cs_pin, GPIO_PIN_SET);
 }
 
@@ -60,8 +76,14 @@ DRV_BARO_Status DRV_BARO_Init(DRV_BARO_Device *dev, const DRV_BARO_Bus *bus)
     uint8_t product_id = 0U;
     uint8_t tmp_cfg = SPL06_TMP_EXT_BIT | SPL06_RATE_8HZ | SPL06_OVERSAMPLE_1X;
 
-    if ((dev == NULL) || (bus == NULL) || (bus->hspi == NULL) ||
-        (bus->cs_port == NULL)) {
+    if ((dev == NULL) || (bus == NULL)) {
+        return DRV_BARO_INVALID_ARG;
+    }
+
+    /* I2C 需要地址；SPI 需要句柄 + 片选。缺哪条都别往下走。 */
+    if (bus->hi2c != NULL) {
+        if (bus->i2c_address == 0U) { return DRV_BARO_INVALID_ARG; }
+    } else if ((bus->hspi == NULL) || (bus->cs_port == NULL)) {
         return DRV_BARO_INVALID_ARG;
     }
 
@@ -115,6 +137,14 @@ DRV_BARO_Status DRV_BARO_ReadIdTxRx(DRV_BARO_Device *dev, uint8_t *product_id)
 
     if ((dev == NULL) || (product_id == NULL)) { return DRV_BARO_INVALID_ARG; }
 
+    /*
+     * 这个入口原本是为了对比 SPI 的两种读法（分段 vs 全双工一次收发），是诊断用的。
+     * I2C 上没有这个区别，退回普通读，让诊断命令在两块板子上都返回有意义的结果，
+     * 而不是拿着空 hspi 去调 HAL。
+     */
+    if (spl06_is_i2c(dev)) { return DRV_BARO_ReadId(dev, product_id); }
+    if (dev->bus.hspi == NULL) { return DRV_BARO_INVALID_ARG; }
+
     spl06_cs_low(dev);
     hal_status = HAL_SPI_TransmitReceive(dev->bus.hspi, tx_data, rx_data,
                                          (uint16_t)sizeof(tx_data),
@@ -143,6 +173,22 @@ DRV_BARO_Status DRV_BARO_ReadRegisters(DRV_BARO_Device *dev, uint8_t reg,
         return DRV_BARO_INVALID_ARG;
     }
 
+    if (spl06_is_i2c(dev)) {
+        /* I2C 用寄存器地址直读，没有 SPI 那个读方向位。 */
+        hal_status = HAL_I2C_Mem_Read(dev->bus.hi2c, spl06_i2c_addr8(dev),
+                                      (uint16_t)reg, I2C_MEMADD_SIZE_8BIT,
+                                      data, len, spl06_timeout_ms(dev));
+        return spl06_from_hal_status(hal_status);
+    }
+
+    /*
+     * 走到这里说明是 SPI。周期读取不经过 Init 的参数校验，所以句柄必须在这里再挡一次：
+     * 绑定错误时应当如实报 INVALID_ARG，而不是把空指针交给 HAL。
+     */
+    if ((dev->bus.hspi == NULL) || (dev->bus.cs_port == NULL)) {
+        return DRV_BARO_INVALID_ARG;
+    }
+
     read_command = (uint8_t)(reg | SPL06_SPI_READ_BIT);
 
     spl06_cs_low(dev);
@@ -163,6 +209,17 @@ DRV_BARO_Status DRV_BARO_WriteRegister(DRV_BARO_Device *dev, uint8_t reg, uint8_
     uint8_t tx_data[2];
 
     if (dev == NULL) { return DRV_BARO_INVALID_ARG; }
+
+    if (spl06_is_i2c(dev)) {
+        hal_status = HAL_I2C_Mem_Write(dev->bus.hi2c, spl06_i2c_addr8(dev),
+                                       (uint16_t)reg, I2C_MEMADD_SIZE_8BIT,
+                                       &value, 1U, spl06_timeout_ms(dev));
+        return spl06_from_hal_status(hal_status);
+    }
+
+    if ((dev->bus.hspi == NULL) || (dev->bus.cs_port == NULL)) {
+        return DRV_BARO_INVALID_ARG;
+    }
 
     tx_data[0] = (uint8_t)(reg & (uint8_t)~SPL06_SPI_READ_BIT);
     tx_data[1] = value;

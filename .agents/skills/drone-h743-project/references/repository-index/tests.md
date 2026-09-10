@@ -4,10 +4,11 @@
 
 Read this shard only when you need existing behavioral/architecture coverage or must choose focused regression tests.
 
-Source snapshot: `368cd59e05d5`. Indexed files: 155.
+Source snapshot: `e0aa4a6537af`. Indexed files: 157.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
+| `tests/_micoair_hostfakes.py` | 宿主侧编译真实固件源码用的最小 HAL 替身。 为什么要有这个文件： tests/ 里绝大多数契约测试要么是纯函数（drv_*_tables.c），要么是读源码正则。 但 2026-09-10 那轮审计发现的四个缺陷都不在这两类里——它们… | `write_fakes` (+1) |
 | `tests/conftest.py` | 离线测试套件的全局硬件护栏与状态隔离。 两条路都要堵，而且必须在**收集之前**就装上： * 物理串口 —— `serial.Serial.open` * 烧录 / 调试探针 —— `subprocess.Popen`（openocd /… | `pytest_configure` (+4) |
 | `tests/data.txt` | — | — |
 | `tests/golden/telem_frames_v2.bin` | — | — |
@@ -96,6 +97,7 @@ Source snapshot: `368cd59e05d5`. Indexed files: 155.
 | `tests/test_mechanical_cp210_gate.py` | Regression for the author's CP210x COM10 telemetry-link screenshot | `test_cp210_move_allowed_but_firmware_upgrade_still_rejected` (+1) |
 | `tests/test_micoair743v2_generated_code_sync.py` | CubeMX 生成代码必须与 drone-H743.ioc 同步。 **本文件全红 = 还没跑 Generate Code，不是代码写错了。** 移植到 MicoAir743v2 改的是 .ioc（引脚、时钟、外设），而 Core/ 与… | `test_usb_pll3_matches_ioc` (+3) |
 | `tests/test_micoair743v2_imu_drivers.py` | MicoAir743v2 移植：IMU 换算表与装配变换的宿主侧契约测试。 为什么这些东西必须单测： 量程码填错、LSB 表抄错、坐标轴符号翻反 —— 这三类错误**都不会报错**， 只会让姿态整体缩放或横滚方向相反，要飞起来才发现。它们… | `test_imu_tables_and_mounting_host_harness` (+2) |
+| `tests/test_micoair743v2_review_fixes.py` | 2026-09-10 软件审计发现的四个 P1 + 两个接线错位，逐条钉死。 每一条都属于**编译能过、测试全绿、要通电才发现**的类型，而且原来那 1404 条测试 一条都没覆盖到——因为它们要么测纯函数，要么读源码正则，都碰不到带 H… | `test_baro_i2c_path_runs_in_the_driver_that_is_actually_built` (+8) |
 | `tests/test_nav_ekf_contract.py` | — | `test_quality_adaptive_flow_ekf_is_owned_by_the_flow_nav_service` (+3) |
 | `tests/test_optical_flow_contract.py` | — | `test_micolink_parser_accepts_live_range_and_flow_payload_shape` (+11) |
 | `tests/test_panel_autoconnect.py` | 记住上次的连接并在启动时自动连回去。 关键点是**按什么认板子**：Windows 给 USB 串口分配的 COM 号会变（本机就出现过同一块 飞控在 COM30/31/32 之间跳），而 ST-Link、蓝牙串口、CH340 会占掉腾出… | `test_fingerprint_is_stable_across_com_renumbering` (+15) |

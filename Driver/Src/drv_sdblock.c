@@ -2,10 +2,13 @@
  * SDMMC 裸块驱动实现。设计取舍见 drv_sdblock.h。
  *
  * 实现上的两个要点：
- *   - H7 的 HAL_SD_ReadBlocks/WriteBlocks 即使在"阻塞"模式下也走 SDMMC 内部 IDMA，
- *     所以读前要失效、写前要清刷 D-Cache，否则读到旧数据或写出去的是旧内容。
- *   - 所有搬运统一过一个 32 字节对齐的静态块缓冲，不直接用调用者的指针。
- *     调用者的缓冲未必对齐、也未必在 DMA 可达的内存里，交给它自己保证太脆弱。
+ *   - 只用阻塞版 HAL_SD_ReadBlocks/WriteBlocks，它们是 CPU 轮询 FIFO 搬运，
+ *     **不做也不能做 D-Cache 维护**。理由与改成 DMA 时该怎么做，见 drv_sdblock.h。
+ *   - 所有搬运统一过一个静态块缓冲，不直接用调用者的指针。
+ *     调用者的缓冲未必对齐，交给它自己保证太脆弱。
+ *
+ * 并发：本驱动**不自带锁**，那个静态块缓冲是全局共享的。串行化由唯一的调用者
+ * App/Src/app_flash_service.c 负责（它对整笔读改写事务加锁，而不只是单次 HAL 调用）。
  */
 
 #include "drv_sdblock.h"
@@ -19,6 +22,12 @@ static DRV_SDBLOCK_Bus sdblock_bus;
 static uint8_t sdblock_ready;
 static uint64_t sdblock_usable_bytes;
 
+/*
+ * 放在 .dma_buffer（RAM_D2）并按 32 字节对齐，**不是**当前实现的要求——
+ * CPU 轮询搬运对位置和对齐都没有要求。这么放是给日后可能改用 SDMMC IDMA 留余地：
+ * 那时缓冲区必须对齐到 cache line 且落在 IDMA 够得到的内存里，现在先满足着，
+ * 免得改传输方式时还要连带挪内存。
+ */
 __attribute__((section(".dma_buffer"), aligned(32)))
 static uint8_t sdblock_scratch[DRV_SDBLOCK_BLOCK_SIZE];
 
@@ -26,18 +35,6 @@ static uint32_t sdblock_timeout(void)
 {
     return (sdblock_bus.timeout_ms != 0U) ? sdblock_bus.timeout_ms
                                           : SDBLOCK_DEFAULT_TIMEOUT_MS;
-}
-
-static void sdblock_clean(const void *addr, uint32_t size)
-{
-    if (sdblock_bus.cache_clean != NULL) { sdblock_bus.cache_clean(addr, size); }
-}
-
-static void sdblock_invalidate(const void *addr, uint32_t size)
-{
-    if (sdblock_bus.cache_invalidate != NULL) {
-        sdblock_bus.cache_invalidate(addr, size);
-    }
 }
 
 /*
@@ -112,7 +109,6 @@ static DRV_SDBLOCK_Status sdblock_read_block(uint32_t block)
         return DRV_SDBLOCK_ERROR;
     }
 
-    sdblock_invalidate(sdblock_scratch, sizeof(sdblock_scratch));
     return DRV_SDBLOCK_OK;
 }
 
@@ -121,8 +117,6 @@ static DRV_SDBLOCK_Status sdblock_write_block(uint32_t block)
     DRV_SDBLOCK_Status status = sdblock_wait_ready();
 
     if (status != DRV_SDBLOCK_OK) { return status; }
-
-    sdblock_clean(sdblock_scratch, sizeof(sdblock_scratch));
 
     if (HAL_SD_WriteBlocks(sdblock_bus.hsd, sdblock_scratch,
                            DRV_SDBLOCK_BASE_BLOCK + block, 1U,

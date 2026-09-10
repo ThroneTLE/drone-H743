@@ -5,6 +5,21 @@
 
 static DRV_GPS_Device gps_dev;
 
+/*
+ * 回调认哪个串口，从**板级绑定**里问，不写死实例名。
+ *
+ * 这两个回调原来写死 USART2。MicoAir743v2 上 GPS 挪到了 USART3，而 USART2 成了光流口
+ * ——照旧写死的话，GPS 回调会去认光流的串口。这类"绑定改了、回调没跟着改"的错位
+ * 编译期看不出来，所以干脆让判据只有一个来源：bsp_board.c 里的 gps_bus。
+ */
+static uint8_t gps_owns_uart(const UART_HandleTypeDef *huart)
+{
+    const DRV_GPS_Bus *bus = BSP_Board_GetGpsBus();
+
+    if ((huart == NULL) || (bus == NULL) || (bus->huart == NULL)) { return 0U; }
+    return (huart->Instance == bus->huart->Instance) ? 1U : 0U;
+}
+
 DRV_GPS_Status BSP_GPS_Init(void)
 {
     return DRV_GPS_Init(&gps_dev, BSP_Board_GetGpsBus());
@@ -22,13 +37,13 @@ void BSP_GPS_Service(void)
 
 void BSP_GPS_OnUartRxCplt(UART_HandleTypeDef *huart)
 {
-    if ((huart == NULL) || (huart->Instance != USART2)) { return; }
+    if (gps_owns_uart(huart) == 0U) { return; }
     DRV_GPS_OnUartRxCplt(&gps_dev);
 }
 
 void BSP_GPS_OnUartError(UART_HandleTypeDef *huart)
 {
-    if ((huart == NULL) || (huart->Instance != USART2)) { return; }
+    if (gps_owns_uart(huart) == 0U) { return; }
     DRV_GPS_OnUartError(&gps_dev, huart->ErrorCode);
 }
 

@@ -195,12 +195,21 @@ void SVC_IMU_SelectionRecord(SVC_IMU_Selection *selection,
         selection->probe_count++;
     }
 
-    /* 先探到的先用：探测顺序即优先级，顺序由 BSP 决定。 */
-    if ((status == DRV_IMU_OK) && (selection->selected == DRV_IMU_CHIP_NONE)) {
-        selection->selected = kind;
-        selection->selected_chip_id = chip_id;
-        selection->rotation = SVC_IMU_DefaultRotation(kind);
-    }
+    /*
+     * 到此为止：只记账。选中与否由 SVC_IMU_SelectionCommit 在 init 成功后决定，
+     * 原因见 svc_imu.h 里这个函数的注释。
+     */
+}
+
+void SVC_IMU_SelectionCommit(SVC_IMU_Selection *selection,
+                             DRV_IMU_ChipKind kind,
+                             uint8_t chip_id)
+{
+    if (selection == NULL) { return; }
+
+    selection->selected = kind;
+    selection->selected_chip_id = chip_id;
+    selection->rotation = SVC_IMU_DefaultRotation(kind);
 }
 
 const char *SVC_IMU_ChipName(DRV_IMU_ChipKind kind)

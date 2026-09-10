@@ -33,6 +33,13 @@ typedef struct {
     SPI_HandleTypeDef *hspi;
     GPIO_TypeDef      *cs_port;
     uint16_t           cs_pin;
+    /*
+     * 仅供诊断读电平用（BSP_BARO_DebugReadLevels），驱动本身不碰它。
+     * 放在总线绑定里是因为"MISO 在哪个脚"是板级事实，不该写死在 BSP 代码里。
+     * I2C 板子留空。
+     */
+    GPIO_TypeDef      *miso_port;
+    uint16_t           miso_pin;
     I2C_HandleTypeDef *hi2c;
     uint8_t            i2c_address;   /* 7 位地址，0 表示不用 I2C */
     uint32_t           timeout_ms;

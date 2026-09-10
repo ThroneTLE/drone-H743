@@ -225,18 +225,32 @@ static void check_selection(void)
     SVC_IMU_SelectionReset(&sel);
     CHECK(sel.selected == DRV_IMU_CHIP_NONE, 70);
 
-    /* 探测顺序即优先级：第一个成功的被选中，后面成功的不抢。 */
+    /*
+     * 记账不等于选中。probe 成功只说明总线上有这颗芯片，它还可能在 init 阶段失败
+     * （BMI270 要刷 328 字节配置固件，BMI088 有一串带回读重试的寄存器写）。
+     * 所以 Record 之后 selected 必须仍然是 NONE。
+     */
     SVC_IMU_SelectionRecord(&sel, DRV_IMU_CHIP_BMI088, 0x00U, DRV_IMU_BAD_ID);
     CHECK(sel.selected == DRV_IMU_CHIP_NONE, 71);
 
     SVC_IMU_SelectionRecord(&sel, DRV_IMU_CHIP_BMI270, 0x24U, DRV_IMU_OK);
-    CHECK(sel.selected == DRV_IMU_CHIP_BMI270, 72);
-    CHECK(sel.selected_chip_id == 0x24U, 73);
-    CHECK(sel.rotation == SVC_IMU_ROTATION_ROLL_180, 74);
+    CHECK(sel.selected == DRV_IMU_CHIP_NONE, 72);
 
     SVC_IMU_SelectionRecord(&sel, DRV_IMU_CHIP_ICM42688, 0x47U, DRV_IMU_OK);
-    CHECK(sel.selected == DRV_IMU_CHIP_BMI270, 75);
-    CHECK(sel.probe_count == 3U, 76);
+    CHECK(sel.selected == DRV_IMU_CHIP_NONE, 73);
+    CHECK(sel.probe_count == 3U, 74);
+
+    /* 三次探测都如实记下来了，诊断据此回报"哪颗在、ID 是多少"。 */
+    CHECK(sel.probed_kind[0] == (uint8_t)DRV_IMU_CHIP_BMI088, 75);
+    CHECK(sel.probed_status[0] == DRV_IMU_BAD_ID, 76);
+    CHECK(sel.probed_kind[1] == (uint8_t)DRV_IMU_CHIP_BMI270, 77);
+    CHECK(sel.probed_chip_id[1] == 0x24U, 78);
+
+    /* init 成功之后才敲定，同时装好该芯片的默认安装旋转。 */
+    SVC_IMU_SelectionCommit(&sel, DRV_IMU_CHIP_BMI270, 0x24U);
+    CHECK(sel.selected == DRV_IMU_CHIP_BMI270, 79);
+    CHECK(sel.selected_chip_id == 0x24U, 80);
+    CHECK(sel.rotation == SVC_IMU_ROTATION_ROLL_180, 81);
 }
 
 int main(void)

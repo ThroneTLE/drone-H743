@@ -68,7 +68,7 @@ PE5 / PE6（TIM15）、PD14（TIM4，兼 LED 焊盘）。
 | BMI088 驱动 | `drv_bmi088.c` + `drv_bmi088_tables.c`（换算表纯函数、宿主可测） |
 | BMI270 驱动 | `drv_bmi270.c` + `drv_bmi270_tables.c` + `drv_bmi270_config.c`（Bosch BSD-3 配置数据） |
 | 多 IMU 选型 | `svc_imu.c`（装配变换与记账，无 HAL）+ `bsp_imu.c`（探测顺序 BMI088 → BMI270 → ICM42688） |
-| 气压计 | `bsp_spl06.c` 增加 I2C 通路，寄存器逻辑复用；同时接受 SPL06 与 DPS310 的 `PROD_ID 0x10` |
+| 气压计 | `drv_baro.c` 增加 I2C 通路，寄存器逻辑复用；同时接受 SPL06 与 DPS310 的 `PROD_ID 0x10` |
 | 磁罗盘 | 无需新驱动，`drv_mag.c` 已支持 QMC5883L 自动探测，只改总线绑定到 I2C2 |
 | 参数存储 | `drv_intflash.c`（Bank2 尾两扇区）+ `svc_param.c` 的 H7 ECC 两阶段提交修正 |
 | 飞行日志 | `drv_sdblock.c`（SDMMC 裸块，不引 FatFs），`app_flight_log.c` 主体未改 |
@@ -84,6 +84,28 @@ PE5 / PE6（TIM15）、PD14（TIM4，兼 LED 焊盘）。
    实测的符号补偿——用在 BMI088 上横滚方向是反的。现在哨兵状态按探测到的芯片取默认值。
 3. **量程刻度随芯片变**：同一个 `±16 g` 枚举，ICM-42688 是 2048 LSB/g，
    BMI088 映射到 ±24 g 后是 1365 LSB/g。原来 App 层写死了 ICM 的表，已改为按芯片分派。
+
+### 审计复核后又修掉的四个 P1 + 两处接线错位（2026-09-10 第二轮）
+
+首轮移植提交 `eec53b8c` 之后做了一轮软件审计，报告与复现原文在
+`data/analysis/2026-09-10/micoair_review_eec53b8c/`（`data/analysis/` 已 gitignore，
+只在本机；结论已摘录进下表，不依赖那份文件也能看懂）。
+四条 P1 全部复核成立并已修复，六条各自都有能在修复前失败的测试
+（`tests/test_micoair743v2_review_fixes.py`，替身见 `tests/_micoair_hostfakes.py`）。
+
+| # | 症状 | 根因 | 落点 |
+|---|---|---|---|
+| P1-1 | 气压计必然不可用，且周期读取把空 GPIO/SPI 指针交给 HAL | I2C 通路改在了**不参与构建**的 `BSP/Src/bsp_spl06.c`，真正被编译的是 `Driver/Src/drv_baro.c` | I2C 通路移入 `drv_baro.c`；死文件 `bsp_spl06.c/.h` 删除；`bsp_baro.c` 不再引用已不存在的 `Press_cs_*` 标签 |
+| P1-2 | SD 读回旧数据，状态码仍是 OK | H7 阻塞版 `HAL_SD_ReadBlocks` 是 **CPU 轮询 FIFO**，不是 DMA；读完再 invalidate 会丢弃 CPU 刚写进 cache 的脏行 | 轮询路径去掉全部缓存维护，连 `DRV_SDBLOCK_Bus` 里的钩子字段一并删除，并写明改用 IDMA 时才需要怎么做 |
+| P1-3 | 后台日志与通信任务交错时互相覆盖数据，两边都返回 OK | 存储路由重构时漏掉了原有互斥锁；SD 后端有一个**全局共享块缓冲**，不足整块的写是读-改-写 | 读/写/擦除公开入口整笔持锁；因 `flashBusMutex` 非递归，核心逻辑拆成无锁的 `*_unlocked`，公开入口只做加锁—调用—解锁 |
+| P1-4 | 主 IMU 配置失败后无限重试，备用 IMU 一次都轮不到 | 只初始化第一颗 probe 成功的芯片，失败即返回；外层重试又选回同一颗 | 先全部探测记账，再按优先级逐个 init，**谁先成功谁上岗**；`SVC_IMU_SelectionRecord` 只记账，选中改由 `SVC_IMU_SelectionCommit` 在 init 成功后完成 |
+| 接线 | ELRS 可能整条收不到 | `ConfigureRxPinBias` 仍配老板子的 PD0/AF8，新板 UART4_RX 是 PA1——两个脚接同一路 AF 输入 | 改配 PA1，并加测试断言它与 `.ioc` 的 UART4_RX 分配一致 |
+| 接线 | GPS 回调会去认光流的串口 | 回调写死 `USART2`，而新板 GPS 在 USART3、USART2 成了光流口 | 判据改为从 `BSP_Board_GetGpsBus()` 取，只有一个来源 |
+
+> **GPS 仍然是停用的**，这一点没变：它在 `Core/Src/freertos.c` 的两处被注释掉
+> （`APP_Task_GPS_Init` / `APP_Task_GPS_Step`），而那是 CubeMX 生成文件，属于禁止手改的范围。
+> 上面修的是"绑定与回调不再自相矛盾"，要真正启用 GPS 需要单独决定，并且得由你在
+> CubeMX 的 USER CODE 区里放开。
 
 ## 与当前 drone-H743 的对照
 

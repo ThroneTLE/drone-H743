@@ -39,16 +39,29 @@ static uint32_t rx_start_fail;
 
 /* ---- helpers ---- */
 
+/*
+ * 给 UART4_RX 加上拉：接收机没插或没上电时线是浮空的，浮空线会被当成随机电平，
+ * 帧错误计数一路涨。上拉把空闲态钉在高电平（UART 空闲就是高）。
+ *
+ * **引脚必须与 CubeMX 给 UART4_RX 分配的那个脚一致。** 这里一度还写着老板子的
+ * PD0，而 MicoAir743v2 上 UART4_RX 是 PA1（PA0/PA1 见 doc/micoair743v2/vendor/
+ * ardupilot-hwdef.dat）。把第二个脚也配成 AF8_UART4，等于把两个 GPIO 接到同一路
+ * 外设输入上——ST 参考手册明确要求一个 AF 输入只能由一个引脚提供，实际表现取决于
+ * 硅片内部怎么合并这两路信号，最坏情况是 RC 链路整条收不到。
+ */
+#define ELRS_RX_GPIO_PORT GPIOA
+#define ELRS_RX_GPIO_PIN  GPIO_PIN_1
+
 static void ConfigureRxPinBias(void)
 {
     GPIO_InitTypeDef GPIO_InitStruct = {0};
 
-    GPIO_InitStruct.Pin = GPIO_PIN_0;
+    GPIO_InitStruct.Pin = ELRS_RX_GPIO_PIN;
     GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
     GPIO_InitStruct.Pull = GPIO_PULLUP;
     GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
     GPIO_InitStruct.Alternate = GPIO_AF8_UART4;
-    HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
+    HAL_GPIO_Init(ELRS_RX_GPIO_PORT, &GPIO_InitStruct);
 }
 
 static void SuppressRxIrqSources(void)

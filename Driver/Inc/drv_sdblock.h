@@ -40,11 +40,26 @@ typedef enum {
 /* 留出前 1 MB，保证第 0 块（MBR）不被覆盖。 */
 #define DRV_SDBLOCK_BASE_BLOCK   2048UL
 
+/*
+ * ============================ 这里为什么没有 D-Cache 维护 ============================
+ * 因为本驱动只用**阻塞版**的 HAL_SD_ReadBlocks / HAL_SD_WriteBlocks，而 H7 的这两个
+ * 函数是 CPU 轮询 SDMMC FIFO 搬数据的，不是 DMA 写内存：
+ *
+ *     data = SDMMC_ReadFIFO(hsd->Instance);
+ *     *tempbuff = (uint8_t)(data & 0xFFU); tempbuff++;
+ *     ...                                    —— stm32h7xx_hal_sd.c, HAL_SD_ReadBlocks
+ *
+ * 既然搬运方是 CPU 自己，读写就都经过 D-Cache，天然一致，不需要任何缓存维护。
+ * 反过来，**在这条路径上做维护是有害的**：读完再 invalidate 会把 CPU 刚写进 cache
+ * 的脏行直接丢弃，于是读到的是旧内容，而状态码还是 OK——静默返回错数据。
+ *
+ * 只有改用 HAL_SD_ReadBlocks_DMA / _IT（走 SDMMC 内部 IDMA）时才需要缓存维护，
+ * 那时要做的是：发起前 clean+invalidate、等 DMA 完成回调、之后再 invalidate，
+ * 并确认缓冲区落在 IDMA 够得到的内存里。改之前先把这段注释一起改掉。
+ */
 typedef struct {
     SD_HandleTypeDef *hsd;
     uint32_t          timeout_ms;
-    void (*cache_clean)(const void *addr, uint32_t size);
-    void (*cache_invalidate)(const void *addr, uint32_t size);
 } DRV_SDBLOCK_Bus;
 
 /*
