@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 
@@ -6,6 +7,30 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def read(path: str) -> str:
     return (ROOT / path).read_text(encoding="utf-8")
+
+
+def _ioc_int(ioc: str, key: str) -> int:
+    match = re.search(rf"^{re.escape(key)}=(\d+)$", ioc, re.MULTILINE)
+    assert match is not None, f"missing {key} in drone-H743.ioc"
+    return int(match.group(1))
+
+
+def usb_clock_hz_from_ioc(ioc: str) -> int:
+    """按 .ioc 的分频设置算出 USB 实际拿到多少赫兹。
+
+    USB 全速要求 48 MHz，误差容限很窄，配错的表现是**枚举不上**——
+    而枚举不上又很容易被误判成线材或驱动问题，所以这条值得算出来钉住。
+    链路：HSE / DIVM3 * DIVN3 / DIVQ3 → USB。
+    """
+    hse = _ioc_int(ioc, "RCC.HSE_VALUE")
+    divm3 = _ioc_int(ioc, "RCC.DIVM3")
+    divn3 = _ioc_int(ioc, "RCC.DIVN3")
+    divq3 = _ioc_int(ioc, "RCC.DIVQ3")
+    return hse // divm3 * divn3 // divq3
+
+
+# 生成代码（usbd_conf.c 的 PLL3 等）与 .ioc 是否同步，统一由
+# tests/test_micoair743v2_generated_code_sync.py 负责，这里不重复。
 
 
 def test_flight_log_region_leaves_reserved_flash_sectors() -> None:
@@ -154,15 +179,14 @@ def test_flog_commands_and_vofa_export_gate_are_reachable() -> None:
     assert "PA12.Signal=USB_OTG_FS_DP" in ioc
     assert "USB_DEVICE.CLASS_NAME_FS=CDC" in ioc
     assert "RCC.USBCLockSelection=RCC_USBCLKSOURCE_PLL3" in ioc
-    assert "RCC.DIVN3=16" in ioc
-    assert "RCC.DIVQ3=4" in ioc
+    # 钉的是"USB 拿到 48 MHz"，不是某个倍频常数：换晶振（12 MHz → 8 MHz）时
+    # 倍频必须跟着变，写死常数只会逼着人把测试改成新常数，什么也没守住。
+    assert usb_clock_hz_from_ioc(ioc) == 48_000_000
     assert "RCC.USBFreq_Value=48000000" in ioc
     assert "MX_USB_DEVICE_Init();" in freertos
     assert '#include "app_usb_cdc.h"' in cdc_if
     assert "APP_USB_CDC_OnReceive" in cdc_if
     assert "APP_USB_CDC_OnTransmitComplete" in cdc_if
-    assert "PeriphClkInitStruct.PLL3.PLL3N = 16;" in usbd_conf
-    assert "PeriphClkInitStruct.PLL3.PLL3Q = 4;" in usbd_conf
     assert "App/Src/app_usb_cdc.c" in cmake
     assert "APP_USB_CDC_Write" in read("App/Src/app_flight_log.c")
     assert "APP_FLIGHT_LOG_EXPORT_USB_CDC_BINARY" in read("App/Src/app_flight_log.c")

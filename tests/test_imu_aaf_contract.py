@@ -30,13 +30,29 @@ def test_accel_range_is_16g_to_avoid_vibration_clipping() -> None:
 
 
 def test_scaling_is_derived_from_configured_range_not_hardcoded() -> None:
+    """刻度必须来自"当前芯片的当前量程"，不能是 App 里的常数。
+
+    原来这一条只要求 App 别写死除数、改用 DRV_IMU_* 的量程表。移植到
+    MicoAir743v2 之后不够了：板上可能是 BMI088、BMI270 或 ICM-42688，
+    **同一个 ±16 g 枚举在三颗芯片上的 LSB 各不相同**（BMI088 映射到 ±24 g，
+    1365 LSB/g；ICM 是 2048 LSB/g）。所以 App 连"用哪张量程表"都不该知道，
+    统一交给 BSP 按选中的芯片分派。
+    """
     sensor = read("App/Src/app_sensor.c")
 
-    # A hardcoded divisor silently misscales attitude whenever BSP changes
-    # the range, which is exactly how the +-4 g assumption survived.
     assert "APP_IMU_ACCEL_LSB_PER_G" not in sensor
-    assert "DRV_IMU_AccelLsbPerG" in sensor
-    assert "DRV_IMU_GyroLsbPerDps" in sensor
+    # App 不再自己挑量程表，只调 BSP 的分派入口。
+    assert "BSP_IMU_RawToScaled(raw, scaled);" in sensor
+    assert "DRV_IMU_AccelLsbPerG" not in sensor
+    assert "DRV_IMU_GyroLsbPerDps" not in sensor
+
+    bsp = read("BSP/Src/bsp_imu.c")
+    for token in (
+        "DRV_BMI088_ConvertRaw",
+        "DRV_BMI270_ConvertRaw",
+        "DRV_IMU_ConvertRaw",
+    ):
+        assert token in bsp, f"BSP 必须为每颗候选芯片提供换算：缺 {token}"
 
 
 def test_aaf_registers_are_configured_in_both_user_banks() -> None:

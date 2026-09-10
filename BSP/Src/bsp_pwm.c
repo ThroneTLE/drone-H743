@@ -26,7 +26,17 @@ _Static_assert((BSP_PWM_ESC_CHANNEL_COUNT + BSP_PWM_SERVO_CHANNEL_COUNT) ==
                    BSP_PWM_TIM_CHANNEL_COUNT,
                "start_status must cover every driven channel");
 
-/* ESC 两路在 TIM5 上（PA0/PA1）。 */
+/*
+ * ESC 两路在 TIM1_CH1/CH2 上（PE9 / PE11，即板上的 MOTOR4 / MOTOR3 焊盘）。
+ *
+ * 老板子用的是 TIM5_CH1/CH2（PA0/PA1）。MicoAir743v2 上 PA0/PA1 是 UART4，
+ * PA2/PA3 是 USART2，四个脚全被串口占了，所以 ESC 与舵机都必须搬到电机焊盘。
+ * 分两个定时器这一点没变，理由见 bsp_pwm.h 顶部——ESC 要 400 Hz、舵机要 50 Hz，
+ * 共用一个定时器就只能共用一个 ARR，会把 ESC 拖回舵机的帧率。
+ *
+ * TIM1 是高级定时器，输出还需要 MOE；HAL_TIM_PWM_Start() 内部已经处理，
+ * 不必额外调用，但换定时器时这一点必须确认过，否则波形永远出不来。
+ */
 static uint32_t pwm_esc_tim_channel(uint32_t channel)
 {
     switch (channel) {
@@ -39,14 +49,14 @@ static uint32_t pwm_esc_tim_channel(uint32_t channel)
     }
 }
 
-/* 舵机两路留在 TIM2 上（PA2/PA3）。 */
+/* 舵机两路在 TIM4_CH1/CH2 上（PD12 / PD13，即板上的 MOTOR7 / MOTOR8 焊盘）。 */
 static uint32_t pwm_servo_tim_channel(uint32_t channel)
 {
     switch (channel) {
     case 1U:
-        return TIM_CHANNEL_3;
+        return TIM_CHANNEL_1;
     case 2U:
-        return TIM_CHANNEL_4;
+        return TIM_CHANNEL_2;
     default:
         return 0U;
     }
@@ -61,12 +71,12 @@ BSP_PWM_Status BSP_PWM_Init(void)
      * 所以 ARR = 帧长(us) - 1。必须在 PWM_Start 之前写，此时计数器还在 0，
      * 不会出现"计数值已超过新 ARR、要绕一整圈才回卷"的情况。
      */
-    __HAL_TIM_SET_AUTORELOAD(&htim5, BSP_PWM_ESC_FRAME_US - 1U);
-    __HAL_TIM_SET_AUTORELOAD(&htim2, BSP_PWM_SERVO_FRAME_US - 1U);
+    __HAL_TIM_SET_AUTORELOAD(&htim1, BSP_PWM_ESC_FRAME_US - 1U);
+    __HAL_TIM_SET_AUTORELOAD(&htim4, BSP_PWM_SERVO_FRAME_US - 1U);
 
     for (channel = 1U; channel <= BSP_PWM_ESC_CHANNEL_COUNT; channel++) {
         HAL_StatusTypeDef status =
-            HAL_TIM_PWM_Start(&htim5, pwm_esc_tim_channel(channel));
+            HAL_TIM_PWM_Start(&htim1, pwm_esc_tim_channel(channel));
         start_status[channel - 1U] = (uint8_t)status;
         if (status != HAL_OK) {
             return BSP_PWM_ERROR;
@@ -74,7 +84,7 @@ BSP_PWM_Status BSP_PWM_Init(void)
     }
     for (channel = 1U; channel <= BSP_PWM_SERVO_CHANNEL_COUNT; channel++) {
         HAL_StatusTypeDef status =
-            HAL_TIM_PWM_Start(&htim2, pwm_servo_tim_channel(channel));
+            HAL_TIM_PWM_Start(&htim4, pwm_servo_tim_channel(channel));
         /* 诊断口 BSP_PWM_GetStartStatus(1..4) 的含义不变：1/2=ESC，3/4=舵机。 */
         start_status[BSP_PWM_ESC_CHANNEL_COUNT + channel - 1U] = (uint8_t)status;
         if (status != HAL_OK) {
@@ -112,7 +122,7 @@ BSP_PWM_Status BSP_PWM_SetEscPulse(uint32_t channel, uint16_t pulse_us)
     }
 
     esc_pulses_us[channel - 1U] = pulse_us;
-    __HAL_TIM_SET_COMPARE(&htim5, tim_channel, pulse_us);
+    __HAL_TIM_SET_COMPARE(&htim1, tim_channel, pulse_us);
     return BSP_PWM_OK;
 }
 
@@ -132,7 +142,7 @@ BSP_PWM_Status BSP_PWM_DisableEsc(uint32_t channel)
     }
 
     esc_pulses_us[channel - 1U] = 0U;
-    __HAL_TIM_SET_COMPARE(&htim5, tim_channel, 0U);
+    __HAL_TIM_SET_COMPARE(&htim1, tim_channel, 0U);
     return BSP_PWM_OK;
 }
 
@@ -155,7 +165,7 @@ BSP_PWM_Status BSP_PWM_SetServoPulse(uint32_t channel, uint16_t pulse_us)
     }
 
     servo_pulses_us[channel - 1U] = pulse_us;
-    __HAL_TIM_SET_COMPARE(&htim2, tim_channel, pulse_us);
+    __HAL_TIM_SET_COMPARE(&htim4, tim_channel, pulse_us);
     return BSP_PWM_OK;
 }
 

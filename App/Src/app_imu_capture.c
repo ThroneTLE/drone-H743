@@ -124,9 +124,13 @@ static uint32_t imu_capture_crc32(const uint8_t *data, uint32_t length)
 
 static void imu_capture_fill_ranges(APP_IMU_CaptureStatus *status)
 {
-    const DRV_IMU_Device *dev = BSP_IMU_GetDevice();
+    /* 芯片无关：板上可能是 BMI088 / BMI270 / ICM-42688，走统一的概况接口。 */
+    BSP_IMU_Info dev_info;
+    const BSP_IMU_Info *dev = &dev_info;
 
-    if (dev == NULL) {
+    BSP_IMU_GetInfo(&dev_info);
+
+    if (dev_info.kind == DRV_IMU_CHIP_NONE) {
         status->accel_aaf_hz = 0U;
         status->gyro_aaf_hz = 0U;
         status->accel_range_g = 0U;
@@ -134,10 +138,10 @@ static void imu_capture_fill_ranges(APP_IMU_CaptureStatus *status)
         return;
     }
 
-    status->accel_aaf_hz = dev->accel_aaf_actual_hz;
-    status->gyro_aaf_hz = dev->gyro_aaf_actual_hz;
+    status->accel_aaf_hz = dev_info.accel_bandwidth_hz;
+    status->gyro_aaf_hz = dev_info.gyro_bandwidth_hz;
 
-    switch (dev->config.accel_range) {
+    switch (dev->accel_range) {
     case DRV_IMU_ACCEL_RANGE_2G:  status->accel_range_g = 2U;  break;
     case DRV_IMU_ACCEL_RANGE_4G:  status->accel_range_g = 4U;  break;
     case DRV_IMU_ACCEL_RANGE_8G:  status->accel_range_g = 8U;  break;
@@ -145,7 +149,7 @@ static void imu_capture_fill_ranges(APP_IMU_CaptureStatus *status)
     default:                      status->accel_range_g = 16U; break;
     }
 
-    switch (dev->config.gyro_range) {
+    switch (dev->gyro_range) {
     case DRV_IMU_GYRO_RANGE_250DPS:  status->gyro_range_dps = 250U;  break;
     case DRV_IMU_GYRO_RANGE_500DPS:  status->gyro_range_dps = 500U;  break;
     case DRV_IMU_GYRO_RANGE_1000DPS: status->gyro_range_dps = 1000U; break;

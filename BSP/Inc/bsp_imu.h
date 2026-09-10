@@ -2,6 +2,7 @@
 #define BSP_IMU_H
 
 #include "drv_imu.h"
+#include "svc_imu.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -85,14 +86,52 @@ typedef struct {
     uint8_t valid;
 } BSP_IMU_Diag;
 
+/*
+ * 芯片无关的 IMU 概况。
+ *
+ * 板上可能是 BMI088 / BMI270 / ICM-42688 中的任意一颗，三者的设备结构体各不相同，
+ * 所以上层不能再直接读 DRV_IMU_Device。需要"当前量程 / 带宽 / 初始化到哪一步"
+ * 的地方一律走这个结构体。
+ */
+typedef struct {
+    DRV_IMU_ChipKind   kind;
+    uint8_t            chip_id;
+    uint8_t            initialized;
+    DRV_IMU_InitStage  init_stage;
+    DRV_IMU_Status     last_error;
+    DRV_IMU_AccelRange accel_range;
+    DRV_IMU_GyroRange  gyro_range;
+    /* 实际生效的抗混叠 / 数字带宽，各芯片按支持值向下取整后回报。 */
+    uint16_t           accel_bandwidth_hz;
+    uint16_t           gyro_bandwidth_hz;
+} BSP_IMU_Info;
+
 DRV_IMU_Status BSP_IMU_Init(void);
 DRV_IMU_Status BSP_IMU_ReadRaw(DRV_IMU_RawData *raw);
 DRV_IMU_Status BSP_IMU_ReadScaled(DRV_IMU_ScaledData *scaled);
 DRV_IMU_Status BSP_IMU_IsDataReady(bool *ready);
 uint8_t BSP_IMU_GetWhoAmI(void);
 void BSP_IMU_GetDiag(BSP_IMU_Diag *diag);
-const DRV_IMU_Device *BSP_IMU_GetDevice(void);
 void BSP_IMU_Invalidate(void);
+
+void             BSP_IMU_GetInfo(BSP_IMU_Info *info);
+DRV_IMU_ChipKind BSP_IMU_GetChipKind(void);
+
+/* 探测记账：每颗候选芯片读到的 ID 与结果，供诊断命令原样回报。 */
+void BSP_IMU_GetSelection(SVC_IMU_Selection *selection);
+
+/*
+ * 原始计数 → 物理量，按当前选中的芯片换算。
+ * 各芯片的量程刻度不同（BMI088 是 ±3/6/12/24 g，ICM 是 ±2/4/8/16 g），
+ * 所以不能在上层用一份固定的 LSB 表。
+ */
+void BSP_IMU_RawToScaled(const DRV_IMU_RawData *raw, DRV_IMU_ScaledData *scaled);
+
+/*
+ * 仅当选中的是 ICM-42688 时返回其设备结构体，否则返回 NULL。
+ * 保留它只为兼容既有调用点；新代码请用 BSP_IMU_GetInfo()。
+ */
+const DRV_IMU_Device *BSP_IMU_GetDevice(void);
 
 #ifdef __cplusplus
 }

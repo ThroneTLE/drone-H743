@@ -209,6 +209,52 @@ int main(void)
         CHECK(same3(&imu.accel_x_g, 7.0f, 8.0f, 9.0f), 53);
     }
 
+    /*
+     * MicoAir743v2 的两颗 IMU：参数区还是空的（哨兵）时，seam 必须落到按芯片推出
+     * 的默认方向码，而**不能**退回老板子那套符号补偿——那是给 ICM-42688 的安装
+     * 方向定的，用在 BMI088 上横滚方向正好相反。
+     *
+     * 判据不是"等于某个抄下来的常数"，而是"两条路算出来一样"：
+     *     两段式（芯片轴 → 中间轴 → 方向码）  ==  直接的 SVC_IMU_RotateToFlu
+     * 任何一段被改动而另一段没跟上，这里立刻红。
+     */
+    {
+        const DRV_IMU_ChipKind chips[2] = {
+            DRV_IMU_CHIP_BMI088, DRV_IMU_CHIP_BMI270
+        };
+        const float basis[3][3] = {
+            {1.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}
+        };
+        int chip_index;
+
+        for (chip_index = 0; chip_index < 2; chip_index++) {
+            int axis;
+
+            seam0_chip_kind = chips[chip_index];
+            CHECK(APP_Sensor_IsFluOrientationActive() == 1U, 70 + chip_index);
+
+            for (axis = 0; axis < 3; axis++) {
+                float published[3];
+                DRV_FRAME_Vector3f chip_vector;
+                DRV_FRAME_Vector3f expected;
+
+                publish(basis[axis], published, 0);
+
+                chip_vector.x = basis[axis][0];
+                chip_vector.y = basis[axis][1];
+                chip_vector.z = basis[axis][2];
+                expected = SVC_IMU_RotateToFlu(
+                    SVC_IMU_DefaultRotation(chips[chip_index]), chip_vector);
+
+                CHECK(same3(published, expected.x, expected.y, expected.z),
+                      80 + chip_index * 10 + axis);
+            }
+        }
+
+        /* 恢复替身，免得影响后续断言。 */
+        seam0_chip_kind = DRV_IMU_CHIP_ICM42688;
+    }
+
     /* Runtime migration must not be claimable from this seam alone. */
     CHECK(DRV_FRAME_RUNTIME_MIGRATION_COMPLETE == 1U, 60);
 
@@ -225,25 +271,31 @@ def test_sensor_publishes_flu(
     if compiler is None:
         pytest.fail("seam 0 FLU contract requires host gcc or clang")
 
+    # DRV_IMU_ScaledData 以前要在这里手抄一份，因为真类型被关在 main.h（HAL）后面。
+    # 移植 MicoAir743v2 时值类型已经拆到无 HAL 的 drv_imu_types.h，所以直接用真的。
+    # svc_imu.c 一起编进来：seam 的第一段（芯片轴 → 中间轴）现在住在那里。
     isolated = tmp_path / "sensor_seam0.c"
     isolated.write_text(
         "#include <stddef.h>\n#include <stdint.h>\n#include <string.h>\n"
+        '#include "svc_imu.h"\n'
         "#define APP_SENSOR_FLU_ORIENTATION_COUNT 24U\n"
         "#define APP_SENSOR_FLU_ORIENTATION_LEGACY 255U\n"
-        "typedef struct { float temperature_c, accel_x_g, accel_y_g, accel_z_g; "
-        "float gyro_x_dps, gyro_y_dps, gyro_z_dps; } DRV_IMU_ScaledData;\n"
+        "DRV_IMU_ChipKind BSP_IMU_GetChipKind(void);\n"
         + extract_orientation_source(),
         encoding="utf-8",
     )
     harness = tmp_path / "sensor_seam0_harness.c"
     harness.write_text(
         "#include <stddef.h>\n#include <stdint.h>\n"
-        "typedef struct { float temperature_c, accel_x_g, accel_y_g, accel_z_g; "
-        "float gyro_x_dps, gyro_y_dps, gyro_z_dps; } DRV_IMU_ScaledData;\n"
+        '#include "svc_imu.h"\n'
         "uint8_t APP_Sensor_SetFluOrientationCode(uint8_t code);\n"
         "uint8_t APP_Sensor_IsFluOrientationActive(void);\n"
         "uint8_t APP_Sensor_ApplyFrameCorrection(DRV_IMU_ScaledData *imu);\n"
         "void APP_Sensor_AlignToAirframe(const float in[3], float out[3]);\n"
+        # 板上装的是哪颗 IMU 由 BSP 决定；这里替身化，好让一个装置同时覆盖三颗。
+        # 默认取 ICM-42688：本装置前半段钉的就是老板子那次 V0 实测的 seam 证据。
+        "static DRV_IMU_ChipKind seam0_chip_kind = DRV_IMU_CHIP_ICM42688;\n"
+        "DRV_IMU_ChipKind BSP_IMU_GetChipKind(void) { return seam0_chip_kind; }\n"
         + SEAM0_HARNESS,
         encoding="utf-8",
     )
@@ -256,8 +308,11 @@ def test_sensor_publishes_flu(
             "-Wextra",
             "-Werror",
             f"-I{CONTRACT_DIR}",
+            f"-I{ROOT / 'Services' / 'Inc'}",
             str(isolated),
             str(harness),
+            str(ROOT / "Services" / "Src" / "svc_imu.c"),
+            "-lm",
             "-o",
             str(executable),
         ],

@@ -1,11 +1,112 @@
+/*
+ * 持久化门面 + 地址路由。
+ *
+ * ================================ 路由为什么这样切 ================================
+ * 上层（svc_param / app_flight_log）是按 4 MB 平坦 NOR 地址空间写的：
+ * 4 KB 扇区擦除、32 KB 块擦除、字节寻址读写。MicoAir743v2 上这块 NOR 不存在，
+ * 但那套几何本身没有问题，问题只在"背后是什么介质"。所以这里保持地址空间不变，
+ * 只在**一个地方**决定每笔访问落到哪块介质上：
+ *
+ *   [PARAM_REGION_START, SIZE) → 片内 Flash。参数很小、必须掉电可靠、
+ *                                而且不能依赖"卡插没插"，所以放片内。
+ *   其余                        → SD 裸块。日志量大、可以缺失、没卡就降级不记。
+ *
+ * 逻辑参数槽 → 物理扇区是**一一对应**的：槽 A 独占一个 128 KB 扇区，槽 B 独占另一个。
+ * 绝不能让两个槽共用一个物理扇区——片内 Flash 的擦除粒度是 128 KB，
+ * 共用的话擦 A 会把 B 一起抹掉，双槽掉电保护就名存实亡了。
+ *
+ * NOR 专有的接口（JEDEC / 状态寄存器 / 写保护）继续打给真正的 SPI NOR 驱动。
+ * 板上没有这颗芯片时它们如实失败，诊断页显示"没有外部 Flash"，这是对的。
+ */
+
 #include "app_flash_service.h"
 
+#include "bsp_board.h"
 #include "bsp_flash_bus.h"
+#include "drv_intflash.h"
+#include "drv_sdblock.h"
 
 #include <string.h>
 
 static DRV_GD25Q32_Device flash_device;
 static uint8_t flash_bound;
+
+/* ------------------------------------------------------------------ 路由 */
+
+APP_FlashService_Backend APP_FlashService_BackendFor(uint32_t address)
+{
+    if (address >= APP_FLASH_SERVICE_SIZE_BYTES) {
+        return APP_FLASH_BACKEND_NONE;
+    }
+    if (address >= APP_FLASH_SERVICE_PARAM_REGION_START) {
+        return APP_FLASH_BACKEND_INTERNAL;
+    }
+    return APP_FLASH_BACKEND_SDBLOCK;
+}
+
+const char *APP_FlashService_BackendName(APP_FlashService_Backend backend)
+{
+    switch (backend) {
+    case APP_FLASH_BACKEND_INTERNAL: return "INTFLASH";
+    case APP_FLASH_BACKEND_SDBLOCK:  return "SDBLOCK";
+    case APP_FLASH_BACKEND_NONE:
+    default:                         return "NONE";
+    }
+}
+
+uint8_t APP_FlashService_IsLogStorageReady(void)
+{
+    return DRV_SDBLOCK_IsReady();
+}
+
+/*
+ * 逻辑地址 → 片内 Flash 物理地址。
+ * 只有落在双槽之内的地址能映射；顶上那个没人用的扇区一律拒绝，
+ * 免得写飞的地址悄悄落到别处。
+ */
+static uint8_t flash_param_physical(uint32_t address, uint32_t *physical)
+{
+    if ((address >= APP_FLASH_SERVICE_PARAM_SLOT_A_OFFSET) &&
+        (address < APP_FLASH_SERVICE_PARAM_SLOT_B_OFFSET)) {
+        *physical = DRV_INTFLASH_PARAM_SLOT_A_ADDR +
+                    (address - APP_FLASH_SERVICE_PARAM_SLOT_A_OFFSET);
+        return 1U;
+    }
+
+    if ((address >= APP_FLASH_SERVICE_PARAM_SLOT_B_OFFSET) &&
+        (address < (APP_FLASH_SERVICE_PARAM_SLOT_B_OFFSET +
+                    APP_FLASH_SERVICE_SECTOR_SIZE))) {
+        *physical = DRV_INTFLASH_PARAM_SLOT_B_ADDR +
+                    (address - APP_FLASH_SERVICE_PARAM_SLOT_B_OFFSET);
+        return 1U;
+    }
+
+    return 0U;
+}
+
+static APP_FlashService_Status flash_from_intflash(DRV_INTFLASH_Status status)
+{
+    switch (status) {
+    case DRV_INTFLASH_OK:          return DRV_GD25Q32_OK;
+    case DRV_INTFLASH_INVALID_ARG:
+    case DRV_INTFLASH_ALIGN_ERROR: return DRV_GD25Q32_INVALID_ARG;
+    case DRV_INTFLASH_VERIFY_ERROR:
+    case DRV_INTFLASH_ERROR:
+    default:                       return DRV_GD25Q32_ERROR;
+    }
+}
+
+static APP_FlashService_Status flash_from_sdblock(DRV_SDBLOCK_Status status)
+{
+    switch (status) {
+    case DRV_SDBLOCK_OK:          return DRV_GD25Q32_OK;
+    case DRV_SDBLOCK_TIMEOUT:     return DRV_GD25Q32_TIMEOUT;
+    case DRV_SDBLOCK_INVALID_ARG: return DRV_GD25Q32_INVALID_ARG;
+    case DRV_SDBLOCK_NOT_READY:   return DRV_GD25Q32_BAD_ID;
+    case DRV_SDBLOCK_ERROR:
+    default:                      return DRV_GD25Q32_ERROR;
+    }
+}
 
 #define APP_FLASH_SERVICE_LOCK_TIMEOUT_MS 10000U
 
@@ -35,6 +136,17 @@ APP_FlashService_Status APP_FlashService_Init(void)
 {
     APP_FlashService_Status status;
     DRV_GD25Q32_Bus bus;
+
+    /*
+     * 三块介质各自初始化，**互不阻断**：
+     *   片内 Flash —— 参数存这里，必须成功；
+     *   SD 卡      —— 没插卡是正常降级（不记日志照飞），不算初始化失败；
+     *   外部 NOR   —— MicoAir 板上没有这颗，探测失败是预期结果，
+     *                只影响诊断页的显示，不影响参数与日志。
+     * 任何一路失败都不能把整机卡在初始化里（decoupling-spec D1-3）。
+     */
+    DRV_INTFLASH_SetBus(BSP_Board_GetIntFlashBus());
+    (void)DRV_SDBLOCK_Init(BSP_Board_GetSdBlockBus());
 
     flash_service_bind();
     bus = flash_device.bus;
@@ -151,97 +263,94 @@ APP_FlashService_Status APP_FlashService_ClearProtection(uint8_t *status1_before
 
 APP_FlashService_Status APP_FlashService_ReadData(uint32_t address, uint8_t *data, uint32_t length)
 {
-    APP_FlashService_Status status;
+    uint32_t physical = 0U;
 
-    flash_service_bind();
-    status = flash_service_lock();
-    if (status == DRV_GD25Q32_OK) {
-        status = DRV_GD25Q32_ReadData(&flash_device, address, data, length);
-        flash_service_unlock();
+    if ((data == NULL) || (length == 0U)) { return DRV_GD25Q32_INVALID_ARG; }
+
+    if (APP_FlashService_BackendFor(address) == APP_FLASH_BACKEND_INTERNAL) {
+        if (flash_param_physical(address, &physical) == 0U) {
+            return DRV_GD25Q32_INVALID_ARG;
+        }
+        return flash_from_intflash(DRV_INTFLASH_Read(physical, data, length));
     }
-    return status;
+
+    return flash_from_sdblock(DRV_SDBLOCK_Read(address, data, length));
 }
 
 APP_FlashService_Status APP_FlashService_ReadDataFast(uint32_t address, uint8_t *data, uint32_t length)
 {
-    APP_FlashService_Status status;
-
-    flash_service_bind();
-    status = flash_service_lock();
-    if (status == DRV_GD25Q32_OK) {
-        status = DRV_GD25Q32_ReadDataFast(&flash_device, address, data, length);
-        flash_service_unlock();
-    }
-    return status;
+    /*
+     * NOR 上 Fast Read 是另一条 DMA 指令；片内 Flash 与 SD 没有"快读"这个概念，
+     * 直接复用普通读，语义完全一致，调用者不必区分。
+     */
+    return APP_FlashService_ReadData(address, data, length);
 }
 
 APP_FlashService_Status APP_FlashService_EraseSector(uint32_t address)
 {
-    APP_FlashService_Status status;
+    uint32_t physical = 0U;
 
-    flash_service_bind();
-    status = flash_service_lock();
-    if (status == DRV_GD25Q32_OK) {
-        status = DRV_GD25Q32_EraseSector(&flash_device, address);
-        flash_service_unlock();
+    if (APP_FlashService_BackendFor(address) == APP_FLASH_BACKEND_INTERNAL) {
+        if (flash_param_physical(address, &physical) == 0U) {
+            return DRV_GD25Q32_INVALID_ARG;
+        }
+        /*
+         * 片内擦除粒度是 128 KB，这里一次擦掉整个物理扇区。
+         * 因为一个逻辑参数槽独占一个物理扇区，"擦一个逻辑扇区"与
+         * "擦整个物理扇区"作用范围相同，另一个槽不受影响。
+         */
+        return flash_from_intflash(DRV_INTFLASH_EraseSector(physical));
     }
-    return status;
+
+    return flash_from_sdblock(
+        DRV_SDBLOCK_Erase(address, APP_FLASH_SERVICE_SECTOR_SIZE));
 }
 
 APP_FlashService_Status APP_FlashService_EraseBlock32K(uint32_t address)
 {
-    APP_FlashService_Status status;
-
-    flash_service_bind();
-    status = flash_service_lock();
-    if (status == DRV_GD25Q32_OK) {
-        status = DRV_GD25Q32_EraseBlock32K(&flash_device, address);
-        flash_service_unlock();
+    if (APP_FlashService_BackendFor(address) == APP_FLASH_BACKEND_INTERNAL) {
+        /* 参数区不接受块擦除：会跨过槽边界，语义无法保证。 */
+        return DRV_GD25Q32_INVALID_ARG;
     }
-    return status;
+
+    return flash_from_sdblock(
+        DRV_SDBLOCK_Erase(address, APP_FLASH_SERVICE_BLOCK32K_SIZE));
 }
 
 APP_FlashService_Status APP_FlashService_EraseBlock64K(uint32_t address)
 {
-    APP_FlashService_Status status;
-
-    flash_service_bind();
-    status = flash_service_lock();
-    if (status == DRV_GD25Q32_OK) {
-        status = DRV_GD25Q32_EraseBlock64K(&flash_device, address);
-        flash_service_unlock();
+    if (APP_FlashService_BackendFor(address) == APP_FLASH_BACKEND_INTERNAL) {
+        return DRV_GD25Q32_INVALID_ARG;
     }
-    return status;
+
+    return flash_from_sdblock(
+        DRV_SDBLOCK_Erase(address, APP_FLASH_SERVICE_BLOCK64K_SIZE));
 }
 
 APP_FlashService_Status APP_FlashService_PageProgram(uint32_t address,
                                                      const uint8_t *data,
                                                      uint16_t length)
 {
-    APP_FlashService_Status status;
-
-    flash_service_bind();
-    status = flash_service_lock();
-    if (status == DRV_GD25Q32_OK) {
-        status = DRV_GD25Q32_PageProgram(&flash_device, address, data, length);
-        flash_service_unlock();
-    }
-    return status;
+    /* NOR 的页边界限制在这两个后端上都不存在，直接走通用写。 */
+    return APP_FlashService_WriteData(address, data, (uint32_t)length);
 }
 
 APP_FlashService_Status APP_FlashService_WriteData(uint32_t address,
                                                    const uint8_t *data,
                                                    uint32_t length)
 {
-    APP_FlashService_Status status;
+    uint32_t physical = 0U;
 
-    flash_service_bind();
-    status = flash_service_lock();
-    if (status == DRV_GD25Q32_OK) {
-        status = DRV_GD25Q32_WriteData(&flash_device, address, data, length);
-        flash_service_unlock();
+    if ((data == NULL) || (length == 0U)) { return DRV_GD25Q32_INVALID_ARG; }
+
+    if (APP_FlashService_BackendFor(address) == APP_FLASH_BACKEND_INTERNAL) {
+        if (flash_param_physical(address, &physical) == 0U) {
+            return DRV_GD25Q32_INVALID_ARG;
+        }
+        return flash_from_intflash(DRV_INTFLASH_Write(physical, data, length));
     }
-    return status;
+
+    return flash_from_sdblock(DRV_SDBLOCK_Write(address, data, length));
 }
 
 void APP_FlashService_Invalidate(void)

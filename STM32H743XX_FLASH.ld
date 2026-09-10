@@ -60,7 +60,14 @@ RAM (xrw)      : ORIGIN = 0x24000000, LENGTH = 512K
 RAM_D2 (xrw)      : ORIGIN = 0x30000000, LENGTH = 288K
 RAM_D3 (xrw)      : ORIGIN = 0x38000000, LENGTH = 64K
 ITCMRAM (xrw)      : ORIGIN = 0x00000000, LENGTH = 64K
-FLASH (rx)      : ORIGIN = 0x8000000, LENGTH = 2048K
+/*
+ * 代码只占 1792K，不是全部 2048K。
+ *
+ * 尾部 256K —— Bank2 的最后两个 128K 扇区（0x081C0000 / 0x081E0000）—— 留给参数存储：
+ * MicoAir743v2 板上没有外部 SPI NOR，参数改存片内 Flash，见 Driver/Inc/drv_intflash.h。
+ * 这两处必须同步改动：这里放回 2048K 而 drv_intflash 不动，保存参数就会擦掉代码。
+ */
+FLASH (rx)      : ORIGIN = 0x8000000, LENGTH = 1792K
 }
 
 /* Highest address of the user mode stack */

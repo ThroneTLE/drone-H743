@@ -31,13 +31,25 @@ static void spl06_delay_ms(BSP_SPL06_Device *dev, uint32_t delay_ms)
     }
 }
 
+static uint8_t spl06_is_i2c(const BSP_SPL06_Device *dev)
+{
+    return (dev->bus.hi2c != NULL) ? 1U : 0U;
+}
+
+static uint16_t spl06_i2c_addr8(const BSP_SPL06_Device *dev)
+{
+    return (uint16_t)((uint16_t)dev->bus.i2c_address << 1U);
+}
+
 static void spl06_cs_low(BSP_SPL06_Device *dev)
 {
+    if (spl06_is_i2c(dev)) { return; }   /* I2C 没有片选 */
     HAL_GPIO_WritePin(dev->bus.cs_port, dev->bus.cs_pin, GPIO_PIN_RESET);
 }
 
 static void spl06_cs_high(BSP_SPL06_Device *dev)
 {
+    if (spl06_is_i2c(dev)) { return; }
     HAL_GPIO_WritePin(dev->bus.cs_port, dev->bus.cs_pin, GPIO_PIN_SET);
 }
 
@@ -61,8 +73,14 @@ BSP_SPL06_Status BSP_SPL06_Init(BSP_SPL06_Device *dev, const BSP_SPL06_Bus *bus)
     uint8_t product_id = 0U;
     uint8_t tmp_cfg = SPL06_TMP_EXT_BIT | SPL06_RATE_8HZ | SPL06_OVERSAMPLE_1X;
 
-    if ((dev == NULL) || (bus == NULL) || (bus->hspi == NULL) ||
-        (bus->cs_port == NULL)) {
+    if ((dev == NULL) || (bus == NULL)) {
+        return BSP_SPL06_INVALID_ARG;
+    }
+
+    /* 两条总线二选一：I2C 需要地址，SPI 需要句柄 + 片选。 */
+    if (bus->hi2c != NULL) {
+        if (bus->i2c_address == 0U) { return BSP_SPL06_INVALID_ARG; }
+    } else if ((bus->hspi == NULL) || (bus->cs_port == NULL)) {
         return BSP_SPL06_INVALID_ARG;
     }
 
@@ -133,6 +151,14 @@ BSP_SPL06_Status BSP_SPL06_ReadIdTxRx(BSP_SPL06_Device *dev, uint8_t *product_id
         return BSP_SPL06_INVALID_ARG;
     }
 
+    /*
+     * 这个入口原本是为了对比 SPI 的两种读法（诊断用）。I2C 上没有这种区别，
+     * 直接退回普通读，让诊断命令在两块板子上都能返回有意义的结果。
+     */
+    if (spl06_is_i2c(dev)) {
+        return BSP_SPL06_ReadId(dev, product_id);
+    }
+
     spl06_cs_low(dev);
     hal_status = HAL_SPI_TransmitReceive(dev->bus.hspi,
                                          tx_data,
@@ -170,6 +196,18 @@ BSP_SPL06_Status BSP_SPL06_ReadRegisters(BSP_SPL06_Device *dev,
         return BSP_SPL06_INVALID_ARG;
     }
 
+    if (spl06_is_i2c(dev)) {
+        /* I2C 用寄存器地址直读，没有 SPI 那个读方向位。 */
+        hal_status = HAL_I2C_Mem_Read(dev->bus.hi2c,
+                                      spl06_i2c_addr8(dev),
+                                      (uint16_t)reg,
+                                      I2C_MEMADD_SIZE_8BIT,
+                                      data,
+                                      len,
+                                      spl06_timeout_ms(dev));
+        return spl06_from_hal_status(hal_status);
+    }
+
     read_command = (uint8_t)(reg | SPL06_SPI_READ_BIT);
 
     spl06_cs_low(dev);
@@ -197,6 +235,17 @@ BSP_SPL06_Status BSP_SPL06_WriteRegister(BSP_SPL06_Device *dev,
 
     if (dev == NULL) {
         return BSP_SPL06_INVALID_ARG;
+    }
+
+    if (spl06_is_i2c(dev)) {
+        hal_status = HAL_I2C_Mem_Write(dev->bus.hi2c,
+                                       spl06_i2c_addr8(dev),
+                                       (uint16_t)reg,
+                                       I2C_MEMADD_SIZE_8BIT,
+                                       &value,
+                                       1U,
+                                       spl06_timeout_ms(dev));
+        return spl06_from_hal_status(hal_status);
     }
 
     tx_data[0] = (uint8_t)(reg & (uint8_t)~SPL06_SPI_READ_BIT);

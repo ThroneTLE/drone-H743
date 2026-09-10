@@ -3,15 +3,25 @@
 
 #include "main.h"
 
+/*
+ * 通用 GPIO 句柄表。
+ *
+ * 2026-09-10 移植到 MicoAir743v2：原来的 PC8 / PC9 / PD8 / PD9 在这块板上分别是
+ * SDMMC1 的 D0/D1 与 USART3（GPS），不能再当普通 IO 用，已从表中移除；
+ * 三色 LED 换到板载的 PE3(红) / PE2(绿) / PE4(蓝)，蜂鸣器落在 PD15。
+ *
+ * PC6 / PC7 / PB5 在本板上分别是 USART6 与 UART5 的引脚，但本工程没有启用这两个
+ * 串口，所以继续当普通 IO 用（PC6 是 Ai-WB2 的使能，PB5 是它的在位检测）。
+ */
 typedef enum {
     BSP_GPIO_PC13 = 0,
     BSP_GPIO_PC6,
     BSP_GPIO_PC7,
-    BSP_GPIO_PC8,
-    BSP_GPIO_PC9,
     BSP_GPIO_PB5,
-    BSP_GPIO_PD8,
-    BSP_GPIO_PD9,
+    BSP_GPIO_PE2,
+    BSP_GPIO_PE3,
+    BSP_GPIO_PE4,
+    BSP_GPIO_PD15,
     BSP_GPIO_PD10,
     BSP_GPIO_COUNT
 } BSP_GPIO_Pin;

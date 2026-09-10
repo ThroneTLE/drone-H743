@@ -4,7 +4,7 @@
 
 Read this shard only when the task touches device protocols, reusable algorithms, buses, GPIO, DMA callbacks, cache hooks, or board bindings.
 
-Source snapshot: `cd5abd007a43`. Indexed files: 76.
+Source snapshot: `34282d41e6de`. Indexed files: 92.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -12,6 +12,11 @@ Source snapshot: `cd5abd007a43`. Indexed files: 76.
 | `Driver/Inc/drv_attitude_control.h`<br>`Driver/Src/drv_attitude_control.c` | Reusable device or algorithm driver for attitude control | `DRV_AttitudeControl_Step` |
 | `Driver/Inc/drv_attitude_fusion.h`<br>`Driver/Src/drv_attitude_fusion.c` | Reusable device or algorithm driver for attitude fusion | `DRV_AttitudeFusion_Init`, `DRV_AttitudeFusion_InitForConvention`, `DRV_AttitudeFusion_Update`, `DRV_AttitudeFusion_GetOutput` |
 | `Driver/Inc/drv_baro.h`<br>`Driver/Src/drv_baro.c` | Reusable device or algorithm driver for baro | `DRV_BARO_Init`, `DRV_BARO_ReadId`, `DRV_BARO_ReadIdTxRx`, `DRV_BARO_ReadRegister`, `DRV_BARO_ReadRegisters`, `DRV_BARO_WriteRegister` |
+| `Driver/Inc/drv_bmi088.h`<br>`Driver/Src/drv_bmi088.c` | Reusable device or algorithm driver for bmi088 | `DRV_BMI088_GetOps`, `DRV_BMI088_Probe`, `DRV_BMI088_Init`, `DRV_BMI088_ReadRaw`, `DRV_BMI088_ReadScaled`, `DRV_BMI088_IsDataReady` |
+| `Driver/Inc/drv_bmi088_tables.h`<br>`Driver/Src/drv_bmi088_tables.c` | Reusable device or algorithm driver for bmi088 tables | `DRV_BMI088_AccelRangeCode`, `DRV_BMI088_AccelLsbPerG`, `DRV_BMI088_GyroRangeCode`, `DRV_BMI088_GyroLsbPerDps`, `DRV_BMI088_AccelOdrCode`, `DRV_BMI088_AccelBwpCode` (+4) |
+| `Driver/Inc/drv_bmi270.h`<br>`Driver/Src/drv_bmi270.c` | Reusable device or algorithm driver for bmi270 | `DRV_BMI270_GetOps`, `DRV_BMI270_Probe`, `DRV_BMI270_Init`, `DRV_BMI270_ReadRaw`, `DRV_BMI270_ReadScaled`, `DRV_BMI270_IsDataReady` |
+| `Driver/Inc/drv_bmi270_config.h`<br>`Driver/Src/drv_bmi270_config.c` | Reusable device or algorithm driver for bmi270 config | — |
+| `Driver/Inc/drv_bmi270_tables.h`<br>`Driver/Src/drv_bmi270_tables.c` | Reusable device or algorithm driver for bmi270 tables | `DRV_BMI270_AccelRangeCode`, `DRV_BMI270_AccelLsbPerG`, `DRV_BMI270_GyroRangeCode`, `DRV_BMI270_GyroLsbPerDps`, `DRV_BMI270_OdrCode`, `DRV_BMI270_BwpCode` (+4) |
 | `Driver/Inc/drv_coax_ctrl.h`<br>`Driver/Src/drv_coax_ctrl.c` | Reusable device or algorithm driver for coax ctrl | `DRV_COAX_CTRL_Init`, `DRV_COAX_CTRL_ResetState`, `DRV_COAX_CTRL_Run`, `DRV_COAX_CTRL_RunScheduled`, `DRV_COAX_CTRL_GetLastDebug`, `DRV_COAX_CTRL_GetDefaultParams` (+17) |
 | `Driver/Inc/drv_elrs.h`<br>`Driver/Src/drv_elrs.c` | Reusable device or algorithm driver for elrs | `DRV_ELRS_Init`, `DRV_ELRS_ResetParser`, `DRV_ELRS_ProcessByte`, `DRV_ELRS_Crc8`, `DRV_ELRS_GetChannels`, `DRV_ELRS_GetLinkStats` (+11) |
 | `Driver/Inc/drv_frame_contract.h` | Reusable device or algorithm driver for frame contract | `DRV_FRAME_FluToFrd` |
@@ -20,17 +25,21 @@ Source snapshot: `cd5abd007a43`. Indexed files: 76.
 | `Driver/Inc/drv_gps.h`<br>`Driver/Src/drv_gps.c` | Reusable device or algorithm driver for gps | `DRV_GPS_Init`, `DRV_GPS_ConfigureM9NDefault`, `DRV_GPS_Service`, `DRV_GPS_OnUartRxCplt`, `DRV_GPS_OnUartError`, `DRV_GPS_Invalidate` |
 | `Driver/Inc/drv_imu.h`<br>`Driver/Src/drv_imu.c` | Reusable device or algorithm driver for imu | `DRV_IMU_DefaultConfig`, `DRV_IMU_AafSettingForCutoff`, `DRV_IMU_Init`, `DRV_IMU_Reset`, `DRV_IMU_ReadWhoAmI`, `DRV_IMU_ReadRegister` (+9) |
 | `Driver/Inc/drv_imu_calibration.h`<br>`Driver/Src/drv_imu_calibration.c` | Reusable device or algorithm driver for imu calibration | `DRV_IMU_Calibration_Apply` |
+| `Driver/Inc/drv_imu_iface.h` | Reusable device or algorithm driver for imu iface | `DRV_IMU_Status`, `DRV_IMU_GetOps` |
+| `Driver/Inc/drv_imu_types.h` | Reusable device or algorithm driver for imu types | — |
+| `Driver/Inc/drv_intflash.h`<br>`Driver/Src/drv_intflash.c` | Reusable device or algorithm driver for intflash | `DRV_INTFLASH_SetBus`, `DRV_INTFLASH_EraseSector`, `DRV_INTFLASH_Write`, `DRV_INTFLASH_Read`, `DRV_INTFLASH_IsParamAddress` |
 | `Driver/Inc/drv_mag.h`<br>`Driver/Src/drv_mag.c` | Reusable device or algorithm driver for mag | `DRV_MAG_Init`, `DRV_MAG_Read`, `DRV_MAG_Invalidate`, `DRV_MAG_TypeName` |
 | `Driver/Inc/drv_motor.h`<br>`Driver/Src/drv_motor.c` | Reusable device or algorithm driver for motor | `DRV_Motor_SetPercent`, `DRV_Motor_Stop`, `DRV_Motor_StopAll`, `DRV_Motor_GetPercent`, `DRV_Motor_GetPulse`, `DRV_Motor_PercentToPulse` (+1) |
 | `Driver/Inc/drv_nav_ekf.h`<br>`Driver/Src/drv_nav_ekf.c` | Reusable device or algorithm driver for nav ekf | `DRV_NAV_EKF_DefaultConfig`, `DRV_NAV_EKF_Reset`, `DRV_NAV_EKF_Predict`, `DRV_NAV_EKF_FuseFlow`, `DRV_NAV_EKF_GetVelocity`, `DRV_NAV_EKF_GetDiagnostics` |
 | `Driver/Inc/drv_optical_flow.h`<br>`Driver/Src/drv_optical_flow.c` | Reusable device or algorithm driver for optical flow | `DRV_OPTICAL_FLOW_Init`, `DRV_OPTICAL_FLOW_Service`, `DRV_OPTICAL_FLOW_OnUartRxCplt`, `DRV_OPTICAL_FLOW_OnUartRxEvent`, `DRV_OPTICAL_FLOW_OnUartError`, `DRV_OPTICAL_FLOW_Invalidate` (+4) |
 | `Driver/Inc/drv_position_control.h`<br>`Driver/Src/drv_position_control.c` | Reusable device or algorithm driver for position control | `DRV_POSITION_CONTROL_ResetState`, `DRV_POSITION_CONTROL_PositionStep`, `DRV_POSITION_CONTROL_VelocityStep` |
 | `Driver/Inc/drv_rate_control.h`<br>`Driver/Src/drv_rate_control.c` | Reusable device or algorithm driver for rate control | `DRV_RateControl_InitState`, `DRV_RateControl_Step`, `DRV_RateControl_Evaluate` |
+| `Driver/Inc/drv_sdblock.h`<br>`Driver/Src/drv_sdblock.c` | Reusable device or algorithm driver for sdblock | `DRV_SDBLOCK_Init`, `DRV_SDBLOCK_IsReady`, `DRV_SDBLOCK_GetUsableBytes`, `DRV_SDBLOCK_Read`, `DRV_SDBLOCK_Write`, `DRV_SDBLOCK_Erase` |
 | `Driver/Inc/drv_servo.h`<br>`Driver/Src/drv_servo.c` | Reusable device or algorithm driver for servo | `DRV_SERVO_SendRaw`, `DRV_SERVO_ReadResponse`, `DRV_SERVO_GetBaudRate`, `DRV_SERVO_SetBaudRate`, `DRV_SERVO_PositionToPulse`, `DRV_SERVO_Move` (+31) |
 | `BSP/Inc/bsp.h`<br>`BSP/Src/bsp.c` | Board resource binding for bsp | `BSP_Init` |
 | `BSP/Inc/bsp_aiwb2_power.h`<br>`BSP/Src/bsp_aiwb2_power.c` | Board resource binding for aiwb2 power | `BSP_AiWB2_PowerInit`, `BSP_AiWB2_SetEnabled`, `BSP_AiWB2_UpdateButton`, `BSP_AiWB2_IsEnabled`, `BSP_AiWB2_GetLastWrittenState`, `BSP_AiWB2_GetWriteCount` |
 | `BSP/Inc/bsp_baro.h`<br>`BSP/Src/bsp_baro.c` | Board resource binding for baro | `BSP_BARO_Init`, `BSP_BARO_ProbeId`, `BSP_BARO_ProbeIdTxRx`, `BSP_BARO_ReadId`, `BSP_BARO_ReadRawRegister`, `BSP_BARO_ReadRawRegisters` (+3) |
-| `BSP/Inc/bsp_board.h`<br>`BSP/Src/bsp_board.c` | Board resource binding for board | `BSP_Board_Init`, `BSP_DelayMs`, `BSP_Board_GetImuBus`, `BSP_Board_GetBaroBus`, `BSP_Board_GetFlashBus`, `BSP_Board_GetMagBus` (+3) |
+| `BSP/Inc/bsp_board.h`<br>`BSP/Src/bsp_board.c` | Board resource binding for board | `BSP_Board_Init`, `BSP_DelayMs`, `BSP_Board_GetImuBus`, `BSP_Board_GetBmi088Bus`, `BSP_Board_GetBmi270Bus`, `BSP_Board_GetBaroBus` (+7) |
 | `BSP/Inc/bsp_bus_servo.h`<br>`BSP/Src/bsp_bus_servo.c` | Board resource binding for bus servo | `BSP_BusServo_SendRaw`, `BSP_BusServo_ReadResponse`, `BSP_BusServo_GetBaudRate`, `BSP_BusServo_SetBaudRate`, `BSP_BusServo_PositionToPulse`, `BSP_BusServo_Move` (+29) |
 | `BSP/Inc/bsp_cache.h`<br>`BSP/Src/bsp_cache.c` | Board resource binding for cache | `BSP_Cache_Enable`, `BSP_Cache_Disable`, `BSP_Cache_AlignDown32`, `BSP_Cache_AlignedSize32`, `BSP_Cache_CleanDCache`, `BSP_Cache_InvalidateDCache` |
 | `BSP/Inc/bsp_flash_bus.h`<br>`BSP/Src/bsp_flash_bus.c` | Board resource binding for flash bus | `BSP_FlashBus_GetBus`, `BSP_FlashBus_Acquire`, `BSP_FlashBus_Release`, `BSP_FlashBus_RegisterDmaDevice`, `BSP_FlashBus_InvalidateBinding` |
@@ -38,7 +47,7 @@ Source snapshot: `cd5abd007a43`. Indexed files: 76.
 | `BSP/Inc/bsp_gps.h`<br>`BSP/Src/bsp_gps.c` | Board resource binding for gps | `BSP_GPS_Init`, `BSP_GPS_ConfigureM9NDefault`, `BSP_GPS_Service`, `BSP_GPS_OnUartRxCplt`, `BSP_GPS_OnUartError`, `BSP_GPS_GetStatus` (+1) |
 | `BSP/Inc/bsp_i2c.h`<br>`BSP/Src/bsp_i2c.c` | Board resource binding for i2c | — |
 | `BSP/Inc/bsp_icm42688.h`<br>`BSP/Src/bsp_icm42688.c` | Board resource binding for icm42688 | — |
-| `BSP/Inc/bsp_imu.h`<br>`BSP/Src/bsp_imu.c` | Board resource binding for imu | `BSP_IMU_Init`, `BSP_IMU_ReadRaw`, `BSP_IMU_ReadScaled`, `BSP_IMU_IsDataReady`, `BSP_IMU_GetWhoAmI`, `BSP_IMU_GetDiag` (+2) |
+| `BSP/Inc/bsp_imu.h`<br>`BSP/Src/bsp_imu.c` | Board resource binding for imu | `BSP_IMU_Init`, `BSP_IMU_ReadRaw`, `BSP_IMU_ReadScaled`, `BSP_IMU_IsDataReady`, `BSP_IMU_GetWhoAmI`, `BSP_IMU_GetDiag` (+5) |
 | `BSP/Inc/bsp_led.h`<br>`BSP/Src/bsp_led.c` | Board resource binding for led | `BSP_LED_Init`, `BSP_LED_On`, `BSP_LED_Off`, `BSP_LED_Toggle` |
 | `BSP/Inc/bsp_mag.h`<br>`BSP/Src/bsp_mag.c` | Board resource binding for mag | `BSP_MAG_Init`, `BSP_MAG_Read`, `BSP_MAG_Probe`, `BSP_MAG_GetStatus`, `BSP_MAG_Invalidate`, `BSP_MAG_TypeName` |
 | `BSP/Inc/bsp_optical_flow.h`<br>`BSP/Src/bsp_optical_flow.c` | Board resource binding for optical flow | `BSP_OPTICAL_FLOW_Init`, `BSP_OPTICAL_FLOW_Service`, `BSP_OPTICAL_FLOW_OnUartRxCplt`, `BSP_OPTICAL_FLOW_OnUartRxEvent`, `BSP_OPTICAL_FLOW_OnUartError`, `BSP_OPTICAL_FLOW_GetStatus` (+4) |

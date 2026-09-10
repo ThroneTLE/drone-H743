@@ -42,9 +42,14 @@ typedef enum {
  * 帧率由 BSP 拥有：BSP_PWM_Init() 会按这两个常数重设 ARR，CubeMX 里的 Period
  * 只是初值。这样一次 CubeMX 重新生成不会把帧率悄悄改回去。
  */
+/*
+ * 2026-09-10 移植到 MicoAir743v2：PA0~PA3 在这块板上是 UART4 与 USART2，
+ * 四路 PWM 全部搬到电机焊盘。分两个定时器的理由完全不变（各自定帧率），
+ * 变的只是挂哪个定时器和哪几个脚。
+ */
 #define BSP_PWM_TIMER_TICK_HZ  1000000U   /* Prescaler=120-1，脉宽直接按 us 写 CCR */
-#define BSP_PWM_ESC_FRAME_HZ       400U   /* TIM5_CH1/CH2 -> PA0/PA1 */
-#define BSP_PWM_SERVO_FRAME_HZ      50U   /* TIM2_CH3/CH4 -> PA2/PA3 */
+#define BSP_PWM_ESC_FRAME_HZ       400U   /* TIM1_CH1/CH2 -> PE9/PE11  (MOTOR4/3) */
+#define BSP_PWM_SERVO_FRAME_HZ      50U   /* TIM4_CH1/CH2 -> PD12/PD13 (MOTOR7/8) */
 #define BSP_PWM_ESC_FRAME_US   (BSP_PWM_TIMER_TICK_HZ / BSP_PWM_ESC_FRAME_HZ)
 #define BSP_PWM_SERVO_FRAME_US (BSP_PWM_TIMER_TICK_HZ / BSP_PWM_SERVO_FRAME_HZ)
 

@@ -364,12 +364,27 @@ def test_firmware_crc_runtime(tmp_path: Path) -> None:
 
 
 def test_temperature_scale() -> None:
+    """温度刻度归各芯片自己，不能在 App 里写死一份。
+
+    132.48 LSB/°C + 25 °C 偏置是 ICM-42688 的标度。MicoAir743v2 上换成
+    BMI088（0.125 °C/LSB + 23 °C）与 BMI270（1/512 K/LSB + 23 °C），三者都不同，
+    所以换算随芯片走；App 只负责把原始帧交给 BSP 分派。
+    """
     app_sensor = read("App/Src/app_sensor.c")
     driver = read("Driver/Src/drv_imu.c")
 
-    assert re.search(r"APP_IMU_TEMP_LSB_PER_C\s+132\.48f", app_sensor)
+    # ICM-42688 的标度留在它自己的驱动里。
     assert "/ 132.48f" in driver
-    assert "+ APP_IMU_TEMP_OFFSET_C" in app_sensor
+
+    # App 不再自己换温度。
+    assert "+ APP_IMU_TEMP_OFFSET_C" not in app_sensor
+    assert "BSP_IMU_RawToScaled(raw, scaled);" in app_sensor
+
+    # 另外两颗的偏置各自写在自己的换算表里。
+    bmi088 = read("Driver/Src/drv_bmi088_tables.c")
+    bmi270 = read("Driver/Src/drv_bmi270_tables.c")
+    assert "0.125f" in bmi088 and "23.0f" in bmi088
+    assert "512.0f" in bmi270 and "23.0f" in bmi270
 
 
 def test_sources_built() -> None:

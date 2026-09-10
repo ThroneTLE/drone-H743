@@ -4,8 +4,14 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_bdd_flash_diagnostics_flow_is_app_service_to_gd25q32_driver() -> None:
-    """BDD: given flash DMA is stable, diagnostics use service -> driver -> BSP bus."""
+def test_bdd_flash_diagnostics_flow_is_app_service_to_storage_backends() -> None:
+    """BDD: 诊断只认服务层；服务层再按地址路由到具体介质。
+
+    移植 MicoAir743v2 之前后端只有一个（外部 SPI NOR），服务层直接调 GD25Q32。
+    现在后端有三个（片内 Flash / SD 裸块 / 外部 NOR），但**上层这条边界没变**：
+    app_control.c 仍然只调 APP_FlashService_*，一个 BSP_FLASH_ 都不许出现。
+    这正是当初立这条 BDD 的目的——换介质不该惊动诊断代码。
+    """
 
     control = (ROOT / "App/Src/app_control.c").read_text(encoding="utf-8")
     service = (ROOT / "App/Src/app_flash_service.c").read_text(encoding="utf-8")
@@ -16,8 +22,10 @@ def test_bdd_flash_diagnostics_flow_is_app_service_to_gd25q32_driver() -> None:
     assert "APP_FlashService_ReadDataFast(" in control
     assert "BSP_FLASH_" not in control
 
-    assert "DRV_GD25Q32_ReadData(" in service
-    assert "DRV_GD25Q32_ReadDataFast(" in service
+    # 数据通路走两个新后端，NOR 专有的探测接口仍打给真正的 NOR 驱动。
+    assert "DRV_INTFLASH_Read(" in service
+    assert "DRV_SDBLOCK_Read(" in service
+    assert "DRV_GD25Q32_ReadJedecId(" in service
     assert "BSP_FlashBus_Acquire" in bus
     assert "BSP_FlashBus_Release" in bus
 

@@ -4,7 +4,7 @@
 
 Read this shard only when you need existing behavioral/architecture coverage or must choose focused regression tests.
 
-Source snapshot: `02e155e56e19`. Indexed files: 153.
+Source snapshot: `368cd59e05d5`. Indexed files: 155.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -41,8 +41,8 @@ Source snapshot: `02e155e56e19`. Indexed files: 153.
 | `tests/test_drone_validation_v0.py` | — | `test_snapshot_parser_requires_provenance_and_never_invents_zeroes` (+38) |
 | `tests/test_evidence_write_protection.py` | 历史验收证据不可变性契约。 2026-08-29 实际发生过一次证据破坏：面板启动时自动加载了 2026-08-28 的历史 验收会话，随后自动保存把 workflow.json 的 target_state_at_save（14 个键的… | `test_session_autosave_refuses_to_write_while_browsing_history` (+3) |
 | `tests/test_firmware_build_gate.py` | 烧录前必须先编译，且编译失败绝不能继续烧录。 背景：USB DFU 一键烧录默认烧的是 build/Debug/drone-H743.elf。如果改完源码 忘了编译，就会把上一次的旧固件刷进飞控，而且现场很难看出来——固件"烧成功了"，… | `test_build_failure_raises_instead_of_returning_a_stale_elf` (+20) |
-| `tests/test_flash_bdd.py` | — | `test_bdd_flash_diagnostics_flow_is_app_service_to_gd25q32_driver` (+1) |
-| `tests/test_flash_layering.py` | — | `test_app_uses_flash_service_not_bsp_flash_api` (+4) |
+| `tests/test_flash_bdd.py` | — | `test_bdd_flash_diagnostics_flow_is_app_service_to_storage_backends` (+1) |
+| `tests/test_flash_layering.py` | — | `test_app_uses_flash_service_not_bsp_flash_api` (+5) |
 | `tests/test_flash_timing_measurement.py` | R-M1-3 block-erase timing measurement and throughput contracts | `test_firmware_probe_is_thin_and_keeps_normal_polling_default` (+7) |
 | `tests/test_flight_acceptance_v2.py` | — | `test_complete_v2a_passes_but_never_releases_flight` (+16) |
 | `tests/test_flight_calibration_param_contract.py` | Versioned aggregate flight-calibration parameter contract | `test_fcal_schema_owns_v0_v1_and_reserved_v2_fields` (+2) |
@@ -94,6 +94,8 @@ Source snapshot: `02e155e56e19`. Indexed files: 153.
 | `tests/test_log_pages_geometry.py` | Three sizes x three simulated DPI scales, using the real panel and pages | `test_log_controls_remain_reachable` |
 | `tests/test_mech.py` | — | `test_s6` |
 | `tests/test_mechanical_cp210_gate.py` | Regression for the author's CP210x COM10 telemetry-link screenshot | `test_cp210_move_allowed_but_firmware_upgrade_still_rejected` (+1) |
+| `tests/test_micoair743v2_generated_code_sync.py` | CubeMX 生成代码必须与 drone-H743.ioc 同步。 **本文件全红 = 还没跑 Generate Code，不是代码写错了。** 移植到 MicoAir743v2 改的是 .ioc（引脚、时钟、外设），而 Core/ 与… | `test_usb_pll3_matches_ioc` (+3) |
+| `tests/test_micoair743v2_imu_drivers.py` | MicoAir743v2 移植：IMU 换算表与装配变换的宿主侧契约测试。 为什么这些东西必须单测： 量程码填错、LSB 表抄错、坐标轴符号翻反 —— 这三类错误**都不会报错**， 只会让姿态整体缩放或横滚方向相反，要飞起来才发现。它们… | `test_imu_tables_and_mounting_host_harness` (+2) |
 | `tests/test_nav_ekf_contract.py` | — | `test_quality_adaptive_flow_ekf_is_owned_by_the_flow_nav_service` (+3) |
 | `tests/test_optical_flow_contract.py` | — | `test_micolink_parser_accepts_live_range_and_flow_payload_shape` (+11) |
 | `tests/test_panel_autoconnect.py` | 记住上次的连接并在启动时自动连回去。 关键点是**按什么认板子**：Windows 给 USB 串口分配的 COM 号会变（本机就出现过同一块 飞控在 COM30/31/32 之间跳），而 ST-Link、蓝牙串口、CH340 会占掉腾出… | `test_fingerprint_is_stable_across_com_renumbering` (+15) |
@@ -114,7 +116,7 @@ Source snapshot: `02e155e56e19`. Indexed files: 153.
 | `tests/test_position_control.py` | R-S5-1 pure translational controller contract. The executable part compiles the real Driver C module with host gcc. The… | `test_position_control_source_is_pure_and_documented` (+1) |
 | `tests/test_project_index_contract.py` | — | `test_repository_index_is_current` (+2) |
 | `tests/test_proto_frame_resync.py` | 修 bug：`$X` 解析器有两处会永久停摆的重同步空洞。 发现于 2026-09-03，R-T1-2 的模糊测试。缺陷早于遥测流工作，命中的是所有 `$X` 帧共用的 `TransportBase._consume_buffer`，**… | `test_intact_stream_still_decodes_every_frame` (+8) |
-| `tests/test_pwm_frame_rate_contract.py` | 执行器出口帧率契约（2026-09-07）。 改动的动机是延迟，不是功能：四路 PWM 原来共用 TIM2 的 50 Hz 帧，500 Hz 的角速率 环算 10 次只送得出去 1 次，零阶保持平均延迟 10 ms。这段死区是整条控制回路… | `test_actuator_pins_are_unchanged` (+3) |
+| `tests/test_pwm_frame_rate_contract.py` | 执行器出口帧率契约（2026-09-07 立，2026-09-10 随 MicoAir743v2 移植更新）。 原始动机是延迟，不是功能：四路 PWM 曾经共用 TIM2 的 50 Hz 帧，500 Hz 的角速率 环算 10 次只送得出… | `test_actuator_pins_match_the_board` (+4) |
 | `tests/test_rc_mapping.py` | 遥控通道映射与端点标定。 背景：通道号原来是 app_stabilizer.c 里的 6 个 #define（CH1..CH6），端点是 1000/1500/2000 三个字面量。换发射机、改通道顺序、或者摇杆行程不标准，都得改代码 重烧… | `test_moving_one_stick_identifies_that_channel` (+63) |
 | `tests/test_rc_mapping_contract.py` | — | `test_freertos_documents_fixed_elrs_channel_map` (+8) |
 | `tests/test_record_service_review_regressions.py` | R-T1-6 返修：关闭 2026-09-04 软件审核的 R1~R4。 审核对象是 `63223acd`。四条都不是"再多测一点"能发现的，它们各自对应第一版实现里 一个具体的结构错误： R1 Tk 线程仍在做 I/O 和等待。`sta… | `test_start_does_no_disk_io_on_the_calling_thread` (+10) |

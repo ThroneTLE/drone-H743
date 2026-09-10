@@ -204,33 +204,49 @@ def test_runtime_applies_one_proper_rotation_after_legacy_mapping(tmp_path: Path
         "uint8_t APP_Sensor_ApplyFrameCorrection(DRV_IMU_ScaledData *imu)"
     )
     apply_body = orientation_source[apply_start:]
-    assert apply_body.count("orientation = app_sensor_flu_orientation") == 1
+    # 不变量：同一帧的 accel 与 gyro 必须用**同一个**方向码。所以这里只快照一次，
+    # 存进局部变量再用两次；两次分别去读那个 volatile 就可能撞上运行期切换。
+    #
+    # 移植 MicoAir743v2 时读取被收进 APP_Sensor_EffectiveOrientationCode()——
+    # 因为哨兵状态下要按探测到的芯片给默认值——但"只快照一次"这条没变。
+    assert apply_body.count("orientation = APP_Sensor_EffectiveOrientationCode();") == 1
+    effective_start = orientation_source.index(
+        "static uint8_t APP_Sensor_EffectiveOrientationCode(void)"
+    )
+    effective_body = orientation_source[
+        effective_start : orientation_source.index("}", effective_start)
+    ]
+    assert effective_body.count("app_sensor_flu_orientation") == 1
     assert "APP_Sensor_ApplyOrientation(accel_in, accel_out, orientation)" in apply_body
     assert "APP_Sensor_ApplyOrientation(gyro_in, gyro_out, orientation)" in apply_body
 
+    # DRV_IMU_ScaledData 以前要在这里手抄一份，因为真类型被关在 main.h（HAL）后面。
+    # 移植 MicoAir743v2 时值类型已经拆到无 HAL 的 drv_imu_types.h，直接用真的。
     isolated = tmp_path / "sensor_orientation.c"
     isolated.write_text(
         "#include <stddef.h>\n#include <stdint.h>\n#include <string.h>\n"
+        '#include "svc_imu.h"\n'
         "#define APP_SENSOR_FLU_ORIENTATION_COUNT 24U\n"
         "#define APP_SENSOR_FLU_ORIENTATION_LEGACY 255U\n"
-        "typedef struct { float temperature_c, accel_x_g, accel_y_g, accel_z_g; "
-        "float gyro_x_dps, gyro_y_dps, gyro_z_dps; } DRV_IMU_ScaledData;\n"
+        "DRV_IMU_ChipKind BSP_IMU_GetChipKind(void);\n"
         + orientation_source,
         encoding="utf-8",
     )
     harness = tmp_path / "sensor_orientation_harness.c"
     harness.write_text(
         "#include <stddef.h>\n#include <stdint.h>\n"
+        '#include "svc_imu.h"\n'
         "uint8_t APP_Sensor_SetFluOrientation(const char *descriptor);\n"
         "uint8_t APP_Sensor_SetFluOrientationCode(uint8_t code);\n"
         "uint8_t APP_Sensor_GetFluOrientation(void);\n"
         "uint8_t APP_Sensor_IsFluOrientationActive(void);\n"
         "const char *APP_Sensor_GetFluOrientationDescriptorForCode(uint8_t code);\n"
         "const char *APP_Sensor_GetFluOrientationDescriptor(void);\n"
-        "typedef struct { float temperature_c, accel_x_g, accel_y_g, accel_z_g; "
-        "float gyro_x_dps, gyro_y_dps, gyro_z_dps; } DRV_IMU_ScaledData;\n"
         "uint8_t APP_Sensor_ApplyFrameCorrection(DRV_IMU_ScaledData *imu);\n"
         "void APP_Sensor_AlignToAirframe(const float in[3], float out[3]);\n"
+        # 本装置钉的是老板子的运行期行为，所以把探测结果固定成 ICM-42688。
+        "DRV_IMU_ChipKind BSP_IMU_GetChipKind(void) "
+        "{ return DRV_IMU_CHIP_ICM42688; }\n"
         + RUNTIME_HARNESS,
         encoding="utf-8",
     )
@@ -242,8 +258,12 @@ def test_runtime_applies_one_proper_rotation_after_legacy_mapping(tmp_path: Path
             "-Wall",
             "-Wextra",
             "-Werror",
+            f"-I{ROOT / 'Driver' / 'Inc'}",
+            f"-I{ROOT / 'Services' / 'Inc'}",
             str(isolated),
             str(harness),
+            str(ROOT / "Services" / "Src" / "svc_imu.c"),
+            "-lm",
             "-o",
             str(executable),
         ],

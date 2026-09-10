@@ -41,9 +41,14 @@ def test_imu_axes_are_rotated_to_legacy_intermediate_frame() -> None:
     assert "legacy_intermediate_v1 X = -imu Z" in source
     assert "legacy_intermediate_v1 Y = -imu X" in source
     assert "legacy_intermediate_v1 Z =  imu Y" in source
-    assert "out[0] = -in[2];" in source
-    assert "out[1] = -in[0];" in source
-    assert "out[2] =  in[1];" in source
+    # 这三行本身搬到了 Services/svc_imu.c：MicoAir743v2 上板载 IMU 换成了
+    # BMI088/BMI270，芯片轴 → 中间轴的映射必须随芯片走，而不再是一份写死的。
+    # ICM-42688 那一支必须逐字节保持原样，老板子的 V0 实测证据依赖它。
+    service = read("Services/Src/svc_imu.c")
+    assert "out[0] = -in[2];" in service
+    assert "out[1] = -in[0];" in service
+    assert "out[2] =  in[1];" in service
+    assert "SVC_IMU_ChipToIntermediate(BSP_IMU_GetChipKind(), in, out);" in source
 
 
 def test_legacy_intermediate_alignment_is_right_handed_and_forward_positive() -> None:

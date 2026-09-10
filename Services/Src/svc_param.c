@@ -4,6 +4,7 @@
 #include "app_flash_service.h"
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <string.h>
 
 /*
@@ -29,8 +30,34 @@ typedef struct {
     uint8_t payload[SVC_PARAM_MAX_PAYLOAD];
     uint32_t payload_crc;
     uint32_t header_crc;
+    /*
+     * 这 8 字节填充不是凑数，是为了让 state 落在 32 字节边界上。
+     *
+     * 两阶段提交（先整条写下去、状态记 WRITING，回读校验通过后再把状态改成 VALID）
+     * 在 NOR 上没问题：NOR 允许对同一位置再写一次，只要是把 1 变 0。
+     * 但参数现在存在 STM32H743 的**片内 Flash** 上，那里带 ECC，
+     * 一次擦除之后每个 32 字节 word 只能编程一次，二次编程直接报错。
+     *
+     * 所以 state 必须独占一个 word：第一阶段只写 [0, STATE_OFFSET)，
+     * 第二阶段单独写 state 所在的那个 word。下面的 _Static_assert 钉住这个前提，
+     * 谁将来往记录里加字段导致 state 不再对齐，编译期就会红。
+     */
+    uint8_t  reserved[8];
     uint32_t state;
 } SVC_ParamRecord;
+
+#define SVC_PARAM_RECORD_STATE_OFFSET offsetof(SVC_ParamRecord, state)
+#define SVC_PARAM_FLASH_WORD_SIZE     32U
+
+_Static_assert((SVC_PARAM_RECORD_STATE_OFFSET % SVC_PARAM_FLASH_WORD_SIZE) == 0U,
+               "state must start on a 32-byte flash word so it can be programmed "
+               "separately from the record body (H7 internal flash ECC)");
+_Static_assert(SVC_PARAM_SLOT_A_OFFSET == APP_FLASH_SERVICE_PARAM_SLOT_A_OFFSET,
+               "param slot A must match the flash-service param routing region");
+_Static_assert(SVC_PARAM_SLOT_B_OFFSET == APP_FLASH_SERVICE_PARAM_SLOT_B_OFFSET,
+               "param slot B must match the flash-service param routing region");
+_Static_assert(sizeof(SVC_ParamRecord) <= SVC_PARAM_SECTOR_SIZE,
+               "param record must fit inside one logical sector");
 
 static uint32_t param_crc32_table[256];
 static uint8_t param_crc32_initialized;
@@ -258,21 +285,28 @@ SVC_ParamStatus SVC_Param_SavePendingToFlash(void)
     rec->state = SVC_PARAM_RECORD_WRITING;
     rec->header_crc = param_record_header_crc(rec);
 
-    st = APP_FlashService_WriteData(target_offset, (const uint8_t *)rec, sizeof(*rec));
+    /*
+     * 第一阶段只写记录主体，**不碰 state 所在的那个 flash word**。
+     * 片内 Flash 一次擦除后每个 word 只能编程一次，主体和 state 必须分两次落在
+     * 不同的 word 上（记录布局里的 reserved[8] 就是为此存在）。
+     */
+    state_offset = (uint32_t)SVC_PARAM_RECORD_STATE_OFFSET;
+
+    st = APP_FlashService_WriteData(target_offset, (const uint8_t *)rec, state_offset);
     if (st != APP_FLASH_SERVICE_OK) {
         return SVC_PARAM_STATUS_ERROR;
     }
 
-    st = APP_FlashService_ReadData(target_offset, (uint8_t *)verify, sizeof(*verify));
+    st = APP_FlashService_ReadData(target_offset, (uint8_t *)verify, state_offset);
     if (st != APP_FLASH_SERVICE_OK) {
         return SVC_PARAM_STATUS_ERROR;
     }
-    if (memcmp(rec, verify, sizeof(*rec)) != 0) {
+    if (memcmp(rec, verify, state_offset) != 0) {
         return SVC_PARAM_STATUS_ERROR;
     }
 
+    /* 第二阶段：单独提交状态字，此时主体已经回读校验过。 */
     rec->state = SVC_PARAM_RECORD_VALID;
-    state_offset = (uint32_t)((uintptr_t)&rec->state - (uintptr_t)rec);
     st = APP_FlashService_WriteData(target_offset + state_offset,
                                     (const uint8_t *)&rec->state,
                                     sizeof(rec->state));

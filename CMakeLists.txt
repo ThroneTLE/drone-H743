@@ -49,10 +49,17 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     # Driver layer
     Driver/Src/drv_imu.c
+    Driver/Src/drv_bmi088.c
+    Driver/Src/drv_bmi088_tables.c
+    Driver/Src/drv_bmi270.c
+    Driver/Src/drv_bmi270_tables.c
+    Driver/Src/drv_bmi270_config.c
     Driver/Src/drv_imu_calibration.c
     Driver/Src/drv_baro.c
     Driver/Src/drv_gd25q32.c
     Driver/Src/drv_gd25q32_timing_probe.c
+    Driver/Src/drv_intflash.c
+    Driver/Src/drv_sdblock.c
     Driver/Src/drv_mag.c
     Driver/Src/drv_gps.c
     Driver/Src/drv_servo.c
@@ -68,6 +75,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     ThirdParty/Fusion/FusionAhrs.c
     # Services layer
     Services/Src/svc_flow_nav.c
+    Services/Src/svc_imu.c
     Services/Src/svc_param.c
     Services/Src/svc_timestamp.c
     # BSP layer

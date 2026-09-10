@@ -188,7 +188,9 @@ def test_imu_cold_boot_soft_resets_and_waits_for_sensor_startup() -> None:
     bsp = read("BSP/Src/bsp_imu.c")
 
     assert "#define ICM42688_SENSOR_STARTUP_MS       500U" in driver
-    assert "config.soft_reset_on_init = true;" in bsp
+    # 配置构造搬进了 BSP_IMU_BuildConfig()（多颗候选芯片共用一份配置），
+    # 所以现在是指针写法；"冷启动必须软复位"这条不变。
+    assert "config->soft_reset_on_init = true;" in bsp
     assert "icm42688_delay_ms(dev, ICM42688_SENSOR_STARTUP_MS);" in driver
 
 

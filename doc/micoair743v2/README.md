@@ -53,6 +53,38 @@
 PWM 1–11：PE14 / PE13 / PE11 / PE9（TIM1）、PB1 / PB0（TIM3）、PD12 / PD13（TIM4）、
 PE5 / PE6（TIM15）、PD14（TIM4，兼 LED 焊盘）。
 
+## 移植进度（2026-09-10）
+
+固件侧改动已完成并提交在分支 `feat/micoair743v2`，**但还差一步 CubeMX 生成**。
+
+**明天上机前必须先做**：用 STM32CubeIDE 打开 `drone-H743.ioc` → 核对引脚视图与时钟树
+（时钟树不能有红色）→ **Generate Code** → 编译。
+在这之前 `tests/test_micoair743v2_generated_code_sync.py` 会红，那是有意为之的提醒，
+不是代码写错了。
+
+| 子系统 | 落地情况 |
+|---|---|
+| `.ioc` 板级重配 | 由 [tools/micoair743v2_ioc_migrate.py](../../tools/micoair743v2_ioc_migrate.py) 改写，引脚/时钟/DMA/NVIC 见该脚本的数据表 |
+| BMI088 驱动 | `drv_bmi088.c` + `drv_bmi088_tables.c`（换算表纯函数、宿主可测） |
+| BMI270 驱动 | `drv_bmi270.c` + `drv_bmi270_tables.c` + `drv_bmi270_config.c`（Bosch BSD-3 配置数据） |
+| 多 IMU 选型 | `svc_imu.c`（装配变换与记账，无 HAL）+ `bsp_imu.c`（探测顺序 BMI088 → BMI270 → ICM42688） |
+| 气压计 | `bsp_spl06.c` 增加 I2C 通路，寄存器逻辑复用；同时接受 SPL06 与 DPS310 的 `PROD_ID 0x10` |
+| 磁罗盘 | 无需新驱动，`drv_mag.c` 已支持 QMC5883L 自动探测，只改总线绑定到 I2C2 |
+| 参数存储 | `drv_intflash.c`（Bank2 尾两扇区）+ `svc_param.c` 的 H7 ECC 两阶段提交修正 |
+| 飞行日志 | `drv_sdblock.c`（SDMMC 裸块，不引 FatFs），`app_flight_log.c` 主体未改 |
+| 持久化路由 | `app_flash_service.c` 变成按地址路由的门面，上层地址空间与几何不变 |
+| PWM | ESC → TIM1_CH1/CH2 (PE9/PE11)，舵机 → TIM4_CH1/CH2 (PD12/PD13) |
+| 未接入 | 电压/电流采样（PC0/PC1）——板上有，但固件里目前没有消费者，故未配 ADC |
+
+### 移植中发现、并已处理的三个坑
+
+1. **H7 片内 Flash 的 ECC**：`svc_param` 的两阶段提交原本会对同一个 32 字节 flash word
+   写两次（NOR 上合法，H7 上直接报错）。记录布局加了 8 字节填充，让状态字独占一个 word。
+2. **默认方向码**：全新板子参数区是空的，方向码会停在 legacy 哨兵上，退回**老板子**
+   实测的符号补偿——用在 BMI088 上横滚方向是反的。现在哨兵状态按探测到的芯片取默认值。
+3. **量程刻度随芯片变**：同一个 `±16 g` 枚举，ICM-42688 是 2048 LSB/g，
+   BMI088 映射到 ±24 g 后是 1365 LSB/g。原来 App 层写死了 ICM 的表，已改为按芯片分派。
+
 ## 与当前 drone-H743 的对照
 
 | 子系统 | 当前 drone-H743 | MicoAir743v2 | 结论 |

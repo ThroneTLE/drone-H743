@@ -5,6 +5,7 @@
 #include "bsp_baro.h"
 #include "bsp_imu.h"
 #include "cmsis_os2.h"
+#include "svc_imu.h"
 
 #include <math.h>
 #include <string.h>
@@ -50,30 +51,17 @@ static APP_IMU_DataReadyTimestampLatch app_imu_drdy_timestamp;
 void APP_IMU_RawToScaled(const DRV_IMU_RawData *raw,
                          DRV_IMU_ScaledData *scaled)
 {
-    const DRV_IMU_Device *dev;
-    float accel_lsb_per_g;
-    float gyro_lsb_per_dps;
-
     if ((raw == NULL) || (scaled == NULL)) return;
 
-    /* 从设备实际配置推导刻度，回退值与 BSP_IMU_Init() 的配置保持一致。 */
-    dev = BSP_IMU_GetDevice();
-    if (dev != NULL) {
-        accel_lsb_per_g  = DRV_IMU_AccelLsbPerG(dev->config.accel_range);
-        gyro_lsb_per_dps = DRV_IMU_GyroLsbPerDps(dev->config.gyro_range);
-    } else {
-        accel_lsb_per_g  = DRV_IMU_AccelLsbPerG(DRV_IMU_ACCEL_RANGE_16G);
-        gyro_lsb_per_dps = DRV_IMU_GyroLsbPerDps(DRV_IMU_GYRO_RANGE_1000DPS);
-    }
-
-    scaled->temperature_c = (float)raw->temperature / APP_IMU_TEMP_LSB_PER_C
-                          + APP_IMU_TEMP_OFFSET_C;
-    scaled->accel_x_g    = (float)raw->accel_x / accel_lsb_per_g;
-    scaled->accel_y_g    = (float)raw->accel_y / accel_lsb_per_g;
-    scaled->accel_z_g    = (float)raw->accel_z / accel_lsb_per_g;
-    scaled->gyro_x_dps   = (float)raw->gyro_x / gyro_lsb_per_dps;
-    scaled->gyro_y_dps   = (float)raw->gyro_y / gyro_lsb_per_dps;
-    scaled->gyro_z_dps   = (float)raw->gyro_z / gyro_lsb_per_dps;
+    /*
+     * 换算交给 BSP 按**当前选中的芯片**做。
+     *
+     * 这里原本写死了 ICM-42688 的 LSB 表。板上换成 BMI088 之后那张表是错的：
+     * 同一个"±16 g"枚举，ICM 是 2048 LSB/g，BMI088 映射到 ±24 g 后是 1365 LSB/g，
+     * 差 1.5 倍。这种错误不会报错，只会让姿态和高度整体缩放——必须按芯片分派。
+     * 温度同理：各芯片的偏置与刻度都不一样，一并由驱动的换算函数负责。
+     */
+    BSP_IMU_RawToScaled(raw, scaled);
 }
 
 /* ════════════════════════════════════════════════════════════════════════ */
@@ -446,14 +434,39 @@ uint8_t APP_Sensor_SetFluOrientation(const char *descriptor)
     return 0U;
 }
 
+/*
+ * 解析出真正生效的方向码。
+ *
+ * `app_sensor_flu_orientation` 平时来自 Flash 里的 IMUFRAME 参数。但**全新的板子
+ * 参数区是空的**，它会停在 legacy 哨兵上，于是整条链退回老板子实测的符号补偿——
+ * 那套补偿是给 ICM-42688 那个安装方向的，用在 MicoAir 的 BMI088 上横滚方向是反的。
+ *
+ * 所以哨兵状态下按**当前探测到的芯片**给默认值（推导见 svc_imu.h）。
+ * ICM-42688 与"没探到芯片"仍返回哨兵，老板子的行为一个字节都不变。
+ *
+ * 这里只做解析、不改状态：数据通路与诊断读到的是同一个值，
+ * 不会出现"诊断说 legacy、实际按 3 在算"的情况（decoupling-spec D5-3）。
+ */
+static uint8_t APP_Sensor_EffectiveOrientationCode(void)
+{
+    uint8_t code = app_sensor_flu_orientation;
+
+    if (code == APP_SENSOR_FLU_ORIENTATION_LEGACY) {
+        code = SVC_IMU_DefaultOrientationCode(BSP_IMU_GetChipKind());
+    }
+
+    return code;
+}
+
 uint8_t APP_Sensor_GetFluOrientation(void)
 {
-    return app_sensor_flu_orientation;
+    return APP_Sensor_EffectiveOrientationCode();
 }
 
 uint8_t APP_Sensor_IsFluOrientationActive(void)
 {
-    return (app_sensor_flu_orientation < APP_SENSOR_FLU_ORIENTATION_COUNT)
+    return (APP_Sensor_EffectiveOrientationCode() <
+            APP_SENSOR_FLU_ORIENTATION_COUNT)
                ? 1U
                : 0U;
 }
@@ -472,17 +485,24 @@ const char *APP_Sensor_GetFluOrientationDescriptorForCode(uint8_t code)
 const char *APP_Sensor_GetFluOrientationDescriptor(void)
 {
     return APP_Sensor_GetFluOrientationDescriptorForCode(
-        app_sensor_flu_orientation);
+        APP_Sensor_EffectiveOrientationCode());
 }
 
 void APP_Sensor_AlignToAirframe(const float in[3], float out[3])
 {
     if ((in == NULL) || (out == NULL)) return;
 
-    /* Keep this fixed chip -> legacy_intermediate_v1 mapping intact. */
-    out[0] = -in[2];
-    out[1] = -in[0];
-    out[2] =  in[1];
+    /*
+     * 芯片轴 → legacy_intermediate_v1，映射随**板上实际是哪颗 IMU** 而变。
+     *
+     * 老板子只有 ICM-42688，这里原本是三行写死的映射；MicoAir743v2 上换成了
+     * BMI088 / BMI270，两颗的贴装朝向还各不相同。推导放在 Services/svc_imu.c
+     * （纯函数、可在 PC 上单测），这里只负责取当前选中的芯片。
+     *
+     * 注意**不要**在别处再叠一层旋转：第二段的方向码表是持久化 ABI，
+     * 叠加会双重应用，表现为横滚符号反了但姿态看着"差不多对"。
+     */
+    SVC_IMU_ChipToIntermediate(BSP_IMU_GetChipKind(), in, out);
 }
 
 static void APP_Sensor_ApplyOrientation(const float in[3],
@@ -498,7 +518,7 @@ static void APP_Sensor_ApplyOrientation(const float in[3],
 
 uint8_t APP_Sensor_ApplyFrameCorrection(DRV_IMU_ScaledData *imu)
 {
-    uint8_t orientation = app_sensor_flu_orientation;
+    uint8_t orientation = APP_Sensor_EffectiveOrientationCode();
     float accel_in[3];
     float gyro_in[3];
     float accel_out[3];
@@ -574,12 +594,21 @@ const APP_IMU_SampleMessage *APP_IMU_GetLastSample(void)
 }
 
 /* ════════════════════════════════════════════════════════════════════════ */
-/*  PC0 EXTI0 中断 — 数据就绪 → 唤醒 Sensor_Task                           */
+/*  IMU DRDY 外部中断 — 数据就绪 → 唤醒 Sensor_Task                        */
+/*                                                                        */
+/*  老板子是 PC0/EXTI0。MicoAir743v2 上 PC0 是电池电压采样，DRDY 改到：      */
+/*    PC15 = BMI088 陀螺 DRDY（主 IMU，节拍由陀螺定，角速率是最内环）        */
+/*    PB7  = BMI270 DRDY（备用 IMU）                                        */
+/*  两个引脚都接受：探测到哪颗就由哪颗发中断，这里不需要知道选中的是谁，     */
+/*  另一颗没初始化就不会产生边沿。误判的代价只是多一次空唤醒，              */
+/*  而漏判会让整个控制环退到 20 ms 轮询兜底——宁可宽松。                     */
 /* ════════════════════════════════════════════════════════════════════════ */
+
+#define APP_IMU_DRDY_PIN_MASK (GPIO_PIN_15 | GPIO_PIN_7)
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
-    if (GPIO_Pin == GPIO_PIN_0) {
+    if ((GPIO_Pin & APP_IMU_DRDY_PIN_MASK) != 0U) {
         const uint64_t timestamp_us = SVC_Timestamp_Us();
         const uint32_t write_sequence =
             app_imu_drdy_timestamp.sequence + 1U;
@@ -606,12 +635,14 @@ void APP_IMU_GetStatus(APP_IMU_Status *status)
 
     BSP_IMU_GetDiag(&diag);
 
-    const DRV_IMU_Device *dev = BSP_IMU_GetDevice();
+    /* 芯片无关：板上可能是 BMI088 / BMI270 / ICM-42688，不能直接读某一颗的结构体。 */
+    BSP_IMU_Info imu_info;
+    BSP_IMU_GetInfo(&imu_info);
 
-    status->initialized   = (dev != 0) ? (uint8_t)(dev->init_stage >= BSP_ICM42688_INIT_STAGE_READY) : 0U;
-    status->who_am_i      = (dev != 0) ? dev->who_am_i : 0U;
-    status->init_stage    = (dev != 0) ? (uint8_t)dev->init_stage : 0U;
-    status->last_status   = (dev != 0) ? (int32_t)dev->last_error : (int32_t)DRV_IMU_ERROR;
+    status->initialized   = (uint8_t)(imu_info.init_stage >= DRV_IMU_INIT_STAGE_READY);
+    status->who_am_i      = imu_info.chip_id;
+    status->init_stage    = (uint8_t)imu_info.init_stage;
+    status->last_status   = (int32_t)imu_info.last_error;
     status->last_error    = status->last_status;
     status->sample_count  = 0U;
 

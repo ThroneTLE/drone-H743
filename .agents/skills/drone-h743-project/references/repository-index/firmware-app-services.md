@@ -4,7 +4,7 @@
 
 Read this shard only when the task touches application behavior, RTOS task bodies, control flow, diagnostics, commands, or synchronous services.
 
-Source snapshot: `1a9a5797d1e4`. Indexed files: 110.
+Source snapshot: `f3e1b481bda5`. Indexed files: 112.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -33,7 +33,7 @@ Source snapshot: `1a9a5797d1e4`. Indexed files: 110.
 | `App/Inc/app_elrs.h`<br>`App/Src/app_elrs.c` | Application behavior and task-facing logic for elrs | `APP_ELRS_Init`, `APP_ELRS_Step`, `APP_ELRS_GetChannels`, `APP_ELRS_GetLastRcMs`, `APP_ELRS_IsRcFresh`, `APP_ELRS_SendTelemetryAttitude` (+10) |
 | `App/Inc/app_firmware_identity.h`<br>`App/Src/app_firmware_identity.c` | Application behavior and task-facing logic for firmware identity | `APP_FirmwareIdentity_IsRangeValid`, `APP_FirmwareIdentity_ComputeCrc32`, `APP_FirmwareIdentity_Get`, `APP_FirmwareIdentity_GetCrc32` |
 | `App/Inc/app_flash.h`<br>`App/Src/app_flash.c` | Application behavior and task-facing logic for flash | `APP_Flash_ReportStartup`, `APP_Flash_RefreshStatus`, `APP_Flash_GetStatus` |
-| `App/Inc/app_flash_service.h`<br>`App/Src/app_flash_service.c` | Application behavior and task-facing logic for flash service | `APP_FlashService_Init`, `APP_FlashService_ProbeJedecId`, `APP_FlashService_ReadStatus1`, `APP_FlashService_ReadStatus2`, `APP_FlashService_ReadStatus3`, `APP_FlashService_WriteEnableProbe` (+9) |
+| `App/Inc/app_flash_service.h`<br>`App/Src/app_flash_service.c` | Application behavior and task-facing logic for flash service | `APP_FlashService_BackendFor`, `APP_FlashService_BackendName`, `APP_FlashService_IsLogStorageReady`, `APP_FlashService_Init`, `APP_FlashService_ProbeJedecId`, `APP_FlashService_ReadStatus1` (+12) |
 | `App/Inc/app_flight_calibration.h`<br>`App/Src/app_flight_calibration.c` | Application behavior and task-facing logic for flight calibration | `APP_FlightCalibration_Defaults`, `APP_FlightCalibration_Validate`, `APP_FlightCalibration_Encode`, `APP_FlightCalibration_Decode`, `APP_FlightCalibration_UpdateOrientation`, `APP_FlightCalibration_ResetActive` (+20) |
 | `App/Inc/app_flight_log.h`<br>`App/Src/app_flight_log.c` | Application behavior and task-facing logic for flight log | `APP_FlightLog_Init`, `APP_FlightLog_BackgroundStep`, `APP_FlightLog_Observe`, `APP_FlightLog_GetStatus`, `APP_FlightLog_StartDump`, `APP_FlightLog_CancelDump` (+3) |
 | `App/Inc/app_gps.h`<br>`App/Src/app_gps.c` | Application behavior and task-facing logic for gps | `APP_GPS_Init`, `APP_GPS_Step`, `APP_GPS_GetStatus`, `APP_GPS_Report` |
@@ -67,6 +67,7 @@ Source snapshot: `1a9a5797d1e4`. Indexed files: 110.
 | `App/Inc/app_usb_cdc.h`<br>`App/Src/app_usb_cdc.c` | Application behavior and task-facing logic for usb cdc | `APP_USB_CDC_Write`, `APP_USB_CDC_Task_Step`, `APP_USB_CDC_SetConfigured`, `APP_USB_CDC_IsReady`, `APP_USB_CDC_OnReceive`, `APP_USB_CDC_OnTransmitComplete` (+1) |
 | `App/Inc/app_vofa.h`<br>`App/Src/app_vofa.c` | Application behavior and task-facing logic for vofa | `APP_VOFA_SendFloats`, `APP_VOFA_SendRaw` |
 | `Services/Inc/svc_flow_nav.h`<br>`Services/Src/svc_flow_nav.c` | Synchronous domain/data service for flow nav | `SVC_FlowNav_Init`, `SVC_FlowNav_Reset`, `SVC_FlowNav_PushSample`, `SVC_FlowNav_Age`, `SVC_FlowNav_GetHeight`, `SVC_FlowNav_GetSensorVelocity` (+11) |
+| `Services/Inc/svc_imu.h`<br>`Services/Src/svc_imu.c` | Synchronous domain/data service for imu | `SVC_IMU_RotateToFlu`, `SVC_IMU_ApplyMounting`, `SVC_IMU_DefaultRotation`, `APP_Sensor_AlignToAirframe`, `SVC_IMU_DefaultOrientationCode`, `SVC_IMU_SelectionReset` (+2) |
 | `Services/Inc/svc_param.h`<br>`Services/Src/svc_param.c` | Synchronous domain/data service for param | `SVC_Param_Init`, `SVC_Param_IsReady`, `SVC_Param_IsDirty`, `SVC_Param_GetGeneration`, `SVC_Param_LoadFromFlash`, `SVC_Param_GetBlob` (+3) |
 | `Services/Inc/svc_timestamp.h`<br>`Services/Src/svc_timestamp.c` | Synchronous domain/data service for timestamp | `SVC_Timestamp_Us`, `SVC_Timestamp_Init`, `SVC_Timestamp_Tick` |
 

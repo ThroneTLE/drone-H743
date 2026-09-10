@@ -1,4 +1,5 @@
 #include "drv_imu.h"
+#include "drv_imu_iface.h"
 
 #include <string.h>
 
@@ -483,4 +484,76 @@ float DRV_IMU_GyroLsbPerDps(DRV_IMU_GyroRange range)
     case DRV_IMU_GYRO_RANGE_2000DPS:
     default:                            return 16.4f;
     }
+}
+
+/* ============================================================================
+ * 多型号接口适配（drv_imu_iface.h）
+ * ==========================================================================
+ * 只是把上面已有的函数包一层统一签名，不重复任何寄存器逻辑。
+ * ctx 是 DRV_IMU_Device *，其 bus 由 BSP 在探测前填好。
+ */
+
+static DRV_IMU_Status icm42688_ops_probe(void *ctx, uint8_t *chip_id)
+{
+    DRV_IMU_Device *dev = (DRV_IMU_Device *)ctx;
+    uint8_t who_am_i = 0U;
+    DRV_IMU_Status status;
+
+    if (dev == NULL) { return DRV_IMU_INVALID_ARG; }
+
+    /* 探测阶段先把片选拉高，避免上一颗候选留下的低电平串进来。 */
+    icm42688_cs_high(dev);
+
+    status = DRV_IMU_WriteRegister(dev, ICM42688_REG_BANK_SEL, ICM42688_BANK0);
+    if (status != DRV_IMU_OK) { return status; }
+
+    status = DRV_IMU_ReadWhoAmI(dev, &who_am_i);
+    if (status != DRV_IMU_OK) { return status; }
+
+    dev->who_am_i = who_am_i;
+    if (chip_id != NULL) { *chip_id = who_am_i; }
+
+    return (who_am_i == DRV_IMU_WHO_AM_I_VALUE) ? DRV_IMU_OK : DRV_IMU_BAD_ID;
+}
+
+static DRV_IMU_Status icm42688_ops_init(void *ctx, const DRV_IMU_Config *config)
+{
+    DRV_IMU_Device *dev = (DRV_IMU_Device *)ctx;
+    DRV_IMU_Bus bus;
+
+    if (dev == NULL) { return DRV_IMU_INVALID_ARG; }
+
+    /* DRV_IMU_Init 会 memset 整个 dev，所以先把 BSP 填好的 bus 抢救出来。 */
+    bus = dev->bus;
+    return DRV_IMU_Init(dev, &bus, config);
+}
+
+static DRV_IMU_Status icm42688_ops_read_raw(void *ctx, DRV_IMU_RawData *raw)
+{
+    return DRV_IMU_ReadRaw((DRV_IMU_Device *)ctx, raw);
+}
+
+static DRV_IMU_Status icm42688_ops_read_scaled(void *ctx, DRV_IMU_ScaledData *scaled)
+{
+    return DRV_IMU_ReadScaled((DRV_IMU_Device *)ctx, scaled);
+}
+
+static DRV_IMU_Status icm42688_ops_is_data_ready(void *ctx, bool *ready)
+{
+    return DRV_IMU_IsDataReady((DRV_IMU_Device *)ctx, ready);
+}
+
+static const DRV_IMU_Ops icm42688_ops = {
+    .kind          = DRV_IMU_CHIP_ICM42688,
+    .name          = "ICM42688",
+    .probe         = icm42688_ops_probe,
+    .init          = icm42688_ops_init,
+    .read_raw      = icm42688_ops_read_raw,
+    .read_scaled   = icm42688_ops_read_scaled,
+    .is_data_ready = icm42688_ops_is_data_ready,
+};
+
+const DRV_IMU_Ops *DRV_IMU_GetOps(void)
+{
+    return &icm42688_ops;
 }

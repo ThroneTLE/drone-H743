@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 
@@ -164,8 +165,12 @@ def test_disarmed_pwm_disables_output_without_changing_throttle_limits() -> None
     assert "BSP_PWM_Status BSP_PWM_DisableEsc(uint32_t channel);" in header
     assert "pulse_us < BSP_PWM_ESC_MIN_US" in source
     assert "BSP_PWM_Status BSP_PWM_DisableEsc(uint32_t channel)" in source
-    # ESC 自 2026-09-07 起走 TIM5（PA0/PA1 的 AF2，引脚未变），舵机仍在 TIM2。
-    assert "__HAL_TIM_SET_COMPARE(&htim5, tim_channel, 0U);" in source
+    # 上锁必须把 CCR 写成 0（真正停止输出），而不是写成某个"最小脉宽"——
+    # 后者对 ESC 来说仍是一个有效的怠速指令。
+    #
+    # 具体是哪个定时器不在这里钉（2026-09-07 是 TIM5，MicoAir743v2 移植后是 TIM1），
+    # 定时器选择归 tests/test_pwm_frame_rate_contract.py 管。
+    assert re.search(r"__HAL_TIM_SET_COMPARE\(&htim\d+, tim_channel, 0U\);", source)
     assert "if (percent == 0U) {\n        return BSP_PWM_ESC_STOP_US;\n    }" not in source
     assert "BSP_PWM_DisableEsc(1);" in freertos
     assert "BSP_PWM_DisableEsc(2);" in freertos
