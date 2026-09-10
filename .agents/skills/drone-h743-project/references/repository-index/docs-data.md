@@ -4,7 +4,7 @@
 
 Read this shard only when the task needs architecture rationale, controller math, historical evidence, captures, datasets, or agent-support documentation.
 
-Document snapshot: `6be8fad5eda4`; aggregate snapshot: `16eba99b80c1`. Covered files: 382.
+Document snapshot: `55e4c24eafc7`; aggregate snapshot: `16eba99b80c1`. Covered files: 389.
 
 ## Documents and agent support
 
@@ -37,6 +37,13 @@ Document snapshot: `6be8fad5eda4`; aggregate snapshot: `16eba99b80c1`. Covered f
 | `doc/history/identification-and-tether-geometry-2026-07-25.md` | 系统辨识参数与结果记录 | `用户原话记录`, `坐标系与对称假设`, `质量与重心`, `舵机与推力矢量几何`, `关键点 z 坐标（原点 = 电路板中心，z+ 向上）`, `倾转机构` (+42) |
 | `doc/history/nonlinear-balance-controller-2026-07-25.md` | 非线性平衡式同轴倾转控制器 | `1. 控制目标`, `2. 坐标与已知物理量`, `3. 速度参考模型`, `4. 期望推力方向`, `5. 舵机与期望机体姿态耦合`, `6. SO(3) 姿态力矩` (+4) |
 | `doc/history/README.md` | 历史资料使用规则 | `保留内容` |
+| `doc/micoair743v2/README.md` | MicoAir743v2 板级参考（备选硬件方案） | `权威边界`, `板级事实`, `UART 与 PWM 引脚`, `与当前 drone-H743 的对照`, `待实测确认清单`, `上游来源与抓取版本` |
+| `doc/micoair743v2/vendor/ardupilot-hwdef.dat` | Project documentation for ardupilot hwdef | — |
+| `doc/micoair743v2/vendor/ardupilot-README.md` | MicoAir743v2 Flight Controller | `Features`, `Physical`, `UART Mapping`, `RC Input`, `OSD Support`, `VTX Support` (+7) |
+| `doc/micoair743v2/vendor/betaflight-MICOAIR743V2_EXTMAG-config.h` | Project documentation for betaflight MICOAIR743V2 EXTMAG config | — |
+| `doc/micoair743v2/vendor/betaflight-MICOAIR743V2_INTMAG-config.h` | Project documentation for betaflight MICOAIR743V2 INTMAG config | — |
+| `doc/micoair743v2/vendor/inav-MICOAIR743-target.h` | Project documentation for inav MICOAIR743 target | — |
+| `doc/micoair743v2/vendor/px4-default.px4board` | Project documentation for px4 default | — |
 | `doc/req-rf6-2-controller-flu-migration.md` | R-F6-2〔重发〕seam 3 控制器内部表述迁移到 FLU | `0. 为什么重发这张`, `1. 新判据：同一**物理**姿态下舵机指令一致`, `换标表`, `2. 已经替你做完的部分，别重做`, `3. 开工前置：roll 那条矛盾必须先定性〔机，不归你〕`, `~~定性结论（2026-09-06，持机会话）~~〔已被审核推翻，见下一小节〕` (+9) |
 | `doc/req-rf6-flu-runtime-migration.md` | R-F6 工单：FLU 运行时迁移（六 seam 收口） | `0. 这张工单要解决什么`, `1. 现状盘点`, `2. 子工单`, `R-F6-0 收口 seam 0 / seam 1 掩码位`, `R-F6-1 seam 2 导航口径成文 + 可执行测试`, `R-F6-2 seam 3 控制器内部表述迁移到 FLU ★核心` (+5) |
 | `doc/technical-spec.md` | drone-H743 技术规范与代码落地方案 | `1. 最终目的与范围`, `2. 角色与工作流`, `3. 架构与代码规范`, `4. 坐标与单位契约`, `5. 通信协议规范`, `6. 持久化规范` (+7) |
