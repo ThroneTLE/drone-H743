@@ -168,7 +168,8 @@ void APP_TelemStream_NoteCommandSource(APP_TelemSink source)
 {
     APP_TelemStream_Init();
 
-    if ((source == APP_TELEM_SINK_UART) || (source == APP_TELEM_SINK_USB)) {
+    if ((source == APP_TELEM_SINK_UART) || (source == APP_TELEM_SINK_USB) ||
+        (source == APP_TELEM_SINK_BT)) {
         app_telem_stream.last_command_sink = source;
     }
 }
@@ -339,6 +340,8 @@ static const char *telem_stream_sink_name(APP_TelemSink sink)
         return "uart";
     case APP_TELEM_SINK_USB:
         return "usb";
+    case APP_TELEM_SINK_BT:
+        return "bt";
     default:
         return "auto";
     }
@@ -552,9 +555,13 @@ void APP_TelemStream_Tick(void)
     }
     app_telem_stream.encode_error_latched = 0U;
 
-    sent = (sink == APP_TELEM_SINK_USB)
-               ? APP_TelemStream_PortSendUsb(app_telem_stream_frame, frame_length)
-               : APP_TelemStream_PortSendUart(app_telem_stream_frame, frame_length);
+    if (sink == APP_TELEM_SINK_USB) {
+        sent = APP_TelemStream_PortSendUsb(app_telem_stream_frame, frame_length);
+    } else if (sink == APP_TELEM_SINK_BT) {
+        sent = APP_TelemStream_PortSendBt(app_telem_stream_frame, frame_length);
+    } else {
+        sent = APP_TelemStream_PortSendUart(app_telem_stream_frame, frame_length);
+    }
 
     if (sent == 0U) {
         app_telem_stream.drops++;

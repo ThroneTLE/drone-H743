@@ -100,7 +100,7 @@ static void app_cmd_telem_usage(void)
     APP_Control_QueueText(
         "ERR usage TELEM? | TELEM CH from=<n> | TELEM STREAM on|off | "
         "TELEM RATE <hz> | TELEM MASK <hex> | TELEM REFRESH <s> | "
-        "TELEM FORMAT bin|jf | TELEM SINK usb|uart|auto\r\n");
+        "TELEM FORMAT bin|jf | TELEM SINK usb|uart|bt|auto\r\n");
 }
 
 void app_control_handle_telem(char **tokens, uint32_t count)
@@ -205,12 +205,16 @@ void app_control_handle_telem(char **tokens, uint32_t count)
 
     if (strcmp(tokens[1], "SINK") == 0) {
         if (count != 3U) {
-            APP_Control_QueueText("ERR usage TELEM SINK usb|uart|auto\r\n");
+            APP_Control_QueueText("ERR usage TELEM SINK usb|uart|bt|auto\r\n");
             return;
         }
         if (strcmp(tokens[2], "usb") == 0) {
             app_cmd_telem_report_status(
                 APP_TelemStream_SetSink(APP_TELEM_SINK_USB), "sink");
+        } else if (strcmp(tokens[2], "bt") == 0) {
+            /* 板载蓝牙（UART8）。命令面本来就与 USB/数传同一套，这里补上波形出口。 */
+            app_cmd_telem_report_status(
+                APP_TelemStream_SetSink(APP_TELEM_SINK_BT), "sink");
         } else if (strcmp(tokens[2], "uart") == 0) {
             app_cmd_telem_report_status(
                 APP_TelemStream_SetSink(APP_TELEM_SINK_UART), "sink");
@@ -218,7 +222,7 @@ void app_control_handle_telem(char **tokens, uint32_t count)
             app_cmd_telem_report_status(
                 APP_TelemStream_SetSink(APP_TELEM_SINK_AUTO), "sink");
         } else {
-            APP_Control_QueueText("ERR usage TELEM SINK usb|uart|auto\r\n");
+            APP_Control_QueueText("ERR usage TELEM SINK usb|uart|bt|auto\r\n");
         }
         return;
     }

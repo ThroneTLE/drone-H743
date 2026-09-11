@@ -4,7 +4,7 @@
 
 Read this shard only when the task touches application behavior, RTOS task bodies, control flow, diagnostics, commands, or synchronous services.
 
-Source snapshot: `ad3a78421508`. Indexed files: 116.
+Source snapshot: `e8a75fdbe901`. Indexed files: 116.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -30,7 +30,7 @@ Source snapshot: `ad3a78421508`. Indexed files: 116.
 | `App/Inc/app_control.h`<br>`App/Src/app_control.c` | Application behavior and task-facing logic for control | `APP_Control_Init`, `APP_Control_Tick`, `APP_Control_QueueText`, `APP_Control_ProcessLine`, `APP_Control_MaintTick`, `APP_Control_ProcessMaintLine` (+2) |
 | `App/Inc/app_control_config_compat.h`<br>`App/Src/app_control_config_compat.c` | Application behavior and task-facing logic for control config compat | `APP_ControlConfigCompat_CurrentPassthrough`, `APP_ControlConfigCompat_V18ToCurrent`, `APP_ControlConfigCompat_V17ToCurrent`, `APP_ControlConfigCompat_V15ToCurrent` |
 | `App/Inc/app_control_config_store.h`<br>`App/Src/app_control_config_store.c` | Application behavior and task-facing logic for control config store | `APP_ControlConfigStore_Load`, `APP_ControlConfigStore_Save`, `APP_ControlConfigStore_CaptureTunables` |
-| `App/Src/app_control_core.c` | Application behavior and task-facing logic for control core | `APP_IMU_Capture_IsExportActive` |
+| `App/Src/app_control_core.c` | Application behavior and task-facing logic for control core | `APP_IMU_Capture_IsExportActive`, `APP_MaintUART_IsLinkActive` |
 | `App/Inc/app_control_internal.h` | Application behavior and task-facing logic for control internal | — |
 | `App/Inc/app_control_scheduler.h`<br>`App/Src/app_control_scheduler.c` | Application behavior and task-facing logic for control scheduler | `APP_ControlScheduler_Reset`, `APP_ControlScheduler_Step`, `APP_ControlScheduler_Commit` |
 | `App/Inc/app_diag.h`<br>`App/Src/app_diag.c` | Application behavior and task-facing logic for diag | `APP_Diag_RecordStackOverflow`, `APP_Diag_RecordMallocFailed`, `APP_Diag_GetFaultInfo` |
@@ -46,7 +46,7 @@ Source snapshot: `ad3a78421508`. Indexed files: 116.
 | `App/Inc/app_imu_health.h`<br>`App/Src/app_imu_health.c` | Application behavior and task-facing logic for imu health | `APP_ImuHealth_Init`, `APP_ImuHealth_NoteSample`, `APP_ImuHealth_Update`, `APP_ImuHealth_GetLevel`, `APP_ImuHealth_IsArmBlocked`, `APP_ImuHealth_GetStatus` |
 | `App/Inc/app_led.h`<br>`App/Src/app_led.c` | Application behavior and task-facing logic for led | `APP_LED_Task_Init`, `APP_LED_Task_Step`, `APP_LED_SetArmStatus`, `APP_LED_SetServoCalMode` |
 | `App/Inc/app_mag.h`<br>`App/Src/app_mag.c` | Application behavior and task-facing logic for mag | `APP_MAG_Init`, `APP_MAG_Step`, `APP_MAG_GetStatus`, `APP_MAG_Report`, `APP_MAG_GetTypeName` |
-| `App/Inc/app_maint_uart.h`<br>`App/Src/app_maint_uart.c` | Application behavior and task-facing logic for maint uart | `APP_MaintUART_Init`, `APP_MaintUART_Step`, `APP_MaintUART_Write`, `APP_MaintUART_WriteFormat`, `APP_MaintUART_OnRxCplt`, `APP_MaintUART_OnError` |
+| `App/Inc/app_maint_uart.h`<br>`App/Src/app_maint_uart.c` | Application behavior and task-facing logic for maint uart | `APP_MaintUART_Init`, `APP_MaintUART_Step`, `APP_MaintUART_Write`, `APP_MaintUART_WriteRaw`, `APP_MaintUART_IsLinkActive`, `APP_MaintUART_WriteFormat` (+2) |
 | `App/Inc/app_message.h`<br>`App/Src/app_message.c` | Application behavior and task-facing logic for message | `APP_Message_Task_Init`, `APP_Message_Task_Step` |
 | `App/Inc/app_messages.h` | Application behavior and task-facing logic for messages | — |
 | `App/Inc/app_nav_estimator.h`<br>`App/Src/app_nav_estimator.c` | Application behavior and task-facing logic for nav estimator | `APP_NavEstimator_PublishVelocityEKF`, `APP_NavEstimator_GetVelocityEKF` |
@@ -64,8 +64,8 @@ Source snapshot: `ad3a78421508`. Indexed files: 116.
 | `App/Inc/app_stabilizer.h`<br>`App/Src/app_stabilizer.c` | Application behavior and task-facing logic for stabilizer | `APP_Stabilizer_LatchImuFault`, `APP_Stabilizer_ClearImuFault`, `APP_Stabilizer_MarkImuSample`, `APP_Stabilizer_ReadVofaDebug`, `APP_Stabilizer_ReadValidationImuSnapshot`, `APP_Stabilizer_ReadFlowCompensationSnapshot` (+8) |
 | `App/Inc/app_tasks.h`<br>`App/Src/app_tasks.c` | Application behavior and task-facing logic for tasks | `APP_Task_LED_Init`, `APP_Task_LED_Step`, `APP_Task_GPS_Init`, `APP_Task_GPS_Step`, `APP_Task_OpticalFlow_Init`, `APP_Task_OpticalFlow_Step` (+10) |
 | `App/Inc/app_telem_frame.h`<br>`App/Src/app_telem_frame.c` | Application behavior and task-facing logic for telem frame | `APP_TelemFrame_PopCount`, `APP_TelemFrame_HeaderBytes`, `APP_TelemFrame_PayloadLength`, `APP_TelemFrame_Encode` |
-| `App/Src/app_telem_port.c` | Application behavior and task-facing logic for telem port | `APP_TelemStream_PortNowUs`, `APP_TelemStream_PortDelayMs`, `APP_TelemStream_PortServiceExports`, `APP_IMU_Capture_IsExportActive`, `APP_FlightLog_IsExportActive`, `APP_TelemStream_PortUsbReady` (+6) |
-| `App/Inc/app_telem_stream.h`<br>`App/Src/app_telem_stream.c` | Application behavior and task-facing logic for telem stream | `APP_TelemStream_Init`, `APP_TelemStream_Reset`, `APP_TelemStream_NoteCommandSource`, `APP_TelemStream_SetActive`, `APP_TelemStream_SetRate`, `APP_TelemStream_SetMask` (+17) |
+| `App/Src/app_telem_port.c` | Application behavior and task-facing logic for telem port | `APP_TelemStream_PortNowUs`, `APP_TelemStream_PortDelayMs`, `APP_TelemStream_PortServiceExports`, `APP_IMU_Capture_IsExportActive`, `APP_FlightLog_IsExportActive`, `APP_TelemStream_PortUsbReady` (+7) |
+| `App/Inc/app_telem_stream.h`<br>`App/Src/app_telem_stream.c` | Application behavior and task-facing logic for telem stream | `APP_TelemStream_Init`, `APP_TelemStream_Reset`, `APP_TelemStream_NoteCommandSource`, `APP_TelemStream_SetActive`, `APP_TelemStream_SetRate`, `APP_TelemStream_SetMask` (+18) |
 | `App/Inc/app_telemetry.h`<br>`App/Src/app_telemetry.c` | Application behavior and task-facing logic for telemetry | `APP_Telemetry_ChannelHasParam`, `APP_Telemetry_ChannelCount`, `APP_Telemetry_GetChannel`, `APP_Telemetry_SchemaHash`, `APP_Telemetry_ReportHeader`, `APP_Telemetry_ReportPage` |
 | `App/Inc/app_uart.h`<br>`App/Src/app_uart.c` | Application behavior and task-facing logic for uart | `APP_UART_GetStats`, `APP_UART_GetRxEventStats`, `APP_UART_Task_Init`, `APP_UART_Task_Step`, `APP_UART_NotifyTxPending`, `APP_UART_OnRxEvent` (+2) |
 | `App/Inc/app_usb_cdc.h`<br>`App/Src/app_usb_cdc.c` | Application behavior and task-facing logic for usb cdc | `APP_USB_CDC_Write`, `APP_USB_CDC_Task_Step`, `APP_USB_CDC_SetConfigured`, `APP_USB_CDC_IsReady`, `APP_USB_CDC_OnReceive`, `APP_USB_CDC_OnTransmitComplete` (+1) |

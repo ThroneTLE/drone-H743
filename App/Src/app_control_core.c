@@ -61,6 +61,19 @@ void app_control_queue_proto_text(uint16_t function, const char *format, ...)
             (void)osMessageQueuePut(uartTxQueueHandle, &tx_message, 0U, 0U);
         }
         APP_UART_NotifyTxPending();
+        /*
+         * 蓝牙也要收到**没人问也该来的**那些行（READY、心跳、流式回报）。
+         *
+         * 结构化文本一直是无条件镜像到 USB 的，数传那条走队列，而蓝牙以前只在
+         * "正在处理一条蓝牙命令"期间才有输出——于是蓝牙上看不到 READY，
+         * 也看不到任何异步回报，和 USB 不是同一个口径。
+         *
+         * 只在蓝牙链路最近用过时才发：没连蓝牙的时候每条文本都要在 UART8 上
+         * 阻塞发一遍，白白拖慢 UART 任务。
+         */
+        if (APP_MaintUART_IsLinkActive() != 0U) {
+            APP_MaintUART_Write(tx_message.text, tx_message.length);
+        }
     } else {
         APP_MaintUART_Write(tx_message.text, tx_message.length);
     }

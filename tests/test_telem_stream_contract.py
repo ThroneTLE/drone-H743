@@ -376,6 +376,7 @@ static uint16_t port_max_payload = 247U;
 
 static uint32_t port_uart_frames;
 static uint32_t port_usb_frames;
+static uint32_t port_bt_frames;
 static uint32_t port_jf_frames;
 static uint8_t  port_uart_fails;
 static uint8_t  port_last_frame[512];
@@ -419,6 +420,14 @@ uint8_t APP_TelemStream_PortSendUsb(const uint8_t *frame, uint16_t length)
 {
     port_capture(frame, length);
     port_usb_frames++;
+    return 1U;
+}
+
+uint8_t APP_TelemStream_PortSendBt(const uint8_t *frame, uint16_t length)
+{
+    /* 板载蓝牙（UART8）出口。与数传同档的容量判据，见 PortMaxPayload。 */
+    port_capture(frame, length);
+    port_bt_frames++;
     return 1U;
 }
 

@@ -16,6 +16,7 @@
 #include "app_control.h"
 #include "app_flight_log.h"
 #include "app_imu_capture.h"
+#include "app_maint_uart.h"
 #include "app_messages.h"
 #include "app_optical_flow.h"
 #include "app_stabilizer.h"
@@ -223,6 +224,20 @@ uint8_t APP_TelemStream_PortSendUsb(const uint8_t *frame, uint16_t length)
     return APP_USB_CDC_Write(frame, length, APP_TELEM_PORT_USB_TX_TIMEOUT_MS);
 }
 
+uint8_t APP_TelemStream_PortSendBt(const uint8_t *frame, uint16_t length)
+{
+    /*
+     * 直接打给 UART8 的阻塞发送，不经 uartTxQueue——那条队列是数传（USART1）的，
+     * 元素还是 APP_UART_TxMessage（带 function 字段的文本消息），塞二进制帧进去
+     * 既占错了出口也会被当文本处理。
+     *
+     * 阻塞在这里是可以接受的：和 USB 出口一样，本函数只在低优先级遥测任务上下文
+     * 里调用（spec §5 的上下文契约），不会拉长控制周期。
+     */
+    APP_MaintUART_WriteRaw(frame, length);
+    return 1U;
+}
+
 uint8_t APP_TelemStream_PortSendJustFloat(const float *values, uint32_t count)
 {
     if (count > 255U) {
@@ -239,7 +254,11 @@ uint16_t APP_TelemStream_PortMaxPayload(APP_TelemSink sink)
         return (uint16_t)APP_TELEM_FRAME_MAX_PAYLOAD;
     }
 
-    /* UART 出口整帧要塞进一条 APP_UART_TxMessage。 */
+    /*
+     * UART 出口整帧要塞进一条 APP_UART_TxMessage。
+     * 蓝牙虽然不走那条队列，但 115200 的带宽预算与数传同档，沿用同一上限——
+     * 给它更大的帧只会让 40 Hz 下丢帧，而不是传得更多。
+     */
     return (uint16_t)(APP_UART_TX_TEXT_SIZE - APP_TELEM_FRAME_OVERHEAD);
 }
 

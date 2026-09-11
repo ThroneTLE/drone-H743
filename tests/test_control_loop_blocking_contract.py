@@ -26,7 +26,11 @@ CONTROL_INTERNAL = ROOT / "App" / "Inc" / "app_control_internal.h"
 CMAKE = ROOT / "CMakeLists.txt"
 
 STEP_A_BODY_SHA256 = {
-    "app_control_queue_proto_text": "852630f596f0c6851e32a04b97106655e8f29080254b8b5ccc0b2de3493ad5f8",
+    # 2026-09-11: structured text is now also mirrored to the on-board
+    # Bluetooth UART while that link is in use, so BT sees READY/heartbeat
+    # lines like USB does. Guarded by APP_MaintUART_IsLinkActive() so an
+    # idle BT port does not block the UART task on every line.
+    "app_control_queue_proto_text": "882c3d21b3c08fd35aa6491916e1426e78c8b7384e68511b33727048c9f8af06",
     "app_control_tokenize": "5186a0c9ef1a832f2619926b25b3e14cf2c4fe859baa2075cc28e0bff9f12923",
     "app_control_parse_u32": "9b35592f3df9183e87294ba31661553305887e7be944392ff724be2a570820d7",
     "app_control_parse_i32": "6c8d3ff6ef993cc6bd8726e99676aa1cbea12a2e4267c74a0b205fb1d98f1923",
@@ -460,6 +464,16 @@ uint8_t APP_USB_CDC_Write(const uint8_t *data, uint16_t length,
     return 1U;
 }
 void APP_UART_NotifyTxPending(void) { notify_count++; }
+/*
+ * 2026-09-11: the Bluetooth link is only mirrored to while it is in use.
+ * Returning 0 keeps this harness observing the pre-existing paths (USB mirror
+ * plus the UART queue); the mirror itself is covered by its own contract test.
+ */
+uint8_t APP_MaintUART_IsLinkActive(void)
+{
+    return 0U;
+}
+
 void APP_MaintUART_Write(const char *text, uint16_t length)
 {
     (void)text; (void)length;
@@ -527,7 +541,9 @@ def _write_core_stubs(stub_dir: Path) -> None:
         encoding="ascii",
     )
     (stub_dir / "app_maint_uart.h").write_text(
-        "#include <stdint.h>\nvoid APP_MaintUART_Write(const char *, uint16_t);\n",
+        "#include <stdint.h>\n"
+        "void APP_MaintUART_Write(const char *, uint16_t);\n"
+        "uint8_t APP_MaintUART_IsLinkActive(void);\n",
         encoding="ascii",
     )
     (stub_dir / "app_messages.h").write_text(

@@ -20,7 +20,18 @@
 typedef enum {
     APP_TELEM_SINK_AUTO = 0,  /* 跟随 STREAM on 那条命令是从哪条链路进来的 */
     APP_TELEM_SINK_UART,
-    APP_TELEM_SINK_USB
+    APP_TELEM_SINK_USB,
+    /*
+     * 板载蓝牙模块（MicoAir743V2 的 UART8，PE1/PE0，115200）。
+     *
+     * 加这一档是为了让蓝牙和 USB、数传**一样**能跑遥测流——命令面本来就是同一套
+     * （维护口走的就是 APP_Control_ProcessLine），缺的一直是波形这条出口，
+     * 于是蓝牙只能敲命令、看不了曲线。
+     *
+     * 帧长上限与数传同档：115200 下 40 Hz 大约 11.5 kB/s 的预算，和数传是同一
+     * 量级，沿用同一条容量判据，不另开一套。
+     */
+    APP_TELEM_SINK_BT
 } APP_TelemSink;
 
 typedef enum {
@@ -118,6 +129,8 @@ uint8_t APP_TelemStream_PortSample(float *values, uint32_t count);
 /* 出口写。返回 0 表示没发出去，调用方计入 drop。 */
 uint8_t APP_TelemStream_PortSendUart(const uint8_t *frame, uint16_t length);
 uint8_t APP_TelemStream_PortSendUsb(const uint8_t *frame, uint16_t length);
+/* 板载蓝牙（UART8）。二进制安全：帧里含 0x00，不能走任何按字符串处理的路径。 */
+uint8_t APP_TelemStream_PortSendBt(const uint8_t *frame, uint16_t length);
 
 /* 旧 JustFloat 定长帧（fmt=jf），只走 UART。 */
 uint8_t APP_TelemStream_PortSendJustFloat(const float *values, uint32_t count);

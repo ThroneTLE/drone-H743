@@ -4,7 +4,7 @@
 
 Read this shard only when the task needs architecture rationale, controller math, historical evidence, captures, datasets, or agent-support documentation.
 
-Document snapshot: `1a5f9fdbb5fe`; aggregate snapshot: `16eba99b80c1`. Covered files: 391.
+Document snapshot: `a5933d297b13`; aggregate snapshot: `16eba99b80c1`. Covered files: 391.
 
 ## Documents and agent support
 
@@ -39,7 +39,7 @@ Document snapshot: `1a5f9fdbb5fe`; aggregate snapshot: `16eba99b80c1`. Covered f
 | `doc/history/README.md` | 历史资料使用规则 | `保留内容` |
 | `doc/micoair743v2/baseline/MicoAir743v2-PX4-1.15.4-Bootloader+Firmware.bin` | Project documentation for MicoAir743v2 PX4 1.15.4 Bootloader+Firmware | — |
 | `doc/micoair743v2/baseline/MicoAir743v2_PX4-1.15.x_bootloader.bin` | Project documentation for MicoAir743v2 PX4 1.15.x bootloader | — |
-| `doc/micoair743v2/README.md` | MicoAir743v2 板级参考（备选硬件方案） | `权威边界`, `板级事实`, `UART 与 PWM 引脚`, `移植进度（2026-09-10）`, `移植中发现、并已处理的三个坑`, `审计复核后又修掉的四个 P1 + 两处接线错位（2026-09-10 第二轮）` (+13) |
+| `doc/micoair743v2/README.md` | MicoAir743v2 板级参考（备选硬件方案） | `权威边界`, `板级事实`, `UART 与 PWM 引脚`, `移植进度（2026-09-10）`, `移植中发现、并已处理的三个坑`, `审计复核后又修掉的四个 P1 + 两处接线错位（2026-09-10 第二轮）` (+15) |
 | `doc/micoair743v2/vendor/ardupilot-hwdef.dat` | Project documentation for ardupilot hwdef | — |
 | `doc/micoair743v2/vendor/ardupilot-README.md` | MicoAir743v2 Flight Controller | `Features`, `Physical`, `UART Mapping`, `RC Input`, `OSD Support`, `VTX Support` (+7) |
 | `doc/micoair743v2/vendor/betaflight-MICOAIR743V2_EXTMAG-config.h` | Project documentation for betaflight MICOAIR743V2 EXTMAG config | — |

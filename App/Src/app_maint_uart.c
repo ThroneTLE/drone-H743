@@ -2,6 +2,7 @@
 
 #include "app_aiwb2.h"
 #include "app_control.h"
+#include "app_telem_stream.h"
 #include "app_gps.h"
 #include "app_mag.h"
 #include "bsp_uart.h"
@@ -17,6 +18,13 @@
 #define APP_MAINT_UART_BOOT_TEXT_ENABLED 1U
 #define APP_MAINT_UART_PERIODIC_SENSOR_STATUS_ENABLED 0U
 #define APP_MAINT_UART_GPS_STATUS_PERIOD_MS 1000U
+/*
+ * 多久没收到蓝牙命令就算链路闲下来了。
+ *
+ * 30 秒比"一问一答"的间隔宽得多，所以上位机连着的时候不会来回抖；又比一次
+ * 会话短得多，所以断开之后不会一直往一个没人听的串口上阻塞发。
+ */
+#define APP_MAINT_UART_LINK_IDLE_MS 30000U
 
 static uint8_t maint_rx_byte;
 static uint8_t maint_rx_ring[APP_MAINT_UART_RING_SIZE];
@@ -29,6 +37,8 @@ static volatile uint8_t maint_rx_error;
 static volatile uint8_t maint_rx_overflow;
 static uint8_t maint_control_ready;
 static uint32_t maint_last_gps_status_ms;
+/* 最近一条从蓝牙进来的命令行的时刻；0 = 本次上电还没用过蓝牙。 */
+static uint32_t maint_last_command_ms;
 
 static void maint_start_rx(void)
 {
@@ -85,6 +95,12 @@ static void maint_handle_line(char *line)
     }
 
     maint_ensure_control_ready();
+    maint_last_command_ms = HAL_GetTick();
+    /*
+     * 告诉遥测流"最近一条命令是从蓝牙来的"，这样在蓝牙上敲 `TELEM SINK auto`
+     * + `TELEM STREAM on` 就会把波形发回蓝牙，与 USB、数传的行为一致。
+     */
+    APP_TelemStream_NoteCommandSource(APP_TELEM_SINK_BT);
     APP_Control_ProcessMaintLine(normalized);
 }
 
@@ -256,6 +272,27 @@ void APP_MaintUART_Write(const char *text, uint16_t length)
     }
 
     (void)BSP_UART_Transmit_UART8((const uint8_t *)text, length, 100U);
+}
+
+void APP_MaintUART_WriteRaw(const uint8_t *data, uint16_t length)
+{
+    if ((data == NULL) || (length == 0U)) {
+        return;
+    }
+
+    (void)BSP_UART_Transmit_UART8(data, length, 100U);
+}
+
+uint8_t APP_MaintUART_IsLinkActive(void)
+{
+    uint32_t idle_ms;
+
+    if (maint_last_command_ms == 0U) {
+        return 0U;
+    }
+
+    idle_ms = HAL_GetTick() - maint_last_command_ms;
+    return (idle_ms <= APP_MAINT_UART_LINK_IDLE_MS) ? 1U : 0U;
 }
 
 void APP_MaintUART_WriteFormat(const char *format, ...)
