@@ -63,7 +63,7 @@ void MX_SPI1_Init(void)
   hspi1.Init.MasterSSIdleness = SPI_MASTER_SS_IDLENESS_00CYCLE;
   hspi1.Init.MasterInterDataIdleness = SPI_MASTER_INTERDATA_IDLENESS_00CYCLE;
   hspi1.Init.MasterReceiverAutoSusp = SPI_MASTER_RX_AUTOSUSP_DISABLE;
-  hspi1.Init.MasterKeepIOState = SPI_MASTER_KEEP_IO_STATE_DISABLE;
+  hspi1.Init.MasterKeepIOState = SPI_MASTER_KEEP_IO_STATE_ENABLE;
   hspi1.Init.IOSwap = SPI_IO_SWAP_DISABLE;
   if (HAL_SPI_Init(&hspi1) != HAL_OK)
   {
@@ -105,7 +105,7 @@ void MX_SPI2_Init(void)
   hspi2.Init.MasterSSIdleness = SPI_MASTER_SS_IDLENESS_00CYCLE;
   hspi2.Init.MasterInterDataIdleness = SPI_MASTER_INTERDATA_IDLENESS_00CYCLE;
   hspi2.Init.MasterReceiverAutoSusp = SPI_MASTER_RX_AUTOSUSP_DISABLE;
-  hspi2.Init.MasterKeepIOState = SPI_MASTER_KEEP_IO_STATE_DISABLE;
+  hspi2.Init.MasterKeepIOState = SPI_MASTER_KEEP_IO_STATE_ENABLE;
   hspi2.Init.IOSwap = SPI_IO_SWAP_DISABLE;
   if (HAL_SPI_Init(&hspi2) != HAL_OK)
   {
@@ -147,7 +147,7 @@ void MX_SPI3_Init(void)
   hspi3.Init.MasterSSIdleness = SPI_MASTER_SS_IDLENESS_00CYCLE;
   hspi3.Init.MasterInterDataIdleness = SPI_MASTER_INTERDATA_IDLENESS_00CYCLE;
   hspi3.Init.MasterReceiverAutoSusp = SPI_MASTER_RX_AUTOSUSP_DISABLE;
-  hspi3.Init.MasterKeepIOState = SPI_MASTER_KEEP_IO_STATE_DISABLE;
+  hspi3.Init.MasterKeepIOState = SPI_MASTER_KEEP_IO_STATE_ENABLE;
   hspi3.Init.IOSwap = SPI_IO_SWAP_DISABLE;
   if (HAL_SPI_Init(&hspi3) != HAL_OK)
   {
@@ -326,24 +326,21 @@ void HAL_SPI_MspInit(SPI_HandleTypeDef* spiHandle)
     HAL_NVIC_SetPriority(SPI2_IRQn, 5, 0);
     HAL_NVIC_EnableIRQ(SPI2_IRQn);
   /* USER CODE BEGIN SPI2_MspInit 1 */
-    GPIO_InitStruct.Pin = GPIO_PIN_1|GPIO_PIN_2;
-    GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-    GPIO_InitStruct.Pull = GPIO_NOPULL;
-    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
-    GPIO_InitStruct.Alternate = GPIO_AF5_SPI2;
-    HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
-
-    GPIO_InitStruct.Pin = GPIO_PIN_9;
-    GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-    GPIO_InitStruct.Pull = GPIO_NOPULL;
-    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
-    GPIO_InitStruct.Alternate = GPIO_AF5_SPI2;
-    HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
-
-    /* Close PC2 analog switch for PC2_C (SPI2_MISO). Without this,
-     * MISO floats and SPI reads return random values on STM32H7. */
-    HAL_SYSCFG_AnalogSwitchConfig(SYSCFG_SWITCH_PC2, SYSCFG_SWITCH_PC2_CLOSE);
-
+    /*
+     * 这里原先还手配了 PC1 与 PA9 的 SPI2 复用——那是**上一块板**的 SPI2
+     * （SCK=PA9 / MOSI=PC1 / MISO=PC2_C）。USER CODE 区不受重新生成影响，
+     * 所以它一路活到了 MicoAir743v2，并且排在生成代码之后，是最后说了算的那个。
+     *
+     * 在本板上这两个脚另有其人：
+     *     PA9 = USART1_TX（调参/遥测口的发送脚）
+     *     PC1 = BATT_CURRENT_SENS（对面是电流采样运放的**输出**）
+     * 把它们配成复用推挽，等于让 MCU 与运放两个输出对顶，同时让 USART1 发不出字节。
+     * 2026-09-11 实机 `REQ mod=IMUSEL op=BUS` 读到两者仍是 mode=2 af=5，确认生效中。
+     * 已删除；回归由 tests/test_micoair743v2_generated_code_sync.py 看守。
+     *
+     * PC2_C / PC3_C 的模拟开关不在这里闭合：它们复位后本就是闭合的（PMCR 的 xxSO
+     * 位语义是"断开"，复位值为 0），而板级那份统一处理在 BSP_Board_Init()。
+     */
   /* USER CODE END SPI2_MspInit 1 */
   }
   else if(spiHandle->Instance==SPI3)

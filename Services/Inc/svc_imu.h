@@ -130,7 +130,19 @@ typedef struct {
     uint8_t          probed_kind[4];
     uint8_t          probed_chip_id[4];
     DRV_IMU_Status   probed_status[4];
+    /*
+     * 每颗候选的 init 结果。SVC_IMU_INIT_NOT_ATTEMPTED 表示压根没轮到它
+     * （前面已经有芯片 init 成功并上岗，按优先级就不再往下试了）。
+     *
+     * 有了它，"探到了却没上岗"才说得清是配置失败还是根本没轮到——
+     * 2026-09-11 BMI088 修好总线毛刺后 probe 通过但仍未上岗，
+     * 当时靠既有记账一个字也说不出原因。
+     */
+    DRV_IMU_Status   init_status[4];
 } SVC_IMU_Selection;
+
+/* 不是 DRV_IMU_Status 的合法取值，专门表示"没有尝试过"。 */
+#define SVC_IMU_INIT_NOT_ATTEMPTED ((DRV_IMU_Status)0x7F)
 
 void SVC_IMU_SelectionReset(SVC_IMU_Selection *selection);
 
@@ -150,6 +162,11 @@ void SVC_IMU_SelectionRecord(SVC_IMU_Selection *selection,
                              DRV_IMU_ChipKind kind,
                              uint8_t chip_id,
                              DRV_IMU_Status status);
+
+/* 记一次 init 结果（成功与否都记）。按 kind 找到对应的探测槽位。 */
+void SVC_IMU_SelectionRecordInit(SVC_IMU_Selection *selection,
+                                 DRV_IMU_ChipKind kind,
+                                 DRV_IMU_Status status);
 
 /* 敲定选型：init 成功之后才调，同时按芯片种类装好默认安装旋转。 */
 void SVC_IMU_SelectionCommit(SVC_IMU_Selection *selection,

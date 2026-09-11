@@ -74,6 +74,13 @@ void app_control_report_flow(void);
 /* TELEM 命令族（App/Src/app_cmd_telem.c）。 */
 void app_control_handle_telem(char **tokens, uint32_t count);
 
+/*
+ * 通用探针命令族（App/Src/app_cmd_probe.c）：MEM / SPI / I2C / UART。
+ * 认领了这个 mod 返回 1，否则返回 0 让调用方继续往下匹配。
+ */
+uint8_t app_control_req_probe(uint32_t id, const char *mod, const char *op,
+                              char **tokens, uint32_t count);
+
 /* IMUSEL 命令族（App/Src/app_cmd_imusel.c）。 */
 void app_control_req_imusel(uint32_t id, const char *op);
 

@@ -174,6 +174,24 @@ void SVC_IMU_SelectionReset(SVC_IMU_Selection *selection)
         selection->probed_kind[i] = (uint8_t)DRV_IMU_CHIP_NONE;
         selection->probed_chip_id[i] = 0U;
         selection->probed_status[i] = DRV_IMU_ERROR;
+        selection->init_status[i] = SVC_IMU_INIT_NOT_ATTEMPTED;
+    }
+}
+
+void SVC_IMU_SelectionRecordInit(SVC_IMU_Selection *selection,
+                                 DRV_IMU_ChipKind kind,
+                                 DRV_IMU_Status status)
+{
+    uint32_t i;
+
+    if (selection == NULL) { return; }
+
+    /* 按 kind 回填到对应的探测槽位；没有对应槽位就丢弃（记录已满时会发生）。 */
+    for (i = 0U; i < (uint32_t)selection->probe_count; i++) {
+        if (selection->probed_kind[i] == (uint8_t)kind) {
+            selection->init_status[i] = status;
+            return;
+        }
     }
 }
 
@@ -192,6 +210,7 @@ void SVC_IMU_SelectionRecord(SVC_IMU_Selection *selection,
         selection->probed_kind[selection->probe_count] = (uint8_t)kind;
         selection->probed_chip_id[selection->probe_count] = chip_id;
         selection->probed_status[selection->probe_count] = status;
+        selection->init_status[selection->probe_count] = SVC_IMU_INIT_NOT_ATTEMPTED;
         selection->probe_count++;
     }
 

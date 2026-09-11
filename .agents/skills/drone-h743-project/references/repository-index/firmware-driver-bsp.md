@@ -4,7 +4,7 @@
 
 Read this shard only when the task touches device protocols, reusable algorithms, buses, GPIO, DMA callbacks, cache hooks, or board bindings.
 
-Source snapshot: `2843d59d1d96`. Indexed files: 90.
+Source snapshot: `fa801d47c5df`. Indexed files: 90.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -45,15 +45,15 @@ Source snapshot: `2843d59d1d96`. Indexed files: 90.
 | `BSP/Inc/bsp_flash_bus.h`<br>`BSP/Src/bsp_flash_bus.c` | Board resource binding for flash bus | `BSP_FlashBus_GetBus`, `BSP_FlashBus_Acquire`, `BSP_FlashBus_Release`, `BSP_FlashBus_RegisterDmaDevice`, `BSP_FlashBus_InvalidateBinding` |
 | `BSP/Inc/bsp_gpio.h`<br>`BSP/Src/bsp_gpio.c` | Board resource binding for gpio | `BSP_GPIO_Init`, `BSP_GPIO_Write`, `BSP_GPIO_Read`, `BSP_GPIO_Toggle` |
 | `BSP/Inc/bsp_gps.h`<br>`BSP/Src/bsp_gps.c` | Board resource binding for gps | `BSP_GPS_Init`, `BSP_GPS_ConfigureM9NDefault`, `BSP_GPS_Service`, `BSP_GPS_OnUartRxCplt`, `BSP_GPS_OnUartError`, `BSP_GPS_GetStatus` (+1) |
-| `BSP/Inc/bsp_i2c.h`<br>`BSP/Src/bsp_i2c.c` | Board resource binding for i2c | — |
+| `BSP/Inc/bsp_i2c.h`<br>`BSP/Src/bsp_i2c.c` | Board resource binding for i2c | `BSP_I2C_GetHandle`, `BSP_I2C_DebugXfer`, `BSP_I2C_DebugScan` |
 | `BSP/Inc/bsp_icm42688.h`<br>`BSP/Src/bsp_icm42688.c` | Board resource binding for icm42688 | — |
-| `BSP/Inc/bsp_imu.h`<br>`BSP/Src/bsp_imu.c` | Board resource binding for imu | `BSP_IMU_Init`, `BSP_IMU_ReadRaw`, `BSP_IMU_ReadScaled`, `BSP_IMU_IsDataReady`, `BSP_IMU_GetWhoAmI`, `BSP_IMU_GetDiag` (+6) |
+| `BSP/Inc/bsp_imu.h`<br>`BSP/Src/bsp_imu.c` | Board resource binding for imu | `BSP_IMU_Init`, `BSP_IMU_ReadRaw`, `BSP_IMU_ReadScaled`, `BSP_IMU_IsDataReady`, `BSP_IMU_GetWhoAmI`, `BSP_IMU_GetDiag` (+8) |
 | `BSP/Inc/bsp_led.h`<br>`BSP/Src/bsp_led.c` | Board resource binding for led | `BSP_LED_Init`, `BSP_LED_On`, `BSP_LED_Off`, `BSP_LED_Toggle` |
 | `BSP/Inc/bsp_mag.h`<br>`BSP/Src/bsp_mag.c` | Board resource binding for mag | `BSP_MAG_Init`, `BSP_MAG_Read`, `BSP_MAG_Probe`, `BSP_MAG_GetStatus`, `BSP_MAG_Invalidate`, `BSP_MAG_TypeName` |
 | `BSP/Inc/bsp_optical_flow.h`<br>`BSP/Src/bsp_optical_flow.c` | Board resource binding for optical flow | `BSP_OPTICAL_FLOW_Init`, `BSP_OPTICAL_FLOW_Service`, `BSP_OPTICAL_FLOW_OnUartRxCplt`, `BSP_OPTICAL_FLOW_OnUartRxEvent`, `BSP_OPTICAL_FLOW_OnUartError`, `BSP_OPTICAL_FLOW_GetStatus` (+4) |
 | `BSP/Inc/bsp_pwm.h`<br>`BSP/Src/bsp_pwm.c` | Board resource binding for pwm | `BSP_PWM_Init`, `BSP_PWM_SetEscPulse`, `BSP_PWM_SetEscPercent`, `BSP_PWM_DisableEsc`, `BSP_PWM_SetServoPulse`, `BSP_PWM_PercentToPulse` (+3) |
 | `BSP/Inc/bsp_spi.h`<br>`BSP/Src/bsp_spi.c` | Board resource binding for spi | `BSP_SPI_RegisterFlashDevice` |
 | `BSP/Inc/bsp_system.h`<br>`BSP/Src/bsp_system.c` | Board resource binding for system | `BSP_System_Init`, `BSP_Cache_Enable`, `BSP_Cache_Disable`, `BSP_System_GetClockInfo` |
-| `BSP/Inc/bsp_uart.h`<br>`BSP/Src/bsp_uart.c` | Board resource binding for uart | `BSP_UART_Release_USART1_ForExternalDebug`, `BSP_UART_Transmit_USART1`, `BSP_UART_Transmit_UART8`, `BSP_UART_GetUSART1TxCount` |
+| `BSP/Inc/bsp_uart.h`<br>`BSP/Src/bsp_uart.c` | Board resource binding for uart | `BSP_UART_Release_USART1_ForExternalDebug`, `BSP_UART_Transmit_USART1`, `BSP_UART_Transmit_UART8`, `BSP_UART_GetUSART1TxCount`, `BSP_UART_GetHandle`, `BSP_UART_IsHalfDuplex` (+1) |
 
 Open the smallest listed interface first (normally a header or test), then its implementation only if needed.

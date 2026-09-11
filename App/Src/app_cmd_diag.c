@@ -467,6 +467,11 @@ void app_control_handle_req(char **tokens, uint32_t count)
         return;
     }
 
+    /* 通用探针：MEM / SPI / I2C / UART，不认这个 mod 就往下走。 */
+    if (app_control_req_probe(id, mod, op, tokens, count) != 0U) {
+        return;
+    }
+
     /* 选型记账：哪几颗被探过、各自读回什么 ID、为什么没上岗。 */
     if (strcmp(mod, "IMUSEL") == 0) {
         app_control_req_imusel(id, op);

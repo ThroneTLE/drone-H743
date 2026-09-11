@@ -119,6 +119,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     App/Src/app_cmd_system.c
     App/Src/app_cmd_diag.c
     App/Src/app_cmd_imusel.c
+    App/Src/app_cmd_probe.c
     App/Src/app_diag.c
     App/Src/app_flash.c
     App/Src/app_firmware_identity.c

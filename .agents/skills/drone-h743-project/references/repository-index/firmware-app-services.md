@@ -4,7 +4,7 @@
 
 Read this shard only when the task touches application behavior, RTOS task bodies, control flow, diagnostics, commands, or synchronous services.
 
-Source snapshot: `600eaf4fedf9`. Indexed files: 113.
+Source snapshot: `2d6334372953`. Indexed files: 114.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -19,6 +19,7 @@ Source snapshot: `600eaf4fedf9`. Indexed files: 113.
 | `App/Src/app_cmd_flow.c` | Application behavior and task-facing logic for cmd flow | `APP_Stabilizer_ReadFlowCompensationSnapshot` |
 | `App/Src/app_cmd_imucal.c` | Application behavior and task-facing logic for cmd imucal | `APP_FlightCalibration_ReadActive`, `SVC_Param_IsDirty`, `APP_Sensor_GetFluOrientation`, `APP_FlightCalibration_MergeV1Candidate`, `APP_FlightCalibration_PublishPreview`, `APP_FlightCalibration_UploadExpire` (+1) |
 | `App/Src/app_cmd_imusel.c` | Application behavior and task-facing logic for cmd imusel | `BSP_IMU_Init` |
+| `App/Src/app_cmd_probe.c` | Application behavior and task-facing logic for cmd probe | `APP_Stabilizer_IsArmed`, `BSP_IMU_DebugSpiBusIndex`, `BSP_I2C_GetHandle`, `BSP_UART_GetHandle`, `BSP_UART_DebugXfer` |
 | `App/Src/app_cmd_rcmap.c` | Application behavior and task-facing logic for cmd rcmap | `APP_RcConfig_Validate` |
 | `App/Src/app_cmd_servocal.c` | Application behavior and task-facing logic for cmd servocal | `APP_Sensor_GetFluOrientation`, `SVC_Param_IsDirty`, `APP_FlightCalibration_UpdateServoMechanical`, `APP_FlightCalibration_PublishPreview` |
 | `App/Src/app_cmd_servotype.c` | Application behavior and task-facing logic for cmd servotype | `APP_Stabilizer_IsArmed`, `APP_ServoType_FromName`, `APP_FlightCalibration_UpdateServoType`, `SVC_Param_IsDirty` |
@@ -68,7 +69,7 @@ Source snapshot: `600eaf4fedf9`. Indexed files: 113.
 | `App/Inc/app_usb_cdc.h`<br>`App/Src/app_usb_cdc.c` | Application behavior and task-facing logic for usb cdc | `APP_USB_CDC_Write`, `APP_USB_CDC_Task_Step`, `APP_USB_CDC_SetConfigured`, `APP_USB_CDC_IsReady`, `APP_USB_CDC_OnReceive`, `APP_USB_CDC_OnTransmitComplete` (+1) |
 | `App/Inc/app_vofa.h`<br>`App/Src/app_vofa.c` | Application behavior and task-facing logic for vofa | `APP_VOFA_SendFloats`, `APP_VOFA_SendRaw` |
 | `Services/Inc/svc_flow_nav.h`<br>`Services/Src/svc_flow_nav.c` | Synchronous domain/data service for flow nav | `SVC_FlowNav_Init`, `SVC_FlowNav_Reset`, `SVC_FlowNav_PushSample`, `SVC_FlowNav_Age`, `SVC_FlowNav_GetHeight`, `SVC_FlowNav_GetSensorVelocity` (+11) |
-| `Services/Inc/svc_imu.h`<br>`Services/Src/svc_imu.c` | Synchronous domain/data service for imu | `SVC_IMU_RotateToFlu`, `SVC_IMU_ApplyMounting`, `SVC_IMU_DefaultRotation`, `APP_Sensor_AlignToAirframe`, `SVC_IMU_DefaultOrientationCode`, `SVC_IMU_SelectionReset` (+3) |
+| `Services/Inc/svc_imu.h`<br>`Services/Src/svc_imu.c` | Synchronous domain/data service for imu | `SVC_IMU_RotateToFlu`, `SVC_IMU_ApplyMounting`, `SVC_IMU_DefaultRotation`, `APP_Sensor_AlignToAirframe`, `SVC_IMU_DefaultOrientationCode`, `SVC_IMU_SelectionReset` (+4) |
 | `Services/Inc/svc_param.h`<br>`Services/Src/svc_param.c` | Synchronous domain/data service for param | `SVC_Param_Init`, `SVC_Param_IsReady`, `SVC_Param_IsDirty`, `SVC_Param_GetGeneration`, `SVC_Param_LoadFromFlash`, `SVC_Param_GetBlob` (+3) |
 | `Services/Inc/svc_timestamp.h`<br>`Services/Src/svc_timestamp.c` | Synchronous domain/data service for timestamp | `SVC_Timestamp_Us`, `SVC_Timestamp_Init`, `SVC_Timestamp_Tick` |
 

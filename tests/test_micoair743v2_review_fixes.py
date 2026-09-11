@@ -777,6 +777,7 @@ SPI_HandleTypeDef hspi3;
 
 /* bsp_imu.c 的背靠背读取自检要用到的片选端口与 SPI2 寄存器块，见 _micoair_hostfakes。 */
 GPIO_TypeDef fake_gpio_d;
+GPIO_TypeDef fake_gpio_a;
 SPI_RegDef   fake_spi2_regs;
 
 /* 只为让链接通过：本用例考的是选型回退，两颗 IMU 的总线行为由各自的 ops 桩决定。 */

@@ -206,10 +206,11 @@ STEP_D3_ACCESSOR_BODY = """{
 STEP_D4_PARENT_COMMIT = "e44770bbaebd836d0df808bee80961db7db5cda0"
 STEP_D4_SYSTEM_BODY_SHA256 = {
     # S7 advertises the newly registered SERVOTYPE? command.
-    # 2026-09-11：能力表新增 IMUSEL 模块（STATUS/BUS/RAW）。首刷 MicoAir743v2 时
+    # 2026-09-11：能力表新增 IMUSEL（STATUS/BUS/RAW）与通用探针 MEM/SPI/I2C/UART。
+    # 后者是授权新增的调试出口，动机见 App/Src/app_cmd_probe.c 文件头。首刷 MicoAir743v2 时
     # BMI088 没上岗而 BMI270 顶上，现有诊断一个字都说不出原因——选型记账早就存在
     # 于 SVC_IMU_Selection，只是没有出口。这是被授权的功能新增，不是 D4 搬家走样。
-    "app_control_report_caps": "01b807cf0ccbc04a275bb8655e5364d3ed1c3e8ecf97ac369b4276bcde4731e9",
+    "app_control_report_caps": "455ddba198796f88c260faeb09a51babee4c19cb6dd81b55e926c164fb2fe5c1",
     # 2026-09-11：WiFi 诊断原样印死 `pin=PC6`，而 PC6 在 MicoAir743v2 上是
     # USART6_TX（ELRS 发送脚），Ai-WB2 使能脚已不存在。改为 pin=none，口径修正。
     "app_control_report_wifi": "0f79bf2ce5d31bcd9a87db2699ed26f434646331f458b025c0d2932fda74bba4",
@@ -235,9 +236,10 @@ STEP_D4_DIAG_BODY_SHA256 = {
     "app_control_req_icm42688": "4805915e544657f7d537d4fdea16dcb098b786620f8b9b0bf060bd83edbefe84",
     "app_control_req_m9n": "6768cfd5dfe511c1ef7cb3422461425b15a50c63832632778f48b4df9b181c58",
     "app_control_req_mag": "5c1993ac6286decfbc1c87fddcd66da1e0942c900c31d24ea43b651f62c02f01",
-    # 2026-09-11：新增 IMUSEL 分支（处理体在 App/Src/app_cmd_imusel.c，此处只多一个
-    # 分发分支），以及 WIFI 分支里 pin=PC6 → pin=none 的口径修正。均为授权改动。
-    "app_control_handle_req": "e798d64185447ac2f634f2f776d5a2c6052b77eb168bcf54ff599d9f860d919b",
+    # 2026-09-11：新增 IMUSEL 与通用探针（MEM/SPI/I2C/UART）两个分发分支，处理体分别在
+    # App/Src/app_cmd_imusel.c 与 app_cmd_probe.c，此处只多两个分支；另有 WIFI 分支里
+    # pin=PC6 → pin=none 的口径修正。均为授权改动，不是 D4 搬家走样。
+    "app_control_handle_req": "0f8692d5887c8f0329999dd23e6d0990972859ba6e0ebb81fb1c68a4d27f22c5",
 }
 STEP_D4_PROTECTED_LEGACY_BODY_SHA256 = {
     "app_control_report_config": "c9d30f2565e2de3830fcaca89e6f8d86f163431bb079893d44779bf414a75164",

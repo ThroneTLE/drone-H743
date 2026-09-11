@@ -144,11 +144,14 @@ void app_control_req_imusel(uint32_t id, const char *op)
      */
     for (i = 0U; i < (uint32_t)selection.probe_count; i++) {
         APP_Control_QueueText(
-            "RSP id=%lu mod=IMUSEL op=STATUS probe[%lu] chip=%s id=0x%02X st=%s\r\n",
+            "RSP id=%lu mod=IMUSEL op=STATUS probe[%lu] chip=%s id=0x%02X st=%s init=%s\r\n",
             (unsigned long)id,
             (unsigned long)i,
             SVC_IMU_ChipName((DRV_IMU_ChipKind)selection.probed_kind[i]),
             (unsigned int)selection.probed_chip_id[i],
-            imusel_status_name(selection.probed_status[i]));
+            imusel_status_name(selection.probed_status[i]),
+            (selection.init_status[i] == SVC_IMU_INIT_NOT_ATTEMPTED)
+                ? "skipped"
+                : imusel_status_name(selection.init_status[i]));
     }
 }

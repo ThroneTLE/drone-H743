@@ -50,7 +50,17 @@ typedef struct { int tag; } USART_TypeDef;
 typedef struct {
     uint32_t CLKPolarity;
     uint32_t CLKPhase;
+    /*
+     * CFG2 的 AFCNTR。2026-09-11 实测：关着的时候 SPE=0 期间 SPI 交还引脚控制权，
+     * SCK 不再被钉在 CPOL 电平上，下一笔事务开头就多出一个时钟沿——BMI088 因此
+     * 只有第一笔读得到数据。bsp_imu.c 现在会强制打开它，所以假头必须有这个成员，
+     * 否则这套 harness 编译的就不再是真实源码了。
+     */
+    uint32_t MasterKeepIOState;
 } SPI_InitTypeDef;
+
+#define SPI_MASTER_KEEP_IO_STATE_DISABLE 0x00000000U
+#define SPI_MASTER_KEEP_IO_STATE_ENABLE  0x80000000U
 
 typedef struct {
     int             tag;
@@ -87,6 +97,9 @@ extern GPIO_TypeDef fake_gpio_d;
 #define BMI088_A_CS_Pin       ((uint16_t)0x0010U)   /* PD4 */
 #define BMI088_G_CS_GPIO_Port (&fake_gpio_d)
 #define BMI088_G_CS_Pin       ((uint16_t)0x0020U)   /* PD5 */
+extern GPIO_TypeDef fake_gpio_a;
+#define BMI270_CS_GPIO_Port   (&fake_gpio_a)
+#define BMI270_CS_Pin         ((uint16_t)0x8000U)   /* PA15 */
 
 typedef struct {
     uint32_t CR1;

@@ -225,30 +225,39 @@ void APP_Baro_ReportStartup(void)
     app_baro_queue_text("BARO ok id=0x%02X\r\n", (unsigned int)product_id);
 }
 
+/*
+ * 把 `baro_status` 里的芯片身份对齐到驱动的实际状态。
+ *
+ * 这张表本来由 APP_Baro_ReportStartup() 填，而那个函数被
+ * APP_MESSAGE_STARTUP_REPORT_ENABLED=0 整段编译掉了——于是它从开机到关机都是零
+ * 初始化值。判据把"全零"读成 product_id != 0x10，诊断因此报 `ok=0 stage=who_id`，
+ * 而气压计其实正在稳定输出（2026-09-10 MicoAir743v2 首刷实测：同一时刻
+ * pressure_pa=96163、标定系数全部读出）。
+ *
+ * 不去打开那个编译开关，是因为 ReportStartup 会在 Message 任务里对 I2C2 发起探测
+ * 读，与 Sensor 任务抢同一条总线；这里只是读驱动已经存下来的字段，不产生总线事务。
+ *
+ * 必须让 GetStatus 与 ReadSnapshot 两条路都经过这里：后者直接拷 `baro_status`，
+ * 只修前者的话 `REQ mod=SPL06` 会对而 `BARO?` 依旧报假——两条命令互相矛盾比单独
+ * 一条报错更难查。
+ */
+static void app_baro_refresh_identity(void)
+{
+    const DRV_BARO_Device *dev = BSP_BARO_GetDevice();
+
+    if (dev != NULL) {
+        baro_status.product_id = dev->product_id;
+        baro_status.init_status = (int32_t)BSP_BARO_Init();   /* 已初始化时直接返回 OK */
+    }
+}
+
 void APP_Baro_GetStatus(APP_Baro_Status *status)
 {
-    const DRV_BARO_Device *dev;
-
     if (status == 0) {
         return;
     }
 
-    /*
-     * `baro_status` 里的 ID 与 init 结果本来由 APP_Baro_ReportStartup() 填，而那个
-     * 函数被 APP_MESSAGE_STARTUP_REPORT_ENABLED=0 整段编译掉了——于是这张表从开机到
-     * 关机都是零初始化值。判据把"全零"读成 product_id != 0x10，诊断因此报
-     * `ok=0 stage=who_id`，而气压计其实正在稳定输出（2026-09-10 MicoAir743v2 首刷实测：
-     * 同一时刻 pressure_pa=96163、标定系数全部读出）。
-     *
-     * 不去打开那个开关，是因为 ReportStartup 会在 Message 任务里对 I2C2 发起探测读，
-     * 与 Sensor 任务抢同一条总线；而这里只是读驱动已经存下来的 product_id，
-     * 不产生任何总线事务。
-     */
-    dev = BSP_BARO_GetDevice();
-    if (dev != NULL) {
-        baro_status.product_id = dev->product_id;
-    }
-
+    app_baro_refresh_identity();
     *status = baro_status;
 }
 
@@ -259,6 +268,7 @@ void APP_Baro_ReadSnapshot(APP_Baro_Snapshot *snapshot)
     }
 
     memset(snapshot, 0, sizeof(*snapshot));
+    app_baro_refresh_identity();
     snapshot->status = baro_status;
     snapshot->raw_status = (int32_t)BSP_BARO_ReadRawRegisters(APP_BARO_SPL06_RAW_REG,
                                                               snapshot->raw_regs,

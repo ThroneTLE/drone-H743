@@ -41,18 +41,36 @@ static DRV_IMU_Config     imu_config;
  * doc/micoair743v2/vendor/ardupilot-hwdef.dat 里的 SPIDEV ... MODE3 一致。
  * 这个函数保留下来是因为老板子上曾出现过模式被别处改掉的情况，
  * 进入探测前强制回到已知状态，比假设"CubeMX 配好了"稳。
+ *
+ * 同时强制打开 MasterKeepIOState（CFG2 的 AFCNTR）—— 这一条是 2026-09-11 在
+ * MicoAir743v2 上实测定位出来的，代价不小，记在这里：
+ *
+ * 它默认是 DISABLE：SPE=0 期间 SPI 把引脚控制权交还给 GPIO，SCK 不再被钉在
+ * CPOL 电平上。下一笔事务时片选先拉低、随后使能 SPE，SCK 这一跳在从机看来
+ * 就是一个多余的时钟沿，整串数据从此错位——读回来全是 0x00，而 HAL 一路报成功。
+ *
+ * 症状极具迷惑性：**一串事务里只有第一笔拿得到数据**，之后全 0；两笔间隔
+ * 50 ms 仍失败，隔 100 ms 以上又全部正常（BMI088 自己恢复所需的时间）。
+ * 开机探测正好踩中——驱动是"丢弃式首读 + 紧接着真读"，第二笔必败，于是
+ * BMI088 被判 bad_id，板上两颗 IMU 只剩 BMI270 能用。
+ *
+ * SPI3 上的 BMI270 恰好能容忍这个毛刺，所以同一个缺陷在那条总线上从未暴露。
+ * 两条总线都强制打开：这不是某颗芯片的偏方，是 H7 上用片选由软件控制的
+ * SPI 主机时本就该有的设置。
  */
 static void BSP_IMU_ConfigureSpiMode(SPI_HandleTypeDef *hspi,
                                      uint32_t polarity, uint32_t phase)
 {
     if ((hspi->Init.CLKPolarity == polarity) &&
-        (hspi->Init.CLKPhase == phase)) {
+        (hspi->Init.CLKPhase == phase) &&
+        (hspi->Init.MasterKeepIOState == SPI_MASTER_KEEP_IO_STATE_ENABLE)) {
         return;
     }
 
     (void)HAL_SPI_DeInit(hspi);
     hspi->Init.CLKPolarity = polarity;
     hspi->Init.CLKPhase = phase;
+    hspi->Init.MasterKeepIOState = SPI_MASTER_KEEP_IO_STATE_ENABLE;
     (void)HAL_SPI_Init(hspi);
 }
 
@@ -185,6 +203,8 @@ DRV_IMU_Status BSP_IMU_Init(void)
         if (probe_status[i] != DRV_IMU_OK) { continue; }
 
         status = candidates[i].ops->init(candidates[i].ctx, &imu_config);
+        SVC_IMU_SelectionRecordInit(&imu_selection, candidates[i].ops->kind,
+                                    status);
         if (status != DRV_IMU_OK) {
             init_error = status;
             continue;   /* 换下一颗，不要卡在这颗上 */
@@ -349,6 +369,8 @@ void BSP_IMU_DebugRawBmi088(BSP_IMU_RawProbe *out)
 
     out->sr_before = SPI2->SR;
 
+
+
     for (i = 0U; i < 4U; i++) {
         uint8_t tx[4] = { 0x80U, 0U, 0U, 0U };   /* 寄存器 0x00 | 读位 */
         uint8_t rx[4] = { 0U, 0U, 0U, 0U };
@@ -363,4 +385,69 @@ void BSP_IMU_DebugRawBmi088(BSP_IMU_RawProbe *out)
     }
 
     out->sr_after = SPI2->SR;
+}
+
+/* ============================================================ 诊断：任意 SPI 事务 */
+
+/* 诊断路径自己的超时：比采样路径的 5 ms 宽松，卡住也只影响这条命令。 */
+#define BSP_IMU_DEBUG_XFER_TIMEOUT_MS 10U
+
+typedef struct {
+    SPI_HandleTypeDef *hspi;
+    GPIO_TypeDef      *port;
+    uint16_t           pin;
+    uint8_t            bus_index;
+} BSP_IMU_CsEntry;
+
+static const BSP_IMU_CsEntry *bsp_imu_cs_entry(BSP_IMU_SpiCs cs)
+{
+    static BSP_IMU_CsEntry table[BSP_IMU_SPI_CS_COUNT];
+
+    table[BSP_IMU_SPI_CS_BMI088_ACC]  = (BSP_IMU_CsEntry){
+        &hspi2, BMI088_A_CS_GPIO_Port, BMI088_A_CS_Pin, 2U };
+    table[BSP_IMU_SPI_CS_BMI088_GYRO] = (BSP_IMU_CsEntry){
+        &hspi2, BMI088_G_CS_GPIO_Port, BMI088_G_CS_Pin, 2U };
+    table[BSP_IMU_SPI_CS_BMI270]      = (BSP_IMU_CsEntry){
+        &hspi3, BMI270_CS_GPIO_Port, BMI270_CS_Pin, 3U };
+
+    return ((uint32_t)cs < (uint32_t)BSP_IMU_SPI_CS_COUNT) ? &table[cs] : NULL;
+}
+
+uint8_t BSP_IMU_DebugSpiBusIndex(BSP_IMU_SpiCs cs)
+{
+    const BSP_IMU_CsEntry *e = bsp_imu_cs_entry(cs);
+    return (e != NULL) ? e->bus_index : 0U;
+}
+
+/*
+ * 让上位机能直接打一笔 SPI 事务，不必为每个实验重新编译固件。
+ *
+ * 2026-09-11 定位 BMI088 那个"只有第一笔读得到数据"的缺陷时，十几轮试验每一轮
+ * 都要改代码 → 编译 → 跳 DFU → 烧录 → 重启，一轮约 40 秒。真正变的往往只是
+ * 几个字节的收发内容。有了这个出口，那类实验在串口上就做完了。
+ *
+ * 刻意不做的事：不碰采样路径、不改任何寄存器配置、不拨 IMU 以外的 GPIO。
+ * 是否允许调用（解锁状态等）由 App 层把关，这里只负责老实地收发。
+ */
+DRV_IMU_Status BSP_IMU_DebugSpiXfer(BSP_IMU_SpiCs cs, const uint8_t *tx,
+                                    uint8_t *rx, uint16_t len)
+{
+    const BSP_IMU_CsEntry *e = bsp_imu_cs_entry(cs);
+    HAL_StatusTypeDef hal;
+
+    if ((e == NULL) || (tx == NULL) || (rx == NULL) ||
+        (len == 0U) || (len > (uint16_t)BSP_IMU_SPI_XFER_MAX)) {
+        return DRV_IMU_INVALID_ARG;
+    }
+
+    HAL_GPIO_WritePin(e->port, e->pin, GPIO_PIN_RESET);
+    hal = HAL_SPI_TransmitReceive(e->hspi, (uint8_t *)(uintptr_t)tx, rx, len,
+                                  BSP_IMU_DEBUG_XFER_TIMEOUT_MS);
+    HAL_GPIO_WritePin(e->port, e->pin, GPIO_PIN_SET);
+
+    switch (hal) {
+    case HAL_OK:      return DRV_IMU_OK;
+    case HAL_TIMEOUT: return DRV_IMU_TIMEOUT;
+    default:          return DRV_IMU_ERROR;
+    }
 }

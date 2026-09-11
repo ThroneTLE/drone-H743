@@ -121,6 +121,28 @@ typedef struct {
     uint8_t  chip_id[4];
 } BSP_IMU_RawProbe;
 
+/*
+ * 诊断用的任意 SPI 事务出口。
+ *
+ * 片选用枚举而不是让调用方给"总线号 + 引脚"：板上只有这三个 IMU 片选，
+ * 总线由片选唯一确定（BMI088 在 SPI2、BMI270 在 SPI3）。这样拼不出不存在的
+ * 组合，也不会有人拿它去拨别的 GPIO。
+ */
+typedef enum {
+    BSP_IMU_SPI_CS_BMI088_ACC = 0,
+    BSP_IMU_SPI_CS_BMI088_GYRO,
+    BSP_IMU_SPI_CS_BMI270,
+    BSP_IMU_SPI_CS_COUNT
+} BSP_IMU_SpiCs;
+
+/* 片选所在的 SPI 实例号（2 或 3），供诊断回报与调用方校验。 */
+uint8_t BSP_IMU_DebugSpiBusIndex(BSP_IMU_SpiCs cs);
+
+/* 一次全双工事务：拉低片选 → 收发 len 字节 → 抬片选。len 上限 BSP_IMU_SPI_XFER_MAX。 */
+#define BSP_IMU_SPI_XFER_MAX 32U
+DRV_IMU_Status BSP_IMU_DebugSpiXfer(BSP_IMU_SpiCs cs, const uint8_t *tx,
+                                    uint8_t *rx, uint16_t len);
+
 void BSP_IMU_DebugRawBmi088(BSP_IMU_RawProbe *out);
 
 void BSP_IMU_Invalidate(void);
