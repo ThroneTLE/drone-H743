@@ -246,33 +246,53 @@ PE5 / PE6（TIM15）、PD14（TIM4，兼 LED 焊盘）。
 软件跳 DFU 可用：`BOOT?` 看安全前置条件，`BOOT DFU CONFIRM` 让固件自己跳进 ROM
 bootloader，不用按 BOOT 键。**前提是命令任务没卡死**。
 
-### BMI088 背靠背读取缺陷（未解决）
+### BMI088 两个缺陷（2026-09-11 已定位并修复）
 
-两颗都在、都能正确应答：加计（CS PD4）回 `0x1E`，陀螺（CS PD5）回 `0x0F`。
-但**一串事务里只有第一笔拿得到数据**，之后全读 `0x00` 而 HAL 仍报成功。
-间隔 50 ms 仍失败，间隔 100 / 300 / 700 ms 则四笔全成。
+首刷时 BMI088 被判 `bad_id` 没能上岗，只剩 BMI270 可用。实际是**两个独立缺陷叠在一起**，
+每一个单独都足以让它失败：
 
-这正是开机探测失败的原因：`DRV_BMI088_Probe` 是"丢弃式首读 + 紧接着真读"，
-第一笔成、第二笔必败 → `acc_id=0x00` → `bad_id` → 回退到 BMI270。
-`REQ id=1 mod=IMUSEL op=STATUS` 可直接看到这个记账。
+**其一：`MasterKeepIOState`（SPI CFG2 的 AFCNTR）默认关闭。**
+SPE=0 期间 SPI 把引脚控制权交还给 GPIO，SCK 不再被钉在 CPOL 电平上；下一笔事务时
+片选已经拉低、随后使能 SPE，SCK 这一跳在从机看来就是一个多余的时钟沿，整串数据错位
+——读回全 `0x00`，而 HAL 一路报成功。症状是**一串事务里只有第一笔拿得到数据**，
+间隔 50 ms 仍失败、隔 100 ms 以上又全部正常。探测正好踩中（驱动是"丢弃式首读 +
+紧接着真读"）。SPI3 上的 BMI270 恰好能容忍这个毛刺，"SPI2 坏 SPI3 好"因此把排查
+引向了错误的方向。修法：`BSP_IMU_ConfigureSpiMode` 对两条 IMU 总线强制打开，
+`.ioc` 与生成代码的三个 SPI 同步改为 ENABLE。
 
-已逐项排除（每条都是实机测过的，不是推断）：
+**其二：寄存器写用了 `HAL_SPI_Transmit`。**
+H7 全双工主机模式下发出去的每个字节同时也会收进 RX FIFO，而 HAL 的
+`SPI_CloseTransfer` **不清它**。`bmi088_acc_write()` 是写后回读校验，回读先拿到那两个
+陈字节，校验永远不符，8 次重试耗尽后返回 `ERROR`——表现为"探测通过、初始化失败"。
+修法：加计与陀螺的寄存器写都改成收发等长的 `TransmitReceive`，rx 收下即丢，只为配平。
+同一根因还修了 `bmi088_gyro_read`（原先是 `Transmit` + `Receive` 两段式）。
 
-- 引脚复用与 PC2/PC3 模拟开关 —— `op=BUS` 读到 `PD3/PC2/PC3` 均 `mode=2 af=5`，
-  `PMCR=0x03000000`（置位的是 PA0SO/PA1SO，PC2/PC3 本来就闭合）
-- SPI 模式与分频 —— `CFG2` 解出 MODE3 + 主机，`CFG1` 解出 8 bit / 32 分频（约 3.75 MHz）
-- RX FIFO 残留 —— SPE 使能后排空计数为 0，FIFO 其实是空的；SPE=0 时读到的
-  `RXWNE/RXPLVL` 是无效值，早期据此的推断作废
-- SPI2 外设状态 —— 每笔事务前 `HAL_SPI_DeInit` + `__HAL_RCC_SPI2_FORCE_RESET` 都救不回来
-- 生成代码残留的 PC1/PA9 复用 —— 临时改回 analog 后症状不变
-- SPI2 的 NVIC 中断线 —— `HAL_NVIC_DisableIRQ(SPI2_IRQn)` 后症状不变
-- CSB 最小空闲时间 —— 抬片选后插入微秒级忙等，无效
+修复后实测：
 
-留了一条回归探针：`REQ id=N mod=IMUSEL op=RAW` 背靠背读四次加计 CHIP_ID，
-修好之后应当四笔全是 `0x1E`。
+```
+selected=BMI088 chip_id=0x1E  probe=ok  init=ok
+IMU ok=1 who=0x1E  rate_hz=1680  fault=0   health level=0（OK，BMI270 时是 1=降级）
+ax=-982 ay=213 az=52  →  合成 1006 mg ≈ 1 g
+```
 
-**已知差异（尚未验证是不是原因）**：CubeMX 只给 SPI1/SPI2 配了 DMA 与 NVIC，
-SPI3 两样都没有——而 SPI3 上的 BMI270 用同一套 HAL 阻塞读，810 Hz 连续跑毫无问题。
+定位过程中排除掉的（每条都是实机测过的，留作后来人的负面证据）：引脚复用与 PC2/PC3
+模拟开关、SPI 速率（3.75 MHz 与 470 kHz 表现一致）、RX FIFO 残留、SPI2 外设状态
+（连 RCC 硬复位都救不回来）、生成代码残留的 PC1/PA9 复用、SPI2 的 NVIC 中断线、
+CSB 最小空闲时间、加计的 suspend 模式。
+
+### 待跟进：采样节拍来自加计而非陀螺
+
+`rate_hz=1680`，而陀螺实测配置是 1000 Hz（`GYRO_BANDWIDTH=0x82` → 1000 Hz ODR /
+116 Hz 带宽），加计是 1600 Hz（`ACC_CONF=0x8C`）。PC15 的 EXTI 是
+`GPIO_MODE_IT_RISING` 单边沿，1000 Hz 的 DRDY 不可能产生 1680 次中断——**所以 PC15
+上跑的是加计的数据就绪，不是陀螺的**，与 hwdef 的 `PC15 DRDY1_BMI088_G` 标签对不上。
+
+影响：控制环以约 1600 Hz 被唤醒，而陀螺只有 1000 Hz 新值，约三成迭代读到的是重复样本。
+角速率是最内环，重复样本对 D 项就是噪声放大。
+
+两个可选修法（**涉及控制环节拍，等作者定夺，未擅自改**）：
+把陀螺 ODR 提到 2 kHz（`{2000, 230, 0x01}`，230 Hz 带宽接近原本请求的 213 Hz），
+使其快于加计；或者把节拍改回真正的陀螺 DRDY 引脚。
 
 ### 同轮修掉的诊断谎报（D5-3）
 

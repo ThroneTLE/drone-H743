@@ -146,14 +146,17 @@ static DRV_IMU_Status bmi088_gyro_read(DRV_BMI088_Device *dev, uint8_t reg,
     return DRV_IMU_OK;
 }
 
+/* 同样用收发等长的事务，理由见下面 bmi088_acc_write_raw() 的注释。 */
 static DRV_IMU_Status bmi088_gyro_write(DRV_BMI088_Device *dev, uint8_t reg,
                                         uint8_t value)
 {
     uint8_t frame[2] = { (uint8_t)(reg & (uint8_t)~BMI088_SPI_READ_BIT), value };
+    uint8_t discard[2] = { 0U, 0U };
     HAL_StatusTypeDef hal_status;
 
     bmi088_gyro_cs(dev, GPIO_PIN_RESET);
-    hal_status = HAL_SPI_Transmit(dev->bus.hspi, frame, 2U, bmi088_timeout_ms(dev));
+    hal_status = HAL_SPI_TransmitReceive(dev->bus.hspi, frame, discard, 2U,
+                                         bmi088_timeout_ms(dev));
     bmi088_gyro_cs(dev, GPIO_PIN_SET);
 
     return bmi088_from_hal(hal_status);
@@ -190,14 +193,27 @@ static DRV_IMU_Status bmi088_acc_read(DRV_BMI088_Device *dev, uint8_t reg,
     return DRV_IMU_OK;
 }
 
+/*
+ * 寄存器写也走 TransmitReceive，不是 Transmit。
+ *
+ * H7 的 SPI 在全双工主机模式下，发出去每一个字节的同时也会收进一个字节，而
+ * HAL_SPI_Transmit 结束时（SPI_CloseTransfer）**不清 RX FIFO**——那两个字节就
+ * 一直留在里面。紧接着的回读于是先把陈字节交出来，整串错位一格，校验永远不符：
+ * bmi088_acc_write() 重试 8 次之后返回 ERROR，表现为 BMI088 探测通过却初始化失败。
+ *
+ * 2026-09-11 实机验证：用同样收发等长的事务写 ACC_RANGE 再立刻回读，0x01 → 0x03
+ * 完全正确；而驱动原来的 Transmit + 回读必失败。rx 收下来就丢，只为让收发配平。
+ */
 static DRV_IMU_Status bmi088_acc_write_raw(DRV_BMI088_Device *dev, uint8_t reg,
                                            uint8_t value)
 {
     uint8_t frame[2] = { (uint8_t)(reg & (uint8_t)~BMI088_SPI_READ_BIT), value };
+    uint8_t discard[2] = { 0U, 0U };
     HAL_StatusTypeDef hal_status;
 
     bmi088_acc_cs(dev, GPIO_PIN_RESET);
-    hal_status = HAL_SPI_Transmit(dev->bus.hspi, frame, 2U, bmi088_timeout_ms(dev));
+    hal_status = HAL_SPI_TransmitReceive(dev->bus.hspi, frame, discard, 2U,
+                                         bmi088_timeout_ms(dev));
     bmi088_acc_cs(dev, GPIO_PIN_SET);
 
     return bmi088_from_hal(hal_status);
