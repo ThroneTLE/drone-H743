@@ -121,6 +121,15 @@ typedef struct {
     float yaw_rate_kd;
 } APP_ControlCoaxTunableParamsV15;
 
+/*
+ * v19 的调参块类型与当前完全相同（v20 只是在记录**后面**追加了机体模型块），
+ * 所以这一步是纯拷贝。仍然走 converter 这个接口，是为了让迁移链保持一条直线——
+ * 给 v19 开特例分支的话，下一个加版本的人就得先读懂两套写法。
+ */
+uint8_t APP_ControlConfigCompat_CurrentPassthrough(
+    const APP_ControlCoaxTunableParams *legacy,
+    APP_ControlCoaxTunableParams *current);
+
 uint8_t APP_ControlConfigCompat_V18ToCurrent(
     const APP_ControlCoaxTunableParamsV18 *legacy,
     APP_ControlCoaxTunableParams *current);

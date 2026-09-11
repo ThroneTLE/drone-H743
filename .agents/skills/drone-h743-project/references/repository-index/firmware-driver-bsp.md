@@ -4,11 +4,12 @@
 
 Read this shard only when the task touches device protocols, reusable algorithms, buses, GPIO, DMA callbacks, cache hooks, or board bindings.
 
-Source snapshot: `6d5521151ed3`. Indexed files: 90.
+Source snapshot: `72bdaea5859c`. Indexed files: 92.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
 | `Driver/Inc/drv_airframe_model.h` | Reusable device or algorithm driver for airframe model | — |
+| `Driver/Inc/drv_airframe_params.h`<br>`Driver/Src/drv_airframe_params.c` | Reusable device or algorithm driver for airframe params | `DRV_Airframe_IsValid`, `DRV_Airframe_FirstInvalidName`, `DRV_Airframe_Clear`, `DRV_Airframe_Get`, `DRV_Airframe_GetParams`, `DRV_Airframe_SetParams` (+6) |
 | `Driver/Inc/drv_attitude_control.h`<br>`Driver/Src/drv_attitude_control.c` | Reusable device or algorithm driver for attitude control | `DRV_AttitudeControl_Step` |
 | `Driver/Inc/drv_attitude_fusion.h`<br>`Driver/Src/drv_attitude_fusion.c` | Reusable device or algorithm driver for attitude fusion | `DRV_AttitudeFusion_Init`, `DRV_AttitudeFusion_InitForConvention`, `DRV_AttitudeFusion_Update`, `DRV_AttitudeFusion_GetOutput` |
 | `Driver/Inc/drv_baro.h`<br>`Driver/Src/drv_baro.c` | Reusable device or algorithm driver for baro | `DRV_BARO_Init`, `DRV_BARO_ReadId`, `DRV_BARO_ReadIdTxRx`, `DRV_BARO_ReadRegister`, `DRV_BARO_ReadRegisters`, `DRV_BARO_WriteRegister` |

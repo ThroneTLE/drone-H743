@@ -4,7 +4,7 @@
 
 Read this shard only when you need existing behavioral/architecture coverage or must choose focused regression tests.
 
-Source snapshot: `8ae8037d3e5a`. Indexed files: 157.
+Source snapshot: `0cf82d391ae7`. Indexed files: 158.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -15,6 +15,7 @@ Source snapshot: `8ae8037d3e5a`. Indexed files: 157.
 | `tests/test_acceptance_v2_runtime_contract.py` | — | `test_v2a_lease_and_esc_fail_safe_are_target_owned` (+2) |
 | `tests/test_action_contract.py` | Contract tests for the Action safety state machine (``App/Src/app_action.c``). An Action is any task that spans time an… | `test_01_armed_interlock_refuses_to_start` (+16) |
 | `tests/test_airframe_model_contract.py` | — | `test_airframe_constants_capture_measured_tether_geometry` (+5) |
+| `tests/test_airframe_params.py` | 机体模型运行时参数的契约（2026-09-11 立）。 为什么值得单独一套测试：这些数**直接进控制律**——质量、惯量、力臂、推力点到重心的 距离。填错一个不会编译失败、不会报错，只会让每一条力矩换算都偏掉，而症状要等飞起来 才出现，那… | `test_airframe_params_contract` |
 | `tests/test_aiwb2_prompt_contract.py` | — | `test_aiwb2_prompt_symbol_is_preserved_for_transparent_entry` (+4) |
 | `tests/test_attitude_fusion_contract.py` | — | `test_xio_fusion_is_vendored_and_replaces_height_gated_attitude` (+1) |
 | `tests/test_attitude_ident_pid.py` | — | `test_closed_loop_attitude_ident_script_fits_synthetic_prbs` |

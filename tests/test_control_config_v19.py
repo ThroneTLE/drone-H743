@@ -108,7 +108,9 @@ def test_cfg_v19_store_is_extracted_and_backward_compatible() -> None:
         encoding="utf-8"
     )
     control = (ROOT / "App" / "Src" / "app_control.c").read_text(encoding="utf-8")
-    assert "APP_CONTROL_CFG_VERSION     19U" in header
+    # v19 已不是当前版本（v20 追加了机体模型块），但它必须仍在迁移链上。
+    assert "APP_CONTROL_CFG_VERSION     20U" in header
+    assert "APP_CONTROL_CFG_VERSION_V19 19U" in header
     for version in ("V18", "V17", "V16", "V15"):
         assert f"APP_CONTROL_CFG_VERSION_{version}" in header
         assert f"config_read_{version.lower()}" in store

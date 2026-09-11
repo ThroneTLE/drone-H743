@@ -62,7 +62,10 @@ def test_usart1_wifi_udp_pid_tuning_path_is_text_line_based() -> None:
     assert 'aiwb2_starts_with(line, "PID ")' in app_aiwb2
     assert "APP_Control_ProcessLine(normalized);" in app_uart
     assert "ERR retired PID use PARAM? or PARAM SET" in app_control
-    assert "DRV_COAX_CTRL_SetParam(name, value)" in app_control
+    # 2026-09-11：写入路径改为 app_control_param_set_any()，它先试 coax.* 再试
+    # airframe.*。本条守的是"PID 调参走运行时参数写入"这个性质，路由器完整保留了
+    # 它；机体模型必须与控制增益分表，否则 DEFAULTS 会顺手抹掉量出来的机体数据。
+    assert "app_control_param_set_any(name, value)" in app_control
 
     assert "class UdpTransport" in transport
     assert 'values=("tcp", "udp", "serial")' in panel

@@ -3,6 +3,7 @@
 #include "app_control_config_compat.h"
 #include "app_control_internal.h"
 #include "app_rc_config.h"
+#include "drv_airframe_params.h"
 #include "drv_coax_ctrl.h"
 
 #include <math.h>
@@ -21,7 +22,12 @@ typedef struct {
     uint16_t size;
 } APP_ControlFlashHeader;
 
-#define APP_CONTROL_RECORD_TYPE(name, tunable_type, has_rc) \
+/*
+ * `has_airframe` 是 v20 加的：机体模型块只存在于当前版本的记录里。
+ * 它必须排在 checksum **之前**、其余块之后——旧版本记录的字节布局因此原封不动，
+ * 迁移读取器仍能按各自的 offsetof 校验通过。
+ */
+#define APP_CONTROL_RECORD_TYPE(name, tunable_type, has_rc, has_airframe) \
     typedef struct { \
         uint32_t magic; \
         uint16_t version; \
@@ -29,22 +35,27 @@ typedef struct {
         APP_ControlConfig config; \
         tunable_type coax_tunables; \
         has_rc \
+        has_airframe \
         uint32_t checksum; \
     } name
 
 APP_CONTROL_RECORD_TYPE(APP_ControlFlashRecord,
                         APP_ControlCoaxTunableParams,
-                        APP_RcConfig rc_config;);
+                        APP_RcConfig rc_config;,
+                        DRV_Airframe_Params airframe;);
+APP_CONTROL_RECORD_TYPE(APP_ControlFlashRecordV19,
+                        APP_ControlCoaxTunableParams,
+                        APP_RcConfig rc_config;, );
 APP_CONTROL_RECORD_TYPE(APP_ControlFlashRecordV18,
                         APP_ControlCoaxTunableParamsV18,
-                        APP_RcConfig rc_config;);
+                        APP_RcConfig rc_config;, );
 APP_CONTROL_RECORD_TYPE(APP_ControlFlashRecordV17,
                         APP_ControlCoaxTunableParamsV17,
-                        APP_RcConfig rc_config;);
+                        APP_RcConfig rc_config;, );
 APP_CONTROL_RECORD_TYPE(APP_ControlFlashRecordV16,
-                        APP_ControlCoaxTunableParamsV17, );
+                        APP_ControlCoaxTunableParamsV17, , );
 APP_CONTROL_RECORD_TYPE(APP_ControlFlashRecordV15,
-                        APP_ControlCoaxTunableParamsV15, );
+                        APP_ControlCoaxTunableParamsV15, , );
 
 static uint32_t config_checksum(const uint8_t *data, uint32_t length)
 {
@@ -194,6 +205,7 @@ static uint8_t config_read_current(APP_ControlConfig *config)
     *config = record.config;
     config_apply_tunables(&record.coax_tunables);
     app_cmd_rcmap_apply_config(&record.rc_config);
+    DRV_Airframe_SetParams(&record.airframe);
     return 1U;
 }
 
@@ -219,6 +231,10 @@ static uint8_t config_read_current(APP_ControlConfig *config)
         return 1U; \
     }
 
+APP_CONTROL_DEFINE_LEGACY_READER(config_read_v19, APP_ControlFlashRecordV19,
+                                 APP_CONTROL_CFG_VERSION_V19,
+                                 APP_ControlConfigCompat_CurrentPassthrough,
+                                 app_cmd_rcmap_apply_config(&record.rc_config))
 APP_CONTROL_DEFINE_LEGACY_READER(config_read_v18, APP_ControlFlashRecordV18,
                                  APP_CONTROL_CFG_VERSION_V18,
                                  APP_ControlConfigCompat_V18ToCurrent,
@@ -256,6 +272,9 @@ APP_FlashService_Status APP_ControlConfigStore_Load(APP_ControlConfig *config)
     case APP_CONTROL_CFG_VERSION:
         if (config_read_current(config) == 0U) return APP_FLASH_SERVICE_ERROR;
         break;
+    case APP_CONTROL_CFG_VERSION_V19:
+        if (config_read_v19(config) == 0U) return APP_FLASH_SERVICE_ERROR;
+        break;
     case APP_CONTROL_CFG_VERSION_V18:
         if (config_read_v18(config) == 0U) return APP_FLASH_SERVICE_ERROR;
         break;
@@ -289,12 +308,14 @@ APP_FlashService_Status APP_ControlConfigStore_Save(const APP_ControlConfig *con
     record.version = APP_CONTROL_CFG_VERSION;
     record.size = (uint16_t)(sizeof(record.config) +
                              sizeof(record.coax_tunables) +
-                             sizeof(record.rc_config));
+                             sizeof(record.rc_config) +
+                             sizeof(record.airframe));
     record.config = *config;
     record.config.loaded_from_flash = 1U;
     record.config.flash_valid = 1U;
     APP_ControlConfigStore_CaptureTunables(&record.coax_tunables);
     record.rc_config = *(const APP_RcConfig *)app_cmd_rcmap_config();
+    DRV_Airframe_GetParams(&record.airframe);
     record.checksum = config_checksum((const uint8_t *)&record.config,
                                       record.size);
     status = APP_FlashService_EraseSector(APP_CONTROL_CFG_ADDRESS);

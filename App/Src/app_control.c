@@ -1468,7 +1468,7 @@ static void app_control_report_coax_param_by_name(const char *name)
 {
     float value;
 
-    if ((name != NULL) && (DRV_COAX_CTRL_GetParam(name, &value) != 0U)) {
+    if ((name != NULL) && (app_control_param_get_any(name, &value) != 0U)) {
         app_control_report_coax_param(name, value);
     }
 }
@@ -1477,9 +1477,9 @@ static void app_control_report_params(void)
 {
     float value;
 
-    for (uint32_t index = 0U; index < DRV_COAX_CTRL_ParamCount(); ++index) {
-        const char *name = DRV_COAX_CTRL_ParamName(index);
-        if ((name != NULL) && (DRV_COAX_CTRL_GetParam(name, &value) != 0U)) {
+    for (uint32_t index = 0U; index < app_control_param_count_any(); ++index) {
+        const char *name = app_control_param_name_any(index);
+        if ((name != NULL) && (app_control_param_get_any(name, &value) != 0U)) {
             app_control_report_coax_param(name, value);
         }
     }
@@ -3120,7 +3120,7 @@ static uint8_t app_control_handle_param_value_line(const char *line)
         }
 
         value = app_control_param_from_ui_value(name, value);
-        if (DRV_COAX_CTRL_SetParam(name, value) == 0U) {
+        if (app_control_param_set_any(name, value) == 0U) {
             APP_Control_QueueText("ERR param target %s\r\n", name);
             return 1U;
         }
@@ -3175,7 +3175,7 @@ static void app_control_handle_param(char **tokens, uint32_t count)
     }
 
     value = app_control_param_from_ui_value(name, value);
-    if (DRV_COAX_CTRL_SetParam(name, value) == 0U) {
+    if (app_control_param_set_any(name, value) == 0U) {
         APP_Control_QueueText("ERR param target %s\r\n", name);
         return;
     }

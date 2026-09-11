@@ -96,7 +96,9 @@ def test_flash_config_preserves_current_record_and_migrates_v15_coax_tunables() 
     )
 
     # V17 = 加入遥控映射；V16/V15 都必须还能读回来，否则升级会连舵机/PID 一起丢。
-    assert "#define APP_CONTROL_CFG_VERSION     19U" in source
+    # v20 在记录尾部追加了机体模型块（机体数据的唯一来源改为 Flash）。
+    assert "#define APP_CONTROL_CFG_VERSION     20U" in source
+    assert "#define APP_CONTROL_CFG_VERSION_V19 19U" in source
     assert "#define APP_CONTROL_CFG_VERSION_V18 18U" in source
     assert "#define APP_CONTROL_CFG_VERSION_V16 16U" in source
     assert "#define APP_CONTROL_CFG_VERSION_V15 15U" in source

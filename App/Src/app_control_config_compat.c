@@ -149,3 +149,14 @@ uint8_t APP_ControlConfigCompat_V15ToCurrent(
     v17.yaw_rate_kd = legacy->yaw_rate_kd;
     return APP_ControlConfigCompat_V17ToCurrent(&v17, current);
 }
+
+uint8_t APP_ControlConfigCompat_CurrentPassthrough(
+    const APP_ControlCoaxTunableParams *legacy,
+    APP_ControlCoaxTunableParams *current)
+{
+    if ((legacy == NULL) || (current == NULL)) {
+        return 0U;
+    }
+    *current = *legacy;
+    return 1U;
+}

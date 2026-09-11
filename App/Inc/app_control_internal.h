@@ -75,6 +75,16 @@ void app_control_report_flow(void);
 void app_control_handle_telem(char **tokens, uint32_t count);
 
 /*
+ * 参数名路由（App/Src/app_cmd_airframe.c）：coax.* 与 airframe.* 两张表。
+ * app_control.c 里的调用点做等量替换即可，不新增行。
+ */
+uint32_t app_control_param_count_any(void);
+const char *app_control_param_name_any(uint32_t index);
+uint8_t app_control_param_get_any(const char *name, float *value);
+uint8_t app_control_param_set_any(const char *name, float value);
+void app_control_report_airframe_model(void);
+
+/*
  * 通用探针命令族（App/Src/app_cmd_probe.c）：MEM / SPI / I2C / UART。
  * 认领了这个 mod 返回 1，否则返回 0 让调用方继续往下匹配。
  */

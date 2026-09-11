@@ -135,7 +135,10 @@ def test_mbd_controller_gains_are_runtime_coax_params() -> None:
     assert "vel_loop_y" not in wrapper
     assert '"coax." #field' in wrapper
     assert "coax_tiltrotor_controller_codegen(" not in wrapper
-    assert "DRV_COAX_CTRL_SetParam(name, value)" in app_control
+    # 2026-09-11：写入路径改为 app_control_param_set_any()，它先试 coax.* 再试
+    # airframe.*。本条守的是"PID 调参走运行时参数写入"这个性质，路由器完整保留了
+    # 它；机体模型必须与控制增益分表，否则 DEFAULTS 会顺手抹掉量出来的机体数据。
+    assert "app_control_param_set_any(name, value)" in app_control
     assert '{ "pos_z_kp",       "coax.pos_z_kp"       }' not in app_control
     assert '{ "pos_z_ki",       "coax.pos_z_ki"       }' not in app_control
     assert "PARAM name=%s value=%s" in app_control

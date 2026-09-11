@@ -66,6 +66,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Driver/Src/drv_motor.c
     Driver/Src/drv_elrs.c
     Driver/Src/drv_optical_flow.c
+    Driver/Src/drv_airframe_params.c
     Driver/Src/drv_coax_ctrl.c
     Driver/Src/drv_position_control.c
     Driver/Src/drv_attitude_control.c
@@ -120,6 +121,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     App/Src/app_cmd_diag.c
     App/Src/app_cmd_imusel.c
     App/Src/app_cmd_probe.c
+    App/Src/app_cmd_airframe.c
     App/Src/app_diag.c
     App/Src/app_flash.c
     App/Src/app_firmware_identity.c

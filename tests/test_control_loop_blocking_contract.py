@@ -892,7 +892,10 @@ def _check_app_control_step_d2(tmp_path: Path) -> None:
         "uint8_t app_control_internal_commit_config_persist(void)",
     ) == STEP_D2_PERSIST_HELPER_BODY
     config_store = (ROOT / "App/Src/app_control_config_store.c").read_text(encoding="utf-8")
-    assert (legacy + config_store).count("app_cmd_rcmap_apply_config(") == 6
+    # 6 → 7：v20 在记录尾部追加了机体模型块，于是多了一个 v19 迁移读取器，
+    # 它同样要把旧记录里的 RC 配置应用过来。每加一条迁移链就多一次调用，
+    # 这个数会随版本增长——它守的是"应用点数量可数、不会散落"，不是某个定值。
+    assert (legacy + config_store).count("app_cmd_rcmap_apply_config(") == 7
     assert (legacy + config_store).count("app_cmd_rcmap_config()") == 1
     assert "app_control_report_rc_live();" in legacy
     assert "app_control_handle_rc_map(tokens, count);" in legacy

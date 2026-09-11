@@ -6,7 +6,15 @@
 #include "app_flash_service.h"
 
 #define APP_CONTROL_CFG_MAGIC       0x44524346UL
-#define APP_CONTROL_CFG_VERSION     19U
+/*
+ * v20：记录里新增机体模型块（DRV_Airframe_Params）。
+ * 机体数据以前是 drv_airframe_model.h 里的编译期常量，现在唯一来源是 Flash，
+ * 由上位机写入——代码里不再保留副本，就不会出现两份数据打架。
+ * 从 v19 迁移过来时记录里**没有**机体块，那就是真的没有：DRV_Airframe_Clear()
+ * 之后 valid 为 0，解锁被挡住，直到有人把量出来的数填进去。
+ */
+#define APP_CONTROL_CFG_VERSION     20U
+#define APP_CONTROL_CFG_VERSION_V19 19U
 #define APP_CONTROL_CFG_VERSION_V18 18U
 #define APP_CONTROL_CFG_VERSION_V17 17U
 #define APP_CONTROL_CFG_VERSION_V16 16U
