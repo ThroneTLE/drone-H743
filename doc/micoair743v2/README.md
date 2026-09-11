@@ -125,20 +125,73 @@ PE5 / PE6（TIM15）、PD14（TIM4，兼 LED 焊盘）。
 | 参数 + 飞行日志 | GD25Q32 @ SPI1 | **板上无外部 NOR** | 参数改内部 Flash 扇区；日志改 SDMMC + FatFs |
 | 时钟 | HSE 12 MHz | HSE 8 MHz | PLL 分频重算 |
 
-## 待实测确认清单
+## 实物验证结果（2026-09-10，出厂 PX4 固件）
 
-上机前必须逐条确认，全部属于"上游文件回答不了"的实物问题：
+**方法**：板子到手后先不刷机，用**出厂固件**把硬件接口验一遍——出厂固件是厂家验证过的
+已知good基准，这时候读出来的任何异常都只可能是硬件问题，不会和我们自己的代码混在一起。
+刷完我们的固件就没有这个基准了。
+
+出厂固件：`PX4 1.15.4`，分支 `micoair-1.15.4`，构建于 2025-04-16，
+`HW arch: MICOAIR_H743_V2`，`MCU: STM32H7[4|5]xxx, rev. V`。
+
+走 MAVLink `SERIAL_CONTROL` 进 NuttX nsh 控制台取证，全程只读命令
+（唯一的写操作是在 SD 卡上建了一个测试文件又删掉）。
+
+| 接口 | 我们的绑定 | 出厂 PX4 实测 | 结论 |
+|---|---|---|---|
+| BMI088 | SPI2，CS PD5/PD4 | 加计 `Type 0x6A` + 陀螺 `Type 0x66`，**两个独立 device_id，同在 SPI:2**；`error_count 0` | ✅ 分体双片选在硬件上是通的 |
+| BMI270 | SPI3，CS PA15 | `Type 0x37`，**SPI:3**，加计陀螺共用 device_id；`error_count 0`，且在被实时陀螺标定 | ✅ |
+| 气压计 | `hi2c2` 地址 `0x77` | `Type 0x4F, I2C:2 (0x77)`，`error_count 0`；该 target **只编进了 `GOERTEK_SPL06` 一个气压计驱动** | ✅ 芯片吃 SPL06 的寄存器与补偿模型，上游 SPL06/DPS310 之争对我们无影响 |
+| 磁罗盘 | `hi2c2` 地址 `0x0D` | `Type 0x08, I2C:2 (0x0D)` | ✅ |
+| I2C2 总线 | 气压计 + 磁罗盘共用 | `i2cdetect -b 2` 扫出且**仅扫出** `0x0D` 与 `0x77` | ✅ 无地址冲突 |
+| SDMMC1 | 飞行日志裸块 | `/dev/mmcsd0` 已挂载；写入→读回→删除一轮，内容字节一致 | ✅ 读写都通 |
+| ADC | PC0 电压 / PC1 电流 | `adc_report` 的 `channel_id=[10, 11, 20]`，16 位，`v_ref 3.3`。H743 的 ADC ch10/ch11 就是 **PC0/PC1** | ✅ 硬件通，固件侧尚未接入 |
+| 串口 | 8 路 | `/dev/ttyS0`～`ttyS7` 全部实例化 | ✅ |
+| GPS 口 | `huart3`（USART3, PD8/PD9） | PX4 的 `GPS1 = /dev/ttyS2`，`gps status` 也开在 ttyS2 | ✅ 绑定正确 |
+| PWM | ESC→TIM1 PE9/PE11，舵机→TIM4 PD12/PD13 | `pwm_out status` 10 路，分组 `{0-3} {4,5} {6,7} {8,9}` 与 TIM1/TIM3/TIM4/TIM15 布局吻合；已在 400 Hz | ✅ 四个脚都是真实输出 |
+| USB CDC | 调参 / 遥测口 | 整轮取证就是走它做的 | ✅ |
+
+### 由此结掉的原"待实测"项
+
+- **气压计到底是 SPL06 还是 DPS310** —— 结了，按 SPL06 处理即可。
+- **板载磁罗盘与气压计同在 I2C2** —— 结了，扫描证实只有这两个地址，不冲突。
+
+## 待实测确认清单（仍未结）
+
+以下是出厂固件也回答不了的，必须靠眼睛、示波器或带载：
 
 1. **PE8 / PE7 焊盘是否引出、丝印编号是什么**。hwdef 只描述 MCU 内部映射。
 2. **半双工舵机总线的电平与上拉**：UART pad 是否直连 MCU、需不需要外接上拉。
 3. **BEC 带载能力**：`DRV_AIRFRAME_SERVO_MOTOR_MASS_G = 348.6` 那组舵机电机的峰值电流
    对 5V/3A 是什么水平。
-4. **气压计实际芯片**：ArduPilot 声明 SPL06，Betaflight 与 INAV 声明 DPS310（两者寄存器高度相似）。
-   按芯片 ID 实测判定后再决定复用哪份驱动。
-5. **板载磁罗盘与气压计同在 I2C2**：若外接 IST8310 复用现有驱动，须走 I2C1。
-6. **机体模型要重算**：[`Driver/Inc/drv_airframe_model.h`](../../Driver/Inc/drv_airframe_model.h) 的
+4. **两颗 IMU 的实际安装朝向**。出厂 PX4 输出的是它自己旋转之后的机体 FRD，证明不了
+   我们的旋转常数。可做的判据：把板子**正面朝上放平**，读 `listener sensor_accel`，
+   PX4 的 FRD 下应当是 `z ≈ -9.81`；若读到 `+9.81` 说明板子是倒扣的。
+   我们自己的常数最终仍要刷完固件后用倾斜实验复核。
+5. **机体模型要重算**：[`Driver/Inc/drv_airframe_model.h`](../../Driver/Inc/drv_airframe_model.h) 的
    `DRV_AIRFRAME_BOARD_MASS_G` 记的是 75 g，本板仅 10 g，`DRV_AIRFRAME_CG_Z_M` 与推重比需重新核算。
    舵机 FOPDT 辨识、推力表、力臂等绑机体的量不受影响。
+6. **LED**：`led_control` 没编进这份 PX4，LED 由 PX4 的状态逻辑自行驱动，只能靠眼睛确认
+   红/绿/蓝三颗（PE3/PE2/PE4）是否都在亮。
+7. **蜂鸣器（PD15）是外接焊盘，板上没有发声体**（2026-09-10 实物确认）。
+   `tune_control play` 命令能正常返回，但没接蜂鸣器就听不到，因此这条**无法用出厂固件验证**，
+   要等接上外置蜂鸣器再说。固件侧目前也没有蜂鸣器驱动，暂不影响。
+
+## 刷我们的固件之前必须注意
+
+1. **SD 卡内容会被毁掉**。卡上现有 `APM/`、`log/`、`params`、`parameters_backup.bson`
+   （这张卡先后跑过 ArduPilot 和 PX4）。我们的 `drv_sdblock` 把卡当**裸块**用，
+   从第 `DRV_SDBLOCK_BASE_BLOCK = 2048` 块（即 1 MB 处）开始写——而 1 MB 正是最常见的
+   分区起始位置，文件系统会立刻被覆盖。第 0 块（MBR）不碰，但那救不了数据。
+   → 想留着出厂数据就**换一张空卡**，或者先把卡拷出来。
+2. **遥控接收机的接法与板子丝印不一致**。板载 RC 口是 **USART6**（PX4 的 `/dev/ttyS5`，
+   ArduPilot 的 RCIN），而我们的 ELRS 仍在 **UART4（PA0/PA1）**——当初为了让
+   `app_elrs.c` 零改动而保留了实例。接收机必须接到 UART4 的焊盘，插板载 RC 口不通。
+   → 要么按 UART4 接线，要么把 `app_elrs.c` 改到 USART6（机械改动，但要重配 DMA）。
+3. **刷 `0x08000000` 会覆盖 PX4 的 bootloader**，这是预期行为，而且**可完全回退**：
+   本地已有 `.tmp/micoair743v2/Firmware/PX4/1.15/MicoAir743v2-PX4-1.15.4-Bootloader+Firmware.bin`，
+   正是板子出厂时在跑的那个版本（实测 `ver all` 对得上），随时能还原回当前状态。
+   另有 ArduPilot 4.5.x 与 PX4 1.14/1.16 的 bootloader 备选。
 
 ## 上游来源与抓取版本
 
