@@ -57,22 +57,34 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
-#define Press_cs_Pin GPIO_PIN_4
-#define Press_cs_GPIO_Port GPIOE
+#define LED2_Pin GPIO_PIN_2
+#define LED2_GPIO_Port GPIOE
+#define LED1_Pin GPIO_PIN_3
+#define LED1_GPIO_Port GPIOE
+#define LED_BLUE_Pin GPIO_PIN_4
+#define LED_BLUE_GPIO_Port GPIOE
 #define LED7_Pin GPIO_PIN_13
 #define LED7_GPIO_Port GPIOC
+#define BMI088_A_DRDY_Pin GPIO_PIN_14
+#define BMI088_A_DRDY_GPIO_Port GPIOC
+#define BMI088_G_DRDY_Pin GPIO_PIN_15
+#define BMI088_G_DRDY_GPIO_Port GPIOC
+#define BMI088_G_DRDY_EXTI_IRQn EXTI15_10_IRQn
 #define FLASH_CS_Pin GPIO_PIN_4
 #define FLASH_CS_GPIO_Port GPIOA
 #define IMU_CS_Pin GPIO_PIN_12
 #define IMU_CS_GPIO_Port GPIOB
-#define LED1_Pin GPIO_PIN_6
-#define LED1_GPIO_Port GPIOC
-#define LED2_Pin GPIO_PIN_7
-#define LED2_GPIO_Port GPIOC
-#define LED3_Pin GPIO_PIN_8
-#define LED3_GPIO_Port GPIOC
-#define LED4_Pin GPIO_PIN_9
-#define LED4_GPIO_Port GPIOC
+#define BUZZER_Pin GPIO_PIN_15
+#define BUZZER_GPIO_Port GPIOD
+#define BMI270_CS_Pin GPIO_PIN_15
+#define BMI270_CS_GPIO_Port GPIOA
+#define BMI088_A_CS_Pin GPIO_PIN_4
+#define BMI088_A_CS_GPIO_Port GPIOD
+#define BMI088_G_CS_Pin GPIO_PIN_5
+#define BMI088_G_CS_GPIO_Port GPIOD
+#define BMI270_DRDY_Pin GPIO_PIN_7
+#define BMI270_DRDY_GPIO_Port GPIOB
+#define BMI270_DRDY_EXTI_IRQn EXTI9_5_IRQn
 
 /* USER CODE BEGIN Private defines */
 

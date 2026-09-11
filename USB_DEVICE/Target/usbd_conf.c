@@ -77,7 +77,7 @@ void HAL_PCD_MspInit(PCD_HandleTypeDef* pcdHandle)
   */
     PeriphClkInitStruct.PeriphClockSelection = RCC_PERIPHCLK_USB;
     PeriphClkInitStruct.PLL3.PLL3M = 1;
-    PeriphClkInitStruct.PLL3.PLL3N = 16;
+    PeriphClkInitStruct.PLL3.PLL3N = 24;
     PeriphClkInitStruct.PLL3.PLL3P = 2;
     PeriphClkInitStruct.PLL3.PLL3Q = 4;
     PeriphClkInitStruct.PLL3.PLL3R = 1;

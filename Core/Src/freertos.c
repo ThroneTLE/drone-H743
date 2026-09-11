@@ -108,6 +108,7 @@
 
 /* USER CODE END PM */
 
+/* Private variables ---------------------------------------------------------*/
 /* USER CODE BEGIN Variables */
 /*
  * ============================================================================
@@ -346,6 +347,7 @@ void MX_FREERTOS_Init(void) {
   /* USER CODE END RTOS_EVENTS */
 
 }
+
 /* USER CODE BEGIN Header_StabilizerTask */
 /**
   * @brief  StabilizerTask —— 姿态融合 + 控制输出（核心控制线程）

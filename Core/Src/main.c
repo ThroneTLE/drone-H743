@@ -22,6 +22,7 @@
 #include "cmsis_os2.h"
 #include "dma.h"
 #include "i2c.h"
+#include "sdmmc.h"
 #include "spi.h"
 #include "tim.h"
 #include "usart.h"
@@ -386,7 +387,7 @@ int main(void)
   /* USER CODE END 1 */
 
   /* MPU Configuration--------------------------------------------------------*/
-    MPU_Config();
+  MPU_Config();
 
   /* Enable the CPU Cache */
 
@@ -418,21 +419,19 @@ int main(void)
   MX_DMA_Init();
   MX_I2C1_Init();
   MX_I2C2_Init();
+  MX_SDMMC1_SD_Init();
+  MX_SPI1_Init();
+  MX_SPI2_Init();
+  MX_SPI3_Init();
   MX_TIM1_Init();
-  MX_TIM2_Init();
-  MX_TIM5_Init();
-  MX_UART4_Init();
-  MX_UART5_Init();
+  MX_TIM4_Init();
+  MX_TIM17_Init();
   MX_UART7_Init();
   MX_UART8_Init();
   MX_USART1_UART_Init();
   MX_USART2_UART_Init();
-  MX_SPI1_Init();
-  MX_SPI2_Init();
-  MX_SPI3_Init();
-  MX_SPI4_Init();
-  MX_TIM8_Init();
-  MX_TIM17_Init();
+  MX_USART3_UART_Init();
+  MX_USART6_UART_Init();
   /* USER CODE BEGIN 2 */
   SVC_Timestamp_Init();
   Main_DebugUartPrint("BOOT user2_begin\r\n");
@@ -484,14 +483,7 @@ void SystemClock_Config(void)
   */
   __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE2);
 
-  {
-    uint32_t vos_tickstart = HAL_GetTick();
-    while(!__HAL_PWR_GET_FLAG(PWR_FLAG_VOSRDY)) {
-      if ((HAL_GetTick() - vos_tickstart) > 100U) {
-        break;
-      }
-    }
-  }
+  while(!__HAL_PWR_GET_FLAG(PWR_FLAG_VOSRDY)) {}
 
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
@@ -501,7 +493,7 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
   RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
   RCC_OscInitStruct.PLL.PLLM = 1;
-  RCC_OscInitStruct.PLL.PLLN = 40;
+  RCC_OscInitStruct.PLL.PLLN = 60;
   RCC_OscInitStruct.PLL.PLLP = 2;
   RCC_OscInitStruct.PLL.PLLQ = 4;
   RCC_OscInitStruct.PLL.PLLR = 2;
