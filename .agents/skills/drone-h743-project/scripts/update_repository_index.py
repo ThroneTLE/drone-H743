@@ -217,7 +217,15 @@ def base_purpose(path: str, kind: str) -> str:
     return descriptions.get(kind, f"Project file for {topic}.")
 
 
-def symbol_cell(symbols: list[str], limit: int = 6) -> str:
+# 每行默认列几个入口名。
+#
+# 2026-09-11：蓝牙出口改 DMA 发送新增 drv_tx_ring / bsp_uart_tx 两个模块与两个
+# 测试文件后，索引总量到 98979 B，越过 96 KB 总限 675 B。按 individual_row()
+# 里那条既定处置——**改密度、不抬限制**——把源码分片的入口密度 6→5。
+# 先动这里而不是再拆分片：单个分片都还在 32 KB 硬限之内，超的是总量，
+# 而入口名那一列每行砍一个就够（实测 98979 → 96077 B）。
+# 测试分片不受影响，它早就压到 1 了。
+def symbol_cell(symbols: list[str], limit: int = 5) -> str:
     unique: list[str] = []
     for symbol in symbols:
         if symbol not in unique:

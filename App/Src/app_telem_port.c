@@ -227,15 +227,15 @@ uint8_t APP_TelemStream_PortSendUsb(const uint8_t *frame, uint16_t length)
 uint8_t APP_TelemStream_PortSendBt(const uint8_t *frame, uint16_t length)
 {
     /*
-     * 直接打给 UART8 的阻塞发送，不经 uartTxQueue——那条队列是数传（USART1）的，
+     * 维护口（本板 = 板载蓝牙）。不经 uartTxQueue——那条队列是数传（USART1）的，
      * 元素还是 APP_UART_TxMessage（带 function 字段的文本消息），塞二进制帧进去
      * 既占错了出口也会被当文本处理。
      *
-     * 阻塞在这里是可以接受的：和 USB 出口一样，本函数只在低优先级遥测任务上下文
-     * 里调用（spec §5 的上下文契约），不会拉长控制周期。
+     * 这条**不阻塞**：帧交给 DMA 发送队列就返回。原来是阻塞写，84 字节要占住
+     * 遥测任务 7.3 ms，40 Hz 设下去只跑得出 33.8 Hz。
+     * 队列排不下时返回 0，由上层计入 drop——不谎报发送成功。
      */
-    APP_MaintUART_WriteRaw(frame, length);
-    return 1U;
+    return APP_MaintUART_WriteRaw(frame, length);
 }
 
 uint8_t APP_TelemStream_PortSendJustFloat(const float *values, uint32_t count)

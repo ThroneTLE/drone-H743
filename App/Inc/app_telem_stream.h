@@ -94,6 +94,16 @@ APP_TelemSink APP_TelemStream_ActiveSink(void);
 /* `TELEM?` 的第二行：流状态。 */
 void APP_TelemStream_ReportStatus(void);
 
+/*
+ * `TELEM PROF`：每拍耗时画像（周期 min/avg/max、睡眠、采样、编码、发送）。
+ *
+ * 存在的理由是这条流上真出过两次"看代码看不出来"的事故：任务优先级低到一拍
+ * 没跑过、以及周期把阻塞发送的时间也算了进去。两次都是量出来的。画像固定开着，
+ * 本函数只负责读出；`TELEM PROF reset` 归零，用来划定一次测量的窗口。
+ */
+void APP_TelemStream_ReportProfile(void);
+void APP_TelemStream_ResetProfile(void);
+
 /* ------------------------------------------------------------------ */
 /* 任务面                                                              */
 /* ------------------------------------------------------------------ */

@@ -4,7 +4,7 @@
 
 Read this shard only when you need existing firmware behavioral/architecture coverage or must choose focused regression tests.
 
-Source snapshot: `fe6ffbcc7dcb`. Indexed files: 127.
+Source snapshot: `b46489753bb3`. Indexed files: 129.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -74,6 +74,7 @@ Source snapshot: `fe6ffbcc7dcb`. Indexed files: 127.
 | `tests/test_flu_seam3_force_frame_derivation.py` | R-F6-2 核心矩阵重导：力坐标系符号常量到底在做什么。 这个模块存在的唯一理由，是仓库里曾经有一句被复述了四遍的论断： "此符号同时作用于实测姿态和目标姿态，因此在姿态误差中相消" 它是**错的**，而且不是无害的措辞问题——R-F6… | `test_force_frame_roll_sign_was_load_bearing_before_deletion` (+4) |
 | `tests/test_flu_seam4_rc_actuator_frame.py` | R-F4 seam 4 RC/actuator polarity contract | `test_stick_direction_has_exactly_one_decision_point` (+7) |
 | `tests/test_flu_seam5_telemetry_frame.py` | R-F5 seam 5 telemetry/log frame contract | `test_replay_geometry_is_frozen` (+6) |
+| `tests/test_hardware_decoupling.py` | 换板子时应该只改板级绑定那一处，不该逐个文件重写。 这次把固件从自制 H743 板移到 MicoAir743V2，最费时间的改动几乎都不是算法， 而是"外设实例名被写进了上层逻辑"：PWM 从 TIM5/TIM2 搬到 TIM1/TIM4… | `test_the_maintenance_link_app_module_names_no_peripheral` (+6) |
 | `tests/test_ident_decoupled.py` | — | `test_ident_control_payload_and_decoupled_servo_takeover` (+4) |
 | `tests/test_imu_aaf_contract.py` | Contract tests for the ICM-42688 anti-alias filter and accelerometer range. The AAF is an analogue filter ahead of the… | `test_accel_range_is_16g_to_avoid_vibration_clipping` (+4) |
 | `tests/test_imu_attitude_tuner.py` | — | `test_persistent_openocd_telnet_word_parser` (+5) |
@@ -130,6 +131,7 @@ Source snapshot: `fe6ffbcc7dcb`. Indexed files: 127.
 | `tests/test_telem_stream_contract.py` | R-T1-1：遥测流 v2（固件侧）契约测试。 三部分： 1. **黄金向量**：宿主 gcc 真编译 `app_telem_frame.c` + `app_proto.c`，让固件 自己的编码器把一组给定的 mask/values 编出… | `test_encoder_matches_the_golden_vectors_byte_for_byte` (+14) |
 | `tests/test_telem_stream_decoder.py` | R-T1-2：上位机遥测流解码（`tools/panel_lib/telem_stream.py` + transport 二进制分支）。 四件事： 1. **黄金向量对称**：`tests/golden/telem_frames_v2.… | `test_transport_delivers_telemetry_payloads_as_bytes` (+26) |
 | `tests/test_telemetry_schema_contract.py` | Contract tests for the VOFA telemetry channel schema (``TELEM?``). The schema exists so the ground station never has to… | `test_header_reports_version_count_rate_and_hash` (+14) |
+| `tests/test_tx_ring.py` | `drv_tx_ring` 的宿主侧单测，外加"它必须留在 PC 上可测的形态"这条约束。 这个环形队列是蓝牙出口从阻塞发送改成 DMA 发送时唯一会算错的部分：回绕、 满与空的区分、整包要么全进要么不进。这三件事一点硬件都不需要，所以它… | `test_tx_ring_on_host_gcc` (+1) |
 | `tests/test_usb_v0_transport_contract.py` | — | `test_usb_route` (+3) |
 | `tests/test_v0_guidance_flow.py` | V0 引导可达性回归测试。 V0 页的四项准备清单（连接/快照/零偏/安全输出）与 A/B/C 按钮全部由 _validation_refresh_readiness 依据实时 stabilizer snapshot 解锁，页面文案也明确… | `test_v0_page_polls_as_soon_as_it_is_visible` (+7) |
 | `tests/test_v1_evidence_table.py` | V1 采集页的证据表格。 背景：2026-08-29 的会话里同时躺着三条 50 Hz 的降级采集和两条重复的 accel_pos_x， 表格是平铺的，既看不出哪些步骤还没采、也删不掉，点"分析"只会抛一句不知道说的是谁 的 "采样率仅… | `test_every_planned_step_gets_a_row_even_before_it_is_captured` (+16) |

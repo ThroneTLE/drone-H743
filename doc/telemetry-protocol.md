@@ -106,11 +106,25 @@ TELEM RATE <hz>
 TELEM MASK <hex>
 TELEM REFRESH <s>
 TELEM FORMAT bin|jf
-TELEM SINK usb|uart|auto
+TELEM SINK usb|uart|bt|auto
+TELEM PROF [reset]
+TELEM TX [reset]
 ```
 
-流配置只存 RAM。USB/UART 两个出口发送相同帧；USB 拔出、IMUCAP/FLOG 导出等互斥
+流配置只存 RAM。USB/UART/BT 三个出口发送相同帧；USB 拔出、IMUCAP/FLOG 导出等互斥
 条件按固件实现进入安全状态。任何速率/掩码组合超出出口能力必须回复 ERR。
+
+`bt` 是板载蓝牙所在的**维护口**——按角色命名，不按 UART 实例命名；具体接在哪个
+UART 由 `BSP/Src/bsp_uart.c` 一处绑定（本板是 UART8）。
+
+`PROF` 与 `TX` 是纯诊断，除各自的 `reset`（划定测量窗口）外无副作用：
+
+- `TELEM PROF` 报每拍耗时画像——周期 min/avg/max、实测速率（x100 定点）、
+  以及 sleep / sample / encode / send 四段各自的平均与峰值。画像固定开着。
+  判"设 40 实际多少"只看 `rate_x100`；判"慢在哪"看四段的划分。
+- `TELEM TX` 报维护口发送队列——`dma=` 是否真的走 DMA（`fallback` 非零说明
+  退化成了阻塞发送）、水位与峰值、以及队列满丢包 / 遥测帧丢包 / 文本丢包三类
+  各自的计数。三类分开记，是因为它们的处置完全不同。
 
 ## Dashboard 契约
 

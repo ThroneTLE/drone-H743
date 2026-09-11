@@ -62,6 +62,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Driver/Src/drv_sdblock.c
     Driver/Src/drv_mag.c
     Driver/Src/drv_gps.c
+    Driver/Src/drv_tx_ring.c
     Driver/Src/drv_servo.c
     Driver/Src/drv_motor.c
     Driver/Src/drv_elrs.c
@@ -87,6 +88,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     BSP/Src/bsp_led.c
     BSP/Src/bsp_system.c
     BSP/Src/bsp_uart.c
+    BSP/Src/bsp_uart_tx.c
     BSP/Src/bsp_i2c.c
     BSP/Src/bsp_spi.c
     BSP/Src/bsp_imu.c

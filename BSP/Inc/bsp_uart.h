@@ -3,18 +3,59 @@
 
 #include "main.h"
 
+#include "bsp_uart_tx.h"
+
 #include <stdint.h>
 
 #define BSP_UART_USART1_OUTPUT_ENABLED 1U
 
 void BSP_UART_Release_USART1_ForExternalDebug(void);
 
+/* ============================================================ 维护 / 调参链路 */
+
+/*
+ * "维护口"是一个**角色**，不是一个实例号。
+ *
+ * 本板（MicoAir743V2）上这个角色由板载蓝牙模块承担，接在 UART8（PE1/PE0，
+ * 115200）。换板子时它可能变成 USART2、或者一个 USB 转串口——那时只需要改
+ * 本文件顶部的绑定，App 层的 app_maint_uart.c 一行都不用动。
+ * 这次移植最费时间的改动，几乎全都是"实例名被写进了上层逻辑"造成的。
+ *
+ * 上电顺序：MX_*_Init 建好句柄之后、APP_Init 之前调用 BSP_UART_MaintInit。
+ */
+void BSP_UART_MaintInit(void);
+
+/* 该链路的人类可读名字，用于诊断回包（例如 "uart8"）。 */
+const char *BSP_UART_MaintName(void);
+
+/* 这个 HAL 句柄是不是维护口。给 HAL 回调分发用。 */
+uint8_t BSP_UART_IsMaint(const UART_HandleTypeDef *huart);
+
+/* 收一个字节（中断方式）。返回 0 = 启动失败。 */
+uint8_t BSP_UART_MaintRxStart(uint8_t *byte);
+
+/* 清错误标志、中止当前接收并重新开收。溢出/噪声之后用。 */
+void BSP_UART_MaintRxRecover(uint8_t *byte);
+
+/*
+ * 排队发送。非阻塞、全有或全无，走 DMA；细节见 bsp_uart_tx.h。
+ * 返回 0 = 队列放不下，整包已丢弃并计入统计。
+ */
+uint8_t BSP_UART_MaintWrite(const uint8_t *data, uint16_t length);
+
+/* 当前排队字节数。上层据此决定要不要丢掉一帧新的遥测。 */
+uint32_t BSP_UART_MaintTxPending(void);
+
+void BSP_UART_MaintTxGetStats(BSP_UartTxStats *stats);
+void BSP_UART_MaintTxResetStats(void);
+
+/* HAL 回调转接：app_uart.c 的回调枢纽把 UART 事件送进来。 */
+void BSP_UART_MaintOnTxComplete(UART_HandleTypeDef *huart);
+void BSP_UART_MaintOnTxError(UART_HandleTypeDef *huart);
+
 HAL_StatusTypeDef BSP_UART_Transmit_USART1(const uint8_t *data,
                                            uint16_t length,
                                            uint32_t timeout_ms);
-HAL_StatusTypeDef BSP_UART_Transmit_UART8(const uint8_t *data,
-                                          uint16_t length,
-                                          uint32_t timeout_ms);
 uint32_t BSP_UART_GetUSART1TxCount(void);
 
 /* ---------------- 诊断：任意 UART 事务 ---------------- */

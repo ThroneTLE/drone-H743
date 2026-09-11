@@ -385,6 +385,8 @@ static uint32_t port_bt_frames;
 static uint32_t port_send_cost_us;
 static uint32_t port_jf_frames;
 static uint8_t  port_uart_fails;
+/* 蓝牙出口排不下时返回 0——DMA 发送队列满是正常且必须如实上报的结果。 */
+static uint8_t  port_bt_fails;
 static uint8_t  port_last_frame[512];
 static uint16_t port_last_length;
 static char     port_last_reply[256];
@@ -436,10 +438,11 @@ uint8_t APP_TelemStream_PortSendUsb(const uint8_t *frame, uint16_t length)
  */
 uint8_t APP_TelemStream_PortSendBt(const uint8_t *frame, uint16_t length)
 {
-    /* 板载蓝牙（UART8）出口。与数传同档的容量判据，见 PortMaxPayload。 */
+    /* 维护口（本板 = 板载蓝牙）。与数传同档的容量判据，见 PortMaxPayload。 */
+    port_now_us += port_send_cost_us;
+    if (port_bt_fails != 0U) { return 0U; }
     port_capture(frame, length);
     port_bt_frames++;
-    port_now_us += port_send_cost_us;
     return 1U;
 }
 
@@ -523,6 +526,7 @@ static void reset_world(void)
     port_send_cost_us = 0U;
     port_jf_frames = 0U;
     port_uart_fails = 0U;
+    port_bt_fails = 0U;
     port_last_length = 0U;
     port_reply_count = 0U;
     APP_TelemStream_Reset();
@@ -846,6 +850,78 @@ static int test_the_period_absorbs_the_send_time(void)
     return 0;
 }
 
+static int test_a_refused_bluetooth_frame_is_counted_not_claimed_sent(void)
+{
+    /*
+     * 蓝牙出口改成 DMA 队列之后，"排不下"是一个真实且正常的结果（命令回包的
+     * 突发会占住队列）。它必须一路如实传上来：出口返回 0 → drop 加一 → 脏位
+     * 不清、seq 不推进。
+     *
+     * 改造前那个出口无条件 `return 1`，于是 `TELEM?` 永远 drop=0——波形明明
+     * 缺了一段，诊断却说一切正常。D5-3 说的安静失败就是这个形状。
+     */
+    reset_world();
+    CHECK(APP_TelemStream_SetSink(APP_TELEM_SINK_BT) == APP_TELEM_STREAM_OK, 720);
+    CHECK(APP_TelemStream_SetRefresh(0U) == APP_TELEM_STREAM_OK, 721);
+    CHECK(APP_TelemStream_SetActive(1U) == APP_TELEM_STREAM_OK, 722);
+
+    APP_TelemStream_Tick();                 /* 首帧建立影子 */
+    CHECK(port_bt_frames == 1U, 723);
+
+    port_values[APP_TELEM_CH_RATE_ROLL_KP] = 1.25f;
+    port_bt_fails = 1U;
+    APP_TelemStream_Tick();
+    CHECK(port_bt_frames == 1U, 724);       /* 没发出去 */
+
+    /* 发失败那一拍的参数变化不能丢：清了脏位，滑块就永远停在 pending。 */
+    port_bt_fails = 0U;
+    APP_TelemStream_Tick();
+    CHECK(port_bt_frames == 2U, 725);
+    CHECK(APP_TelemMask_Test(frame_mask(),
+                             (uint32_t)APP_TELEM_CH_RATE_ROLL_KP) != 0U, 726);
+
+    /* drop 计数必须出现在状态行里，否则等于没记。 */
+    APP_TelemStream_ReportStatus();
+    CHECK(strstr(port_last_reply, "drop=1") != NULL, 727);
+    return 0;
+}
+
+static int test_the_profile_says_where_the_time_went(void)
+{
+    /*
+     * 画像存在的理由：这条流上栽过的两个跟头（任务一拍没跑过、周期把干活时间
+     * 也算了进去）都只能量出来。所以画像必须把**发送**那一段单独算清楚——
+     * 只报总周期的话，"周期 25 ms" 既可能是健康的，也可能是 18 ms 睡 + 7 ms
+     * 阻塞发送，而这两者的区别正是要查的东西。
+     */
+    uint32_t i;
+
+    reset_world();
+    port_send_cost_us = 7300U;
+    CHECK(APP_TelemStream_SetRate(40U) == APP_TELEM_STREAM_OK, 730);
+    CHECK(APP_TelemStream_SetSink(APP_TELEM_SINK_BT) == APP_TELEM_STREAM_OK, 731);
+    CHECK(APP_TelemStream_SetRefresh(0U) == APP_TELEM_STREAM_OK, 732);
+    CHECK(APP_TelemStream_SetActive(1U) == APP_TELEM_STREAM_OK, 733);
+
+    APP_TelemStream_ResetProfile();
+    for (i = 0U; i < 10U; ++i) {
+        APP_TelemStream_Tick();
+    }
+
+    APP_TelemStream_ReportProfile();
+    /* 第二行才是分段耗时；两行都经同一个 PortReply，最后一条即是它。 */
+    CHECK(strstr(port_last_reply, "stage_us") != NULL, 734);
+    CHECK(strstr(port_last_reply, "send=7300/7300") != NULL, 735);
+
+    /* 归零之后不该还留着上一段测量的极值，否则窗口就没有意义了。 */
+    APP_TelemStream_ResetProfile();
+    APP_TelemStream_ReportProfile();
+    CHECK(strstr(port_last_reply, "send=0/0") != NULL, 736);
+
+    port_send_cost_us = 0U;
+    return 0;
+}
+
 int main(void)
 {
     int rc;
@@ -862,6 +938,8 @@ int main(void)
     rc = test_justfloat_format_stays_available_for_synex(); if (rc) { return rc; }
     rc = test_stream_defaults_to_off_and_survives_reinit(); if (rc) { return rc; }
     rc = test_the_period_absorbs_the_send_time(); if (rc) { return rc; }
+    rc = test_a_refused_bluetooth_frame_is_counted_not_claimed_sent(); if (rc) { return rc; }
+    rc = test_the_profile_says_where_the_time_went(); if (rc) { return rc; }
 
     printf("telem stream harness ok\n");
     return 0;

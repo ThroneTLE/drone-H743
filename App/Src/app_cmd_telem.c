@@ -12,6 +12,7 @@
 #include "app_control.h"
 #include "app_control_internal.h"
 
+#include "app_maint_uart.h"
 #include "app_telem_stream.h"
 #include "app_telemetry.h"
 
@@ -100,7 +101,8 @@ static void app_cmd_telem_usage(void)
     APP_Control_QueueText(
         "ERR usage TELEM? | TELEM CH from=<n> | TELEM STREAM on|off | "
         "TELEM RATE <hz> | TELEM MASK <hex> | TELEM REFRESH <s> | "
-        "TELEM FORMAT bin|jf | TELEM SINK usb|uart|bt|auto\r\n");
+        "TELEM FORMAT bin|jf | TELEM SINK usb|uart|bt|auto | "
+        "TELEM PROF [reset] | TELEM TX [reset]\r\n");
 }
 
 void app_control_handle_telem(char **tokens, uint32_t count)
@@ -125,6 +127,41 @@ void app_control_handle_telem(char **tokens, uint32_t count)
 
     if (count < 2U) {
         app_cmd_telem_usage();
+        return;
+    }
+
+    /*
+     * 两条纯诊断子命令，都是"先量再改"用的，不带任何副作用（除了各自的 reset
+     * 归零窗口）。PROF 看的是遥测任务这一拍的时间都花在哪；TX 看的是蓝牙那条
+     * 出口的 DMA 发送队列有没有堵。
+     */
+    if (strcmp(tokens[1], "PROF") == 0) {
+        if (count == 3U) {
+            if (strcmp(tokens[2], "reset") != 0) {
+                APP_Control_QueueText("ERR usage TELEM PROF [reset]\r\n");
+                return;
+            }
+            APP_TelemStream_ResetProfile();
+        } else if (count != 2U) {
+            APP_Control_QueueText("ERR usage TELEM PROF [reset]\r\n");
+            return;
+        }
+        APP_TelemStream_ReportProfile();
+        return;
+    }
+
+    if (strcmp(tokens[1], "TX") == 0) {
+        if (count == 3U) {
+            if (strcmp(tokens[2], "reset") != 0) {
+                APP_Control_QueueText("ERR usage TELEM TX [reset]\r\n");
+                return;
+            }
+            APP_MaintUART_ResetTxStats();
+        } else if (count != 2U) {
+            APP_Control_QueueText("ERR usage TELEM TX [reset]\r\n");
+            return;
+        }
+        APP_MaintUART_ReportTx();
         return;
     }
 

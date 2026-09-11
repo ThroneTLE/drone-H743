@@ -52,3 +52,8 @@ uint64_t SVC_Timestamp_Us(void)
     }
     return (((uint64_t)high_after) << 16) | (uint64_t)low;
 }
+
+uint32_t SVC_Timestamp_Ms(void)
+{
+    return (uint32_t)(SVC_Timestamp_Us() / 1000ULL);
+}

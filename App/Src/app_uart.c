@@ -1068,6 +1068,11 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
         APP_ELRS_OnTxComplete();
         return;
     }
+    if (BSP_UART_IsMaint(huart) != 0U) {
+        /* 维护口的 DMA 发送队列在中断里直接续发下一段，见 bsp_uart_tx.c。 */
+        BSP_UART_MaintOnTxComplete(huart);
+        return;
+    }
     APP_UART_OnTxComplete(huart);
 }
 
@@ -1077,8 +1082,11 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
         DRV_SERVO_OnUartRxComplete(huart);
         return;
     }
+    if (BSP_UART_IsMaint(huart) != 0U) {
+        APP_MaintUART_OnRxByte();
+        return;
+    }
     BSP_OPTICAL_FLOW_OnUartRxCplt(huart);
-    APP_MaintUART_OnRxCplt(huart);
 }
 
 void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
@@ -1091,7 +1099,15 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
         APP_ELRS_OnError();
         return;
     }
+    if (BSP_UART_IsMaint(huart) != 0U) {
+        /*
+         * 收发两侧都要认领这次出错：只处理接收的话，正在传的那一段 DMA 会
+         * 把 busy 永远挂住，整条发送队列从此一个字节都出不去。
+         */
+        BSP_UART_MaintOnTxError(huart);
+        APP_MaintUART_OnRxError();
+        return;
+    }
     APP_UART_OnError(huart);
     BSP_OPTICAL_FLOW_OnUartError(huart);
-    APP_MaintUART_OnError(huart);
 }

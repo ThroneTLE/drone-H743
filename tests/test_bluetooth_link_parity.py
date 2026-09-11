@@ -70,19 +70,22 @@ def test_binary_frames_do_not_go_through_a_string_path() -> None:
     source = read("App/Src/app_maint_uart.c")
     port = read("App/Src/app_telem_port.c")
 
-    assert "void APP_MaintUART_WriteRaw(const uint8_t *data, uint16_t length);" in header
-    assert "BSP_UART_Transmit_UART8(data, length" in source
+    assert "uint8_t APP_MaintUART_WriteRaw(const uint8_t *data, uint16_t length);" in header
+    # 二进制入口要走 BSP 的字节级写，不能退回任何 const char* 的文本路径。
+    assert "BSP_UART_MaintWrite(data, length)" in source
 
     send_bt = port.split("uint8_t APP_TelemStream_PortSendBt", 1)[1].split("\n}", 1)[0]
     assert "APP_MaintUART_WriteRaw" in send_bt
     assert "APP_MaintUART_Write(" not in send_bt
+    # 发不出去要如实回 0，不能无条件 return 1：上层的 drop= 全靠这个返回值。
+    assert "return APP_MaintUART_WriteRaw(frame, length);" in send_bt
 
 
 def test_async_text_reaches_bluetooth_only_while_that_link_is_in_use() -> None:
     """异步文本要镜像到蓝牙，但只在蓝牙确实在用的时候。
 
-    无条件镜像的代价很实在：`APP_MaintUART_Write` 是阻塞发送（100 ms 超时），
-    没连蓝牙时每条结构化文本都要在 UART8 上白等一次，直接拖慢 UART 任务。
+    发送改成 DMA 队列之后代价小了（不再每条文本阻塞一次 UART 任务），但没有消失：
+    没连蓝牙时队列会被一条没人收的链路慢慢填满，随后连命令回包都要排队等位。
     """
     core = read("App/Src/app_control_core.c")
     maint = read("App/Src/app_maint_uart.c")
@@ -92,7 +95,7 @@ def test_async_text_reaches_bluetooth_only_while_that_link_is_in_use() -> None:
     assert "APP_MaintUART_Write(tx_message.text, tx_message.length);" in mirror
 
     # 判据必须是"最近收到过命令"，不是某个开机就置位的标志。
-    assert "maint_last_command_ms = HAL_GetTick();" in maint
+    assert "maint_last_command_ms = SVC_Timestamp_Ms();" in maint
     idle = re.search(r"#define APP_MAINT_UART_LINK_IDLE_MS\s+(\d+)U", maint)
     assert idle is not None
     # 比一问一答宽得多（不抖），比一次会话短得多（断开后不再空发）。

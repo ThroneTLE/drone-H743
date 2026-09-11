@@ -4,13 +4,13 @@
 
 Read this shard only when the task touches CubeMX output, pins/clocks/peripherals, startup/linker layout, USB, build configuration, HAL, FreeRTOS internals, or vendor code.
 
-Source snapshot: `616b2b133be8`; aggregate snapshot: `a4f36b616ba1`. Covered files: 1442.
+Source snapshot: `8ed8d6da2657`; aggregate snapshot: `a4f36b616ba1`. Covered files: 1442.
 
 | File/module or scope | Content outline | Key entry points / size |
 |---|---|---|
 | `Core/Inc/FreeRTOSConfig.h` | CubeMX/HAL platform module for FreeRTOSConfig | — |
 | `Core/Inc/dma.h`<br>`Core/Src/dma.c` | CubeMX/HAL platform module for dma | `MX_DMA_Init` |
-| `Core/Src/freertos.c` | CubeMX-owned FreeRTOS objects and task entry wiring | `BSP_IMU_Init`, `APP_IMU_ReadDataReadyTimestamp`, `BSP_IMU_IsDataReady`, `BSP_IMU_ReadRaw`, `APP_Sensor_CalibrateGyroBias`, `BSP_BARO_ReadRawRegisters` (+1) |
+| `Core/Src/freertos.c` | CubeMX-owned FreeRTOS objects and task entry wiring | `BSP_IMU_Init`, `APP_IMU_ReadDataReadyTimestamp`, `BSP_IMU_IsDataReady`, `BSP_IMU_ReadRaw`, `APP_Sensor_CalibrateGyroBias` (+2) |
 | `Core/Inc/gpio.h`<br>`Core/Src/gpio.c` | CubeMX/HAL platform module for gpio | `MX_GPIO_Init` |
 | `Core/Inc/i2c.h`<br>`Core/Src/i2c.c` | CubeMX/HAL platform module for i2c | `MX_I2C1_Init`, `MX_I2C2_Init` |
 | `Core/Inc/main.h`<br>`Core/Src/main.c` | CubeMX-owned board pin names and shared MCU declarations | `Error_Handler` |
@@ -25,7 +25,7 @@ Source snapshot: `616b2b133be8`; aggregate snapshot: `a4f36b616ba1`. Covered fil
 | `Core/Src/sysmem.c` | CubeMX/HAL platform module for sysmem | — |
 | `Core/Src/system_stm32h7xx.c` | CubeMX/HAL platform module for system stm32h7xx | — |
 | `Core/Inc/tim.h`<br>`Core/Src/tim.c` | CubeMX/HAL platform module for tim | `MX_TIM1_Init`, `MX_TIM4_Init`, `MX_TIM17_Init`, `HAL_TIM_MspPostInit` |
-| `Core/Inc/usart.h`<br>`Core/Src/usart.c` | CubeMX/HAL platform module for usart | `MX_UART7_Init`, `MX_UART8_Init`, `MX_USART1_UART_Init`, `MX_USART2_UART_Init`, `MX_USART3_UART_Init`, `MX_USART6_UART_Init` |
+| `Core/Inc/usart.h`<br>`Core/Src/usart.c` | CubeMX/HAL platform module for usart | `MX_UART7_Init`, `MX_UART8_Init`, `MX_USART1_UART_Init`, `MX_USART2_UART_Init`, `MX_USART3_UART_Init` (+1) |
 | `USB_DEVICE/App/usb_device.h`<br>`USB_DEVICE/App/usb_device.c` | CubeMX USB device integration for usb device | `MX_USB_DEVICE_Init` |
 | `USB_DEVICE/App/usbd_cdc_if.h`<br>`USB_DEVICE/App/usbd_cdc_if.c` | CubeMX USB device integration for usbd cdc if | — |
 | `USB_DEVICE/Target/usbd_conf.h`<br>`USB_DEVICE/Target/usbd_conf.c` | CubeMX USB device integration for usbd conf | — |
@@ -44,7 +44,7 @@ Source snapshot: `616b2b133be8`; aggregate snapshot: `a4f36b616ba1`. Covered fil
 | `MDK-ARM/drone-H743.uvoptx` | Project configuration for drone H743 | — |
 | `MDK-ARM/drone-H743.uvprojx` | Project configuration for drone H743 | — |
 | `MDK-ARM/startup_stm32h743xx.s` | Project configuration for startup stm32h743xx | — |
-| `PIPELINE.md` | drone-H743 归零检查 Pipeline | `状态定义`, `主线、副线与当前状态`, `主线验收门`, `执行需求清单（派单用）`, `作者明确授权的附加需求`, `最近验证证据` (+1) |
+| `PIPELINE.md` | drone-H743 归零检查 Pipeline | `状态定义`, `主线、副线与当前状态`, `主线验收门`, `执行需求清单（派单用）`, `作者明确授权的附加需求` (+2) |
 | `README.md` | drone-H743 | `当前事实从哪里读`, `常用命令` |
 | `startup_stm32h743xx.s` | GCC startup, vector table, and reset entry | — |
 | `STM32H743XX_FLASH.ld` | STM32H743 flash/RAM regions and linker section placement | — |

@@ -3,10 +3,10 @@
 #include "app_aiwb2.h"
 #include "app_control.h"
 #include "app_telem_stream.h"
-#include "app_gps.h"
-#include "app_mag.h"
 #include "bsp_uart.h"
-#include "usart.h"
+#include "svc_timestamp.h"
+
+#include "cmsis_os2.h"
 
 #include <stdarg.h>
 #include <stdio.h>
@@ -16,8 +16,23 @@
 #define APP_MAINT_UART_RING_SIZE 256U
 #define APP_MAINT_UART_IDLE_LINE_MS 60U
 #define APP_MAINT_UART_BOOT_TEXT_ENABLED 1U
-#define APP_MAINT_UART_PERIODIC_SENSOR_STATUS_ENABLED 0U
-#define APP_MAINT_UART_GPS_STATUS_PERIOD_MS 1000U
+
+/*
+ * 文本写最多等多久让发送队列腾出空间。
+ *
+ * 115200 下队列满（2048 B）要 178 ms 才排空，所以 250 ms 足够等出一次完整排空；
+ * 而它又远短于任何一条命令的可容忍无响应时间，卡住时不至于让人以为飞控死了。
+ */
+#define APP_MAINT_UART_TX_WAIT_MS 250U
+
+/*
+ * 遥测帧的排队上限。超过这么多字节还在排队，就丢掉这一帧。
+ *
+ * 256 B ≈ 两帧多一点（稳态帧 81 B，全量刷新帧 133 B），对应 115200 下约 22 ms
+ * 的排队延迟——不到一个 40 Hz 周期。把上限放大只会让曲线延迟变大而不会变密：
+ * 出口带宽是固定的，排在队里的帧越多，画出来的波形越滞后。
+ */
+#define APP_MAINT_UART_TX_BACKLOG_MAX 256U
 /*
  * 多久没收到蓝牙命令就算链路闲下来了。
  *
@@ -36,14 +51,53 @@ static uint32_t maint_last_rx_ms;
 static volatile uint8_t maint_rx_error;
 static volatile uint8_t maint_rx_overflow;
 static uint8_t maint_control_ready;
-static uint32_t maint_last_gps_status_ms;
 /* 最近一条从蓝牙进来的命令行的时刻；0 = 本次上电还没用过蓝牙。 */
 static uint32_t maint_last_command_ms;
 
+static uint32_t maint_tx_waits;
+static uint32_t maint_tx_text_drops;
+static uint32_t maint_tx_frame_drops;
+
 static void maint_start_rx(void)
 {
-    if (HAL_UART_Receive_IT(&huart8, &maint_rx_byte, 1U) != HAL_OK) {
+    if (BSP_UART_MaintRxStart(&maint_rx_byte) == 0U) {
         maint_rx_error = 1U;
+    }
+}
+
+/*
+ * 文本入队。队列满时让出 CPU 等一会儿，等不到才丢。
+ *
+ * 为什么文本等、遥测不等：命令回包丢了，操作者看到的是"飞控没反应"，
+ * 还得靠回包本身去诊断这件事；遥测帧丢一帧只是曲线缺一个点，而等下去反而
+ * 让后面的点全部变陈旧。两种数据的新鲜度语义相反，所以策略也相反。
+ */
+static uint8_t maint_tx_text(const uint8_t *data, uint16_t length)
+{
+    uint32_t start_ms = SVC_Timestamp_Ms();
+
+    for (;;) {
+        if (BSP_UART_MaintWrite(data, length) != 0U) {
+            return 1U;
+        }
+        if ((SVC_Timestamp_Ms() - start_ms) >= APP_MAINT_UART_TX_WAIT_MS) {
+            maint_tx_text_drops++;
+            return 0U;
+        }
+        maint_tx_waits++;
+        /*
+         * 调度器还没起来时（上电阶段的 BOOT 行）osDelay 不可用，退回忙等一小会。
+         * 这段只在上电那几毫秒里可能走到。
+         */
+        if (osKernelGetState() == osKernelRunning) {
+            (void)osDelay(1U);
+        } else {
+            uint32_t spin_ms = SVC_Timestamp_Ms();
+
+            while ((SVC_Timestamp_Ms() - spin_ms) < 1U) {
+                /* 等一毫秒 */
+            }
+        }
     }
 }
 
@@ -53,9 +107,7 @@ static void maint_write_literal(const char *text)
         return;
     }
 
-    (void)BSP_UART_Transmit_UART8((const uint8_t *)text,
-                                  (uint16_t)strlen(text),
-                                  100U);
+    (void)maint_tx_text((const uint8_t *)text, (uint16_t)strlen(text));
 }
 
 static char *maint_normalize_line(char *line)
@@ -95,7 +147,7 @@ static void maint_handle_line(char *line)
     }
 
     maint_ensure_control_ready();
-    maint_last_command_ms = HAL_GetTick();
+    maint_last_command_ms = SVC_Timestamp_Ms();
     /*
      * 告诉遥测流"最近一条命令是从蓝牙来的"，这样在蓝牙上敲 `TELEM SINK auto`
      * + `TELEM STREAM on` 就会把波形发回蓝牙，与 USB、数传的行为一致。
@@ -106,7 +158,7 @@ static void maint_handle_line(char *line)
 
 static void maint_process_byte(uint8_t byte)
 {
-    maint_last_rx_ms = HAL_GetTick();
+    maint_last_rx_ms = SVC_Timestamp_Ms();
 
     if ((byte == '\r') || (byte == '\n')) {
         if (maint_rx_used > 0U) {
@@ -133,7 +185,7 @@ static void maint_flush_idle_line(void)
         return;
     }
 
-    now_ms = HAL_GetTick();
+    now_ms = SVC_Timestamp_Ms();
     if ((now_ms - maint_last_rx_ms) < APP_MAINT_UART_IDLE_LINE_MS) {
         return;
     }
@@ -143,72 +195,6 @@ static void maint_flush_idle_line(void)
     maint_rx_used = 0U;
 }
 
-#if (APP_MAINT_UART_PERIODIC_SENSOR_STATUS_ENABLED != 0U)
-static void maint_report_gps_usart2_status(void)
-{
-    APP_GPS_Status gps_status;
-    APP_MAG_Status mag_status;
-    uint32_t now_ms = HAL_GetTick();
-    uint32_t age_ms = 0xFFFFFFFFUL;
-    char age_text[16];
-
-    if ((now_ms - maint_last_gps_status_ms) < APP_MAINT_UART_GPS_STATUS_PERIOD_MS) {
-        return;
-    }
-    maint_last_gps_status_ms = now_ms;
-
-    APP_GPS_GetStatus(&gps_status);
-    APP_MAG_GetStatus(&mag_status);
-    if (gps_status.last_rx_ms != 0U) {
-        age_ms = now_ms - gps_status.last_rx_ms;
-    }
-    if (age_ms == 0xFFFFFFFFUL) {
-        (void)snprintf(age_text, sizeof(age_text), "none");
-    } else {
-        (void)snprintf(age_text, sizeof(age_text), "%lu", (unsigned long)age_ms);
-    }
-
-    APP_MaintUART_WriteFormat("GPS_USART2 ok=%u init=%ld baud=%lu bytes=%lu fix=%u valid=%u sv=%u age_ms=%s lon=%ld lat=%ld hmsl_mm=%ld\r\n",
-                              (unsigned int)gps_status.initialized,
-                              (long)gps_status.init_status,
-                              (unsigned long)gps_status.baud_rate,
-                              (unsigned long)gps_status.bytes,
-                              (unsigned int)gps_status.fix_type,
-                              (unsigned int)gps_status.valid_fix,
-                              (unsigned int)gps_status.num_sv,
-                              age_text,
-                              (long)gps_status.lon_deg_e7,
-                              (long)gps_status.lat_deg_e7,
-                              (long)gps_status.hmsl_mm);
-    APP_MaintUART_WriteFormat("GPS_USART2 diag pkts=%lu nav=%lu nmea=%lu gga=%lu cksum=%lu nmea_ck=%lu ovf=%lu nmea_ovf=%lu rst=%lu uerr=%lu last_err=0x%lX cfg=%lu\r\n",
-                              (unsigned long)gps_status.packets,
-                              (unsigned long)gps_status.nav_pvt_packets,
-                              (unsigned long)gps_status.nmea_sentences,
-                              (unsigned long)gps_status.nmea_gga_sentences,
-                              (unsigned long)gps_status.checksum_errors,
-                              (unsigned long)gps_status.nmea_checksum_errors,
-                              (unsigned long)gps_status.payload_overflows,
-                              (unsigned long)gps_status.nmea_overflows,
-                              (unsigned long)gps_status.rx_restarts,
-                              (unsigned long)gps_status.uart_errors,
-                              (unsigned long)gps_status.last_uart_error,
-                              (unsigned long)gps_status.config_writes);
-    APP_MaintUART_WriteFormat("MAG_I2C1 ok=%u init=%ld st=%ld type=%s addr=0x%02X who=0x%02X n=%lu raw=%d,%d,%d mgauss=%ld,%ld,%ld\r\n",
-                              (unsigned int)mag_status.initialized,
-                              (long)mag_status.init_status,
-                              (long)mag_status.last_status,
-                              APP_MAG_GetTypeName(mag_status.type),
-                              (unsigned int)mag_status.address,
-                              (unsigned int)mag_status.who_am_i,
-                              (unsigned long)mag_status.sample_count,
-                              (int)mag_status.raw_x,
-                              (int)mag_status.raw_y,
-                              (int)mag_status.raw_z,
-                              (long)mag_status.x_mgauss,
-                              (long)mag_status.y_mgauss,
-                              (long)mag_status.z_mgauss);
-}
-#endif
 
 void APP_MaintUART_Init(void)
 {
@@ -216,14 +202,22 @@ void APP_MaintUART_Init(void)
     maint_rx_used = 0U;
     maint_rx_head = 0U;
     maint_rx_tail = 0U;
-    maint_last_rx_ms = HAL_GetTick();
-    maint_last_gps_status_ms = 0U;
+    maint_last_rx_ms = SVC_Timestamp_Ms();
     maint_rx_error = 0U;
     maint_rx_overflow = 0U;
     maint_control_ready = 0U;
 
+    maint_tx_waits = 0U;
+    maint_tx_text_drops = 0U;
+    maint_tx_frame_drops = 0U;
+
 #if (APP_MAINT_UART_BOOT_TEXT_ENABLED != 0U)
-    maint_write_literal("BOOT maint_uart uart8 pe0=rx pe1=tx 115200\r\n");
+    /*
+     * 口名从 BSP 问，不写死。这条 BOOT 行是换板后第一个能看到的东西，
+     * 它说的口必须就是实际绑的那个口，否则排查会从第一步就走错方向。
+     */
+    APP_MaintUART_WriteFormat("BOOT maint_uart link=%s 115200 dma_tx=1\r\n",
+                              BSP_UART_MaintName());
 #endif
     maint_start_rx();
 }
@@ -242,24 +236,17 @@ void APP_MaintUART_Step(void)
 
     if (maint_rx_overflow != 0U) {
         maint_rx_overflow = 0U;
-        maint_write_literal("WARN maint uart8 rx overflow\r\n");
+        maint_write_literal("WARN maint rx overflow\r\n");
     }
 
     if (maint_rx_error != 0U) {
         maint_rx_error = 0U;
-        __HAL_UART_CLEAR_FLAG(&huart8, UART_CLEAR_OREF | UART_CLEAR_NEF |
-                                      UART_CLEAR_PEF | UART_CLEAR_FEF);
-        huart8.ErrorCode = HAL_UART_ERROR_NONE;
-        (void)HAL_UART_AbortReceive(&huart8);
-        maint_start_rx();
-        maint_write_literal("WARN maint uart8 rx restarted\r\n");
+        BSP_UART_MaintRxRecover(&maint_rx_byte);
+        maint_write_literal("WARN maint rx restarted\r\n");
     }
 
     maint_flush_idle_line();
 
-#if (APP_MAINT_UART_PERIODIC_SENSOR_STATUS_ENABLED != 0U)
-    maint_report_gps_usart2_status();
-#endif
     if (maint_control_ready != 0U) {
         APP_Control_MaintTick();
     }
@@ -271,16 +258,66 @@ void APP_MaintUART_Write(const char *text, uint16_t length)
         return;
     }
 
-    (void)BSP_UART_Transmit_UART8((const uint8_t *)text, length, 100U);
+    (void)maint_tx_text((const uint8_t *)text, length);
 }
 
-void APP_MaintUART_WriteRaw(const uint8_t *data, uint16_t length)
+uint8_t APP_MaintUART_WriteRaw(const uint8_t *data, uint16_t length)
 {
     if ((data == NULL) || (length == 0U)) {
-        return;
+        return 0U;
     }
 
-    (void)BSP_UART_Transmit_UART8(data, length, 100U);
+    /*
+     * 队列里还积着上一帧（或者更多）就别再塞：出口带宽是死的，多排进去的帧
+     * 只会让上位机看到越来越滞后的曲线，而不是更密的曲线。丢掉并如实计数，
+     * `TELEM?` 的 drop= 与 `TELEM TX` 的 frame_drop= 都看得见。
+     */
+    if (BSP_UART_MaintTxPending() > APP_MAINT_UART_TX_BACKLOG_MAX) {
+        maint_tx_frame_drops++;
+        return 0U;
+    }
+
+    if (BSP_UART_MaintWrite(data, length) == 0U) {
+        maint_tx_frame_drops++;
+        return 0U;
+    }
+
+    return 1U;
+}
+
+void APP_MaintUART_ReportTx(void)
+{
+    BSP_UartTxStats stats;
+
+    BSP_UART_MaintTxGetStats(&stats);
+    APP_Control_QueueText(
+        "TELEM TX link=%s dma=%u busy=%u pending=%lu/%lu peak=%lu "
+        "bytes=%lu writes=%lu q_drop=%lu q_drop_bytes=%lu "
+        "frame_drop=%lu text_drop=%lu waits=%lu starts=%lu err=%lu fallback=%lu\r\n",
+        BSP_UART_MaintName(),
+        (unsigned int)stats.dma,
+        (unsigned int)stats.busy,
+        (unsigned long)stats.pending,
+        (unsigned long)stats.size,
+        (unsigned long)stats.peak_used,
+        (unsigned long)stats.bytes,
+        (unsigned long)stats.writes,
+        (unsigned long)stats.drops,
+        (unsigned long)stats.dropped_bytes,
+        (unsigned long)maint_tx_frame_drops,
+        (unsigned long)maint_tx_text_drops,
+        (unsigned long)maint_tx_waits,
+        (unsigned long)stats.starts,
+        (unsigned long)stats.errors,
+        (unsigned long)stats.fallback);
+}
+
+void APP_MaintUART_ResetTxStats(void)
+{
+    maint_tx_waits       = 0U;
+    maint_tx_text_drops  = 0U;
+    maint_tx_frame_drops = 0U;
+    BSP_UART_MaintTxResetStats();
 }
 
 uint8_t APP_MaintUART_IsLinkActive(void)
@@ -291,7 +328,7 @@ uint8_t APP_MaintUART_IsLinkActive(void)
         return 0U;
     }
 
-    idle_ms = HAL_GetTick() - maint_last_command_ms;
+    idle_ms = SVC_Timestamp_Ms() - maint_last_command_ms;
     return (idle_ms <= APP_MAINT_UART_LINK_IDLE_MS) ? 1U : 0U;
 }
 
@@ -319,15 +356,10 @@ void APP_MaintUART_WriteFormat(const char *format, ...)
     APP_MaintUART_Write(buffer, (uint16_t)written);
 }
 
-void APP_MaintUART_OnRxCplt(UART_HandleTypeDef *huart)
+void APP_MaintUART_OnRxByte(void)
 {
-    uint16_t next_head;
+    uint16_t next_head = (uint16_t)(maint_rx_head + 1U);
 
-    if ((huart == 0) || (huart->Instance != UART8)) {
-        return;
-    }
-
-    next_head = (uint16_t)(maint_rx_head + 1U);
     if (next_head >= APP_MAINT_UART_RING_SIZE) {
         next_head = 0U;
     }
@@ -342,11 +374,7 @@ void APP_MaintUART_OnRxCplt(UART_HandleTypeDef *huart)
     maint_start_rx();
 }
 
-void APP_MaintUART_OnError(UART_HandleTypeDef *huart)
+void APP_MaintUART_OnRxError(void)
 {
-    if ((huart == 0) || (huart->Instance != UART8)) {
-        return;
-    }
-
     maint_rx_error = 1U;
 }

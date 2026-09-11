@@ -65,6 +65,45 @@ typedef struct {
 static APP_TelemStreamState app_telem_stream;
 
 /*
+ * 每拍耗时画像。**固定开着**，不做"诊断模式"开关。
+ *
+ * 这条流上已经栽过的两个跟头（遥测任务优先级太低一拍没跑过、周期把干活时间也
+ * 算了进去）都不是读代码能读出来的，全靠量。而要是诊断得先切模式才准，真出问题
+ * 那一刻常常已经来不及切了。所以一直记，`TELEM PROF` 只负责把它读出来。
+ * 代价是每拍多读 5 次时间戳——40 Hz 下完全可以忽略。
+ *
+ * 累加用 64 位：25 ms 一拍的话 32 位和只够 71 分钟，一次长测就溢出了；
+ * 打印前先在 C 里除成平均值，所以不需要 newlib-nano 的 %llu。
+ */
+typedef struct {
+    uint32_t ticks;
+    uint32_t sent;
+    uint32_t skipped;
+    uint32_t late;           /* pace 进来时截止时刻已经过了 */
+    uint32_t entry_us;
+    uint8_t  entry_valid;
+    uint32_t period_last_us;
+    uint32_t period_min_us;
+    uint32_t period_max_us;
+    uint64_t period_sum_us;
+    uint32_t sleep_max_us;
+    uint64_t sleep_sum_us;
+    uint32_t sample_max_us;
+    uint64_t sample_sum_us;
+    uint32_t encode_max_us;
+    uint64_t encode_sum_us;
+    uint32_t send_max_us;
+    uint64_t send_sum_us;
+    /* 本拍的分段耗时，由 tick 主体逐段写入，收尾时一次性并入统计。 */
+    uint32_t stage_sleep_us;
+    uint32_t stage_sample_us;
+    uint32_t stage_encode_us;
+    uint32_t stage_send_us;
+} APP_TelemStreamProfile;
+
+static APP_TelemStreamProfile app_telem_prof;
+
+/*
  * 帧缓冲与取值数组都放静态区：遥测任务栈只有 2 KB，265 B 的成帧缓冲加两个
  * 通道数组压栈会把余量吃掉一半以上。只有遥测任务一个写者。
  */
@@ -128,6 +167,20 @@ static uint32_t telem_stream_period_ms(void)
  * 基准是从**上一个截止时刻**递推的，不是从"现在"，所以每拍那点取整误差不会
  * 累积成越走越慢。
  */
+static void telem_stream_prof_accum(uint32_t *peak, uint64_t *sum, uint32_t value)
+{
+    *sum += (uint64_t)value;
+    if (value > *peak) {
+        *peak = value;
+    }
+}
+
+/* 两个 32 位微秒时刻之差。约 71 分钟回绕，无符号减法自然成立。 */
+static uint32_t telem_stream_elapsed_us(uint32_t from_us, uint32_t to_us)
+{
+    return to_us - from_us;
+}
+
 static void telem_stream_pace(void)
 {
     const uint32_t period_us = telem_stream_period_ms() * 1000U;
@@ -152,6 +205,7 @@ static void telem_stream_pace(void)
          */
         app_telem_stream.pace_deadline_us = now_us + period_us;
         remaining_us = (int32_t)period_us;
+        app_telem_prof.late++;
     }
 
     /* 四舍五入到毫秒；睡 0 毫秒在有些 RTOS 上不让出 CPU，所以下限是 1。 */
@@ -169,6 +223,13 @@ static void telem_stream_pace(void)
         app_telem_stream.pace_deadline_us = now_us + period_us;
     }
     APP_TelemStream_PortDelayMs(sleep_ms);
+    /*
+     * 记的是**实际**睡了多久，不是要求睡多久：osDelay(n) 在 1 kHz tick 上本来
+     * 就落在 (n-1, n] 之间，再叠上被同优先级任务抢占的时间。"要求 18 实际 22"
+     * 正是要能看见的东西，写回要求值就把它抹掉了。
+     */
+    app_telem_prof.stage_sleep_us =
+        telem_stream_elapsed_us(now_us, APP_TelemStream_PortNowUs());
 }
 
 APP_TelemMask APP_TelemStream_DefaultMask(void)
@@ -209,6 +270,7 @@ void APP_TelemStream_Init(void)
 void APP_TelemStream_Reset(void)
 {
     app_telem_stream.initialised = 0U;
+    APP_TelemStream_ResetProfile();
     APP_TelemStream_Init();
 }
 
@@ -514,27 +576,31 @@ static void telem_stream_report_encode_error(void)
     APP_TelemStream_PortReply("ERR telem frame too large\r\n");
 }
 
-void APP_TelemStream_Tick(void)
+/*
+ * 一拍的实际工作。返回 1 表示这一拍真把帧送出去了。
+ *
+ * 限速与画像收尾都在外面的 APP_TelemStream_Tick 里：这个函数有七个提前返回，
+ * 每个出口都手写一遍统计收尾，迟早会漏掉一个，而漏掉的那个恰好就是要查的那拍。
+ */
+static uint8_t telem_stream_tick_body(void)
 {
     APP_TelemSink        sink;
     APP_TelemFrameDesc   desc;
     APP_TelemFrameStatus encoded;
     APP_TelemMask        send_mask;
     uint32_t             packed;
+    uint32_t             mark_us;
     uint16_t             frame_length = 0U;
     uint8_t              full_refresh = 0U;
     uint8_t              sent;
 
-    APP_TelemStream_Init();
-    telem_stream_pace();
-
     /* IMUCAP / FLOG 导出独占 CDC 链路，导出期间一帧都不发。 */
     if (APP_TelemStream_PortServiceExports() != 0U) {
-        return;
+        return 0U;
     }
 
     if (vofaStreamActive == 0U) {
-        return;
+        return 0U;
     }
 
     sink = APP_TelemStream_ActiveSink();
@@ -546,15 +612,19 @@ void APP_TelemStream_Tick(void)
          */
         vofaStreamActive = 0U;
         app_telem_stream.usb_lost++;
-        return;
+        return 0U;
     }
 
+    mark_us = APP_TelemStream_PortNowUs();
     if (APP_TelemStream_PortSample(app_telem_stream_values,
                                    (uint32_t)APP_TELEM_CH_COUNT) == 0U) {
         /* 这一拍没有新样本。宁可不发，也不把上一拍的旧值再推一遍。 */
-        return;
+        return 0U;
     }
+    app_telem_prof.stage_sample_us =
+        telem_stream_elapsed_us(mark_us, APP_TelemStream_PortNowUs());
 
+    mark_us = APP_TelemStream_PortNowUs();
     telem_stream_update_dirty(app_telem_stream_values);
 
     if (app_telem_stream.refresh_s > 0U) {
@@ -568,15 +638,20 @@ void APP_TelemStream_Tick(void)
 
     if (app_telem_stream.format == APP_TELEM_FORMAT_JF) {
         /* 旧 JustFloat：定长全表帧，掩码与脏位对它没有意义。 */
+        app_telem_prof.stage_encode_us =
+            telem_stream_elapsed_us(mark_us, APP_TelemStream_PortNowUs());
+        mark_us = APP_TelemStream_PortNowUs();
         sent = APP_TelemStream_PortSendJustFloat(app_telem_stream_values,
                                                  (uint32_t)APP_TELEM_CH_COUNT);
+        app_telem_prof.stage_send_us =
+            telem_stream_elapsed_us(mark_us, APP_TelemStream_PortNowUs());
         if (sent != 0U) {
             app_telem_stream.seq++;
             app_telem_stream.frames++;
-        } else {
-            app_telem_stream.drops++;
+            return 1U;
         }
-        return;
+        app_telem_stream.drops++;
+        return 0U;
     }
 
     if (full_refresh != 0U) {
@@ -589,7 +664,7 @@ void APP_TelemStream_Tick(void)
 
     if (APP_TelemMask_IsEmpty(send_mask) != 0U) {
         /* 只选了参数通道且这一拍没有变化：本来就没什么要说的。 */
-        return;
+        return 0U;
     }
 
     packed = telem_stream_pack(send_mask, app_telem_stream_values,
@@ -610,13 +685,16 @@ void APP_TelemStream_Tick(void)
                                     app_telem_stream_frame,
                                     (uint16_t)sizeof(app_telem_stream_frame),
                                     &frame_length);
+    app_telem_prof.stage_encode_us =
+        telem_stream_elapsed_us(mark_us, APP_TelemStream_PortNowUs());
     if (encoded != APP_TELEM_FRAME_OK) {
         app_telem_stream.drops++;
         telem_stream_report_encode_error();
-        return;
+        return 0U;
     }
     app_telem_stream.encode_error_latched = 0U;
 
+    mark_us = APP_TelemStream_PortNowUs();
     if (sink == APP_TELEM_SINK_USB) {
         sent = APP_TelemStream_PortSendUsb(app_telem_stream_frame, frame_length);
     } else if (sink == APP_TELEM_SINK_BT) {
@@ -624,10 +702,12 @@ void APP_TelemStream_Tick(void)
     } else {
         sent = APP_TelemStream_PortSendUart(app_telem_stream_frame, frame_length);
     }
+    app_telem_prof.stage_send_us =
+        telem_stream_elapsed_us(mark_us, APP_TelemStream_PortNowUs());
 
     if (sent == 0U) {
         app_telem_stream.drops++;
-        return;
+        return 0U;
     }
 
     /*
@@ -637,4 +717,126 @@ void APP_TelemStream_Tick(void)
     app_telem_stream.dirty = APP_TelemMask_AndNot(app_telem_stream.dirty, send_mask);
     app_telem_stream.seq++;
     app_telem_stream.frames++;
+    return 1U;
+}
+
+void APP_TelemStream_Tick(void)
+{
+    uint32_t entry_us;
+    uint8_t  sent;
+
+    APP_TelemStream_Init();
+
+    app_telem_prof.stage_sleep_us  = 0U;
+    app_telem_prof.stage_sample_us = 0U;
+    app_telem_prof.stage_encode_us = 0U;
+    app_telem_prof.stage_send_us   = 0U;
+
+    entry_us = APP_TelemStream_PortNowUs();
+    telem_stream_pace();
+    sent = telem_stream_tick_body();
+
+    /*
+     * 周期量的是**两次进入之间**的间隔，也就是睡眠 + 干活的总和，与上位机在
+     * 线上看到的帧间隔同口径。只量睡眠会把"周期里还夹着 7 ms 阻塞发送"这类
+     * 问题量没了——那恰好是这条流上真出过的事故。
+     */
+    if (app_telem_prof.entry_valid != 0U) {
+        uint32_t period_us =
+            telem_stream_elapsed_us(app_telem_prof.entry_us, entry_us);
+
+        app_telem_prof.period_last_us = period_us;
+        if ((app_telem_prof.ticks == 0U) ||
+            (period_us < app_telem_prof.period_min_us)) {
+            app_telem_prof.period_min_us = period_us;
+        }
+        telem_stream_prof_accum(&app_telem_prof.period_max_us,
+                                &app_telem_prof.period_sum_us, period_us);
+        app_telem_prof.ticks++;
+    }
+    app_telem_prof.entry_us    = entry_us;
+    app_telem_prof.entry_valid = 1U;
+
+    telem_stream_prof_accum(&app_telem_prof.sleep_max_us,
+                            &app_telem_prof.sleep_sum_us,
+                            app_telem_prof.stage_sleep_us);
+    telem_stream_prof_accum(&app_telem_prof.sample_max_us,
+                            &app_telem_prof.sample_sum_us,
+                            app_telem_prof.stage_sample_us);
+    telem_stream_prof_accum(&app_telem_prof.encode_max_us,
+                            &app_telem_prof.encode_sum_us,
+                            app_telem_prof.stage_encode_us);
+    telem_stream_prof_accum(&app_telem_prof.send_max_us,
+                            &app_telem_prof.send_sum_us,
+                            app_telem_prof.stage_send_us);
+
+    if (sent != 0U) {
+        app_telem_prof.sent++;
+    } else {
+        app_telem_prof.skipped++;
+    }
+}
+
+void APP_TelemStream_ResetProfile(void)
+{
+    memset(&app_telem_prof, 0, sizeof(app_telem_prof));
+}
+
+static uint32_t telem_stream_prof_avg(uint64_t sum, uint32_t count)
+{
+    return (count == 0U) ? 0U : (uint32_t)(sum / (uint64_t)count);
+}
+
+void APP_TelemStream_ReportProfile(void)
+{
+    char     text[224];
+    uint32_t ticks   = app_telem_prof.ticks;
+    uint32_t avg_us  = telem_stream_prof_avg(app_telem_prof.period_sum_us, ticks);
+    /*
+     * 实测速率同时用 x100 定点给出来。上位机要判"设 40 实际多少"，自己拿平均
+     * 周期去倒数是能算，但每个脚本都要再写一遍同样的换算，写歪一次就得重测；
+     * 固件这边本来就有这两个数，顺手算完更不容易错。
+     */
+    uint32_t rate_x100 = (avg_us == 0U) ? 0U
+                                        : (uint32_t)((100000000ULL + (avg_us / 2U)) /
+                                                     (uint64_t)avg_us);
+
+    (void)snprintf(text, sizeof(text),
+                   "TELEM PROF n=%lu sent=%lu skip=%lu late=%lu "
+                   "period_us=%lu/%lu/%lu last=%lu rate_x100=%lu\r\n",
+                   (unsigned long)ticks,
+                   (unsigned long)app_telem_prof.sent,
+                   (unsigned long)app_telem_prof.skipped,
+                   (unsigned long)app_telem_prof.late,
+                   (unsigned long)((ticks == 0U) ? 0U : app_telem_prof.period_min_us),
+                   (unsigned long)avg_us,
+                   (unsigned long)app_telem_prof.period_max_us,
+                   (unsigned long)app_telem_prof.period_last_us,
+                   (unsigned long)rate_x100);
+    APP_TelemStream_PortReply(text);
+
+    /*
+     * 分段耗时的分母用 sent+skip 而不是 ticks：每一拍都会走一遍这些分段，
+     * 而 ticks 少算了第一拍（那拍没有上一次进入时刻，算不出周期）。
+     */
+    {
+        uint32_t stages = app_telem_prof.sent + app_telem_prof.skipped;
+
+        (void)snprintf(text, sizeof(text),
+                       "TELEM PROF stage_us sleep=%lu/%lu sample=%lu/%lu "
+                       "encode=%lu/%lu send=%lu/%lu avg/max\r\n",
+                       (unsigned long)telem_stream_prof_avg(
+                           app_telem_prof.sleep_sum_us, stages),
+                       (unsigned long)app_telem_prof.sleep_max_us,
+                       (unsigned long)telem_stream_prof_avg(
+                           app_telem_prof.sample_sum_us, stages),
+                       (unsigned long)app_telem_prof.sample_max_us,
+                       (unsigned long)telem_stream_prof_avg(
+                           app_telem_prof.encode_sum_us, stages),
+                       (unsigned long)app_telem_prof.encode_max_us,
+                       (unsigned long)telem_stream_prof_avg(
+                           app_telem_prof.send_sum_us, stages),
+                       (unsigned long)app_telem_prof.send_max_us);
+        APP_TelemStream_PortReply(text);
+    }
 }
