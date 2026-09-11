@@ -102,12 +102,18 @@ PINS: list[tuple[str, dict[str, str]]] = [
                      "GPIO_Label": "BMI270_CS", "GPIO_PuPd": "GPIO_PULLUP",
                      "GPIO_Speed": "GPIO_SPEED_FREQ_VERY_HIGH", "PinState": "GPIO_PIN_SET"}),
 
-    # --- IMU DRDY（外部中断）---
+    # --- IMU DRDY ---
     # PC14/PC15 在旧板上是 LSE 晶振脚；本板不接 LSE，让给 BMI088 的两路 DRDY。
+    #
+    # BMI088 把加计和陀螺做成两颗独立芯片，各有一路 DRDY，两路都实打实接到了 MCU
+    # （hwdef: PC15 DRDY1_BMI088_G / PC14 DRDY2_BMI088_A）。但**只有陀螺那路配成外部
+    # 中断**：角速率是最内环，节拍由陀螺定；加计 ODR 是 1600 Hz，如果也开中断，
+    # 每秒会多出约 1600 次进了 EXTI15_10 又立刻被掩码挡掉的空中断——纯浪费，而且浪费
+    # 在优先级最高的中断路径上。把它当普通输入脚：需要时可以查电平，但不产生边沿。
     ("PC15-OSC32_OUT (OSC32_OUT)", {"Signal": "GPXTI15",
                                     "GPIOParameters": "GPIO_Label",
                                     "GPIO_Label": "BMI088_G_DRDY"}),
-    ("PC14-OSC32_IN (OSC32_IN)", {"Signal": "GPXTI14",
+    ("PC14-OSC32_IN (OSC32_IN)", {"Signal": "GPIO_Input",
                                   "GPIOParameters": "GPIO_Label",
                                   "GPIO_Label": "BMI088_A_DRDY"}),
     ("PB7", {"Signal": "GPXTI7", "GPIOParameters": "GPIO_Label",
@@ -200,8 +206,6 @@ PINS: list[tuple[str, dict[str, str]]] = [
 SH_ENTRIES = {
     "SH.GPXTI7.0": "GPIO_EXTI7",
     "SH.GPXTI7.ConfNb": "1",
-    "SH.GPXTI14.0": "GPIO_EXTI14",
-    "SH.GPXTI14.ConfNb": "1",
     "SH.GPXTI15.0": "GPIO_EXTI15",
     "SH.GPXTI15.ConfNb": "1",
     "SH.S_TIM1_CH1.0": "TIM1_CH1,PWM Generation1 CH1",
@@ -306,7 +310,8 @@ NEW_DMA_REQUESTS = [
 ]
 
 NEW_NVIC = {
-    # DRDY 外部中断：PC15/PC14 落在 EXTI15_10，PB7 落在 EXTI9_5。
+    # DRDY 外部中断：PC15 落在 EXTI15_10，PB7 落在 EXTI9_5。
+    # PC14 是普通输入，不占中断（原因见上面 PINS 表里的说明）。
     "NVIC.EXTI15_10_IRQn": "true\\:5\\:0\\:true\\:false\\:true\\:true\\:true\\:true\\:true",
     "NVIC.EXTI9_5_IRQn": "true\\:5\\:0\\:true\\:false\\:true\\:true\\:true\\:true\\:true",
     "NVIC.DMA2_Stream6_IRQn": "true\\:5\\:0\\:false\\:false\\:true\\:true\\:false\\:true\\:true",

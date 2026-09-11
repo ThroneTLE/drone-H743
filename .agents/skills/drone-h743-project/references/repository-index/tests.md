@@ -4,7 +4,7 @@
 
 Read this shard only when you need existing behavioral/architecture coverage or must choose focused regression tests.
 
-Source snapshot: `e0aa4a6537af`. Indexed files: 157.
+Source snapshot: `3d687808064d`. Indexed files: 157.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -83,7 +83,7 @@ Source snapshot: `e0aa4a6537af`. Indexed files: 157.
 | `tests/test_imu_health_guard.py` | IMU 采样链静默降级的检测与拦截。 背景（2026-08-28 实测）：Sensor_Task 在 DRDY 中断没来时会退到 20ms 轮询兜底。 兜底成功会把 imu_drdy_miss_count 清零，于是"中断永久失效"被当成… | `test_poll_fallback_no_longer_clears_the_drdy_miss_counter` (+19) |
 | `tests/test_imu_metrology.py` | — | `test_sample_requires_finite_and_complete_provenance` (+23) |
 | `tests/test_imu_nav_estimator.py` | — | `test_level_static_acceleration_becomes_zero_linear_nav_accel` (+4) |
-| `tests/test_imu_timing_contract.py` | — | `test_stabilizer_uses_drdy_timed_fusion_ahrs` (+14) |
+| `tests/test_imu_timing_contract.py` | — | `test_stabilizer_uses_drdy_timed_fusion_ahrs` (+15) |
 | `tests/test_imu_vibration_ui.py` | Tests for the vibration capture UI helpers. The UI is a thin driver over tools/imu_vibration_capture.py. These tests co… | `test_test_steps_cover_the_documented_sweep` (+5) |
 | `tests/test_imucal_candidate_protocol.py` | IMUCAL split contracts | `test_upload_runtime` (+4) |
 | `tests/test_imucal_context_diagnostics.py` | IMUCAL? 上下文校验的报错。 背景：2026-08-29 点"应用候选到 RAM"弹出 `target IMUCAL context reply is incomplete`。这句话把收到的行全扔了，分不清三种完全不同的情况：链路根… | `test_a_silent_target_is_reported_as_a_link_problem_not_a_calibration_one` (+9) |

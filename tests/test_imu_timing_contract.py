@@ -58,6 +58,43 @@ def test_sensor_task_uses_irq_edge_timestamp_and_poll_fallback() -> None:
     assert "APP_IMU_ACCEL_CORRECTION_TAU_SEC" not in sensor
 
 
+def test_every_exti_pin_is_one_the_drdy_callback_actually_consumes() -> None:
+    """配成外部中断的引脚，必须是 DRDY 回调真的会处理的那些。
+
+    中断进来又被掩码挡掉 = 纯浪费，而且浪费在优先级最高的中断路径上。
+    MicoAir743v2 上 BMI088 是加计 + 陀螺两颗独立芯片，各有一路 DRDY 且**都实打实
+    接到了 MCU**（hwdef: PC15 DRDY1_BMI088_G / PC14 DRDY2_BMI088_A）。但节拍只能由
+    陀螺定（角速率是最内环），加计 ODR 1600 Hz 要是也开中断，每秒白进约 1600 次。
+    所以 PC14 必须是普通输入而不是 EXTI。
+
+    这条断言的是"EXTI 引脚集合 == 掩码接受的引脚集合"这个不变量，不是某个引脚名。
+    """
+    import re
+
+    ioc = read("drone-H743.ioc")
+    sensor = read("App/Src/app_sensor.c")
+
+    # .ioc 里配成外部中断的引脚号（GPXTI<n> / GPIO_EXTI<n>）。
+    exti_pins = set()
+    for match in re.finditer(r"^(P[A-K])(\d+).*\.Signal=GPXTI(\d+)$", ioc, re.MULTILINE):
+        assert match.group(2) == match.group(3), "EXTI 线号必须等于引脚号"
+        exti_pins.add(int(match.group(3)))
+    # 带 OSC32 后缀的脚名格式不同，单独扫一遍。
+    for match in re.finditer(r"^P[A-K](\d+)[^=]*\.Signal=GPXTI(\d+)$", ioc, re.MULTILINE):
+        exti_pins.add(int(match.group(2)))
+
+    assert exti_pins, ".ioc 里一个外部中断都没有，DRDY 会退到轮询兜底"
+
+    mask = re.search(r"#define APP_IMU_DRDY_PIN_MASK\s+\(([^)]*)\)", sensor)
+    assert mask is not None
+    accepted = {int(n) for n in re.findall(r"GPIO_PIN_(\d+)", mask.group(1))}
+
+    assert exti_pins == accepted, (
+        f".ioc 的 EXTI 引脚 {sorted(exti_pins)} 与回调接受的 {sorted(accepted)} 对不上："
+        f"多出来的会白进中断，少掉的会让控制环退到 20 ms 轮询兜底"
+    )
+
+
 def test_slow_mag_step_is_not_run_for_every_imu_sample() -> None:
     freertos = read("Core/Src/freertos.c")
 
