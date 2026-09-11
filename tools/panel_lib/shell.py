@@ -2,8 +2,10 @@
 import tkinter as tk
 from tkinter import ttk
 from .viewport import VerticalScrolledFrame, FixedActionViewport
+from .arm_banner import mount_arm_banner
+from .pages.airframe import mount_airframe
 from .pages.logs import mount_logs
-from .simulation_launcher import mount_simulation_bar
+from .pages.simulation import mount_simulation
 
 
 def build_ui(self):
@@ -11,7 +13,9 @@ def build_ui(self):
     root.pack(fill=tk.BOTH, expand=True)
 
     self._build_connection_bar(root)
-    mount_simulation_bar(self, root)
+    # 主窗口最上方留给解锁状态：这是每次上机都要先看一眼的东西。
+    # 仿真启动栏原来占着这个位置，已搬进「仿真」栏目。
+    mount_arm_banner(self, root)
 
     body = ttk.PanedWindow(root, orient=tk.VERTICAL)
     body.pack(fill=tk.BOTH, expand=True, pady=(10, 0))
@@ -51,6 +55,8 @@ def build_ui(self):
     flow_sensor_scroll = VerticalScrolledFrame(self.sensor_notebook)
     ident_scroll = VerticalScrolledFrame(self.notebook)
     params_scroll = VerticalScrolledFrame(self.notebook)
+    airframe_scroll = VerticalScrolledFrame(self.notebook)
+    simulation_scroll = VerticalScrolledFrame(self.notebook)
     servos_view = FixedActionViewport(self.notebook)
     commands_scroll = VerticalScrolledFrame(self.notebook)
     baro = baro_scroll.content
@@ -59,8 +65,12 @@ def build_ui(self):
     flow_sensor = flow_sensor_scroll.content
     ident = ident_scroll.content
     params = params_scroll.content
+    airframe = airframe_scroll.content
+    simulation = simulation_scroll.content
     servos = servos_view.content
     commands = commands_scroll.content
+    self.airframe_tab = airframe_scroll
+    self.simulation_tab = simulation_scroll
     self.baro_tab = baro_scroll
     self.imu_tab = imu_scroll
     self.calibration_group_tab = calibration
@@ -94,7 +104,9 @@ def build_ui(self):
     self.sensor_notebook.add(flow_sensor_scroll, text="光流")
     self.notebook.add(servos_view, text="维护 · 舵机调试")
     self.notebook.add(params_scroll, text="参数 / PID")
+    self.notebook.add(airframe_scroll, text="机体模型")
     self.notebook.add(ident_scroll, text="系统辨识")
+    self.notebook.add(simulation_scroll, text="仿真")
     self.notebook.add(commands_scroll, text="诊断 / 命令")
 
     self._build_overview_page(overview)
@@ -112,6 +124,8 @@ def build_ui(self):
     self._build_sensor_flow_page(flow_sensor)
     self._build_ident_page(ident)
     self._build_params_page(params)
+    mount_airframe(self, airframe)
+    mount_simulation(self, simulation)
     self._build_servo_page(servos, fixed_parent=servos_view.fixed)
     self._build_command_page(commands)
     self._dashboard_mount(self.notebook)

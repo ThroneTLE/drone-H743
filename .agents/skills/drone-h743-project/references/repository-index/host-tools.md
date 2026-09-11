@@ -4,7 +4,7 @@
 
 Read this shard only when the task uses serial/TCP diagnostics, log analysis, identification, capture, calibration, or desktop UIs.
 
-Source snapshot: `f88546eabc6d`; aggregate snapshot: `89cc205d086f`. Covered files: 5370.
+Source snapshot: `1cd7956b43de`; aggregate snapshot: `0332cf4130f0`. Covered files: 5374.
 
 | File/module or scope | Content outline | Key entry points / size |
 |---|---|---|
@@ -51,13 +51,13 @@ Source snapshot: `f88546eabc6d`; aggregate snapshot: `89cc205d086f`. Covered fil
 | `tools/micoair743v2_ioc_migrate.py` | 把 drone-H743.ioc 从自制 H743 板改写成 MicoAir743v2 板级配置。 为什么用脚本而不是手改 .ioc： .ioc 有八百多行、引脚/DMA/NVIC/时钟四处互相牵连，手改一处漏一处的概率很高。 脚本把"改… | `escape_key`, `load`, `is_pin_key`, `rename_dma`, `build`, `main` |
 | `tools/organize_data.py` | Move canonical project data into sortable YYYY-MM-DD subdirectories | `CategoryRule`, `MovePlan`, `plan_category`, `build_plan`, `apply_plan`, `parse_args` (+1) |
 | `tools/panel_lib/__init__.py` | Reusable implementation modules for :mod:`tools.drone_tcp_panel` | — |
+| `tools/panel_lib/airframe_model.py` | 机体模型的上位机侧描述：字段分层、单位，以及派生值的预览计算。 飞控是权威。这里只做两件本地的事： 1. **告诉界面每个字段该怎么摆** —— 哪些是拿秤和尺量得到的（基础层，直接可改）， 哪些是估算/辨识出来的（高级层，改之前要二次确… | `AirframeField`, `compute_derived`, `first_missing` |
+| `tools/panel_lib/arm_banner.py` | 主页面顶部的解锁状态横幅。 为什么放在最上面而不是塞进某一页：解锁状态是**每一次上机都要先看一眼**的东西。 在这之前，飞控表达"为什么解不了锁"的唯一途径是 LED_3 闪几下——要数、要查表、 室外还看不清。而且原因链是有序的，它只… | `ArmBanner`, `mount_arm_banner`, `handle_arm_rsp` |
 | `tools/panel_lib/cascade_editor.py` | Compact current-parameter editor; wire names come from the capability table | `build_cascade_editor` |
 | `tools/panel_lib/connection_state.py` | Host receive provenance; monotonic seconds, never target uptime or UI time. Boundary: immutable queue messages and pure… | `ReceiveContext`, `ReceivedMessage`, `receive_context`, `snapshot_receipt`, `snapshot_is_current` |
 | `tools/panel_lib/evidence.py` | V0 validation evidence persistence, restoration, and write guards | `validation_history_artifacts`, `validation_sample_from_snapshot`, `validation_samples_from_csv`, `signed_permutation_descriptor`, `EvidenceMixin` |
 | `tools/panel_lib/link_activity.py` | Busy reasons shared with the existing keepalive policy | `keepalive_suppressed_reason` |
 | `tools/panel_lib/log_jobs.py` | Queue background file work back to Tk; discard superseded/closed results | `LogJobs` |
-| `tools/panel_lib/log_layout.py` | Wrap existing toolbars without copying their controls or actions | `wrap_toolbars` |
-| `tools/panel_lib/log_receive_view.py` | FlightLog reception using the main panel's current serial connection | `ReceiverView` |
 | `tools/panel_qa/__init__.py` | R-S1-3（TK-00）：上位机无硬件 QA 测试基础。 改版报告的每一条问题都是在“真实 `DronePanel` + 模拟 transport”上复现的，可是 复现装置当时散在 `data/analysis/tk_revamp/20… | — |
 | `tools/panel_qa/baseline_observations.py` | R-S1-3（TK-00）：改版报告 N01–N13 的**基线观测**脚本。 这不是回归测试，也**不会**被 pytest 收集。它回答的是一个只有运行才能回答的问题： 报告写在基线 `6f7a440e` 上的那些现象，在**当前**… | `run`, `main` |
 | `tools/panel_qa/fixtures.py` | 协议夹具：键名从固件源码的格式串里抽出来，不许手打。 SKILL.md「Validation」写死了这条：主机工具解析固件输出时，测试夹具必须钉在**真实 发出的格式**上，因为固件从没发过的字段名不会报错，只会安静地永远匹配不上。改版… | `firmware_format_keys`, `gps_status_line`, `gps_position_line`, `telemetry_schema_lines`, `telemetry_frame` |
@@ -98,6 +98,6 @@ Source snapshot: `f88546eabc6d`; aggregate snapshot: `89cc205d086f`. Covered fil
 | `tools/vofa_serial_capture.py` | Capture USART1/VOFA JustFloat telemetry from the flight controller. The firmware currently sends 28 little-endian float… | `RunningStats`, `build_parser`, `safe_text`, `split_lines`, `parse_frame`, `write_metadata` (+1) |
 | `tools/vofa_udp_bridge.py` | Bridge Ai-WB2 UDP transparent mode to fixed VOFA UDP ports. Why this exists: - Ai-WB2 auto transparent mode is configur… | `log`, `main` |
 | `tools/ground_station/ bundled tree` | Bundled application/runtime distribution; inspect an exact file only when maintaining that bundle | 5239 files / 135.6 MiB / .svg×854, .h×841, .cpp×635, .md×459, .py×257 |
-| `tools/panel_lib/ bundled tree` | Bundled application/runtime distribution; inspect an exact file only when maintaining that bundle | 42 files / 618.4 KiB / .py×42 |
+| `tools/panel_lib/ bundled tree` | Bundled application/runtime distribution; inspect an exact file only when maintaining that bundle | 46 files / 657.0 KiB / .py×46 |
 
 Open the smallest listed tool or bundle landmark first; do not preload bundled runtimes.

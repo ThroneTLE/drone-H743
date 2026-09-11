@@ -21,5 +21,7 @@ def simulation_workspaces():
                  for i, (name, label) in enumerate(PARAMETER_GROUPS[group])]
         tiles += [TileSpec(TILE_WAVE, i*4, 2, 4, 4, [name], {'title': label})
                   for i, (name, label) in enumerate(signals)]
-        workspaces.append(Workspace(title, tiles))
+        # ephemeral：这些工作区绑的是 sim_* 通道，而它们映射到真实的 coax.* 参数。
+        # 标成不落盘，接真机时就不可能在仪表盘里翻到它们。
+        workspaces.append(Workspace(title, tiles, ephemeral=True))
     return workspaces

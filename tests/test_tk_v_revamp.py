@@ -167,7 +167,8 @@ with tempfile.TemporaryDirectory() as root:
         pytest.skip("Tk display unavailable")
     payload = result.stdout.strip().splitlines()[-1]
     report = json.loads(payload)
-    assert report["reports"] == 63
+    # 21 → 23 个叶页（新增「机体模型」「仿真」），每页 3 个尺寸。
+    assert report["reports"] == 69
     assert report["bad"] == [], report["bad"]
 
 

@@ -324,6 +324,38 @@ bit15（PC15/BMI088 陀螺）置位、bit7（PB7/BMI270）清零，`rate_hz=1000
 发地址字节的同时也会收进一个字节且 HAL 不清，随后的 Receive 先交出那个陈字节，
 整串错位一格。已改为单次 `TransmitReceive`。
 
+## 机体模型改为运行时参数（2026-09-11，已实机验证）
+
+固件里不再保留任何机体数据。质量、重心、惯量、力臂、下桨旋向全部改成
+`airframe.*` 运行时参数，唯一来源是 Flash，由上位机「机体模型」页写入
+（[`Driver/Inc/drv_airframe_params.h`](../../Driver/Inc/drv_airframe_params.h)）。
+**没有有效模型时禁止解锁**，原因码 `APP_LED_ARM_BLOCK_AIRFRAME`（LED_3 闪 7 下）。
+
+实机复核（COM22，写 RAM 未保存，复位后已自行清回零）：
+
+| 命令 | 结果 | 说明 |
+|---|---|---|
+| `AIRFRAME?`（刚烧完） | 全部 `0.000000` | v19→v20 迁移按设计调 `DRV_Airframe_Clear()`，旧常量确实没了 |
+| `REQ mod=ARM op=STATUS` | `block=no_rc ... airframe=0 airframe_missing=airframe.mass_kg` | 原因链只报第一条（没插遥控），但条件清单同时暴露机体模型也缺——这正是横幅列全条件的理由 |
+| 逐条 `PARAM SET airframe.*` | 全部 `OK` | 派生值当场重算：`mass_kg=0.754600`、`cg_z_m=-0.094558`、`tether_attach_to_cg_m=0.250858`、`rod_to_cg_m=0.890858`，与仓库历史值一致 |
+| 再查 `ARM` | `airframe=1 airframe_missing=-` | 闸门如期放行 |
+| 自动档下 `PARAM SET airframe.mass_kg 99` | `ERR param target` | 派生值当场拒绝，不是"写进去再被覆盖" |
+
+### ⚠ 阻塞项：参数 Flash 在本板上是坏的，机体模型存不下来
+
+`SAVE` 回 `OK save st=4`，`STATUS?` 里
+`HW FLASH ok=0 stage=probe probe=3 sr=1 read=1 id=000000 exp=C84016`。
+
+原因已知且早有记载：**本板没有 GD25Q32 外部 SPI NOR**，参数存储后端还没按迁移
+计划 Part 3 迁到 H743 片内 Flash。之前这只是"配置存不住"的沉默不便；加上解锁
+闸门之后，它变成**每次上电都无法解锁**——机体模型只能写进 RAM，掉电即失。
+
+所以下一步必须做存储后端（片内 Flash 末两扇区 A/B 双槽 + `svc_param` 的
+32 字节 flash word 对齐）。在那之前：
+
+- 上位机「机体模型」页的「保存到 Flash」会**如实报错**（`st=4`），不会假装成功；
+- 想上电即飞，必须先把存储后端做完，否则每次上电都要重新写一遍机体模型。
+
 ## 上游来源与抓取版本
 
 抓取日期：2026-09-10。

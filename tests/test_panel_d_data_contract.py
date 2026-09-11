@@ -8,7 +8,10 @@ from pathlib import Path
 import pytest
 
 from tools import panel_qa
-from tools.panel_lib.parameter_model import PARAMETER_CAPABILITIES
+from tools.panel_lib.parameter_model import (
+    PARAMETER_CAPABILITIES,
+    validate_parameter_text,
+)
 from tools.panel_qa import fixtures as qa_fixtures
 
 
@@ -80,10 +83,41 @@ def test_d_modules_are_imported_in_all_three_panel_contexts() -> None:
 
 
 def test_parameter_capabilities_match_the_driver_table() -> None:
-    """Units are host annotations, but names must come from the real driver table."""
-    assert set(PARAMETER_CAPABILITIES) == _driver_parameter_names()
+    """Units are host annotations, but names must come from the real driver table.
+
+    2026-09-11：`PARAM?` 现在同时枚举 coax.*（控制增益）与 airframe.*（机体模型），
+    所以能力表也分成两半。分表不是实现细节——`DEFAULTS` 会把控制增益恢复默认，
+    机体模型是量出来的物理事实，混在一起的话一次"恢复默认"就会顺手抹掉它。
+    本条按前缀各自核对：coax.* 仍必须与驱动参数表**完全一致**（多一个少一个都算
+    上位机和固件对不上），airframe.* 必须与机体模型字段表完全一致。
+    """
+    coax_names = {n for n in PARAMETER_CAPABILITIES if n.startswith("coax.")}
+    airframe_names = {n for n in PARAMETER_CAPABILITIES if n.startswith("airframe.")}
+    assert coax_names == _driver_parameter_names()
+    assert coax_names | airframe_names == set(PARAMETER_CAPABILITIES)
+
     assert PARAMETER_CAPABILITIES["coax.vel_x_kp"].unit == "gain"
     assert PARAMETER_CAPABILITIES["coax.tilt_limit_rad"].unit == "rad"
+
+
+def test_airframe_capabilities_cover_the_firmware_field_table() -> None:
+    """机体模型的名字同样只能来自固件，而且必须允许负值。
+
+    允许负值这条是本质的，不是宽松一点而已：重心 z、推力作用点 z、下桨旋向
+    都可以是负的。照搬 coax.* 的 `minimum=0` 会把"推力挂在板子下方"这件事
+    直接拦掉，而那正是这架飞机的构型。
+    """
+    table = (ROOT / "Driver" / "Src" / "drv_airframe_params.c").read_text(encoding="utf-8")
+    # 只扫参数表本体，跳过上面那两个 `#define AIRFRAME_ENTRY(field)` 宏定义。
+    table = table.split("airframe_table[] = {", 1)[1].split("\n};", 1)[0]
+    firmware = set(re.findall(r"AIRFRAME_(?:ENTRY|DERIVED)\(([_a-z0-9]+)\)", table))
+    host = {n.split(".", 1)[1] for n in PARAMETER_CAPABILITIES if n.startswith("airframe.")}
+    assert host == firmware
+
+    assert PARAMETER_CAPABILITIES["airframe.cg_z_m"].minimum < 0.0
+    assert PARAMETER_CAPABILITIES["airframe.lower_rotor_spin_sense"].minimum < 0.0
+    ok, _ = validate_parameter_text("airframe.lower_rotor_spin_sense", "-1")
+    assert ok
 
 
 def test_cascade_quick_names_are_real_driver_table_names(app) -> None:

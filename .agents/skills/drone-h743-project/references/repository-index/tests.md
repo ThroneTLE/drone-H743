@@ -4,7 +4,7 @@
 
 Read this shard only when you need existing behavioral/architecture coverage or must choose focused regression tests.
 
-Source snapshot: `18b9fc1f8607`. Indexed files: 159.
+Source snapshot: `d7e7d637df01`. Indexed files: 162.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -16,8 +16,10 @@ Source snapshot: `18b9fc1f8607`. Indexed files: 159.
 | `tests/test_acceptance_v2_runtime_contract.py` | — | `test_v2a_lease_and_esc_fail_safe_are_target_owned` (+2) |
 | `tests/test_action_contract.py` | Contract tests for the Action safety state machine (``App/Src/app_action.c``). An Action is any task that spans time an… | `test_01_armed_interlock_refuses_to_start` (+16) |
 | `tests/test_airframe_model_contract.py` | — | `test_measured_airframe_geometry_has_no_compile_time_copy_left` (+6) |
+| `tests/test_airframe_page.py` | 机体模型页与其预览计算的契约。 最要紧的一条在最前面：上位机那份派生值预览必须和飞控算的是**同一件事**。 预览之所以存在，是因为手动派生档允许派生值和部件表对不上（惯量可能来自双线摆 实测而不是部件表推算），所以界面要把"若切到自动会… | `test_host_preview_matches_the_firmware_derivation` (+9) |
 | `tests/test_airframe_params.py` | 机体模型运行时参数的契约（2026-09-11 立）。 为什么值得单独一套测试：这些数**直接进控制律**——质量、惯量、力臂、推力点到重心的 距离。填错一个不会编译失败、不会报错，只会让每一条力矩换算都偏掉，而症状要等飞起来 才出现，那… | `test_airframe_params_contract` |
 | `tests/test_aiwb2_prompt_contract.py` | — | `test_aiwb2_prompt_symbol_is_preserved_for_transparent_entry` (+4) |
+| `tests/test_arm_banner.py` | 主页面解锁横幅的契约。 它要回答的只有一个问题：**现在能不能解锁，不能的话差什么。** 在这之前飞控表达这件事的唯一途径是 LED_3 闪几下——要数、要查表、室外看不清。 而且原因链是有序的，只报第一条不满足的；同时缺两样时（比如既没… | `test_banner_reports_the_firmware_block_reason_not_a_local_guess` (+5) |
 | `tests/test_attitude_fusion_contract.py` | — | `test_xio_fusion_is_vendored_and_replaces_height_gated_attitude` (+1) |
 | `tests/test_attitude_ident_pid.py` | — | `test_closed_loop_attitude_ident_script_fits_synthetic_prbs` |
 | `tests/test_attitude_rate_control.py` | Host-gcc contract tests for the pure SO(3) attitude/rate cascade | `test_attitude_rate_host_harness` (+1) |
@@ -104,7 +106,7 @@ Source snapshot: `18b9fc1f8607`. Indexed files: 159.
 | `tests/test_optical_flow_contract.py` | — | `test_micolink_parser_accepts_live_range_and_flow_payload_shape` (+11) |
 | `tests/test_panel_autoconnect.py` | 记住上次的连接并在启动时自动连回去。 关键点是**按什么认板子**：Windows 给 USB 串口分配的 COM 号会变（本机就出现过同一块 飞控在 COM30/31/32 之间跳），而 ST-Link、蓝牙串口、CH340 会占掉腾出… | `test_fingerprint_is_stable_across_com_renumbering` (+15) |
 | `tests/test_panel_connection_reliability.py` | H1/H2/H4: real transport and Tk boundaries with no physical device access | `test_slow_io_does_not_block_ui_queries_cancel_or_stop` (+18) |
-| `tests/test_panel_d_data_contract.py` | D 线 TK-03/TK-04 contracts: values must say what state they represent | `test_d_modules_are_imported_in_all_three_panel_contexts` (+15) |
+| `tests/test_panel_d_data_contract.py` | D 线 TK-03/TK-04 contracts: values must say what state they represent | `test_d_modules_are_imported_in_all_three_panel_contexts` (+16) |
 | `tests/test_panel_direct_script_startup.py` | Reproduce Python's script-path layout, without repository-root PYTHONPATH | `test_direct_script_builds_panel_from_an_unrelated_working_directory` (+2) |
 | `tests/test_panel_drift_page_extraction.py` | S6 stationary-drift page extraction ownership and compatibility contract | `test_drift_page_mixin_owns_only_its_builder_and_handlers` (+4) |
 | `tests/test_panel_flow_page_extraction.py` | R-S6-1 增量11（收官）：光流与测距页搬进 panel_lib/pages/flow_ranging.py。 搬家的判据只有一条——行为零变更。这里用三种独立方式钉： 1. 逐方法 AST 哈希与搬家前逐字节一致（哈希取自父提交 9… | `test_flow_mixin_owns_every_moved_method_with_the_pre_move_ast` (+4) |
@@ -149,6 +151,7 @@ Source snapshot: `18b9fc1f8607`. Indexed files: 159.
 | `tests/test_simulation_controller_bridge.py` | — | `test_bridge_exposes_real_runtime_parameters` (+2) |
 | `tests/test_simulation_experiments.py` | — | `test_three_approved_experiments_produce_five_state_channels` (+1) |
 | `tests/test_simulation_full_cascade.py` | The simulator exposes and executes the actual planar P-PID-P-PID cascade | `test_full_gains_are_bound_to_existing_c_parameters_and_visible` (+4) |
+| `tests/test_simulation_isolation.py` | 仿真调参不许污染真机调参。 风险是具体的：仿真的调参滑块绑 `sim_*` 通道，而 tools/sim_xz/control_catalog.py 第 6 列把它们一一映射到真实的 `coax.*` 参数。仿真工作区一旦留在仪表盘布局里… | `test_simulation_workspaces_are_marked_ephemeral` (+3) |
 | `tests/test_simulation_launcher.py` | Actual panel startup, loopback child lifecycle, and no hardware switching | `test_current_quick_editor_roundtrips_all_24_gains_over_real_tcp` (+5) |
 | `tests/test_simulation_physics.py` | — | `test_hover_does_not_accumulate_vertical_acceleration` (+4) |
 | `tests/test_simulation_protocol.py` | — | `test_frame_decoder_accepts_fragmented_real_protocol_frame` (+4) |

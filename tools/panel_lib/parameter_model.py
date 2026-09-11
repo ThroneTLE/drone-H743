@@ -173,6 +173,38 @@ for _row in _CAPABILITY_ROWS:
         value_kind=_kind,
     )
 
+
+# ── 机体模型 airframe.* ───────────────────────────────────────────────────
+#
+# 它与 coax.* 的校验规则**不同**，而且差别是本质的：
+#
+#   * 允许负值。重心 z、推力作用点 z、下桨旋向都可以是负的；coax.* 那条
+#     `minimum=0` 的规则照搬过来会把"推力挂在板子下方"这件事直接拦掉。
+#   * 固件侧不设范围。DRV_Airframe_SetParam() 只认名字，不判大小——机体数据是
+#     量出来的事实，不是需要限幅的调参量。所以这里的上下界**只是防手滑**
+#     （少打一个小数点），不是在复述固件规则；真值由秤和尺决定。
+#
+# 派生字段标 writable=True：自动档下固件会拒收，手动档下可写。界面按
+# derived_auto 决定置不置灰；能力表不该替固件撒谎说"永远只读"。
+_AIRFRAME_ABS_LIMIT = 10000.0
+
+try:  # 直接跑 tools/drone_tcp_panel.py 时没有包上下文。
+    from .airframe_model import AIRFRAME_FIELDS, DERIVED_AUTO_FIELD
+except ImportError:  # pragma: no cover - 仅在扁平 sys.path 下走到
+    from airframe_model import AIRFRAME_FIELDS, DERIVED_AUTO_FIELD
+
+for _field in (*AIRFRAME_FIELDS, DERIVED_AUTO_FIELD):
+    PARAMETER_CAPABILITIES[_field.name] = ParameterCapability(
+        name=_field.name,
+        unit=_field.unit,
+        minimum=-_AIRFRAME_ABS_LIMIT,
+        maximum=_AIRFRAME_ABS_LIMIT,
+        minimum_exclusive=False,
+        value_kind="float",
+        storage="Flash：机体模型是唯一来源，写入后需 SAVE",
+    )
+
+
 def canonical_parameter_name(name: str) -> str:
     return name.strip().lower()
 

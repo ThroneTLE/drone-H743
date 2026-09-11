@@ -40,6 +40,7 @@ try:
     from .panel_lib import viewport as _panel_viewport
 except ImportError:  # Allows direct import and: python tools/drone_tcp_panel.py
     try:
+        from tools.panel_lib import arm_banner as _panel_arm_banner
         from tools.panel_lib import evidence as _panel_evidence
         from tools.panel_lib.pages import acceptance_v2 as _panel_acceptance_v2
         from tools.panel_lib.pages import drift as _panel_drift
@@ -60,6 +61,7 @@ except ImportError:  # Allows direct import and: python tools/drone_tcp_panel.py
         from tools.panel_lib import transport as _panel_transport, rx_dispatch as _panel_rx
         from tools.panel_lib import viewport as _panel_viewport
     except ImportError:
+        from panel_lib import arm_banner as _panel_arm_banner
         from panel_lib import evidence as _panel_evidence
         from panel_lib.pages import acceptance_v2 as _panel_acceptance_v2
         from panel_lib.pages import drift as _panel_drift
@@ -3765,6 +3767,10 @@ class DronePanel(ValidationV0PageMixin, EvidenceMixin, AcceptanceV2PageMixin, Vi
 
         if mod == "WIFI":
             self._update_wifi_line("WIFI " + " ".join(f"{key}={value}" for key, value in payload.items()))
+            return
+
+        if mod == "ARM":
+            _panel_arm_banner.handle_arm_rsp(self, payload)
             return
 
     def _update_modules_summary(self, values: dict[str, str], line: str) -> None:

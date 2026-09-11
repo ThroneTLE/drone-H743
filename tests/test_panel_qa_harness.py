@@ -224,9 +224,14 @@ def test_the_qa_window_never_shows_up_on_the_desktop(offline) -> None:
     assert float(panel.attributes("-alpha")) == 0.0
 
 
-def test_the_harness_builds_the_real_panel_with_all_twenty_one_leaf_pages(offline) -> None:
+def test_the_harness_builds_the_real_panel_with_all_leaf_pages(offline) -> None:
+    # 2026-09-11：新增「机体模型」与「仿真」两个顶层栏目（21 → 23）。
+    # 机体模型是新功能；仿真是把原来常驻主窗口顶部的启动栏搬进独立栏目，
+    # 把那个"每次上机先看一眼"的位置让给解锁状态横幅。
     pages = offline.leaf_pages()
-    assert len(pages) == 21
+    assert len(pages) == 23
+    assert "机体模型" in {page.label for page in pages}
+    assert "仿真" in {page.label for page in pages}
     labels = [page.label for page in pages]
     assert sum(label.startswith("日志 / ") for label in labels) == 3
     # 分组页签本身不算叶页，它的子页才算。
@@ -326,7 +331,8 @@ with tempfile.TemporaryDirectory() as root:
     assert payload["scale"] == 1.5
     assert payload["dpi"] == 1.5
     assert isinstance(payload["font"], int)
-    assert payload["reports"] == 21
+    # 2026-09-11：21 → 23，新增「机体模型」与「仿真」两个顶层栏目。
+    assert payload["reports"] == 23
     assert all(scale == 1.5 for scale in payload["scales"])
 
 

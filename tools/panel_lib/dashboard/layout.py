@@ -176,6 +176,14 @@ def find_free_slot(tiles: list[TileSpec], colspan: int, rowspan: int,
 class Workspace:
     name: str
     tiles: list[TileSpec] = field(default_factory=list)
+    #
+    # 仿真专用工作区：只在仿真运行期间存在，**永不落盘**（见 to_json 的过滤）。
+    #
+    # 为什么要这条：仿真的调参滑块绑 sim_* 通道，而那些通道一一映射到真实的
+    # coax.* 参数。工作区一旦被写进面板布局文件，下次接上真机它还在，拖一下
+    # 滑块就是往飞机上写参数。靠"停止时记得移除"是不够的——进程被杀、断电、
+    # 异常退出都不会走到那条路径，而落盘可能已经发生过了。
+    ephemeral: bool = False
 
     def rows_used(self) -> int:
         return max((tile.row + tile.rowspan for tile in self.tiles), default=1)
@@ -227,10 +235,18 @@ class DashboardLayout:
         return self.workspaces[self.active]
 
     def to_json(self) -> dict:
+        # ephemeral 工作区（仿真专用）在这里被滤掉，所以它们进不了状态文件，
+        # 也就不可能在下一次接真机时冒出来。见 Workspace.ephemeral 的注释。
+        persisted = [w for w in self.workspaces if not w.ephemeral]
+        active = self.active
+        if active >= len(persisted):
+            # 仿真工作区正被选中时落盘：回到最后一个持久工作区，而不是写一个
+            # 越界的索引让下次启动落到别处。
+            active = max(0, len(persisted) - 1)
         return {
             "version": LAYOUT_VERSION,
-            "active": self.active,
-            "workspaces": [workspace.to_json() for workspace in self.workspaces],
+            "active": active,
+            "workspaces": [workspace.to_json() for workspace in persisted],
         }
 
     @classmethod
