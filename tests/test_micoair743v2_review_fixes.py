@@ -948,6 +948,49 @@ def test_elrs_rx_bias_pin_matches_the_ioc() -> None:
     )
 
 
+def test_factory_rollback_images_are_present_and_intact() -> None:
+    """出厂固件镜像必须在仓库里，而且字节没被动过。
+
+    刷 0x08000000 会覆盖 PX4 的 bootloader，这两个文件是**回到出厂状态的唯一途径**。
+    它们原本只存在于 .tmp/ —— 公共临时区，任何清理动作都可能抹掉，而"没了"这件事
+    要等到真需要回滚的那一刻才会发现，那时已经晚了。所以纳入版本控制并在这里钉住：
+    文件缺失或内容被换掉，测试当场就红。
+
+    校验和同时抄在 doc/micoair743v2/README.md 的"烧录前基线"一节，两处必须一致。
+    """
+    import hashlib
+
+    baseline = ROOT / "doc" / "micoair743v2" / "baseline"
+    expected = {
+        "MicoAir743v2-PX4-1.15.4-Bootloader+Firmware.bin": (
+            2097152,
+            "4f553745c2946eaf3ac68bf83626751df71ad710db6e1163e6831b5f545591d2",
+        ),
+        "MicoAir743v2_PX4-1.15.x_bootloader.bin": (
+            41020,
+            "6f97070a8dade37c151dd26a758c82b95b85a8811a6189901f154e93b4b05b7c",
+        ),
+    }
+
+    for name, (size, digest) in expected.items():
+        path = baseline / name
+        assert path.is_file(), f"出厂还原镜像不见了：{path}，刷坏就回不去了"
+        blob = path.read_bytes()
+        assert len(blob) == size, f"{name} 大小不对：{len(blob)} != {size}"
+        assert hashlib.sha256(blob).hexdigest() == digest, f"{name} 内容被换过"
+
+    # 文档里的校验和必须和实际文件对得上，否则回滚时无从验证取到的是不是对的文件。
+    readme = read("doc/micoair743v2/README.md")
+    for _size, digest in expected.values():
+        assert digest in readme, "README 的烧录前基线没记这个 sha256"
+
+    # .gitignore 的 *.bin 默认会吞掉它们，白名单必须在。
+    gitignore = read(".gitignore")
+    assert "!doc/micoair743v2/baseline/*.bin" in gitignore, (
+        "少了白名单，这两个镜像会被 *.bin 规则忽略，等于没入库"
+    )
+
+
 def test_gps_callbacks_follow_the_board_binding() -> None:
     """GPS 回调认哪个串口，必须从板级绑定里取，不能写死实例名。
 

@@ -190,7 +190,8 @@ PE5 / PE6（TIM15）、PD14（TIM4，兼 LED 焊盘）。
    连带修掉两处遗留：`LED1`/`LED2` 标签原先压在 PC6/PC7 上（老板子的 Ai-WB2 使能脚），
    已移到真正的灯 PE3(红)/PE2(绿)；`bsp_aiwb2_power.c` 不再读写 PC6——
    那现在是遥控链路的发送脚，读它当"WiFi 使能状态"会拿到随机的串口数据位。
-3. **刷 `0x08000000` 会覆盖 PX4 的 bootloader**，这是预期行为，而且**可完全回退**。
+3. **刷 `0x08000000` 会覆盖 PX4 的 bootloader**，这是预期行为，而且**可完全回退**——
+   还原镜像在仓库里（见下），不依赖任何临时目录。
 
 ### 烧录前基线（回滚用，2026-09-10 锁定）
 
@@ -206,26 +207,24 @@ PE5 / PE6（TIM15）、PD14（TIM4，兼 LED 焊盘）。
 | PX4GUID | `0006000000003835323433335104004c0042` |
 | 板子实测 | 以上各项由实机 `ver all` 读出，非推测 |
 
-还原镜像（**含 bootloader**，刷 `0x08000000`）：
+还原镜像就在仓库里 —— [`baseline/`](baseline/)，**已纳入版本控制**：
 
-```
-.tmp/micoair743v2/Firmware/PX4/1.15/MicoAir743v2-PX4-1.15.4-Bootloader+Firmware.bin
-  大小   2097152 bytes
-  sha256 4f553745c2946eaf3ac68bf83626751df71ad710db6e1163e6831b5f545591d2
-```
+| 文件 | 大小 | sha256 |
+|---|---|---|
+| [`baseline/MicoAir743v2-PX4-1.15.4-Bootloader+Firmware.bin`](baseline/MicoAir743v2-PX4-1.15.4-Bootloader%2BFirmware.bin) | 2097152 | `4f553745c2946eaf3ac68bf83626751df71ad710db6e1163e6831b5f545591d2` |
+| [`baseline/MicoAir743v2_PX4-1.15.x_bootloader.bin`](baseline/MicoAir743v2_PX4-1.15.x_bootloader.bin) | 41020 | `6f97070a8dade37c151dd26a758c82b95b85a8811a6189901f154e93b4b05b7c` |
 
-只要 bootloader（之后可用 QGC/地面站再刷应用层）：
+第一个是一把还原到出厂状态（刷 `0x08000000`）；第二个只有 bootloader，
+刷完可以用 QGC 之类的地面站再装应用层。
 
-```
-.tmp/micoair743v2/Firmware/PX4/1.15/MicoAir743v2_PX4-1.15.x_bootloader.bin
-  大小     41020 bytes
-  sha256 6f97070a8dade37c151dd26a758c82b95b85a8811a6189901f154e93b4b05b7c
-```
-
-> `.tmp/` 已 gitignore，**镜像不在版本控制里**，所以：烧录前别清 `.tmp/`。
-> 万一清掉了，按本文末尾的 `git clone` 命令重新拉官方固件仓库，
-> 再用上面的 sha256 核对取到的是不是同一个文件。
-> 另有 ArduPilot 4.5.x 与 PX4 1.14 / 1.16 的 bootloader 可选，但**回到"烧录前"应当用 1.15.4 这个**。
+> **为什么放进版本控制。** 这两个文件原本只存在于 `.tmp/micoair743v2/` —— 那是公共
+> 临时区，任何清理动作（包括别的 agent）都可能把它抹掉，而丢了它就等于失去回到出厂
+> 状态的能力。`.gitignore` 里 `*.bin` 本来是忽略的，这里照 `!tests/golden/*.bin`
+> 的先例开了白名单：2 MB 的代价换"删不掉"，值。
+> `tests/test_micoair743v2_review_fixes.py` 里有一条测试逐字节核对这两个校验和。
+>
+> 另有 ArduPilot 4.5.x 与 PX4 1.14 / 1.16 的 bootloader 可从官方固件仓库取
+> （见本文末尾的 `git clone`），但**回到"烧录前"应当用上面这个 1.15.4**。
 
 ## 上游来源与抓取版本
 
