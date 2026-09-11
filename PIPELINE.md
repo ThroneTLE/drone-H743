@@ -1,6 +1,6 @@
 # drone-H743 归零检查 Pipeline
 
-> 最后更新：2026-09-08
+> 最后更新：2026-09-11
 > 当前主线位置：**M5 · 光流与测距校准**  
 > 执行/审核工作流与全部技术规范：`doc/technical-spec.md`（执行者开工前必读，含派单提示词模板）  
 > 本文件是工程推进状态的唯一入口。代码已经实现、测试通过、固件已经烧录和实机验收通过是不同状态，不得互相替代。
@@ -149,6 +149,7 @@ flowchart TB
 
 | 日期 | 范围 | 证据 | 结果 | 对状态的影响 |
 |---|---|---|---|---|
+| 2026-09-11 | **机体模型改为 Flash 唯一来源的运行时参数；无有效模型禁止解锁；上位机机体模型页 + 解锁横幅 + 仿真独立栏目** | **起因**：机体数据在代码里存了两份而且对不上——四个部件质量加起来 754.6 g，而 `DRV_AIRFRAME_MASS_KG` 写 1.3670 kg；重心 −0.0946 按前者算、重量 13.41 N 按后者算，两套并存、无人报错，也没有任何测试能发现（两边都是写死的常量）。**改动**：删掉 `drv_airframe_model.h` 全部质量/重心/惯量/力臂/旋向常量，控制律改从 `DRV_Airframe_Get()` 取值；两个极性宏改成运行时函数、推导链一字未动（`coax_ctrl_tilt_moment_polarity()` ← `airframe.thrust_point_to_cg_z_m`，`coax_ctrl_yaw_torque_polarity()` ← `airframe.lower_rotor_spin_sense`，旋向「反推而非实测」的溯源注释跟着搬到字段声明处）。新增解锁闸门 `DRV_Airframe_IsValid()==0` → `APP_LED_ARM_BLOCK_AIRFRAME`（LED_3 闪 7 下），并把 `thrust_point_to_cg_z_m` 列入必检项——漏填 `thrust_point_z_m` 会让 r_z 变正、俯仰与横滚极性同时翻转，那是起飞即翻。新增 ARM 报文（`App/Src/app_cmd_arm.c`）同时给出被拒原因**与每一项条件的通过与否**：原因链有序、只报第一条，同时缺两样时修完一个仍解不了锁。迁移用的 I_zz 冻结为 `APP_CONTROL_COMPAT_V18_YAW_INERTIA_KGM2 = 0.005`（迁移必须是确定的函数，跟着运行时模型走会让同一条旧记录在重新量过惯量后解出另一个增益）。上位机新增「机体模型」页（基础/派生/高级三层，高级层二次确认）、主窗口顶部解锁横幅、「仿真」独立栏目；仿真工作区改 `ephemeral` 永不落盘（`sim_*` 一一映射真实 `coax.*`，靠「停止时记得移除」挡不住进程被杀）。**证据**：新增 `tests/_airframe_fixture.py` 逐位复刻改造前的编译期常量（含那处矛盾），7 个跑真控制律的 harness 一条数值断言未改；`test_coax_sign_convention` 四条性质原样搬过来；`test_airframe_page.py` 编译真实 `drv_airframe_params.c` 跑三组输入逐项对数，证明上位机预览与飞控同源。全量 **1447 passed**；Debug 零警告、FLASH 435044 B。**实机（COM22，DFU 刷入）**：刚烧完 `AIRFRAME?` 全零、ARM 报 `airframe=0 missing=airframe.mass_kg` 而 `block=no_rc`；逐条 `PARAM SET` 后派生值当场重算（mass 0.754600 / cg −0.094558 / tether 0.250858 / 0.890858，与仓库历史值一致）、闸门放行 `airframe=1 missing=-`；自动档写派生值当场 `ERR param target`。写 RAM 未保存，复位后已自行清回零。 | 软件完成并已实机验证整条接口链路。**⚠ 发现阻塞项**：`SAVE` 回 `OK save st=4`、`HW FLASH ok=0 stage=probe id=000000 exp=C84016`——本板没有 GD25Q32，参数存储后端未迁到 H743 片内 Flash。加上解锁闸门后，这从「配置存不住」升级为**每次上电无法解锁**；上位机如实报错、不假装成功 | 掩码未动、未解锁、未装桨。下一步必须做存储后端（片内 Flash 末两扇区 A/B 双槽 + `svc_param` 的 32 字节 flash word 对齐，见迁移计划 Part 3），否则机体模型无法持久化。机体实测数值仍待作者拿秤和尺重量 |
 | 2026-09-08 | R-PARAM-1 横切修bug：等值参数回显确认 | data/analysis/parameter_names/2026-09-08/echo-fix.md；真实C复现0.2→0.200000仍pending；修前4 failed；全量full-tests.txt 1399 passed，末次草稿保护相关parameter-echo-final.txt 34 passed；Debug零警告；模式横切修bug+tk-ui | 根因字符串比较，既有测试请求/回包同格式未覆盖；改精确十进制相等，不增加容差，不覆盖发送后新草稿；独立fix提交；0串口/0探针 | R-PARAM-1置待审核；保留历史版本读取；其他节点不变 |
 | 2026-09-08 | R-PARAM-1 作者授权在线旧参数退役 | data/analysis/parameter_names/2026-09-08/review.md；layout-tests.txt 48 passed；final-focus-tests.txt 26 passed，含24参数真实TCP；Debug零警告；模式默认+protocol-telemetry+tk-ui | 当前名称单源、旧名拒绝、schema v4与24增益编辑实现；另发现字符串回显确认缺陷，已固定证据，后续独立fix | R-PARAM-1保持进行中，待回显修复后统一交审；无实机操作 |
 | 2026-09-08 | R-SIM-3 水平/高度/姿态三组参数独立性 | data/simulation/2026-09-08/axis-parameter-review.md、axis-parameter-tests.txt；28 passed in 37.59s，后续16 passed in 24.68s | X/Z字段原已独立；界面拆三组各4参数，双向C字段隔离与模式切换保留通过；索引/Pipeline复验10 passed in 2.89s，Debug无重编译；不解除物理耦合；0串口/0probe | R-SIM-3保持待审核 |
