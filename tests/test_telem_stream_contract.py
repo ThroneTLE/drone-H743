@@ -377,6 +377,12 @@ static uint16_t port_max_payload = 247U;
 static uint32_t port_uart_frames;
 static uint32_t port_usb_frames;
 static uint32_t port_bt_frames;
+/*
+ * 每帧发送要花多久（微秒）。蓝牙那条出口是阻塞的 UART 写，84 字节 / 115200
+ * 大约 7.3 ms —— 这段时间**真实存在**，装置必须能模拟，否则测不出
+ * "实际周期 = 睡眠 + 干活" 这个缺陷。
+ */
+static uint32_t port_send_cost_us;
 static uint32_t port_jf_frames;
 static uint8_t  port_uart_fails;
 static uint8_t  port_last_frame[512];
@@ -423,11 +429,17 @@ uint8_t APP_TelemStream_PortSendUsb(const uint8_t *frame, uint16_t length)
     return 1U;
 }
 
+/*
+ * 每帧发送要花多久（微秒）。蓝牙那条出口是阻塞的 UART 写，84 字节 / 115200
+ * 大约 7.3 ms —— 这段时间是**真实存在**的，装置必须能模拟它，否则测不出
+ * "周期 = 睡眠 + 干活" 这个缺陷。
+ */
 uint8_t APP_TelemStream_PortSendBt(const uint8_t *frame, uint16_t length)
 {
     /* 板载蓝牙（UART8）出口。与数传同档的容量判据，见 PortMaxPayload。 */
     port_capture(frame, length);
     port_bt_frames++;
+    port_now_us += port_send_cost_us;
     return 1U;
 }
 
@@ -507,6 +519,8 @@ static void reset_world(void)
     port_max_payload = 247U;
     port_uart_frames = 0U;
     port_usb_frames = 0U;
+    port_bt_frames = 0U;
+    port_send_cost_us = 0U;
     port_jf_frames = 0U;
     port_uart_fails = 0U;
     port_last_length = 0U;
@@ -786,6 +800,52 @@ static int test_stream_defaults_to_off_and_survives_reinit(void)
     return 0;
 }
 
+static int test_the_period_absorbs_the_send_time(void)
+{
+    uint32_t first_us;
+    uint32_t last_us;
+    uint32_t ticks = 20U;
+    uint32_t i;
+    uint32_t measured_us;
+
+    /*
+     * 缺陷：`PortDelayMs(period)` 打头、干活在后，实际周期 = 周期 + 干活时间。
+     * USB 上干活只有几十微秒，看不出来；蓝牙那条出口是阻塞的 UART 写
+     * （84 字节 / 115200 ≈ 7.3 ms），于是 40 Hz 设下去实测只跑出 28.3 Hz，
+     * 而链路带宽才用了五分之一——卡的不是链路，是排程。
+     *
+     * 这里把发送开销做成 7.3 ms 喂进去，断言**实际周期仍等于标称周期**。
+     * 没有这条，同样的回归下次还会被当成"蓝牙模块不行"。
+     */
+    reset_world();
+    port_send_cost_us = 7300U;
+    CHECK(APP_TelemStream_SetRate(40U) == APP_TELEM_STREAM_OK, 700);
+    CHECK(APP_TelemStream_SetSink(APP_TELEM_SINK_BT) == APP_TELEM_STREAM_OK, 701);
+    CHECK(APP_TelemStream_SetRefresh(0U) == APP_TELEM_STREAM_OK, 702);
+    CHECK(APP_TelemStream_SetActive(1U) == APP_TELEM_STREAM_OK, 703);
+
+    /* 先走一拍让基准对齐，再量后面若干拍。 */
+    APP_TelemStream_Tick();
+    first_us = port_now_us;
+    for (i = 0U; i < ticks; ++i) {
+        APP_TelemStream_Tick();
+    }
+    last_us = port_now_us;
+
+    CHECK(port_bt_frames == (ticks + 1U), 704);
+
+    measured_us = (last_us - first_us) / ticks;
+    /*
+     * 标称 25000 us。允许 ±1 ms 的取整余量（睡眠只能按毫秒下发）；
+     * 修复前这里会是 32300 us，差得远不止余量。
+     */
+    CHECK(measured_us >= 24000U, 705);
+    CHECK(measured_us <= 26000U, 706);
+
+    port_send_cost_us = 0U;
+    return 0;
+}
+
 int main(void)
 {
     int rc;
@@ -801,6 +861,7 @@ int main(void)
     rc = test_limits_are_rejected_not_truncated(); if (rc) { return rc; }
     rc = test_justfloat_format_stays_available_for_synex(); if (rc) { return rc; }
     rc = test_stream_defaults_to_off_and_survives_reinit(); if (rc) { return rc; }
+    rc = test_the_period_absorbs_the_send_time(); if (rc) { return rc; }
 
     printf("telem stream harness ok\n");
     return 0;
@@ -965,3 +1026,42 @@ def test_the_full_refresh_frame_still_fits_one_uart_message() -> None:
         f"全量刷新帧 {refresh_payload} B 放不进 UART 出口上限 {max_payload} B"
     )
 
+
+
+def test_the_telemetry_task_is_not_starved_at_the_bottom_priority() -> None:
+    """遥测任务必须在 BelowNormal，不能回到 Low。
+
+    2026-09-11 实测：Low 比 messageTask / backgroundTask（都是 BelowNormal）
+    还低，于是只有在它们和 1 kHz 的 Stabilizer 全都让出 CPU 时才轮得到——而这
+    条件并不成立。`RTOS?` 报 TELEM state=1(Ready)，任务内第一条语句的计数器
+    从上电起一直是 0：**一整拍都没跑过**，表现为 stream=1 却一个字节都不来。
+
+    这种失败特别难查，因为每一层看起来都正常：命令回 OK、状态说 stream=1、
+    链路也通。所以把优先级钉住，并要求 `.ioc` 与生成代码一致——只改一边的话
+    下次 CubeMX 重新生成就会把它悄悄打回 Low。
+    """
+    freertos = (ROOT / "Core" / "Src" / "freertos.c").read_text(encoding="utf-8")
+    ioc = (ROOT / "drone-H743.ioc").read_text(encoding="utf-8")
+
+    attrs = freertos.split("VOFA_Task_attributes = {", 1)[1].split("};", 1)[0]
+    assert ".priority = (osPriority_t) osPriorityBelowNormal," in attrs
+    assert ".priority = (osPriority_t) osPriorityLow," not in attrs
+
+    # .ioc 的任务表：优先级 16 = BelowNormal（Low 是 8）。
+    assert "VOFA_Task,16,512,VOFA_task" in ioc
+    assert "VOFA_Task,8,512,VOFA_task" not in ioc
+
+
+def test_rtos_report_exposes_every_task_that_can_stall() -> None:
+    """`RTOS?` 必须报出每个会卡住的任务，含调度状态。
+
+    上面那个缺陷排查了很久，正是因为遥测任务既不在任务栈报告里，也没有调度
+    状态可看——分不清它是在跑、阻塞着、还是根本没被调度，而这三种情况的
+    下一步完全不同。
+    """
+    system = (ROOT / "App" / "Src" / "app_cmd_system.c").read_text(encoding="utf-8")
+
+    for task in ("STABILIZER", "SENSOR", "MSG", "UART", "BACKGROUND", "TELEM"):
+        assert f'app_control_report_task_stack("{task}"' in system, task
+    assert "eTaskGetState((TaskHandle_t)handle)" in system
+    assert "state=%u" in system

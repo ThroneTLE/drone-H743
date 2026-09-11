@@ -4,7 +4,7 @@
 
 Read this shard only when you need existing firmware behavioral/architecture coverage or must choose focused regression tests.
 
-Source snapshot: `8e4d760340a0`. Indexed files: 127.
+Source snapshot: `fe6ffbcc7dcb`. Indexed files: 127.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -127,7 +127,7 @@ Source snapshot: `8e4d760340a0`. Indexed files: 127.
 | `tests/test_servo_type_protocol.py` | S7 servo output type persistence and command protocol contracts | `test_servo_type_reuses_reserved_fcal_byte_without_abi_growth` (+5) |
 | `tests/test_shared_log_transfer.py` | Single-reader export over the already-open serial session, using FLOG fixtures | `test_current_connection_can_be_borrowed_without_reopen` (+6) |
 | `tests/test_stationary_drift.py` | 静止漂移自检。 背景：六面标定解的是"摆在六个姿态下读数对不对"，但用户真正在意的是"放着不动会 不会自己飘"。这两件事不等价。飞机不动时真实角速度就是 0、真实比力就是 1 g，所以 这个检查不需要转台 —— 读数偏多少就是误差多少，也… | `test_a_still_aircraft_reports_no_drift_and_one_g` (+13) |
-| `tests/test_telem_stream_contract.py` | R-T1-1：遥测流 v2（固件侧）契约测试。 三部分： 1. **黄金向量**：宿主 gcc 真编译 `app_telem_frame.c` + `app_proto.c`，让固件 自己的编码器把一组给定的 mask/values 编出… | `test_encoder_matches_the_golden_vectors_byte_for_byte` (+12) |
+| `tests/test_telem_stream_contract.py` | R-T1-1：遥测流 v2（固件侧）契约测试。 三部分： 1. **黄金向量**：宿主 gcc 真编译 `app_telem_frame.c` + `app_proto.c`，让固件 自己的编码器把一组给定的 mask/values 编出… | `test_encoder_matches_the_golden_vectors_byte_for_byte` (+14) |
 | `tests/test_telem_stream_decoder.py` | R-T1-2：上位机遥测流解码（`tools/panel_lib/telem_stream.py` + transport 二进制分支）。 四件事： 1. **黄金向量对称**：`tests/golden/telem_frames_v2.… | `test_transport_delivers_telemetry_payloads_as_bytes` (+26) |
 | `tests/test_telemetry_schema_contract.py` | Contract tests for the VOFA telemetry channel schema (``TELEM?``). The schema exists so the ground station never has to… | `test_header_reports_version_count_rate_and_hash` (+14) |
 | `tests/test_usb_v0_transport_contract.py` | — | `test_usb_route` (+3) |

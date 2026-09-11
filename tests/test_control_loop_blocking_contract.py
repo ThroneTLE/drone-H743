@@ -218,8 +218,12 @@ STEP_D4_SYSTEM_BODY_SHA256 = {
     # 2026-09-11：WiFi 诊断原样印死 `pin=PC6`，而 PC6 在 MicoAir743v2 上是
     # USART6_TX（ELRS 发送脚），Ai-WB2 使能脚已不存在。改为 pin=none，口径修正。
     "app_control_report_wifi": "0f79bf2ce5d31bcd9a87db2699ed26f434646331f458b025c0d2932fda74bba4",
-    "app_control_report_task_stack": "3b031570d95dbeb1945322c62b579aea15cf1be23552d8914372d43386a08f7b",
-    "app_control_report_rtos": "db1ad86880a7e398f9dc5e0ec2e8d0a119b43b3b2e045adec19f010f2f7216de",
+    # 2026-09-11: RTOS? now also reports STABILIZER and TELEM, and every task
+    # line carries eTaskGetState(). Diagnosing "stream=1 but not one byte"
+    # took hours precisely because the telemetry task was neither listed nor
+    # showed a scheduler state -- it was Ready and never scheduled.
+    "app_control_report_task_stack": "c26ae4ec0d80322969af8dadfbfe578fbd7e5f5c3b5cef38b2e47874bae41b84",
+    "app_control_report_rtos": "58f0bef3b98624f289b79a7214634dc6dd22c86b8cb6aa27f6885571bd90a380",
     # 2026-09-11：MODULES 之后跟发一条 ARM 状态行。MODULES 是上位机连上必发的
     # 那条，横幅因此第一次刷新就有内容，不用等自己的 2 Hz 轮询转到。
     # 报文体本身在 App/Src/app_cmd_arm.c，这里只是多了一个调用，不是 D4 搬家走样。
@@ -402,6 +406,8 @@ typedef uint32_t UBaseType_t;
 extern osMessageQueueId_t uartTxQueueHandle;
 extern osMessageQueueId_t backgroundReqQueueHandle;
 extern osMessageQueueId_t backgroundRespQueueHandle;
+extern osThreadId_t StabilizerHandle;
+extern osThreadId_t VOFA_TaskHandle;
 extern osThreadId_t SensorTaskHandle;
 extern osThreadId_t messageTaskHandle;
 extern osThreadId_t UARTTaskHandle;
@@ -409,6 +415,9 @@ extern osThreadId_t backgroundTaskHandle;
 uint32_t osMessageQueueGetCount(osMessageQueueId_t);
 uint32_t osMessageQueueGetCapacity(osMessageQueueId_t);
 UBaseType_t uxTaskGetStackHighWaterMark(TaskHandle_t);
+/* 2026-09-11: RTOS? also reports the scheduler state per task. */
+typedef enum { eRunning = 0, eReady, eBlocked, eSuspended, eDeleted, eInvalid } eTaskState;
+eTaskState eTaskGetState(TaskHandle_t);
 size_t xPortGetFreeHeapSize(void);
 size_t xPortGetMinimumEverFreeHeapSize(void);
 

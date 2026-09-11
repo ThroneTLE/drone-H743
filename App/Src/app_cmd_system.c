@@ -81,10 +81,16 @@ static void app_control_report_task_stack(const char *name, osThreadId_t handle)
         return;
     }
 
+    /*
+     * 除了栈余量，也报调度状态。只有栈余量的话，分不清一个任务是**在跑**、
+     * **阻塞着**还是**根本没被调度**——这三种情况的下一步完全不同。
+     * eTaskState：0=Running 1=Ready 2=Blocked 3=Suspended 4=Deleted 5=Invalid。
+     */
     app_control_queue_proto_text(APP_PROTO_MSG_RTOS_RECORD,
-                                 "RTOS task=%s free_stack_words=%lu\r\n",
+                                 "RTOS task=%s free_stack_words=%lu state=%u\r\n",
                                  name,
-                                 (unsigned long)uxTaskGetStackHighWaterMark((TaskHandle_t)handle));
+                                 (unsigned long)uxTaskGetStackHighWaterMark((TaskHandle_t)handle),
+                                 (unsigned int)eTaskGetState((TaskHandle_t)handle));
 }
 
 void app_control_report_rtos(void)
@@ -107,10 +113,12 @@ void app_control_report_rtos(void)
                                  (unsigned int)faults.malloc_failed_seen,
                                  (unsigned long)faults.malloc_failed_count);
 
+    app_control_report_task_stack("STABILIZER", StabilizerHandle);
     app_control_report_task_stack("SENSOR", SensorTaskHandle);
     app_control_report_task_stack("MSG", messageTaskHandle);
     app_control_report_task_stack("UART", UARTTaskHandle);
     app_control_report_task_stack("BACKGROUND", backgroundTaskHandle);
+    app_control_report_task_stack("TELEM", VOFA_TaskHandle);
 }
 
 void app_control_report_modules(void)

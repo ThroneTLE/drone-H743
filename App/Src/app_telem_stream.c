@@ -57,6 +57,9 @@ typedef struct {
     uint8_t         shadow_valid;
     uint8_t         encode_error_latched;
     uint8_t         initialised;
+    /* 定时基准：下一拍**应该**在什么时刻发，而不是"睡完这段再说"。 */
+    uint32_t        pace_deadline_us;
+    uint8_t         pace_valid;
 } APP_TelemStreamState;
 
 static APP_TelemStreamState app_telem_stream;
@@ -110,6 +113,62 @@ static uint32_t telem_stream_period_ms(void)
     }
 
     return (1000U / hz) > 0U ? (1000U / hz) : 1U;
+}
+
+/*
+ * 按**绝对时刻**对齐每一拍，而不是"干完活再睡一个周期"。
+ *
+ * 原来是 `PortDelayMs(period)` 打头、后面才采样/编码/发送，于是实际周期 =
+ * 周期 + 干活时间。USB 上干活只有几十微秒，看不出来；蓝牙上那次发送是阻塞的
+ * （84 字节 / 115200 ≈ 7.3 ms），40 Hz 设下去实测只跑出 28.3 Hz——而带宽才用了
+ * 2.4 kB/s，离 115200 的上限远得很。也就是说卡的从来不是链路，是这行代码。
+ *
+ * 改成按截止时刻对齐之后，发送时间落在本来就要睡的那一段里，不再往周期上加。
+ *
+ * 基准是从**上一个截止时刻**递推的，不是从"现在"，所以每拍那点取整误差不会
+ * 累积成越走越慢。
+ */
+static void telem_stream_pace(void)
+{
+    const uint32_t period_us = telem_stream_period_ms() * 1000U;
+    const uint32_t now_us    = APP_TelemStream_PortNowUs();
+    int32_t  remaining_us;
+    uint32_t sleep_ms;
+
+    if (app_telem_stream.pace_valid == 0U) {
+        app_telem_stream.pace_deadline_us = now_us;
+        app_telem_stream.pace_valid = 1U;
+    }
+
+    app_telem_stream.pace_deadline_us += period_us;
+    /* 有符号差值：PortNowUs 是 32 位微秒，约 71 分钟回绕，这样写回绕也成立。 */
+    remaining_us = (int32_t)(app_telem_stream.pace_deadline_us - now_us);
+
+    if (remaining_us <= 0) {
+        /*
+         * 上一拍超时了（链路堵、或者刚发过一个全量刷新大帧）。**不补发**：
+         * 连发几帧去追进度会在链路上挤成一团，看到的波形反而更抖。
+         * 直接把基准挪到现在重新起算，宁可少一帧也不要一串挤在一起。
+         */
+        app_telem_stream.pace_deadline_us = now_us + period_us;
+        remaining_us = (int32_t)period_us;
+    }
+
+    /* 四舍五入到毫秒；睡 0 毫秒在有些 RTOS 上不让出 CPU，所以下限是 1。 */
+    sleep_ms = ((uint32_t)remaining_us + 500U) / 1000U;
+    if (sleep_ms == 0U) {
+        sleep_ms = 1U;
+    }
+    /*
+     * 一拍绝不会需要睡超过一个周期。真算出更大的值，只可能是时间基准出了岔子
+     * （回绕、时钟毛刺），那时宁可多发一帧也不要整条流停在一个超长的 osDelay 里
+     * ——那是"看起来 stream=1、实际一个字节都不来"的安静失败。
+     */
+    if (sleep_ms > telem_stream_period_ms()) {
+        sleep_ms = telem_stream_period_ms();
+        app_telem_stream.pace_deadline_us = now_us + period_us;
+    }
+    APP_TelemStream_PortDelayMs(sleep_ms);
 }
 
 APP_TelemMask APP_TelemStream_DefaultMask(void)
@@ -216,6 +275,9 @@ APP_TelemStreamStatus APP_TelemStream_SetActive(uint8_t active)
     if (app_telem_stream.sink == APP_TELEM_SINK_AUTO) {
         app_telem_stream.auto_sink = app_telem_stream.last_command_sink;
     }
+
+    /* 重新起算定时基准：留着上次关流前的截止时刻会让第一拍白等一大段。 */
+    app_telem_stream.pace_valid = 0U;
 
     if ((APP_TelemStream_ActiveSink() == APP_TELEM_SINK_USB) &&
         (APP_TelemStream_PortUsbReady() == 0U)) {
@@ -464,7 +526,7 @@ void APP_TelemStream_Tick(void)
     uint8_t              sent;
 
     APP_TelemStream_Init();
-    APP_TelemStream_PortDelayMs(telem_stream_period_ms());
+    telem_stream_pace();
 
     /* IMUCAP / FLOG 导出独占 CDC 链路，导出期间一帧都不发。 */
     if (APP_TelemStream_PortServiceExports() != 0U) {
