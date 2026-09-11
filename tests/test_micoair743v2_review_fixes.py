@@ -906,30 +906,46 @@ def test_secondary_imu_takes_over_when_primary_init_fails(tmp_path: Path) -> Non
 # ============================================================ 接线错位两条
 
 def test_elrs_rx_bias_pin_matches_the_ioc() -> None:
-    """RX 上拉必须配在 .ioc 给 UART4_RX 分配的那个脚上。
+    """RX 上拉必须配在 .ioc 给 ELRS 串口的 RX 分配的那个脚上。
 
-    这里一度还写着老板子的 PD0。把第二个脚也配成 AF8_UART4，等于让两个 GPIO
+    这里一度写着老板子的 PD0，移植时改成过 UART4 的 PA1，2026-09-10 又随 ELRS
+    搬到板载 RC 口变成 USART6 的 PC7。把第二个脚也配成同一个 AF，等于让两个 GPIO
     驱动同一路外设输入——ST 参考手册要求一个 AF 输入只能由一个引脚提供，
     最坏情况是 RC 链路整条收不到，而且这种错误编译期完全看不出来。
 
-    断言的是"两边一致"这个不变量，不是某个引脚名，免得下次换板又只能改测试。
+    断言的是"两边一致"这个不变量，而且连**是哪个串口**都从代码里推，
+    不写死引脚名也不写死外设名——这个位置已经搬过三次了。
     """
     ioc = read("drone-H743.ioc")
-    match = re.search(r"^P([A-K])(\d+)\.Signal=UART4_RX$", ioc, re.MULTILINE)
-    assert match is not None, ".ioc 里找不到 UART4_RX 的引脚分配"
+    elrs = strip_c_comments(read("App/Src/app_elrs.c"))
+
+    # ELRS 挂在哪个串口，由 app_elrs.c 实际用的句柄决定。
+    handle = re.search(r"HAL_UARTEx_ReceiveToIdle_DMA\(&huart(\d+),", elrs)
+    assert handle is not None, "找不到 ELRS 的 DMA 接收启动调用"
+    index = handle.group(1)
+    # huart1/2/3/6 对应 USARTx，huart4/5/7/8 对应 UARTx。
+    peripheral = f"USART{index}" if index in {"1", "2", "3", "6"} else f"UART{index}"
+
+    match = re.search(rf"^P([A-K])(\d+)\.Signal={peripheral}_RX$", ioc, re.MULTILINE)
+    assert match is not None, f".ioc 里找不到 {peripheral}_RX 的引脚分配"
     port, pin = match.group(1), int(match.group(2))
 
-    elrs = strip_c_comments(read("App/Src/app_elrs.c"))
     assert f"#define ELRS_RX_GPIO_PORT GPIO{port}" in elrs, (
-        f".ioc 把 UART4_RX 放在 P{port}{pin}，app_elrs.c 配的却是别的端口"
+        f".ioc 把 {peripheral}_RX 放在 P{port}{pin}，app_elrs.c 配的却是别的端口"
     )
     assert f"#define ELRS_RX_GPIO_PIN  GPIO_PIN_{pin}" in elrs, (
-        f".ioc 把 UART4_RX 放在 P{port}{pin}，app_elrs.c 配的却是别的引脚"
+        f".ioc 把 {peripheral}_RX 放在 P{port}{pin}，app_elrs.c 配的却是别的引脚"
     )
 
     # 该引脚在 .ioc 里不能同时被别的外设占用。
     others = re.findall(rf"^P{port}{pin}\.Signal=(.+)$", ioc, re.MULTILINE)
-    assert others == ["UART4_RX"], others
+    assert others == [f"{peripheral}_RX"], others
+
+    # UART 回调按实例分发，也必须认同一个外设，否则 ELRS 收不到事件。
+    uart = strip_c_comments(read("App/Src/app_uart.c"))
+    assert f"huart->Instance == {peripheral}" in uart, (
+        f"app_uart.c 的回调还在认别的串口，而 ELRS 已经在 {peripheral} 上"
+    )
 
 
 def test_gps_callbacks_follow_the_board_binding() -> None:

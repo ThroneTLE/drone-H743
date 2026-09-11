@@ -292,7 +292,12 @@ def test_start_rx_dma_can_recover_on_its_own() -> None:
                   source.index("static uint8_t DmaNeedsRestart")]
     failure = body[body.index("if (status != HAL_OK) {"):body.index("__HAL_DMA_DISABLE_IT")]
 
-    assert "HAL_UART_AbortReceive(&huart4);" in failure
+    # 句柄名从源码里推出来，不写死：ELRS 2026-09-10 从 UART4 搬到了板载 RC 口
+    # USART6，而本条守的是"起不来时必须 abort"这个性质，跟它挂在哪个串口无关。
+    handle = re.search(r"HAL_UARTEx_ReceiveToIdle_DMA\(&(huart\d+),", body)
+    assert handle is not None, "找不到 ELRS 的 DMA 接收启动调用"
+
+    assert f"HAL_UART_AbortReceive(&{handle.group(1)});" in failure
     assert "rx_start_fail++;" in failure, "起不来的次数要看得见，否则查不出是这里"
 
 

@@ -4,7 +4,7 @@
 
 Read this shard only when the task uses serial/TCP diagnostics, log analysis, identification, capture, calibration, or desktop UIs.
 
-Source snapshot: `04677370c776`; aggregate snapshot: `89cc205d086f`. Covered files: 5370.
+Source snapshot: `d2362b3675f2`; aggregate snapshot: `89cc205d086f`. Covered files: 5370.
 
 | File/module or scope | Content outline | Key entry points / size |
 |---|---|---|
@@ -48,7 +48,7 @@ Source snapshot: `04677370c776`; aggregate snapshot: `89cc205d086f`. Covered fil
 | `tools/imu_vibration_ui.py` | Point-and-click UI for full-rate raw IMU vibration captures. Pick a COM port, pick a test step, press the button. Each… | `VibrationCaptureUI`, `main` |
 | `tools/imucal_protocol.py` | Host-side encoder and guarded transport for the target IMUCAL protocol | `ImuCalProtocolError`, `EncodedV1Candidate`, `ImuCalTransactionResult`, `encode_v1_candidate`, `load_and_encode_v1_candidate`, `upload_commands` (+5) |
 | `tools/m1_baseline_check.py` | PIPELINE M1 底层与原始数据健康 · 实机基线采集器。 通过 USB CDC 裸文本命令通道（APP_Control_ProcessLine）以固定频率轮询 `IMU?`，在静止条件下累计一段时间的证据，输出结构化 JSON 报… | `poll_once`, `run`, `main` |
-| `tools/micoair743v2_ioc_migrate.py` | 把 drone-H743.ioc 从自制 H743 板改写成 MicoAir743v2 板级配置。 为什么用脚本而不是手改 .ioc： .ioc 有八百多行、引脚/DMA/NVIC/时钟四处互相牵连，手改一处漏一处的概率很高。 脚本把"改… | `escape_key`, `load`, `is_pin_key`, `build`, `main` |
+| `tools/micoair743v2_ioc_migrate.py` | 把 drone-H743.ioc 从自制 H743 板改写成 MicoAir743v2 板级配置。 为什么用脚本而不是手改 .ioc： .ioc 有八百多行、引脚/DMA/NVIC/时钟四处互相牵连，手改一处漏一处的概率很高。 脚本把"改… | `escape_key`, `load`, `is_pin_key`, `rename_dma`, `build`, `main` |
 | `tools/organize_data.py` | Move canonical project data into sortable YYYY-MM-DD subdirectories | `CategoryRule`, `MovePlan`, `plan_category`, `build_plan`, `apply_plan`, `parse_args` (+1) |
 | `tools/panel_lib/__init__.py` | Reusable implementation modules for :mod:`tools.drone_tcp_panel` | — |
 | `tools/panel_lib/cascade_editor.py` | Compact current-parameter editor; wire names come from the capability table | `build_cascade_editor` |

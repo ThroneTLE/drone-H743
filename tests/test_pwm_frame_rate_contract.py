@@ -56,14 +56,14 @@ def test_actuator_pins_match_the_board() -> None:
     assert "PD12.Signal=S_TIM4_CH1" in ioc
     assert "PD13.Signal=S_TIM4_CH2" in ioc
 
-    # 这四个脚在本板上归串口，绝不能再被定时器占回去。
-    for pin, owner in (
-        ("PA0", "UART4_TX"),
-        ("PA1", "UART4_RX"),
-        ("PA2", "USART2_TX"),
-        ("PA3", "USART2_RX"),
-    ):
+    # PA2/PA3 归光流串口，绝不能再被定时器占回去。
+    for pin, owner in (("PA2", "USART2_TX"), ("PA3", "USART2_RX")):
         assert f"{pin}.Signal={owner}" in ioc
+
+    # PA0/PA1 是板子的 UART4 焊盘（hwdef 有，PX4 当 TEL2 用）。ELRS 2026-09-10 搬到
+    # 板载 RC 口 USART6 之后本工程不再启用 UART4，这两个脚在 .ioc 里没有分配——
+    # 但它们仍然是串口焊盘，不许让定时器把它们抢去当 PWM。
+    for pin in ("PA0", "PA1", "PA2", "PA3"):
         assert f"{pin}.Signal=S_TIM" not in ioc
 
 

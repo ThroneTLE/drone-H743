@@ -99,7 +99,7 @@ PE5 / PE6（TIM15）、PD14（TIM4，兼 LED 焊盘）。
 | P1-2 | SD 读回旧数据，状态码仍是 OK | H7 阻塞版 `HAL_SD_ReadBlocks` 是 **CPU 轮询 FIFO**，不是 DMA；读完再 invalidate 会丢弃 CPU 刚写进 cache 的脏行 | 轮询路径去掉全部缓存维护，连 `DRV_SDBLOCK_Bus` 里的钩子字段一并删除，并写明改用 IDMA 时才需要怎么做 |
 | P1-3 | 后台日志与通信任务交错时互相覆盖数据，两边都返回 OK | 存储路由重构时漏掉了原有互斥锁；SD 后端有一个**全局共享块缓冲**，不足整块的写是读-改-写 | 读/写/擦除公开入口整笔持锁；因 `flashBusMutex` 非递归，核心逻辑拆成无锁的 `*_unlocked`，公开入口只做加锁—调用—解锁 |
 | P1-4 | 主 IMU 配置失败后无限重试，备用 IMU 一次都轮不到 | 只初始化第一颗 probe 成功的芯片，失败即返回；外层重试又选回同一颗 | 先全部探测记账，再按优先级逐个 init，**谁先成功谁上岗**；`SVC_IMU_SelectionRecord` 只记账，选中改由 `SVC_IMU_SelectionCommit` 在 init 成功后完成 |
-| 接线 | ELRS 可能整条收不到 | `ConfigureRxPinBias` 仍配老板子的 PD0/AF8，新板 UART4_RX 是 PA1——两个脚接同一路 AF 输入 | 改配 PA1，并加测试断言它与 `.ioc` 的 UART4_RX 分配一致 |
+| 接线 | ELRS 可能整条收不到 | `ConfigureRxPinBias` 仍配老板子的 PD0/AF8，新板 UART4_RX 是 PA1——两个脚接同一路 AF 输入 | 改配 PA1，并加测试断言它与 `.ioc` 的分配一致。**后被下面的实物验证一节取代**：ELRS 已整体搬到 USART6/PC7，那条测试改成连"是哪个串口"都从代码推导 |
 | 接线 | GPS 回调会去认光流的串口 | 回调写死 `USART2`，而新板 GPS 在 USART3、USART2 成了光流口 | 判据改为从 `BSP_Board_GetGpsBus()` 取，只有一个来源 |
 
 > **GPS 仍然是停用的**，这一点没变：它在 `Core/Src/freertos.c` 的两处被注释掉
@@ -114,7 +114,7 @@ PE5 / PE6（TIM15）、PD14（TIM4，兼 LED 焊盘）。
 | 控制律（Driver 层） | HAL-free 纯 C | — | **不动** |
 | 总线舵机 | UART7 半双工 @ **PE8** | `PE8 = UART7_TX` | **引脚同址**，待确认焊盘引出 |
 | 光流 | MicoLink 帧 | 同厂 MTF 系列 | 任意 UART，直接用 |
-| ELRS / CRSF | UART4 + DMA | USART6 为板载 RC 口 | 可用 |
+| ELRS / CRSF | UART4 + DMA | **USART6 (PC6/PC7)**，板载 RC 口 | 已搬过去，接收机按丝印插 |
 | GPS | USART2 | USART3 为默认 GPS 口 | 可用 |
 | 调参口 / 维护口 | USART1 / UART8 | 均在 | 可用 |
 | ESC PWM | TIM1 / TIM8 | TIM1 CH1–4 等 11 路 | 可用，定时器需重映射 |
@@ -184,14 +184,48 @@ PE5 / PE6（TIM15）、PD14（TIM4，兼 LED 焊盘）。
    从第 `DRV_SDBLOCK_BASE_BLOCK = 2048` 块（即 1 MB 处）开始写——而 1 MB 正是最常见的
    分区起始位置，文件系统会立刻被覆盖。第 0 块（MBR）不碰，但那救不了数据。
    → 想留着出厂数据就**换一张空卡**，或者先把卡拷出来。
-2. **遥控接收机的接法与板子丝印不一致**。板载 RC 口是 **USART6**（PX4 的 `/dev/ttyS5`，
-   ArduPilot 的 RCIN），而我们的 ELRS 仍在 **UART4（PA0/PA1）**——当初为了让
-   `app_elrs.c` 零改动而保留了实例。接收机必须接到 UART4 的焊盘，插板载 RC 口不通。
-   → 要么按 UART4 接线，要么把 `app_elrs.c` 改到 USART6（机械改动，但要重配 DMA）。
-3. **刷 `0x08000000` 会覆盖 PX4 的 bootloader**，这是预期行为，而且**可完全回退**：
-   本地已有 `.tmp/micoair743v2/Firmware/PX4/1.15/MicoAir743v2-PX4-1.15.4-Bootloader+Firmware.bin`，
-   正是板子出厂时在跑的那个版本（实测 `ver all` 对得上），随时能还原回当前状态。
-   另有 ArduPilot 4.5.x 与 PX4 1.14/1.16 的 bootloader 备选。
+2. ~~遥控接收机的接法与板子丝印不一致~~ —— **已解决**：ELRS 于 2026-09-10 从
+   UART4(PA0/PA1) 搬到了板载 RC 口 **USART6(PC6/PC7)**，接收机按丝印插即可。
+   UART4 随之从工程里移除，它的两条 DMA stream 原样交给 USART6（DMA 仍是 16/16）。
+   连带修掉两处遗留：`LED1`/`LED2` 标签原先压在 PC6/PC7 上（老板子的 Ai-WB2 使能脚），
+   已移到真正的灯 PE3(红)/PE2(绿)；`bsp_aiwb2_power.c` 不再读写 PC6——
+   那现在是遥控链路的发送脚，读它当"WiFi 使能状态"会拿到随机的串口数据位。
+3. **刷 `0x08000000` 会覆盖 PX4 的 bootloader**，这是预期行为，而且**可完全回退**。
+
+### 烧录前基线（回滚用，2026-09-10 锁定）
+
+板子出厂时在跑的、也是我们**第一次烧录前**的状态：
+
+| 项目 | 值 |
+|---|---|
+| 固件 | PX4 `Release 1.15.4 (17761535)`，分支 `micoair-1.15.4` |
+| PX4 git-hash | `99c40407ffd7ac184e2d7b4b293f36f10fe561ef` |
+| 构建时间 | `Apr 16 2025 17:04:09` |
+| NuttX | `Release 11.0.0`，git-hash `5d74bc138955e6f010a38e0f87f34e9a9019aecc` |
+| HW arch | `MICOAIR_H743_V2` |
+| PX4GUID | `0006000000003835323433335104004c0042` |
+| 板子实测 | 以上各项由实机 `ver all` 读出，非推测 |
+
+还原镜像（**含 bootloader**，刷 `0x08000000`）：
+
+```
+.tmp/micoair743v2/Firmware/PX4/1.15/MicoAir743v2-PX4-1.15.4-Bootloader+Firmware.bin
+  大小   2097152 bytes
+  sha256 4f553745c2946eaf3ac68bf83626751df71ad710db6e1163e6831b5f545591d2
+```
+
+只要 bootloader（之后可用 QGC/地面站再刷应用层）：
+
+```
+.tmp/micoair743v2/Firmware/PX4/1.15/MicoAir743v2_PX4-1.15.x_bootloader.bin
+  大小     41020 bytes
+  sha256 6f97070a8dade37c151dd26a758c82b95b85a8811a6189901f154e93b4b05b7c
+```
+
+> `.tmp/` 已 gitignore，**镜像不在版本控制里**，所以：烧录前别清 `.tmp/`。
+> 万一清掉了，按本文末尾的 `git clone` 命令重新拉官方固件仓库，
+> 再用上面的 sha256 核对取到的是不是同一个文件。
+> 另有 ArduPilot 4.5.x 与 PX4 1.14 / 1.16 的 bootloader 可选，但**回到"烧录前"应当用 1.15.4 这个**。
 
 ## 上游来源与抓取版本
 

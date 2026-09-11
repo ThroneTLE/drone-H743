@@ -40,17 +40,21 @@ static uint32_t rx_start_fail;
 /* ---- helpers ---- */
 
 /*
- * 给 UART4_RX 加上拉：接收机没插或没上电时线是浮空的，浮空线会被当成随机电平，
+ * 给 USART6_RX 加上拉：接收机没插或没上电时线是浮空的，浮空线会被当成随机电平，
  * 帧错误计数一路涨。上拉把空闲态钉在高电平（UART 空闲就是高）。
  *
- * **引脚必须与 CubeMX 给 UART4_RX 分配的那个脚一致。** 这里一度还写着老板子的
- * PD0，而 MicoAir743v2 上 UART4_RX 是 PA1（PA0/PA1 见 doc/micoair743v2/vendor/
- * ardupilot-hwdef.dat）。把第二个脚也配成 AF8_UART4，等于把两个 GPIO 接到同一路
- * 外设输入上——ST 参考手册明确要求一个 AF 输入只能由一个引脚提供，实际表现取决于
- * 硅片内部怎么合并这两路信号，最坏情况是 RC 链路整条收不到。
+ * **引脚必须与 CubeMX 给 USART6_RX 分配的那个脚一致。** 这里一度写着老板子的
+ * PD0，移植时改成过 UART4 的 PA1。把第二个脚也配成同一个 AF，等于把两个 GPIO
+ * 接到同一路外设输入上——ST 参考手册明确要求一个 AF 输入只能由一个引脚提供，
+ * 实际表现取决于硅片内部怎么合并这两路信号，最坏情况是 RC 链路整条收不到。
+ * tests/test_micoair743v2_review_fixes.py 会拿 .ioc 的分配来核对这两个宏。
+ *
+ * 落在 USART6/PC6/PC7 是因为**那才是板子丝印上的 RC 口**：
+ * ArduPilot hwdef 记 USART6 = RCIN，PX4 记 CONFIG_BOARD_SERIAL_RC="/dev/ttyS5"
+ * （2026-09-10 在实物上用出厂 PX4 的 `rc_input status` 确认过就是 ttyS5）。
  */
-#define ELRS_RX_GPIO_PORT GPIOA
-#define ELRS_RX_GPIO_PIN  GPIO_PIN_1
+#define ELRS_RX_GPIO_PORT GPIOC
+#define ELRS_RX_GPIO_PIN  GPIO_PIN_7
 
 static void ConfigureRxPinBias(void)
 {
@@ -60,7 +64,7 @@ static void ConfigureRxPinBias(void)
     GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
     GPIO_InitStruct.Pull = GPIO_PULLUP;
     GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-    GPIO_InitStruct.Alternate = GPIO_AF8_UART4;
+    GPIO_InitStruct.Alternate = GPIO_AF7_USART6;
     HAL_GPIO_Init(ELRS_RX_GPIO_PORT, &GPIO_InitStruct);
 }
 
@@ -71,15 +75,15 @@ static void SuppressRxIrqSources(void)
      * APP_ELRS_Step(). Leaving UART IDLE/error IRQs enabled lets a noisy or
      * floating receiver line trap the CPU in UART4_IRQHandler.
      */
-    CLEAR_BIT(huart4.Instance->CR1,
+    CLEAR_BIT(huart6.Instance->CR1,
               USART_CR1_IDLEIE | USART_CR1_PEIE | USART_CR1_RXNEIE_RXFNEIE);
-    CLEAR_BIT(huart4.Instance->CR3, USART_CR3_EIE | USART_CR3_RXFTIE);
+    CLEAR_BIT(huart6.Instance->CR3, USART_CR3_EIE | USART_CR3_RXFTIE);
 }
 
 static void ClearErrors(void)
 {
-    uint32_t err = HAL_UART_GetError(&huart4);
-    uint32_t flags = huart4.Instance->ISR;
+    uint32_t err = HAL_UART_GetError(&huart6);
+    uint32_t flags = huart6.Instance->ISR;
     uint32_t error_flags = flags & (USART_ISR_PE | USART_ISR_FE |
                                     USART_ISR_NE | USART_ISR_ORE |
                                     USART_ISR_RTOF);
@@ -93,7 +97,7 @@ static void ClearErrors(void)
     if ((error_flags & USART_ISR_PE)  != 0U) rx_err_parity++;
     rx_errors++;
 
-    __HAL_UART_CLEAR_FLAG(&huart4,
+    __HAL_UART_CLEAR_FLAG(&huart6,
                           UART_CLEAR_OREF | UART_CLEAR_NEF |
                           UART_CLEAR_PEF | UART_CLEAR_FEF |
                           UART_CLEAR_RTOF | UART_CLEAR_IDLEF);
@@ -119,20 +123,20 @@ static void ClearErrors(void)
      * 仍然赢——所以这条路径保留。
      */
     rx_aborts++;
-    __HAL_UART_SEND_REQ(&huart4, UART_RXDATA_FLUSH_REQUEST);
-    huart4.ErrorCode = HAL_UART_ERROR_NONE;
+    __HAL_UART_SEND_REQ(&huart6, UART_RXDATA_FLUSH_REQUEST);
+    huart6.ErrorCode = HAL_UART_ERROR_NONE;
     dma_started = 0U;
-    (void)HAL_UART_AbortReceive(&huart4);
+    (void)HAL_UART_AbortReceive(&huart6);
 }
 
 static void StartRxDma(void)
 {
-    if (huart4.hdmarx == NULL)
+    if (huart6.hdmarx == NULL)
         return;
 
     dma_rx_pos = 0U;
     HAL_StatusTypeDef status =
-        HAL_UARTEx_ReceiveToIdle_DMA(&huart4, dma_rx_buf, APP_ELRS_DMA_RX_SIZE);
+        HAL_UARTEx_ReceiveToIdle_DMA(&huart6, dma_rx_buf, APP_ELRS_DMA_RX_SIZE);
     if (status != HAL_OK) {
         rx_errors++;
         rx_start_fail++;
@@ -143,11 +147,11 @@ static void StartRxDma(void)
          * **唯一**的自愈点；缺了它，开机头几拍起不来就等于遥控链路整条死掉
          * （实测 sfail=3：上电确实会失败几次）。
          */
-        (void)HAL_UART_AbortReceive(&huart4);
+        (void)HAL_UART_AbortReceive(&huart6);
         return;
     }
 
-    __HAL_DMA_DISABLE_IT(huart4.hdmarx, DMA_IT_HT);
+    __HAL_DMA_DISABLE_IT(huart6.hdmarx, DMA_IT_HT);
     SuppressRxIrqSources();
     BSP_Cache_InvalidateDCache(dma_rx_buf, APP_ELRS_DMA_RX_SIZE);
     /* 重启 = 字节流断了一截，解析器手上的半帧已经无意义，留着必然拼出一个坏帧。 */
@@ -158,10 +162,10 @@ static void StartRxDma(void)
 
 static uint8_t DmaNeedsRestart(void)
 {
-    DMA_HandleTypeDef *hdma = huart4.hdmarx;
+    DMA_HandleTypeDef *hdma = huart6.hdmarx;
     if (hdma == NULL) return 1U;
     if (dma_started == 0U) return 1U;
-    if (huart4.RxState != HAL_UART_STATE_BUSY_RX) return 1U;
+    if (huart6.RxState != HAL_UART_STATE_BUSY_RX) return 1U;
 
     DMA_Stream_TypeDef *stream = (DMA_Stream_TypeDef *)hdma->Instance;
     return ((stream->CR & DMA_SxCR_EN) == 0U) ? 1U : 0U;
@@ -169,7 +173,7 @@ static uint8_t DmaNeedsRestart(void)
 
 static uint16_t DmaWritePos(void)
 {
-    DMA_HandleTypeDef *hdma = huart4.hdmarx;
+    DMA_HandleTypeDef *hdma = huart6.hdmarx;
     if (hdma == NULL || dma_started == 0U)
         return dma_rx_pos;
 
@@ -183,7 +187,7 @@ static uint16_t DmaWritePos(void)
 
 static void StartTxDma(const uint8_t *frame, uint8_t len)
 {
-    if (huart4.hdmatx == NULL)
+    if (huart6.hdmatx == NULL)
         return;
 
     tx_busy = 1U;
@@ -191,7 +195,7 @@ static void StartTxDma(const uint8_t *frame, uint8_t len)
     tx_len = len;
     BSP_Cache_CleanDCache(tx_buf, len);
 
-    if (HAL_UART_Transmit_DMA(&huart4, tx_buf, len) != HAL_OK) {
+    if (HAL_UART_Transmit_DMA(&huart6, tx_buf, len) != HAL_OK) {
         tx_busy = 0U;
         rx_errors++;
     }
@@ -278,8 +282,8 @@ void APP_ELRS_Step(void)
 
     /* check TX completion */
     if (tx_busy != 0U) {
-        if (huart4.gState == HAL_UART_STATE_READY &&
-            huart4.ErrorCode == HAL_UART_ERROR_NONE) {
+        if (huart6.gState == HAL_UART_STATE_READY &&
+            huart6.ErrorCode == HAL_UART_ERROR_NONE) {
             tx_busy = 0U;
         }
     }

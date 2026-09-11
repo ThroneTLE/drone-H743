@@ -1047,7 +1047,7 @@ void APP_UART_OnError(UART_HandleTypeDef *huart)
 
 void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
 {
-    if (huart->Instance == UART4) {
+    if (huart->Instance == USART6) {
         APP_ELRS_OnRxEvent(Size);
         return;
     }
@@ -1064,7 +1064,7 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
         DRV_SERVO_OnUartTxComplete(huart);
         return;
     }
-    if (huart->Instance == UART4) {
+    if (huart->Instance == USART6) {
         APP_ELRS_OnTxComplete();
         return;
     }
@@ -1087,7 +1087,7 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
         DRV_SERVO_OnUartError(huart);
         return;
     }
-    if (huart->Instance == UART4) {
+    if (huart->Instance == USART6) {
         APP_ELRS_OnError();
         return;
     }

@@ -7,8 +7,6 @@ typedef struct {
 
 static const BSP_GPIO_Map gpio_map[BSP_GPIO_COUNT] = {
     [BSP_GPIO_PC13] = {GPIOC, GPIO_PIN_13},
-    [BSP_GPIO_PC6]  = {GPIOC, GPIO_PIN_6},
-    [BSP_GPIO_PC7]  = {GPIOC, GPIO_PIN_7},
     [BSP_GPIO_PB5]  = {GPIOB, GPIO_PIN_5},
     [BSP_GPIO_PE2]  = {GPIOE, GPIO_PIN_2},
     [BSP_GPIO_PE3]  = {GPIOE, GPIO_PIN_3},

@@ -100,6 +100,16 @@ def test_new_peripherals_are_generated() -> None:
     # 旧板子的 UART5 引脚在本板上是 SDMMC1_CMD，必须让出来。
     assert "void MX_UART5_Init(void)" not in usart, REGENERATE
 
+    # ELRS 搬到板载 RC 口（USART6/PC6/PC7），UART4 随之退场。
+    # 少了 huart6，app_elrs.c 连编都编不过。
+    assert "void MX_USART6_UART_Init(void)" in usart, (
+        f"ELRS 的 USART6 未生成，app_elrs.c 会因 huart6 未声明编译失败。{REGENERATE}"
+    )
+    assert "UART_HandleTypeDef huart6;" in usart, REGENERATE
+    assert "void MX_UART4_Init(void)" not in usart, (
+        f"UART4 已不再使用，仍在生成代码里说明还没重新生成。{REGENERATE}"
+    )
+
     spi = read("Core/Src/spi.c")
     assert "void MX_SPI3_Init(void)" in spi, f"BMI270 的 SPI3 未生成。{REGENERATE}"
     assert "void MX_SPI4_Init(void)" not in spi, REGENERATE

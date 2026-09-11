@@ -10,13 +10,12 @@
  * SDMMC1 的 D0/D1 与 USART3（GPS），不能再当普通 IO 用，已从表中移除；
  * 三色 LED 换到板载的 PE3(红) / PE2(绿) / PE4(蓝)，蜂鸣器落在 PD15。
  *
- * PC6 / PC7 / PB5 在本板上分别是 USART6 与 UART5 的引脚，但本工程没有启用这两个
- * 串口，所以继续当普通 IO 用（PC6 是 Ai-WB2 的使能，PB5 是它的在位检测）。
+ * PC6 / PC7 从表里拿掉了：ELRS 搬到板载 RC 口之后它们是 USART6_TX / USART6_RX，
+ * 留在这张"普通 IO"表里等于告诉调用者可以随便读写，而那是遥控链路那条线。
+ * PB5 在本板上是 UART5_RX，本工程没启用 UART5，仍当普通输入保留。
  */
 typedef enum {
     BSP_GPIO_PC13 = 0,
-    BSP_GPIO_PC6,
-    BSP_GPIO_PC7,
     BSP_GPIO_PB5,
     BSP_GPIO_PE2,
     BSP_GPIO_PE3,

@@ -49,18 +49,24 @@ IP_LIST = [
     "TIM1",
     "TIM4",
     "TIM17",
-    "UART4",
     "UART7",
     "UART8",
     "USART1",
     "USART2",
     "USART3",
+    "USART6",
     "USB_DEVICE",
     "USB_OTG_FS",
 ]
 
 # 被移除的外设：它们的引脚在 MicoAir 上全被别的功能占了。
-REMOVED_IPS = ["SPI4", "TIM2", "TIM5", "TIM8", "UART5"]
+#
+# UART4 是 2026-09-10 实机验证后移除的：ELRS 原本挂在 UART4(PA0/PA1)，那是为了让
+# app_elrs.c 零改动。但出厂 PX4 实测确认**板子丝印上的 RC 口是 USART6**
+# （PX4 的 CONFIG_BOARD_SERIAL_RC="/dev/ttyS5" = USART6，与 ArduPilot hwdef 的
+# RCIN 一致）。接收机插丝印标的口才是常识，所以把 ELRS 搬到 USART6，
+# UART4 随之退场，它的两条 DMA stream 原样交给 USART6（见 RENAMED_DMA_REQUESTS）。
+REMOVED_IPS = ["SPI4", "TIM2", "TIM5", "TIM8", "UART4", "UART5"]
 
 # ---------------------------------------------------------------- 引脚表
 #
@@ -146,8 +152,10 @@ PINS: list[tuple[str, dict[str, str]]] = [
     ("PA3", {"Mode": "Asynchronous", "Signal": "USART2_RX"}),
     ("PD8", {"Mode": "Asynchronous", "Signal": "USART3_TX"}),    # GPS
     ("PD9", {"Mode": "Asynchronous", "Signal": "USART3_RX"}),
-    ("PA0", {"Mode": "Asynchronous", "Signal": "UART4_TX"}),     # ELRS / CRSF
-    ("PA1", {"Mode": "Asynchronous", "Signal": "UART4_RX"}),
+    # ELRS / CRSF 接收机。PC6/PC7 就是板子丝印上的 RC 口（hwdef: USART6 RCIN，
+    # PX4 的 CONFIG_BOARD_SERIAL_RC=/dev/ttyS5）。PA0/PA1 的 UART4 焊盘不再使用。
+    ("PC6", {"Mode": "Asynchronous", "Signal": "USART6_TX"}),
+    ("PC7", {"Mode": "Asynchronous", "Signal": "USART6_RX"}),
     # 总线舵机：新旧两块板唯一引脚同址的外设。半双工单线 + 上拉。
     ("PE8", {"Mode": "Half_duplex(single_wire_mode)", "Signal": "UART7_TX",
              "GPIOParameters": "GPIO_PuPd", "GPIO_PuPd": "GPIO_PULLUP"}),
@@ -171,21 +179,25 @@ PINS: list[tuple[str, dict[str, str]]] = [
     ("PC11", {"Mode": "SD_4_bits_Wide_bus", "Signal": "SDMMC1_D3"}),
 
     # --- LED / 蜂鸣器 / 杂项 IO ---
+    #
+    # 三颗板载灯是 PE3 红 / PE2 绿 / PE4 蓝（hwdef: LED_RED/LED_GREEN/LED_BLUE）。
+    #
+    # 前两颗的标签**被迫叫 LED1 / LED2**：Core/Src/main.c 的启动分阶段脉冲
+    # （Main_StagePulse）直接用 LED1_GPIO_Port / LED2_GPIO_Port，而 main.c 是
+    # CubeMX 生成文件、禁止手改，所以这两个标签必须存在。
+    # 这两个标签原先挂在 PC6/PC7——那是老板子上 Ai-WB2 的使能脚，在 MicoAir 上是
+    # USART6（RC 口）。搬到真正的灯上之后，启动脉冲才真的看得见。
     ("PE3", {"Signal": "GPIO_Output", "GPIOParameters": "PinState,GPIO_Label",
-             "GPIO_Label": "LED_RED", "PinState": "GPIO_PIN_RESET"}),
+             "GPIO_Label": "LED1", "PinState": "GPIO_PIN_RESET"}),      # 红
     ("PE2", {"Signal": "GPIO_Output", "GPIOParameters": "PinState,GPIO_Label",
-             "GPIO_Label": "LED_GREEN", "PinState": "GPIO_PIN_RESET"}),
+             "GPIO_Label": "LED2", "PinState": "GPIO_PIN_RESET"}),      # 绿
     ("PE4", {"Signal": "GPIO_Output", "GPIOParameters": "PinState,GPIO_Label",
-             "GPIO_Label": "LED_BLUE", "PinState": "GPIO_PIN_RESET"}),
+             "GPIO_Label": "LED_BLUE", "PinState": "GPIO_PIN_RESET"}),  # 蓝
     ("PD15", {"Signal": "GPIO_Output", "GPIOParameters": "PinState,GPIO_Label",
               "GPIO_Label": "BUZZER", "PinState": "GPIO_PIN_RESET"}),
     ("PC13", {"Signal": "GPIO_Output", "GPIOParameters": "PinState,GPIO_PuPd,GPIO_Label",
               "GPIO_Label": "LED7", "GPIO_PuPd": "GPIO_PULLUP",
               "PinState": "GPIO_PIN_SET"}),
-    # Ai-WB2 的使能与在位检测。本板上这两个脚属于 USART6 / UART5，
-    # 但本工程没有启用那两个串口，所以继续当普通 IO 用。
-    ("PC6", {"Signal": "GPIO_Output", "GPIOParameters": "GPIO_Label", "GPIO_Label": "LED1"}),
-    ("PC7", {"Signal": "GPIO_Output", "GPIOParameters": "GPIO_Label", "GPIO_Label": "LED2"}),
     ("PB5", {"Signal": "GPIO_Input"}),
     ("PD10", {"Signal": "GPIO_Output"}),
 
@@ -247,6 +259,10 @@ PERIPHERAL_SETTINGS = {
     "USART3.IPParameters": "VirtualMode-Asynchronous,BaudRate",
     "USART3.VirtualMode-Asynchronous": "VM_ASYNC",
     "USART3.BaudRate": "38400",
+    # USART6：ELRS / CRSF。420000 是 CRSF 的标准速率，沿用 UART4 时期的值。
+    "USART6.IPParameters": "VirtualMode-Asynchronous,BaudRate",
+    "USART6.VirtualMode-Asynchronous": "VM_ASYNC",
+    "USART6.BaudRate": "420000",
     # SPI3：BMI270。片选由软件控制（GPIO），所以是 NSS 硬件模式关闭。
     "SPI3.IPParameters": "VirtualType,Mode,Direction,CalculateBaudRate,VirtualNSS,DataSize,BaudRatePrescaler",
     "SPI3.VirtualType": "VM_MASTER",
@@ -309,6 +325,14 @@ NEW_DMA_REQUESTS = [
     ("USART3_TX", 15, "DMA2_Stream7", "DMA_MEMORY_TO_PERIPH", "DMA_NORMAL"),
 ]
 
+# ELRS 从 UART4 搬到 USART6 时，DMA 通道**原样接管**：只换请求名，不动 stream、
+# 不动方向和模式（RX 仍是循环、TX 仍是单次）。H7 有 DMAMUX，任何 stream 都能服务
+# 任何外设请求，所以这是纯改名。16 条 stream 已经打满，也只能这么搬。
+RENAMED_DMA_REQUESTS = {
+    "UART4_RX": "USART6_RX",
+    "UART4_TX": "USART6_TX",
+}
+
 NEW_NVIC = {
     # DRDY 外部中断：PC15 落在 EXTI15_10，PB7 落在 EXTI9_5。
     # PC14 是普通输入，不占中断（原因见上面 PINS 表里的说明）。
@@ -318,9 +342,11 @@ NEW_NVIC = {
     "NVIC.DMA2_Stream7_IRQn": "true\\:5\\:0\\:false\\:false\\:true\\:true\\:false\\:true\\:true",
     "NVIC.USART3_IRQn": "true\\:5\\:0\\:false\\:false\\:true\\:true\\:true\\:true\\:true",
     "NVIC.SDMMC1_IRQn": "true\\:5\\:0\\:false\\:false\\:true\\:true\\:true\\:true\\:true",
+    # ELRS：优先级与中断使能沿用 UART4 时期的设置，只是换了外设。
+    "NVIC.USART6_IRQn": "true\\:5\\:0\\:false\\:false\\:true\\:true\\:true\\:true\\:true",
 }
 
-REMOVED_NVIC = ["NVIC.EXTI0_IRQn"]
+REMOVED_NVIC = ["NVIC.EXTI0_IRQn", "NVIC.UART4_IRQn"]
 
 
 def escape_key(name: str) -> str:
@@ -348,12 +374,30 @@ def is_pin_key(key: str) -> bool:
     return False
 
 
+def rename_dma(key: str, value: str) -> tuple[str, str]:
+    """把一条既有 DMA 配置从旧外设改名到新外设，stream / 方向 / 模式全部保留。
+
+    涉及两处：`Dma.RequestN=<名字>` 的**值**，以及 `Dma.<名字>.<N>.*` 的**键前缀**。
+    只改其中一处会留下一条指向不存在外设的半截配置，CubeMX 打开时才报错。
+    """
+    if key.startswith("Dma.Request") and value in RENAMED_DMA_REQUESTS:
+        return key, RENAMED_DMA_REQUESTS[value]
+
+    for old_name, new_name in RENAMED_DMA_REQUESTS.items():
+        prefix = f"Dma.{old_name}."
+        if key.startswith(prefix):
+            return f"Dma.{new_name}." + key[len(prefix):], value
+
+    return key, value
+
+
 def build(old: list[tuple[str, str]]) -> dict[str, str]:
     out: dict[str, str] = {}
 
     dropped_prefixes = tuple(f"{ip}." for ip in REMOVED_IPS)
 
     for key, value in old:
+        key, value = rename_dma(key, value)
         if is_pin_key(key):
             continue
         if key.startswith("Mcu.Pin") or key == "Mcu.PinsNb":
