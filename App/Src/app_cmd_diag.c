@@ -472,6 +472,11 @@ void app_control_handle_req(char **tokens, uint32_t count)
         return;
     }
 
+    /* 解锁状态与被拒原因（只读）。上位机主页面横幅靠它。 */
+    if (app_control_req_arm(id, mod, op) != 0U) {
+        return;
+    }
+
     /* 选型记账：哪几颗被探过、各自读回什么 ID、为什么没上岗。 */
     if (strcmp(mod, "IMUSEL") == 0) {
         app_control_req_imusel(id, op);

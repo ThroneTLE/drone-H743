@@ -156,11 +156,19 @@ def test_controller_exposes_cascade_limits_with_physical_names() -> None:
         "vel_loop_output_limit_m_s2",
         "vel_loop_i_limit_m_s2",
         "min_total_force_n",
-        "max_total_force_n",
     ]
     combined = "\n".join([header, wrapper, freertos, capture, flight_log])
     for name in removed:
         assert name not in combined
+
+    # max_total_force_n 2026-09-11 起是**机体模型的派生字段**，不是可调参数。
+    # 原来的"整串不许出现"会连"从机体模型读它"一起禁掉，那是把数据来源和
+    # 可调性混为一谈；这里改成按它真正的性质钉：不进 Params、不进参数表、
+    # 不从 coax_ctrl_params 读。
+    assert "float max_total_force_n;" not in header
+    assert "DRV_COAX_CTRL_PARAM_ENTRY(max_total_force_n)" not in wrapper
+    assert "coax_ctrl_params.max_total_force_n" not in wrapper
+    assert "DRV_Airframe_Get()->max_total_force_n" in wrapper
     assert "tilt_limit_rad" in header
     assert "DRV_COAX_CTRL_PARAM_ENTRY(tilt_limit_rad)" in wrapper
     assert "coax_ctrl_params.tilt_limit_rad" in wrapper
@@ -283,7 +291,8 @@ def test_roll_pitch_physical_moment_gains_are_runtime_params() -> None:
     assert "params->rate.kp[1] = 0.1138f;" in wrapper
     # 2026-09-07：I_zz 由 0.00035 改成 0.005 后，系数必须同步下调，否则默认偏航
     # 增益会跟着涨 14.3 倍、越过作者实测的抖振阈值。形式仍是 `I_zz × 带宽`。
-    assert "params->rate.kp[2] = DRV_AIRFRAME_IZZ_KGM2 * 0.525f;" in wrapper
+    # 2026-09-11：I_zz 改为机体模型运行时取值，默认偏航增益跟着它缩放。
+    assert "params->rate.kp[2] = DRV_Airframe_Get()->izz_kgm2 * 0.525f;" in wrapper
     assert 'strcmp(name, "coax.roll_angle_kp")' not in wrapper
     assert 'strcmp(name, "coax.yaw_rate_kd")' not in wrapper
     # 2026-09-07：作者裁定用一个物理上说得通的"虚拟 k"（0.005 ≈ C_Q/C_T × D）替换

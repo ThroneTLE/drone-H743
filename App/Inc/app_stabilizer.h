@@ -106,6 +106,35 @@ uint8_t APP_Stabilizer_ReadFlowCompensationSnapshot(
 uint8_t APP_Stabilizer_IsImuFrameArmLocked(void);
 /* Latest armed state as seen by the control loop; used to gate config writes. */
 uint8_t APP_Stabilizer_IsArmed(void);
+
+/*
+ * 解锁状态快照，供上位机在主页面显眼处显示"能不能解锁、为什么不能"。
+ *
+ * 为什么要把每一个条件都单独带出来，而不是只报一个原因码：原因链是**有序**的
+ * （见 stabilizer_control_prepare 末尾），它只能报出第一条不满足的。现场常见
+ * 的是同时缺两样——比如既没插遥控器又没写机体模型——只看第一条会让人修完
+ * 一个还是解不了锁，以为没修对。把条件全带出来，上位机就能一次性列清单。
+ *
+ * 所有字段都是"1 = 这一项满足/通过"，block_reason 是 APP_LED_ArmBlockReason。
+ */
+typedef struct {
+  uint8_t  armed;
+  uint8_t  block_reason;
+  uint8_t  rc_link_seen;
+  uint8_t  rc_link_ok;
+  uint8_t  arm_switch_high;
+  uint8_t  throttle_low;
+  uint8_t  imu_control_valid;
+  uint8_t  imu_health_ok;
+  uint8_t  frame_migration_ok;
+  uint8_t  airframe_valid;
+  uint8_t  servo_cal_idle;
+  uint8_t  acceptance_idle;
+  uint8_t  published;          /* 0 = 控制环还没跑过一圈，下面全是占位零值 */
+  uint32_t now_ms;
+} APP_Stabilizer_ArmStatus;
+
+void APP_Stabilizer_GetArmStatus(APP_Stabilizer_ArmStatus *out);
 /* Independent hard lock while a V1 RAM candidate exists or is committing. */
 void APP_Stabilizer_SetImuCalibrationCandidateArmLock(uint8_t locked);
 uint8_t APP_Stabilizer_IsImuCalibrationCandidateArmLocked(void);

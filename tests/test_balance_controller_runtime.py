@@ -7,12 +7,14 @@ from pathlib import Path
 import pytest
 
 
+from _airframe_fixture import AIRFRAME_FIXTURE_C, AIRFRAME_SOURCE
+
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
-HARNESS = r"""
+HARNESS = AIRFRAME_FIXTURE_C + r"""
 #include "drv_coax_ctrl.h"
-#include "drv_airframe_model.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -77,6 +79,8 @@ int main(void)
     float desired_body_r[3][3];
 
     DRV_COAX_CTRL_Init();
+    airframe_load_reference();
+
 
     reset_case(&attitude, &reference);
     DRV_COAX_CTRL_Run(&attitude, &reference, &output);
@@ -84,7 +88,7 @@ int main(void)
     CHECK(nearly_equal(output.alpha_rad, 0.0f, 1.0e-5f), 1);
     CHECK(nearly_equal(output.beta_rad, 0.0f, 1.0e-5f), 2);
     CHECK(nearly_equal(debug.total_force_n,
-                       DRV_AIRFRAME_MASS_KG * DRV_AIRFRAME_GRAVITY_M_S2,
+                       DRV_Airframe_Get()->mass_kg * DRV_Airframe_Get()->gravity_m_s2,
                        1.0e-3f), 3);
     CHECK(nearly_equal(output.thrust_upper_n, debug.total_force_n * 0.5f, 1.0e-3f), 4);
     CHECK(debug.protection_flags == 0U, 5);
@@ -109,15 +113,15 @@ int main(void)
     CHECK(output.servo_beta_us < DRV_COAX_CTRL_SERVO_BETA_CENTER_US, 14);
     CHECK(nearly_equal(
         debug.moment_achieved_n_m[1],
-        0.569f * DRV_AIRFRAME_PITCH_THRUST_LEVER_ARM_M *
+        0.569f * DRV_Airframe_Get()->pitch_thrust_lever_arm_m *
             debug.total_force_n * sinf(output.alpha_rad) * cosf(output.beta_rad),
         1.0e-5f), 15);
     {
         const float force_norm = sqrtf(
             debug.accel_out_m_s2[0] * debug.accel_out_m_s2[0] +
-            DRV_AIRFRAME_GRAVITY_M_S2 * DRV_AIRFRAME_GRAVITY_M_S2);
+            DRV_Airframe_Get()->gravity_m_s2 * DRV_Airframe_Get()->gravity_m_s2);
         const float target_pitch = atan2f(debug.accel_out_m_s2[0],
-                                          DRV_AIRFRAME_GRAVITY_M_S2);
+                                          DRV_Airframe_Get()->gravity_m_s2);
         CHECK(nearly_equal(debug.target_attitude_rp_rad[1],
                            target_pitch,
                            2.0e-4f), 16);
@@ -129,7 +133,7 @@ int main(void)
                            debug.accel_out_m_s2[0] / force_norm,
                            5.0e-4f), 18);
         CHECK(nearly_equal(desired_body_r[2][2],
-                           DRV_AIRFRAME_GRAVITY_M_S2 / force_norm,
+                           DRV_Airframe_Get()->gravity_m_s2 / force_norm,
                            2.0e-4f), 19);
     }
 
@@ -150,7 +154,7 @@ int main(void)
     CHECK(debug.pos_z_i_m_s2 > 0.09f, 102);
     CHECK(debug.accel_out_m_s2[2] > 0.09f, 103);
     CHECK(debug.total_force_n >
-          DRV_AIRFRAME_MASS_KG * DRV_AIRFRAME_GRAVITY_M_S2,
+          DRV_Airframe_Get()->mass_kg * DRV_Airframe_Get()->gravity_m_s2,
           104);
 
     /*
@@ -180,12 +184,12 @@ int main(void)
     CHECK(output.servo_alpha_us > DRV_COAX_CTRL_SERVO_ALPHA_CENTER_US, 24);
     CHECK(nearly_equal(
         debug.moment_achieved_n_m[0],
-        0.581f * DRV_AIRFRAME_ROLL_THRUST_LEVER_ARM_M *
+        0.581f * DRV_Airframe_Get()->roll_thrust_lever_arm_m *
             debug.total_force_n * sinf(output.beta_rad),
         1.0e-5f), 25);
     {
         const float target_roll = -atan2f(debug.accel_out_m_s2[1],
-                                          DRV_AIRFRAME_GRAVITY_M_S2);
+                                          DRV_Airframe_Get()->gravity_m_s2);
         CHECK(nearly_equal(debug.target_attitude_rp_rad[0],
                            target_roll,
                            2.0e-4f), 26);
@@ -357,7 +361,7 @@ int main(void)
     params.vel_loop_enable = 0.0f;
     DRV_COAX_CTRL_SetParams(&params);
     reference.ax_m_s2 = 1.0f;
-    attitude.pitch_rad = atan2f(reference.ax_m_s2, DRV_AIRFRAME_GRAVITY_M_S2);
+    attitude.pitch_rad = atan2f(reference.ax_m_s2, DRV_Airframe_Get()->gravity_m_s2);
     DRV_COAX_CTRL_Run(&attitude, &reference, &output);
     DRV_COAX_CTRL_GetLastDebug(&debug);
     CHECK(nearly_equal(output.alpha_rad, 0.0f, 2.0e-4f), 70);
@@ -380,12 +384,12 @@ int main(void)
     DRV_COAX_CTRL_GetLastDebug(&debug);
     CHECK(nearly_equal(
         debug.moment_cmd_n_m[0],
-        (DRV_AIRFRAME_IZZ_KGM2 - DRV_AIRFRAME_IYY_KGM2) *
+        (DRV_Airframe_Get()->izz_kgm2 - DRV_Airframe_Get()->iyy_kgm2) *
             attitude.gyro_y_rad_s * attitude.gyro_z_rad_s,
         1.0e-6f), 80);
     CHECK(nearly_equal(
         debug.moment_cmd_n_m[1],
-        (DRV_AIRFRAME_IXX_KGM2 - DRV_AIRFRAME_IZZ_KGM2) *
+        (DRV_Airframe_Get()->ixx_kgm2 - DRV_Airframe_Get()->izz_kgm2) *
             attitude.gyro_z_rad_s *
             attitude.gyro_x_rad_s,
         1.0e-6f), 81);
@@ -443,6 +447,7 @@ def test_real_controller_runtime_math(tmp_path: Path) -> None:
             "-Werror",
             f"-I{stub_dir}",
             f"-I{ROOT / 'Driver' / 'Inc'}",
+            str(AIRFRAME_SOURCE),
             str(ROOT / "Driver" / "Src" / "drv_coax_ctrl.c"),
             str(ROOT / "Driver" / "Src" / "drv_position_control.c"),
             str(ROOT / "Driver" / "Src" / "drv_attitude_control.c"),

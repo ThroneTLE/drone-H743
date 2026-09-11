@@ -142,6 +142,11 @@ void app_control_report_modules(void)
                                  (unsigned int)control_config.loaded_from_flash,
                                  (unsigned int)APP_CONTROL_SERVO_COUNT,
                                  (unsigned int)BSP_AiWB2_IsEnabled());
+    /*
+     * 解锁状态跟着 MODULES 一起发：这条是上位机连上之后必发的一条，
+     * 横幅因此在第一次刷新时就有内容，不用等自己那 2 Hz 的轮询转到。
+     */
+    app_control_report_arm();
 }
 
 void app_control_report_status(void)

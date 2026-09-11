@@ -15,6 +15,7 @@
 #include "app_control.h"
 #include "app_control_internal.h"
 
+#include "app_proto.h"
 #include "drv_airframe_params.h"
 #include "drv_coax_ctrl.h"
 
@@ -76,34 +77,59 @@ uint8_t app_control_param_set_any(const char *name, float value)
     return DRV_Airframe_SetParam(name, value);
 }
 
-void app_control_report_airframe_model(void)
+/*
+ * 推力表口径。它是一个**字符串**，说明 max_total_thrust_g 记的是"双桨合计"
+ * 而不是单桨——这个口径搞错，推重比会差一倍。因为不是数，它进不了 float
+ * 参数表，所以留在代码里：它描述的是这份数据怎么读，不是这架飞机量出来多少。
+ */
+#define AIRFRAME_THRUST_TABLE_SCOPE "dual_motor_total"
+
+void app_control_report_airframe_record(void)
 {
     const DRV_Airframe_Params *p = DRV_Airframe_Get();
-    const char *bad = DRV_Airframe_FirstInvalidName();
-    char total[24];
-    char cg[24];
-    char hover[24];
-    char thrust_arm[24];
+    char mass_kg[24];
+    char cg_z_m[24];
+    char imu_z_m[24];
+    char attach_z_m[24];
+    char attach_to_cg_m[24];
+    char rope_m[24];
+    char rod_to_cg_m[24];
+    char servo_deg_per_us[24];
+    char servo_us_per_deg[24];
+    char max_force_n[24];
+    char hover_pct[24];
+
+    airframe_format_float(p->mass_kg, mass_kg, (uint32_t)sizeof(mass_kg));
+    airframe_format_float(p->cg_z_m, cg_z_m, (uint32_t)sizeof(cg_z_m));
+    airframe_format_float(p->imu_z_m, imu_z_m, (uint32_t)sizeof(imu_z_m));
+    airframe_format_float(p->tether_attach_z_m, attach_z_m, (uint32_t)sizeof(attach_z_m));
+    airframe_format_float(p->tether_attach_to_cg_m, attach_to_cg_m, (uint32_t)sizeof(attach_to_cg_m));
+    airframe_format_float(p->tether_rope_m, rope_m, (uint32_t)sizeof(rope_m));
+    airframe_format_float(p->tether_rod_to_cg_m, rod_to_cg_m, (uint32_t)sizeof(rod_to_cg_m));
+    airframe_format_float(p->servo_deg_per_us, servo_deg_per_us, (uint32_t)sizeof(servo_deg_per_us));
+    airframe_format_float(p->servo_us_per_deg, servo_us_per_deg, (uint32_t)sizeof(servo_us_per_deg));
+    airframe_format_float(p->max_total_force_n, max_force_n, (uint32_t)sizeof(max_force_n));
+    airframe_format_float(p->hover_thrust_percent, hover_pct, (uint32_t)sizeof(hover_pct));
 
     /*
-     * 先报"能不能用"，再报数值。顺序是有意的：模型无效时下面那些数字全是零，
-     * 单看数字会以为是"还没量"，而实际后果是**解锁被挡住**——这件事必须第一行就说清。
+     * 报文形状与改造前逐字段一致——上位机的证据快照按这些键名存档，改键名会让
+     * 历史存档和新存档对不上。变的只是数据来源：以前是编译期常量，现在是 Flash。
+     *
+     * "模型是否有效、缺哪一项"不放在这条线上：那是**解锁闸门**的事实，归 ARM
+     * 报文（app_cmd_arm.c）。放两处会分叉，而分叉的诊断迟早互相矛盾。
      */
-    APP_Control_QueueText(
-        "AIRFRAME valid=%u missing=%s derived_auto=%u params=%lu\r\n",
-        (unsigned int)DRV_Airframe_IsValid(),
-        (bad != NULL) ? bad : "-",
-        (unsigned int)(((p->derived_auto > 0.5f) || (p->derived_auto < -0.5f)) ? 1U : 0U),
-        (unsigned long)DRV_Airframe_GetParamCount());
-
-    airframe_format_float(p->mass_kg, total, (uint32_t)sizeof(total));
-    airframe_format_float(p->cg_z_m, cg, (uint32_t)sizeof(cg));
-    airframe_format_float(p->hover_thrust_percent, hover,
-                                    (uint32_t)sizeof(hover));
-    airframe_format_float(p->thrust_point_to_cg_z_m, thrust_arm,
-                                    (uint32_t)sizeof(thrust_arm));
-
-    APP_Control_QueueText(
-        "AIRFRAME mass_kg=%s cg_z_m=%s thrust_point_to_cg_z_m=%s hover_pct=%s\r\n",
-        total, cg, thrust_arm, hover);
+    app_control_queue_proto_text(APP_PROTO_MSG_AIRFRAME_RECORD,
+                                 "AIRFRAME mass_kg=%s cg_z_m=%s imu_z_m=%s tether_attach_z_m=%s tether_attach_to_cg_m=%s rope_m=%s rod_to_cg_m=%s servo_deg_per_us=%s servo_us_per_deg=%s thrust_scope=%s max_total_force_n=%s hover_thrust_pct=%s\r\n",
+                                 mass_kg,
+                                 cg_z_m,
+                                 imu_z_m,
+                                 attach_z_m,
+                                 attach_to_cg_m,
+                                 rope_m,
+                                 rod_to_cg_m,
+                                 servo_deg_per_us,
+                                 servo_us_per_deg,
+                                 AIRFRAME_THRUST_TABLE_SCOPE,
+                                 max_force_n,
+                                 hover_pct);
 }

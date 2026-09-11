@@ -22,6 +22,13 @@ typedef enum {
     /* 坐标系运行时迁移未完成（DRV_FRAME_RUNTIME_MIGRATION_COMPLETE == 0）
      * 且已激活 FLU 朝向，或 IMU/舵机标定候选未提交。见 R-F6 工单。 */
     APP_LED_ARM_BLOCK_FRAME = 6,
+    /*
+     * Flash 里没有有效机体模型（DRV_Airframe_IsValid() == 0）。刚烧完固件、
+     * 还没从上位机写过机体数据的板子就是这个状态：没有质量、没有惯量、没有
+     * 力臂，控制律算出来的每个力矩都没有物理含义。缺哪一项由
+     * DRV_Airframe_FirstInvalidName() 具名报出，不用数闪灯猜。
+     */
+    APP_LED_ARM_BLOCK_AIRFRAME = 7,
 } APP_LED_ArmBlockReason;
 
 typedef enum {

@@ -49,7 +49,7 @@
 #include "bsp_aiwb2_power.h"
 #include "bsp_bus_servo.h"
 #include "bsp_pwm.h"
-#include "drv_airframe_model.h"
+#include "drv_airframe_params.h"
 #include "drv_attitude_fusion.h"
 #include "drv_coax_ctrl.h"
 #include "drv_frame_contract.h"
@@ -330,7 +330,7 @@
                                                        float *acc_y_m_s2,
                                                        float *weight_out)
   {
-    const float gravity = DRV_AIRFRAME_GRAVITY_M_S2;
+    const float gravity = DRV_Airframe_Get()->gravity_m_s2;
     const float r_imu_m[3] = {
       STABILIZER_IMU_LEVER_ARM_X_M,
       STABILIZER_IMU_LEVER_ARM_Y_M,
@@ -427,6 +427,22 @@
      * 控制律的前提已经不成立，只能拒绝起飞。
      */
     if (APP_ImuHealth_IsArmBlocked() != 0U) {
+      stabilizer_rc_arm_latched = 0U;
+      stabilizer_rc_switch_seen_low = 0U;
+      stabilizer_rc_switch_prev_high = switch_high;
+      return 0U;
+    }
+
+    /*
+     * 没有有效机体模型就禁止解锁。机体数据的唯一来源是上位机写进 Flash 的那份
+     * （drv_airframe_params.h），代码里不再保留任何默认值——因为一旦有默认值，
+     * 一块从没量过的飞机就会"看起来能飞"，而它用的是别人的质量和惯量。
+     *
+     * 这里不是保守，是这几个数没了控制律就没有物理含义：质量在每条力/加速度
+     * 换算里，惯量是角加速度的分母，r_z 的正负直接决定倾转力矩的方向——
+     * 漏填会让姿态环从负反馈变成正反馈，起飞即翻。失效必须朝安全方向倒。
+     */
+    if (DRV_Airframe_IsValid() == 0U) {
       stabilizer_rc_arm_latched = 0U;
       stabilizer_rc_switch_seen_low = 0U;
       stabilizer_rc_switch_prev_high = switch_high;
@@ -775,6 +791,9 @@ static volatile uint32_t stabilizer_validation_imu_seqlock;
 static volatile uint8_t stabilizer_validation_imu_valid;
 static volatile StabilizerValidationImuSnapshot
   stabilizer_validation_imu_snapshot;
+/* 解锁状态快照（published=0 表示控制环还没跑过一圈）。写者只有控制环。 */
+static APP_Stabilizer_ArmStatus stabilizer_arm_status;
+
 static volatile uint8_t stabilizer_imu_calibration_candidate_arm_lock;
 static volatile uint8_t stabilizer_servo_calibration_candidate_arm_lock;
 
@@ -951,6 +970,18 @@ uint8_t APP_Stabilizer_ReadFlowCompensationSnapshot(
 uint8_t APP_Stabilizer_IsArmed(void)
 {
   return stabilizer_capture_armed;
+}
+
+/*
+ * 结构体整体读写，没有 seqlock：全部是 uint8/uint32 标量，撕裂最坏是两个相邻
+ * 周期的字段混在一条报文里——而这些条件本来就在各自变化，混一拍不会得出
+ * 一个"不存在的状态"。为一条 2 Hz 的显示报文加锁反而会把 1 kHz 控制环拖进来。
+ */
+void APP_Stabilizer_GetArmStatus(APP_Stabilizer_ArmStatus *out)
+{
+  if (out != NULL) {
+    *out = stabilizer_arm_status;
+  }
 }
 
 uint8_t APP_Stabilizer_IsImuFrameArmLocked(void)
@@ -1572,6 +1603,13 @@ static void stabilizer_control_prepare(StabilizerContext *ctx,
      * 否则这里会误报成"拨杆没打"，把真正原因藏起来。
      */
     frame->led_arm_block_reason = APP_LED_ARM_BLOCK_IMU;
+  } else if (DRV_Airframe_IsValid() == 0U) {
+    /*
+     * 与上面两档同源、同理由：机体模型无效时 stabilizer_rc_update_armed() 会
+     * 直接把 rc_armed 清零并返回，所以必须排在 rc_armed 判定之前。否则拨杆已打、
+     * 油门已收的正常状态会一路掉进最后的 else，把"没写机体模型"误报成"拨杆没打"。
+     */
+    frame->led_arm_block_reason = APP_LED_ARM_BLOCK_AIRFRAME;
   } else if (frame->rc_armed == 0U) {
     if ((frame->rc_arm_switch_high != 0U) && (frame->rc_arm_throttle_low == 0U)) {
       frame->led_arm_block_reason = APP_LED_ARM_BLOCK_THROTTLE_HIGH;
@@ -1586,6 +1624,31 @@ static void stabilizer_control_prepare(StabilizerContext *ctx,
     frame->led_arm_block_reason = APP_LED_ARM_BLOCK_NONE;
   }
   APP_LED_SetArmStatus(frame->rc_armed, frame->led_arm_block_reason);
+
+  /*
+   * 同一处、同一批数据既点灯也发给上位机。分成两处算的话，灯和屏迟早各说各的，
+   * 而现场判断"为什么解不了锁"恰恰是拿这两个互相印证的。
+   */
+  {
+    APP_Stabilizer_ArmStatus status;
+
+    status.armed = frame->rc_armed;
+    status.block_reason = (uint8_t)frame->led_arm_block_reason;
+    status.rc_link_seen = frame->rc_link_seen;
+    status.rc_link_ok = frame->rc_link_ok;
+    status.arm_switch_high = frame->rc_arm_switch_high;
+    status.throttle_low = frame->rc_arm_throttle_low;
+    status.imu_control_valid = frame->imu_control_valid;
+    status.imu_health_ok = (APP_ImuHealth_IsArmBlocked() == 0U) ? 1U : 0U;
+    status.frame_migration_ok =
+      (APP_Stabilizer_IsImuFrameArmLocked() == 0U) ? 1U : 0U;
+    status.airframe_valid = DRV_Airframe_IsValid();
+    status.servo_cal_idle = (frame->servo_cal_active == 0U) ? 1U : 0U;
+    status.acceptance_idle = (APP_Acceptance_IsActive() == 0U) ? 1U : 0U;
+    status.published = 1U;
+    status.now_ms = frame->now_ms;
+    stabilizer_arm_status = status;
+  }
 }
 
 static void stabilizer_control_compute(StabilizerContext *ctx,

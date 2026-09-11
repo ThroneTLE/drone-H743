@@ -28,6 +28,8 @@ from pathlib import Path
 
 import pytest
 
+from _airframe_fixture import AIRFRAME_FIXTURE_C, AIRFRAME_SOURCE
+
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -47,7 +49,9 @@ def test_gains_are_positive_so_polarity_errors_cannot_be_masked() -> None:
                  "params->attitude.att_kp[1] = 0.0660f / 0.1138f;",
                  "params->rate.kp[0] = 0.1104f;",
                  "params->rate.kp[1] = 0.1138f;",
-                 "params->rate.kp[2] = DRV_AIRFRAME_IZZ_KGM2 * 0.525f;"):
+                 # 2026-09-11：I_zz 从编译期常量改为机体模型运行时取值。系数 0.525
+                 # 是内环带宽，仍然是正的——换的是数据来源，不是符号约定。
+                 "params->rate.kp[2] = DRV_Airframe_Get()->izz_kgm2 * 0.525f;"):
         assert line in source, line
 
     # Magnitude is taken at use, so a negative value entered from the UI cannot
@@ -107,23 +111,31 @@ def test_tilt_moment_polarity_is_derived_from_measured_geometry() -> None:
     挡住"照着现象翻一下试试"——而力矩极性翻错的表现恰好是正反馈，跟增益太
     大很像，很容易被误诊。现在它由重心到推力作用点的实测几何推出：重新量过
     飞机才可能改变它，改代码不行。
+
+    2026-09-11：几何从编译期宏搬到了运行时机体模型（唯一来源是 Flash）。
+    四条性质原样搬过来，一条没删——推导链的形状没变，只是 r_z 现在来自
+    上位机写进去的实测值，代码里连一份副本都没有了。
     """
     source = read("Driver/Src/drv_coax_ctrl.c")
-    model = read("Driver/Inc/drv_airframe_model.h")
+    model = read("Driver/Src/drv_airframe_params.c")
 
-    assert "DRV_AIRFRAME_THRUST_POINT_TO_CG_Z_M" in model
+    assert "thrust_point_to_cg_z_m" in model
     assert (
-        "(DRV_AIRFRAME_THRUST_POINT_Z_M - DRV_AIRFRAME_CG_Z_M)" in model
-    ), "r_z 必须由两个实测常量相减得到"
+        "out->thrust_point_to_cg_z_m = in->thrust_point_z_m - out->cg_z_m;" in model
+    ), "r_z 必须由两个实测值相减得到"
 
-    polarity = source.split("#define DRV_COAX_CTRL_TILT_MOMENT_POLARITY", 1)[1]
-    polarity = polarity.split("\n\n", 1)[0]
-    assert "DRV_AIRFRAME_THRUST_POINT_TO_CG_Z_M" in polarity, (
+    polarity = source.split("static float coax_ctrl_tilt_moment_polarity(void)", 1)[1]
+    polarity = polarity.split("\n}", 1)[0]
+    assert "thrust_point_to_cg_z_m" in polarity, (
         "极性必须引用实测几何，不能写成裸符号"
     )
 
-    # 两轴共用同一个 -r_z 因子，所以只允许有一个极性常量。
-    assert source.count("DRV_COAX_CTRL_TILT_MOMENT_POLARITY *") == 2
+    # 两轴共用同一个 -r_z 因子，所以只允许有一个极性来源。
+    assert source.count("coax_ctrl_tilt_moment_polarity() *") == 2
+
+    # r_z 为零 = 极性无定义。它必须挡住解锁，否则"漏填 thrust_point_z_m"会静默
+    # 翻转俯仰与横滚两轴的极性——这正是本文件要防的那类失效。
+    assert '"airframe.thrust_point_to_cg_z_m",' in model
 
 
 def test_yaw_polarity_is_derived_from_rotor_handedness_and_marked_inferred() -> None:
@@ -131,41 +143,43 @@ def test_yaw_polarity_is_derived_from_rotor_handedness_and_marked_inferred() -> 
 
     分配式 `lower = (ku*F + Mz)/(ku+kl)` 里原本藏着一个没人写出来的假设：
     "加大下桨 = 正偏航"。它等价于断言下桨旋向，属于机械事实，不该以隐含形式
-    存在。现在它由 DRV_AIRFRAME_LOWER_ROTOR_SPIN_SENSE 推出。
+    存在。现在它由机体模型的 lower_rotor_spin_sense 字段推出。
 
-    该常量目前不是量出来的，是从"角速度环高增益抖振（=负反馈）"反推的，所以
+    该值目前不是量出来的，是从"角速度环高增益抖振（=负反馈）"反推的，所以
     这里额外要求注释把这件事说清楚——一个未经实测的值伪装成实测值，比没有这个
     值更危险。
+
+    2026-09-11：旋向从编译期宏变成机体模型里的一个字段。溯源注释必须跟着搬到
+    字段声明处而不是就地删掉——删掉的话这个"反推值"下一任读代码的人就当成
+    实测值了，而那正是本条测试存在的理由。
     """
-    model = read("Driver/Inc/drv_airframe_model.h")
+    model = read("Driver/Inc/drv_airframe_params.h")
     source = read("Driver/Src/drv_coax_ctrl.c")
 
-    assert "DRV_AIRFRAME_LOWER_ROTOR_SPIN_SENSE" in model
+    assert "float lower_rotor_spin_sense;" in model
     # 溯源必须明说是反推、并留下证实/推翻的办法。
-    provenance = model.split("DRV_AIRFRAME_LOWER_ROTOR_SPIN_SENSE", 1)[0]
+    provenance = model.split("float lower_rotor_spin_sense;", 1)[0]
     provenance = provenance[provenance.rindex("/*"):]
     assert "反推" in provenance, "反推值必须标注，不能冒充实测"
     assert "抖振" in provenance, "必须留下推理依据"
     assert "拆桨" in provenance, "必须留下证实/推翻的办法"
 
-    polarity = source.split("#define DRV_COAX_CTRL_YAW_TORQUE_POLARITY", 1)[1]
-    polarity = polarity.split("\n\n", 1)[0]
-    assert "DRV_AIRFRAME_LOWER_ROTOR_SPIN_SENSE" in polarity, (
-        "偏航极性必须引用旋向常量，不能写成裸符号"
+    polarity = source.split("static float coax_ctrl_yaw_torque_polarity(void)", 1)[1]
+    polarity = polarity.split("\n}", 1)[0]
+    assert "lower_rotor_spin_sense" in polarity, (
+        "偏航极性必须引用旋向字段，不能写成裸符号"
     )
     # 分配与"已达成力矩"必须用同一套极性，只改一边等于自己骗自己。
-    assert source.count("DRV_COAX_CTRL_YAW_TORQUE_POLARITY *") == 2
+    assert source.count("coax_ctrl_yaw_torque_polarity() *") == 2
 
 
 # ── runtime checks: physical direction, using the real controller ──
 
-SIGN_HARNESS = r"""
+SIGN_HARNESS = AIRFRAME_FIXTURE_C + r"""
 #include "drv_coax_ctrl.h"
-#include "drv_airframe_model.h"
 
 #include <math.h>
 #include <stdio.h>
-#include <string.h>
 
 #define CHECK(cond, code) do { if (!(cond)) { \
     printf("FAIL %d\n", (code)); return (code); } } while (0)
@@ -173,16 +187,26 @@ SIGN_HARNESS = r"""
 static void base_state(DRV_COAX_CTRL_AttitudeInput *att,
                        DRV_COAX_CTRL_Reference *ref)
 {
+    const DRV_Airframe_Params *airframe = DRV_Airframe_Get();
+
     memset(att, 0, sizeof(*att));
     memset(ref, 0, sizeof(*ref));
     /* Hover-ish: direct attitude mode with manual thrust holding weight. */
     ref->direct_attitude_target_valid = 1U;
     ref->manual_total_force_valid = 1U;
-    ref->manual_total_force_n = DRV_AIRFRAME_MASS_KG * DRV_AIRFRAME_GRAVITY_M_S2;
+    ref->manual_total_force_n = airframe->mass_kg * airframe->gravity_m_s2;
 }
 
 int main(void)
 {
+    /*
+     * The firmware ships with no airframe data, so the control law needs one
+     * installed before any of this means anything.  The fixture reproduces the
+     * previous compile-time constants exactly -- every assertion below keeps
+     * the meaning it had before the model moved to runtime.
+     */
+    airframe_load_reference();
+
     DRV_COAX_CTRL_AttitudeInput att;
     DRV_COAX_CTRL_Reference ref;
     DRV_COAX_CTRL_Output out;
@@ -323,7 +347,7 @@ int main(void)
      * this expectation has to move with it -- which is the whole reason the
      * polarity is derived rather than written down as a sign.
      */
-    CHECK(DRV_AIRFRAME_THRUST_POINT_TO_CG_Z_M < 0.0f, 21);
+    CHECK(DRV_Airframe_Get()->thrust_point_to_cg_z_m < 0.0f, 21);
 
     DRV_COAX_CTRL_GetDefaultParams(&params);
     DRV_COAX_CTRL_SetParams(&params);
@@ -409,10 +433,10 @@ int main(void)
      * thrust to the LOWER rotor.
      *
      * NOTE: that handedness is currently INFERRED, not measured -- see
-     * DRV_AIRFRAME_LOWER_ROTOR_SPIN_SENSE.  This check pins the chain, not
+     * airframe.lower_rotor_spin_sense.  This check pins the chain, not
      * the physical fact.
      */
-    CHECK(DRV_AIRFRAME_LOWER_ROTOR_SPIN_SENSE < 0.0f, 30);
+    CHECK(DRV_Airframe_Get()->lower_rotor_spin_sense < 0.0f, 30);
 
     DRV_COAX_CTRL_GetDefaultParams(&params);
     DRV_COAX_CTRL_SetParams(&params);
@@ -458,6 +482,7 @@ def test_controller_sign_convention_runtime(tmp_path: Path) -> None:
     subprocess.run(
         [gcc, "-std=c11", "-Wall", "-Wextra", "-Werror",
          f"-I{stub_dir}", f"-I{ROOT / 'Driver' / 'Inc'}",
+         str(AIRFRAME_SOURCE),
          str(ROOT / "Driver" / "Src" / "drv_coax_ctrl.c"),
          str(ROOT / "Driver" / "Src" / "drv_position_control.c"),
          str(ROOT / "Driver" / "Src" / "drv_attitude_control.c"),

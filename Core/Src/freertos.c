@@ -74,7 +74,6 @@
 #include "bsp_bus_servo.h"
 #include "bsp_pwm.h"
 #include "bsp_aiwb2_power.h"
-#include "drv_airframe_model.h"
 #include "drv_attitude_fusion.h"
 #include "drv_coax_ctrl.h"
 #include "drv_nav_ekf.h"

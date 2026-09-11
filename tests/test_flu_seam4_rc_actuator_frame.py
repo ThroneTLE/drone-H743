@@ -25,6 +25,9 @@ import subprocess
 import pytest
 
 
+from _airframe_fixture import AIRFRAME_FIXTURE_C, AIRFRAME_SOURCE
+
+
 ROOT = Path(__file__).resolve().parents[1]
 STABILIZER = ROOT / "App" / "Src" / "app_stabilizer.c"
 RC_HEADER = ROOT / "App" / "Inc" / "app_rc_config.h"
@@ -138,12 +141,13 @@ def test_left_stick_reaches_the_flu_controller_with_left_positive_intent(
     )
     harness = tmp_path / "harness.c"
     harness.write_text(
-        r'''#include "drv_coax_ctrl.h"
+        AIRFRAME_FIXTURE_C + r'''#include "drv_coax_ctrl.h"
 #include "app_rc_intent.h"
 #include <stdio.h>
 #include <string.h>
 
 int main(void) {
+  airframe_load_reference();
   DRV_COAX_CTRL_AttitudeInput att;
   DRV_COAX_CTRL_Reference ref;
   DRV_COAX_CTRL_Output out;
@@ -189,6 +193,7 @@ int main(void) {
          f"-I{ROOT / 'App' / 'Inc'}",
          f"-I{ROOT / 'Driver' / 'Inc'}",
          str(RC_INTENT_SOURCE),
+         str(AIRFRAME_SOURCE),
          str(ROOT / "Driver" / "Src" / "drv_coax_ctrl.c"),
          str(ROOT / "Driver" / "Src" / "drv_position_control.c"),
          str(ROOT / "Driver" / "Src" / "drv_attitude_control.c"),

@@ -30,6 +30,9 @@ import re
 import pytest
 
 
+from _airframe_fixture import AIRFRAME_FIXTURE_C, AIRFRAME_SOURCE
+
+
 ROOT = Path(__file__).resolve().parents[1]
 CTRL_SOURCE = ROOT / "Driver" / "Src" / "drv_coax_ctrl.c"
 CTRL_HEADER = ROOT / "Driver" / "Inc" / "drv_coax_ctrl.h"
@@ -135,7 +138,6 @@ def test_header_input_contract() -> None:
 
 HARNESS_TEMPLATE = r"""
 #include "drv_coax_ctrl.h"
-#include "drv_airframe_model.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -157,6 +159,7 @@ int main(void)
     float prev_height = HEIGHT_M[0];
     int i;
 
+    airframe_load_reference();
     DRV_COAX_CTRL_Init();
 
     for (i = 0; i < SAMPLE_COUNT; ++i) {{
@@ -228,7 +231,8 @@ def _build_and_run_z_channel(
     assert gcc is not None
 
     heights, dts = _load_real_height_samples()
-    harness = HARNESS_TEMPLATE.format(
+    # 夹具在 format 之外拼接：模板用 str.format，夹具里的大括号不必再转义一遍。
+    harness = AIRFRAME_FIXTURE_C + HARNESS_TEMPLATE.format(
         heights=", ".join(f"{h:.9f}f" for h in heights),
         dts=", ".join(f"{d:.9f}f" for d in dts),
     )
@@ -245,6 +249,15 @@ def _build_and_run_z_channel(
         "#define BSP_PWM_ESC_MAX_US 2000U\n#endif\n",
         encoding="ascii",
     )
+    # 基线那版源码 include 的是 drv_airframe_model.h（2026-09-11 已删）。这里放
+    # **基线自己的**那份头文件：A/B 两侧各用各的当年定义，比的才是"迁移前后行为
+    # 一不一样"，而不是"我今天怎么补的旧头"。新版源码不 include 它，多放无害。
+    (stub / "drv_airframe_model.h").write_bytes(
+        subprocess.run(
+            ["git", "show", "3a3fa6c8:Driver/Inc/drv_airframe_model.h"],
+            cwd=ROOT, check=True, capture_output=True,
+        ).stdout
+    )
     harness_c = work / "harness.c"
     harness_c.write_text(harness, encoding="ascii")
     executable = work / "harness.exe"
@@ -253,6 +266,7 @@ def _build_and_run_z_channel(
         [gcc, "-std=c11", "-O1", f"-DZ_SIGN={z_sign}",
          f"-I{stub}", f"-I{ROOT / 'Driver' / 'Inc'}",
          str(ctrl),
+         str(AIRFRAME_SOURCE),
          str(ROOT / "Driver" / "Src" / "drv_position_control.c"),
          str(ROOT / "Driver" / "Src" / "drv_attitude_control.c"),
          str(ROOT / "Driver" / "Src" / "drv_rate_control.c"),

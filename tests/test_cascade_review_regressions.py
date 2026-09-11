@@ -9,10 +9,13 @@ from pathlib import Path
 import pytest
 
 
+from _airframe_fixture import AIRFRAME_FIXTURE_C
+
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
-CONTROLLER_HARNESS = r"""
+CONTROLLER_HARNESS = AIRFRAME_FIXTURE_C + r"""
 #include "drv_coax_ctrl.h"
 #include <math.h>
 #include <string.h>
@@ -30,6 +33,7 @@ static DRV_COAX_CTRL_Schedule all_due(void) {
 }
 
 int main(void) {
+    airframe_load_reference();
     DRV_COAX_CTRL_Params p;
     DRV_POSITION_CONTROL_State ps = {0};
     DRV_POSITION_CONTROL_VelocityInput vi = {0};
@@ -133,6 +137,8 @@ def _compile_and_run(tmp_path: Path, source: str) -> subprocess.CompletedProcess
         [gcc, "-std=c11", "-Wall", "-Wextra", "-Werror", f"-I{stub}",
          f"-I{ROOT / 'Driver' / 'Inc'}",
          *(str(ROOT / "Driver" / "Src" / name) for name in (
+             # 机体模型没有编译期默认值，控制律要靠它取质量/惯量/力臂。
+             "drv_airframe_params.c",
              "drv_coax_ctrl.c", "drv_position_control.c",
              "drv_attitude_control.c", "drv_rate_control.c")),
          str(harness), "-lm", "-o", str(exe)],

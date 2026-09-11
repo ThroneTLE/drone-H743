@@ -14,7 +14,6 @@ ROOT = Path(__file__).resolve().parents[1]
 
 HARNESS = r"""
 #include "app_control_config_compat.h"
-#include "drv_airframe_model.h"
 #include <math.h>
 #include <string.h>
 
@@ -42,10 +41,13 @@ int main(void) {
           now.vel_y_kd == 0.0f && now.vel_z_kd == 0.0f, 6);
     CHECK(NEAR(now.rate_roll_kp * now.att_roll_kp, old.roll_angle_kp), 7);
     CHECK(NEAR(now.rate_pitch_kp * now.att_pitch_kp, old.pitch_angle_kp), 8);
-    /* Use the constant, not a literal: the divisor in the migration formula IS
-     * I_zz, so hard-coding it silently drifts whenever the inertia is
-     * re-estimated (this line is what went red when I_zz moved on 2026-09-07). */
-    CHECK(NEAR((now.rate_yaw_kp * now.att_yaw_kp) / DRV_AIRFRAME_IZZ_KGM2,
+    /* The divisor is FROZEN at the I_zz this record format was written with.
+     * It used to track the live constant; since 2026-09-11 the airframe model
+     * is runtime data from Flash, and letting a migration follow it would mean
+     * the same stored bytes decode to a different gain after the aircraft is
+     * re-measured -- a silent handling change with no message. The Python side
+     * cross-checks this literal against the constant in the compat source. */
+    CHECK(NEAR((now.rate_yaw_kp * now.att_yaw_kp) / 0.005f,
                old.yaw_angle_kp), 9);
 
     APP_ControlCoaxTunableParamsV17 v17 = {0};
@@ -119,3 +121,27 @@ def test_cfg_v19_store_is_extracted_and_backward_compatible() -> None:
     assert "APP_ControlConfigStore_Save(&control_config)" in control
     assert "APP_ControlFlashRecordV17" not in control
     assert "pos_z_ki" not in store
+
+
+def test_v18_yaw_migration_divisor_is_frozen_not_the_live_airframe_model() -> None:
+    """迁移必须是确定的函数：同样的字节进去，同样的数出来。
+
+    V18 记录里的 yaw_rate_kd 单位是 1/s，当前记录是 N·m/(rad/s)，两者差一个
+    I_zz。历史上这里直接引用 I_zz 常量——那时它是编译期常量，"跟着它走"没问题。
+    2026-09-11 机体模型改成 Flash 运行时数据之后，再跟着走就意味着：重新量过
+    惯量以后，同一条旧记录会被解成另一个增益，而用户只看到"载入旧配置后手感
+    变了"，没有任何提示。所以这个除数被冻结成字面常量。
+
+    本条测试同时钉两件事：冻结值必须与 harness 里的 0.005f 一致；迁移模块
+    不许再去读运行时机体模型。
+    """
+    compat = (ROOT / "App" / "Src" / "app_control_config_compat.c").read_text(
+        encoding="utf-8"
+    )
+
+    assert "#define APP_CONTROL_COMPAT_V18_YAW_INERTIA_KGM2    0.005f" in compat
+    assert (
+        "current->rate_yaw_kp = APP_CONTROL_COMPAT_V18_YAW_INERTIA_KGM2 *" in compat
+    )
+    assert "DRV_Airframe_" not in compat, "迁移不能跟着运行时机体模型走"
+    assert "drv_airframe_params.h" not in compat

@@ -31,6 +31,9 @@ from pathlib import Path
 import pytest
 
 
+from _airframe_fixture import AIRFRAME_FIXTURE_C, AIRFRAME_SOURCE
+
+
 ROOT = Path(__file__).resolve().parents[1]
 CTRL_SOURCE = ROOT / "Driver" / "Src" / "drv_coax_ctrl.c"
 STABILIZER = ROOT / "App" / "Src" / "app_stabilizer.c"
@@ -44,15 +47,15 @@ def read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-AB_HARNESS = r"""
+AB_HARNESS = AIRFRAME_FIXTURE_C + r"""
 #include "drv_coax_ctrl.h"
-#include "drv_airframe_model.h"
 
 #include <stdio.h>
 #include <string.h>
 
 int main(void)
 {
+    airframe_load_reference();
     DRV_COAX_CTRL_AttitudeInput att;
     DRV_COAX_CTRL_Reference ref;
     DRV_COAX_CTRL_Output out;
@@ -69,7 +72,7 @@ int main(void)
             ref.direct_attitude_target_valid = 1U;
             ref.manual_total_force_valid = 1U;
             ref.manual_total_force_n =
-                DRV_AIRFRAME_MASS_KG * DRV_AIRFRAME_GRAVITY_M_S2;
+                DRV_Airframe_Get()->mass_kg * DRV_Airframe_Get()->gravity_m_s2;
 
             att.roll_rad  = grid[a];
             att.pitch_rad = grid[b];
@@ -92,9 +95,8 @@ int main(void)
 """
 
 
-OUTER_LOOP_HARNESS = r"""
+OUTER_LOOP_HARNESS = AIRFRAME_FIXTURE_C + r"""
 #include "drv_coax_ctrl.h"
-#include "drv_airframe_model.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -142,6 +144,7 @@ static void quietest(float ax, float ay, float *best_pitch, float *best_roll)
 
 int main(void)
 {
+    airframe_load_reference();
     DRV_COAX_CTRL_Params params;
     float pitch, roll;
 
@@ -191,6 +194,7 @@ def _build_and_run(tmp_path: Path, tag: str, source_text: str,
         [gcc, "-std=c11", "-O1",
          f"-I{stub}", f"-I{ROOT / 'Driver' / 'Inc'}",
          str(ctrl),
+         str(AIRFRAME_SOURCE),
          str(ROOT / "Driver" / "Src" / "drv_position_control.c"),
          str(ROOT / "Driver" / "Src" / "drv_attitude_control.c"),
          str(ROOT / "Driver" / "Src" / "drv_rate_control.c"),
@@ -364,15 +368,15 @@ def test_only_the_arm_lock_knows_about_flu(tmp_path: Path) -> None:
 # sign constant, so check (don't casually fix) whether it enters the
 # geometry with a sign consistent with FLU.  "Write down whatever you find."
 
-YAW_HARNESS = r"""
+YAW_HARNESS = AIRFRAME_FIXTURE_C + r"""
 #include "drv_coax_ctrl.h"
-#include "drv_airframe_model.h"
 
 #include <stdio.h>
 #include <string.h>
 
 int main(void)
 {
+    airframe_load_reference();
     DRV_COAX_CTRL_AttitudeInput att;
     DRV_COAX_CTRL_Reference ref;
     DRV_COAX_CTRL_Output out;
@@ -390,7 +394,7 @@ int main(void)
         memset(&ref, 0, sizeof(ref));
         ref.direct_attitude_target_valid = 1U;
         ref.manual_total_force_valid = 1U;
-        ref.manual_total_force_n = DRV_AIRFRAME_MASS_KG * DRV_AIRFRAME_GRAVITY_M_S2;
+        ref.manual_total_force_n = DRV_Airframe_Get()->mass_kg * DRV_Airframe_Get()->gravity_m_s2;
         att.yaw_rad = yaw;
 
         DRV_COAX_CTRL_Run(&att, &ref, &out);

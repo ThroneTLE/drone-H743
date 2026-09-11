@@ -4,17 +4,18 @@
 
 Read this shard only when you need existing behavioral/architecture coverage or must choose focused regression tests.
 
-Source snapshot: `0cf82d391ae7`. Indexed files: 158.
+Source snapshot: `18b9fc1f8607`. Indexed files: 159.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
+| `tests/_airframe_fixture.py` | 宿主测试共用的参考机体。 为什么需要它：2026-09-11 起机体模型的**唯一来源是 Flash**，固件里一个默认值 都没有（Driver/Inc/drv_airframe_params.h）。好处是不会再有两份互相打架的机体 数据… | — |
 | `tests/_micoair_hostfakes.py` | 宿主侧编译真实固件源码用的最小 HAL 替身。 为什么要有这个文件： tests/ 里绝大多数契约测试要么是纯函数（drv_*_tables.c），要么是读源码正则。 但 2026-09-10 那轮审计发现的四个缺陷都不在这两类里——它们… | `write_fakes` (+1) |
 | `tests/conftest.py` | 离线测试套件的全局硬件护栏与状态隔离。 两条路都要堵，而且必须在**收集之前**就装上： * 物理串口 —— `serial.Serial.open` * 烧录 / 调试探针 —— `subprocess.Popen`（openocd /… | `pytest_configure` (+4) |
 | `tests/data.txt` | — | — |
 | `tests/golden/telem_frames_v2.bin` | — | — |
 | `tests/test_acceptance_v2_runtime_contract.py` | — | `test_v2a_lease_and_esc_fail_safe_are_target_owned` (+2) |
 | `tests/test_action_contract.py` | Contract tests for the Action safety state machine (``App/Src/app_action.c``). An Action is any task that spans time an… | `test_01_armed_interlock_refuses_to_start` (+16) |
-| `tests/test_airframe_model_contract.py` | — | `test_airframe_constants_capture_measured_tether_geometry` (+5) |
+| `tests/test_airframe_model_contract.py` | — | `test_measured_airframe_geometry_has_no_compile_time_copy_left` (+6) |
 | `tests/test_airframe_params.py` | 机体模型运行时参数的契约（2026-09-11 立）。 为什么值得单独一套测试：这些数**直接进控制律**——质量、惯量、力臂、推力点到重心的 距离。填错一个不会编译失败、不会报错，只会让每一条力矩换算都偏掉，而症状要等飞起来 才出现，那… | `test_airframe_params_contract` |
 | `tests/test_aiwb2_prompt_contract.py` | — | `test_aiwb2_prompt_symbol_is_preserved_for_transparent_entry` (+4) |
 | `tests/test_attitude_fusion_contract.py` | — | `test_xio_fusion_is_vendored_and_replaces_height_gated_attitude` (+1) |
@@ -28,7 +29,7 @@ Source snapshot: `0cf82d391ae7`. Indexed files: 158.
 | `tests/test_coax_ctrl_contract.py` | — | `test_servo_output_compensates_90_degree_ccw_mounting` (+16) |
 | `tests/test_coax_sign_convention.py` | Sign-convention self-check for the coaxial attitude controller. This is a legacy runtime-adapter test, not the canonica… | `test_gains_are_positive_so_polarity_errors_cannot_be_masked` (+6) |
 | `tests/test_coax_yaw_so3_contract.py` | 偏航并入 SO(3) 控制律的契约。 偏航 PD（2026-07-24，`85a5cacb`）比 SO(3) 控制器（2026-07-25，`2d1d2cd2`）早一天， 当天的设计记录 §1 明写「Z 高度环、偏航控制和双电机推力分配保… | `test_yaw_is_produced_by_the_so3_law_not_a_separate_pd` (+1) |
-| `tests/test_control_config_v19.py` | CFG V19 cascade migration contract; synthetic records are unit tests only | `test_v18_v17_v15_migration_math_on_host` (+1) |
+| `tests/test_control_config_v19.py` | CFG V19 cascade migration contract; synthetic records are unit tests only | `test_v18_v17_v15_migration_math_on_host` (+2) |
 | `tests/test_control_loop_blocking_contract.py` | S6 control contracts | `test_no_blocking` (+5) |
 | `tests/test_control_scheduler.py` | — | `test_control_scheduler_host_harness` (+1) |
 | `tests/test_controller_cascade_analysis.py` | — | `test_report_refuses_old_or_unknown_frame_logs` |

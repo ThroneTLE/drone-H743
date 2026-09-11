@@ -9,10 +9,13 @@ from pathlib import Path
 import pytest
 
 
+from _airframe_fixture import AIRFRAME_FIXTURE_C
+
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
-HARNESS = r"""
+HARNESS = AIRFRAME_FIXTURE_C + r"""
 #include "drv_coax_ctrl.h"
 #include <math.h>
 #include <string.h>
@@ -20,6 +23,7 @@ HARNESS = r"""
 #define CHECK(x,n) do { if (!(x)) return (n); } while (0)
 
 int main(void) {
+    airframe_load_reference();
     DRV_COAX_CTRL_AttitudeInput a = {0};
     DRV_COAX_CTRL_Reference r = {0};
     DRV_COAX_CTRL_Schedule s = {0};
@@ -118,6 +122,8 @@ def test_scheduled_cascade_and_allocator_feedback_on_host(tmp_path: Path) -> Non
     exe = tmp_path / "cascade.exe"
     harness.write_text(HARNESS, encoding="ascii")
     sources = [
+        # 机体模型没有编译期默认值，控制律要靠它取质量/惯量/力臂。
+        "drv_airframe_params.c",
         "drv_coax_ctrl.c",
         "drv_position_control.c",
         "drv_attitude_control.c",

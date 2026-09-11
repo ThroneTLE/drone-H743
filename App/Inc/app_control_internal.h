@@ -82,7 +82,11 @@ uint32_t app_control_param_count_any(void);
 const char *app_control_param_name_any(uint32_t index);
 uint8_t app_control_param_get_any(const char *name, float *value);
 uint8_t app_control_param_set_any(const char *name, float value);
-void app_control_report_airframe_model(void);
+void app_control_report_airframe_record(void);
+
+/* ARM 命令族（App/Src/app_cmd_arm.c）：解锁状态与被拒原因。 */
+void app_control_report_arm(void);
+uint8_t app_control_req_arm(uint32_t id, const char *mod, const char *op);
 
 /*
  * 通用探针命令族（App/Src/app_cmd_probe.c）：MEM / SPI / I2C / UART。

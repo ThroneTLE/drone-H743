@@ -74,12 +74,15 @@ static const uint32_t airframe_table_count =
  * 哪些字段必须非零才算"可飞"。
  *
  * 只列**零值会让控制律失去物理意义**的那些：质量出现在每一条力/加速度换算里，
- * 三个惯量是角加速度换算的分母，力臂为零意味着倾转produces不出力矩，
+ * 三个惯量是角加速度换算的分母，力臂为零意味着倾转产生不出力矩，
  * 重力为零则悬停前馈整体塌掉。几何记账类（系留、舵机轴位置）不参与控制，
  * 缺了不该拦住起飞——把它们也列进来只会逼人填假数据。
  *
- * 推力点到重心的距离不在此列：它**可以**为零（推力正好过重心），
- * 那是一种合法的构型，不是缺数据。
+ * `thrust_point_to_cg_z_m` 也在此列，而且是最要紧的一条：它是 τ = r × F 里的
+ * r_z，**倾转力矩的符号完全由它的正负决定**。为零时符号没有定义。更危险的是
+ * 漏填的样子——thrust_point_z_m 留空、重心算出来是负的，r_z 就变成正值，
+ * 俯仰和横滚极性同时翻转，整条姿态环从负反馈变成正反馈。那不是"少填一项"，
+ * 是起飞即翻。所以宁可拒绝解锁，也不能让它带着默认零值放行。
  */
 static const char *airframe_check_nonzero[] = {
     "airframe.mass_kg",
@@ -91,6 +94,7 @@ static const char *airframe_check_nonzero[] = {
     "airframe.pitch_thrust_lever_arm_m",
     "airframe.roll_thrust_lever_arm_m",
     "airframe.lower_rotor_spin_sense",
+    "airframe.thrust_point_to_cg_z_m",
 };
 
 static const DRV_Airframe_Entry *airframe_find(const char *name)
@@ -183,7 +187,15 @@ void DRV_Airframe_ComputeDerived(const DRV_Airframe_Params *in,
 
     out->weight_n = out->mass_kg * in->gravity_m_s2;
 
-    /* tau = r x F 里的 r。推力挂在板子下方，所以它通常是负的——倾转力矩的符号由它定。 */
+    /*
+     * tau = r x F 里的 r_z，**倾转力矩的符号只由它定**。
+     *
+     * 它必须是两个实测量相减，而不是一个可以单独写下来的符号常量：符号常量
+     * 能被"照着现象翻一下试试"改掉，而力矩极性翻错的表现（正反馈）和增益过大
+     * 很像，很容易被误诊成调参问题。写成减法之后，想改它只能重新量飞机。
+     *
+     * 推力挂在板子下方，所以这架飞机上它是负的。
+     */
     out->thrust_point_to_cg_z_m = in->thrust_point_z_m - out->cg_z_m;
 
     out->tether_attach_to_cg_m = in->tether_attach_z_m - out->cg_z_m;

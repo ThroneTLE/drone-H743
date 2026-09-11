@@ -4,7 +4,7 @@
 
 Read this shard only when the task touches application behavior, RTOS task bodies, control flow, diagnostics, commands, or synchronous services.
 
-Source snapshot: `a68c1b2e9f94`. Indexed files: 115.
+Source snapshot: `f3db8ce5a4f5`. Indexed files: 116.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -16,6 +16,7 @@ Source snapshot: `a68c1b2e9f94`. Indexed files: 115.
 | `App/Inc/app_baro.h`<br>`App/Src/app_baro.c` | Application behavior and task-facing logic for baro | `APP_Baro_ReportStartup`, `APP_Baro_GetStatus`, `APP_Baro_ReadSnapshot` |
 | `App/Inc/app_boot.h`<br>`App/Src/app_boot.c` | Application behavior and task-facing logic for boot | `APP_Boot_Init`, `APP_Boot_TryRomDfu`, `APP_Boot_EvaluateSafety`, `APP_Boot_IsVectorReasonable`, `APP_Boot_IsSnapshotFresh`, `APP_Boot_HasSequenceAdvanced` (+5) |
 | `App/Src/app_cmd_airframe.c` | Application behavior and task-facing logic for cmd airframe | `DRV_COAX_CTRL_GetParam`, `DRV_COAX_CTRL_SetParam` |
+| `App/Src/app_cmd_arm.c` | Application behavior and task-facing logic for cmd arm | — |
 | `App/Src/app_cmd_diag.c` | Application behavior and task-facing logic for cmd diag | — |
 | `App/Src/app_cmd_flow.c` | Application behavior and task-facing logic for cmd flow | `APP_Stabilizer_ReadFlowCompensationSnapshot` |
 | `App/Src/app_cmd_imucal.c` | Application behavior and task-facing logic for cmd imucal | `APP_FlightCalibration_ReadActive`, `SVC_Param_IsDirty`, `APP_Sensor_GetFluOrientation`, `APP_FlightCalibration_MergeV1Candidate`, `APP_FlightCalibration_PublishPreview`, `APP_FlightCalibration_UploadExpire` (+1) |
@@ -60,7 +61,7 @@ Source snapshot: `a68c1b2e9f94`. Indexed files: 115.
 | `App/Inc/app_servo_feedback_bench.h`<br>`App/Src/app_servo_feedback_bench.c` | Application behavior and task-facing logic for servo feedback bench | `APP_ServoFeedbackBench_Init`, `APP_ServoFeedbackBench_Start`, `APP_ServoFeedbackBench_StartSweep`, `APP_ServoFeedbackBench_StartStep`, `APP_ServoFeedbackBench_Stop`, `APP_ServoFeedbackBench_ReportStatus` (+5) |
 | `App/Inc/app_servo_jog.h`<br>`App/Src/app_servo_jog.c` | Application behavior and task-facing logic for servo jog | `APP_ServoJog_Init`, `APP_ServoJog_HandleCommand`, `APP_ServoJog_Request`, `APP_ServoJog_RequestImmediate`, `APP_ServoJog_ReleaseAll`, `APP_ServoJog_IsActive` (+3) |
 | `App/Inc/app_servo_type.h`<br>`App/Src/app_servo_type.c` | Application behavior and task-facing logic for servo type | `APP_ServoType_IsValid`, `APP_ServoType_Name`, `APP_ServoType_FromName`, `APP_ServoType_ResetActive`, `APP_ServoType_PublishActive`, `APP_ServoType_GetActive` (+1) |
-| `App/Inc/app_stabilizer.h`<br>`App/Src/app_stabilizer.c` | Application behavior and task-facing logic for stabilizer | `APP_Stabilizer_LatchImuFault`, `APP_Stabilizer_ClearImuFault`, `APP_Stabilizer_MarkImuSample`, `APP_Stabilizer_ReadVofaDebug`, `APP_Stabilizer_ReadValidationImuSnapshot`, `APP_Stabilizer_ReadFlowCompensationSnapshot` (+7) |
+| `App/Inc/app_stabilizer.h`<br>`App/Src/app_stabilizer.c` | Application behavior and task-facing logic for stabilizer | `APP_Stabilizer_LatchImuFault`, `APP_Stabilizer_ClearImuFault`, `APP_Stabilizer_MarkImuSample`, `APP_Stabilizer_ReadVofaDebug`, `APP_Stabilizer_ReadValidationImuSnapshot`, `APP_Stabilizer_ReadFlowCompensationSnapshot` (+8) |
 | `App/Inc/app_tasks.h`<br>`App/Src/app_tasks.c` | Application behavior and task-facing logic for tasks | `APP_Task_LED_Init`, `APP_Task_LED_Step`, `APP_Task_GPS_Init`, `APP_Task_GPS_Step`, `APP_Task_OpticalFlow_Init`, `APP_Task_OpticalFlow_Step` (+10) |
 | `App/Inc/app_telem_frame.h`<br>`App/Src/app_telem_frame.c` | Application behavior and task-facing logic for telem frame | `APP_TelemFrame_PopCount`, `APP_TelemFrame_HeaderBytes`, `APP_TelemFrame_PayloadLength`, `APP_TelemFrame_Encode` |
 | `App/Src/app_telem_port.c` | Application behavior and task-facing logic for telem port | `APP_TelemStream_PortNowUs`, `APP_TelemStream_PortDelayMs`, `APP_TelemStream_PortServiceExports`, `APP_IMU_Capture_IsExportActive`, `APP_FlightLog_IsExportActive`, `APP_TelemStream_PortUsbReady` (+6) |

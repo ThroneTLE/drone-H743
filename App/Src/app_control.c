@@ -40,7 +40,6 @@
 #include "bsp_imu.h"
 #include "bsp_pwm.h"
 #include "bsp_uart.h"
-#include "drv_airframe_model.h"
 #include "drv_coax_ctrl.h"
 #include "drv_frame_contract.h"
 #include "drv_motor.h"
@@ -1485,47 +1484,8 @@ static void app_control_report_params(void)
     }
 }
 
-static void app_control_report_airframe(void)
-{
-    char mass_kg[24];
-    char cg_z_m[24];
-    char imu_z_m[24];
-    char attach_z_m[24];
-    char attach_to_cg_m[24];
-    char rope_m[24];
-    char rod_to_cg_m[24];
-    char servo_deg_per_us[24];
-    char servo_us_per_deg[24];
-    char max_force_n[24];
-    char hover_pct[24];
-
-    app_control_format_float(DRV_AIRFRAME_MASS_KG, mass_kg, (uint32_t)sizeof(mass_kg));
-    app_control_format_float(DRV_AIRFRAME_CG_Z_M, cg_z_m, (uint32_t)sizeof(cg_z_m));
-    app_control_format_float(DRV_AIRFRAME_IMU_Z_M, imu_z_m, (uint32_t)sizeof(imu_z_m));
-    app_control_format_float(DRV_AIRFRAME_TETHER_ATTACH_Z_M, attach_z_m, (uint32_t)sizeof(attach_z_m));
-    app_control_format_float(DRV_AIRFRAME_TETHER_ATTACH_TO_CG_M, attach_to_cg_m, (uint32_t)sizeof(attach_to_cg_m));
-    app_control_format_float(DRV_AIRFRAME_TETHER_ROPE_M, rope_m, (uint32_t)sizeof(rope_m));
-    app_control_format_float(DRV_AIRFRAME_TETHER_ROD_TO_CG_M, rod_to_cg_m, (uint32_t)sizeof(rod_to_cg_m));
-    app_control_format_float(DRV_AIRFRAME_SERVO_DEG_PER_US, servo_deg_per_us, (uint32_t)sizeof(servo_deg_per_us));
-    app_control_format_float(DRV_AIRFRAME_SERVO_US_PER_DEG, servo_us_per_deg, (uint32_t)sizeof(servo_us_per_deg));
-    app_control_format_float(DRV_AIRFRAME_MAX_TOTAL_FORCE_N, max_force_n, (uint32_t)sizeof(max_force_n));
-    app_control_format_float(DRV_AIRFRAME_HOVER_THRUST_PERCENT, hover_pct, (uint32_t)sizeof(hover_pct));
-
-    app_control_queue_proto_text(APP_PROTO_MSG_AIRFRAME_RECORD,
-                                 "AIRFRAME mass_kg=%s cg_z_m=%s imu_z_m=%s tether_attach_z_m=%s tether_attach_to_cg_m=%s rope_m=%s rod_to_cg_m=%s servo_deg_per_us=%s servo_us_per_deg=%s thrust_scope=%s max_total_force_n=%s hover_thrust_pct=%s\r\n",
-                                 mass_kg,
-                                 cg_z_m,
-                                 imu_z_m,
-                                 attach_z_m,
-                                 attach_to_cg_m,
-                                 rope_m,
-                                 rod_to_cg_m,
-                                 servo_deg_per_us,
-                                 servo_us_per_deg,
-                                 DRV_AIRFRAME_THRUST_TABLE_SCOPE,
-                                 max_force_n,
-                                 hover_pct);
-}
+/* 报文体在 App/Src/app_cmd_airframe.c——机体数据已改为运行时读取。 */
+#define app_control_report_airframe() app_control_report_airframe_record()
 
 
 

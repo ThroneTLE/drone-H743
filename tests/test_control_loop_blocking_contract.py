@@ -216,7 +216,10 @@ STEP_D4_SYSTEM_BODY_SHA256 = {
     "app_control_report_wifi": "0f79bf2ce5d31bcd9a87db2699ed26f434646331f458b025c0d2932fda74bba4",
     "app_control_report_task_stack": "3b031570d95dbeb1945322c62b579aea15cf1be23552d8914372d43386a08f7b",
     "app_control_report_rtos": "db1ad86880a7e398f9dc5e0ec2e8d0a119b43b3b2e045adec19f010f2f7216de",
-    "app_control_report_modules": "ef4a910aefdb3e805b29a55c9ad782b61b17217372e671b36bea5c7e6f3879b5",
+    # 2026-09-11：MODULES 之后跟发一条 ARM 状态行。MODULES 是上位机连上必发的
+    # 那条，横幅因此第一次刷新就有内容，不用等自己的 2 Hz 轮询转到。
+    # 报文体本身在 App/Src/app_cmd_arm.c，这里只是多了一个调用，不是 D4 搬家走样。
+    "app_control_report_modules": "2f5b5ad4a5525a21b1734d7de6cd8b56da57da8e1c7b038b4bd6a74853b3b8f7",
     "app_control_report_status": "a78f2d54a89071eaf96634d556361154a5371d6c84f30550d228e818ed34e578",
     "app_control_report_usb_cdc_stats": "7cc8a758ff5d3e9c184f30338ef9955b6e0383e8a15329f32303ef42ea1f0f9c",
     "app_control_report_uart_stats": "a007f9a28d3078df665affa2edbd4095c1891700263f8d89b20959e7155c9627",
@@ -236,10 +239,11 @@ STEP_D4_DIAG_BODY_SHA256 = {
     "app_control_req_icm42688": "4805915e544657f7d537d4fdea16dcb098b786620f8b9b0bf060bd83edbefe84",
     "app_control_req_m9n": "6768cfd5dfe511c1ef7cb3422461425b15a50c63832632778f48b4df9b181c58",
     "app_control_req_mag": "5c1993ac6286decfbc1c87fddcd66da1e0942c900c31d24ea43b651f62c02f01",
-    # 2026-09-11：新增 IMUSEL 与通用探针（MEM/SPI/I2C/UART）两个分发分支，处理体分别在
-    # App/Src/app_cmd_imusel.c 与 app_cmd_probe.c，此处只多两个分支；另有 WIFI 分支里
-    # pin=PC6 → pin=none 的口径修正。均为授权改动，不是 D4 搬家走样。
-    "app_control_handle_req": "0f8692d5887c8f0329999dd23e6d0990972859ba6e0ebb81fb1c68a4d27f22c5",
+    # 2026-09-11：新增 IMUSEL、通用探针（MEM/SPI/I2C/UART）与 ARM 三个分发分支，
+    # 处理体分别在 App/Src/app_cmd_imusel.c、app_cmd_probe.c、app_cmd_arm.c，
+    # 此处只多三个分支；另有 WIFI 分支里 pin=PC6 → pin=none 的口径修正。
+    # 均为授权改动，不是 D4 搬家走样。
+    "app_control_handle_req": "793f1fddff7d7f0d79daaa38752ea9be3a133e4a43ade56690aaa3a0cdfffbbc",
 }
 STEP_D4_PROTECTED_LEGACY_BODY_SHA256 = {
     "app_control_report_config": "c9d30f2565e2de3830fcaca89e6f8d86f163431bb079893d44779bf414a75164",

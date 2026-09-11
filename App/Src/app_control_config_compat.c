@@ -1,7 +1,5 @@
 #include "app_control_config_compat.h"
 
-#include "drv_airframe_model.h"
-
 #include <math.h>
 #include <stddef.h>
 #include <string.h>
@@ -20,6 +18,17 @@
  * 默认值上方）。
  */
 #define APP_CONTROL_COMPAT_ANGULAR_ACCEL_LPF_HZ    3.0f
+
+/*
+ * V18 记录里的 yaw_rate_kd 单位是"1/s"，当前记录的 rate_yaw_kp 单位是"N·m/(rad/s)"，
+ * 两者相差一个 I_zz。这里写死 0.005 —— **不能**改成读运行时机体模型。
+ *
+ * 理由：迁移描述的是"这条旧记录当年是按哪个 I_zz 写下来的"，那是一件历史事实。
+ * 若改成运行时取值，同一条 V18 记录在换过电池、重新量过惯量之后会被换算成
+ * 另一个增益，而用户看到的只是"载入旧配置后飞机手感变了"，没有任何提示。
+ * 迁移必须是确定的函数：同样的字节进去，同样的数出来。
+ */
+#define APP_CONTROL_COMPAT_V18_YAW_INERTIA_KGM2    0.005f
 #define APP_CONTROL_COMPAT_ROLL_PITCH_RATE_RAD_S  3.49065850f
 #define APP_CONTROL_COMPAT_YAW_RATE_RAD_S          1.04719758f
 
@@ -88,7 +97,7 @@ uint8_t APP_ControlConfigCompat_V18ToCurrent(
     /* New I/D defaults are zero; legacy pos_z_ki has different units. */
     current->rate_roll_kp = compat_positive(legacy->roll_rate_kd);
     current->rate_pitch_kp = compat_positive(legacy->pitch_rate_kd);
-    current->rate_yaw_kp = DRV_AIRFRAME_IZZ_KGM2 *
+    current->rate_yaw_kp = APP_CONTROL_COMPAT_V18_YAW_INERTIA_KGM2 *
                            compat_positive(legacy->yaw_rate_kd);
     current->att_roll_kp = compat_ratio(legacy->roll_angle_kp,
                                         current->rate_roll_kp, 0.0f);

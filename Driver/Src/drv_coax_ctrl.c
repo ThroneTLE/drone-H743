@@ -1,7 +1,7 @@
 #include "drv_coax_ctrl.h"
 
 #include "bsp_pwm.h"
-#include "drv_airframe_model.h"
+#include "drv_airframe_params.h"
 
 #include <math.h>
 #include <stddef.h>
@@ -47,7 +47,7 @@
 /*  （见 drv_frame_contract.h），无需额外补偿。                             */
 /*                                                                        */
 /*  出口口径：力矩 → 倾转 → 舵机这一段的符号也不再是常量开关。倾转到力矩的 */
-/*  极性由实测几何推出（DRV_COAX_CTRL_TILT_MOMENT_POLARITY），倾转到舵机的  */
+/*  极性由实测几何推出（coax_ctrl_tilt_moment_polarity），倾转到舵机的  */
 /*  90° 机构映射是固定运动学（coax_ctrl_body_tilt_to_servo_tilts），唯一    */
 /*  可变量是上位机机械标定写进来的 ServoCalibration。                       */
 /* ════════════════════════════════════════════════════════════════════════ */
@@ -99,8 +99,8 @@
  *     τ_roll  = -r_z * F_y = -r_z * T * sin(body_y_tilt)
  *     τ_pitch =  r_z * F_x = -r_z * T * sin(body_x_tilt)
  * 两轴共用同一个因子 -r_z，所以极性必然同号，不存在"一轴正一轴负"的组合。
- * DRV_AIRFRAME_THRUST_POINT_TO_CG_Z_M < 0（推力作用点在重心下方），因此极性
- * 为 +1：正倾转产生正的 FLU 力矩。
+ * thrust_point_to_cg_z_m < 0（推力作用点在重心下方），因此极性为 +1：
+ * 正倾转产生正的 FLU 力矩。
  *
  * 拿飞机而不是拿代码复核一遍：推力作用点在重心下方，把推力倒向左边等于把
  * 机体下半部往左推，上半部就往右倒——右翼下沉，按 drv_frame_contract.h 正是
@@ -108,9 +108,22 @@
  *
  * 只有符号来自几何；力臂与 EFFECTIVENESS 的**大小**来自 2026-07-25 的系统
  * 辨识，两者职责不同，不要用调大小的理由去动符号。
+ *
+ * 2026-09-11：由编译期宏改为运行时取值。上游 r_z 现在来自上位机写进 Flash 的
+ * 实测几何（DRV_Airframe_ComputeDerived 用 thrust_point_z_m − cg_z_m 算出），
+ * 不再是头文件里的常量。这不改变推导，只是把"重新量过飞机才能改"从口头约定
+ * 变成了机制——代码里已经没有第二份可以被随手改掉的副本了。
  */
-#define DRV_COAX_CTRL_TILT_MOMENT_POLARITY \
-    ((DRV_AIRFRAME_THRUST_POINT_TO_CG_Z_M < 0.0f) ? 1.0f : -1.0f)
+static float coax_ctrl_tilt_moment_polarity(void)
+{
+    /*
+     * r_z == 0 物理上是"推力正好过重心"：倾转产生不了力矩，极性**没有定义**。
+     * 这里仍返回 -1（与历史宏在 r_z==0 时逐位一致），但那不是在替"还没量"
+     * 的情况编一个方向——DRV_Airframe_FirstInvalidName() 已把 r_z 为零列为
+     * 不合格项，解锁在更前面就被挡住了。
+     */
+    return (DRV_Airframe_Get()->thrust_point_to_cg_z_m < 0.0f) ? 1.0f : -1.0f;
+}
 
 /*
  * 偏航力矩极性。和倾转极性一样，它不是可调符号，而是由桨的旋向推出来的。
@@ -123,12 +136,15 @@
  *     Mz = +(kl*T_lower - ku*T_upper)
  * ——正偏航力矩靠**加大下桨**推力获得。
  *
- * ⚠ 上游的 DRV_AIRFRAME_LOWER_ROTOR_SPIN_SENSE 目前是**反推值**（依据见该处
- * 注释），所以这条链在拆桨看一眼之前只是自洽，不算实测确认。要改只改那个
- * 常量，本文件与遥控映射都不该动。
+ * ⚠ 上游的 airframe.lower_rotor_spin_sense 目前是**反推值**（推理链与证实办法
+ * 见 Driver/Inc/drv_airframe_params.h 该字段的注释），所以这条链在拆桨看一眼
+ * 之前只是自洽，不算实测确认。要改只改那一个字段（上位机机体模型页），
+ * 本文件与遥控映射都不该动。
  */
-#define DRV_COAX_CTRL_YAW_TORQUE_POLARITY \
-    (-DRV_AIRFRAME_LOWER_ROTOR_SPIN_SENSE)
+static float coax_ctrl_yaw_torque_polarity(void)
+{
+    return -DRV_Airframe_Get()->lower_rotor_spin_sense;
+}
 #define DRV_COAX_CTRL_HORIZONTAL_ACCEL_LIMIT_M_S2 3.70f
 #define DRV_COAX_CTRL_VEL_D_ACCEL_LIMIT_M_S2 3.70f
 #define DRV_COAX_CTRL_POS_Z_I_ACCEL_LIMIT_M_S2 1.50f
@@ -313,8 +329,8 @@ static float coax_ctrl_norm3(const float value[3])
 static float coax_ctrl_roll_moment_from_tilt(float total_force_n,
                                              float beta_rad)
 {
-    /* 极性由几何推出（见 DRV_COAX_CTRL_TILT_MOMENT_POLARITY），不是经验值。 */
-    return DRV_COAX_CTRL_TILT_MOMENT_POLARITY *
+    /* 极性由几何推出（见 coax_ctrl_tilt_moment_polarity），不是经验值。 */
+    return coax_ctrl_tilt_moment_polarity() *
            DRV_COAX_CTRL_ROLL_EFFECTIVENESS *
            coax_ctrl_params.roll_tilt_lever_arm_m *
            total_force_n *
@@ -326,7 +342,7 @@ static float coax_ctrl_pitch_moment_from_tilt(float total_force_n,
                                               float beta_rad)
 {
     /* 与 roll 共用同一个 -r_z 因子，因此必然同号。 */
-    return DRV_COAX_CTRL_TILT_MOMENT_POLARITY *
+    return coax_ctrl_tilt_moment_polarity() *
            DRV_COAX_CTRL_PITCH_EFFECTIVENESS *
            coax_ctrl_params.pitch_tilt_lever_arm_m *
            total_force_n *
@@ -608,17 +624,27 @@ static uint8_t coax_ctrl_params_valid(const DRV_COAX_CTRL_Params *params)
     return 1U;
 }
 
+/*
+ * 把机体模型里的物理量复制进 params。它们**不是可调参数**：改它们要拿秤和尺
+ * 重新量，然后从上位机机体模型页写进 Flash，而不是在调参页拖滑块。
+ *
+ * 每次 SetParams/GetDefaultParams/GetParams/Run 都重刷一遍，代价是七个 float
+ * 赋值。这样机体模型一改立刻生效，不存在"改了模型但控制律还在用旧质量"
+ * 这种只能靠重启才发现的中间态。
+ */
 static void coax_ctrl_apply_fixed_model_params(DRV_COAX_CTRL_Params *params)
 {
+    const DRV_Airframe_Params *airframe = DRV_Airframe_Get();
+
     if (params == NULL) {
         return;
     }
 
-    params->mass_kg = DRV_AIRFRAME_MASS_KG;
-    params->gravity_m_s2 = DRV_AIRFRAME_GRAVITY_M_S2;
-    params->pitch_tilt_lever_arm_m = DRV_AIRFRAME_PITCH_THRUST_LEVER_ARM_M;
-    params->roll_tilt_lever_arm_m = DRV_AIRFRAME_ROLL_THRUST_LEVER_ARM_M;
-    params->yaw_inertia = DRV_AIRFRAME_IZZ_KGM2;
+    params->mass_kg = airframe->mass_kg;
+    params->gravity_m_s2 = airframe->gravity_m_s2;
+    params->pitch_tilt_lever_arm_m = airframe->pitch_thrust_lever_arm_m;
+    params->roll_tilt_lever_arm_m = airframe->roll_thrust_lever_arm_m;
+    params->yaw_inertia = airframe->izz_kgm2;
     params->motor_single_max_thrust_n = DRV_COAX_CTRL_SINGLE_MAX_THRUST_N;
     params->yaw_torque_upper_m_per_n = DRV_COAX_CTRL_PROP9047_YAW_M_PER_N;
     params->yaw_torque_lower_m_per_n = DRV_COAX_CTRL_PROP9047_YAW_M_PER_N;
@@ -776,6 +802,15 @@ static void coax_ctrl_compute_balance_solution(
         attitude->gyro_z_rad_s,
     };
     float force_scale = 1.0f;
+    /*
+     * 合推力上限来自机体模型（max_total_thrust_g × g）。模型没写过时它是 0：
+     * 既不能当分母，也不能当"无上限"。下面每处都显式判了 > 0——不是防御性
+     * 代码洁癖，是因为 0/0 会算出 NaN，而 NaN 会沿着推力分配一路扩散到舵机
+     * 指令，最后表现成某个完全无关的地方"突然发散"，根本追不回这一行。
+     * 真正的闸门在解锁那一层（DRV_Airframe_IsValid），这里只保证未解锁时的
+     * 计算是干净的 0。
+     */
+    const float max_total_force_n = DRV_Airframe_Get()->max_total_force_n;
     float target_pitch_rad;
     float target_roll_rad;
     float roll_limit_moment_n_m;
@@ -794,7 +829,7 @@ static void coax_ctrl_compute_balance_solution(
         solution->desired_force_local_n[2] =
             coax_ctrl_clamp_f32(reference->manual_total_force_n,
                                 DRV_COAX_CTRL_FORCE_EPS_N,
-                                DRV_AIRFRAME_MAX_TOTAL_FORCE_N);
+                                max_total_force_n);
     } else {
         /*
          * R-F6-2: Z is now up-positive, so Newton's second law along Z gives
@@ -813,10 +848,12 @@ static void coax_ctrl_compute_balance_solution(
 
     solution->raw_total_force_n =
         coax_ctrl_norm3(solution->desired_force_local_n);
-    solution->thrust_utilization =
-        solution->raw_total_force_n / DRV_AIRFRAME_MAX_TOTAL_FORCE_N;
-    if (solution->raw_total_force_n > DRV_AIRFRAME_MAX_TOTAL_FORCE_N) {
-        force_scale = DRV_AIRFRAME_MAX_TOTAL_FORCE_N /
+    solution->thrust_utilization = (max_total_force_n > 0.0f)
+        ? (solution->raw_total_force_n / max_total_force_n)
+        : 0.0f;
+    if ((max_total_force_n > 0.0f) &&
+        (solution->raw_total_force_n > max_total_force_n)) {
+        force_scale = max_total_force_n /
                       solution->raw_total_force_n;
         for (uint32_t axis = 0U; axis < 3U; ++axis) {
             solution->desired_force_local_n[axis] *= force_scale;
@@ -885,9 +922,9 @@ static void coax_ctrl_compute_balance_solution(
     memcpy(rate_input.omega_sp, coax_ctrl_state.attitude_output.omega_sp,
            sizeof(rate_input.omega_sp));
     rate_input.alpha_ff[2] = reference->yaw_accel_rad_s2;
-    rate_input.inertia[0] = DRV_AIRFRAME_IXX_KGM2;
-    rate_input.inertia[1] = DRV_AIRFRAME_IYY_KGM2;
-    rate_input.inertia[2] = DRV_AIRFRAME_IZZ_KGM2;
+    rate_input.inertia[0] = DRV_Airframe_Get()->ixx_kgm2;
+    rate_input.inertia[1] = DRV_Airframe_Get()->iyy_kgm2;
+    rate_input.inertia[2] = DRV_Airframe_Get()->izz_kgm2;
     rate_input.dt_s = schedule->rate_dt_s;
     rate_input.saturation_positive[0] = roll_limit_moment_n_m;
     rate_input.saturation_positive[1] = pitch_limit_moment_n_m;
@@ -1168,10 +1205,10 @@ static void coax_ctrl_allocate_motor_thrust(float total_force_n,
 
     /*
      * 由 Mz = P*(kl*T_lower - ku*T_upper) 与 F = T_upper + T_lower 反解，
-     * P = DRV_COAX_CTRL_YAW_TORQUE_POLARITY = ±1，故 1/P = P。
+     * P = coax_ctrl_yaw_torque_polarity() = ±1，故 1/P = P。
      * P=+1 时与历史实现逐位相同——这次只是把隐含假设变成可推导的。
      */
-    const float yaw_torque = DRV_COAX_CTRL_YAW_TORQUE_POLARITY * yaw_torque_cmd;
+    const float yaw_torque = coax_ctrl_yaw_torque_polarity() * yaw_torque_cmd;
     const float upper_raw = (kl * total_force_n - yaw_torque) / denom;
     const float lower_raw = (ku * total_force_n + yaw_torque) / denom;
 
@@ -1258,7 +1295,7 @@ void DRV_COAX_CTRL_GetDefaultParams(DRV_COAX_CTRL_Params *params)
      * 系数 0.0105 = 偏航内环带宽 [1/s]，`rate.kp = I_zz * 带宽`。
      *
      * 这个数字看着别扭是有原因的：I_zz 在 2026-09-07 由 0.00035 改成 0.005
-     * （见 drv_airframe_model.h），若沿用原来的 0.15，默认增益会从 5.25e-5 跳到
+     * （机体模型现在在 drv_airframe_params.h），若沿用原来的 0.15，默认增益会从 5.25e-5 跳到
      * 7.5e-4 —— 而作者实测偏航内环 kp 到 1e-4 左右就抖振，7.5e-4 是那个阈值的
      * 7 倍多，任何一次"恢复默认"都会让飞机在偏航上立刻发散。所以这里保持默认
      * 增益的**数值**不变，只把系数改成它真实对应的带宽。
@@ -1270,8 +1307,12 @@ void DRV_COAX_CTRL_GetDefaultParams(DRV_COAX_CTRL_Params *params)
      * 于是内环带宽从"0.0105 1/s"变成"0.525 1/s"。**不是内环变快了**——是原来那个
      * 0.0105 本身就是被错误的 k 扭曲出来的假数字；同一份物理行为，用可解释的 k
      * 读出来就是 0.525 1/s（时间常数约 1.9 s）。
+     *
+     * 2026-09-11：I_zz 改为从机体模型取。模型没写过时它是 0，默认偏航增益也就
+     * 是 0——"没有惯量就没有默认增益"是正确的，编一个非零默认值反而会让人以为
+     * 那是按这架飞机算出来的。
      */
-    params->rate.kp[2] = DRV_AIRFRAME_IZZ_KGM2 * 0.525f;
+    params->rate.kp[2] = DRV_Airframe_Get()->izz_kgm2 * 0.525f;
     params->rate.integrator_limit[0] = 0.010f;
     params->rate.integrator_limit[1] = 0.010f;
     params->rate.integrator_limit[2] = 0.00020f;
@@ -1332,6 +1373,8 @@ void DRV_COAX_CTRL_GetParams(DRV_COAX_CTRL_Params *params)
     }
 
     DRV_COAX_CTRL_Init();
+    /* 回读也走同一条刷新路径，上位机读到的质量/惯量与控制律正在用的是同一组。 */
+    coax_ctrl_apply_fixed_model_params(&coax_ctrl_params);
     *params = coax_ctrl_params;
 }
 
@@ -1543,7 +1586,7 @@ static void coax_ctrl_body_tilt_to_servo_tilts(float body_x_tilt_rad,
      *     body_y_tilt > 0  →  推力轴倒向 +Y（左）
      *     body_x_tilt > 0  →  推力轴倒向 -X（后）
      * 一个顺 +Y、一个逆 +X 看着别扭，但这正是让 τ = r × F 的 roll/pitch 两轴
-     * 共用同一个极性因子的定义（推导见 DRV_COAX_CTRL_TILT_MOMENT_POLARITY）。
+     * 共用同一个极性因子的定义（推导见 coax_ctrl_tilt_moment_polarity）。
      *
      * 分工：本函数与力矩律固定不变；换飞机、换舵机、连杆反装，全部只允许
      * 改上位机标定写进来的 pulse_sign / center_us / min_us / max_us。
@@ -1698,6 +1741,11 @@ void DRV_COAX_CTRL_RunScheduled(const DRV_COAX_CTRL_AttitudeInput *attitude,
     }
 
     DRV_COAX_CTRL_Init();
+    /*
+     * 机体模型可能在两次 Run 之间被上位机改写（量完新电池就地写入）。这里重刷
+     * 一遍，避免出现"模型已改、控制律还在用旧质量"这种只有重启才会暴露的中间态。
+     */
+    coax_ctrl_apply_fixed_model_params(&coax_ctrl_params);
     if (schedule->integrator_reset != 0U) {
         DRV_COAX_CTRL_ResetState();
     }
@@ -1738,7 +1786,7 @@ void DRV_COAX_CTRL_RunScheduled(const DRV_COAX_CTRL_AttitudeInput *attitude,
     debug.motor_cmd_us[1] = (float)output->motor_lower_us;
     /* 实际达成的偏航力矩：与分配式同一套极性，不能只在一边用。 */
     debug.yaw_torque_cmd =
-        DRV_COAX_CTRL_YAW_TORQUE_POLARITY *
+        coax_ctrl_yaw_torque_polarity() *
         ((coax_ctrl_params.yaw_torque_lower_m_per_n * output->thrust_lower_n) -
          (coax_ctrl_params.yaw_torque_upper_m_per_n * output->thrust_upper_n));
 
@@ -1779,7 +1827,7 @@ void DRV_COAX_CTRL_RunScheduled(const DRV_COAX_CTRL_AttitudeInput *attitude,
     output->yaw_differential_saturated =
         output->saturation_positive[2] || output->saturation_negative[2];
     output->thrust_saturated =
-        (solution.raw_total_force_n > DRV_AIRFRAME_MAX_TOTAL_FORCE_N) ||
+        (solution.raw_total_force_n > DRV_Airframe_Get()->max_total_force_n) ||
         (fabsf((output->thrust_upper_n + output->thrust_lower_n) -
                debug.total_force_n) > DRV_COAX_CTRL_RATE_SCALE_EPS);
     memcpy(debug.moment_achieved_n_m, output->moment_achieved_n_m,

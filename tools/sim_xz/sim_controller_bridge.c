@@ -1,7 +1,8 @@
 #include "sim_controller_bridge.h"
 
 #include "drv_coax_ctrl.h"
-#include "drv_airframe_model.h"
+#include "drv_airframe_params.h"
+#include "drv_servo_actuator_model.h"
 #include "app_control_scheduler.h"
 
 #include <string.h>
@@ -10,8 +11,80 @@ static APP_ControlSchedulerState sim_scheduler;
 static uint64_t sim_time_us;
 static uint64_t sim_navigation_token;
 
+/*
+ * 被仿真的那架飞机。
+ *
+ * 固件里**没有**机体数据：真机的唯一来源是上位机写进 Flash 的那一份
+ * （drv_airframe_params.h）。仿真器没有 Flash，所以它必须自己说出"我在仿谁"——
+ * 下面这组就是它的被控对象定义，写在这里正合适：改仿真的飞机只改这里，
+ * 不会碰到真机的任何一个数。
+ *
+ * 数值逐位复刻改造前 drv_airframe_model.h 的内容，**包括那处矛盾**：四个部件
+ * 质量加起来是 754.6 g，而整机质量写的是 1.3670 kg。所以这里用手动派生档
+ * （derived_auto = 0），把派生值原样钉住。这不是在维护那个矛盾，而是为了让
+ * "机体模型改成运行时取值"这次改动在仿真里**逐位不改变行为**——真机的正确
+ * 数值要拿秤重新量，从上位机写进去。
+ */
+static uint8_t sim_airframe_loaded;
+
+static void sim_controller_load_airframe(void)
+{
+    DRV_Airframe_Params airframe;
+
+    if (sim_airframe_loaded != 0U) {
+        return;
+    }
+    sim_airframe_loaded = 1U;
+
+    memset(&airframe, 0, sizeof(airframe));
+
+    airframe.board_mass_g            = 75.0f;
+    airframe.battery_mass_g          = 232.0f;
+    airframe.base_mass_g             = 99.0f;
+    airframe.servo_motor_mass_g      = 348.6f;
+    airframe.board_cg_z_m            = 0.0f;
+    airframe.battery_cg_z_m          = 0.109f;
+    airframe.base_cg_z_m             = -0.117f;
+    airframe.servo_motor_cg_z_m      = -0.244f;
+
+    airframe.imu_z_m                 = 0.0f;
+    airframe.prop_plane_d_m          = 0.2500f;
+    airframe.roll_axis_to_prop_plane_m  = 0.1450f;
+    airframe.pitch_axis_to_prop_plane_m = 0.1050f;
+    airframe.pitch_thrust_lever_arm_m   = 0.1450f;
+    airframe.roll_thrust_lever_arm_m    = 0.1450f;
+    airframe.servo1_axis_z_m         = -0.161f;
+    airframe.servo2_axis_z_m         = -0.215f;
+    airframe.thrust_point_z_m        = -0.2955f;
+    airframe.tether_attach_z_m       = 0.1563f;
+    airframe.tether_rope_m           = 0.6400f;
+
+    airframe.ixx_kgm2                = 0.051f;
+    airframe.iyy_kgm2                = 0.051f;
+    airframe.izz_kgm2                = 0.005f;
+    airframe.lower_rotor_spin_sense  = -1.0f;
+    airframe.gravity_m_s2            = 9.81f;
+    airframe.max_total_thrust_g      = 1595.342f;
+    airframe.servo_deg_per_us        = 0.090f;
+
+    /* 手动档：下面这些就是改造前头文件里的字面值，不由部件表推算。 */
+    airframe.derived_auto            = 0.0f;
+    airframe.mass_kg                 = 1.3670f;
+    airframe.cg_z_m                  = -0.0946f;
+    airframe.weight_n                = 13.410270f;
+    airframe.thrust_point_to_cg_z_m  = -0.2955f - (-0.0946f);
+    airframe.tether_attach_to_cg_m   = 0.2509f;
+    airframe.tether_rod_to_cg_m      = 0.8909f;
+    airframe.max_total_force_n       = 15.644959f;
+    airframe.hover_thrust_percent    = 85.716236f;
+    airframe.servo_us_per_deg        = 11.111111f;
+
+    DRV_Airframe_SetParams(&airframe);
+}
+
 void sim_controller_reset(void)
 {
+    sim_controller_load_airframe();
     DRV_COAX_CTRL_ResetState();
     APP_ControlScheduler_Reset(&sim_scheduler);
     sim_time_us = 0ULL;
@@ -20,6 +93,8 @@ void sim_controller_reset(void)
 
 void sim_controller_reset_params(void)
 {
+    /* 机体模型必须先于默认增益装好：偏航默认增益按 I_zz 缩放。 */
+    sim_controller_load_airframe();
     DRV_COAX_CTRL_ResetParams();
     sim_controller_reset();
 }
@@ -28,6 +103,7 @@ static DRV_COAX_CTRL_Params sim_controller_params(void)
 {
     DRV_COAX_CTRL_Params params;
     memset(&params, 0, sizeof(params));
+    sim_controller_load_airframe();
     DRV_COAX_CTRL_GetParams(&params);
     return params;
 }
@@ -44,7 +120,8 @@ float sim_controller_gravity_m_s2(void)
 
 float sim_controller_pitch_inertia_kgm2(void)
 {
-    return DRV_AIRFRAME_IYY_KGM2;
+    sim_controller_load_airframe();
+    return DRV_Airframe_Get()->iyy_kgm2;
 }
 
 float sim_controller_pitch_lever_arm_m(void)
@@ -79,7 +156,8 @@ float sim_controller_tilt_tau_decrease_s(void)
 
 float sim_controller_max_total_thrust_n(void)
 {
-    return DRV_AIRFRAME_MAX_TOTAL_FORCE_N;
+    sim_controller_load_airframe();
+    return DRV_Airframe_Get()->max_total_force_n;
 }
 
 float sim_controller_servo_limit_rad(void)
@@ -118,6 +196,8 @@ uint8_t sim_controller_set_param(const char *name, float value)
 void sim_controller_step(const SimControllerInput *input,
                          SimControllerOutput *output)
 {
+    sim_controller_load_airframe();
+
     DRV_COAX_CTRL_AttitudeInput attitude = {0};
     DRV_COAX_CTRL_Reference reference = {0};
     DRV_COAX_CTRL_Schedule schedule = {0};

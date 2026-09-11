@@ -4,11 +4,10 @@
 
 Read this shard only when the task touches device protocols, reusable algorithms, buses, GPIO, DMA callbacks, cache hooks, or board bindings.
 
-Source snapshot: `72bdaea5859c`. Indexed files: 92.
+Source snapshot: `2ea854640c78`. Indexed files: 92.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
-| `Driver/Inc/drv_airframe_model.h` | Reusable device or algorithm driver for airframe model | — |
 | `Driver/Inc/drv_airframe_params.h`<br>`Driver/Src/drv_airframe_params.c` | Reusable device or algorithm driver for airframe params | `DRV_Airframe_IsValid`, `DRV_Airframe_FirstInvalidName`, `DRV_Airframe_Clear`, `DRV_Airframe_Get`, `DRV_Airframe_GetParams`, `DRV_Airframe_SetParams` (+6) |
 | `Driver/Inc/drv_attitude_control.h`<br>`Driver/Src/drv_attitude_control.c` | Reusable device or algorithm driver for attitude control | `DRV_AttitudeControl_Step` |
 | `Driver/Inc/drv_attitude_fusion.h`<br>`Driver/Src/drv_attitude_fusion.c` | Reusable device or algorithm driver for attitude fusion | `DRV_AttitudeFusion_Init`, `DRV_AttitudeFusion_InitForConvention`, `DRV_AttitudeFusion_Update`, `DRV_AttitudeFusion_GetOutput` |
@@ -37,6 +36,7 @@ Source snapshot: `72bdaea5859c`. Indexed files: 92.
 | `Driver/Inc/drv_rate_control.h`<br>`Driver/Src/drv_rate_control.c` | Reusable device or algorithm driver for rate control | `DRV_RateControl_InitState`, `DRV_RateControl_Step`, `DRV_RateControl_Evaluate` |
 | `Driver/Inc/drv_sdblock.h`<br>`Driver/Src/drv_sdblock.c` | Reusable device or algorithm driver for sdblock | `DRV_SDBLOCK_Init`, `DRV_SDBLOCK_IsReady`, `DRV_SDBLOCK_GetUsableBytes`, `DRV_SDBLOCK_Read`, `DRV_SDBLOCK_Write`, `DRV_SDBLOCK_Erase` |
 | `Driver/Inc/drv_servo.h`<br>`Driver/Src/drv_servo.c` | Reusable device or algorithm driver for servo | `DRV_SERVO_SendRaw`, `DRV_SERVO_ReadResponse`, `DRV_SERVO_GetBaudRate`, `DRV_SERVO_SetBaudRate`, `DRV_SERVO_PositionToPulse`, `DRV_SERVO_Move` (+31) |
+| `Driver/Inc/drv_servo_actuator_model.h` | Reusable device or algorithm driver for servo actuator model | — |
 | `BSP/Inc/bsp.h`<br>`BSP/Src/bsp.c` | Board resource binding for bsp | `BSP_Init` |
 | `BSP/Inc/bsp_aiwb2_power.h`<br>`BSP/Src/bsp_aiwb2_power.c` | Board resource binding for aiwb2 power | `BSP_AiWB2_PowerInit`, `BSP_AiWB2_SetEnabled`, `BSP_AiWB2_UpdateButton`, `BSP_AiWB2_IsEnabled`, `BSP_AiWB2_GetLastWrittenState`, `BSP_AiWB2_GetWriteCount` |
 | `BSP/Inc/bsp_baro.h`<br>`BSP/Src/bsp_baro.c` | Board resource binding for baro | `BSP_BARO_Init`, `BSP_BARO_ProbeId`, `BSP_BARO_ProbeIdTxRx`, `BSP_BARO_ReadId`, `BSP_BARO_ReadRawRegister`, `BSP_BARO_ReadRawRegisters` (+3) |

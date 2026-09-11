@@ -162,14 +162,17 @@ PE5 / PE6（TIM15）、PD14（TIM4，兼 LED 焊盘）。
 
 1. **PE8 / PE7 焊盘是否引出、丝印编号是什么**。hwdef 只描述 MCU 内部映射。
 2. **半双工舵机总线的电平与上拉**：UART pad 是否直连 MCU、需不需要外接上拉。
-3. **BEC 带载能力**：`DRV_AIRFRAME_SERVO_MOTOR_MASS_G = 348.6` 那组舵机电机的峰值电流
+3. **BEC 带载能力**：`airframe.servo_motor_mass_g = 348.6` 那组舵机电机的峰值电流
    对 5V/3A 是什么水平。
 4. **两颗 IMU 的实际安装朝向**。出厂 PX4 输出的是它自己旋转之后的机体 FRD，证明不了
    我们的旋转常数。可做的判据：把板子**正面朝上放平**，读 `listener sensor_accel`，
    PX4 的 FRD 下应当是 `z ≈ -9.81`；若读到 `+9.81` 说明板子是倒扣的。
    我们自己的常数最终仍要刷完固件后用倾斜实验复核。
-5. **机体模型要重算**：[`Driver/Inc/drv_airframe_model.h`](../../Driver/Inc/drv_airframe_model.h) 的
-   `DRV_AIRFRAME_BOARD_MASS_G` 记的是 75 g，本板仅 10 g，`DRV_AIRFRAME_CG_Z_M` 与推重比需重新核算。
+5. **机体模型要重算**：2026-09-11 起机体数据的唯一来源是 Flash（见
+   [`Driver/Inc/drv_airframe_params.h`](../../Driver/Inc/drv_airframe_params.h)），
+   固件里一个默认值都没有，**没写过机体模型的板子禁止解锁**。
+   旧常量里 `board_mass_g` 记的是 75 g，本板仅 10 g；整机质量、重心与推重比
+   全部要拿秤和尺重新量，从上位机"机体模型"页写进去。
    舵机 FOPDT 辨识、推力表、力臂等绑机体的量不受影响。
 6. **LED**：`led_control` 没编进这份 PX4，LED 由 PX4 的状态逻辑自行驱动，只能靠眼睛确认
    红/绿/蓝三颗（PE3/PE2/PE4）是否都在亮。

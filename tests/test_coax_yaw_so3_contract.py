@@ -22,6 +22,9 @@ from pathlib import Path
 import pytest
 
 
+from _airframe_fixture import AIRFRAME_FIXTURE_C, AIRFRAME_SOURCE
+
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -29,9 +32,8 @@ def read(relative: str) -> str:
     return (ROOT / relative).read_text(encoding="utf-8")
 
 
-HARNESS = r"""
+HARNESS = AIRFRAME_FIXTURE_C + r"""
 #include "drv_coax_ctrl.h"
-#include "drv_airframe_model.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -85,6 +87,7 @@ static float legacy_yaw_torque(const DRV_COAX_CTRL_Params *params,
 
 int main(void)
 {
+    airframe_load_reference();
     DRV_COAX_CTRL_AttitudeInput attitude;
     DRV_COAX_CTRL_Reference reference;
     DRV_COAX_CTRL_Output output;
@@ -185,7 +188,7 @@ int main(void)
     DRV_COAX_CTRL_GetLastDebug(&debug);
     CHECK(nearly_equal(
         debug.moment_cmd_n_m[2],
-        (DRV_AIRFRAME_IYY_KGM2 - DRV_AIRFRAME_IXX_KGM2) *
+        (DRV_Airframe_Get()->iyy_kgm2 - DRV_Airframe_Get()->ixx_kgm2) *
             attitude.gyro_x_rad_s * attitude.gyro_y_rad_s,
         1.0e-9f), 40);
 
@@ -279,6 +282,7 @@ def test_yaw_so3_runtime_matches_legacy_pd_in_hover(tmp_path: Path) -> None:
             "-Werror",
             f"-I{stub_dir}",
             f"-I{ROOT / 'Driver' / 'Inc'}",
+            str(AIRFRAME_SOURCE),
             str(ROOT / "Driver" / "Src" / "drv_coax_ctrl.c"),
             str(ROOT / "Driver" / "Src" / "drv_position_control.c"),
             str(ROOT / "Driver" / "Src" / "drv_attitude_control.c"),
