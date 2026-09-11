@@ -38,9 +38,15 @@ def test_flight_log_region_leaves_reserved_flash_sectors() -> None:
     source = read("App/Src/app_flight_log.c")
 
     assert "#define APP_FLIGHT_LOG_REGION_START       0x00002000UL" in header
-    assert "#define APP_FLIGHT_LOG_REGION_END_EXCL    0x003FC000UL" in header
-    assert "APP_CONTROL_FLASH_SCRATCH_ADDR (APP_FLASH_SERVICE_SIZE_BYTES - 4U * 4096UL)" in read("App/Src/app_control.c")
-    assert "APP_CONTROL_CFG_ADDRESS     (APP_FLASH_SERVICE_SIZE_BYTES - 4096UL)" in read("App/Inc/app_control_config_store.h")
+    # 2026-09-11：参数区从 3 个逻辑扇区扩到 5 个（诊断擦写区 + svc_param A/B +
+    # 配置记录 A/B），日志上界随之从 0x3FC000 降到 0x3FB000。两边一致由
+    # app_flight_log.c 的 _Static_assert 保证，这里只钉住"日志确实让开了"。
+    assert "#define APP_FLIGHT_LOG_REGION_END_EXCL    0x003FB000UL" in header
+    log_source = read("App/Src/app_flight_log.c")
+    assert "_Static_assert(APP_FLIGHT_LOG_REGION_END_EXCL ==" in log_source
+    assert "APP_FLASH_SERVICE_PARAM_REGION_START," in log_source
+    assert "APP_CONTROL_FLASH_SCRATCH_ADDR APP_FLASH_SERVICE_SCRATCH_OFFSET" in read("App/Src/app_control.c")
+    assert "APP_CONTROL_CFG_ADDRESS     APP_CONTROL_CFG_SLOT_A" in read("App/Inc/app_control_config_store.h")
     assert "APP_FLIGHT_LOG_REGION_END_EXCL <=" in source
     assert "last four reserved sectors" in source
 

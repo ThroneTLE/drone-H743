@@ -41,15 +41,34 @@ typedef enum {
 #define DRV_INTFLASH_BANK2_BASE       0x08100000UL
 
 /*
- * 参数区：Bank2 的最后两个扇区（扇区 6 / 7），各 128 KB。
- * 与之配套，STM32H743XX_FLASH.ld 里的 FLASH LENGTH 已从 2048K 收到 1792K，
- * 保证代码段永远不会长进这两个扇区。改动其一必须同时改另一个。
+ * 参数区：Bank2 的最后**五个**扇区（扇区 3..7），各 128 KB，共 640 KB。
+ * 与之配套，STM32H743XX_FLASH.ld 里的 FLASH LENGTH 从 2048K 收到 1408K，
+ * 保证代码段永远不会长进这五个扇区。改动其一必须同时改另一个。
+ *
+ * 为什么是五个：擦除粒度 128 KB，"能独立擦除的单位"就是一整个扇区，于是
+ *   扇区 3  诊断用的一次性擦写区（FLASH SCRATCH TEST）
+ *   扇区 4  svc_param 槽 A   ┐ 标定 blob，双槽扛写一半掉电
+ *   扇区 5  svc_param 槽 B   ┘
+ *   扇区 6  配置记录 槽 A     ┐ 增益 / 遥控映射 / **机体模型**，同样双槽
+ *   扇区 7  配置记录 槽 B     ┘
+ *
+ * 诊断擦写区必须单独占一个扇区：`FLASH SCRATCH TEST` 是**破坏性**的，
+ * 它跟真数据共用扇区就会变成"跑一次诊断把标定擦了"的陷阱。
+ *
+ * 最初只留了两个扇区，配置记录因此**没有物理落点**：它的逻辑地址落在参数区里，
+ * 却映射不到任何扇区，`SAVE` 一路返回 INVALID_ARG（实机 2026-09-11 抓到
+ * `OK save st=4`）。代码只占 435 KB，1408 KB 仍有 3 倍余量，不必省这 640 KB。
  */
-#define DRV_INTFLASH_PARAM_SLOT_A_ADDR   0x081C0000UL
-#define DRV_INTFLASH_PARAM_SLOT_B_ADDR   0x081E0000UL
 #define DRV_INTFLASH_PARAM_BANK          FLASH_BANK_2
-#define DRV_INTFLASH_PARAM_SLOT_A_SECTOR 6U
-#define DRV_INTFLASH_PARAM_SLOT_B_SECTOR 7U
+#define DRV_INTFLASH_PARAM_BASE          0x08160000UL
+#define DRV_INTFLASH_PARAM_FIRST_SECTOR  3U
+#define DRV_INTFLASH_PARAM_SECTOR_COUNT  5U
+#define DRV_INTFLASH_PARAM_SIZE \
+    (DRV_INTFLASH_PARAM_SECTOR_COUNT * DRV_INTFLASH_SECTOR_SIZE)
+
+/* 第 index 个参数扇区的物理起始地址（index < DRV_INTFLASH_PARAM_SECTOR_COUNT）。 */
+#define DRV_INTFLASH_PARAM_SECTOR_ADDR(index) \
+    (DRV_INTFLASH_PARAM_BASE + ((uint32_t)(index) * DRV_INTFLASH_SECTOR_SIZE))
 
 typedef struct {
     void (*cache_invalidate)(const void *addr, uint32_t size);

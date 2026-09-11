@@ -22,6 +22,7 @@ typedef struct {
     uint16_t size;
 } APP_ControlFlashHeader;
 
+
 /*
  * `has_airframe` 是 v20 加的：机体模型块只存在于当前版本的记录里。
  * 它必须排在 checksum **之前**、其余块之后——旧版本记录的字节布局因此原封不动，
@@ -56,6 +57,98 @@ APP_CONTROL_RECORD_TYPE(APP_ControlFlashRecordV16,
                         APP_ControlCoaxTunableParamsV17, , );
 APP_CONTROL_RECORD_TYPE(APP_ControlFlashRecordV15,
                         APP_ControlCoaxTunableParamsV15, , );
+
+/* ─────────────────────────────────────────────── A/B 双槽与提交字 */
+
+#define APP_CONTROL_CFG_SLOT_COUNT 2U
+#define APP_CONTROL_CFG_FLASH_WORD 32U
+
+static const uint32_t config_slots[APP_CONTROL_CFG_SLOT_COUNT] = {
+    APP_CONTROL_CFG_SLOT_A,
+    APP_CONTROL_CFG_SLOT_B,
+};
+
+/*
+ * 提交字必须落在记录主体**之后**的独立 flash word 上。
+ * 片内 Flash 一次擦除后每个 word 只能编程一次，主体和提交字压在同一个 word 上
+ * 会让第二次编程直接报 ECC 错。这里按 32 字节上取整。
+ */
+#define APP_CONTROL_CFG_COMMIT_OFFSET                                       \
+    (((sizeof(APP_ControlFlashRecord) + APP_CONTROL_CFG_FLASH_WORD - 1U) /  \
+      APP_CONTROL_CFG_FLASH_WORD) * APP_CONTROL_CFG_FLASH_WORD)
+
+_Static_assert((APP_CONTROL_CFG_COMMIT_OFFSET % APP_CONTROL_CFG_FLASH_WORD) == 0U,
+               "commit word must start on a 32-byte flash word");
+_Static_assert((APP_CONTROL_CFG_COMMIT_OFFSET + sizeof(APP_ControlConfigCommit)) <=
+                   APP_FLASH_SERVICE_SECTOR_SIZE,
+               "record plus commit word must fit inside one logical slot");
+_Static_assert(APP_CONTROL_CFG_SLOT_A != APP_CONTROL_CFG_SLOT_B,
+               "the two config slots must be distinct sectors");
+
+static uint32_t config_checksum(const uint8_t *data, uint32_t length);
+
+/*
+ * 一个槽的"新旧序号"，同时兼作有效性判据：
+ *   返回 0  —— 槽里没有可用记录（连 magic 都不对），不予考虑；
+ *   返回 1  —— 有记录但**没有提交字**。这是旧的单槽格式（或 NOR 时代写下的），
+ *              按最旧处理，让任何一次新保存都能盖过它；
+ *   返回 >1 —— 提交字有效，值为 sequence + 1。
+ *
+ * 提交字里带主体校验和：主体写了一半掉电、提交字却莫名其妙有效的情况会在这里
+ * 被挡住。宁可判这个槽无效、回到另一个槽，也不要把半条记录当成好的。
+ */
+static uint32_t config_slot_sequence(uint32_t slot)
+{
+    APP_ControlFlashHeader header;
+    APP_ControlConfigCommit commit;
+    APP_ControlFlashRecord record;
+
+    if (APP_FlashService_ReadData(slot, (uint8_t *)&header,
+                                  sizeof(header)) != APP_FLASH_SERVICE_OK) {
+        return 0U;
+    }
+    if (header.magic != APP_CONTROL_CFG_MAGIC) {
+        return 0U;
+    }
+
+    if (APP_FlashService_ReadData(slot + APP_CONTROL_CFG_COMMIT_OFFSET,
+                                  (uint8_t *)&commit,
+                                  sizeof(commit)) != APP_FLASH_SERVICE_OK) {
+        return 1U;
+    }
+    if (commit.magic != APP_CONTROL_CFG_COMMIT_MAGIC) {
+        return 1U;
+    }
+
+    if (APP_FlashService_ReadData(slot, (uint8_t *)&record,
+                                  sizeof(record)) != APP_FLASH_SERVICE_OK) {
+        return 0U;
+    }
+    if (config_checksum((const uint8_t *)&record.config, record.size) !=
+        commit.body_checksum) {
+        return 0U;
+    }
+
+    /* +2：0 留给"无记录"，1 留给"无提交字的旧格式"。 */
+    return commit.sequence + 2U;
+}
+
+/* 当前应当读取的槽。两个都没有时返回槽 A，让上层照旧走"没有有效记录"。 */
+static uint32_t config_active_slot(void)
+{
+    uint32_t best_slot = config_slots[0];
+    uint32_t best_rank = 0U;
+
+    for (uint32_t i = 0U; i < APP_CONTROL_CFG_SLOT_COUNT; ++i) {
+        const uint32_t rank = config_slot_sequence(config_slots[i]);
+
+        if (rank > best_rank) {
+            best_rank = rank;
+            best_slot = config_slots[i];
+        }
+    }
+    return best_slot;
+}
 
 static uint32_t config_checksum(const uint8_t *data, uint32_t length)
 {
@@ -187,17 +280,35 @@ static void config_apply_tunables(const APP_ControlCoaxTunableParams *in)
     DRV_COAX_CTRL_SetParams(&params);
 }
 
-static uint8_t config_read_current(APP_ControlConfig *config)
+/*
+ * 当前记录的 size 字段必须把**机体模型块也算进去**。
+ *
+ * v20 加机体块时这里漏了：Save 写的 size 含 airframe，读回来的校验式不含，
+ * 于是每一条自己写的记录都过不了自己的检查，机体模型永远读不回来。
+ * 之所以一直没暴露，是因为 SAVE 在更前面就因为地址没有物理落点失败了
+ * （见 app_flash_service.h 的 2026-09-11 修复）。两个缺陷叠在一起互相遮掩。
+ */
+#define APP_CONTROL_CFG_CURRENT_SIZE                                       \
+    ((uint16_t)(sizeof(((APP_ControlFlashRecord *)0)->config) +            \
+                sizeof(((APP_ControlFlashRecord *)0)->coax_tunables) +     \
+                sizeof(((APP_ControlFlashRecord *)0)->rc_config) +         \
+                sizeof(((APP_ControlFlashRecord *)0)->airframe)))
+
+_Static_assert(APP_CONTROL_CFG_CURRENT_SIZE ==
+                   (uint16_t)(offsetof(APP_ControlFlashRecord, checksum) -
+                              offsetof(APP_ControlFlashRecord, config)),
+               "record size must cover exactly the checksummed span");
+
+static uint8_t config_read_slot(uint32_t slot, APP_ControlConfig *config)
 {
     APP_ControlFlashRecord record;
-    if (APP_FlashService_ReadData(APP_CONTROL_CFG_ADDRESS, (uint8_t *)&record,
+    if (APP_FlashService_ReadData(slot, (uint8_t *)&record,
                                   sizeof(record)) != APP_FLASH_SERVICE_OK) {
         return 0U;
     }
     if ((record.magic != APP_CONTROL_CFG_MAGIC) ||
         (record.version != APP_CONTROL_CFG_VERSION) ||
-        (record.size != sizeof(record.config) + sizeof(record.coax_tunables) +
-                        sizeof(record.rc_config)) ||
+        (record.size != APP_CONTROL_CFG_CURRENT_SIZE) ||
         (config_checksum((const uint8_t *)&record.config, record.size) !=
          record.checksum)) {
         return 0U;
@@ -209,13 +320,18 @@ static uint8_t config_read_current(APP_ControlConfig *config)
     return 1U;
 }
 
+static uint8_t config_read_current(APP_ControlConfig *config)
+{
+    return config_read_slot(config_active_slot(), config);
+}
+
 #define APP_CONTROL_DEFINE_LEGACY_READER(function_name, type, expected_version, \
                                          convert_fn, apply_rc_statement) \
     static uint8_t function_name(APP_ControlConfig *config) \
     { \
         type record; \
         APP_ControlCoaxTunableParams migrated; \
-        if (APP_FlashService_ReadData(APP_CONTROL_CFG_ADDRESS, \
+        if (APP_FlashService_ReadData(config_active_slot(), \
                                       (uint8_t *)&record, sizeof(record)) != \
             APP_FLASH_SERVICE_OK) return 0U; \
         if ((record.magic != APP_CONTROL_CFG_MAGIC) || \
@@ -260,7 +376,7 @@ APP_FlashService_Status APP_ControlConfigStore_Load(APP_ControlConfig *config)
     if (config == NULL) {
         return APP_FLASH_SERVICE_ERROR;
     }
-    status = APP_FlashService_ReadData(APP_CONTROL_CFG_ADDRESS,
+    status = APP_FlashService_ReadData(config_active_slot(),
                                        (uint8_t *)&header, sizeof(header));
     if (status != APP_FLASH_SERVICE_OK) {
         return status;
@@ -295,21 +411,37 @@ APP_FlashService_Status APP_ControlConfigStore_Load(APP_ControlConfig *config)
     return APP_FLASH_SERVICE_OK;
 }
 
+/*
+ * 写入另一个槽，回读校验，最后单独提交。
+ *
+ * 顺序是有讲究的：**当前那个槽在整个过程中一直没被碰过**。任何一步失败或掉电，
+ * 上电后 config_active_slot() 仍然选中它，飞控照旧读到上一份好配置。
+ * 以前是单槽原地擦写，擦完到写完之间那一两秒里断电，配置就没了——现在这条
+ * 记录里还装着机体模型，没模型就禁止解锁，代价已经不是"增益要重设"那么轻。
+ */
 APP_FlashService_Status APP_ControlConfigStore_Save(const APP_ControlConfig *config)
 {
     APP_ControlFlashRecord record;
+    APP_ControlFlashRecord verify;
+    APP_ControlConfigCommit commit;
     APP_FlashService_Status status;
+    uint32_t current_slot;
+    uint32_t target_slot;
+    uint32_t current_rank;
 
     if (config == NULL) {
         return APP_FLASH_SERVICE_ERROR;
     }
+
+    current_slot = config_active_slot();
+    current_rank = config_slot_sequence(current_slot);
+    target_slot = (current_slot == APP_CONTROL_CFG_SLOT_A) ?
+                  APP_CONTROL_CFG_SLOT_B : APP_CONTROL_CFG_SLOT_A;
+
     memset(&record, 0xFF, sizeof(record));
     record.magic = APP_CONTROL_CFG_MAGIC;
     record.version = APP_CONTROL_CFG_VERSION;
-    record.size = (uint16_t)(sizeof(record.config) +
-                             sizeof(record.coax_tunables) +
-                             sizeof(record.rc_config) +
-                             sizeof(record.airframe));
+    record.size = APP_CONTROL_CFG_CURRENT_SIZE;
     record.config = *config;
     record.config.loaded_from_flash = 1U;
     record.config.flash_valid = 1U;
@@ -318,11 +450,36 @@ APP_FlashService_Status APP_ControlConfigStore_Save(const APP_ControlConfig *con
     DRV_Airframe_GetParams(&record.airframe);
     record.checksum = config_checksum((const uint8_t *)&record.config,
                                       record.size);
-    status = APP_FlashService_EraseSector(APP_CONTROL_CFG_ADDRESS);
+
+    status = APP_FlashService_EraseSector(target_slot);
     if (status != APP_FLASH_SERVICE_OK) {
         return status;
     }
-    return APP_FlashService_WriteData(APP_CONTROL_CFG_ADDRESS,
-                                      (const uint8_t *)&record,
-                                      sizeof(record));
+
+    status = APP_FlashService_WriteData(target_slot, (const uint8_t *)&record,
+                                        sizeof(record));
+    if (status != APP_FLASH_SERVICE_OK) {
+        return status;
+    }
+
+    /*
+     * 回读校验主体之后才提交。不校验就提交的话，一次写坏会被提交字盖章成
+     * "有效"，而且因为 sequence 更大，它还会盖过那份好的——双槽反而帮了倒忙。
+     */
+    status = APP_FlashService_ReadData(target_slot, (uint8_t *)&verify,
+                                       sizeof(verify));
+    if (status != APP_FLASH_SERVICE_OK) {
+        return status;
+    }
+    if (memcmp(&record, &verify, sizeof(record)) != 0) {
+        return APP_FLASH_SERVICE_ERROR;
+    }
+
+    memset(&commit, 0xFF, sizeof(commit));
+    commit.magic = APP_CONTROL_CFG_COMMIT_MAGIC;
+    /* current_rank 为 0/1 表示对面没有带提交字的记录，从 0 号序列开始。 */
+    commit.sequence = (current_rank >= 2U) ? (current_rank - 1U) : 0U;
+    commit.body_checksum = record.checksum;
+    return APP_FlashService_WriteData(target_slot + APP_CONTROL_CFG_COMMIT_OFFSET,
+                                      (const uint8_t *)&commit, sizeof(commit));
 }

@@ -18,6 +18,15 @@
 #include <stdio.h>
 #include <string.h>
 
+/*
+ * 日志区不许伸进参数区。头文件里那个字面量是为了让它能在宿主上单独编译，
+ * 一致性由这里保证：参数区起点一动，这条编译期断言立刻红，而不是等到某次
+ * 写日志把机体模型覆盖掉。
+ */
+_Static_assert(APP_FLIGHT_LOG_REGION_END_EXCL ==
+                   APP_FLASH_SERVICE_PARAM_REGION_START,
+               "flight log must stop exactly where the param region begins");
+
 #define APP_FLIGHT_LOG_SECTOR_MAGIC       0x31534C46UL /* FLS1 */
 #define APP_FLIGHT_LOG_RECORD_MAGIC       0x31524C46UL /* FLR1 */
 #define APP_FLIGHT_LOG_EXPORT_BLOCK_MAGIC 0x31424C46UL /* FLB1 */

@@ -11,8 +11,17 @@
 extern "C" {
 #endif
 
+/*
+ * 日志区上界必须正好停在参数区起点。2026-09-11 参数区从 3 个逻辑扇区扩到 5 个
+ * （诊断擦写区 + svc_param A/B + 配置记录 A/B），上界随之从 0x3FC000 降到 0x3FB000。
+ *
+ * 这里写字面量而不是引用 app_flash_service.h：那个头文件会拖进整条 HAL 依赖，
+ * 而本头文件要能在宿主上单独编译（tests/test_flight_log_frame_provenance.py 就这么用）。
+ * 两边一致由 app_flight_log.c 里的 _Static_assert 保证——改错一个是编译期红，
+ * 不是运行期把日志写进参数区。
+ */
 #define APP_FLIGHT_LOG_REGION_START       0x00002000UL
-#define APP_FLIGHT_LOG_REGION_END_EXCL    0x003FC000UL
+#define APP_FLIGHT_LOG_REGION_END_EXCL    0x003FB000UL
 #define APP_FLIGHT_LOG_RATE_HZ            125U
 #define APP_FLIGHT_LOG_SECTOR_HEADER_SIZE 256U
 #define APP_FLIGHT_LOG_EXPORT_BAUD        57600U

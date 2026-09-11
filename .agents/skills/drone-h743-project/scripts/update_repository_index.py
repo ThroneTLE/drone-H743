@@ -28,7 +28,8 @@ SHARDS = (
     "firmware-app-services.md",
     "firmware-driver-bsp.md",
     "platform-build.md",
-    "tests.md",
+    "tests-firmware.md",
+    "tests-host.md",
     "host-tools.md",
     "docs-data.md",
 )
@@ -385,13 +386,32 @@ def build_outputs(files: list[str]) -> dict[str, str]:
     )
 
     test_paths = [path for path in files if path.startswith("tests/")]
-    test_rows = [individual_row(path, "test") for path in test_paths]
     assigned.update(test_paths)
-    outputs["tests.md"] = render_detail_shard(
-        "Verification Index",
-        "you need existing behavioral/architecture coverage or must choose focused regression tests.",
-        test_rows,
-        test_paths,
+    #
+    # 2026-09-11：tests.md 到 33124 B，超过 32 KB 硬限，而每行已经压到只列 1 个
+    # 入口——按本文件 individual_row() 那段注释的既定处置，到这一步该**拆分片**，
+    # 不该继续砍密度（再砍就只剩路径，索引也就没用了）。
+    #
+    # 拆法按"测的是哪一侧"，不是按字母：找测试时脑子里想的是"固件行为"还是
+    # "上位机/工具行为"，照这条线分，两边都能独立用。
+    host_prefixes = ("tests/test_panel", "tests/test_tk", "tests/test_dashboard",
+                     "tests/test_sim", "tests/test_gui", "tests/test_tool",
+                     "tests/test_flight_log_rerun", "tests/test_log_",
+                     "tests/test_aiwb2_net", "tests/test_ground_")
+    host_paths = [path for path in test_paths if path.startswith(host_prefixes)]
+    firmware_paths = [path for path in test_paths if path not in set(host_paths)]
+
+    outputs["tests-firmware.md"] = render_detail_shard(
+        "Verification Index · Firmware",
+        "you need existing firmware behavioral/architecture coverage or must choose focused regression tests.",
+        [individual_row(path, "test") for path in firmware_paths],
+        firmware_paths,
+    )
+    outputs["tests-host.md"] = render_detail_shard(
+        "Verification Index · Host tools & panel",
+        "you need existing ground-station/tooling coverage or must choose focused regression tests.",
+        [individual_row(path, "test") for path in host_paths],
+        host_paths,
     )
 
     tool_paths = [
@@ -610,6 +630,8 @@ def build_outputs(files: list[str]) -> dict[str, str]:
         "low": len(low_paths),
         "platform": len(platform_all),
         "tests": len(test_paths),
+        "tests_firmware": len(firmware_paths),
+        "tests_host": len(host_paths),
         "tools": len(tool_paths),
         "docs": len(doc_content_paths) + len(data_paths),
     }
@@ -636,7 +658,8 @@ def build_outputs(files: list[str]) -> dict[str, str]:
         f"| [firmware-app-services.md](firmware-app-services.md) | App behavior, tasks, control, commands, diagnostics, application services | {counts['app']} |",
         f"| [firmware-driver-bsp.md](firmware-driver-bsp.md) | Device/algorithm drivers, buses, GPIO, DMA callbacks, cache or board binding | {counts['low']} |",
         f"| [platform-build.md](platform-build.md) | CubeMX/Core, pins/clocks/peripherals, RTOS objects, linker/startup, USB, build, HAL/vendor internals | {counts['platform']} |",
-        f"| [tests.md](tests.md) | Existing regression/contract coverage and focused test selection | {counts['tests']} |",
+        f"| [tests-firmware.md](tests-firmware.md) | Firmware regression/contract coverage and focused test selection | {counts['tests_firmware']} |",
+        f"| [tests-host.md](tests-host.md) | Ground-station/tooling regression coverage | {counts['tests_host']} |",
         f"| [host-tools.md](host-tools.md) | Serial/TCP tools, capture, calibration, identification, log analysis and desktop UIs | {counts['tools']} |",
         f"| [docs-data.md](docs-data.md) | Architecture/controller documents, agent references, datasets, captures and experimental evidence | {counts['docs']} |",
         "",

@@ -11,7 +11,8 @@
  *                                而且不能依赖"卡插没插"，所以放片内。
  *   其余                        → SD 裸块。日志量大、可以缺失、没卡就降级不记。
  *
- * 逻辑参数槽 → 物理扇区是**一一对应**的：槽 A 独占一个 128 KB 扇区，槽 B 独占另一个。
+ * 参数区有**四个**逻辑槽，一一对应四个物理扇区：svc_param 的标定 blob 占 A/B，
+ * app_control_config_store 的配置记录（含机体模型）占另一对 A/B。
  * 绝不能让两个槽共用一个物理扇区——片内 Flash 的擦除粒度是 128 KB，
  * 共用的话擦 A 会把 B 一起抹掉，双槽掉电保护就名存实亡了。
  *
@@ -61,27 +62,46 @@ uint8_t APP_FlashService_IsLogStorageReady(void)
 
 /*
  * 逻辑地址 → 片内 Flash 物理地址。
- * 只有落在双槽之内的地址能映射；顶上那个没人用的扇区一律拒绝，
- * 免得写飞的地址悄悄落到别处。
+ *
+ * 四个逻辑槽按序落到四个物理扇区上：逻辑槽 i（4 KB 窗口）→ 物理扇区
+ * FIRST_SECTOR+i（128 KB）的开头。逻辑窗口比物理扇区小得多，剩下的 124 KB
+ * 空着——这不是浪费，是擦除粒度决定的：能独立擦除的最小单位就是 128 KB，
+ * 想让一个槽被擦时不碰到另一个槽，就只能一个槽占一个扇区。
  */
-static uint8_t flash_param_physical(uint32_t address, uint32_t *physical)
+_Static_assert(APP_FLASH_SERVICE_PARAM_SLOT_COUNT ==
+                   DRV_INTFLASH_PARAM_SECTOR_COUNT,
+               "logical param slots and physical intflash sectors must be 1:1");
+_Static_assert(APP_FLASH_SERVICE_SECTOR_SIZE <= DRV_INTFLASH_SECTOR_SIZE,
+               "a logical slot must fit inside one physical sector");
+
+static uint8_t flash_param_physical(uint32_t address, uint32_t length,
+                                    uint32_t *physical)
 {
-    if ((address >= APP_FLASH_SERVICE_PARAM_SLOT_A_OFFSET) &&
-        (address < APP_FLASH_SERVICE_PARAM_SLOT_B_OFFSET)) {
-        *physical = DRV_INTFLASH_PARAM_SLOT_A_ADDR +
-                    (address - APP_FLASH_SERVICE_PARAM_SLOT_A_OFFSET);
-        return 1U;
+    uint32_t index;
+    uint32_t offset;
+    uint32_t in_slot;
+
+    if ((length == 0U) || (address < APP_FLASH_SERVICE_PARAM_REGION_START)) {
+        return 0U;
+    }
+    offset = address - APP_FLASH_SERVICE_PARAM_REGION_START;
+    index = offset / APP_FLASH_SERVICE_SECTOR_SIZE;
+    if (index >= APP_FLASH_SERVICE_PARAM_SLOT_COUNT) {
+        return 0U;
     }
 
-    if ((address >= APP_FLASH_SERVICE_PARAM_SLOT_B_OFFSET) &&
-        (address < (APP_FLASH_SERVICE_PARAM_SLOT_B_OFFSET +
-                    APP_FLASH_SERVICE_SECTOR_SIZE))) {
-        *physical = DRV_INTFLASH_PARAM_SLOT_B_ADDR +
-                    (address - APP_FLASH_SERVICE_PARAM_SLOT_B_OFFSET);
-        return 1U;
+    /*
+     * 整笔事务必须落在**同一个逻辑槽**内。跨槽的逻辑地址在物理上并不连续
+     * （逻辑槽 4 KB、物理扇区 128 KB），放行的话后半段会悄悄写进本扇区那 124 KB
+     * 空白里，而不是下一个槽——地址对不上，回读还"成功"。宁可拒绝。
+     */
+    in_slot = offset % APP_FLASH_SERVICE_SECTOR_SIZE;
+    if (length > (APP_FLASH_SERVICE_SECTOR_SIZE - in_slot)) {
+        return 0U;
     }
 
-    return 0U;
+    *physical = DRV_INTFLASH_PARAM_SECTOR_ADDR(index) + in_slot;
+    return 1U;
 }
 
 static APP_FlashService_Status flash_from_intflash(DRV_INTFLASH_Status status)
@@ -280,7 +300,7 @@ static APP_FlashService_Status flash_read_unlocked(uint32_t address, uint8_t *da
     uint32_t physical = 0U;
 
     if (APP_FlashService_BackendFor(address) == APP_FLASH_BACKEND_INTERNAL) {
-        if (flash_param_physical(address, &physical) == 0U) {
+        if (flash_param_physical(address, length, &physical) == 0U) {
             return DRV_GD25Q32_INVALID_ARG;
         }
         return flash_from_intflash(DRV_INTFLASH_Read(physical, data, length));
@@ -296,7 +316,7 @@ static APP_FlashService_Status flash_write_unlocked(uint32_t address,
     uint32_t physical = 0U;
 
     if (APP_FlashService_BackendFor(address) == APP_FLASH_BACKEND_INTERNAL) {
-        if (flash_param_physical(address, &physical) == 0U) {
+        if (flash_param_physical(address, length, &physical) == 0U) {
             return DRV_GD25Q32_INVALID_ARG;
         }
         return flash_from_intflash(DRV_INTFLASH_Write(physical, data, length));
@@ -314,7 +334,7 @@ static APP_FlashService_Status flash_erase_unlocked(uint32_t address, uint32_t l
         if (length != APP_FLASH_SERVICE_SECTOR_SIZE) {
             return DRV_GD25Q32_INVALID_ARG;
         }
-        if (flash_param_physical(address, &physical) == 0U) {
+        if (flash_param_physical(address, length, &physical) == 0U) {
             return DRV_GD25Q32_INVALID_ARG;
         }
         /*

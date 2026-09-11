@@ -27,20 +27,20 @@ static void intflash_invalidate(uint32_t address, uint32_t length)
 
 uint8_t DRV_INTFLASH_IsParamAddress(uint32_t address)
 {
-    return ((address >= DRV_INTFLASH_PARAM_SLOT_A_ADDR) &&
-            (address < (DRV_INTFLASH_PARAM_SLOT_B_ADDR + DRV_INTFLASH_SECTOR_SIZE)))
+    return ((address >= DRV_INTFLASH_PARAM_BASE) &&
+            (address < (DRV_INTFLASH_PARAM_BASE + DRV_INTFLASH_PARAM_SIZE)))
            ? 1U : 0U;
 }
 
 static uint8_t intflash_sector_of(uint32_t address, uint32_t *sector_base)
 {
-    if (address < DRV_INTFLASH_PARAM_SLOT_B_ADDR) {
-        if (sector_base != NULL) { *sector_base = DRV_INTFLASH_PARAM_SLOT_A_ADDR; }
-        return DRV_INTFLASH_PARAM_SLOT_A_SECTOR;
-    }
+    const uint32_t index = (address - DRV_INTFLASH_PARAM_BASE) /
+                           DRV_INTFLASH_SECTOR_SIZE;
 
-    if (sector_base != NULL) { *sector_base = DRV_INTFLASH_PARAM_SLOT_B_ADDR; }
-    return DRV_INTFLASH_PARAM_SLOT_B_SECTOR;
+    if (sector_base != NULL) {
+        *sector_base = DRV_INTFLASH_PARAM_SECTOR_ADDR(index);
+    }
+    return (uint8_t)(DRV_INTFLASH_PARAM_FIRST_SECTOR + index);
 }
 
 DRV_INTFLASH_Status DRV_INTFLASH_EraseSector(uint32_t address)

@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 
@@ -76,29 +77,86 @@ def test_flash_service_is_public_app_boundary() -> None:
     assert source.count("APP_FlashService_Backend APP_FlashService_BackendFor") == 1
 
 
-def test_param_region_routing_matches_internal_flash_and_linker() -> None:
-    """参数区的三处定义必须一致，错开一处就会擦掉代码或读到垃圾。
+def _int_literal(text: str, name: str) -> int:
+    """从 C 头文件里取一个 `#define <name> <整数>`。"""
+    match = re.search(rf"^#define\s+{name}\s+(0[xX][0-9a-fA-F]+|\d+)U?L?U?L?\s*$",
+                      text, re.MULTILINE)
+    assert match is not None, name
+    return int(match.group(1), 0)
 
-    - app_flash_service.h  逻辑地址空间里参数区的起点
-    - drv_intflash.h       实际落在片内 Flash 的哪两个扇区
-    - STM32H743XX_FLASH.ld 代码段必须让出这两个扇区
+
+def test_param_region_routing_matches_internal_flash_and_linker() -> None:
+    """参数区的四处定义必须一致，错开一处就会擦掉代码或读到垃圾。
+
+    - app_flash_service.h  逻辑地址空间里参数区的起点与槽数
+    - drv_intflash.h       实际落在片内 Flash 的哪几个扇区
+    - STM32H743XX_FLASH.ld 代码段必须让出这些扇区
+    - app_flight_log.h     日志区上界必须停在参数区之下
+
+    这条测试是 2026-09-11 那个缺陷的机检：当时逻辑上留了三个扇区、物理上只映射了
+    两个，配置记录（含机体模型）落在没有映射的那一个上，`SAVE` 恒返回
+    INVALID_ARG。所以下面不只看"常量在不在"，而是真的把逻辑槽数和物理扇区数对上。
     """
     service_header = read("App/Inc/app_flash_service.h")
     intflash = read("Driver/Inc/drv_intflash.h")
     linker = read("STM32H743XX_FLASH.ld")
+    flight_log = read("App/Inc/app_flight_log.h")
 
-    assert "APP_FLASH_SERVICE_PARAM_SLOT_A_OFFSET" in service_header
-    assert "APP_FLASH_SERVICE_PARAM_SLOT_B_OFFSET" in service_header
+    slot_count = _int_literal(service_header, "APP_FLASH_SERVICE_PARAM_SLOT_COUNT")
+    sector_count = _int_literal(intflash, "DRV_INTFLASH_PARAM_SECTOR_COUNT")
+    first_sector = _int_literal(intflash, "DRV_INTFLASH_PARAM_FIRST_SECTOR")
+    base = _int_literal(intflash, "DRV_INTFLASH_PARAM_BASE")
 
-    # 两个 128 KB 扇区，各独占一个逻辑参数槽（片内擦除粒度就是 128 KB，
-    # 共用一个扇区会让擦 A 把 B 一起抹掉，双槽掉电保护失效）。
-    assert "0x081C0000" in intflash
-    assert "0x081E0000" in intflash
+    # 一个逻辑槽独占一个物理扇区。片内擦除粒度就是 128 KB，共用一个扇区会让
+    # 擦 A 把 B 一起抹掉，双槽掉电保护失效；映射不到扇区则直接写不进去。
+    assert slot_count == sector_count, "逻辑槽与物理扇区必须一一对应"
     assert "DRV_INTFLASH_SECTOR_SIZE      (128UL * 1024UL)" in intflash
 
-    # 2048K - 256K = 1792K：正好让出上面那两个扇区。
-    assert "LENGTH = 1792K" in linker
+    sector_size = 128 * 1024
+    bank2_end = 0x08100000 + 8 * sector_size
+    assert base == 0x08100000 + first_sector * sector_size
+    assert base + sector_count * sector_size == bank2_end, (
+        "参数区必须顶到 Bank2 末尾，否则中间留出的扇区无人认领"
+    )
+
+    # 代码段必须正好让出这些扇区：2048K - sector_count*128K。
+    code_k = 2048 - sector_count * 128
+    assert f"LENGTH = {code_k}K" in linker
     assert "LENGTH = 2048K" not in linker
+
+    # 五个逻辑槽全部具名，没有"留作缓冲"的无主扇区——上一轮的缺陷正是出在那里。
+    for name in ("APP_FLASH_SERVICE_SCRATCH_OFFSET",
+                 "APP_FLASH_SERVICE_PARAM_SLOT_A_OFFSET",
+                 "APP_FLASH_SERVICE_PARAM_SLOT_B_OFFSET",
+                 "APP_FLASH_SERVICE_CFG_SLOT_A_OFFSET",
+                 "APP_FLASH_SERVICE_CFG_SLOT_B_OFFSET"):
+        assert name in service_header, name
+    named = len(re.findall(r"APP_FLASH_SERVICE_PARAM_SLOT\((\d)U\)", service_header))
+    assert named == slot_count, "每个逻辑槽都必须有名字，不许留无主扇区"
+
+    # 日志区上界必须正好落在参数区起点。头文件里写的是字面量（它要能在宿主上
+    # 单独编译，不能拖进 HAL 依赖），一致性由 app_flight_log.c 的编译期断言保证。
+    log_end = _int_literal(flight_log, "APP_FLIGHT_LOG_REGION_END_EXCL")
+    nor_size = 4 * 1024 * 1024
+    nor_sector = 4 * 1024
+    assert log_end == nor_size - slot_count * nor_sector
+    assert "_Static_assert(APP_FLIGHT_LOG_REGION_END_EXCL ==" in read(
+        "App/Src/app_flight_log.c"
+    )
+
+
+def test_destructive_scratch_test_cannot_touch_real_data() -> None:
+    """`FLASH SCRATCH TEST` 是破坏性的，必须落在自己的扇区上。
+
+    它跟参数槽共用扇区的话，就是一个"跑一次诊断把标定/机体模型擦了"的陷阱——
+    而且擦完还会显示成功，因为它测的就是"擦得掉、写得进"。
+    """
+    control = read("App/Src/app_control.c")
+
+    assert ("#define APP_CONTROL_FLASH_SCRATCH_ADDR APP_FLASH_SERVICE_SCRATCH_OFFSET"
+            in control)
+    # 不许再出现自己算地址的写法（那正是它撞上参数槽的方式）。
+    assert "APP_FLASH_SERVICE_SIZE_BYTES - 4U * 4096UL" not in control
 
 
 def test_legacy_bsp_chip_driver_removed() -> None:

@@ -34,15 +34,37 @@ extern "C" {
 #define APP_FLASH_SERVICE_PAGE_SIZE             DRV_GD25Q32_PAGE_SIZE
 
 /*
- * 参数区在逻辑地址空间的**顶部三个扇区**，与 svc_param.c 的 SLOT_A/SLOT_B 定义
- * 必须一致（svc_param.c 里有 _Static_assert 钉住这一点）。
- * 前两个扇区就是双槽 A / B，第三个（最顶上那个）没人用，留作边界缓冲。
+ * 参数区 = 逻辑地址空间的**顶部五个扇区**，一一映射到片内 Flash 的五个物理扇区。
+ *
+ *   顶-5  SCRATCH           诊断用的一次性擦写区（FLASH SCRATCH TEST，破坏性）
+ *   顶-4  SVC_PARAM_SLOT_A  标定 blob（IMU/舵机/舵机型号/IMU 朝向）
+ *   顶-3  SVC_PARAM_SLOT_B
+ *   顶-2  CFG_SLOT_A        控制配置记录（增益 / 遥控映射 / **机体模型**）
+ *   顶-1  CFG_SLOT_B
+ *
+ * 为什么不能共用扇区：片内 Flash 擦除粒度 128 KB，一个逻辑槽必须独占一个物理扇区，
+ * 否则擦 A 会把 B 一起抹掉，双槽掉电保护就名存实亡。诊断擦写区同理——它是破坏性的，
+ * 跟真数据共用扇区等于埋一个"跑一次诊断把标定擦了"的陷阱。
+ *
+ * 2026-09-11 修：原来只留三个扇区、只映射两个，配置记录（`APP_CONTROL_CFG_ADDRESS`）
+ * 正好落在那个"没人用、留作边界缓冲"的第三扇区上——它其实一直有人用。
+ * 结果是配置记录**没有物理落点**，`SAVE` 恒返回 INVALID_ARG（实机 `OK save st=4`）。
+ * 现在五个逻辑槽全部有映射，且各有各的物理扇区。
  */
+#define APP_FLASH_SERVICE_PARAM_SLOT_COUNT 5U
 #define APP_FLASH_SERVICE_PARAM_REGION_START \
-    (APP_FLASH_SERVICE_SIZE_BYTES - 3U * APP_FLASH_SERVICE_SECTOR_SIZE)
-#define APP_FLASH_SERVICE_PARAM_SLOT_A_OFFSET APP_FLASH_SERVICE_PARAM_REGION_START
-#define APP_FLASH_SERVICE_PARAM_SLOT_B_OFFSET \
-    (APP_FLASH_SERVICE_SIZE_BYTES - 2U * APP_FLASH_SERVICE_SECTOR_SIZE)
+    (APP_FLASH_SERVICE_SIZE_BYTES - \
+     APP_FLASH_SERVICE_PARAM_SLOT_COUNT * APP_FLASH_SERVICE_SECTOR_SIZE)
+/* 第 index 个逻辑槽的起始地址（index < APP_FLASH_SERVICE_PARAM_SLOT_COUNT）。 */
+#define APP_FLASH_SERVICE_PARAM_SLOT(index) \
+    (APP_FLASH_SERVICE_PARAM_REGION_START + \
+     ((uint32_t)(index) * APP_FLASH_SERVICE_SECTOR_SIZE))
+
+#define APP_FLASH_SERVICE_SCRATCH_OFFSET      APP_FLASH_SERVICE_PARAM_SLOT(0U)
+#define APP_FLASH_SERVICE_PARAM_SLOT_A_OFFSET APP_FLASH_SERVICE_PARAM_SLOT(1U)
+#define APP_FLASH_SERVICE_PARAM_SLOT_B_OFFSET APP_FLASH_SERVICE_PARAM_SLOT(2U)
+#define APP_FLASH_SERVICE_CFG_SLOT_A_OFFSET   APP_FLASH_SERVICE_PARAM_SLOT(3U)
+#define APP_FLASH_SERVICE_CFG_SLOT_B_OFFSET   APP_FLASH_SERVICE_PARAM_SLOT(4U)
 
 /* 后端选择，供诊断命令如实回报某个地址落在哪块介质上。 */
 typedef enum {

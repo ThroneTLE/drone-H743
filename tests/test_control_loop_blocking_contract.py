@@ -220,7 +220,10 @@ STEP_D4_SYSTEM_BODY_SHA256 = {
     # 那条，横幅因此第一次刷新就有内容，不用等自己的 2 Hz 轮询转到。
     # 报文体本身在 App/Src/app_cmd_arm.c，这里只是多了一个调用，不是 D4 搬家走样。
     "app_control_report_modules": "2f5b5ad4a5525a21b1734d7de6cd8b56da57da8e1c7b038b4bd6a74853b3b8f7",
-    "app_control_report_status": "a78f2d54a89071eaf96634d556361154a5371d6c84f30550d228e818ed34e578",
+    # 2026-09-11：STATUS? 紧跟 HW FLASH 之后多报一行 HW PARAMSTORE。上面那行说的是
+    # 外部 SPI NOR（本板没有，恒 ok=0，是实话），单看它会被读成"配置保存坏了"；
+    # 参数其实存在片内 Flash 上。多一条报文，函数结构未变。
+    "app_control_report_status": "3f0f8e642b47e8390c489618fe0594ccf603b5b0922c0942122fd19d6be29223",
     "app_control_report_usb_cdc_stats": "7cc8a758ff5d3e9c184f30338ef9955b6e0383e8a15329f32303ef42ea1f0f9c",
     "app_control_report_uart_stats": "a007f9a28d3078df665affa2edbd4095c1891700263f8d89b20959e7155c9627",
     "APP_Control_ReportUartStats": "aa55a393bc18a14388f8ecad6d721ebce5ac7b425ee0c23b8cd9d6d653415d35",
@@ -263,6 +266,19 @@ D4_STUB_HEADER = r"""
 typedef struct { uint8_t id; uint16_t pulse_us; uint16_t time_ms; uint8_t mode; uint8_t enabled; } APP_ControlServoConfig;
 typedef struct { uint8_t loaded_from_flash; uint8_t flash_valid; uint8_t last_flash_status; APP_ControlServoConfig servo[2]; } APP_ControlConfig;
 void APP_Control_QueueText(const char *, ...);
+
+/*
+ * 2026-09-11: STATUS? also reports HW PARAMSTORE, naming the medium the
+ * parameters actually live on.  The HW FLASH line above describes the external
+ * SPI NOR, which this board does not have (ok=0 forever) -- read alone it looks
+ * like "saving is broken".  These stubs only let app_cmd_system.c compile in
+ * D4's isolated environment; the real ones live in app_flash_service.c.
+ */
+#define APP_CONTROL_CFG_SLOT_A 0x003FE000UL
+typedef int APP_FlashService_Backend;
+APP_FlashService_Backend APP_FlashService_BackendFor(uint32_t address);
+const char *APP_FlashService_BackendName(APP_FlashService_Backend backend);
+uint8_t APP_FlashService_IsLogStorageReady(void);
 
 typedef struct { int32_t probe_status; int32_t status1_status; int32_t read_status; uint8_t manufacturer_id; uint8_t memory_type; uint8_t capacity_id; uint8_t status1; } APP_Flash_Status;
 typedef struct { int32_t init_status; int32_t split_status; int32_t txrx_status; uint8_t product_id; uint8_t split_id; uint8_t txrx_id; uint8_t bmp280_id; uint8_t cs_level; uint8_t miso_level; } APP_Baro_Status;
@@ -1054,6 +1070,7 @@ def _write_d4_stubs(stub_dir: Path) -> None:
     (stub_dir / "d4_stubs.h").write_text(D4_STUB_HEADER, encoding="ascii")
     headers = {
         "app_control.h", "app_aiwb2.h", "app_baro.h", "app_diag.h",
+        "app_control_config_store.h", "app_flash_service.h",
         "app_flash.h", "app_gps.h", "app_mag.h", "app_nav_estimator.h",
         "app_optical_flow.h", "app_proto.h", "app_sensor.h", "app_tasks.h",
         "app_uart.h", "app_usb_cdc.h", "bsp_aiwb2_power.h", "bsp_baro.h",

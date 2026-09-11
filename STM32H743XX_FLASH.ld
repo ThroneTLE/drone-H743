@@ -61,13 +61,20 @@ RAM_D2 (xrw)      : ORIGIN = 0x30000000, LENGTH = 288K
 RAM_D3 (xrw)      : ORIGIN = 0x38000000, LENGTH = 64K
 ITCMRAM (xrw)      : ORIGIN = 0x00000000, LENGTH = 64K
 /*
- * 代码只占 1792K，不是全部 2048K。
+ * 代码只占 1408K，不是全部 2048K。
  *
- * 尾部 256K —— Bank2 的最后两个 128K 扇区（0x081C0000 / 0x081E0000）—— 留给参数存储：
+ * 尾部 640K —— Bank2 的最后五个 128K 扇区（0x08160000 起）—— 留给参数存储：
  * MicoAir743v2 板上没有外部 SPI NOR，参数改存片内 Flash，见 Driver/Inc/drv_intflash.h。
+ *
+ * 为什么是五个扇区：擦除粒度 128 KB，能独立擦除的单位就是一整个扇区；而上层有
+ * **两套**互不相干的持久化（svc_param 的标定 blob、app_control_config_store 的
+ * 配置记录），各自要 A/B 双槽才扛得住写一半掉电，于是 2 × 2 = 4 个；再加一个
+ * 给破坏性诊断（FLASH SCRATCH TEST）专用，免得它擦到真数据，共 5 个。
+ * 代码当前 435K，1408K 还有三倍余量，没必要省这 640K。
+ *
  * 这两处必须同步改动：这里放回 2048K 而 drv_intflash 不动，保存参数就会擦掉代码。
  */
-FLASH (rx)      : ORIGIN = 0x8000000, LENGTH = 1792K
+FLASH (rx)      : ORIGIN = 0x8000000, LENGTH = 1408K
 }
 
 /* Highest address of the user mode stack */

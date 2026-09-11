@@ -3,6 +3,8 @@
 
 #include "app_aiwb2.h"
 #include "app_baro.h"
+#include "app_control_config_store.h"
+#include "app_flash_service.h"
 #include "app_diag.h"
 #include "app_flash.h"
 #include "app_mag.h"
@@ -216,6 +218,23 @@ void app_control_report_status(void)
                                  (unsigned int)flash_status.memory_type,
                                  (unsigned int)flash_status.capacity_id,
                                  (unsigned int)flash_status.status1);
+    /*
+     * 上面那行说的是**外部 SPI NOR**，MicoAir743V2 板上没有这颗芯片，所以它
+     * 恒为 ok=0 —— 那是实话，但单看它会让人以为参数存不了。参数其实存在
+     * H743 片内 Flash 上（2026-09-11 起），所以紧跟着把参数存储的真实去向报出来，
+     * 免得"外部 Flash 没有"被读成"配置保存坏了"。
+     */
+    app_control_queue_proto_text(APP_PROTO_MSG_HW_FLASH,
+                                 "HW PARAMSTORE backend=%s cfg_slot=0x%06lX cfg_valid=%u cfg_loaded=%u last_save=%u log_backend=%s log_ready=%u nor=absent_on_this_board\r\n",
+                                 APP_FlashService_BackendName(
+                                     APP_FlashService_BackendFor(APP_CONTROL_CFG_SLOT_A)),
+                                 (unsigned long)APP_CONTROL_CFG_SLOT_A,
+                                 (unsigned int)control_config.flash_valid,
+                                 (unsigned int)control_config.loaded_from_flash,
+                                 (unsigned int)control_config.last_flash_status,
+                                 APP_FlashService_BackendName(
+                                     APP_FlashService_BackendFor(0U)),
+                                 (unsigned int)APP_FlashService_IsLogStorageReady());
     app_control_queue_proto_text(APP_PROTO_MSG_HW_BARO,
                                  "HW SPL06 ok=%u stage=%s init=%ld split=%ld txrx=%ld id=%02X split_id=%02X txrx_id=%02X exp=10 cs=%u miso=%u\r\n",
                                  (unsigned int)app_control_baro_ok(&baro_status),
