@@ -4,7 +4,7 @@
 
 Read this shard only when you need existing firmware behavioral/architecture coverage or must choose focused regression tests.
 
-Source snapshot: `3f0ee5ae6bff`. Indexed files: 127.
+Source snapshot: `8e4d760340a0`. Indexed files: 127.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -26,7 +26,7 @@ Source snapshot: `3f0ee5ae6bff`. Indexed files: 127.
 | `tests/test_balance_controller_model.py` | — | `test_identified_attitude_gains_stabilize_with_80_ms_delay` (+1) |
 | `tests/test_balance_controller_runtime.py` | — | `test_real_controller_runtime_math` |
 | `tests/test_baro_contract.py` | — | `test_baro_ok_requires_real_spl06_who_am_i_not_only_spi_success` |
-| `tests/test_bluetooth_link_parity.py` | 板载蓝牙（UART8）必须和 USB、数传是同一条链路，不是半条。 MicoAir743V2 的 UART8（PE1/PE0，115200）接的是板载蓝牙模块。命令面本来就是同一套 ——维护口收到的行直接交给 `APP_Control_P… | `test_bluetooth_is_a_telemetry_sink_like_usb_and_the_radio` (+5) |
+| `tests/test_bluetooth_link_parity.py` | 板载蓝牙（UART8）必须和 USB、数传是同一条链路，不是半条。 MicoAir743V2 的 UART8（PE1/PE0，115200）接的是板载蓝牙模块。命令面本来就是同一套 ——维护口收到的行直接交给 `APP_Control_P… | `test_bluetooth_is_a_telemetry_sink_like_usb_and_the_radio` (+6) |
 | `tests/test_cascade_controller_contract.py` | R-S5-1 integration contract for the real coax-controller entry path | `test_scheduled_cascade_and_allocator_feedback_on_host` (+1) |
 | `tests/test_cascade_review_regressions.py` | Regression tests for the 919fcfd9 software-review findings | `test_allocator_lifecycle_antiwindup_and_param_regressions` (+2) |
 | `tests/test_coax_ctrl_contract.py` | — | `test_servo_output_compensates_90_degree_ccw_mounting` (+16) |

@@ -421,12 +421,38 @@ HW PARAMSTORE backend=INTFLASH cfg_slot=0x3FE000 cfg_valid=1 cfg_loaded=1
 "最近一条命令是从哪条链路进来的"。所以把地面站连到蓝牙的虚拟串口上，
 开流就自动走蓝牙。
 
-### 实机验证状态
+### 蓝牙模块识别（实测）
 
-`TELEM SINK bt` 在 USB 上试过，飞控回 `sink=bt`，切回 `usb` 也正常。
-**但整条蓝牙链路本身还没实测过**——需要先把蓝牙模块配对、拿到它的虚拟串口号，
-再用地面站连上去跑一遍命令与波形。模块的配对方式、默认波特率是否就是 115200，
-这两件事要你在实物上确认。
+模块在 Windows 上以**经典蓝牙 SPP** 出现，不是 BLE：
+
+| 项目 | 值 |
+|---|---|
+| 设备名 | `MicoAir743v2-99806` |
+| MAC | `1CBE4DC4A41A` |
+| 配置文件 | SPP（`00001101-0000-1000-8000-00805F9B34FB`） |
+| 波特率 | **115200**，与 `Core/Src/usart.c` 里 UART8 的配置一致 |
+
+配对后 Windows 会分配一个"蓝牙链接上的标准串行"COM 口（本机是 **COM35**）。
+**口号不是固定的**，换台电脑或重新配对都会变；按 MAC 找才可靠：
+
+```powershell
+Get-CimInstance Win32_PnPEntity |
+  Where-Object { $_.Name -match 'COM\d+' -and $_.PNPDeviceID -like '*1CBE4DC4A41A*' } |
+  ForEach-Object { ([regex]::Match($_.Name,'COM\d+')).Value }
+```
+
+### 实机验证结果（2026-09-11，COM35）
+
+| 验的是什么 | 结果 |
+|---|---|
+| 命令面 | `PING` → `PONG drone-H743`；`REQ mod=ARM`、`AIRFRAME?` 全部正常 |
+| 遥测流 | `TELEM STREAM on` 后 3 秒收到 36 个 `$X` 帧，`drop=0` |
+| 帧格式 | 首帧 `24 58 3e 00 30 22 48 00 02 01 …`：`$X` / 方向 `>` / fn `0x2230` / len 72 / ver 2；schema `0xAE2A878A` 与 `TELEM?` 自报一致 |
+| `SINK auto` | 在蓝牙上开流后 `TELEM?` 报 `sink=auto active=bt` —— 自动选中了蓝牙，不是发去数传 |
+| 异步文本镜像 | 在 **USB** 上发 `AIRFRAME?`，回复同时出现在**蓝牙**上 |
+
+也就是说：把地面站直接连到这个 COM 口，命令、调参、波形全部可用，
+不需要在上位机做任何设置——`SINK auto` 会自己跟着链路走。
 
 ## 上游来源与抓取版本
 

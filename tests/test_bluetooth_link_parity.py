@@ -119,3 +119,20 @@ def test_the_board_doc_records_which_uart_the_bluetooth_module_is_on() -> None:
     """接错串口是这类改动最容易出的错，出处必须写在板级文档里。"""
     doc = read("doc/micoair743v2/README.md")
     assert "| UART8 | PE1 | PE0 | 蓝牙模块 |" in doc
+
+
+def test_the_board_doc_identifies_the_module_by_mac_not_by_com_port() -> None:
+    """COM 口号会变，MAC 不会。
+
+    实测这块板的蓝牙是经典 SPP（不是 BLE），设备名 `MicoAir743v2-99806`、
+    MAC `1CBE4DC4A41A`。文档里只写"在 COM35"的话，换台电脑或重新配对就作废，
+    而下一个人会以为是固件坏了——所以必须同时给出按 MAC 反查串口的办法。
+    """
+    doc = read("doc/micoair743v2/README.md")
+
+    assert "MicoAir743v2-99806" in doc
+    assert "1CBE4DC4A41A" in doc
+    # SPP 的 UUID：认成 BLE 会一直找不到串口。
+    assert "00001101-0000-1000-8000-00805F9B34FB" in doc
+    # 按 MAC 反查串口的命令，而不是写死一个口号。
+    assert "PNPDeviceID -like '*1CBE4DC4A41A*'" in doc
