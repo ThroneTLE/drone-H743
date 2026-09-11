@@ -1516,7 +1516,6 @@ static void app_control_report_flash(void)
 {
     APP_Flash_Status flash_status;
 
-    APP_Flash_RefreshStatus();
     APP_Flash_GetStatus(&flash_status);
     app_control_queue_proto_text(APP_PROTO_MSG_FLASH_RECORD,
                                  "FLASH ok=%u stage=%s probe=%ld status=%ld read=%ld id=%02X%02X%02X exp=C84016 sr1=%02X\r\n",

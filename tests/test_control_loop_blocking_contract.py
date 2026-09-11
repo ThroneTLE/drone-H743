@@ -258,7 +258,15 @@ STEP_D4_DIAG_BODY_SHA256 = {
 }
 STEP_D4_PROTECTED_LEGACY_BODY_SHA256 = {
     "app_control_report_config": "c9d30f2565e2de3830fcaca89e6f8d86f163431bb079893d44779bf414a75164",
-    "app_control_report_flash": "2d92c4b5a88196604779cd0e73673d9db0b10d3adaf6f1f66878549a9f84decc",
+    # 2026-09-11：删掉了函数体第一行的 `APP_Flash_RefreshStatus();`。
+    #
+    # 那次探测要拿 flashBusMutex，去问一颗本板**根本没有**的外部 SPI NOR。
+    # 遥测画像量到：蓝牙上每敲一次 `FLASH?`，遥测任务就被饿 0.5~0.9 秒
+    # （持锁者被优先级继承顶到遥测之上）。而 `APP_Flash_GetStatus` 本来就带
+    # 一次性惰性探测，注释里写明"NOR 不会中途长出来，一次结论就够"——
+    # 也就是说这一行本来就是多余的第二次探测。删后实测：首次 592 ms（惰性那次，
+    # 不可避免），之后 26 ms。**只减不增**，符合 app_control.c 的硬约束。
+    "app_control_report_flash": "f2777a529061d462f8722c8f6d172d4cb513563d4017818bc638aa0fc572182d",
     "app_control_report_baro": "e108b9fb652b46f7735c8129ed888d323167ee085b0e672e3d8fddce59723752",
     "app_control_report_imu": "683dfc8099042862a6835572e894508333373f0ca84b27acda1e7cd309d54cc3",
     "app_control_token_u32": "8e1c6bdd61e5fc1253e46d639c3f559291b5a0e88f69bab2b817b5adea834b07",
