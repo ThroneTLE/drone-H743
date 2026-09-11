@@ -147,6 +147,20 @@ void BSP_IMU_DebugRawBmi088(BSP_IMU_RawProbe *out);
 
 void BSP_IMU_Invalidate(void);
 
+/*
+ * 被选中那颗 IMU 的 DRDY 引脚掩码（未选中任何一颗时返回 0）。
+ *
+ * 采样节拍必须只认这一个引脚。板上两颗 IMU 各有各的 DRDY，而**软复位不给传感器
+ * 掉电**——`BOOT DFU CONFIRM`、看门狗复位之后，上一轮配置过的那颗仍在按自己的
+ * ODR 发边沿。2026-09-11 实测：BMI088 当选、陀螺 1000 Hz，实际节拍却是 1760 Hz，
+ * 多出来的约 800 Hz 来自上一轮留下来的 BMI270（读回 PWR_CTRL=0x0E，加计陀螺都还开着）；
+ * 把 BMI270 软复位之后速率立刻回到 1000 Hz。
+ *
+ * 后果不是"多几次空唤醒"那么轻：控制环被以约 1.7 倍于陀螺更新率的节奏唤醒，
+ * 三成迭代读到的是重复样本。角速率是最内环，重复样本对 D 项就是噪声放大。
+ */
+uint16_t BSP_IMU_GetDrdyPin(void);
+
 void             BSP_IMU_GetInfo(BSP_IMU_Info *info);
 DRV_IMU_ChipKind BSP_IMU_GetChipKind(void);
 

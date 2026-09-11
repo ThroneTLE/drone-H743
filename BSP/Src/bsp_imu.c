@@ -134,6 +134,55 @@ static void BSP_IMU_BindBuses(void)
     if (icm_bus != NULL)    { icm_dev.bus = *icm_bus; }
 }
 
+/* 各芯片的 DRDY 引脚。与 Core/Inc/main.h 的标签一致，改板时只改这一处。 */
+static uint16_t bsp_imu_drdy_pin_of(DRV_IMU_ChipKind kind)
+{
+    switch (kind) {
+    case DRV_IMU_CHIP_BMI088: return (uint16_t)BMI088_G_DRDY_Pin;
+    case DRV_IMU_CHIP_BMI270: return (uint16_t)BMI270_DRDY_Pin;
+    default:                  return 0U;   /* ICM-42688 在本板上没有 DRDY 走线 */
+    }
+}
+
+/*
+ * 只放行选中那颗的 DRDY，其余的 EXTI 直接在源头屏蔽。
+ *
+ * 单靠 App 层比对引脚号也能保证正确，但那样每秒仍要白进几百次中断。更重要的是：
+ * 一个永远会被忽略的中断不该处于使能状态——留着它，下一个读代码的人会以为它有用。
+ *
+ * 用 EXTI 的屏蔽位而不是 HAL_NVIC_DisableIRQ：EXTI15_10 / EXTI9_5 都是多个引脚共用的
+ * 中断线，关整条线会牵连无关引脚。也不用 HAL_GPIO_DeInit：那会把引脚打回模拟态，
+ * BSP_IMU_Invalidate() 之后重新探测就得再配一遍。
+ *
+ * EXTI_D1 是 CM7 那一侧的屏蔽寄存器组，与 HAL_GPIO_Init 里写的是同一个
+ * （HAL 内部叫 EXTI_CurrentCPU，但那是它 .c 文件里的局部变量，外面用不了）。
+ * H743 单核，不存在 CM4 那一侧。
+ */
+static void BSP_IMU_RouteDrdy(DRV_IMU_ChipKind selected)
+{
+    static const DRV_IMU_ChipKind all[] = {
+        DRV_IMU_CHIP_BMI088, DRV_IMU_CHIP_BMI270
+    };
+    uint32_t i;
+
+    for (i = 0U; i < (sizeof(all) / sizeof(all[0])); i++) {
+        uint16_t pin = bsp_imu_drdy_pin_of(all[i]);
+
+        if (pin == 0U) { continue; }
+
+        if (all[i] == selected) {
+            EXTI_D1->IMR1 |= (uint32_t)pin;
+        } else {
+            EXTI_D1->IMR1 &= ~(uint32_t)pin;
+        }
+    }
+}
+
+uint16_t BSP_IMU_GetDrdyPin(void)
+{
+    return bsp_imu_drdy_pin_of(BSP_IMU_GetChipKind());
+}
+
 DRV_IMU_Status BSP_IMU_Init(void)
 {
     const BSP_IMU_Candidate candidates[] = {
@@ -213,6 +262,7 @@ DRV_IMU_Status BSP_IMU_Init(void)
         imu_ops = candidates[i].ops;
         imu_ctx = candidates[i].ctx;
         SVC_IMU_SelectionCommit(&imu_selection, imu_ops->kind, probe_chip_id[i]);
+        BSP_IMU_RouteDrdy(imu_ops->kind);
         imu_initialized = 1U;
         return DRV_IMU_OK;
     }

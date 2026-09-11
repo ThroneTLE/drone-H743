@@ -53,6 +53,8 @@
 #define BMI088_ACC_PWR_DELAY_MS      50U
 #define BMI088_GYRO_RESET_DELAY_MS   30U
 #define BMI088_ACC_WRITE_RETRIES      8U
+/* datasheet：写电源寄存器后至少 450 us 才能再访问。延时函数只有 ms 粒度，取 1。 */
+#define BMI088_ACC_WRITE_SETTLE_MS    1U
 
 /*
  * 加计 SPI 读要在地址字节后丢弃一个 dummy 字节，所以缓冲比数据长 2。
@@ -237,6 +239,21 @@ static DRV_IMU_Status bmi088_acc_write(DRV_BMI088_Device *dev, uint8_t reg,
         DRV_IMU_Status status = bmi088_acc_write_raw(dev, reg, value);
 
         if (status != DRV_IMU_OK) { return status; }
+
+        /*
+         * 写完必须让芯片先把值吃进去，再回读。
+         *
+         * datasheet 要求写 ACC_PWR_CONF / ACC_PWR_CTRL 之后至少 450 µs 才能再访问，
+         * 而这里原本是写完立刻回读——8 次重试挤在一起，很可能整段都落在那个窗口里，
+         * 于是回读永远读到旧值，函数返回 ERROR。表现为**初始化时好时坏**：
+         * 2026-09-11 连续复位实测约每三四次失败一次，失败时 BMI088 探测通过却
+         * 上不了岗，只能退到 BMI270。这种不确定性比干脆失败更难查，
+         * 也更不能带上天——两颗 IMU 的安装旋转与量程刻度都不一样。
+         *
+         * 延时放在这里而不是只包住那两个电源寄存器：init 一共七次写，多花 7 ms，
+         * 换掉一个按寄存器名分叉的特例，值。
+         */
+        bmi088_delay_ms(dev, BMI088_ACC_WRITE_SETTLE_MS);
 
         status = bmi088_acc_read(dev, reg, &readback, 1U);
         if (status != DRV_IMU_OK) { return status; }

@@ -600,16 +600,24 @@ const APP_IMU_SampleMessage *APP_IMU_GetLastSample(void)
 /*  老板子是 PC0/EXTI0。MicoAir743v2 上 PC0 是电池电压采样，DRDY 改到：      */
 /*    PC15 = BMI088 陀螺 DRDY（主 IMU，节拍由陀螺定，角速率是最内环）        */
 /*    PB7  = BMI270 DRDY（备用 IMU）                                        */
-/*  两个引脚都接受：探测到哪颗就由哪颗发中断，这里不需要知道选中的是谁，     */
-/*  另一颗没初始化就不会产生边沿。误判的代价只是多一次空唤醒，              */
-/*  而漏判会让整个控制环退到 20 ms 轮询兜底——宁可宽松。                     */
+/*                                                                        */
+/*  **只认被选中那颗的引脚。** 这里原先两个都收，理由写的是"另一颗没初始化     */
+/*  就不会产生边沿"——那句话在冷启动时成立，软复位时不成立：`BOOT DFU         */
+/*  CONFIRM`、看门狗复位都不给传感器掉电，上一轮配置过的那颗照旧按自己的      */
+/*  ODR 发边沿。2026-09-11 实测：BMI088 当选、陀螺 1000 Hz，节拍却是 1760 Hz， */
+/*  多出的约 800 Hz 来自上一轮留下的 BMI270；把它软复位后立刻回到 1000 Hz。   */
+/*                                                                        */
+/*  代价不是"多一次空唤醒"：控制环被以约 1.7 倍于陀螺更新率的节奏唤醒，       */
+/*  三成迭代拿到的是重复样本，而角速率是最内环，重复样本对 D 项就是噪声放大。 */
+/*  BSP 侧还会把未选中那颗的 EXTI 屏蔽位清掉（见 BSP_IMU_GetDrdyPin 的注释）， */
+/*  这里的比对是第二道闸——两道都在，是因为漏判的代价是整环退到轮询兜底。      */
 /* ════════════════════════════════════════════════════════════════════════ */
-
-#define APP_IMU_DRDY_PIN_MASK (GPIO_PIN_15 | GPIO_PIN_7)
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
-    if ((GPIO_Pin & APP_IMU_DRDY_PIN_MASK) != 0U) {
+    const uint16_t drdy_pin = BSP_IMU_GetDrdyPin();
+
+    if ((drdy_pin != 0U) && ((GPIO_Pin & drdy_pin) != 0U)) {
         const uint64_t timestamp_us = SVC_Timestamp_Us();
         const uint32_t write_sequence =
             app_imu_drdy_timestamp.sequence + 1U;

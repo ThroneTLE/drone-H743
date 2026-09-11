@@ -101,6 +101,21 @@ extern GPIO_TypeDef fake_gpio_a;
 #define BMI270_CS_GPIO_Port   (&fake_gpio_a)
 #define BMI270_CS_Pin         ((uint16_t)0x8000U)   /* PA15 */
 
+/*
+ * DRDY 引脚与 EXTI 的屏蔽寄存器。
+ *
+ * bsp_imu.c 在选型敲定后会把未选中那颗的 EXTI 屏蔽位清掉（DFU/看门狗这类软复位
+ * 不给传感器掉电，上一轮配置过的那颗会继续发边沿，把控制环节拍顶高）。
+ * 这套 harness 编译的是真实的 bsp_imu.c，所以这些符号必须在假头里存在；
+ * EXTI 给一个可寻址的结构体，本层只关心那几个位有没有被正确置/清。
+ */
+#define BMI088_G_DRDY_Pin     ((uint16_t)0x8000U)   /* PC15 */
+#define BMI270_DRDY_Pin       ((uint16_t)0x0080U)   /* PB7  */
+
+typedef struct { uint32_t IMR1; uint32_t EMR1; } EXTI_Core_TypeDef;
+extern EXTI_Core_TypeDef fake_exti_d1;
+#define EXTI_D1 (&fake_exti_d1)
+
 typedef struct {
     uint32_t CR1;
     uint32_t CR2;

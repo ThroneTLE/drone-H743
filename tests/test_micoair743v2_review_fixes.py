@@ -779,6 +779,7 @@ SPI_HandleTypeDef hspi3;
 GPIO_TypeDef fake_gpio_d;
 GPIO_TypeDef fake_gpio_a;
 SPI_RegDef   fake_spi2_regs;
+EXTI_Core_TypeDef fake_exti_d1;
 
 /* 只为让链接通过：本用例考的是选型回退，两颗 IMU 的总线行为由各自的 ops 桩决定。 */
 HAL_StatusTypeDef HAL_SPI_TransmitReceive(SPI_HandleTypeDef *h, uint8_t *tx,
@@ -834,6 +835,16 @@ int main(void)
     CHECK(bmi270.init_calls == 0, 4);
 
     /*
+     * DRDY 只放行上岗那颗。修之前回调用一个静态掩码同时收两颗的引脚，理由写的是
+     * "另一颗没初始化就不会产生边沿"——冷启动成立，**软复位不成立**：DFU 跳转、
+     * 看门狗复位都不给传感器掉电，上一轮配置过的那颗照旧按自己的 ODR 发边沿。
+     * 2026-09-11 实测因此把节拍从 1000 Hz 顶到 1760 Hz，三成迭代读到重复的陀螺样本。
+     */
+    CHECK(BSP_IMU_GetDrdyPin() == BMI088_G_DRDY_Pin, 5);
+    CHECK((fake_exti_d1.IMR1 & BMI088_G_DRDY_Pin) != 0U, 6);
+    CHECK((fake_exti_d1.IMR1 & BMI270_DRDY_Pin) == 0U, 7);
+
+    /*
      * --- 核心回归：主 IMU 探得到但配置失败 ---
      * 修之前这里会直接返回失败，采样任务外层重试又选回同一颗，无限循环，
      * 旁边那颗完好的 BMI270 一次都轮不到。
@@ -849,6 +860,11 @@ int main(void)
     /* 诊断必须和实际跑的芯片一致，不能还指着那颗失败的。 */
     BSP_IMU_GetInfo(&info);
     CHECK(info.kind == DRV_IMU_CHIP_BMI270, 14);
+
+    /* 回退之后 DRDY 也必须跟着换过去，否则节拍源和数据源不是同一颗芯片。 */
+    CHECK(BSP_IMU_GetDrdyPin() == BMI270_DRDY_Pin, 15);
+    CHECK((fake_exti_d1.IMR1 & BMI270_DRDY_Pin) != 0U, 16);
+    CHECK((fake_exti_d1.IMR1 & BMI088_G_DRDY_Pin) == 0U, 17);
     CHECK(info.chip_id == 0x24U, 15);
     CHECK(info.initialized == 1U, 16);
 

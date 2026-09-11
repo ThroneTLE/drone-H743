@@ -67,7 +67,13 @@ def test_every_exti_pin_is_one_the_drdy_callback_actually_consumes() -> None:
     陀螺定（角速率是最内环），加计 ODR 1600 Hz 要是也开中断，每秒白进约 1600 次。
     所以 PC14 必须是普通输入而不是 EXTI。
 
-    这条断言的是"EXTI 引脚集合 == 掩码接受的引脚集合"这个不变量，不是某个引脚名。
+    这条断言的是"EXTI 引脚集合 == 路由表覆盖的引脚集合"这个不变量，不是某个引脚名。
+
+    2026-09-11 更新：回调不再用一个静态掩码同时接受两颗 IMU 的 DRDY，改为只认
+    `BSP_IMU_GetDrdyPin()` 给出的那一个。原来的写法假设"另一颗没初始化就不会产生
+    边沿"——冷启动成立，**软复位不成立**：`BOOT DFU CONFIRM`、看门狗复位都不给传感器
+    掉电，上一轮配置过的那颗照旧发边沿。实测节拍因此从 1000 Hz 虚高到 1760 Hz，
+    三成迭代拿到重复的陀螺样本。所以这里改成核对 BSP 的路由表。
     """
     import re
 
@@ -85,13 +91,31 @@ def test_every_exti_pin_is_one_the_drdy_callback_actually_consumes() -> None:
 
     assert exti_pins, ".ioc 里一个外部中断都没有，DRDY 会退到轮询兜底"
 
-    mask = re.search(r"#define APP_IMU_DRDY_PIN_MASK\s+\(([^)]*)\)", sensor)
-    assert mask is not None
-    accepted = {int(n) for n in re.findall(r"GPIO_PIN_(\d+)", mask.group(1))}
+    # 回调只认选中那颗的引脚，具体是哪个由 BSP 的路由表决定。
+    assert "BSP_IMU_GetDrdyPin()" in sensor, (
+        "DRDY 回调必须按选中的芯片取引脚，不能再用静态掩码同时接受两颗"
+    )
+    assert "APP_IMU_DRDY_PIN_MASK" not in sensor, (
+        "静态掩码已被 BSP_IMU_GetDrdyPin() 取代，别让两套并存"
+    )
 
-    assert exti_pins == accepted, (
-        f".ioc 的 EXTI 引脚 {sorted(exti_pins)} 与回调接受的 {sorted(accepted)} 对不上："
+    bsp = read("BSP/Src/bsp_imu.c")
+    routed = set()
+    for macro in re.findall(r"return \(uint16_t\)(\w+_DRDY_Pin);", bsp):
+        pin = re.search(r"#define\s+" + macro + r"\s+GPIO_PIN_(\d+)",
+                        read("Core/Inc/main.h"))
+        assert pin is not None, f"main.h 里找不到 {macro}"
+        routed.add(int(pin.group(1)))
+
+    assert exti_pins == routed, (
+        f".ioc 的 EXTI 引脚 {sorted(exti_pins)} 与 BSP 路由表里的 {sorted(routed)} 对不上："
         f"多出来的会白进中断，少掉的会让控制环退到 20 ms 轮询兜底"
+    )
+
+    # 未选中那颗的 EXTI 必须在源头被屏蔽，而不是每次都靠回调比对挡掉。
+    assert "EXTI_D1->IMR1" in bsp, (
+        "选型之后要清掉未选中那颗的 EXTI 屏蔽位；"
+        "一个永远会被忽略的中断不该处于使能状态"
     )
 
 
