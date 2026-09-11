@@ -46,9 +46,9 @@ void app_control_report_caps(void)
     app_control_queue_proto_text(APP_PROTO_MSG_CAPS_RECORD,
                                  "RSP id=0 mod=CAPS op=LIST legacy=PING,STATUS?,CONFIG?,SAVE,LOAD,SERVO,SERVOTYPE? raw=custom-tab\r\n");
     app_control_queue_proto_text(APP_PROTO_MSG_CAPS_RECORD,
-                                 "RSP id=0 mod=CAPS op=LIST mods=MODULES,SPL06,ICM42688,FLOW,MAG,PARAM,FLASH,RTOS,WIFI\r\n");
+                                 "RSP id=0 mod=CAPS op=LIST mods=MODULES,SPL06,ICM42688,IMUSEL,FLOW,MAG,PARAM,FLASH,RTOS,WIFI\r\n");
     app_control_queue_proto_text(APP_PROTO_MSG_CAPS_RECORD,
-                                 "RSP id=0 mod=CAPS op=LIST ops=SPL06:STATUS,READ,SAMPLE ICM42688:STATUS,DIAG FLOW:STATUS MAG:STATUS,DIAG\r\n");
+                                 "RSP id=0 mod=CAPS op=LIST ops=SPL06:STATUS,READ,SAMPLE ICM42688:STATUS,DIAG IMUSEL:STATUS,BUS,RAW FLOW:STATUS MAG:STATUS,DIAG\r\n");
     app_control_queue_proto_text(APP_PROTO_MSG_CAPS_RECORD,
                                  "RSP id=0 mod=CAPS op=LIST ops=WIFI:STATUS,EN,RESET legacy=WIFI?,WIFI_EN?\r\n");
     app_control_queue_proto_text(APP_PROTO_MSG_CAPS_RECORD,
@@ -58,7 +58,7 @@ void app_control_report_caps(void)
 void app_control_report_wifi(void)
 {
     app_control_queue_proto_text(APP_PROTO_MSG_WIFI_RECORD,
-                                 "WIFI en=%u pin=PC6 last=%u writes=%lu state=%s transparent=%u retry=%lu socket=%ld cycling=%u wait_ms=%lu prov=%u cmd=%lu/%lu\r\n",
+                                 "WIFI en=%u pin=none last=%u writes=%lu state=%s transparent=%u retry=%lu socket=%ld cycling=%u wait_ms=%lu prov=%u cmd=%lu/%lu\r\n",
                                  (unsigned int)BSP_AiWB2_IsEnabled(),
                                  (unsigned int)BSP_AiWB2_GetLastWrittenState(),
                                  (unsigned long)BSP_AiWB2_GetWriteCount(),

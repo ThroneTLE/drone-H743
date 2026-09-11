@@ -327,3 +327,40 @@ void BSP_IMU_Invalidate(void)
     imu_ctx = NULL;
     imu_initialized = 0U;
 }
+
+/*
+ * BMI088 背靠背读取自检（诊断专用，不参与采样路径）。
+ *
+ * 2026-09-10 首刷 MicoAir743v2 时定性出的缺陷，留在这里当回归探针：
+ * BMI088 两颗（加计 PD4 → 0x1E、陀螺 PD5 → 0x0F）在 SPI2 上都能正确应答，
+ * 但**一串事务里只有第一笔拿得到数据**，之后全读 0x00；两笔之间隔 50 ms 仍失败，
+ * 隔 100 ms 及以上则全部成功。已排除：引脚复用与 PC2/PC3 模拟开关、SPI 模式与
+ * 分频、RX FIFO 残留、SPI2 外设状态（连 RCC 硬复位都救不回来）、
+ * 生成代码里残留的 PC1/PA9 复用、SPI2 的 NVIC 中断线。
+ *
+ * 四笔背靠背读加计 CHIP_ID。修好之后这里应当四笔全是 0x1E。
+ */
+void BSP_IMU_DebugRawBmi088(BSP_IMU_RawProbe *out)
+{
+    uint32_t i;
+
+    if (out == NULL) { return; }
+    memset(out, 0, sizeof(*out));
+
+    out->sr_before = SPI2->SR;
+
+    for (i = 0U; i < 4U; i++) {
+        uint8_t tx[4] = { 0x80U, 0U, 0U, 0U };   /* 寄存器 0x00 | 读位 */
+        uint8_t rx[4] = { 0U, 0U, 0U, 0U };
+
+        HAL_GPIO_WritePin(BMI088_A_CS_GPIO_Port, BMI088_A_CS_Pin, GPIO_PIN_RESET);
+        out->hal[i] = (uint8_t)HAL_SPI_TransmitReceive(&hspi2, tx, rx, 3U, 10U);
+        HAL_GPIO_WritePin(BMI088_A_CS_GPIO_Port, BMI088_A_CS_Pin, GPIO_PIN_SET);
+
+        /* 加计读有一个 dummy 字节，有效数据在 rx[2]。 */
+        out->chip_id[i] = rx[2];
+        out->sr[i] = SPI2->SR;
+    }
+
+    out->sr_after = SPI2->SR;
+}

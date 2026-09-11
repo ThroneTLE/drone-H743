@@ -74,6 +74,9 @@ void app_control_report_flow(void);
 /* TELEM 命令族（App/Src/app_cmd_telem.c）。 */
 void app_control_handle_telem(char **tokens, uint32_t count);
 
+/* IMUSEL 命令族（App/Src/app_cmd_imusel.c）。 */
+void app_control_req_imusel(uint32_t id, const char *op);
+
 void app_control_report_caps(void);
 void app_control_report_wifi(void);
 void app_control_report_rtos(void);

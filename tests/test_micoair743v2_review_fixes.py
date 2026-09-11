@@ -775,6 +775,15 @@ SPI_HandleTypeDef hspi1;
 SPI_HandleTypeDef hspi2;
 SPI_HandleTypeDef hspi3;
 
+/* bsp_imu.c 的背靠背读取自检要用到的片选端口与 SPI2 寄存器块，见 _micoair_hostfakes。 */
+GPIO_TypeDef fake_gpio_d;
+SPI_RegDef   fake_spi2_regs;
+
+/* 只为让链接通过：本用例考的是选型回退，两颗 IMU 的总线行为由各自的 ops 桩决定。 */
+HAL_StatusTypeDef HAL_SPI_TransmitReceive(SPI_HandleTypeDef *h, uint8_t *tx,
+                                          uint8_t *rx, uint16_t n, uint32_t t)
+{ (void)h; (void)tx; (void)rx; (void)n; (void)t; return HAL_OK; }
+
 void HAL_Delay(uint32_t ms) { (void)ms; }
 uint32_t HAL_GetTick(void) { return 0U; }
 void HAL_GPIO_WritePin(GPIO_TypeDef *p, uint16_t n, int s) { (void)p; (void)n; (void)s; }

@@ -115,6 +115,40 @@ def test_new_peripherals_are_generated() -> None:
     assert "void MX_SPI4_Init(void)" not in spi, REGENERATE
 
 
+def test_spi2_mspinit_carries_no_old_board_pins() -> None:
+    """USER CODE 区里不能再留上一块板的 SPI2 引脚。
+
+    CubeMX 只重新生成它自己那部分，USER CODE BEGIN/END 之间的内容原样保留。
+    老板子的 SPI2 是 SCK=PA9 / MOSI=PC1 / MISO=PC2_C，那段手写的 HAL_GPIO_Init
+    就这样跟着移植活了下来，并且**排在生成代码之后**，所以它是最后说了算的那个。
+
+    在 MicoAir743v2 上这两个脚另有其人：
+        PA9 = USART1_TX（调参/遥测口的发送脚）
+        PC1 = BATT_CURRENT_SENS（对面是电流采样运放的**输出**）
+    把它们配成 SPI2 的复用推挽，等于让 MCU 和运放两个输出对顶，同时让 USART1
+    发不出字节。2026-09-10 实机 `REQ mod=IMUSEL op=BUS` 读到两者都是 mode=2 af=5，
+    确认仍然生效。
+
+    这段只能在 STM32CubeIDE 里删（本仓库禁止手改 CubeMX 生成文件），所以把它
+    立成一条红测试，而不是留在某个人的记忆里。
+    """
+    spi = read("Core/Src/spi.c")
+
+    begin = spi.find("USER CODE BEGIN SPI2_MspInit 1")
+    end = spi.find("USER CODE END SPI2_MspInit 1")
+    assert begin != -1 and end > begin, "找不到 SPI2_MspInit 的 USER CODE 区"
+    block = spi[begin:end]
+
+    assert "HAL_GPIO_Init(GPIOA" not in block, (
+        "SPI2_MspInit 仍在把 GPIOA 的脚配成 SPI2 复用——那是老板子的 SCK(PA9)，"
+        "本板上 PA9 是 USART1_TX。请在 STM32CubeIDE 里删掉这段 USER CODE。"
+    )
+    assert "GPIO_PIN_1|" not in block and "GPIO_PIN_1 |" not in block, (
+        "SPI2_MspInit 仍在把 PC1 配成 SPI2 复用——本板上 PC1 是电池电流采样输入，"
+        "对面是运放输出，推挽对顶。请在 STM32CubeIDE 里删掉这段 USER CODE。"
+    )
+
+
 def test_imu_drdy_external_interrupts_are_generated() -> None:
     """DRDY 从 PC0/EXTI0 换到 PC15/PC14（BMI088）与 PB7（BMI270）。
 

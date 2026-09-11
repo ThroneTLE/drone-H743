@@ -227,8 +227,26 @@ void APP_Baro_ReportStartup(void)
 
 void APP_Baro_GetStatus(APP_Baro_Status *status)
 {
+    const DRV_BARO_Device *dev;
+
     if (status == 0) {
         return;
+    }
+
+    /*
+     * `baro_status` 里的 ID 与 init 结果本来由 APP_Baro_ReportStartup() 填，而那个
+     * 函数被 APP_MESSAGE_STARTUP_REPORT_ENABLED=0 整段编译掉了——于是这张表从开机到
+     * 关机都是零初始化值。判据把"全零"读成 product_id != 0x10，诊断因此报
+     * `ok=0 stage=who_id`，而气压计其实正在稳定输出（2026-09-10 MicoAir743v2 首刷实测：
+     * 同一时刻 pressure_pa=96163、标定系数全部读出）。
+     *
+     * 不去打开那个开关，是因为 ReportStartup 会在 Message 任务里对 I2C2 发起探测读，
+     * 与 Sensor 任务抢同一条总线；而这里只是读驱动已经存下来的 product_id，
+     * 不产生任何总线事务。
+     */
+    dev = BSP_BARO_GetDevice();
+    if (dev != NULL) {
+        baro_status.product_id = dev->product_id;
     }
 
     *status = baro_status;

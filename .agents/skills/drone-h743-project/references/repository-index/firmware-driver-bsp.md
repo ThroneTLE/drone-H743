@@ -4,7 +4,7 @@
 
 Read this shard only when the task touches device protocols, reusable algorithms, buses, GPIO, DMA callbacks, cache hooks, or board bindings.
 
-Source snapshot: `ffc80c547f42`. Indexed files: 90.
+Source snapshot: `2843d59d1d96`. Indexed files: 90.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -47,7 +47,7 @@ Source snapshot: `ffc80c547f42`. Indexed files: 90.
 | `BSP/Inc/bsp_gps.h`<br>`BSP/Src/bsp_gps.c` | Board resource binding for gps | `BSP_GPS_Init`, `BSP_GPS_ConfigureM9NDefault`, `BSP_GPS_Service`, `BSP_GPS_OnUartRxCplt`, `BSP_GPS_OnUartError`, `BSP_GPS_GetStatus` (+1) |
 | `BSP/Inc/bsp_i2c.h`<br>`BSP/Src/bsp_i2c.c` | Board resource binding for i2c | — |
 | `BSP/Inc/bsp_icm42688.h`<br>`BSP/Src/bsp_icm42688.c` | Board resource binding for icm42688 | — |
-| `BSP/Inc/bsp_imu.h`<br>`BSP/Src/bsp_imu.c` | Board resource binding for imu | `BSP_IMU_Init`, `BSP_IMU_ReadRaw`, `BSP_IMU_ReadScaled`, `BSP_IMU_IsDataReady`, `BSP_IMU_GetWhoAmI`, `BSP_IMU_GetDiag` (+5) |
+| `BSP/Inc/bsp_imu.h`<br>`BSP/Src/bsp_imu.c` | Board resource binding for imu | `BSP_IMU_Init`, `BSP_IMU_ReadRaw`, `BSP_IMU_ReadScaled`, `BSP_IMU_IsDataReady`, `BSP_IMU_GetWhoAmI`, `BSP_IMU_GetDiag` (+6) |
 | `BSP/Inc/bsp_led.h`<br>`BSP/Src/bsp_led.c` | Board resource binding for led | `BSP_LED_Init`, `BSP_LED_On`, `BSP_LED_Off`, `BSP_LED_Toggle` |
 | `BSP/Inc/bsp_mag.h`<br>`BSP/Src/bsp_mag.c` | Board resource binding for mag | `BSP_MAG_Init`, `BSP_MAG_Read`, `BSP_MAG_Probe`, `BSP_MAG_GetStatus`, `BSP_MAG_Invalidate`, `BSP_MAG_TypeName` |
 | `BSP/Inc/bsp_optical_flow.h`<br>`BSP/Src/bsp_optical_flow.c` | Board resource binding for optical flow | `BSP_OPTICAL_FLOW_Init`, `BSP_OPTICAL_FLOW_Service`, `BSP_OPTICAL_FLOW_OnUartRxCplt`, `BSP_OPTICAL_FLOW_OnUartRxEvent`, `BSP_OPTICAL_FLOW_OnUartError`, `BSP_OPTICAL_FLOW_GetStatus` (+4) |

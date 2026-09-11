@@ -13,6 +13,7 @@
 
 static uint8_t flash_report_done;
 static APP_Flash_Status flash_status;
+static uint8_t          flash_status_refreshed;
 
 static void app_flash_queue_text(const char *format, ...)
 {
@@ -142,6 +143,21 @@ void APP_Flash_GetStatus(APP_Flash_Status *status)
 {
     if (status == 0) {
         return;
+    }
+
+    /*
+     * 惰性首刷。这张表原本只由 APP_Flash_ReportStartup() 填，而它被
+     * APP_MESSAGE_STARTUP_REPORT_ENABLED=0 编译掉了，于是三个 *_status 字段永远是 0，
+     * 判据把"全零"读成"探测/读状态/读数据都成功"——MicoAir743v2 上**根本没有外部
+     * SPI NOR**，诊断却报 `ok=1 stage=ready`。给一颗不存在的芯片开健康证明，
+     * 比报错危险得多：真去依赖它存参数时才会发现。
+     *
+     * 只刷一次：探测要驱动 SPI1 上的 FLASH_CS，而本板那条片选线接的是 AT7456E OSD，
+     * 每次 STATUS? 都抖一遍片选没有必要。NOR 不会中途长出来，一次结论就够。
+     */
+    if (flash_status_refreshed == 0U) {
+        flash_status_refreshed = 1U;
+        APP_Flash_RefreshStatus();
     }
 
     *status = flash_status;

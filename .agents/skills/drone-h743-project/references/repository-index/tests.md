@@ -4,7 +4,7 @@
 
 Read this shard only when you need existing behavioral/architecture coverage or must choose focused regression tests.
 
-Source snapshot: `18910bd0cf47`. Indexed files: 157.
+Source snapshot: `76b730c1d550`. Indexed files: 157.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -95,7 +95,7 @@ Source snapshot: `18910bd0cf47`. Indexed files: 157.
 | `tests/test_log_pages_geometry.py` | Three sizes x three simulated DPI scales, using the real panel and pages | `test_log_controls_remain_reachable` |
 | `tests/test_mech.py` | — | `test_s6` |
 | `tests/test_mechanical_cp210_gate.py` | Regression for the author's CP210x COM10 telemetry-link screenshot | `test_cp210_move_allowed_but_firmware_upgrade_still_rejected` (+1) |
-| `tests/test_micoair743v2_generated_code_sync.py` | CubeMX 生成代码必须与 drone-H743.ioc 同步。 **本文件全红 = 还没跑 Generate Code，不是代码写错了。** 移植到 MicoAir743v2 改的是 .ioc（引脚、时钟、外设），而 Core/ 与… | `test_usb_pll3_matches_ioc` (+3) |
+| `tests/test_micoair743v2_generated_code_sync.py` | CubeMX 生成代码必须与 drone-H743.ioc 同步。 **本文件全红 = 还没跑 Generate Code，不是代码写错了。** 移植到 MicoAir743v2 改的是 .ioc（引脚、时钟、外设），而 Core/ 与… | `test_usb_pll3_matches_ioc` (+4) |
 | `tests/test_micoair743v2_imu_drivers.py` | MicoAir743v2 移植：IMU 换算表与装配变换的宿主侧契约测试。 为什么这些东西必须单测： 量程码填错、LSB 表抄错、坐标轴符号翻反 —— 这三类错误**都不会报错**， 只会让姿态整体缩放或横滚方向相反，要飞起来才发现。它们… | `test_imu_tables_and_mounting_host_harness` (+2) |
 | `tests/test_micoair743v2_review_fixes.py` | 2026-09-10 软件审计发现的四个 P1 + 两个接线错位，逐条钉死。 每一条都属于**编译能过、测试全绿、要通电才发现**的类型，而且原来那 1404 条测试 一条都没覆盖到——因为它们要么测纯函数，要么读源码正则，都碰不到带 H… | `test_baro_i2c_path_runs_in_the_driver_that_is_actually_built` (+9) |
 | `tests/test_nav_ekf_contract.py` | — | `test_quality_adaptive_flow_ekf_is_owned_by_the_flow_nav_service` (+3) |

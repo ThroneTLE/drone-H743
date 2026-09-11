@@ -4,7 +4,7 @@
 
 Read this shard only when the task touches application behavior, RTOS task bodies, control flow, diagnostics, commands, or synchronous services.
 
-Source snapshot: `264062ec1e73`. Indexed files: 112.
+Source snapshot: `600eaf4fedf9`. Indexed files: 113.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -18,6 +18,7 @@ Source snapshot: `264062ec1e73`. Indexed files: 112.
 | `App/Src/app_cmd_diag.c` | Application behavior and task-facing logic for cmd diag | — |
 | `App/Src/app_cmd_flow.c` | Application behavior and task-facing logic for cmd flow | `APP_Stabilizer_ReadFlowCompensationSnapshot` |
 | `App/Src/app_cmd_imucal.c` | Application behavior and task-facing logic for cmd imucal | `APP_FlightCalibration_ReadActive`, `SVC_Param_IsDirty`, `APP_Sensor_GetFluOrientation`, `APP_FlightCalibration_MergeV1Candidate`, `APP_FlightCalibration_PublishPreview`, `APP_FlightCalibration_UploadExpire` (+1) |
+| `App/Src/app_cmd_imusel.c` | Application behavior and task-facing logic for cmd imusel | `BSP_IMU_Init` |
 | `App/Src/app_cmd_rcmap.c` | Application behavior and task-facing logic for cmd rcmap | `APP_RcConfig_Validate` |
 | `App/Src/app_cmd_servocal.c` | Application behavior and task-facing logic for cmd servocal | `APP_Sensor_GetFluOrientation`, `SVC_Param_IsDirty`, `APP_FlightCalibration_UpdateServoMechanical`, `APP_FlightCalibration_PublishPreview` |
 | `App/Src/app_cmd_servotype.c` | Application behavior and task-facing logic for cmd servotype | `APP_Stabilizer_IsArmed`, `APP_ServoType_FromName`, `APP_FlightCalibration_UpdateServoType`, `SVC_Param_IsDirty` |

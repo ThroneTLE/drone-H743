@@ -467,6 +467,12 @@ void app_control_handle_req(char **tokens, uint32_t count)
         return;
     }
 
+    /* 选型记账：哪几颗被探过、各自读回什么 ID、为什么没上岗。 */
+    if (strcmp(mod, "IMUSEL") == 0) {
+        app_control_req_imusel(id, op);
+        return;
+    }
+
     if (strcmp(mod, "M9N") == 0) {
         app_control_req_m9n(id, op);
         return;
@@ -483,7 +489,7 @@ void app_control_handle_req(char **tokens, uint32_t count)
             return;
         }
         if (strcmp(op, "STATUS") == 0) {
-            APP_Control_QueueText("RSP id=%lu mod=WIFI op=STATUS en=%u pin=PC6 last=%u writes=%lu state=%s transparent=%u retry=%lu socket=%ld cycling=%u wait_ms=%lu prov=%u cmd=%lu/%lu\r\n",
+            APP_Control_QueueText("RSP id=%lu mod=WIFI op=STATUS en=%u pin=none last=%u writes=%lu state=%s transparent=%u retry=%lu socket=%ld cycling=%u wait_ms=%lu prov=%u cmd=%lu/%lu\r\n",
                                    (unsigned long)id,
                                    (unsigned int)BSP_AiWB2_IsEnabled(),
                                    (unsigned int)BSP_AiWB2_GetLastWrittenState(),

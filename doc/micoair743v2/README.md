@@ -226,6 +226,70 @@ PE5 / PE6（TIM15）、PD14（TIM4，兼 LED 焊盘）。
 > 另有 ArduPilot 4.5.x 与 PX4 1.14 / 1.16 的 bootloader 可从官方固件仓库取
 > （见本文末尾的 `git clone`），但**回到"烧录前"应当用上面这个 1.15.4**。
 
+## 首刷实测结果（2026-09-11，我们自己的固件）
+
+`0x08000000` 整片擦除后写入，校验通过。启动后 USB CDC 枚举为 `VID:PID=0483:5740`，
+命令面应答正常。逐链路点名：
+
+| 链路 | 结果 |
+|---|---|
+| USB CDC 命令面 | ✅ `PING` → `PONG drone-H743` |
+| IMU（BMI270 @SPI3） | ✅ **810 Hz 稳定出数**，`fault=0`，`frame=canonical_flu_ram`；板子倒扣时 `az≈-1008 mg` |
+| IMU（BMI088 @SPI2） | ❌ 未上岗，见下节 |
+| 气压计 SPL06 @I2C2 | ✅ `pressure_pa=96163`，标定系数全部读出 |
+| 磁罗盘 QMC5883L @I2C2 | ✅ 采样计数持续增长 |
+| 片内 Flash 参数 | ✅ 加载默认值（刚整片擦过，`cfg_valid=0` 符合预期） |
+| ELRS @USART6 | ⏸ `frames=0`，接收机尚未接上 |
+| GPS @USART3 | ⏸ 任务仍被注释掉（`Core/Src/freertos.c`，需 CubeMX 侧启用） |
+| 光流 @USART2 / SDMMC / PWM | ⏸ 未测 |
+
+软件跳 DFU 可用：`BOOT?` 看安全前置条件，`BOOT DFU CONFIRM` 让固件自己跳进 ROM
+bootloader，不用按 BOOT 键。**前提是命令任务没卡死**。
+
+### BMI088 背靠背读取缺陷（未解决）
+
+两颗都在、都能正确应答：加计（CS PD4）回 `0x1E`，陀螺（CS PD5）回 `0x0F`。
+但**一串事务里只有第一笔拿得到数据**，之后全读 `0x00` 而 HAL 仍报成功。
+间隔 50 ms 仍失败，间隔 100 / 300 / 700 ms 则四笔全成。
+
+这正是开机探测失败的原因：`DRV_BMI088_Probe` 是"丢弃式首读 + 紧接着真读"，
+第一笔成、第二笔必败 → `acc_id=0x00` → `bad_id` → 回退到 BMI270。
+`REQ id=1 mod=IMUSEL op=STATUS` 可直接看到这个记账。
+
+已逐项排除（每条都是实机测过的，不是推断）：
+
+- 引脚复用与 PC2/PC3 模拟开关 —— `op=BUS` 读到 `PD3/PC2/PC3` 均 `mode=2 af=5`，
+  `PMCR=0x03000000`（置位的是 PA0SO/PA1SO，PC2/PC3 本来就闭合）
+- SPI 模式与分频 —— `CFG2` 解出 MODE3 + 主机，`CFG1` 解出 8 bit / 32 分频（约 3.75 MHz）
+- RX FIFO 残留 —— SPE 使能后排空计数为 0，FIFO 其实是空的；SPE=0 时读到的
+  `RXWNE/RXPLVL` 是无效值，早期据此的推断作废
+- SPI2 外设状态 —— 每笔事务前 `HAL_SPI_DeInit` + `__HAL_RCC_SPI2_FORCE_RESET` 都救不回来
+- 生成代码残留的 PC1/PA9 复用 —— 临时改回 analog 后症状不变
+- SPI2 的 NVIC 中断线 —— `HAL_NVIC_DisableIRQ(SPI2_IRQn)` 后症状不变
+- CSB 最小空闲时间 —— 抬片选后插入微秒级忙等，无效
+
+留了一条回归探针：`REQ id=N mod=IMUSEL op=RAW` 背靠背读四次加计 CHIP_ID，
+修好之后应当四笔全是 `0x1E`。
+
+**已知差异（尚未验证是不是原因）**：CubeMX 只给 SPI1/SPI2 配了 DMA 与 NVIC，
+SPI3 两样都没有——而 SPI3 上的 BMI270 用同一套 HAL 阻塞读，810 Hz 连续跑毫无问题。
+
+### 同轮修掉的诊断谎报（D5-3）
+
+这几条不是新功能，是原有诊断在说假话，而且都实打实地把排查带偏过：
+
+| 位置 | 谎报内容 | 修法 |
+|---|---|---|
+| `APP_IMU_GetStatus` | `sample_count` 与 `ax/ay/az/gx/gy/gz` 被硬写成 0，一颗 810 Hz 满血运转的 IMU 看起来和彻底死了一模一样 | 改从稳定器的只读验证快照取数，与 `IMU?` 同源 |
+| `APP_Baro_GetStatus` | `product_id` 永远是 0（唯一写它的 `APP_Baro_ReportStartup` 被 `APP_MESSAGE_STARTUP_REPORT_ENABLED=0` 编译掉了），于是好的气压计被判 `ok=0 stage=who_id` | 改为从 `BSP_BARO_GetDevice()` 实时读，不产生总线事务 |
+| `APP_Flash_GetStatus` | 同样从不刷新，三个状态字段恒为 0 → 判据读成"全部成功"，给**板上根本不存在的**外部 SPI NOR 开健康证明 `ok=1 stage=ready` | 惰性首刷一次（片选在 SPI1 上接的是 AT7456E OSD，不宜每次 `STATUS?` 都抖） |
+| WiFi 诊断 | 仍印 `pin=PC6`，而 PC6 现在是 USART6_TX（ELRS 的发送脚） | 改为 `pin=none` |
+
+另修一处 H7 写法错误：`bmi088_gyro_read` 是全套 IMU 驱动里唯一用
+`HAL_SPI_Transmit` + `HAL_SPI_Receive` 两段式的读。在 H7 全双工主机模式下，
+发地址字节的同时也会收进一个字节且 HAL 不清，随后的 Receive 先交出那个陈字节，
+整串错位一格。已改为单次 `TransmitReceive`。
+
 ## 上游来源与抓取版本
 
 抓取日期：2026-09-10。

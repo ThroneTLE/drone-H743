@@ -2,7 +2,7 @@
 
 # drone-H743 Repository Index
 
-Snapshot: `75fb7035f699`. Covered non-index working files: 7562. Scope: Git-tracked plus non-ignored untracked files; ignored build outputs, caches, and local logs are intentionally excluded.
+Snapshot: `d451cc6a95cd`. Covered non-index working files: 7563. Scope: Git-tracked plus non-ignored untracked files; ignored build outputs, caches, and local logs are intentionally excluded.
 
 ## Use this index
 
@@ -17,7 +17,7 @@ Freshness check: `python .agents/skills/drone-h743-project/scripts/update_reposi
 
 | Read this shard | When it matches | Covered files |
 |---|---|---:|
-| [firmware-app-services.md](firmware-app-services.md) | App behavior, tasks, control, commands, diagnostics, application services | 112 |
+| [firmware-app-services.md](firmware-app-services.md) | App behavior, tasks, control, commands, diagnostics, application services | 113 |
 | [firmware-driver-bsp.md](firmware-driver-bsp.md) | Device/algorithm drivers, buses, GPIO, DMA callbacks, cache or board binding | 90 |
 | [platform-build.md](platform-build.md) | CubeMX/Core, pins/clocks/peripherals, RTOS objects, linker/startup, USB, build, HAL/vendor internals | 1442 |
 | [tests.md](tests.md) | Existing regression/contract coverage and focused test selection | 157 |

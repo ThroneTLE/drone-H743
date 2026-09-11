@@ -112,6 +112,17 @@ DRV_IMU_Status BSP_IMU_ReadScaled(DRV_IMU_ScaledData *scaled);
 DRV_IMU_Status BSP_IMU_IsDataReady(bool *ready);
 uint8_t BSP_IMU_GetWhoAmI(void);
 void BSP_IMU_GetDiag(BSP_IMU_Diag *diag);
+/* 背靠背读取自检的结果，见 BSP_IMU_DebugRawBmi088()。仅诊断命令使用。 */
+typedef struct {
+    uint32_t sr_before;
+    uint32_t sr_after;
+    uint32_t sr[4];
+    uint8_t  hal[4];
+    uint8_t  chip_id[4];
+} BSP_IMU_RawProbe;
+
+void BSP_IMU_DebugRawBmi088(BSP_IMU_RawProbe *out);
+
 void BSP_IMU_Invalidate(void);
 
 void             BSP_IMU_GetInfo(BSP_IMU_Info *info);

@@ -2588,7 +2588,7 @@ static void app_control_handle_wifi(char **tokens, uint32_t count)
 
         control_wifi_reset_pending = 0U;
         BSP_AiWB2_SetEnabled((value != 0U) ? 1U : 0U);
-        APP_Control_QueueText("OK wifi en=%u pin=PC6\r\n",
+        APP_Control_QueueText("OK wifi en=%u pin=none\r\n",
                                (unsigned int)BSP_AiWB2_IsEnabled());
         return;
     }
@@ -2605,7 +2605,7 @@ static void app_control_handle_wifi(char **tokens, uint32_t count)
         BSP_AiWB2_SetEnabled(0U);
         control_wifi_reset_pending = 1U;
         control_wifi_reset_deadline_ms = HAL_GetTick() + pulse_ms;
-        APP_Control_QueueText("OK wifi reset queued ms=%lu pin=PC6\r\n",
+        APP_Control_QueueText("OK wifi reset queued ms=%lu pin=none\r\n",
                                (unsigned long)pulse_ms);
         return;
     }

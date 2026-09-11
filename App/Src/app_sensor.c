@@ -1,6 +1,7 @@
 #include "app_sensor.h"
 
 #include "app_messages.h"
+#include "app_stabilizer.h"
 #include "app_tasks.h"
 #include "bsp_baro.h"
 #include "bsp_imu.h"
@@ -644,13 +645,38 @@ void APP_IMU_GetStatus(APP_IMU_Status *status)
     status->init_stage    = (uint8_t)imu_info.init_stage;
     status->last_status   = (int32_t)imu_info.last_error;
     status->last_error    = status->last_status;
-    status->sample_count  = 0U;
+    /*
+     * 这些字段以前被硬写成 0，理由是"实时数据改走 SensorSampleQueue，这里已过时"。
+     * 但它们仍然照常打印出去，于是一颗 810 Hz 满血运转的 IMU 在诊断里长这样：
+     *     n=0 ax=0 ay=0 az=0 gx=0 gy=0 gz=0
+     * 和"IMU 彻底死了"一个字都不差。2026-09-10 首刷 MicoAir743v2 时就按这个假象
+     * 去查 SPI 接线了，而真实故障根本不在那儿。诊断沉默可以，撒谎不行（D5-3）。
+     *
+     * 改为从稳定器的只读验证快照取数——那正是 `IMU?` 打印真实样本时用的同一份
+     * 数据，两条命令从此不会再互相矛盾。取不到快照就维持 0，但 initialized 字段
+     * 已经独立表达了"链路有没有起来"，不会再被误读成数据为零。
+     */
+    StabilizerValidationImuSnapshot snapshot;
 
-    /* 缩放/姿态字段已过时；实时数据通过 SensorSampleQueue 传递 */
+    status->sample_count     = 0U;
     status->temperature_cdeg = 0;
     status->accel_x_mg = 0;  status->accel_y_mg = 0;  status->accel_z_mg = 0;
     status->gyro_x_mdps = 0; status->gyro_y_mdps = 0; status->gyro_z_mdps = 0;
     status->roll_cdeg = 0;   status->pitch_cdeg = 0;  status->yaw_cdeg = 0;
+
+    if (APP_Stabilizer_ReadValidationImuSnapshot(&snapshot) != 0U) {
+        status->sample_count     = snapshot.sample_count;
+        status->temperature_cdeg = (int16_t)lrintf(snapshot.temperature_c * 100.0f);
+        status->accel_x_mg       = (int16_t)lrintf(snapshot.accel_g[0] * 1000.0f);
+        status->accel_y_mg       = (int16_t)lrintf(snapshot.accel_g[1] * 1000.0f);
+        status->accel_z_mg       = (int16_t)lrintf(snapshot.accel_g[2] * 1000.0f);
+        status->gyro_x_mdps      = (int32_t)lrintf(snapshot.gyro_dps[0] * 1000.0f);
+        status->gyro_y_mdps      = (int32_t)lrintf(snapshot.gyro_dps[1] * 1000.0f);
+        status->gyro_z_mdps      = (int32_t)lrintf(snapshot.gyro_dps[2] * 1000.0f);
+        status->roll_cdeg        = (int16_t)lrintf(snapshot.roll_deg * 100.0f);
+        status->pitch_cdeg       = (int16_t)lrintf(snapshot.pitch_deg * 100.0f);
+        status->yaw_cdeg         = (int16_t)lrintf(snapshot.yaw_deg * 100.0f);
+    }
 
     status->diag_mode0_tokmas   = diag.mode0_tokmas;
     status->diag_mode0_msb      = diag.mode0_msb;

@@ -115,18 +115,35 @@ static int16_t bmi088_make_int16(uint8_t lsb, uint8_t msb)
 static DRV_IMU_Status bmi088_gyro_read(DRV_BMI088_Device *dev, uint8_t reg,
                                        uint8_t *data, uint16_t len)
 {
-    uint8_t address = (uint8_t)(reg | BMI088_SPI_READ_BIT);
+    /*
+     * 单次全双工事务，不是 Transmit 后再 Receive。
+     *
+     * 在 STM32H7 上，全双工主机模式下 HAL_SPI_Transmit 发地址字节的同时也会把
+     * 对方那一拍的数据收进 RX FIFO，而 HAL 不会把它清掉；紧接着的 HAL_SPI_Receive
+     * 于是先交出那个陈字节，整串数据错位一格。本文件其余读路径（加计）以及
+     * drv_bmi270.c、drv_imu.c 都用的是 TransmitReceive，只有这里是两段式。
+     *
+     * 陀螺读没有 dummy 字节：发 1 字节地址，数据紧跟其后，所以有效字节从 rx[1] 起。
+     */
+    uint8_t tx[BMI088_ACC_XFER_MAX];
+    uint8_t rx[BMI088_ACC_XFER_MAX];
+    uint16_t total = (uint16_t)(len + 1U);
     HAL_StatusTypeDef hal_status;
-    uint32_t timeout = bmi088_timeout_ms(dev);
+
+    if (total > (uint16_t)BMI088_ACC_XFER_MAX) { return DRV_IMU_INVALID_ARG; }
+
+    memset(tx, 0, sizeof(tx));
+    tx[0] = (uint8_t)(reg | BMI088_SPI_READ_BIT);
 
     bmi088_gyro_cs(dev, GPIO_PIN_RESET);
-    hal_status = HAL_SPI_Transmit(dev->bus.hspi, &address, 1U, timeout);
-    if (hal_status == HAL_OK) {
-        hal_status = HAL_SPI_Receive(dev->bus.hspi, data, len, timeout);
-    }
+    hal_status = HAL_SPI_TransmitReceive(dev->bus.hspi, tx, rx, total,
+                                         bmi088_timeout_ms(dev));
     bmi088_gyro_cs(dev, GPIO_PIN_SET);
 
-    return bmi088_from_hal(hal_status);
+    if (hal_status != HAL_OK) { return bmi088_from_hal(hal_status); }
+
+    memcpy(data, &rx[1], len);
+    return DRV_IMU_OK;
 }
 
 static DRV_IMU_Status bmi088_gyro_write(DRV_BMI088_Device *dev, uint8_t reg,

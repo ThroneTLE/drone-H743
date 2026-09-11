@@ -73,6 +73,33 @@ typedef struct {
 #define I2C_MEMADD_SIZE_8BIT  0x00000001U
 #define I2C_MEMADD_SIZE_16BIT 0x00000010U
 
+/*
+ * BMI088 的两路片选与 SPI2 寄存器块。
+ *
+ * 这些本来只在 CubeMX 生成的 main.h / CMSIS 头里，但 bsp_imu.c 的背靠背读取自检
+ * （BSP_IMU_DebugRawBmi088）要用到，而这套 harness 编译的是**真实的 bsp_imu.c**——
+ * 换成桩文件就测不出真东西了。所以在假头里补出同名符号：
+ * 片选给两个独立的 GPIO_TypeDef 实例（地址不同即可，本层不关心具体引脚），
+ * SPI2 给一个可寻址的寄存器结构体，字段名与 CMSIS 对齐。
+ */
+extern GPIO_TypeDef fake_gpio_d;
+#define BMI088_A_CS_GPIO_Port (&fake_gpio_d)
+#define BMI088_A_CS_Pin       ((uint16_t)0x0010U)   /* PD4 */
+#define BMI088_G_CS_GPIO_Port (&fake_gpio_d)
+#define BMI088_G_CS_Pin       ((uint16_t)0x0020U)   /* PD5 */
+
+typedef struct {
+    uint32_t CR1;
+    uint32_t CR2;
+    uint32_t CFG1;
+    uint32_t CFG2;
+    uint32_t IER;
+    uint32_t SR;
+} SPI_RegDef;
+
+extern SPI_RegDef fake_spi2_regs;
+#define SPI2 (&fake_spi2_regs)
+
 void HAL_Delay(uint32_t ms);
 uint32_t HAL_GetTick(void);
 
