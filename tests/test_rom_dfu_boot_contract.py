@@ -13,6 +13,9 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 HEADER = ROOT / "App" / "Inc" / "app_boot.h"
 SOURCE = ROOT / "App" / "Src" / "app_boot.c"
+# 2026-09-11：跳 ROM 的**机制**整组搬到 BSP（寄存器、栈切换、备份域），
+# app_boot.c 只留"什么时候准跳"的判据——那部分是纯逻辑，宿主侧能测。
+MECHANISM = ROOT / "BSP" / "Src" / "bsp_rom_bootloader.c"
 CONTROL = ROOT / "App" / "Src" / "app_control.c"
 PROTO = ROOT / "App" / "Inc" / "app_proto.h"
 MAIN = ROOT / "Core" / "Src" / "main.c"
@@ -71,10 +74,11 @@ def test_boot_command_is_explicit_scheduled_and_safety_gated() -> None:
     assert "app_boot_request_sequence = sample.sequence" in request
     assert "APP_BOOT_STATE_WAITING_USB_REPLY" in request
     assert "SVC_Timestamp_Us()" in request
-    assert "app_boot_write_request_magic" in tick
-    assert tick.index("app_boot_read_safety") < tick.index("app_boot_write_request_magic")
-    assert "app_boot_branch_to_rom" not in tick
-    assert tick.index("__disable_irq();") < tick.index("app_boot_read_safety")
+    assert "BSP_RomBootloader_WriteRequestMagic" in tick
+    assert tick.index("app_boot_read_safety") < tick.index(
+        "BSP_RomBootloader_WriteRequestMagic")
+    assert "BSP_RomBootloader_Jump" not in tick
+    assert tick.index("BSP_Critical_Enter();") < tick.index("app_boot_read_safety")
     assert tick.index("app_boot_read_vector") < tick.index("BSP_PWM_DisableEsc(1U)")
     assert "BSP_PWM_DisableEsc(2U)" in tick
     assert "APP_Boot_HasSequenceAdvanced" in tick
@@ -92,13 +96,18 @@ def test_reset_magic_moves_the_rom_jump_out_of_the_freertos_task() -> None:
     source = read(SOURCE)
     main = read(MAIN)
 
+    mechanism = read(MECHANISM)
+
     assert "APP_BOOT_DFU_REQUEST_MAGIC" in header
-    assert "RTC->BKP0R = APP_BOOT_DFU_REQUEST_MAGIC" in source
-    assert "RTC->BKP1R = (uint32_t)~APP_BOOT_DFU_REQUEST_MAGIC" in source
-    assert "RTC->BKP0R = 0U" in source
-    assert "RTC->BKP1R = 0U" in source
+    # 魔数由 App 传进来，备份寄存器由 BSP 写——两边都不越界。
+    assert "BSP_RomBootloader_WriteRequestMagic(APP_BOOT_DFU_REQUEST_MAGIC)" in source
+    assert "RTC->BKP0R = magic" in mechanism
+    assert "RTC->BKP1R = (uint32_t)~magic" in mechanism
+    assert "RTC->BKP0R = 0U" in mechanism
+    assert "RTC->BKP1R = 0U" in mechanism
+    assert "RTC->BKP" not in source, "备份寄存器不该再出现在 App 层"
     backup_access = c_function_body(
-        source, "static uint8_t app_boot_enable_backup_register_access("
+        mechanism, "static uint8_t rom_bootloader_open_backup("
     )
     assert "#if defined(__HAL_RCC_PWR_CLK_ENABLE)" in backup_access
     assert "__HAL_RCC_PWR_CLK_ENABLE();" in backup_access
@@ -112,10 +121,16 @@ def test_reset_magic_moves_the_rom_jump_out_of_the_freertos_task() -> None:
     assert "HAL_Delay" not in backup_access
 
     tick = c_function_body(source, "APP_BootEvent APP_Boot_Tick(void)")
-    assert "USBD_Stop(&hUsbDeviceFS)" in tick
-    assert "USBD_DeInit(&hUsbDeviceFS)" in tick
-    assert "NVIC_SystemReset()" in tick
-    assert tick.index("USBD_DeInit") < tick.index("NVIC_SystemReset")
+    # USB 栈的停机 2026-09-11 收进 BSP 的薄壳（hUsbDeviceFS 是 CubeMX 生成的句柄）。
+    # 顺序不变且仍被钉住：先跟主机说"设备要走了"，再复位；反过来的话上位机会
+    # 留着一个没人应答的串口，看起来像是飞控挂了。
+    assert "BSP_UsbCdc_Teardown();" in tick
+    assert "BSP_RomBootloader_SystemReset();" in tick
+    assert tick.index("BSP_UsbCdc_Teardown") < tick.index("BSP_RomBootloader_SystemReset")
+    usb_shim = read(ROOT / "BSP" / "Src" / "bsp_usb_cdc.c")
+    assert "USBD_Stop(&hUsbDeviceFS)" in usb_shim
+    assert "USBD_DeInit(&hUsbDeviceFS)" in usb_shim
+    assert "NVIC_SystemReset()" in read(MECHANISM)
     assert "__enable_irq" not in tick
 
     begin = main.index("/* USER CODE BEGIN 1 */")
@@ -126,28 +141,41 @@ def test_reset_magic_moves_the_rom_jump_out_of_the_freertos_task() -> None:
     assert '#include "app_boot.h"' in main
 
     early = c_function_body(source, "void APP_Boot_TryRomDfu(void)")
-    assert early.index("app_boot_clear_request_magic") < early.index(
+    # 取魔数时就清掉，且必须发生在校验向量之前：任何一步失败都该正常启动应用，
+    # 而不是再跳一次——"永远进 DFU"要拆机才救得回来。
+    assert early.index("BSP_RomBootloader_TakeRequestMagic") < early.index(
         "APP_Boot_IsVectorReasonable"
     )
-    assert "app_boot_disable_nvic_and_systick" in early
-    assert "app_boot_disable_cache_and_mpu" in early
-    assert "SCB->VTOR = APP_BOOT_ROM_DFU_VECTOR_ADDRESS" in early
-    assert "app_boot_branch_to_rom(initial_msp, reset_handler)" in early
-    assert "app_boot_restore_backup_register_access(&access_state)" in early
+    assert early.index("APP_Boot_IsVectorReasonable") < early.index(
+        "BSP_RomBootloader_Jump"
+    )
+    take = c_function_body(
+        mechanism, "uint8_t BSP_RomBootloader_TakeRequestMagic(uint32_t magic)")
+    assert "rom_bootloader_clear_magic();" in take
+
+    jump = c_function_body(
+        mechanism,
+        "void BSP_RomBootloader_Jump(uint32_t vector_address,")
+    assert "rom_bootloader_quiesce();" in jump
+    assert "SCB->VTOR = vector_address;" in jump
+    assert "rom_bootloader_branch(initial_msp, reset_handler);" in jump
+    assert "SCB->VTOR" not in source, "向量表切换不该再出现在 App 层"
 
     branch = c_function_body(
-        source,
-        "static void __attribute__((naked, noreturn)) app_boot_branch_to_rom(",
+        mechanism,
+        "static void __attribute__((naked, noreturn)) rom_bootloader_branch(",
     )
     for instruction in ("msr msp, r0", "msr control, r2", "cpsie i", "bx r1"):
         assert instruction in branch
-    assert "naked, noreturn" in source
+    assert "naked, noreturn" in mechanism
 
 
 def test_rom_entry_clears_interrupt_cache_and_mpu_state() -> None:
     source = read(SOURCE)
-    irq = c_function_body(source, "static void app_boot_disable_nvic_and_systick(void)")
-    cache = c_function_body(source, "static void app_boot_disable_cache_and_mpu(void)")
+    mechanism = read(MECHANISM)
+    # 两个静默动作 2026-09-11 合成一个 BSP 内部函数：它们从来只被一起调用，
+    # 分开只是让调用点多写一行、多一次漏调的机会。
+    quiesce = c_function_body(mechanism, "static void rom_bootloader_quiesce(void)")
 
     for statement in (
         "SysTick->CTRL = 0U",
@@ -155,21 +183,22 @@ def test_rom_entry_clears_interrupt_cache_and_mpu_state() -> None:
         "SysTick->VAL = 0U",
         "NVIC->ICER[index] = 0xFFFFFFFFUL",
         "NVIC->ICPR[index] = 0xFFFFFFFFUL",
-    ):
-        assert statement in irq
-    for statement in (
         "SCB_CleanInvalidateDCache()",
         "SCB_DisableDCache()",
         "SCB_InvalidateICache()",
         "SCB_DisableICache()",
         "HAL_MPU_Disable()",
     ):
-        assert statement in cache
+        assert statement in quiesce
+    for leaked in ("SysTick->", "NVIC->", "SCB_DisableDCache", "HAL_MPU_Disable"):
+        assert leaked not in source, f"{leaked} 不该再出现在 App 层"
 
     assert "APP_BOOT_ROM_DFU_VECTOR_ADDRESS 0x1FF09800UL" in read(HEADER)
     assert "APP_PROTO_REQ_BOOT           0x101FU" in read(PROTO)
     assert "APP_PROTO_MSG_BOOT_STATUS       0x2220U" in read(PROTO)
-    assert "App/Src/app_boot.c" in read(CMAKE)
+    cmake = read(CMAKE)
+    assert "App/Src/app_boot.c" in cmake
+    assert "BSP/Src/bsp_rom_bootloader.c" in cmake
 
 
 PURE_RUNTIME_HARNESS = r"""

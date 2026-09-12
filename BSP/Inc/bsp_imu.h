@@ -161,6 +161,54 @@ void BSP_IMU_Invalidate(void);
  */
 uint16_t BSP_IMU_GetDrdyPin(void);
 
+/*
+ * 注册"选中那颗 IMU 的 DRDY 到了"的回调。
+ *
+ * 上层由此不必知道 DRDY 落在哪个引脚、走的是哪条 EXTI，也不必去实现 HAL 的弱
+ * 回调 `HAL_GPIO_EXTI_Callback()`——那两件事都是板级知识，这次移植正好都变了
+ * （老板子 PC0/EXTI0，本板 BMI088 在 PC15、BMI270 在 PB7）。
+ *
+ * **在中断上下文调用。** 回调里只许搬数据 / 置标志 / 唤醒任务（D2-1）。
+ * 引脚比对由 BSP 做：未选中那颗的边沿不会送到这里——软复位后上一轮配置过的
+ * 另一颗仍在按自己的 ODR 发边沿，实测能把节拍从 1000 Hz 顶到 1760 Hz。
+ */
+void BSP_IMU_SetDrdyHandler(void (*handler)(void));
+
+/* ------------------------------------------------ IMU 总线现场快照（诊断用） */
+
+/*
+ * 引脚现场：MODER / AFR / ODR / IDR 四个字段就能把"配置对不对"和"线上有没有电平"
+ * 分开。BMI088 探测读回 0x00 时，单看驱动分不清是 MISO 没配成 AF、还是芯片没应答；
+ * 有了这张快照就不用猜。
+ *
+ * 快照由 BSP 生成而不是让上层自己读寄存器：引脚表是板级知识，这次移植里它整张
+ * 都变了。表留在上层的话，换板后这条诊断会一本正经地描述**另一块板的硅片**。
+ */
+#define BSP_IMU_BUS_PIN_MAX 8U
+
+typedef struct {
+    const char *name;   /* 例如 "PD3_SCK"，含引脚号与用途，直接可读 */
+    uint8_t     mode;   /* MODER：0=输入 1=输出 2=复用 3=模拟 */
+    uint8_t     af;     /* AFR */
+    uint8_t     od;     /* ODR */
+    uint8_t     in;     /* IDR */
+    uint8_t     expect_af;  /* 期望的复用号；0xFF = 这根脚本不该归本总线 */
+} BSP_IMU_PinSnapshot;
+
+typedef struct {
+    const char *spi_name;      /* 选中 IMU 所在的 SPI，例如 "spi2" */
+    uint32_t    pmcr;          /* SYSCFG->PMCR，PC2_C 那类模拟开关看这里 */
+    uint32_t    spi_cr1;
+    uint32_t    spi_cfg1;
+    uint32_t    spi_cfg2;
+    uint32_t    spi_sr;
+    uint32_t    pin_count;
+    BSP_IMU_PinSnapshot pins[BSP_IMU_BUS_PIN_MAX];
+} BSP_IMU_BusSnapshot;
+
+void BSP_IMU_GetBusSnapshot(BSP_IMU_BusSnapshot *out);
+
+
 void             BSP_IMU_GetInfo(BSP_IMU_Info *info);
 DRV_IMU_ChipKind BSP_IMU_GetChipKind(void);
 

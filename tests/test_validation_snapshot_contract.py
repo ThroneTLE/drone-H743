@@ -99,14 +99,14 @@ def test_snapshot_uses_a_bounded_dmb_seqlock_and_a_real_valid_gate() -> None:
     assert "static volatile uint8_t stabilizer_validation_imu_valid;" in source
     assert reset.count("stabilizer_validation_imu_seqlock++;") == 2
     assert "stabilizer_validation_imu_valid = 0U;" in reset
-    assert reset.count("__DMB();") >= 2
+    assert reset.count("BSP_Critical_MemoryBarrier();") >= 2
     assert publish.count("stabilizer_validation_imu_seqlock++;") == 2
     assert "stabilizer_validation_imu_valid = 1U;" in publish
-    assert publish.count("__DMB();") >= 2
+    assert publish.count("BSP_Critical_MemoryBarrier();") >= 2
     assert "STABILIZER_VALIDATION_SNAPSHOT_READ_RETRIES" in reader
     assert "if ((before & 1U) != 0U)" in reader
     assert "(before == after) && ((after & 1U) == 0U)" in reader
-    assert reader.count("__DMB();") >= 2
+    assert reader.count("BSP_Critical_MemoryBarrier();") >= 2
     assert reader.index("if (valid == 0U)") < reader.index("*out = current;")
     assert "return 1U;" in reader
     assert reader.rstrip().endswith("return 0U;")

@@ -3,6 +3,7 @@
 #include "app_messages.h"
 #include "app_stabilizer.h"
 #include "app_tasks.h"
+#include "bsp_critical.h"
 #include "bsp_baro.h"
 #include "bsp_imu.h"
 #include "cmsis_os2.h"
@@ -564,10 +565,10 @@ uint8_t APP_IMU_ReadDataReadyTimestamp(uint64_t *timestamp_us)
         if ((sequence_before & 1U) != 0U) {
             continue;
         }
-        __DMB();
+        BSP_Critical_MemoryBarrier();
         timestamp_low = app_imu_drdy_timestamp.timestamp_low;
         timestamp_high = app_imu_drdy_timestamp.timestamp_high;
-        __DMB();
+        BSP_Critical_MemoryBarrier();
         sequence_after = app_imu_drdy_timestamp.sequence;
         if ((sequence_before == sequence_after) &&
             ((sequence_after & 1U) == 0U)) {
@@ -613,23 +614,25 @@ const APP_IMU_SampleMessage *APP_IMU_GetLastSample(void)
 /*  这里的比对是第二道闸——两道都在，是因为漏判的代价是整环退到轮询兜底。      */
 /* ════════════════════════════════════════════════════════════════════════ */
 
-void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+/*
+ * 选中那颗 IMU 的 DRDY 到了。由 BSP 在 EXTI 中断里调用（BSP_IMU_SetDrdyHandler）。
+ *
+ * 引脚比对已经在 BSP 做过——"DRDY 在哪个引脚"是板级知识，本次移植它就从
+ * PC0/EXTI0 散成了 PC15(BMI088) / PB7(BMI270)。这里只剩本模块自己的事：
+ * 无锁发布时间戳 + 唤醒 Sensor 任务。
+ */
+void APP_IMU_OnDataReady(void)
 {
-    const uint16_t drdy_pin = BSP_IMU_GetDrdyPin();
+    const uint64_t timestamp_us = SVC_Timestamp_Us();
+    const uint32_t write_sequence = app_imu_drdy_timestamp.sequence + 1U;
 
-    if ((drdy_pin != 0U) && ((GPIO_Pin & drdy_pin) != 0U)) {
-        const uint64_t timestamp_us = SVC_Timestamp_Us();
-        const uint32_t write_sequence =
-            app_imu_drdy_timestamp.sequence + 1U;
-        app_imu_drdy_timestamp.sequence = write_sequence;
-        __DMB();
-        app_imu_drdy_timestamp.timestamp_low = (uint32_t)timestamp_us;
-        app_imu_drdy_timestamp.timestamp_high =
-            (uint32_t)(timestamp_us >> 32);
-        __DMB();
-        app_imu_drdy_timestamp.sequence = write_sequence + 1U;
-        (void)osThreadFlagsSet(SensorTaskHandle, APP_IMU_DATA_READY_FLAG);
-    }
+    app_imu_drdy_timestamp.sequence = write_sequence;
+    BSP_Critical_MemoryBarrier();
+    app_imu_drdy_timestamp.timestamp_low = (uint32_t)timestamp_us;
+    app_imu_drdy_timestamp.timestamp_high = (uint32_t)(timestamp_us >> 32);
+    BSP_Critical_MemoryBarrier();
+    app_imu_drdy_timestamp.sequence = write_sequence + 1U;
+    (void)osThreadFlagsSet(SensorTaskHandle, APP_IMU_DATA_READY_FLAG);
 }
 
 /* ════════════════════════════════════════════════════════════════════════ */

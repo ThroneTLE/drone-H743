@@ -233,7 +233,7 @@ def test_control_dispatches_jog_and_flushes_notice() -> None:
     handle_servo = _function_body(
         CONTROL, "static void app_control_handle_servo(char **tokens, uint32_t count)")
     assert 'strcmp(tokens[1], "JOG")' in handle_servo
-    assert "APP_ServoJog_HandleCommand(tokens, count, HAL_GetTick());" in handle_servo
+    assert "APP_ServoJog_HandleCommand(tokens, count, SVC_Timestamp_Ms());" in handle_servo
 
     # 带定义左括号匹配，避免撞上文件头部的前向声明。
     tick_common = _function_body(

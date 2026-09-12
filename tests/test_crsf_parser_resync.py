@@ -290,14 +290,11 @@ def test_start_rx_dma_can_recover_on_its_own() -> None:
     source = read("App/Src/app_elrs.c")
     body = source[source.index("static void StartRxDma"):
                   source.index("static uint8_t DmaNeedsRestart")]
-    failure = body[body.index("if (status != HAL_OK) {"):body.index("__HAL_DMA_DISABLE_IT")]
+    # 2026-09-11 起总线动作经 BSP 的角色化链路（app_elrs.c 不再认识 USART6），
+    # 本条守的仍是"起不来时必须 abort"这个性质，与它挂在哪个串口无关。
+    failure = body[body.index("== 0U) {"):body.index("SuppressRxIrqSources")]
 
-    # 句柄名从源码里推出来，不写死：ELRS 2026-09-10 从 UART4 搬到了板载 RC 口
-    # USART6，而本条守的是"起不来时必须 abort"这个性质，跟它挂在哪个串口无关。
-    handle = re.search(r"HAL_UARTEx_ReceiveToIdle_DMA\(&(huart\d+),", body)
-    assert handle is not None, "找不到 ELRS 的 DMA 接收启动调用"
-
-    assert f"HAL_UART_AbortReceive(&{handle.group(1)});" in failure
+    assert "BSP_UartLink_AbortRx(BSP_UART_ROLE_RC);" in failure
     assert "rx_start_fail++;" in failure, "起不来的次数要看得见，否则查不出是这里"
 
 
@@ -316,12 +313,20 @@ def test_rx_diagnostics_separate_the_physical_layer_from_the_parser() -> None:
 
     clear_errors = source[source.index("static void ClearErrors"):
                           source.index("static void StartRxDma")]
-    for flag, counter in (("USART_ISR_ORE", "rx_err_overrun"),
-                          ("USART_ISR_FE", "rx_err_framing"),
-                          ("USART_ISR_NE", "rx_err_noise"),
-                          ("USART_ISR_PE", "rx_err_parity")):
+    # 分类位 2026-09-11 改成 BSP 定义的**可移植**标志：ORE/FE/NE/PE 这个区分在
+    # 任何 MCU 上都成立，`HAL_UART_ERROR_ORE` 那个具体数值则不成立。
+    for flag, counter in (("BSP_UART_LINK_ERR_OVERRUN", "rx_err_overrun"),
+                          ("BSP_UART_LINK_ERR_FRAMING", "rx_err_framing"),
+                          ("BSP_UART_LINK_ERR_NOISE", "rx_err_noise"),
+                          ("BSP_UART_LINK_ERR_PARITY", "rx_err_parity")):
         assert flag in clear_errors and counter in clear_errors, flag
-    assert clear_errors.index("rx_err_overrun++") < clear_errors.index("__HAL_UART_CLEAR_FLAG"), (
+
+    # "先分类再清标志"现在是**结构上保证**的：取和清是 BSP 的同一次调用，
+    # 分不开。守在它的新家上，比守在调用方的语句顺序上更硬。
+    link = read("BSP/Src/bsp_uart_link.c")
+    take = link[link.index("uint32_t BSP_UartLink_TakeErrors"):
+                link.index("void BSP_UartLink_FlushRx")]
+    assert take.index("BSP_UART_LINK_ERR_OVERRUN") < take.index("__HAL_UART_CLEAR_FLAG"), (
         "必须先分类再清标志，清完就分不出是哪一层坏的"
     )
 

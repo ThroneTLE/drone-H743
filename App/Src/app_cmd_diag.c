@@ -10,8 +10,8 @@
 #include "bsp_aiwb2_power.h"
 #include "bsp_baro.h"
 #include "bsp_imu.h"
-#include "main.h"
 
+#include "svc_timestamp.h"
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -330,7 +330,7 @@ static void app_control_req_icm42688(uint32_t id, const char *op)
 static void app_control_req_m9n(uint32_t id, const char *op)
 {
     APP_GPS_Status gps_status;
-    uint32_t now_ms = HAL_GetTick();
+    uint32_t now_ms = SVC_Timestamp_Ms();
     uint32_t age_ms = 0U;
     char age_text[16];
 

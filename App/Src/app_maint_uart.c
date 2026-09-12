@@ -4,6 +4,7 @@
 #include "app_control.h"
 #include "app_telem_stream.h"
 #include "bsp_uart.h"
+#include "bsp_uart_events.h"
 #include "svc_timestamp.h"
 
 #include "cmsis_os2.h"
@@ -196,8 +197,16 @@ static void maint_flush_idle_line(void)
 }
 
 
+static const BSP_UartRoleHandlers maint_role_handlers = {
+    .rx_event = NULL,        /* 维护口逐字节收，不用 IDLE 事件 */
+    .rx_byte  = APP_MaintUART_OnRxByte,
+    .tx_cplt  = NULL,        /* 发送完成由 BSP 的发送队列自己续发 */
+    .error    = APP_MaintUART_OnRxError,
+};
+
 void APP_MaintUART_Init(void)
 {
+    BSP_UartEvents_Register(BSP_UART_ROLE_MAINT, &maint_role_handlers);
     maint_rx_byte = 0U;
     maint_rx_used = 0U;
     maint_rx_head = 0U;

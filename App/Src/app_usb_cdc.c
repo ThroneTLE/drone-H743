@@ -2,11 +2,12 @@
 
 #include "app_control.h"
 #include "app_telem_stream.h"
-#include "main.h"
-#include "usbd_cdc_if.h"
+#include "bsp_critical.h"
+#include "bsp_usb_cdc.h"
 
 #include "cmsis_os2.h"
 
+#include "svc_timestamp.h"
 #include <string.h>
 
 #define APP_USB_CDC_RX_RING_SIZE 1024U
@@ -40,23 +41,25 @@ static void app_usb_cdc_wait_1ms(void)
     if (osKernelGetState() == osKernelRunning) {
         osDelay(1U);
     } else {
-        HAL_Delay(1U);
+        /* 上电阶段调度器还没起来，只能忙等；这条路径只在枚举之前走到。 */
+        SVC_Timestamp_BusyWaitMs(1U);
     }
 }
 
 static uint8_t app_usb_cdc_take_tx_lock(uint32_t timeout_ms)
 {
-    uint32_t deadline_ms = HAL_GetTick() + timeout_ms;
+    uint32_t deadline_ms = SVC_Timestamp_Ms() + timeout_ms;
 
     do {
         uint8_t taken = 0U;
 
-        __disable_irq();
+        uint32_t irq = BSP_Critical_Enter();
+
         if (app_usb_cdc_tx_locked == 0U) {
             app_usb_cdc_tx_locked = 1U;
             taken = 1U;
         }
-        __enable_irq();
+        BSP_Critical_Exit(irq);
 
         if (taken != 0U) {
             return 1U;
@@ -66,16 +69,17 @@ static uint8_t app_usb_cdc_take_tx_lock(uint32_t timeout_ms)
             return 0U;
         }
         app_usb_cdc_wait_1ms();
-    } while (app_usb_cdc_time_reached(HAL_GetTick(), deadline_ms) == 0U);
+    } while (app_usb_cdc_time_reached(SVC_Timestamp_Ms(), deadline_ms) == 0U);
 
     return 0U;
 }
 
 static void app_usb_cdc_give_tx_lock(void)
 {
-    __disable_irq();
+    uint32_t irq = BSP_Critical_Enter();
+
     app_usb_cdc_tx_locked = 0U;
-    __enable_irq();
+    BSP_Critical_Exit(irq);
 }
 
 static uint8_t app_usb_cdc_rx_pop(uint8_t *byte)
@@ -230,9 +234,9 @@ uint8_t APP_USB_CDC_Write(const uint8_t *data,
         return 0U;
     }
 
-    deadline_ms = HAL_GetTick() + timeout_ms;
+    deadline_ms = SVC_Timestamp_Ms() + timeout_ms;
     while ((app_usb_cdc_tx_in_flight != 0U) &&
-           (app_usb_cdc_time_reached(HAL_GetTick(), deadline_ms) == 0U)) {
+           (app_usb_cdc_time_reached(SVC_Timestamp_Ms(), deadline_ms) == 0U)) {
         app_usb_cdc_wait_1ms();
     }
 
@@ -244,17 +248,17 @@ uint8_t APP_USB_CDC_Write(const uint8_t *data,
 
     memcpy(app_usb_cdc_tx_buffer, data, length);
     app_usb_cdc_tx_in_flight = 1U;
-    result = CDC_Transmit_FS(app_usb_cdc_tx_buffer, length);
-    if (result != USBD_OK) {
+    result = BSP_UsbCdc_Transmit(app_usb_cdc_tx_buffer, length);
+    if (result == 0U) {
         app_usb_cdc_tx_in_flight = 0U;
         app_usb_cdc_tx_dropped++;
         app_usb_cdc_give_tx_lock();
         return 0U;
     }
 
-    deadline_ms = HAL_GetTick() + timeout_ms;
+    deadline_ms = SVC_Timestamp_Ms() + timeout_ms;
     while ((app_usb_cdc_tx_in_flight != 0U) &&
-           (app_usb_cdc_time_reached(HAL_GetTick(), deadline_ms) == 0U)) {
+           (app_usb_cdc_time_reached(SVC_Timestamp_Ms(), deadline_ms) == 0U)) {
         app_usb_cdc_wait_1ms();
     }
 

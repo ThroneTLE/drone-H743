@@ -183,6 +183,38 @@ uint16_t BSP_IMU_GetDrdyPin(void)
     return bsp_imu_drdy_pin_of(BSP_IMU_GetChipKind());
 }
 
+static void (*bsp_imu_drdy_handler)(void);
+
+void BSP_IMU_SetDrdyHandler(void (*handler)(void))
+{
+    bsp_imu_drdy_handler = handler;
+}
+
+/*
+ * HAL 的 EXTI 弱回调落在 BSP，而不是让上层去实现它。
+ *
+ * "DRDY 在哪个引脚"是板级知识——这次移植它就从 PC0/EXTI0 散成了 PC15(BMI088) /
+ * PB7(BMI270)。放在上层的话，每换一块板、每换一颗 IMU，都要回去改一个名字叫
+ * `HAL_GPIO_EXTI_Callback` 的函数，而那个名字本身还是 HAL 的。
+ *
+ * **只放行被选中那颗。** BSP 侧另外还会清掉未选中那颗的 EXTI 屏蔽位
+ * （见 BSP_IMU_GetDrdyPin 附近），这里的比对是第二道闸：两道都在，是因为漏判
+ * 的代价是控制环被以约 1.7 倍于陀螺更新率的节奏唤醒，三成迭代拿到重复样本，
+ * 而角速率是最内环，重复样本对 D 项就是噪声放大。
+ */
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+{
+    const uint16_t drdy_pin = BSP_IMU_GetDrdyPin();
+
+    if ((drdy_pin == 0U) || ((GPIO_Pin & drdy_pin) == 0U)) {
+        return;
+    }
+
+    if (bsp_imu_drdy_handler != NULL) {
+        bsp_imu_drdy_handler();
+    }
+}
+
 DRV_IMU_Status BSP_IMU_Init(void)
 {
     const BSP_IMU_Candidate candidates[] = {
@@ -500,4 +532,52 @@ DRV_IMU_Status BSP_IMU_DebugSpiXfer(BSP_IMU_SpiCs cs, const uint8_t *tx,
     case HAL_TIMEOUT: return DRV_IMU_TIMEOUT;
     default:          return DRV_IMU_ERROR;
     }
+}
+
+/* ------------------------------------------------ IMU 总线现场快照（诊断用） */
+
+static void bsp_imu_fill_pin(BSP_IMU_PinSnapshot *pin, const char *name,
+                             const GPIO_TypeDef *port, uint32_t index,
+                             uint8_t expect_af)
+{
+    pin->name      = name;
+    pin->mode      = (uint8_t)((port->MODER >> (index * 2U)) & 0x3U);
+    pin->af        = (uint8_t)((port->AFR[index >> 3U] >> ((index & 7U) * 4U)) & 0xFU);
+    pin->od        = (uint8_t)((port->ODR >> index) & 1U);
+    pin->in        = (uint8_t)((port->IDR >> index) & 1U);
+    pin->expect_af = expect_af;
+}
+
+void BSP_IMU_GetBusSnapshot(BSP_IMU_BusSnapshot *out)
+{
+    uint32_t n = 0U;
+
+    if (out == NULL) {
+        return;
+    }
+    memset(out, 0, sizeof(*out));
+
+    out->spi_name = "spi2";
+    out->pmcr     = SYSCFG->PMCR;
+    out->spi_cr1  = SPI2->CR1;
+    out->spi_cfg1 = SPI2->CFG1;
+    out->spi_cfg2 = SPI2->CFG2;
+    out->spi_sr   = SPI2->SR;
+
+    /* SPI2（BMI088）的三根总线脚：期望 mode=2（复用）且 af=5。 */
+    bsp_imu_fill_pin(&out->pins[n++], "PD3_SCK",  GPIOD, 3U, 5U);
+    bsp_imu_fill_pin(&out->pins[n++], "PC2_MISO", GPIOC, 2U, 5U);
+    bsp_imu_fill_pin(&out->pins[n++], "PC3_MOSI", GPIOC, 3U, 5U);
+    /* 两个片选：期望 mode=1（推挽输出）且 od=1（空闲拉高）。 */
+    bsp_imu_fill_pin(&out->pins[n++], "PD4_A_CS", GPIOD, 4U, 0U);
+    bsp_imu_fill_pin(&out->pins[n++], "PD5_G_CS", GPIOD, 5U, 0U);
+    /*
+     * 两根**反向探针**：本板上 PC1 是电池电流采样、PA9 是 USART1_TX，都不归 SPI2。
+     * 它们是老板子 SPI2 的 MOSI/SCK——若仍是 mode=2 af=5，说明生成代码里还留着
+     * 上一块板的引脚配置。expect_af=0xFF 表示"这根脚不该归本总线"。
+     */
+    bsp_imu_fill_pin(&out->pins[n++], "PC1_IBAT", GPIOC, 1U, 0xFFU);
+    bsp_imu_fill_pin(&out->pins[n++], "PA9_U1TX", GPIOA, 9U, 0xFFU);
+
+    out->pin_count = n;
 }

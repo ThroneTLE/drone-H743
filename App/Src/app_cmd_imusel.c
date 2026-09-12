@@ -14,7 +14,6 @@
 #include "app_control_internal.h"
 
 #include "bsp_imu.h"
-#include "main.h"
 #include "svc_imu.h"
 
 #include <stddef.h>
@@ -39,51 +38,55 @@ static const char *imusel_status_name(DRV_IMU_Status status)
     }
 }
 
-/*
- * 引脚现场快照：MODER / AFR / ODR / IDR 四个字段就能把"配置对不对"和"线上有没有电平"
- * 分开。BMI088 探测读回 0x00 时，单看驱动分不清是 MISO 没配成 AF、还是芯片没应答；
- * 这里直接把硅片上的实际状态打出来，不用猜。
- */
-static void imusel_report_pin(uint32_t id, const char *name,
-                              GPIO_TypeDef *port, uint32_t index)
-{
-    uint32_t mode = (port->MODER >> (index * 2U)) & 0x3U;
-    uint32_t af   = (port->AFR[index >> 3U] >> ((index & 7U) * 4U)) & 0xFU;
-
-    APP_Control_QueueText(
-        "RSP id=%lu mod=IMUSEL op=BUS pin=%s mode=%lu af=%lu od=%lu in=%lu\r\n",
-        (unsigned long)id, name,
-        (unsigned long)mode, (unsigned long)af,
-        (unsigned long)((port->ODR >> index) & 1U),
-        (unsigned long)((port->IDR >> index) & 1U));
-}
-
 static void imusel_report_bus(uint32_t id)
 {
-    APP_Control_QueueText(
-        "RSP id=%lu mod=IMUSEL op=BUS pmcr=0x%08lX spi2_cr1=0x%08lX "
-        "spi2_cfg1=0x%08lX spi2_cfg2=0x%08lX spi2_sr=0x%08lX\r\n",
-        (unsigned long)id,
-        (unsigned long)SYSCFG->PMCR,
-        (unsigned long)SPI2->CR1,
-        (unsigned long)SPI2->CFG1,
-        (unsigned long)SPI2->CFG2,
-        (unsigned long)SPI2->SR);
+    BSP_IMU_BusSnapshot bus;
+    uint32_t i;
 
-    /* SPI2（BMI088）：期望 mode=2（AF）且 af=5。 */
-    imusel_report_pin(id, "PD3_SCK",   GPIOD, 3U);
-    imusel_report_pin(id, "PC2_MISO",  GPIOC, 2U);
-    imusel_report_pin(id, "PC3_MOSI",  GPIOC, 3U);
-    /* 片选：期望 mode=1（推挽输出）且 od=1（空闲拉高）。 */
-    imusel_report_pin(id, "PD4_A_CS",  GPIOD, 4U);
-    imusel_report_pin(id, "PD5_G_CS",  GPIOD, 5U);
-    /*
-     * 这两个脚本板上不归 SPI2：PC1 是电池电流采样、PA9 是 USART1_TX。
-     * 它们是老板子 SPI2 的 MOSI/SCK，若仍是 mode=2 af=5，说明生成代码的
-     * USER CODE 区还留着上一块板的引脚配置。
-     */
-    imusel_report_pin(id, "PC1_IBAT",  GPIOC, 1U);
-    imusel_report_pin(id, "PA9_U1TX",  GPIOA, 9U);
+    BSP_IMU_GetBusSnapshot(&bus);
+
+    APP_Control_QueueText(
+        "RSP id=%lu mod=IMUSEL op=BUS spi=%s pmcr=0x%08lX cr1=0x%08lX "
+        "cfg1=0x%08lX cfg2=0x%08lX sr=0x%08lX\r\n",
+        (unsigned long)id, bus.spi_name,
+        (unsigned long)bus.pmcr,
+        (unsigned long)bus.spi_cr1,
+        (unsigned long)bus.spi_cfg1,
+        (unsigned long)bus.spi_cfg2,
+        (unsigned long)bus.spi_sr);
+
+    for (i = 0U; i < bus.pin_count; ++i) {
+        const BSP_IMU_PinSnapshot *pin = &bus.pins[i];
+        uint8_t foreign = (pin->expect_af == 0xFFU) ? 1U : 0U;
+        /*
+         * 直接给结论，不让读的人自己对着 mode/af 心算。
+         *   ok=1  —— 这根脚配得对
+         *   ok=0  —— 配错了，或者"本不该归本总线的脚"却被配成了本总线的复用，
+         *            那说明生成代码里还留着上一块板的引脚配置
+         */
+        uint8_t ok = foreign ? ((pin->af != 5U) ? 1U : 0U)
+                             : (((pin->expect_af == 0U) ? (pin->mode == 1U)
+                                                        : (pin->mode == 2U)) &&
+                                (pin->af == pin->expect_af)) ? 1U : 0U;
+
+        if (foreign != 0U) {
+            APP_Control_QueueText(
+                "RSP id=%lu mod=IMUSEL op=BUS pin=%s mode=%u af=%u od=%u in=%u exp=foreign ok=%u\r\n",
+                (unsigned long)id, pin->name,
+                (unsigned int)pin->mode, (unsigned int)pin->af,
+                (unsigned int)pin->od, (unsigned int)pin->in,
+                (unsigned int)ok);
+        } else {
+            APP_Control_QueueText(
+                "RSP id=%lu mod=IMUSEL op=BUS pin=%s mode=%u af=%u od=%u in=%u exp_mode=%u exp_af=%u ok=%u\r\n",
+                (unsigned long)id, pin->name,
+                (unsigned int)pin->mode, (unsigned int)pin->af,
+                (unsigned int)pin->od, (unsigned int)pin->in,
+                (unsigned int)((pin->expect_af == 0U) ? 1U : 2U),
+                (unsigned int)pin->expect_af,
+                (unsigned int)ok);
+        }
+    }
 }
 
 void app_control_req_imusel(uint32_t id, const char *op)

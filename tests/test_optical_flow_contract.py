@@ -259,6 +259,10 @@ def test_optical_flow_sources_are_wired_into_firmware_and_cubemx() -> None:
     assert "Driver/Src/drv_optical_flow.c" in cmake
     assert "BSP/Src/bsp_optical_flow.c" in cmake
     assert "App/Src/app_optical_flow.c" in cmake
+    # 分发表 2026-09-11 搬到 BSP；光流仍走"没人认领就归它"这条路。
+    uart = read("BSP/Src/bsp_uart_events.c")
+    # 分发表 2026-09-11 搬到 BSP；光流仍走"没人认领就归它"这条路。
+    uart = read("BSP/Src/bsp_uart_events.c")
     assert "BSP_OPTICAL_FLOW_OnUartRxCplt(huart);" in uart
     assert "BSP_OPTICAL_FLOW_OnUartError(huart);" in uart
     assert "BSP_GPS_OnUartRxCplt" not in uart

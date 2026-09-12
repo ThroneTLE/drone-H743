@@ -75,6 +75,11 @@ void BSP_UART_MaintInit(void)
                       bsp_uart_maint_tx_buffer, BSP_UART_MAINT_TX_SIZE);
 }
 
+UART_HandleTypeDef *BSP_UART_MaintHandle(void)
+{
+    return BSP_UART_MAINT_HANDLE;
+}
+
 const char *BSP_UART_MaintName(void)
 {
     return BSP_UART_MAINT_NAME;

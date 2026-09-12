@@ -53,8 +53,8 @@ def test_usart1_wifi_udp_pid_tuning_path_is_text_line_based() -> None:
     assert "huart1.Init.Mode = UART_MODE_TX_RX;" in usart
     assert "DMA_REQUEST_USART1_RX" in usart
     assert "DMA_REQUEST_USART1_TX" in usart
-    assert "HAL_UARTEx_ReceiveToIdle_DMA(&huart1" in app_uart
-    assert "HAL_UART_Transmit_DMA(&huart1" in app_uart
+    assert "BSP_UartLink_StartRxToIdle(BSP_UART_ROLE_TELEMETRY" in app_uart
+    assert "BSP_UartLink_TransmitDma(BSP_UART_ROLE_TELEMETRY" in app_uart
 
     assert 'strcmp(line, "PARAM?") == 0' in app_aiwb2
     assert 'strcmp(line, "PID?") == 0' in app_aiwb2

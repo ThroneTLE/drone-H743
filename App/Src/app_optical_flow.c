@@ -5,6 +5,7 @@
 #include "drv_optical_flow.h"
 #include "svc_flow_nav.h"
 
+#include "svc_timestamp.h"
 #include <string.h>
 
 /*
@@ -103,7 +104,7 @@ static void app_flow_fill_sample(const BSP_OPTICAL_FLOW_Frame *frame,
 
 void APP_OpticalFlow_Init(void)
 {
-    uint32_t now = HAL_GetTick();
+    uint32_t now = SVC_Timestamp_Ms();
 
     memset(&flow_ctx, 0, sizeof(flow_ctx));
     flow_ctx.health = APP_OPTICAL_FLOW_HEALTH_STARTING;
@@ -113,7 +114,7 @@ void APP_OpticalFlow_Init(void)
 
 void APP_OpticalFlow_Step(void)
 {
-    uint32_t now = HAL_GetTick();
+    uint32_t now = SVC_Timestamp_Ms();
     SVC_FLOW_NAV_Sample sample;
     SVC_FLOW_NAV_SampleResult result;
     uint32_t last_good_ms;
@@ -167,7 +168,7 @@ void APP_OpticalFlow_Step(void)
 
 void APP_OpticalFlow_ServiceRecovery(void)
 {
-    uint32_t now = HAL_GetTick();
+    uint32_t now = SVC_Timestamp_Ms();
     uint32_t interval_ms;
     uint8_t needs_recovery;
 
@@ -201,7 +202,7 @@ uint8_t APP_OpticalFlow_GetVelocitySample(float *vx_m_s,
                                           uint32_t *sample_ms)
 {
     if (SVC_FlowNav_GetSensorVelocity(vx_m_s, vy_m_s, sample_ms,
-                                      HAL_GetTick()) == 0U) {
+                                      SVC_Timestamp_Ms()) == 0U) {
         flow_ctx.velocity_source = APP_OPTICAL_FLOW_VEL_SOURCE_NONE;
         return 0U;
     }
@@ -215,7 +216,7 @@ uint8_t APP_OpticalFlow_GetHeightSample(float *height_m,
                                         uint32_t *sample_ms)
 {
     return SVC_FlowNav_GetHeight(height_m, vertical_velocity_m_s, sample_ms,
-                                 HAL_GetTick());
+                                 SVC_Timestamp_Ms());
 }
 
 void APP_OpticalFlow_SetVelocitySource(APP_OPTICAL_FLOW_VelSource source)
@@ -236,7 +237,7 @@ const char *APP_OpticalFlow_VelSourceName(APP_OPTICAL_FLOW_VelSource source)
 
 void APP_OpticalFlow_GetStatus(APP_OPTICAL_FLOW_Status *status)
 {
-    uint32_t now = HAL_GetTick();
+    uint32_t now = SVC_Timestamp_Ms();
     const BSP_OPTICAL_FLOW_Frame *frame;
     SVC_FLOW_NAV_State nav;
 

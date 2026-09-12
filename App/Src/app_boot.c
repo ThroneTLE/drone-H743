@@ -2,18 +2,14 @@
 
 #include "app_stabilizer.h"
 #include "app_usb_cdc.h"
+#include "bsp_critical.h"
 #include "bsp_pwm.h"
+#include "bsp_usb_cdc.h"
+#include "bsp_rom_bootloader.h"
 #include "svc_timestamp.h"
-#include "usb_device.h"
-#include "usbd_core.h"
-
-#include "stm32h7xx_hal.h"
 
 #include <stddef.h>
 #include <string.h>
-
-/* CubeMX defines this handle in USB_DEVICE/App/usb_device.c. */
-extern USBD_HandleTypeDef hUsbDeviceFS;
 
 static volatile APP_BootState app_boot_state;
 static volatile uint64_t app_boot_deadline_us;
@@ -27,11 +23,6 @@ typedef struct {
     uint8_t snapshot_valid;
     uint8_t armed;
 } APP_BootSafetySample;
-
-typedef struct {
-    uint8_t dbp_was_enabled;
-    uint8_t rtc_apb_was_enabled;
-} APP_BootBackupAccessState;
 
 static uint8_t app_boot_time_reached(uint64_t now_us, uint64_t deadline_us)
 {
@@ -112,11 +103,8 @@ uint8_t APP_Boot_IsVectorReasonable(uint32_t initial_msp,
 static void app_boot_read_vector(uint32_t *initial_msp,
                                  uint32_t *reset_handler)
 {
-    const volatile uint32_t *const vector =
-        (const volatile uint32_t *)APP_BOOT_ROM_DFU_VECTOR_ADDRESS;
-
-    *initial_msp = vector[0];
-    *reset_handler = vector[1];
+    BSP_RomBootloader_ReadVector(APP_BOOT_ROM_DFU_VECTOR_ADDRESS,
+                                 initial_msp, reset_handler);
 }
 
 static APP_BootSafety app_boot_read_safety(uint64_t now_us,
@@ -184,160 +172,26 @@ static APP_BootEvent app_boot_event_from_safety(APP_BootSafety safety)
     }
 }
 
-static uint8_t app_boot_enable_backup_register_access(
-    APP_BootBackupAccessState *state)
-{
-    volatile uint32_t readback;
-    uint32_t attempts;
-
-    /*
-     * STM32H743 keeps PWR active at startup and its RCC has no PWREN bit.  Keep
-     * the conditional call for source compatibility with STM32 variants that
-     * do expose a PWR clock gate, without inventing a nonexistent H743 bit.
-     */
-#if defined(__HAL_RCC_PWR_CLK_ENABLE)
-    __HAL_RCC_PWR_CLK_ENABLE();
-#endif
-    state->dbp_was_enabled = ((PWR->CR1 & PWR_CR1_DBP) != 0U) ? 1U : 0U;
-    state->rtc_apb_was_enabled =
-        ((RCC->APB4ENR & RCC_APB4ENR_RTCAPBEN) != 0U) ? 1U : 0U;
-    HAL_PWR_EnableBkUpAccess();
-    attempts = 1024U;
-    do {
-        readback = PWR->CR1 & PWR_CR1_DBP;
-        --attempts;
-    } while ((readback == 0U) && (attempts != 0U));
-    if (readback == 0U) {
-        return 0U;
-    }
-    __DSB();
-    __HAL_RCC_RTC_CLK_ENABLE();
-    readback = RCC->APB4ENR & RCC_APB4ENR_RTCAPBEN;
-    __DSB();
-    return (readback != 0U) ? 1U : 0U;
-}
-
-static void app_boot_restore_backup_register_access(
-    const APP_BootBackupAccessState *state)
-{
-    if (state->dbp_was_enabled == 0U) {
-        HAL_PWR_DisableBkUpAccess();
-    }
-    if (state->rtc_apb_was_enabled == 0U) {
-        __HAL_RCC_RTC_CLK_DISABLE();
-    }
-    __DSB();
-}
-
-static uint8_t app_boot_request_magic_present(void)
-{
-    return ((RTC->BKP0R == APP_BOOT_DFU_REQUEST_MAGIC) &&
-            (RTC->BKP1R == (uint32_t)~APP_BOOT_DFU_REQUEST_MAGIC)) ? 1U : 0U;
-}
-
-static void app_boot_clear_request_magic(void)
-{
-    RTC->BKP0R = 0U;
-    RTC->BKP1R = 0U;
-    __DSB();
-}
-
-static uint8_t app_boot_write_request_magic(void)
-{
-    APP_BootBackupAccessState access_state;
-    uint8_t written;
-
-    if (app_boot_enable_backup_register_access(&access_state) == 0U) {
-        return 0U;
-    }
-    RTC->BKP0R = APP_BOOT_DFU_REQUEST_MAGIC;
-    RTC->BKP1R = (uint32_t)~APP_BOOT_DFU_REQUEST_MAGIC;
-    __DSB();
-    written = app_boot_request_magic_present();
-    app_boot_restore_backup_register_access(&access_state);
-    return written;
-}
-
-static void app_boot_disable_nvic_and_systick(void)
-{
-    uint32_t index;
-
-    SysTick->CTRL = 0U;
-    SysTick->LOAD = 0U;
-    SysTick->VAL = 0U;
-    SCB->ICSR = SCB_ICSR_PENDSVCLR_Msk | SCB_ICSR_PENDSTCLR_Msk;
-
-    for (index = 0U; index < 8U; ++index) {
-        NVIC->ICER[index] = 0xFFFFFFFFUL;
-        NVIC->ICPR[index] = 0xFFFFFFFFUL;
-    }
-    __DSB();
-    __ISB();
-}
-
-static void app_boot_disable_cache_and_mpu(void)
-{
-    if ((SCB->CCR & SCB_CCR_DC_Msk) != 0U) {
-        SCB_CleanInvalidateDCache();
-        SCB_DisableDCache();
-    }
-    if ((SCB->CCR & SCB_CCR_IC_Msk) != 0U) {
-        SCB_InvalidateICache();
-        SCB_DisableICache();
-    }
-    HAL_MPU_Disable();
-    __DSB();
-    __ISB();
-}
-
-/*
- * r0/r1 arrive as MSP/reset-handler.  Naked assembly prevents a compiler
- * epilogue or stack access after MSP changes.  This function is called only
- * from the earliest main hook, where reset has selected MSP (never an RTOS
- * PSP), and explicitly unmasks interrupts before entering the ROM handler.
- */
-static void __attribute__((naked, noreturn)) app_boot_branch_to_rom(
-    uint32_t initial_msp __attribute__((unused)),
-    uint32_t reset_handler __attribute__((unused)))
-{
-    __asm volatile(
-        "msr msp, r0\n"
-        "movs r2, #0\n"
-        "msr control, r2\n"
-        "isb\n"
-        "cpsie i\n"
-        "bx r1\n");
-}
-
 void APP_Boot_TryRomDfu(void)
 {
-    APP_BootBackupAccessState access_state;
-    uint32_t initial_msp;
-    uint32_t reset_handler;
+    uint32_t initial_msp = 0U;
+    uint32_t reset_handler = 0U;
 
-    if (app_boot_enable_backup_register_access(&access_state) == 0U) {
+    /*
+     * 取魔数的同时就把它清掉。之后任何一步失败都会正常启动应用，而不是再跳一次
+     * ——"永远进 DFU"要拆机才救得回来。
+     */
+    if (BSP_RomBootloader_TakeRequestMagic(APP_BOOT_DFU_REQUEST_MAGIC) == 0U) {
         return;
     }
-    if (app_boot_request_magic_present() == 0U) {
-        app_boot_restore_backup_register_access(&access_state);
-        return;
-    }
 
-    /* Clear before validating/jumping so any failure boots the app, not a loop. */
-    app_boot_clear_request_magic();
-    app_boot_restore_backup_register_access(&access_state);
     app_boot_read_vector(&initial_msp, &reset_handler);
     if (APP_Boot_IsVectorReasonable(initial_msp, reset_handler) == 0U) {
         return;
     }
 
-    __disable_irq();
-    app_boot_disable_nvic_and_systick();
-    app_boot_disable_cache_and_mpu();
-    SCB->VTOR = APP_BOOT_ROM_DFU_VECTOR_ADDRESS;
-    __DSB();
-    __ISB();
-    app_boot_branch_to_rom(initial_msp, reset_handler);
+    BSP_RomBootloader_Jump(APP_BOOT_ROM_DFU_VECTOR_ADDRESS,
+                           initial_msp, reset_handler);
 }
 
 void APP_Boot_Init(void)
@@ -400,21 +254,16 @@ APP_BootRequestResult APP_Boot_RequestDfu(void)
     }
 
     /* The command can arrive from USB, USART1 or maintenance UART tasks. */
-    primask = __get_PRIMASK();
-    __disable_irq();
+    primask = BSP_Critical_Enter();
     if (app_boot_state != APP_BOOT_STATE_IDLE) {
-        if (primask == 0U) {
-            __enable_irq();
-        }
+        BSP_Critical_Exit(primask);
         return APP_BOOT_REQUEST_ALREADY_PENDING;
     }
     app_boot_request_sequence = sample.sequence;
     app_boot_deadline_us = 0ULL;
     app_boot_state = APP_BOOT_STATE_WAITING_USB_REPLY;
-    __DMB();
-    if (primask == 0U) {
-        __enable_irq();
-    }
+    BSP_Critical_MemoryBarrier();
+    BSP_Critical_Exit(primask);
 
     return APP_BOOT_REQUEST_READY_FOR_USB;
 }
@@ -423,38 +272,29 @@ uint8_t APP_Boot_ConfirmDfuScheduled(void)
 {
     uint32_t primask;
 
-    primask = __get_PRIMASK();
-    __disable_irq();
+    primask = BSP_Critical_Enter();
     if (app_boot_state != APP_BOOT_STATE_WAITING_USB_REPLY) {
-        if (primask == 0U) {
-            __enable_irq();
-        }
+        BSP_Critical_Exit(primask);
         return 0U;
     }
     app_boot_deadline_us = SVC_Timestamp_Us() +
                            ((uint64_t)APP_BOOT_DFU_SCHEDULE_DELAY_MS * 1000ULL);
     app_boot_state = APP_BOOT_STATE_SCHEDULED;
-    __DMB();
-    if (primask == 0U) {
-        __enable_irq();
-    }
+    BSP_Critical_MemoryBarrier();
+    BSP_Critical_Exit(primask);
     return 1U;
 }
 
 void APP_Boot_CancelDfuRequest(void)
 {
-    uint32_t primask = __get_PRIMASK();
-
-    __disable_irq();
+    uint32_t primask = BSP_Critical_Enter();
     if (app_boot_state == APP_BOOT_STATE_WAITING_USB_REPLY) {
         app_boot_deadline_us = 0ULL;
         app_boot_request_sequence = 0U;
         app_boot_state = APP_BOOT_STATE_IDLE;
-        __DMB();
+        BSP_Critical_MemoryBarrier();
     }
-    if (primask == 0U) {
-        __enable_irq();
-    }
+    BSP_Critical_Exit(primask);
 }
 
 static APP_BootEvent app_boot_fail_locked(APP_BootEvent event, uint32_t primask)
@@ -462,10 +302,8 @@ static APP_BootEvent app_boot_fail_locked(APP_BootEvent event, uint32_t primask)
     app_boot_state = APP_BOOT_STATE_IDLE;
     app_boot_deadline_us = 0ULL;
     app_boot_request_sequence = 0U;
-    __DMB();
-    if (primask == 0U) {
-        __enable_irq();
-    }
+    BSP_Critical_MemoryBarrier();
+    BSP_Critical_Exit(primask);
     return event;
 }
 
@@ -488,8 +326,7 @@ APP_BootEvent APP_Boot_Tick(void)
     }
 
     /* From this point success never unmasks interrupts before system reset. */
-    primask = __get_PRIMASK();
-    __disable_irq();
+    primask = BSP_Critical_Enter();
     now_us = SVC_Timestamp_Us();
     if ((app_boot_state != APP_BOOT_STATE_SCHEDULED) ||
         (app_boot_time_reached(now_us, app_boot_deadline_us) == 0U)) {
@@ -512,7 +349,7 @@ APP_BootEvent APP_Boot_Tick(void)
     }
 
     app_boot_state = APP_BOOT_STATE_ENTERING;
-    __DMB();
+    BSP_Critical_MemoryBarrier();
     esc_1_status = BSP_PWM_DisableEsc(1U);
     esc_2_status = BSP_PWM_DisableEsc(2U);
     if ((esc_1_status != BSP_PWM_OK) || (esc_2_status != BSP_PWM_OK) ||
@@ -521,18 +358,16 @@ APP_BootEvent APP_Boot_Tick(void)
         return app_boot_fail_locked(APP_BOOT_EVENT_ESC_DISABLE_FAILED, primask);
     }
 
-    if (app_boot_write_request_magic() == 0U) {
+    if (BSP_RomBootloader_WriteRequestMagic(APP_BOOT_DFU_REQUEST_MAGIC) == 0U) {
         return app_boot_fail_locked(APP_BOOT_EVENT_MAGIC_WRITE_FAILED, primask);
     }
 
     /* A hardware reset provides a clean MSP context for APP_Boot_TryRomDfu. */
     APP_USB_CDC_SetConfigured(0U);
-    (void)USBD_Stop(&hUsbDeviceFS);
-    (void)USBD_DeInit(&hUsbDeviceFS);
-    __DSB();
-    NVIC_SystemReset();
+    BSP_UsbCdc_Teardown();
+    BSP_RomBootloader_SystemReset();
 
     for (;;) {
-        __NOP();
+        /* 复位不会回来；这里只是让编译器知道后面没有可达代码。 */
     }
 }

@@ -10,7 +10,6 @@
 #include "svc_timestamp.h"
 
 #include "FreeRTOS.h"
-#include "main.h"
 #include "task.h"
 
 #include <stddef.h>
@@ -969,7 +968,7 @@ static void flight_log_export_step(void)
         return;
     }
     if ((flight_log_export_next_ms != 0U) &&
-        ((int32_t)(HAL_GetTick() - flight_log_export_next_ms) < 0)) {
+        ((int32_t)(SVC_Timestamp_Ms() - flight_log_export_next_ms) < 0)) {
         return;
     }
 
@@ -1086,7 +1085,7 @@ static void flight_log_export_step(void)
     flight_log_export_sector_offset += chunk;
     flight_log_export_next_ms =
         (flight_log_export_transport == APP_FLIGHT_LOG_EXPORT_USB_CDC_BINARY) ?
-        0U : (HAL_GetTick() + APP_FLIGHT_LOG_EXPORT_BLOCK_GAP_MS);
+        0U : (SVC_Timestamp_Ms() + APP_FLIGHT_LOG_EXPORT_BLOCK_GAP_MS);
 }
 
 void APP_FlightLog_Init(void)
@@ -1098,7 +1097,7 @@ void APP_FlightLog_Init(void)
     memset(&flight_log_status, 0, sizeof(flight_log_status));
     flight_log_clear_record_queue();
     flight_log_status.session_id =
-        (uint32_t)(HAL_GetTick() ^ (uint32_t)SVC_Timestamp_Us() ^ 0xF10A2501UL);
+        (uint32_t)(SVC_Timestamp_Ms() ^ (uint32_t)SVC_Timestamp_Us() ^ 0xF10A2501UL);
     flight_log_status.last_flash_status = (uint32_t)APP_FlashService_Init();
     flight_log_scan_existing();
     flight_log_status.used_bytes = flight_log_used_bytes();
@@ -1283,7 +1282,7 @@ APP_FlightLogCommandStatus APP_FlightLog_TestFill(uint32_t sectors)
     flight_log_record_sequence = 0U;
     flight_log_prepared_block_ready = 0U;
     flight_log_status.session_id =
-        (uint32_t)(HAL_GetTick() ^ (uint32_t)SVC_Timestamp_Us() ^ 0xF10A7E57UL);
+        (uint32_t)(SVC_Timestamp_Ms() ^ (uint32_t)SVC_Timestamp_Us() ^ 0xF10A7E57UL);
 
     memset(&flight_log_test_snapshot, 0, sizeof(flight_log_test_snapshot));
     flight_log_test_snapshot.imu_raw.accel_z = 16384;

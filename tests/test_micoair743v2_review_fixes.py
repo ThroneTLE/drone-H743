@@ -780,6 +780,12 @@ GPIO_TypeDef fake_gpio_d;
 GPIO_TypeDef fake_gpio_a;
 SPI_RegDef   fake_spi2_regs;
 EXTI_Core_TypeDef fake_exti_d1;
+/* 引脚快照（REQ mod=IMUSEL op=BUS）按端口取值，四个端口都要有实体。 */
+GPIO_TypeDef fake_gpio_port_a;
+GPIO_TypeDef fake_gpio_port_b;
+GPIO_TypeDef fake_gpio_port_c;
+GPIO_TypeDef fake_gpio_port_d;
+SYSCFG_RegDef fake_syscfg_regs;
 
 /* 只为让链接通过：本用例考的是选型回退，两颗 IMU 的总线行为由各自的 ops 桩决定。 */
 HAL_StatusTypeDef HAL_SPI_TransmitReceive(SPI_HandleTypeDef *h, uint8_t *tx,
@@ -943,11 +949,13 @@ def test_elrs_rx_bias_pin_matches_the_ioc() -> None:
     不写死引脚名也不写死外设名——这个位置已经搬过三次了。
     """
     ioc = read("drone-H743.ioc")
-    elrs = strip_c_comments(read("App/Src/app_elrs.c"))
+    # 2026-09-11：串口绑定与 RX 偏置整组搬到 BSP 的角色表（app_elrs.c 不再认识
+    # 任何实例名）。断言的不变量没变——偏置配在哪个脚，必须与 .ioc 给该串口
+    # 分配的 RX 脚一致。
+    elrs = strip_c_comments(read("BSP/Src/bsp_uart_link.c"))
 
-    # ELRS 挂在哪个串口，由 app_elrs.c 实际用的句柄决定。
-    handle = re.search(r"HAL_UARTEx_ReceiveToIdle_DMA\(&huart(\d+),", elrs)
-    assert handle is not None, "找不到 ELRS 的 DMA 接收启动调用"
+    handle = re.search(r"&huart(\d+), GPIO[A-K],", elrs)
+    assert handle is not None, "找不到 BSP 角色表里 RC 那一行的串口绑定"
     index = handle.group(1)
     # huart1/2/3/6 对应 USARTx，huart4/5/7/8 对应 UARTx。
     peripheral = f"USART{index}" if index in {"1", "2", "3", "6"} else f"UART{index}"
@@ -956,21 +964,26 @@ def test_elrs_rx_bias_pin_matches_the_ioc() -> None:
     assert match is not None, f".ioc 里找不到 {peripheral}_RX 的引脚分配"
     port, pin = match.group(1), int(match.group(2))
 
-    assert f"#define ELRS_RX_GPIO_PORT GPIO{port}" in elrs, (
-        f".ioc 把 {peripheral}_RX 放在 P{port}{pin}，app_elrs.c 配的却是别的端口"
+    # BSP 角色表里 RC 那一行必须给出同一个端口和引脚。
+    rc_row = re.search(r"static const BSP_UartLinkBinding rc = \{\s*([^}]*)\}", elrs)
+    assert rc_row is not None, "找不到 BSP 角色表里的 RC 绑定行"
+    row = rc_row.group(1)
+    assert f"GPIO{port}" in row, (
+        f".ioc 把 {peripheral}_RX 放在 P{port}{pin}，BSP 角色表配的却是别的端口"
     )
-    assert f"#define ELRS_RX_GPIO_PIN  GPIO_PIN_{pin}" in elrs, (
-        f".ioc 把 {peripheral}_RX 放在 P{port}{pin}，app_elrs.c 配的却是别的引脚"
+    assert f"GPIO_PIN_{pin}" in row, (
+        f".ioc 把 {peripheral}_RX 放在 P{port}{pin}，BSP 角色表配的却是别的引脚"
     )
 
     # 该引脚在 .ioc 里不能同时被别的外设占用。
     others = re.findall(rf"^P{port}{pin}\.Signal=(.+)$", ioc, re.MULTILINE)
     assert others == [f"{peripheral}_RX"], others
 
-    # UART 回调按实例分发，也必须认同一个外设，否则 ELRS 收不到事件。
-    uart = strip_c_comments(read("App/Src/app_uart.c"))
-    assert f"huart->Instance == {peripheral}" in uart, (
-        f"app_uart.c 的回调还在认别的串口，而 ELRS 已经在 {peripheral} 上"
+    # 中断分发表也必须认同一个外设，否则 ELRS 收不到事件。
+    # 2026-09-11：那张表在 BSP（见 test_hardware_decoupling）。
+    events = strip_c_comments(read("BSP/Src/bsp_uart_events.c"))
+    assert f"#define BSP_UART_EVENTS_RC_INSTANCE        {peripheral}" in events, (
+        f"分发表还在认别的串口，而 ELRS 已经在 {peripheral} 上"
     )
 
 

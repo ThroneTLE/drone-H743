@@ -228,6 +228,12 @@ uint8_t APP_IMU_ReadDataReadyTimestamp(uint64_t *timestamp_us);
 
 /* ── diagnostics ── */
 
+/*
+ * DRDY 中断入口。由 BSP 在 EXTI 中断里调用，注册见 BSP_IMU_SetDrdyHandler。
+ * 中断上下文：只发布时间戳并唤醒 Sensor 任务（D2-1）。
+ */
+void APP_IMU_OnDataReady(void);
+
 void APP_IMU_GetStatus(APP_IMU_Status *status);
 struct APP_IMU_SampleMessage;
 const struct APP_IMU_SampleMessage *APP_IMU_GetLastSample(void);

@@ -128,8 +128,8 @@ STEP_D1_BODY_SHA256 = {
     "app_control_parse_hex_u32": "4f907fca5afa2296619f2e43fdfe4495d2b2b8fc24931c3a2030c1f4833811c5",
     "app_control_imucal_candidate_context_error": "5f851c8c07572645177909f463d785c40329083c19854d506460d5423fe8fd34",
     "app_control_imucal_transfer_result": "900f5ec2f618107ad65f53ae0c53c23c66528ab9fbfebd31eb1edb2f214a9c85",
-    "app_control_handle_imucal": "23534947668ae744ef42e2bb6b0986fafa9d9b8ada1e5fbc5e2500141790424a",
-    "app_control_service_imucal": "5362e08b66811810813edb109e187f7378039ff8bdb9cc5579e67bfca68ead9c",
+    "app_control_handle_imucal": "e7ff776fd9bc5194e9ae4cddd93b73a2d5a87dfb8daf6461ec2627c1cb736db9",
+    "app_control_service_imucal": "16fcb81193c24b3b9de6efa39429586f9ea5bdb87d33379b09d94ffdace340fe",
 }
 STEP_D1_STATE_NAMES = {
     "control_imucal_upload",
@@ -147,13 +147,13 @@ STEP_D1_LEGACY_BODY_SHA256 = {
     "APP_Control_Init": "29b4da5acc7963cd71b0ce1ca0b3c677ad41b8b4e3f0ac80a9ee1e9a1b01b8f2",
     "app_control_imuframe_sync_param": "ab1cb18e8324e2b0fced1ebcbc74bbf9ad772078ff0375efa666e7cbbc254e66",
     "app_control_imucal_safety": "87327cf50ef57f4566ad276d868912f8bbac6f3e99524e80b20b2b0b544d4c78",
-    "app_control_handle_acceptance": "f10cf7512f9fab6a1e9ccfdc1957e8b2a3d2b5d4803c50b74dc27e3c2627e9a9",
+    "app_control_handle_acceptance": "1dbd6a2c77020ef6ab7a3b1748811b6f25925e5e15bd6525e7bc05066134591d",
 }
 STEP_D2_PARENT_COMMIT = "ebc106f6fa8c2b16d7e7d5dda7fe8f43d1b878dd"
 STEP_D2_BODY_SHA256 = {
     "app_control_apply_rc_config": "3ad6a64240584cc332457b241b7df41c90523f90da956ec5b3ecba52f77b3f8b",
     "app_control_report_rc_map": "06f31a4cae822bd0ef7f38ac839d4af72fe39d6c078f40ee8584321fe2ba4c05",
-    "app_control_report_rc_live": "944a9a81b307258c01c44ef2a510d083bd8a4ffdc7fc14407c885c90a118bccd",
+    "app_control_report_rc_live": "885a41164f2c923fcea281ba1266b90a0035ddb280f1125d1a4c6370f30ce985",
     "app_control_rc_write_allowed": "91115b13961e4c5835ce97950fde25a4e3845fa041e2bc10445171fdc8fbbaee",
 }
 STEP_D2_PARENT_HANDLER_SHA256 = (
@@ -248,7 +248,7 @@ STEP_D4_DIAG_BODY_SHA256 = {
     "app_control_protocol_err": "2ed34ed98edfa7e4582e34caa851c146857606d43c5e746c172d05b31cfdbc1c",
     "app_control_req_spl06": "71a70258158e3c1215c87e5bf85a32de7e38c0d14cef203d44f962191f8ced2a",
     "app_control_req_icm42688": "4805915e544657f7d537d4fdea16dcb098b786620f8b9b0bf060bd83edbefe84",
-    "app_control_req_m9n": "6768cfd5dfe511c1ef7cb3422461425b15a50c63832632778f48b4df9b181c58",
+    "app_control_req_m9n": "b76d45879d3961cddbb584b90a73cf85a16b280a1e5fde8591edb654ec9d3aa2",
     "app_control_req_mag": "5c1993ac6286decfbc1c87fddcd66da1e0942c900c31d24ea43b651f62c02f01",
     # 2026-09-11：新增 IMUSEL、通用探针（MEM/SPI/I2C/UART）与 ARM 三个分发分支，
     # 处理体分别在 App/Src/app_cmd_imusel.c、app_cmd_probe.c、app_cmd_arm.c，
@@ -272,6 +272,12 @@ STEP_D4_PROTECTED_LEGACY_BODY_SHA256 = {
     "app_control_token_u32": "8e1c6bdd61e5fc1253e46d639c3f559291b5a0e88f69bab2b817b5adea834b07",
 }
 
+# 2026-09-11：`PWM?` 的寄存器快照改由 BSP 提供。原来 app_control.c 直接读
+# `TIM2->CR1`，而本板的 PWM 早搬到 TIM1/TIM4——那条诊断一直在报一颗**没有初始化**
+# 的定时器（实测 cr1=0 psc=0 arr=0），查"PWM 没输出"的人看到会认定定时器没配好。
+# 报文体随之搬进 app_cmd_system.c，所以这里要有 BSP_PWM_* 的桩。
+#
+# 注意下面这段是以 ascii 落盘的，C 片段里不能出现中文。
 D4_STUB_HEADER = r"""
 #ifndef D4_STUBS_H
 #define D4_STUBS_H
@@ -282,6 +288,25 @@ D4_STUB_HEADER = r"""
 typedef struct { uint8_t id; uint16_t pulse_us; uint16_t time_ms; uint8_t mode; uint8_t enabled; } APP_ControlServoConfig;
 typedef struct { uint8_t loaded_from_flash; uint8_t flash_valid; uint8_t last_flash_status; APP_ControlServoConfig servo[2]; } APP_ControlConfig;
 void APP_Control_QueueText(const char *, ...);
+
+/*
+ * PWM register snapshot for `PWM?`.  See the note above D4_STUB_HEADER in the
+ * test module for why this moved out of app_control.c.
+ */
+#define BSP_PWM_TIM_CHANNEL_COUNT 4U
+typedef struct {
+    const char *name;
+    uint32_t cr1, ccer, ccmr1, ccmr2, psc, arr, cnt;
+    uint32_t ccr[BSP_PWM_TIM_CHANNEL_COUNT];
+} BSP_PWM_TimerDebug;
+void BSP_PWM_GetEscTimerDebug(BSP_PWM_TimerDebug *out);
+void BSP_PWM_GetServoTimerDebug(BSP_PWM_TimerDebug *out);
+uint16_t BSP_PWM_GetEscPulse(uint32_t channel);
+uint16_t BSP_PWM_GetServoPulse(uint32_t channel);
+uint8_t BSP_PWM_GetStartStatus(uint32_t channel);
+
+/* App-layer millisecond clock; no longer HAL_GetTick(). */
+uint32_t SVC_Timestamp_Ms(void);
 
 /*
  * 2026-09-11: STATUS? also reports HW PARAMSTORE, naming the medium the
@@ -751,6 +776,11 @@ def _check_app_control_step_c(tmp_path: Path) -> None:
 
 def _write_imucal_stubs(stub_dir: Path) -> None:
     stub_dir.mkdir()
+    # 2026-09-11：App 层的毫秒时基改走 Services。
+    (stub_dir / "svc_timestamp.h").write_text(
+        "#include <stdint.h>\nuint32_t SVC_Timestamp_Ms(void);\n",
+        encoding="ascii",
+    )
     (stub_dir / "app_control.h").write_text(
         "void APP_Control_QueueText(const char *, ...);\n", encoding="ascii"
     )
@@ -900,6 +930,11 @@ def _write_rcmap_stubs(stub_dir: Path) -> None:
     )
     (stub_dir / "main.h").write_text(
         "#include <stdint.h>\nuint32_t HAL_GetTick(void);\n",
+        encoding="ascii",
+    )
+    # 2026-09-11：App 层的毫秒时基改走 Services，不再直接调 HAL_GetTick()。
+    (stub_dir / "svc_timestamp.h").write_text(
+        "#include <stdint.h>\nuint32_t SVC_Timestamp_Ms(void);\n",
         encoding="ascii",
     )
 
@@ -1108,6 +1143,10 @@ def _write_d4_stubs(stub_dir: Path) -> None:
         "app_optical_flow.h", "app_proto.h", "app_sensor.h", "app_tasks.h",
         "app_uart.h", "app_usb_cdc.h", "bsp_aiwb2_power.h", "bsp_baro.h",
         "bsp_imu.h", "main.h", "FreeRTOS.h", "task.h",
+        # 2026-09-11：`PWM?` 的寄存器快照改由 BSP 提供（原来 app_control.c 直接
+        # 读 TIM2->CR1，而本板 PWM 早搬到 TIM1/TIM4，那条诊断一直在报一颗没初始化
+        # 的定时器）。报文体随之搬进 app_cmd_system.c，于是这里要有它的头。
+        "bsp_pwm.h", "svc_timestamp.h",
     }
     for header in headers:
         (stub_dir / header).write_text(

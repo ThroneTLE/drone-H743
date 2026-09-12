@@ -67,7 +67,7 @@ def test_flow_compensation_snapshot_is_coherent_and_exported_as_flu() -> None:
     assert "StabilizerFlowCompensationSnapshot" in header
     assert "APP_Stabilizer_ReadFlowCompensationSnapshot" in header
     assert "stabilizer_flow_comp_seqlock" in stabilizer
-    assert "__DMB();" in stabilizer
+    assert "BSP_Critical_MemoryBarrier();" in stabilizer
     assert "sensor_velocity_flu_m_s[1] = debug->sensor_velocity_m_s[1]" in stabilizer
     assert "corrected_velocity_flu_m_s[1] = debug->corrected_velocity_m_s[1]" in stabilizer
     assert "source=calibrated_body_flu export=canonical_flu" in flow_cmd

@@ -1,6 +1,7 @@
 #include "bsp_uart_tx.h"
 
 #include "bsp_cache.h"
+#include "bsp_critical.h"
 
 #include <stddef.h>
 #include <string.h>
@@ -9,23 +10,13 @@
 #define BSP_UART_TX_FALLBACK_TIMEOUT_MS 100U
 
 /*
- * 临界区用 PRIMASK 存取而不是 RTOS 的锁：
+ * 临界区用关中断而不是 RTOS 的锁：
  * 本模块的 Write 允许在中断里调用（发送完成中断里续发就是），RTOS 互斥量在
  * 中断上下文不可用；而且 BSP 层不该知道有没有 RTOS。
  * 保护的只有几条索引赋值，关中断时间在 100 ns 量级，1 kHz 控制环看不见。
  */
-static uint32_t uart_tx_enter(void)
-{
-    uint32_t primask = __get_PRIMASK();
-
-    __disable_irq();
-    return primask;
-}
-
-static void uart_tx_exit(uint32_t primask)
-{
-    __set_PRIMASK(primask);
-}
+#define uart_tx_enter() BSP_Critical_Enter()
+#define uart_tx_exit(state) BSP_Critical_Exit(state)
 
 static void uart_tx_kick(BSP_UartTx *tx)
 {

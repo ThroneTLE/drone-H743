@@ -2,6 +2,9 @@
 
 #include "tim.h"
 
+#include <stddef.h>
+#include <string.h>
+
 static uint16_t esc_pulses_us[BSP_PWM_ESC_CHANNEL_COUNT] = {
     BSP_PWM_ESC_NEUTRAL_US,
     BSP_PWM_ESC_NEUTRAL_US
@@ -215,4 +218,43 @@ uint8_t BSP_PWM_GetStartStatus(uint32_t channel)
     }
 
     return start_status[channel - 1U];
+}
+
+/* ---------------------------------------------------------------- 诊断快照 */
+
+static void pwm_fill_timer_debug(BSP_PWM_TimerDebug *out,
+                                 const char *name,
+                                 const TIM_TypeDef *tim)
+{
+    if (out == NULL) {
+        return;
+    }
+
+    (void)memset(out, 0, sizeof(*out));
+    out->name = (name != NULL) ? name : "?";
+    if (tim == NULL) {
+        return;
+    }
+
+    out->cr1    = tim->CR1;
+    out->ccer   = tim->CCER;
+    out->ccmr1  = tim->CCMR1;
+    out->ccmr2  = tim->CCMR2;
+    out->psc    = tim->PSC;
+    out->arr    = tim->ARR;
+    out->cnt    = tim->CNT;
+    out->ccr[0] = tim->CCR1;
+    out->ccr[1] = tim->CCR2;
+    out->ccr[2] = tim->CCR3;
+    out->ccr[3] = tim->CCR4;
+}
+
+void BSP_PWM_GetEscTimerDebug(BSP_PWM_TimerDebug *out)
+{
+    pwm_fill_timer_debug(out, "tim1", htim1.Instance);
+}
+
+void BSP_PWM_GetServoTimerDebug(BSP_PWM_TimerDebug *out)
+{
+    pwm_fill_timer_debug(out, "tim4", htim4.Instance);
 }

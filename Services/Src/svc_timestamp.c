@@ -55,5 +55,21 @@ uint64_t SVC_Timestamp_Us(void)
 
 uint32_t SVC_Timestamp_Ms(void)
 {
-    return (uint32_t)(SVC_Timestamp_Us() / 1000ULL);
+    /*
+     * 直接转发 HAL 时基，**不是** Us()/1000。理由写在头文件里：Driver 层用
+     * HAL 时基给数据打的时间戳会一路交到 App 手里相减，两边必须是同一个钟。
+     *
+     * 转发一层不是多此一举——它正是"换时基只改一处"的那一处。
+     */
+    return HAL_GetTick();
+}
+
+void SVC_Timestamp_BusyWaitMs(uint32_t ms)
+{
+    uint32_t start_ms = SVC_Timestamp_Ms();
+
+    /* 无符号差值，回绕时仍然成立。 */
+    while ((SVC_Timestamp_Ms() - start_ms) < ms) {
+        /* 忙等 */
+    }
 }

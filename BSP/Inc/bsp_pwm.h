@@ -63,6 +63,33 @@ uint16_t BSP_PWM_GetEscPulse(uint32_t channel);
 uint16_t BSP_PWM_GetServoPulse(uint32_t channel);
 uint8_t BSP_PWM_GetStartStatus(uint32_t channel);
 
+/*
+ * 一个定时器的寄存器快照，给 `PWM?` 诊断用。
+ *
+ * 由 BSP 提供而不是让 App 自己读寄存器，理由是这条诊断已经因此错过一次：
+ * 移植前四路 PWM 在 TIM2，`app_control_report_pwm()` 就直接写了 `TIM2->CR1`；
+ * 搬到 TIM1/TIM4 之后那段代码没人改，于是 `PWM?` 一直在报一颗**本板没有初始化**
+ * 的定时器，实测输出 `cr1=0x00000000 psc=0 arr=0`——查"PWM 没输出"的人看到这行
+ * 会认定定时器没配好，而真正的 TIM1/TIM4 其实好好的。诊断说谎比诊断缺失更糟。
+ *
+ * 现在定时器归属只有 bsp_pwm.c 一处知道，换板改那一处，`PWM?` 自动跟着对。
+ */
+typedef struct {
+    const char *name;     /* "tim1" / "tim4"，随绑定走，不写死在上层 */
+    uint32_t cr1;
+    uint32_t ccer;
+    uint32_t ccmr1;
+    uint32_t ccmr2;
+    uint32_t psc;
+    uint32_t arr;
+    uint32_t cnt;
+    uint32_t ccr[BSP_PWM_TIM_CHANNEL_COUNT];
+} BSP_PWM_TimerDebug;
+
+/* ESC（高帧率）与舵机（低帧率）各自那颗定时器的快照。 */
+void BSP_PWM_GetEscTimerDebug(BSP_PWM_TimerDebug *out);
+void BSP_PWM_GetServoTimerDebug(BSP_PWM_TimerDebug *out);
+
 #ifdef __cplusplus
 }
 #endif

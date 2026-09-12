@@ -25,6 +25,9 @@ void BSP_UART_Release_USART1_ForExternalDebug(void);
  */
 void BSP_UART_MaintInit(void);
 
+/* 维护口的 HAL 句柄。只给 BSP 内部用（bsp_uart_link.c 按角色取句柄）。 */
+UART_HandleTypeDef *BSP_UART_MaintHandle(void);
+
 /* 该链路的人类可读名字，用于诊断回包（例如 "uart8"）。 */
 const char *BSP_UART_MaintName(void);
 

@@ -1,8 +1,10 @@
 #include "app_elrs.h"
 
-#include "usart.h"
 #include "bsp_cache.h"
+#include "bsp_uart_events.h"
+#include "bsp_uart_link.h"
 
+#include "svc_timestamp.h"
 #include <string.h>
 
 /* ---- constants ---- */
@@ -53,54 +55,27 @@ static uint32_t rx_start_fail;
  * ArduPilot hwdef 记 USART6 = RCIN，PX4 记 CONFIG_BOARD_SERIAL_RC="/dev/ttyS5"
  * （2026-09-10 在实物上用出厂 PX4 的 `rc_input status` 确认过就是 ttyS5）。
  */
-#define ELRS_RX_GPIO_PORT GPIOC
-#define ELRS_RX_GPIO_PIN  GPIO_PIN_7
-
-static void ConfigureRxPinBias(void)
-{
-    GPIO_InitTypeDef GPIO_InitStruct = {0};
-
-    GPIO_InitStruct.Pin = ELRS_RX_GPIO_PIN;
-    GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-    GPIO_InitStruct.Pull = GPIO_PULLUP;
-    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-    GPIO_InitStruct.Alternate = GPIO_AF7_USART6;
-    HAL_GPIO_Init(ELRS_RX_GPIO_PORT, &GPIO_InitStruct);
-}
-
 static void SuppressRxIrqSources(void)
 {
     /*
-     * CRSF RX is consumed by polling the circular DMA write position in
-     * APP_ELRS_Step(). Leaving UART IDLE/error IRQs enabled lets a noisy or
-     * floating receiver line trap the CPU in UART4_IRQHandler.
+     * CRSF 的接收是在 APP_ELRS_Step() 里轮询 DMA 写指针拿到的。留着 IDLE /
+     * 错误中断的话，一条有噪声或悬空的接收线能把 CPU 按在中断服务里出不来。
      */
-    CLEAR_BIT(huart6.Instance->CR1,
-              USART_CR1_IDLEIE | USART_CR1_PEIE | USART_CR1_RXNEIE_RXFNEIE);
-    CLEAR_BIT(huart6.Instance->CR3, USART_CR3_EIE | USART_CR3_RXFTIE);
+    BSP_UartLink_DisableRxErrorInterrupts(BSP_UART_ROLE_RC);
 }
 
 static void ClearErrors(void)
 {
-    uint32_t err = HAL_UART_GetError(&huart6);
-    uint32_t flags = huart6.Instance->ISR;
-    uint32_t error_flags = flags & (USART_ISR_PE | USART_ISR_FE |
-                                    USART_ISR_NE | USART_ISR_ORE |
-                                    USART_ISR_RTOF);
+    /* 取和清是同一次调用：分两步的话，两步之间新来的错误会被无声清掉。 */
+    uint32_t error_flags = BSP_UartLink_TakeErrors(BSP_UART_ROLE_RC);
 
-    if ((err == HAL_UART_ERROR_NONE) && (error_flags == 0U)) return;
+    if (error_flags == 0U) return;
 
-    /* 先按标志分类再清，否则清完就分不出是哪一层坏的。 */
-    if ((error_flags & USART_ISR_ORE) != 0U) rx_err_overrun++;
-    if ((error_flags & USART_ISR_FE)  != 0U) rx_err_framing++;
-    if ((error_flags & USART_ISR_NE)  != 0U) rx_err_noise++;
-    if ((error_flags & USART_ISR_PE)  != 0U) rx_err_parity++;
+    if ((error_flags & BSP_UART_LINK_ERR_OVERRUN) != 0U) rx_err_overrun++;
+    if ((error_flags & BSP_UART_LINK_ERR_FRAMING) != 0U) rx_err_framing++;
+    if ((error_flags & BSP_UART_LINK_ERR_NOISE)   != 0U) rx_err_noise++;
+    if ((error_flags & BSP_UART_LINK_ERR_PARITY)  != 0U) rx_err_parity++;
     rx_errors++;
-
-    __HAL_UART_CLEAR_FLAG(&huart6,
-                          UART_CLEAR_OREF | UART_CLEAR_NEF |
-                          UART_CLEAR_PEF | UART_CLEAR_FEF |
-                          UART_CLEAR_RTOF | UART_CLEAR_IDLEF);
 
     /*
      * 逢错就整条重整流：flush FIFO + Abort + 重启 DMA。
@@ -123,21 +98,19 @@ static void ClearErrors(void)
      * 仍然赢——所以这条路径保留。
      */
     rx_aborts++;
-    __HAL_UART_SEND_REQ(&huart6, UART_RXDATA_FLUSH_REQUEST);
-    huart6.ErrorCode = HAL_UART_ERROR_NONE;
+    BSP_UartLink_FlushRx(BSP_UART_ROLE_RC);
     dma_started = 0U;
-    (void)HAL_UART_AbortReceive(&huart6);
+    BSP_UartLink_AbortRx(BSP_UART_ROLE_RC);
 }
 
 static void StartRxDma(void)
 {
-    if (huart6.hdmarx == NULL)
+    if (BSP_UartLink_HasRxDma(BSP_UART_ROLE_RC) == 0U)
         return;
 
     dma_rx_pos = 0U;
-    HAL_StatusTypeDef status =
-        HAL_UARTEx_ReceiveToIdle_DMA(&huart6, dma_rx_buf, APP_ELRS_DMA_RX_SIZE);
-    if (status != HAL_OK) {
+    if (BSP_UartLink_StartRxToIdle(BSP_UART_ROLE_RC, dma_rx_buf,
+                                   APP_ELRS_DMA_RX_SIZE) == 0U) {
         rx_errors++;
         rx_start_fail++;
         /*
@@ -147,11 +120,10 @@ static void StartRxDma(void)
          * **唯一**的自愈点；缺了它，开机头几拍起不来就等于遥控链路整条死掉
          * （实测 sfail=3：上电确实会失败几次）。
          */
-        (void)HAL_UART_AbortReceive(&huart6);
+        BSP_UartLink_AbortRx(BSP_UART_ROLE_RC);
         return;
     }
 
-    __HAL_DMA_DISABLE_IT(huart6.hdmarx, DMA_IT_HT);
     SuppressRxIrqSources();
     BSP_Cache_InvalidateDCache(dma_rx_buf, APP_ELRS_DMA_RX_SIZE);
     /* 重启 = 字节流断了一截，解析器手上的半帧已经无意义，留着必然拼出一个坏帧。 */
@@ -162,32 +134,23 @@ static void StartRxDma(void)
 
 static uint8_t DmaNeedsRestart(void)
 {
-    DMA_HandleTypeDef *hdma = huart6.hdmarx;
-    if (hdma == NULL) return 1U;
     if (dma_started == 0U) return 1U;
-    if (huart6.RxState != HAL_UART_STATE_BUSY_RX) return 1U;
-
-    DMA_Stream_TypeDef *stream = (DMA_Stream_TypeDef *)hdma->Instance;
-    return ((stream->CR & DMA_SxCR_EN) == 0U) ? 1U : 0U;
+    return (BSP_UartLink_RxIsRunning(BSP_UART_ROLE_RC) == 0U) ? 1U : 0U;
 }
 
 static uint16_t DmaWritePos(void)
 {
-    DMA_HandleTypeDef *hdma = huart6.hdmarx;
-    if (hdma == NULL || dma_started == 0U)
+    if (dma_started == 0U)
         return dma_rx_pos;
 
-    uint32_t remaining = __HAL_DMA_GET_COUNTER(hdma);
-    if (remaining > APP_ELRS_DMA_RX_SIZE)
-        return dma_rx_pos;
-    return (uint16_t)(APP_ELRS_DMA_RX_SIZE - remaining);
+    return BSP_UartLink_RxFilled(BSP_UART_ROLE_RC, APP_ELRS_DMA_RX_SIZE);
 }
 
 /* ---- telemetry TX ---- */
 
 static void StartTxDma(const uint8_t *frame, uint8_t len)
 {
-    if (huart6.hdmatx == NULL)
+    if (BSP_UartLink_HasTxDma(BSP_UART_ROLE_RC) == 0U)
         return;
 
     tx_busy = 1U;
@@ -195,7 +158,7 @@ static void StartTxDma(const uint8_t *frame, uint8_t len)
     tx_len = len;
     BSP_Cache_CleanDCache(tx_buf, len);
 
-    if (HAL_UART_Transmit_DMA(&huart6, tx_buf, len) != HAL_OK) {
+    if (BSP_UartLink_TransmitDma(BSP_UART_ROLE_RC, tx_buf, len) == 0U) {
         tx_busy = 0U;
         rx_errors++;
     }
@@ -215,10 +178,18 @@ static void SendTelemetryFrame(uint8_t type, const uint8_t *payload, uint8_t pay
 
 /* ---- public API ---- */
 
+static const BSP_UartRoleHandlers elrs_role_handlers = {
+    .rx_event = APP_ELRS_OnRxEvent,
+    .rx_byte  = NULL,        /* CRSF 走 IDLE+DMA 整帧收 */
+    .tx_cplt  = APP_ELRS_OnTxComplete,
+    .error    = APP_ELRS_OnError,
+};
+
 void APP_ELRS_Init(void)
 {
+    BSP_UartEvents_Register(BSP_UART_ROLE_RC, &elrs_role_handlers);
     DRV_ELRS_Init();
-    ConfigureRxPinBias();
+    BSP_UartLink_ApplyRxBias(BSP_UART_ROLE_RC);
 
     dma_rx_pos  = 0U;
     dma_started = 0U;
@@ -248,7 +219,7 @@ void APP_ELRS_Step(void)
 
     while (dma_rx_pos != write_pos) {
         if (DRV_ELRS_ProcessByte(dma_rx_buf[dma_rx_pos]) != 0U) {
-            DRV_ELRS_MarkRcFrameTime(HAL_GetTick());
+            DRV_ELRS_MarkRcFrameTime(SVC_Timestamp_Ms());
         }
         dma_rx_pos++;
         consumed++;
@@ -282,8 +253,7 @@ void APP_ELRS_Step(void)
 
     /* check TX completion */
     if (tx_busy != 0U) {
-        if (huart6.gState == HAL_UART_STATE_READY &&
-            huart6.ErrorCode == HAL_UART_ERROR_NONE) {
+        if (BSP_UartLink_TxIsIdle(BSP_UART_ROLE_RC) != 0U) {
             tx_busy = 0U;
         }
     }

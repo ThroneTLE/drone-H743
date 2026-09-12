@@ -606,27 +606,67 @@ SPI2/SPI3、DRDY 从 PC0/EXTI0 散到三个引脚……每一处写死的实例�
 `REQ mod=M9N op=STATUS` / `mod=MAG` 完全重复，而且是模块里唯一一处会把**两个不同的
 毫秒时基**拿来相减的地方。
 
-### 剩下 18 个文件，按"换板时的实际代价"排序
+### 全部做完了：19 → 1
 
-| 优先级 | 目标 | 现状 | 为什么值得做 / 为什么还没做 |
-|---|---|---|---|
-| 1 | **统一毫秒时基**：`HAL_GetTick()` → `SVC_Timestamp_Ms()` | App/Services 共 **67** 处调用 | App 层依赖 HAL 最常见的单一来源。但**必须一次扫完**：`app_control.c` 有 19 处，而且是**跨模块传时间戳**的（`APP_ServoJog_HandleCommand(…, HAL_GetTick())`、`APP_Acceptance_Service(HAL_GetTick())`）。只改被调方会让两个时基混着比，超时逻辑当场出错——所以这不能顺手做。它还要动 `app_control.c`（硬约束文件，且有 D4 函数体哈希钉），需要作者点头 |
-| 2 | `app_uart.c` | 含 `USART1/2/6`、`UART7`、21 处 HAL | 它同时是**HAL 回调枢纽**（所有 UART 的 TxCplt/RxCplt/Error 分发）和 USART1 的业务逻辑。该拆成两个：枢纽下沉到 BSP、业务留在 App |
-| 3 | `app_sensor.c` 的 `HAL_GPIO_EXTI_Callback` | 直接实现 HAL 的弱回调 | IMU DRDY 引脚这次从 PC0 换到了三个引脚，正是这里改。应由 BSP 提供"DRDY 事件"，App 只管被唤醒 |
-| 4 | `app_cmd_imusel.c` | 含 `GPIOA/C/D`、`SPI2` | 诊断命令直接点名片选引脚；应问 BSP 要"当前选中 IMU 的总线描述" |
-| 5 | `app_elrs.c` / `app_flight_log.c` / `app_optical_flow.c` | 各含 1 个实例名 + 少量 HAL | 面积小，可以跟着各自的下一次改动顺手做 |
+扫描口径见 `tools/decoupling_survey.py`（去注释、去字符串之后扫外设实例名 /
+HAL 头 / `HAL_*` 调用 / 裸 CMSIS 内建），闸门是 `tests/test_hardware_decoupling.py`。
 
-`app_usb_cdc.c`、`app_aiwb2.c`、`app_boot.c` 三个**不列入**：USB 设备栈、WiFi 模组、
-跳 ROM bootloader 本身就是对具体芯片的操作，把它们抽象掉换不来可移植性，只换来一层壳。
+| 做了什么 | 原来在哪 | 现在在哪 |
+|---|---|---|
+| **统一毫秒时基**：67 处 `HAL_GetTick()` | 散在 13 个 App 文件里 | `SVC_Timestamp_Ms()`，一次扫完 |
+| **UART 中断分发表** | `app_uart.c` 里四条 `if (huart->Instance == USART6)` | `bsp_uart_events.c` 一张角色表，上层按角色注册 |
+| **UART 收发机制**（IDLE+DMA、错误分类、偏置） | `app_uart.c` + `app_elrs.c` 各写一遍 | `bsp_uart_link.c`，按角色取用，两条链路共用 |
+| **IMU DRDY 中断** | `app_sensor.c` 实现 `HAL_GPIO_EXTI_Callback` | `bsp_imu.c` 实现并筛引脚，App 注册 `APP_IMU_OnDataReady` |
+| **IMU 总线引脚快照** | `app_cmd_imusel.c` 直接读 `GPIOD->MODER`、`SPI2->CR1` | `BSP_IMU_GetBusSnapshot()`，App 只负责排版并给出 `ok=` 结论 |
+| **PWM 寄存器快照** | `app_control.c` 直接读 `TIM2->CR1` | `BSP_PWM_GetEscTimerDebug()` / `...ServoTimerDebug()` |
+| **跳 ROM bootloader** | `app_boot.c` 里 PWR/RTC/SCB/NVIC + 裸汇编 | `bsp_rom_bootloader.c`（机制），`app_boot.c` 只留判据 |
+| **USB 设备栈** | `app_usb_cdc.c` 调 `CDC_Transmit_FS`、`app_boot.c` 抓 `hUsbDeviceFS` | `bsp_usb_cdc.c` 薄壳 |
+| **关中断 / 内存屏障** | 散在 App 里的 `__disable_irq()`、`__DMB()` | `BSP_Critical_Enter/Exit/MemoryBarrier` |
+
+剩下的唯一一个是 `Services/Src/svc_timestamp.c`，它**本来就该碰硬件**——职责就是
+把某个硬件计数器翻译成单调的 µs/ms，是全仓库唯一一处摸时钟的地方。豁免写在
+`tests/test_hardware_decoupling.py` 的 `ALLOWED` 里，连同理由；那张表还有一条
+反向断言：文件要是已经不碰硬件了，豁免必须跟着删掉，免得它变成坟场。
+
+### 两个踩过的坑，记下来
+
+**毫秒时基必须与 Driver 同源。** `SVC_Timestamp_Ms()` 转发的就是 HAL 时基那个
+计数器，**不是** `Us()/1000`。`drv_gps.c`、`drv_optical_flow.c`、`drv_servo.c` 都用
+HAL 时基给数据打时间戳（`last_rx_ms`），这些值经 BSP 一路交到 App 手里被相减；
+换成另一个计数器就是拿**两个不同的钟**比大小——偏差恒定、方向固定，症状是
+"某个超时永远不触发"或"一上来就超时"，而两边代码单看都对。
+
+**这次扫必须一次扫完。** `app_control.c` 里那 19 处是**跨模块传时间戳**的
+（`APP_ServoJog_HandleCommand(…, HAL_GetTick())`、`APP_Acceptance_Service(…)`），
+只改被调方会让两个时基混着比。所以它不能分批做——这也是上一轮把它记成
+"需作者点头"的原因。
 
 ### 一条可以直接复用的样板
 
 这次的分法对任何"某个外设的上层逻辑"都成立：
 
-1. **算法/索引** → `Driver/`，不含 HAL、不含 RTOS，配宿主单测；
-2. **机制** → `BSP/`，持有句柄、做 DMA 与 cache、注册回调，按**参数**绑定而不是按实例名写死；
+1. **算法/索引** → `Driver/`，不含 HAL、不含 RTOS，配宿主单测（例如 `drv_tx_ring.c`）；
+2. **机制** → `BSP/`，持有句柄、做 DMA 与 cache、注册回调，按**参数或角色**绑定而不是按实例名写死；
 3. **绑定** → `BSP/` 里一处宏或一张表，换板只改这里；
-4. **策略** → `App/`，只认角色名（"维护口"），不认实例号。
+4. **策略** → `App/`，只认角色名（"维护口"、"遥控接收机"），不认实例号。
+
+接口按**能力**描述，不按 HAL 的函数名描述：
+"开始收，收到线路空闲为止"而不是 `HAL_UARTEx_ReceiveToIdle_DMA`；
+"缓冲里已经有多少字节"而不是 `__HAL_DMA_GET_COUNTER`；
+"这条链路出了什么错"回的是 BSP 自己定义的可移植位，而不是 `HAL_UART_ERROR_ORE`。
+换一族 MCU 时这些问题依然成立，只是答案的实现变了。
+
+### 顺带修好的两条说谎的诊断
+
+解耦过程中发现两条诊断在报**错误的硅片**，都是"上层自己读寄存器"的直接后果：
+
+- `PWM?` 报的是 `TIM2`——本板的 PWM 早搬到 TIM1/TIM4，实测输出
+  `cr1=0x00000000 psc=0 arr=0`。查"PWM 没输出"的人看到这行会认定定时器没配好，
+  而真正的 TIM1/TIM4 好好的。现在报 `esc=tim1 ... arr=2499`（2500 µs = 400 Hz）。
+- `REQ mod=IMUSEL op=BUS` 的引脚表写死在 App 里，而且只给原始 mode/af 让人自己心算。
+  现在表在 BSP，并且每根脚直接给 `ok=` 结论，还保留两根**反向探针**
+  （PC1_IBAT / PA9_U1TX：本不该归 SPI2，若被配成 SPI2 的复用就说明生成代码里
+  还留着上一块板的引脚配置）。
 
 ## 上游来源与抓取版本
 

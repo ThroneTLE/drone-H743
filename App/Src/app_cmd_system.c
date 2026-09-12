@@ -17,6 +17,7 @@
 #include "app_usb_cdc.h"
 #include "bsp_aiwb2_power.h"
 #include "bsp_imu.h"
+#include "bsp_pwm.h"
 
 #include "FreeRTOS.h"
 #include "task.h"
@@ -440,4 +441,47 @@ void APP_Control_ReportUartStats(uint32_t rx_bytes,
                                   uint32_t rx_errors)
 {
     app_control_report_uart_stats(rx_bytes, rx_lines, rx_overflows, rx_errors);
+}
+
+/* ------------------------------------------------------------------ PWM 诊断 */
+
+static void app_cmd_pwm_report_timer(const char *role,
+                                     const BSP_PWM_TimerDebug *t)
+{
+    APP_Control_QueueText("PWM %s=%s cr1=0x%08lX ccer=0x%08lX ccmr1=0x%08lX ccmr2=0x%08lX psc=%lu arr=%lu cnt=%lu ccr=%lu,%lu,%lu,%lu\r\n",
+                          role, t->name,
+                          (unsigned long)t->cr1, (unsigned long)t->ccer,
+                          (unsigned long)t->ccmr1, (unsigned long)t->ccmr2,
+                          (unsigned long)t->psc, (unsigned long)t->arr,
+                          (unsigned long)t->cnt,
+                          (unsigned long)t->ccr[0], (unsigned long)t->ccr[1],
+                          (unsigned long)t->ccr[2], (unsigned long)t->ccr[3]);
+}
+
+/*
+ * `PWM?`。寄存器快照由 BSP 给，本函数一个寄存器都不读。
+ *
+ * 这条诊断因为直接读寄存器而错过一次：移植前四路 PWM 挂 TIM2，这里就写死了
+ * `TIM2->CR1`；搬到 TIM1/TIM4 之后没人改，于是它一直在报一颗**本板没初始化**的
+ * 定时器，实测 `cr1=0x00000000 psc=0 arr=0`——查"PWM 没输出"的人看到这行会认定
+ * 定时器没配好，而真正的 TIM1/TIM4 好好的。定时器归属现在只有 bsp_pwm.c 知道。
+ */
+void app_control_report_pwm(void)
+{
+    BSP_PWM_TimerDebug timer;
+
+    BSP_PWM_GetEscTimerDebug(&timer);
+    app_cmd_pwm_report_timer("esc", &timer);
+    BSP_PWM_GetServoTimerDebug(&timer);
+    app_cmd_pwm_report_timer("servo", &timer);
+
+    APP_Control_QueueText("PWM esc_us=%u,%u servo_us=%u,%u start=%u,%u,%u,%u\r\n",
+                          (unsigned int)BSP_PWM_GetEscPulse(1U),
+                          (unsigned int)BSP_PWM_GetEscPulse(2U),
+                          (unsigned int)BSP_PWM_GetServoPulse(1U),
+                          (unsigned int)BSP_PWM_GetServoPulse(2U),
+                          (unsigned int)BSP_PWM_GetStartStatus(1U),
+                          (unsigned int)BSP_PWM_GetStartStatus(2U),
+                          (unsigned int)BSP_PWM_GetStartStatus(3U),
+                          (unsigned int)BSP_PWM_GetStartStatus(4U));
 }

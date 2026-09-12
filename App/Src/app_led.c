@@ -4,8 +4,7 @@
 #include "app_optical_flow.h"
 #include "bsp_led.h"
 
-#include "main.h"
-
+#include "svc_timestamp.h"
 static volatile uint8_t app_led_armed;
 static volatile APP_LED_ArmBlockReason app_led_arm_block_reason =
     APP_LED_ARM_BLOCK_NO_RC;
@@ -54,7 +53,7 @@ void APP_LED_Task_Init(void)
 void APP_LED_Task_Step(void)
 {
     APP_OPTICAL_FLOW_Status flow_status;
-    uint32_t now_ms = HAL_GetTick();
+    uint32_t now_ms = SVC_Timestamp_Ms();
     uint32_t heartbeat_period_ms;
     uint8_t flow_led_on = 0U;
     APP_LED_ArmBlockReason reason = app_led_arm_block_reason;

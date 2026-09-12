@@ -4,7 +4,7 @@
 
 Read this shard only when the task touches application behavior, RTOS task bodies, control flow, diagnostics, commands, or synchronous services.
 
-Source snapshot: `209fce1d2fc9`. Indexed files: 116.
+Source snapshot: `ac2f8a0a336f`. Indexed files: 116.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -19,7 +19,7 @@ Source snapshot: `209fce1d2fc9`. Indexed files: 116.
 | `App/Src/app_cmd_arm.c` | Application behavior and task-facing logic for cmd arm | — |
 | `App/Src/app_cmd_diag.c` | Application behavior and task-facing logic for cmd diag | — |
 | `App/Src/app_cmd_flow.c` | Application behavior and task-facing logic for cmd flow | `APP_Stabilizer_ReadFlowCompensationSnapshot` |
-| `App/Src/app_cmd_imucal.c` | Application behavior and task-facing logic for cmd imucal | `APP_FlightCalibration_ReadActive`, `SVC_Param_IsDirty`, `APP_Sensor_GetFluOrientation`, `APP_FlightCalibration_MergeV1Candidate`, `APP_FlightCalibration_PublishPreview` (+2) |
+| `App/Src/app_cmd_imucal.c` | Application behavior and task-facing logic for cmd imucal | `APP_FlightCalibration_ReadActive`, `SVC_Param_IsDirty`, `APP_Sensor_GetFluOrientation`, `APP_FlightCalibration_MergeV1Candidate`, `APP_FlightCalibration_PublishPreview` (+1) |
 | `App/Src/app_cmd_imusel.c` | Application behavior and task-facing logic for cmd imusel | `BSP_IMU_Init` |
 | `App/Src/app_cmd_probe.c` | Application behavior and task-facing logic for cmd probe | `APP_Stabilizer_IsArmed`, `BSP_IMU_DebugSpiBusIndex`, `BSP_I2C_GetHandle`, `BSP_UART_GetHandle`, `BSP_UART_DebugXfer` |
 | `App/Src/app_cmd_rcmap.c` | Application behavior and task-facing logic for cmd rcmap | `APP_RcConfig_Validate` |
@@ -54,7 +54,7 @@ Source snapshot: `209fce1d2fc9`. Indexed files: 116.
 | `App/Inc/app_proto.h`<br>`App/Src/app_proto.c` | Application behavior and task-facing logic for proto | `APP_Proto_BuildFrame`, `APP_Proto_Init`, `APP_Proto_IsReceiving`, `APP_Proto_ConsumeByte` |
 | `App/Inc/app_rc_config.h`<br>`App/Src/app_rc_config.c` | Application behavior and task-facing logic for rc config | `APP_RcConfig_Defaults`, `APP_RcConfig_Validate`, `APP_RcConfig_FunctionName`, `APP_RcConfig_FunctionFromName`, `APP_RcConfig_Normalize` (+6) |
 | `App/Inc/app_rc_intent.h`<br>`App/Src/app_rc_intent.c` | Application behavior and task-facing logic for rc intent | `APP_RcIntent_ForwardVelocity`, `APP_RcIntent_LeftVelocity`, `APP_RcIntent_TargetPitch`, `APP_RcIntent_TargetRoll`, `APP_RcIntent_YawRateLeft` |
-| `App/Inc/app_sensor.h`<br>`App/Src/app_sensor.c` | Application behavior and task-facing logic for sensor | `APP_IMU_RawToScaled`, `APP_IMU_ConvertBaro`, `APP_Sensor_LpfInit`, `APP_Sensor_LpfApply`, `APP_Sensor_LpfApply3f` (+14) |
+| `App/Inc/app_sensor.h`<br>`App/Src/app_sensor.c` | Application behavior and task-facing logic for sensor | `APP_IMU_RawToScaled`, `APP_IMU_ConvertBaro`, `APP_Sensor_LpfInit`, `APP_Sensor_LpfApply`, `APP_Sensor_LpfApply3f` (+15) |
 | `App/Inc/app_servo_bus_guard.h`<br>`App/Src/app_servo_bus_guard.c` | Application behavior and task-facing logic for servo bus guard | `APP_ServoBusGuard_IsPwmMode`, `APP_ServoBusGuard_IsBusOnlyCommand` |
 | `App/Inc/app_servo_cal.h`<br>`App/Src/app_servo_cal.c` | Application behavior and task-facing logic for servo cal | `APP_ServoCal_Init`, `APP_ServoCal_Step`, `APP_ServoCal_IsActive`, `APP_ServoCal_GetState`, `APP_ServoCal_TakeNotice` |
 | `App/Inc/app_servo_feedback.h`<br>`App/Src/app_servo_feedback.c` | Application behavior and task-facing logic for servo feedback | `APP_ServoFeedback_Init`, `APP_ServoFeedback_Service`, `APP_ServoFeedback_GetLogSample` |
@@ -73,6 +73,6 @@ Source snapshot: `209fce1d2fc9`. Indexed files: 116.
 | `Services/Inc/svc_flow_nav.h`<br>`Services/Src/svc_flow_nav.c` | Synchronous domain/data service for flow nav | `SVC_FlowNav_Init`, `SVC_FlowNav_Reset`, `SVC_FlowNav_PushSample`, `SVC_FlowNav_Age`, `SVC_FlowNav_GetHeight` (+12) |
 | `Services/Inc/svc_imu.h`<br>`Services/Src/svc_imu.c` | Synchronous domain/data service for imu | `SVC_IMU_RotateToFlu`, `SVC_IMU_ApplyMounting`, `SVC_IMU_DefaultRotation`, `APP_Sensor_AlignToAirframe`, `SVC_IMU_DefaultOrientationCode` (+5) |
 | `Services/Inc/svc_param.h`<br>`Services/Src/svc_param.c` | Synchronous domain/data service for param | `SVC_Param_Init`, `SVC_Param_IsReady`, `SVC_Param_IsDirty`, `SVC_Param_GetGeneration`, `SVC_Param_LoadFromFlash` (+4) |
-| `Services/Inc/svc_timestamp.h`<br>`Services/Src/svc_timestamp.c` | Synchronous domain/data service for timestamp | `SVC_Timestamp_Us`, `SVC_Timestamp_Init`, `SVC_Timestamp_Tick`, `SVC_Timestamp_Ms`, `HAL_GetTick` |
+| `Services/Inc/svc_timestamp.h`<br>`Services/Src/svc_timestamp.c` | Synchronous domain/data service for timestamp | `SVC_Timestamp_Us`, `SVC_Timestamp_Init`, `SVC_Timestamp_Tick`, `SVC_Timestamp_Ms`, `SVC_Timestamp_BusyWaitMs` (+1) |
 
 Open the smallest listed interface first (normally a header or test), then its implementation only if needed.

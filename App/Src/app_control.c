@@ -47,9 +47,7 @@
 #include "svc_timestamp.h"
 
 #include "FreeRTOS.h"
-#include "main.h"
 #include "task.h"
-#include "tim.h"
 
 #include <math.h>
 #include <stddef.h>
@@ -181,8 +179,6 @@ static void app_control_report_imuframe(const char *event, uint32_t request_id);
 
 
 
-
-
 void APP_Control_QueueText(const char *format, ...)
 {
     APP_UART_TxMessage tx_message;
@@ -224,8 +220,6 @@ void APP_Control_QueueText(const char *format, ...)
         APP_MaintUART_Write(tx_message.text, tx_message.length);
     }
 }
-
-
 
 
 
@@ -324,7 +318,6 @@ static void app_control_imuframe_sync_param(void)
 
 
 
-
 static const char *app_control_imucal_safety(
     StabilizerValidationImuSnapshot *snapshot,
     uint8_t require_sequence_progress)
@@ -400,9 +393,6 @@ uint8_t app_control_internal_imuframe_confirmed_code(void)
 {
     return control_imuframe_confirmed_code;
 }
-
-
-
 
 
 
@@ -491,7 +481,7 @@ static void app_control_handle_acceptance(char **tokens, uint32_t count)
     APP_FlightCalibrationSnapshot calibration;
     StabilizerValidationImuSnapshot safety;
     uint32_t lease_id;
-    uint32_t now_ms = HAL_GetTick();
+    uint32_t now_ms = SVC_Timestamp_Ms();
     uint64_t now_us;
     const char *value;
 
@@ -1164,7 +1154,6 @@ static void app_control_handle_imu_capture(char **tokens, uint32_t count)
                           "IMUCAP STOP | IMUCAP DUMP | IMUCAP CANCEL\r\n");
 }
 
-
 static void app_control_defaults(APP_ControlConfig *config)
 {
     DRV_COAX_CTRL_ServoCalibration servo_calibration;
@@ -1250,39 +1239,6 @@ static uint8_t app_control_parse_vofa_pwm(const char *text,
 
 
 
-
-static void app_control_report_pwm(void)
-{
-    uint32_t moder0 = (GPIOA->MODER >> 0U) & 0x3U;
-    uint32_t afr0 = (GPIOA->AFR[0] >> 0U) & 0xFU;
-
-    APP_Control_QueueText("PWM tim2 cr1=0x%08lX ccER=0x%08lX ccmr1=0x%08lX ccmr2=0x%08lX psc=%lu arr=%lu cnt=%lu\r\n",
-                          (unsigned long)TIM2->CR1,
-                          (unsigned long)TIM2->CCER,
-                          (unsigned long)TIM2->CCMR1,
-                          (unsigned long)TIM2->CCMR2,
-                          (unsigned long)TIM2->PSC,
-                          (unsigned long)TIM2->ARR,
-                          (unsigned long)TIM2->CNT);
-    APP_Control_QueueText("PWM ccr=%lu,%lu,%lu,%lu esc_us=%u,%u servo_us=%u,%u start=%u,%u,%u,%u pa0_moder=%lu pa0_af=%lu odr=0x%08lX idr=0x%08lX\r\n",
-                          (unsigned long)TIM2->CCR1,
-                          (unsigned long)TIM2->CCR2,
-                          (unsigned long)TIM2->CCR3,
-                          (unsigned long)TIM2->CCR4,
-                          (unsigned int)BSP_PWM_GetEscPulse(1U),
-                          (unsigned int)BSP_PWM_GetEscPulse(2U),
-                          (unsigned int)BSP_PWM_GetServoPulse(1U),
-                          (unsigned int)BSP_PWM_GetServoPulse(2U),
-                          (unsigned int)BSP_PWM_GetStartStatus(1U),
-                          (unsigned int)BSP_PWM_GetStartStatus(2U),
-                          (unsigned int)BSP_PWM_GetStartStatus(3U),
-                          (unsigned int)BSP_PWM_GetStartStatus(4U),
-                          (unsigned long)moder0,
-                          (unsigned long)afr0,
-                          (unsigned long)GPIOA->ODR,
-                          (unsigned long)GPIOA->IDR);
-}
-
 static void app_control_report_motor(void)
 {
     APP_Control_QueueText("MOTOR both_id=0 m1_pct=%lu m1_pulse=%u m2_pct=%lu m2_pulse=%u\r\n",
@@ -1296,7 +1252,6 @@ static void app_control_report_ident(void)
 {
     APP_Ident_ReportStatus();
 }
-
 
 
 static uint8_t app_control_token_u32(char **tokens,
@@ -1333,9 +1288,8 @@ static uint32_t app_control_time_us(void)
         }
     }
 
-    return HAL_GetTick() * 1000UL;
+    return SVC_Timestamp_Ms() * 1000UL;
 }
-
 
 static const char *app_control_after_param_separator(const char *text)
 {
@@ -1400,7 +1354,6 @@ static uint8_t app_control_named_value_line(const char *line,
 
     return (value_len != 0U) ? 1U : 0U;
 }
-
 
 static uint8_t app_control_parse_f32(const char *text, float *value)
 {
@@ -1488,7 +1441,6 @@ static void app_control_report_params(void)
 #define app_control_report_airframe() app_control_report_airframe_record()
 
 
-
 static void app_control_report_config(void)
 {
     app_control_queue_proto_text(APP_PROTO_MSG_CONFIG_SUMMARY,
@@ -1534,7 +1486,6 @@ static void app_control_report_flash(void)
                                  (unsigned int)control_config.flash_valid,
                                   (unsigned int)control_config.last_flash_status);
 }
-
 
 
 static void app_control_flash_verify(char **tokens, uint32_t count)
@@ -2066,14 +2017,10 @@ static void app_control_report_imu(void)
 
 
 
-
-
-
 /*
  * USB CDC 的 TX 丢弃必须能被看见：文本镜像忽略返回值，一旦 tx_dropped 开始涨，就
  * 说明上位机收到的是残缺的多行回复（例如 IMU? 少一行导致快照永远凑不齐）。
  */
-
 
 static APP_FlashService_Status app_control_load_config(void)
 {
@@ -2154,7 +2101,7 @@ static void app_control_handle_servo(char **tokens, uint32_t count)
 
     if (strcmp(tokens[1], "JOG") == 0) {
         /* 保持型地面点动，解析与回复归 app_servo_jog.c（通信上下文）。 */
-        APP_ServoJog_HandleCommand(tokens, count, HAL_GetTick());
+        APP_ServoJog_HandleCommand(tokens, count, SVC_Timestamp_Ms());
         return;
     }
 
@@ -2167,11 +2114,11 @@ static void app_control_handle_servo(char **tokens, uint32_t count)
             return;
         }
         if (strcmp(tokens[2], "STATUS") == 0) {
-            APP_ServoFeedbackBench_ReportStatus(HAL_GetTick());
+            APP_ServoFeedbackBench_ReportStatus(SVC_Timestamp_Ms());
             return;
         }
         if (strcmp(tokens[2], "STOP") == 0) {
-            APP_ServoFeedbackBench_Stop("command", HAL_GetTick());
+            APP_ServoFeedbackBench_Stop("command", SVC_Timestamp_Ms());
             return;
         }
         if (strcmp(tokens[2], "START") == 0) {
@@ -2189,7 +2136,7 @@ static void app_control_handle_servo(char **tokens, uint32_t count)
             if (APP_ServoFeedbackBench_Start(rate_hz,
                                              duration_ms,
                                              timeout_ms,
-                                             HAL_GetTick()) == 0U) {
+                                             SVC_Timestamp_Ms()) == 0U) {
                 APP_Control_QueueText(
                     "ERR servo_fb start range rate=1..200 duration=1000..60000 timeout=2..100 or active\r\n");
             }
@@ -2206,7 +2153,7 @@ static void app_control_handle_servo(char **tokens, uint32_t count)
             }
             if (APP_ServoFeedbackBench_StartSweep(duration_ms,
                                                   timeout_ms,
-                                                  HAL_GetTick()) == 0U) {
+                                                  SVC_Timestamp_Ms()) == 0U) {
                 APP_Control_QueueText(
                     "ERR servo_fb sweep duration=1000..60000 timeout=2..100 or active\r\n");
             }
@@ -2236,7 +2183,7 @@ static void app_control_handle_servo(char **tokens, uint32_t count)
                                                  rate_hz,
                                                  hold_ms,
                                                  timeout_ms,
-                                                 HAL_GetTick()) == 0U) {
+                                                 SVC_Timestamp_Ms()) == 0U) {
                 APP_Control_QueueText(
                     "ERR servo_fb step index=0..1 delta=20..200 rate=1..100 hold=300..5000 samples<=256 timeout=2..100 or active\r\n");
             }
@@ -2563,7 +2510,7 @@ static void app_control_handle_wifi(char **tokens, uint32_t count)
 
         BSP_AiWB2_SetEnabled(0U);
         control_wifi_reset_pending = 1U;
-        control_wifi_reset_deadline_ms = HAL_GetTick() + pulse_ms;
+        control_wifi_reset_deadline_ms = SVC_Timestamp_Ms() + pulse_ms;
         APP_Control_QueueText("OK wifi reset queued ms=%lu pin=none\r\n",
                                (unsigned long)pulse_ms);
         return;
@@ -2626,7 +2573,7 @@ static void app_control_ident_stop(const char *reason)
     APP_Control_QueueText("IDENT stop reason=%s seq=%lu ms=%lu\r\n",
                           reason,
                           (unsigned long)ident_seq,
-                          (unsigned long)HAL_GetTick());
+                          (unsigned long)SVC_Timestamp_Ms());
 }
 
 static void app_control_ident_emit_sample(void)
@@ -2651,7 +2598,7 @@ static void app_control_ident_emit_sample(void)
                           (unsigned long)ident_current_percent,
                           (unsigned int)DRV_Motor_PercentToPulse(ident_current_percent),
                           (unsigned long)ident_dwell_ms,
-                          (unsigned long)HAL_GetTick());
+                          (unsigned long)SVC_Timestamp_Ms());
     ++ident_seq;
 #else
     app_control_ident_stop("disabled");
@@ -2666,7 +2613,7 @@ static void app_control_ident_step(void)
         return;
     }
 
-    now_ms = HAL_GetTick();
+    now_ms = SVC_Timestamp_Ms();
     if ((int32_t)(now_ms - ident_next_ms) < 0) {
         return;
     }
@@ -2979,7 +2926,7 @@ static void app_control_handle_ident(char **tokens, uint32_t count)
         ident_step_percent = step_percent;
         ident_dwell_ms = dwell_ms;
         ident_current_percent = min_percent;
-        ident_next_ms = HAL_GetTick();
+        ident_next_ms = SVC_Timestamp_Ms();
         ident_seq = 0U;
         ident_active = 1U;
         APP_Control_QueueText("IDENT start motor=%u min=%lu max=%lu step=%lu dwell_ms=%lu ms=%lu\r\n",
@@ -2988,7 +2935,7 @@ static void app_control_handle_ident(char **tokens, uint32_t count)
                               (unsigned long)ident_max_percent,
                               (unsigned long)ident_step_percent,
                               (unsigned long)ident_dwell_ms,
-                              (unsigned long)HAL_GetTick());
+                              (unsigned long)SVC_Timestamp_Ms());
         app_control_ident_step();
     } else {
         APP_Control_QueueText("ERR unknown ident subcmd %s\r\n", tokens[1]);
@@ -3001,7 +2948,7 @@ static void app_control_service_wifi_reset(void)
         return;
     }
 
-    if ((int32_t)(HAL_GetTick() - control_wifi_reset_deadline_ms) < 0) {
+    if ((int32_t)(SVC_Timestamp_Ms() - control_wifi_reset_deadline_ms) < 0) {
         return;
     }
 
@@ -3016,7 +2963,7 @@ static void app_control_schedule_flash_autosave(void)
 {
     control_flash_autosave_pending = 1U;
     control_flash_autosave_deadline_ms =
-        HAL_GetTick() + APP_CONTROL_FLASH_AUTOSAVE_DELAY_MS;
+        SVC_Timestamp_Ms() + APP_CONTROL_FLASH_AUTOSAVE_DELAY_MS;
 }
 
 static void app_control_service_flash_autosave(void)
@@ -3027,7 +2974,7 @@ static void app_control_service_flash_autosave(void)
         return;
     }
 
-    if ((int32_t)(HAL_GetTick() - control_flash_autosave_deadline_ms) < 0) {
+    if ((int32_t)(SVC_Timestamp_Ms() - control_flash_autosave_deadline_ms) < 0) {
         return;
     }
 
@@ -3091,7 +3038,6 @@ static uint8_t app_control_handle_param_value_line(const char *line)
 
     return 0U;
 }
-
 
 static void app_control_handle_param(char **tokens, uint32_t count)
 {
@@ -3249,7 +3195,7 @@ static void app_control_tick_common(uint8_t emit_heartbeat)
     app_control_service_imucal();
     app_control_service_servocal();
     app_control_service_servotype();
-    APP_Acceptance_Service(HAL_GetTick());
+    APP_Acceptance_Service(SVC_Timestamp_Ms());
     app_control_service_wifi_reset();
     app_control_service_flash_autosave();
     app_control_ident_step();
@@ -3260,7 +3206,7 @@ static void app_control_tick_common(uint8_t emit_heartbeat)
 
 #if (APP_CONTROL_HEARTBEAT_ENABLED != 0U)
     {
-        uint32_t now_ms = HAL_GetTick();
+        uint32_t now_ms = SVC_Timestamp_Ms();
         uint32_t uart_rx_bytes = 0U;
         uint32_t uart_rx_lines = 0U;
         uint32_t uart_rx_overflows = 0U;
@@ -3505,7 +3451,6 @@ void APP_Control_ProcessLine(const char *line)
     if ((line == NULL) || (*line == '\0')) {
         return;
     }
-
 
     if (app_control_handle_param_value_line(line) != 0U) {
         return;

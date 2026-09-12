@@ -4,7 +4,7 @@
 
 Read this shard only when you need existing firmware behavioral/architecture coverage or must choose focused regression tests.
 
-Source snapshot: `b46489753bb3`. Indexed files: 129.
+Source snapshot: `0c5bfebe3277`. Indexed files: 129.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -74,7 +74,7 @@ Source snapshot: `b46489753bb3`. Indexed files: 129.
 | `tests/test_flu_seam3_force_frame_derivation.py` | R-F6-2 核心矩阵重导：力坐标系符号常量到底在做什么。 这个模块存在的唯一理由，是仓库里曾经有一句被复述了四遍的论断： "此符号同时作用于实测姿态和目标姿态，因此在姿态误差中相消" 它是**错的**，而且不是无害的措辞问题——R-F6… | `test_force_frame_roll_sign_was_load_bearing_before_deletion` (+4) |
 | `tests/test_flu_seam4_rc_actuator_frame.py` | R-F4 seam 4 RC/actuator polarity contract | `test_stick_direction_has_exactly_one_decision_point` (+7) |
 | `tests/test_flu_seam5_telemetry_frame.py` | R-F5 seam 5 telemetry/log frame contract | `test_replay_geometry_is_frozen` (+6) |
-| `tests/test_hardware_decoupling.py` | 换板子时应该只改板级绑定那一处，不该逐个文件重写。 这次把固件从自制 H743 板移到 MicoAir743V2，最费时间的改动几乎都不是算法， 而是"外设实例名被写进了上层逻辑"：PWM 从 TIM5/TIM2 搬到 TIM1/TIM4… | `test_the_maintenance_link_app_module_names_no_peripheral` (+6) |
+| `tests/test_hardware_decoupling.py` | 换板子时应该只改板级绑定那几处，不该逐个文件重写。 把固件从自制 H743 板移到 MicoAir743V2，最费时间的改动几乎都不是算法，而是 **外设实例名被写进了上层逻辑**：PWM 从 TIM5/TIM2 搬到 TIM1/TIM4… | `test_app_and_services_do_not_touch_hardware` (+13) |
 | `tests/test_ident_decoupled.py` | — | `test_ident_control_payload_and_decoupled_servo_takeover` (+4) |
 | `tests/test_imu_aaf_contract.py` | Contract tests for the ICM-42688 anti-alias filter and accelerometer range. The AAF is an analogue filter ahead of the… | `test_accel_range_is_16g_to_avoid_vibration_clipping` (+4) |
 | `tests/test_imu_attitude_tuner.py` | — | `test_persistent_openocd_telnet_word_parser` (+5) |

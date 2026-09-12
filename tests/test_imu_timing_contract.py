@@ -46,8 +46,13 @@ def test_sensor_task_uses_irq_edge_timestamp_and_poll_fallback() -> None:
     timestamp = read("Services/Src/svc_timestamp.c")
     freertos = read("Core/Src/freertos.c")
 
-    callback = sensor[sensor.index("void HAL_GPIO_EXTI_Callback") :]
+    # 2026-09-11：HAL 的 EXTI 弱回调与引脚比对搬到 BSP（引脚是板级知识，这次移植
+    # 它就从 PC0/EXTI0 散成了 PC15 与 PB7）。App 只剩本模块自己的那一半——
+    # 先发布时间戳、再唤醒任务，这个顺序仍然是本条要守的东西。
+    callback = sensor[sensor.index("void APP_IMU_OnDataReady(void)") :]
     assert callback.index("SVC_Timestamp_Us();") < callback.index("osThreadFlagsSet")
+    assert "void BSP_IMU_SetDrdyHandler(" in read("BSP/Inc/bsp_imu.h")
+    assert "BSP_IMU_SetDrdyHandler(APP_IMU_OnDataReady)" in read("App/Src/app.c")
     assert "TIM17->SR & TIM_SR_UIF" in timestamp
     assert "if (update_pending != 0U)" in timestamp
     assert "uint64_t imu_sample_timestamp_us = APP_SENSOR_TIMESTAMP_INVALID;" in freertos
@@ -91,15 +96,18 @@ def test_every_exti_pin_is_one_the_drdy_callback_actually_consumes() -> None:
 
     assert exti_pins, ".ioc 里一个外部中断都没有，DRDY 会退到轮询兜底"
 
-    # 回调只认选中那颗的引脚，具体是哪个由 BSP 的路由表决定。
-    assert "BSP_IMU_GetDrdyPin()" in sensor, (
+    # 回调只认选中那颗的引脚。比对 2026-09-11 随弱回调一起进了 BSP——
+    # 判据没变，只是换了一层：BSP 先筛，筛不过的边沿根本到不了 App。
+    bsp = read("BSP/Src/bsp_imu.c")
+    exti_cb = bsp[bsp.index("void HAL_GPIO_EXTI_Callback") :]
+    assert "BSP_IMU_GetDrdyPin()" in exti_cb, (
         "DRDY 回调必须按选中的芯片取引脚，不能再用静态掩码同时接受两颗"
     )
+    assert "GPIO_Pin & drdy_pin" in exti_cb
     assert "APP_IMU_DRDY_PIN_MASK" not in sensor, (
         "静态掩码已被 BSP_IMU_GetDrdyPin() 取代，别让两套并存"
     )
 
-    bsp = read("BSP/Src/bsp_imu.c")
     routed = set()
     for macro in re.findall(r"return \(uint16_t\)(\w+_DRDY_Pin);", bsp):
         pin = re.search(r"#define\s+" + macro + r"\s+GPIO_PIN_(\d+)",
@@ -292,7 +300,7 @@ def test_attitude_zero_requires_completed_fusion_startup_and_static_window() -> 
     assert "STABILIZER_ATTITUDE_ZERO_ACCEL_MIN_G" in zero_block
     assert "STABILIZER_ATTITUDE_ZERO_ACCEL_MAX_G" in zero_block
     assert zero_block.count("STABILIZER_ATTITUDE_ZERO_GYRO_MAX_DPS") == 3
-    assert "ctx->attitude_zero_start_ms = HAL_GetTick();" in zero_block
+    assert "ctx->attitude_zero_start_ms = SVC_Timestamp_Ms();" in zero_block
     assert "ctx->roll_zero_sum += ctx->roll;" in zero_block
     assert "ctx->pitch_zero_sum += ctx->pitch;" in zero_block
     assert "ctx->attitude_zero_start_ms = 0U;" in zero_block

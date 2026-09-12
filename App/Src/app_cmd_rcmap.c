@@ -5,8 +5,8 @@
 #include "app_proto.h"
 #include "app_rc_config.h"
 #include "app_stabilizer.h"
-#include "main.h"
 
+#include "svc_timestamp.h"
 #include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -70,7 +70,7 @@ void app_control_report_rc_live(void)
     uint16_t channels[CRSF_CHANNEL_COUNT];
     APP_RcInputs inputs;
     const DRV_ELRS_LinkStats *link;
-    uint32_t now_ms = HAL_GetTick();
+    uint32_t now_ms = SVC_Timestamp_Ms();
     uint8_t fresh;
 
     APP_ELRS_GetChannels(channels);

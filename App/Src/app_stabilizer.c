@@ -25,7 +25,6 @@
 #include <math.h>
 #include <string.h>
 
-#include "main.h"
 #include "app_elrs.h"
 #include "app_flight_calibration.h"
 #include "app_flight_log.h"
@@ -46,6 +45,7 @@
 #include "app_servo_feedback_bench.h"
 #include "app_acceptance.h"
 #include "app_control_scheduler.h"
+#include "bsp_critical.h"
 #include "bsp_aiwb2_power.h"
 #include "bsp_bus_servo.h"
 #include "bsp_pwm.h"
@@ -476,7 +476,6 @@
   }
 
 
-
   /*
    * stabilizer_servo_should_send() — 判断是否需要向舵机发送新指令
    *   返回非零的条件（满足任一即发送）：
@@ -547,13 +546,12 @@
     }
 
     stabilizer_flow_comp_seqlock++;
-    __DMB();
+    BSP_Critical_MemoryBarrier();
     stabilizer_flow_comp_snapshot = next;
     stabilizer_flow_comp_valid = next.valid;
-    __DMB();
+    BSP_Critical_MemoryBarrier();
     stabilizer_flow_comp_seqlock++;
   }
-
 
   static StabilizerVofaDebug stabilizer_vofa_debug;
 
@@ -739,7 +737,6 @@ typedef struct
   uint8_t imu_calibration_snapshot_ready;
 } StabilizerContext;
 
-
 typedef struct
 {
   uint32_t now_ms;
@@ -775,7 +772,6 @@ typedef struct
   uint8_t servo_cal_active;
 } StabilizerControlFrame;
 
-
 /* 任务句柄（由 APP_Stabilizer_Run 参数注入） */
 static osSemaphoreId_t s_imu_ready_sem;
 static osMessageQueueId_t s_sensor_q;
@@ -800,9 +796,9 @@ static volatile uint8_t stabilizer_servo_calibration_candidate_arm_lock;
 static void stabilizer_validation_imu_reset(void)
 {
   stabilizer_validation_imu_seqlock++;
-  __DMB();
+  BSP_Critical_MemoryBarrier();
   stabilizer_validation_imu_valid = 0U;
-  __DMB();
+  BSP_Critical_MemoryBarrier();
   stabilizer_validation_imu_seqlock++;
 }
 
@@ -863,10 +859,10 @@ static void stabilizer_validation_imu_publish(
   next.esc_pulse_us[1] = BSP_PWM_GetEscPulse(2U);
 
   stabilizer_validation_imu_seqlock++;
-  __DMB();
+  BSP_Critical_MemoryBarrier();
   stabilizer_validation_imu_snapshot = next;
   stabilizer_validation_imu_valid = 1U;
-  __DMB();
+  BSP_Critical_MemoryBarrier();
   stabilizer_validation_imu_seqlock++;
 }
 
@@ -914,10 +910,10 @@ uint8_t APP_Stabilizer_ReadValidationImuSnapshot(
       continue;
     }
 
-    __DMB();
+    BSP_Critical_MemoryBarrier();
     current = stabilizer_validation_imu_snapshot;
     valid = stabilizer_validation_imu_valid;
-    __DMB();
+    BSP_Critical_MemoryBarrier();
     after = stabilizer_validation_imu_seqlock;
 
     if ((before == after) && ((after & 1U) == 0U)) {
@@ -951,10 +947,10 @@ uint8_t APP_Stabilizer_ReadFlowCompensationSnapshot(
     if ((before & 1U) != 0U) {
       continue;
     }
-    __DMB();
+    BSP_Critical_MemoryBarrier();
     current = stabilizer_flow_comp_snapshot;
     valid = stabilizer_flow_comp_valid;
-    __DMB();
+    BSP_Critical_MemoryBarrier();
     after = stabilizer_flow_comp_seqlock;
     if ((before == after) && ((after & 1U) == 0U)) {
       if (valid == 0U) {
@@ -995,7 +991,7 @@ uint8_t APP_Stabilizer_IsImuFrameArmLocked(void)
 void APP_Stabilizer_SetImuCalibrationCandidateArmLock(uint8_t locked)
 {
   stabilizer_imu_calibration_candidate_arm_lock = (locked != 0U) ? 1U : 0U;
-  __DMB();
+  BSP_Critical_MemoryBarrier();
 }
 
 uint8_t APP_Stabilizer_IsImuCalibrationCandidateArmLocked(void)
@@ -1007,7 +1003,7 @@ void APP_Stabilizer_SetServoCalibrationCandidateArmLock(uint8_t locked)
 {
   stabilizer_servo_calibration_candidate_arm_lock =
     (locked != 0U) ? 1U : 0U;
-  __DMB();
+  BSP_Critical_MemoryBarrier();
 }
 
 uint8_t APP_Stabilizer_IsServoCalibrationCandidateArmLocked(void)
@@ -1337,14 +1333,14 @@ static void stabilizer_imu_step(StabilizerContext *ctx,
       (fabsf(msg->imu.gyro_z_dps) <=
        STABILIZER_ATTITUDE_ZERO_GYRO_MAX_DPS)) {
     if (ctx->attitude_zero_start_ms == 0U) {
-      ctx->attitude_zero_start_ms = HAL_GetTick();
+      ctx->attitude_zero_start_ms = SVC_Timestamp_Ms();
     }
     ctx->roll_zero_sum += ctx->roll;
     ctx->pitch_zero_sum += ctx->pitch;
     ctx->yaw_zero_sum += ctx->yaw;
     ++ctx->attitude_zero_count;
 
-    if (((HAL_GetTick() - ctx->attitude_zero_start_ms) >= STABILIZER_ATTITUDE_ZERO_MS) &&
+    if (((SVC_Timestamp_Ms() - ctx->attitude_zero_start_ms) >= STABILIZER_ATTITUDE_ZERO_MS) &&
         (ctx->attitude_zero_count > 0U)) {
       ctx->roll_zero = ctx->roll_zero_sum / (float)ctx->attitude_zero_count;
       ctx->pitch_zero = ctx->pitch_zero_sum / (float)ctx->attitude_zero_count;
@@ -1447,7 +1443,7 @@ static void stabilizer_imu_step(StabilizerContext *ctx,
         fuse_input.flow_quality = flow_status.flow_quality;
         fuse_input.flow_sample_ms = flow_sample_ms;
         fuse_input.dt_sec = dt_sec;
-        fuse_input.now_ms = HAL_GetTick();
+        fuse_input.now_ms = SVC_Timestamp_Ms();
         flow_accepted = SVC_FlowNav_Fuse(&fuse_input);
       }
       APP_NavEstimator_PublishVelocityEKF();
@@ -2369,7 +2365,7 @@ static void stabilizer_control_step(StabilizerContext *ctx)
   memset(&frame, 0, sizeof(frame));
   memset(&navigation_state, 0, sizeof(navigation_state));
   frame.now_us = SVC_Timestamp_Us();
-  frame.now_ms = HAL_GetTick();
+  frame.now_ms = SVC_Timestamp_Ms();
   SVC_FlowNav_GetState(&navigation_state);
   APP_ControlScheduler_Step(&ctx->control_scheduler,
                             frame.now_us,

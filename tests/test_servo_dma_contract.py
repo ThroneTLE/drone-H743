@@ -122,10 +122,13 @@ def test_servo_async_path_uses_uart_dma_and_cache_clean() -> None:
 
 
 def test_uart_callbacks_route_uart7_to_servo_dma_diagnostics() -> None:
-    app_uart = read("App/Src/app_uart.c")
+    # 分发表 2026-09-11 整组搬到 BSP：谁实现 HAL 的弱回调，谁就得知道这块板上
+    # 每个实例归谁，而那是板级知识。性质不变——UART7 的事件必须落到舵机驱动。
+    app_uart = read("BSP/Src/bsp_uart_events.c")
 
     assert '#include "drv_servo.h"' in app_uart
-    assert "if (huart->Instance == UART7)" in app_uart
+    assert "huart->Instance == BSP_UART_EVENTS_SERVO_INSTANCE" in app_uart
+    assert "#define BSP_UART_EVENTS_SERVO_INSTANCE     UART7" in app_uart
     assert "DRV_SERVO_OnUartTxComplete(huart);" in app_uart
     assert "DRV_SERVO_OnUartError(huart);" in app_uart
 

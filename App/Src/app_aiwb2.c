@@ -5,8 +5,7 @@
 #include "bsp_aiwb2_power.h"
 #include "bsp_uart.h"
 
-#include "main.h"
-
+#include "svc_timestamp.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -190,7 +189,7 @@ static uint8_t aiwb2_time_reached(uint32_t now_ms, uint32_t deadline_ms)
 
 static uint8_t aiwb2_manual_at_active(void)
 {
-    return (aiwb2_time_reached(HAL_GetTick(), aiwb2_manual_at_deadline_ms) == 0U) ? 1U : 0U;
+    return (aiwb2_time_reached(SVC_Timestamp_Ms(), aiwb2_manual_at_deadline_ms) == 0U) ? 1U : 0U;
 }
 
 #if (APP_AIWB2_PASSIVE_ONLY == 0U)
@@ -208,7 +207,7 @@ static uint32_t aiwb2_retry_delay_ms(void)
 
 static void aiwb2_enter_retry_delay(void)
 {
-    uint32_t now_ms = HAL_GetTick();
+    uint32_t now_ms = SVC_Timestamp_Ms();
 
     aiwb2_socket_ready = 0U;
     aiwb2_socket_peer_ready = 0U;
@@ -231,7 +230,7 @@ static void aiwb2_enter_retry_delay(void)
 
 static void aiwb2_begin_probe(void)
 {
-    uint32_t now_ms = HAL_GetTick();
+    uint32_t now_ms = SVC_Timestamp_Ms();
 
     aiwb2_send_command("AT");
     aiwb2_state = APP_AIWB2_STATE_WAIT_PROBE;
@@ -270,7 +269,7 @@ static void aiwb2_command_done(void)
 
 static void aiwb2_wait_from_now(uint32_t delay_ms)
 {
-    aiwb2_deadline_ms = HAL_GetTick() + delay_ms;
+    aiwb2_deadline_ms = SVC_Timestamp_Ms() + delay_ms;
 }
 
 static void aiwb2_enter_transparent(void)
@@ -291,7 +290,7 @@ static void aiwb2_enter_socket_ready(void)
 static void aiwb2_wait_transparent_ok(void)
 {
     aiwb2_state = APP_AIWB2_STATE_WAIT_TRANSPARENT_OK;
-    aiwb2_deadline_ms = HAL_GetTick() + APP_AIWB2_TRANSPARENT_OK_TIMEOUT_MS;
+    aiwb2_deadline_ms = SVC_Timestamp_Ms() + APP_AIWB2_TRANSPARENT_OK_TIMEOUT_MS;
 }
 
 static void aiwb2_parse_socket_error(const char *line)
@@ -327,7 +326,7 @@ void APP_AiWB2_Init(void)
     aiwb2_socket_peer_ready = 1U;
     return;
 #else
-    uint32_t now_ms = HAL_GetTick();
+    uint32_t now_ms = SVC_Timestamp_Ms();
 
 #if (APP_AIWB2_PASSIVE_ONLY != 0U)
     aiwb2_state = APP_AIWB2_STATE_WAIT_BOOT_CONNECT;
@@ -357,7 +356,7 @@ void APP_AiWB2_Tick(void)
 #if (APP_AIWB2_DIRECT_SERIAL_MODE != 0U)
     return;
 #else
-    uint32_t now_ms = HAL_GetTick();
+    uint32_t now_ms = SVC_Timestamp_Ms();
     const APP_AiWB2Command *commands;
     const APP_AiWB2Command *command;
     uint32_t command_count;
@@ -978,7 +977,7 @@ uint8_t APP_AiWB2_SendRawCommand(const char *command)
         BSP_AiWB2_SetEnabled(1U);
     }
 
-    now_ms = HAL_GetTick();
+    now_ms = SVC_Timestamp_Ms();
     aiwb2_manual_at_deadline_ms = now_ms + APP_AIWB2_MANUAL_AT_GUARD_MS;
     if ((aiwb2_provision_active == 0U) &&
         (aiwb2_state != APP_AIWB2_STATE_TRANSPARENT)) {
@@ -991,7 +990,7 @@ uint8_t APP_AiWB2_SendRawCommand(const char *command)
 
 void APP_AiWB2_SendDiagCommands(void)
 {
-    uint32_t now_ms = HAL_GetTick();
+    uint32_t now_ms = SVC_Timestamp_Ms();
 
     aiwb2_provision_commands[0] = (APP_AiWB2Command){ "ATE0", 1500U, 1U, 0U };
     aiwb2_provision_commands[1] = (APP_AiWB2Command){ "AT+WMODE?", 1500U, 1U, 0U };
@@ -1141,7 +1140,7 @@ uint8_t APP_AiWB2_IsPowerRecycleActive(void)
 
 uint32_t APP_AiWB2_GetDeadlineRemainingMs(void)
 {
-    uint32_t now_ms = HAL_GetTick();
+    uint32_t now_ms = SVC_Timestamp_Ms();
 
     if ((int32_t)(aiwb2_deadline_ms - now_ms) <= 0) {
         return 0U;

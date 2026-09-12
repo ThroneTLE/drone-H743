@@ -6,9 +6,9 @@
 #include "app_proto.h"
 #include "app_sensor.h"
 #include "app_stabilizer.h"
-#include "main.h"
 #include "svc_param.h"
 
+#include "svc_timestamp.h"
 #include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -250,7 +250,7 @@ void app_control_handle_imucal(char **tokens, uint32_t count)
     const char *context_error;
     const char *safety_error;
     SVC_ParamStatus param_status;
-    uint32_t now_ms = HAL_GetTick();
+    uint32_t now_ms = SVC_Timestamp_Ms();
 
     if ((tokens == NULL) || (count == 0U)) {
         return;
@@ -517,7 +517,7 @@ void app_control_service_imucal(void)
     if ((control_imucal_applied == 0U) &&
         (control_imucal_commit_pending == 0U) &&
         (APP_FlightCalibration_UploadExpire(&control_imucal_upload,
-                                             HAL_GetTick()) != 0U)) {
+                                             SVC_Timestamp_Ms()) != 0U)) {
         APP_Stabilizer_SetImuCalibrationCandidateArmLock(0U);
         app_control_imucal_set_event("expired", "timeout");
     }

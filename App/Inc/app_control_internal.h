@@ -103,6 +103,7 @@ void app_control_report_wifi(void);
 void app_control_report_rtos(void);
 void app_control_report_modules(void);
 void app_control_report_status(void);
+void app_control_report_pwm(void);
 void app_control_handle_req(char **tokens, uint32_t count);
 
 const void *app_control_internal_config_view(void);

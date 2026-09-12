@@ -13,10 +13,12 @@
 #include "bsp_aiwb2_power.h"
 #include "bsp_led.h"
 #include "bsp_uart.h"
+#include "bsp_uart_events.h"
 #include "bsp_cache.h"
 #include "drv_servo.h"
+#include "svc_timestamp.h"
 
-#include "usart.h"
+#include "bsp_uart_link.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -125,22 +127,7 @@ static void app_uart_socket_tx_reset(void)
 
 static void app_uart_prepare_tx_dma(void)
 {
-    DMA_HandleTypeDef *hdma = huart1.hdmatx;
-
-    if (hdma == 0) {
-        return;
-    }
-
-    if (hdma->Init.Mode == DMA_NORMAL) {
-        return;
-    }
-
-    (void)HAL_DMA_Abort(hdma);
-    (void)HAL_DMA_DeInit(hdma);
-    hdma->Init.Mode = DMA_NORMAL;
-    if (HAL_DMA_Init(hdma) != HAL_OK) {
-        ++app_uart_rx_errors;
-    }
+    BSP_UartLink_ForceTxDmaNormalMode(BSP_UART_ROLE_TELEMETRY);
 }
 
 static void app_uart_start_rx_dma(void)
@@ -149,10 +136,10 @@ static void app_uart_start_rx_dma(void)
     (void)app_uart_rx_errors;
     return;
 #else
-    HAL_StatusTypeDef status;
+    uint8_t started;
 
 #if (APP_UART_RX_USE_DMA != 0U)
-    if (huart1.hdmarx == 0) {
+    if (BSP_UartLink_HasRxDma(BSP_UART_ROLE_TELEMETRY) == 0U) {
         ++app_uart_rx_errors;
         return;
     }
@@ -160,24 +147,23 @@ static void app_uart_start_rx_dma(void)
 
     app_uart_dma_rx_pos = 0U;
 #if (APP_UART_RX_USE_DMA != 0U)
-    status = HAL_UARTEx_ReceiveToIdle_DMA(&huart1,
-                                          app_uart_dma_rx_buffer,
-                                          APP_UART_DMA_RX_SIZE);
+    started = BSP_UartLink_StartRxToIdle(BSP_UART_ROLE_TELEMETRY,
+                                         app_uart_dma_rx_buffer,
+                                         APP_UART_DMA_RX_SIZE);
 #else
     app_uart_it_rx_ready = 0U;
     app_uart_it_rx_size = 0U;
-    status = HAL_UARTEx_ReceiveToIdle_IT(&huart1,
-                                         app_uart_dma_rx_buffer,
-                                         APP_UART_DMA_RX_SIZE);
+    started = BSP_UartLink_StartRxToIdleIt(BSP_UART_ROLE_TELEMETRY,
+                                           app_uart_dma_rx_buffer,
+                                           APP_UART_DMA_RX_SIZE);
 #endif
-    if (status != HAL_OK) {
+    if (started == 0U) {
         ++app_uart_rx_errors;
         app_uart_dma_started = 0U;
         return;
     }
 
 #if (APP_UART_RX_USE_DMA != 0U)
-    __HAL_DMA_DISABLE_IT(huart1.hdmarx, DMA_IT_HT);
     app_uart_invalidate_rx_dma_buffer();
 #endif
     app_uart_dma_started = 1U;
@@ -188,34 +174,18 @@ static void app_uart_start_rx_dma(void)
 static uint8_t app_uart_rx_dma_needs_restart(void)
 {
 #if (APP_UART_RX_USE_DMA != 0U)
-    DMA_HandleTypeDef *hdma = huart1.hdmarx;
-    DMA_Stream_TypeDef *stream;
-
-    if (hdma == 0) {
-        return 1U;
-    }
-
     if (app_uart_dma_started == 0U) {
         return 1U;
     }
 
-    if (huart1.RxState != HAL_UART_STATE_BUSY_RX) {
-        return 1U;
-    }
-
-    stream = (DMA_Stream_TypeDef *)hdma->Instance;
-    if ((stream->CR & DMA_SxCR_EN) == 0U) {
-        return 1U;
-    }
-
-    return 0U;
+    return (BSP_UartLink_RxIsRunning(BSP_UART_ROLE_TELEMETRY) == 0U) ? 1U : 0U;
 #else
     if (app_uart_dma_started == 0U) {
         return 1U;
     }
 
     if ((app_uart_it_rx_ready == 0U) &&
-        (huart1.RxState != HAL_UART_STATE_BUSY_RX)) {
+        (BSP_UartLink_RxIsRunning(BSP_UART_ROLE_TELEMETRY) == 0U)) {
         return 1U;
     }
 
@@ -315,28 +285,33 @@ static void app_uart_report_line_debug(const uint8_t *data, uint16_t length)
 
 static void app_uart_clear_errors(void)
 {
-    uint32_t error = HAL_UART_GetError(&huart1);
-
-    if (error == HAL_UART_ERROR_NONE) {
+    /* 取和清是同一次调用，否则两步之间新来的错误会被无声吃掉。 */
+    if (BSP_UartLink_TakeErrors(BSP_UART_ROLE_TELEMETRY) == 0U) {
         return;
     }
 
-    __HAL_UART_CLEAR_FLAG(&huart1, UART_CLEAR_OREF | UART_CLEAR_NEF |
-                                   UART_CLEAR_PEF | UART_CLEAR_FEF);
-    huart1.ErrorCode = HAL_UART_ERROR_NONE;
+    BSP_UartLink_FlushRx(BSP_UART_ROLE_TELEMETRY);
     app_uart_rx_used = 0U;
     app_uart_dma_started = 0U;
-    (void)HAL_UART_AbortReceive(&huart1);
+    BSP_UartLink_AbortRx(BSP_UART_ROLE_TELEMETRY);
     ++app_uart_rx_errors;
 }
 
+static const BSP_UartRoleHandlers app_uart_role_handlers = {
+    .rx_event = APP_UART_OnRxEvent,
+    .rx_byte  = NULL,        /* 数传走 IDLE+DMA，不用逐字节中断 */
+    .tx_cplt  = APP_UART_OnTxComplete,
+    .error    = APP_UART_OnError,
+};
+
 void APP_UART_Task_Init(void)
 {
+    BSP_UartEvents_Register(BSP_UART_ROLE_TELEMETRY, &app_uart_role_handlers);
     APP_USB_CDC_Init();
 
 #if (APP_UART_DISABLE_USART1 != 0U)
-    /* 彻底释放 USART1 引脚：DeInit 关闭时钟、NVIC、GPIO 复位为高阻态 */
-    HAL_UART_DeInit(&huart1);
+    /* 彻底释放引脚：DeInit 关闭时钟、NVIC，GPIO 复位为高阻态 */
+    BSP_UartLink_Release(BSP_UART_ROLE_TELEMETRY);
     return;
 #else
 #if (APP_UART_RX_USE_DMA != 0U)
@@ -357,7 +332,7 @@ void APP_UART_Task_Init(void)
     app_uart_rx_events = 0U;
     app_uart_rx_restarts = 0U;
     app_uart_last_rx_event_size = 0U;
-    app_uart_last_stats_ms = HAL_GetTick();
+    app_uart_last_stats_ms = SVC_Timestamp_Ms();
     app_uart_last_rx_byte_ms = app_uart_last_stats_ms;
     app_uart_tx_led_until_ms = app_uart_last_stats_ms;
     app_uart_tx_count = 0U;
@@ -491,7 +466,7 @@ static void app_uart_handle_line(char *line, uint16_t length)
 
 static void app_uart_process_rx_byte(uint8_t byte)
 {
-    app_uart_last_rx_byte_ms = HAL_GetTick();
+    app_uart_last_rx_byte_ms = SVC_Timestamp_Ms();
     ++app_uart_rx_bytes;
 
 #if (APP_UART_DIRECT_SERIAL_MODE == 0U)
@@ -541,18 +516,12 @@ static void app_uart_flush_idle_line(uint32_t now_ms)
 #if (APP_UART_RX_USE_DMA != 0U)
 static uint16_t app_uart_dma_write_pos(void)
 {
-    uint32_t remaining;
-
-    if ((huart1.hdmarx == 0) || (app_uart_dma_started == 0U)) {
+    if (app_uart_dma_started == 0U) {
         return app_uart_dma_rx_pos;
     }
 
-    remaining = __HAL_DMA_GET_COUNTER(huart1.hdmarx);
-    if (remaining > APP_UART_DMA_RX_SIZE) {
-        return app_uart_dma_rx_pos;
-    }
-
-    return (uint16_t)(APP_UART_DMA_RX_SIZE - remaining);
+    return BSP_UartLink_RxFilled(BSP_UART_ROLE_TELEMETRY,
+                                 APP_UART_DMA_RX_SIZE);
 }
 #endif
 
@@ -610,7 +579,7 @@ static void app_uart_poll_tx(void)
     uint16_t frame_length = 0U;
     HAL_StatusTypeDef status;
 #if (APP_UART_DIRECT_SERIAL_MODE == 0U)
-    uint32_t now_ms = HAL_GetTick();
+    uint32_t now_ms = SVC_Timestamp_Ms();
 #endif
 
     app_uart_sync_tx_state();
@@ -651,7 +620,7 @@ static void app_uart_poll_tx(void)
            app_uart_tx_pending_message.text,
            frame_length);
 
-    if (huart1.hdmatx == 0) {
+    if (BSP_UartLink_HasTxDma(BSP_UART_ROLE_TELEMETRY) == 0U) {
         status = BSP_UART_Transmit_USART1(app_uart_tx_frame_buffer,
                                           frame_length,
                                           100U);
@@ -662,9 +631,10 @@ static void app_uart_poll_tx(void)
         }
     } else {
         app_uart_clean_tx_dma_buffer(frame_length);
-        status = HAL_UART_Transmit_DMA(&huart1,
-                                       app_uart_tx_frame_buffer,
-                                       frame_length);
+        status = BSP_UartLink_TransmitDma(BSP_UART_ROLE_TELEMETRY,
+                                                                        app_uart_tx_frame_buffer,
+                                                                        frame_length)
+                                                    ? HAL_OK : HAL_ERROR;
         if (status == HAL_OK) {
             app_uart_tx_busy = 1U;
             ++app_uart_tx_count;
@@ -677,14 +647,14 @@ static void app_uart_poll_tx(void)
 #if (APP_UART_TX_LED_ENABLED != 0U)
     BSP_LED_On(LED_1);
 #endif
-    app_uart_tx_led_until_ms = HAL_GetTick() + APP_UART_TX_LED_PULSE_MS;
+    app_uart_tx_led_until_ms = SVC_Timestamp_Ms() + APP_UART_TX_LED_PULSE_MS;
 
 #else
     /* 原始 AiWB2 socket 发送协议 */
 
     if (app_uart_socket_tx_state == APP_UART_SOCKET_TX_WAIT_PROMPT) {
         if (APP_AiWB2_TakeSocketSendPrompt() != 0U) {
-            if (huart1.hdmatx == 0) {
+            if (BSP_UartLink_HasTxDma(BSP_UART_ROLE_TELEMETRY) == 0U) {
                 status = BSP_UART_Transmit_USART1(app_uart_tx_frame_buffer,
                                                   app_uart_socket_payload_length,
                                                   100U);
@@ -701,9 +671,10 @@ static void app_uart_poll_tx(void)
             }
 
             app_uart_clean_tx_dma_buffer(app_uart_socket_payload_length);
-            status = HAL_UART_Transmit_DMA(&huart1,
-                                           app_uart_tx_frame_buffer,
-                                           app_uart_socket_payload_length);
+            status = BSP_UartLink_TransmitDma(BSP_UART_ROLE_TELEMETRY,
+                                                                            app_uart_tx_frame_buffer,
+                                                                            app_uart_socket_payload_length)
+                                                        ? HAL_OK : HAL_ERROR;
             if (status == HAL_OK) {
                 app_uart_tx_busy = 1U;
                 app_uart_socket_tx_state = APP_UART_SOCKET_TX_WAIT_PAYLOAD_DMA;
@@ -819,45 +790,23 @@ static void app_uart_poll_tx(void)
 #if (APP_UART_TX_LED_ENABLED != 0U)
     BSP_LED_On(LED_1);
 #endif
-    app_uart_tx_led_until_ms = HAL_GetTick() + APP_UART_TX_LED_PULSE_MS;
+    app_uart_tx_led_until_ms = SVC_Timestamp_Ms() + APP_UART_TX_LED_PULSE_MS;
 #endif /* APP_UART_DIRECT_SERIAL_MODE */
 #endif /* APP_UART_DISABLE_USART1 */
 }
 
 static void app_uart_sync_tx_state(void)
 {
-    uint32_t cr1;
-    uint32_t cr3;
-    uint32_t isr;
-
     if (app_uart_tx_busy == 0U) {
         return;
     }
 
-    cr1 = huart1.Instance->CR1;
-    cr3 = huart1.Instance->CR3;
-    isr = huart1.Instance->ISR;
-
     /*
-     * TX DMA normal mode on H7 completes in two phases:
-     * 1) DMA transfer complete clears DMAT and enables TCIE
-     * 2) UART TC interrupt calls HAL_UART_TxCpltCallback
-     *
-     * During debug we have seen cases where HAL has already transitioned back
-     * to READY with no error, but our local busy flag remains set. Rely on HAL
-     * state as the source of truth so the TX path cannot deadlock waiting for a
-     * callback edge we may have missed.
+     * 发送完成中断有可能被错过——调试时见过驱动已经回到空闲、而本地的 busy
+     * 标志还挂着。只等回调的话发送路径会就此死锁，表现为"数传突然不说话了"，
+     * 所以拿硬件的实际状态兜底，见 BSP_UartLink_TxIsComplete()。
      */
-    if ((huart1.gState == HAL_UART_STATE_READY) &&
-        (huart1.ErrorCode == HAL_UART_ERROR_NONE)) {
-        app_uart_tx_busy = 0U;
-        return;
-    }
-
-    if (((cr3 & USART_CR3_DMAT) == 0U) &&
-        ((cr1 & USART_CR1_TCIE) == 0U) &&
-        ((isr & USART_ISR_TC) != 0U) &&
-        (huart1.ErrorCode == HAL_UART_ERROR_NONE)) {
+    if (BSP_UartLink_TxIsComplete(BSP_UART_ROLE_TELEMETRY) != 0U) {
         app_uart_tx_busy = 0U;
     }
 }
@@ -890,7 +839,7 @@ void APP_UART_Task_Step(void)
 
     app_uart_poll_rx();
     APP_Task_MaintUART_Step();
-    now_ms = HAL_GetTick();
+    now_ms = SVC_Timestamp_Ms();
     app_uart_flush_idle_line(now_ms);
 #if (APP_UART_DIRECT_SERIAL_MODE == 0U)
     APP_AiWB2_Tick();
@@ -930,13 +879,14 @@ void APP_UART_Task_Step(void)
         app_uart_last_stats_ms = now_ms;
         written = snprintf(stats_text,
                            sizeof(stats_text),
-                           "BOOT uart_wait_control rx_bytes=%lu rx_lines=%lu rx_idle=%lu rx_overflows=%lu rx_errors=%lu rx_state=%u dma_started=%u trans=%u ctrl=%u\r\n",
+                           "BOOT uart_wait_control rx_bytes=%lu rx_lines=%lu rx_idle=%lu rx_overflows=%lu rx_errors=%lu rx_running=%u dma_started=%u trans=%u ctrl=%u\r\n",
                            (unsigned long)app_uart_rx_bytes,
                            (unsigned long)app_uart_rx_lines,
                            (unsigned long)app_uart_rx_idle_lines,
                            (unsigned long)app_uart_rx_overflows,
                            (unsigned long)app_uart_rx_errors,
-                           (unsigned int)huart1.RxState,
+                           (unsigned int)BSP_UartLink_RxIsRunning(
+                               BSP_UART_ROLE_TELEMETRY),
                            (unsigned int)app_uart_dma_started,
                            (unsigned int)APP_AiWB2_IsTransparent(),
                            (unsigned int)app_uart_control_initialized);
@@ -955,7 +905,7 @@ void APP_UART_Task_Step(void)
     app_uart_last_stats_ms = now_ms;
 #endif
     app_uart_poll_tx();
-    app_uart_update_tx_led(HAL_GetTick());
+    app_uart_update_tx_led(SVC_Timestamp_Ms());
     flags = osThreadFlagsWait(APP_UART_EVENT_RX |
                               APP_UART_EVENT_TX |
                               APP_UART_EVENT_KICK |
@@ -1004,12 +954,8 @@ void APP_UART_NotifyTxPending(void)
     app_uart_signal(APP_UART_EVENT_KICK);
 }
 
-void APP_UART_OnRxEvent(UART_HandleTypeDef *huart, uint16_t size)
+void APP_UART_OnRxEvent(uint16_t size)
 {
-    if ((huart == NULL) || (huart->Instance != USART1)) {
-        return;
-    }
-
     app_uart_last_rx_event_size = (uint32_t)size;
     ++app_uart_rx_events;
 #if (APP_UART_RX_USE_DMA == 0U)
@@ -1020,22 +966,14 @@ void APP_UART_OnRxEvent(UART_HandleTypeDef *huart, uint16_t size)
     app_uart_signal(APP_UART_EVENT_RX);
 }
 
-void APP_UART_OnTxComplete(UART_HandleTypeDef *huart)
+void APP_UART_OnTxComplete(void)
 {
-    if ((huart == NULL) || (huart->Instance != USART1)) {
-        return;
-    }
-
     app_uart_tx_busy = 0U;
     app_uart_signal(APP_UART_EVENT_TX);
 }
 
-void APP_UART_OnError(UART_HandleTypeDef *huart)
+void APP_UART_OnError(void)
 {
-    if ((huart == NULL) || (huart->Instance != USART1)) {
-        return;
-    }
-
     if (app_uart_tx_busy != 0U) {
         app_uart_tx_busy = 0U;
     }
@@ -1045,69 +983,3 @@ void APP_UART_OnError(UART_HandleTypeDef *huart)
     app_uart_signal(APP_UART_EVENT_ERROR);
 }
 
-void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
-{
-    if (huart->Instance == USART6) {
-        APP_ELRS_OnRxEvent(Size);
-        return;
-    }
-    if (huart->Instance == USART2) {
-        BSP_OPTICAL_FLOW_OnUartRxEvent(huart, Size);
-        return;
-    }
-    APP_UART_OnRxEvent(huart, Size);
-}
-
-void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
-{
-    if (huart->Instance == UART7) {
-        DRV_SERVO_OnUartTxComplete(huart);
-        return;
-    }
-    if (huart->Instance == USART6) {
-        APP_ELRS_OnTxComplete();
-        return;
-    }
-    if (BSP_UART_IsMaint(huart) != 0U) {
-        /* 维护口的 DMA 发送队列在中断里直接续发下一段，见 bsp_uart_tx.c。 */
-        BSP_UART_MaintOnTxComplete(huart);
-        return;
-    }
-    APP_UART_OnTxComplete(huart);
-}
-
-void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
-{
-    if (huart->Instance == UART7) {
-        DRV_SERVO_OnUartRxComplete(huart);
-        return;
-    }
-    if (BSP_UART_IsMaint(huart) != 0U) {
-        APP_MaintUART_OnRxByte();
-        return;
-    }
-    BSP_OPTICAL_FLOW_OnUartRxCplt(huart);
-}
-
-void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
-{
-    if (huart->Instance == UART7) {
-        DRV_SERVO_OnUartError(huart);
-        return;
-    }
-    if (huart->Instance == USART6) {
-        APP_ELRS_OnError();
-        return;
-    }
-    if (BSP_UART_IsMaint(huart) != 0U) {
-        /*
-         * 收发两侧都要认领这次出错：只处理接收的话，正在传的那一段 DMA 会
-         * 把 busy 永远挂住，整条发送队列从此一个字节都出不去。
-         */
-        BSP_UART_MaintOnTxError(huart);
-        APP_MaintUART_OnRxError();
-        return;
-    }
-    APP_UART_OnError(huart);
-    BSP_OPTICAL_FLOW_OnUartError(huart);
-}

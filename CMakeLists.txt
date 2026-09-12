@@ -89,6 +89,11 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     BSP/Src/bsp_system.c
     BSP/Src/bsp_uart.c
     BSP/Src/bsp_uart_tx.c
+    BSP/Src/bsp_uart_events.c
+    BSP/Src/bsp_uart_link.c
+    BSP/Src/bsp_rom_bootloader.c
+    BSP/Src/bsp_critical.c
+    BSP/Src/bsp_usb_cdc.c
     BSP/Src/bsp_i2c.c
     BSP/Src/bsp_spi.c
     BSP/Src/bsp_imu.c

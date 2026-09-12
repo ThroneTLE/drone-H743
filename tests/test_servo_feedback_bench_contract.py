@@ -20,9 +20,11 @@ def test_driver_uses_manual_prad_request_and_fixed_length_dma_receive() -> None:
 
 
 def test_uart7_fixed_length_rx_complete_is_routed_to_servo_driver() -> None:
-    source = read("App/Src/app_uart.c")
+    # 分发表 2026-09-11 搬到 BSP（见 test_hardware_decoupling）。
+    source = read("BSP/Src/bsp_uart_events.c")
 
-    assert "if (huart->Instance == UART7)" in source
+    assert "huart->Instance == BSP_UART_EVENTS_SERVO_INSTANCE" in source
+    assert "#define BSP_UART_EVENTS_SERVO_INSTANCE     UART7" in source
     assert "DRV_SERVO_OnUartRxComplete(huart);" in source
 
 

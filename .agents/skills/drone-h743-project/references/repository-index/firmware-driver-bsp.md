@@ -4,7 +4,7 @@
 
 Read this shard only when the task touches device protocols, reusable algorithms, buses, GPIO, DMA callbacks, cache hooks, or board bindings.
 
-Source snapshot: `431b56196bf3`. Indexed files: 96.
+Source snapshot: `e9d3ae432b81`. Indexed files: 106.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -44,19 +44,24 @@ Source snapshot: `431b56196bf3`. Indexed files: 96.
 | `BSP/Inc/bsp_board.h`<br>`BSP/Src/bsp_board.c` | Board resource binding for board | `BSP_Board_Init`, `BSP_DelayMs`, `BSP_Board_GetImuBus`, `BSP_Board_GetBmi088Bus`, `BSP_Board_GetBmi270Bus` (+8) |
 | `BSP/Inc/bsp_bus_servo.h`<br>`BSP/Src/bsp_bus_servo.c` | Board resource binding for bus servo | `BSP_BusServo_SendRaw`, `BSP_BusServo_ReadResponse`, `BSP_BusServo_GetBaudRate`, `BSP_BusServo_SetBaudRate`, `BSP_BusServo_PositionToPulse` (+30) |
 | `BSP/Inc/bsp_cache.h`<br>`BSP/Src/bsp_cache.c` | Board resource binding for cache | `BSP_Cache_Enable`, `BSP_Cache_Disable`, `BSP_Cache_AlignDown32`, `BSP_Cache_AlignedSize32`, `BSP_Cache_CleanDCache` (+1) |
+| `BSP/Inc/bsp_critical.h`<br>`BSP/Src/bsp_critical.c` | Board resource binding for critical | `BSP_Critical_Enter`, `BSP_Critical_Exit`, `BSP_Critical_MemoryBarrier` |
 | `BSP/Inc/bsp_flash_bus.h`<br>`BSP/Src/bsp_flash_bus.c` | Board resource binding for flash bus | `BSP_FlashBus_GetBus`, `BSP_FlashBus_Acquire`, `BSP_FlashBus_Release`, `BSP_FlashBus_RegisterDmaDevice`, `BSP_FlashBus_InvalidateBinding` |
 | `BSP/Inc/bsp_gpio.h`<br>`BSP/Src/bsp_gpio.c` | Board resource binding for gpio | `BSP_GPIO_Init`, `BSP_GPIO_Write`, `BSP_GPIO_Read`, `BSP_GPIO_Toggle` |
 | `BSP/Inc/bsp_gps.h`<br>`BSP/Src/bsp_gps.c` | Board resource binding for gps | `BSP_GPS_Init`, `BSP_GPS_ConfigureM9NDefault`, `BSP_GPS_Service`, `BSP_GPS_OnUartRxCplt`, `BSP_GPS_OnUartError` (+2) |
 | `BSP/Inc/bsp_i2c.h`<br>`BSP/Src/bsp_i2c.c` | Board resource binding for i2c | `BSP_I2C_GetHandle`, `BSP_I2C_DebugXfer`, `BSP_I2C_DebugScan` |
 | `BSP/Inc/bsp_icm42688.h`<br>`BSP/Src/bsp_icm42688.c` | Board resource binding for icm42688 | — |
-| `BSP/Inc/bsp_imu.h`<br>`BSP/Src/bsp_imu.c` | Board resource binding for imu | `BSP_IMU_Init`, `BSP_IMU_ReadRaw`, `BSP_IMU_ReadScaled`, `BSP_IMU_IsDataReady`, `BSP_IMU_GetWhoAmI` (+10) |
+| `BSP/Inc/bsp_imu.h`<br>`BSP/Src/bsp_imu.c` | Board resource binding for imu | `BSP_IMU_Init`, `BSP_IMU_ReadRaw`, `BSP_IMU_ReadScaled`, `BSP_IMU_IsDataReady`, `BSP_IMU_GetWhoAmI` (+13) |
 | `BSP/Inc/bsp_led.h`<br>`BSP/Src/bsp_led.c` | Board resource binding for led | `BSP_LED_Init`, `BSP_LED_On`, `BSP_LED_Off`, `BSP_LED_Toggle` |
 | `BSP/Inc/bsp_mag.h`<br>`BSP/Src/bsp_mag.c` | Board resource binding for mag | `BSP_MAG_Init`, `BSP_MAG_Read`, `BSP_MAG_Probe`, `BSP_MAG_GetStatus`, `BSP_MAG_Invalidate` (+1) |
 | `BSP/Inc/bsp_optical_flow.h`<br>`BSP/Src/bsp_optical_flow.c` | Board resource binding for optical flow | `BSP_OPTICAL_FLOW_Init`, `BSP_OPTICAL_FLOW_Service`, `BSP_OPTICAL_FLOW_OnUartRxCplt`, `BSP_OPTICAL_FLOW_OnUartRxEvent`, `BSP_OPTICAL_FLOW_OnUartError` (+5) |
-| `BSP/Inc/bsp_pwm.h`<br>`BSP/Src/bsp_pwm.c` | Board resource binding for pwm | `BSP_PWM_Init`, `BSP_PWM_SetEscPulse`, `BSP_PWM_SetEscPercent`, `BSP_PWM_DisableEsc`, `BSP_PWM_SetServoPulse` (+4) |
+| `BSP/Inc/bsp_pwm.h`<br>`BSP/Src/bsp_pwm.c` | Board resource binding for pwm | `BSP_PWM_Init`, `BSP_PWM_SetEscPulse`, `BSP_PWM_SetEscPercent`, `BSP_PWM_DisableEsc`, `BSP_PWM_SetServoPulse` (+6) |
+| `BSP/Inc/bsp_rom_bootloader.h`<br>`BSP/Src/bsp_rom_bootloader.c` | Board resource binding for rom bootloader | `BSP_RomBootloader_ReadVector`, `BSP_RomBootloader_WriteRequestMagic`, `BSP_RomBootloader_TakeRequestMagic`, `BSP_RomBootloader_Jump`, `BSP_RomBootloader_SystemReset` |
 | `BSP/Inc/bsp_spi.h`<br>`BSP/Src/bsp_spi.c` | Board resource binding for spi | `BSP_SPI_RegisterFlashDevice` |
 | `BSP/Inc/bsp_system.h`<br>`BSP/Src/bsp_system.c` | Board resource binding for system | `BSP_System_Init`, `BSP_Cache_Enable`, `BSP_Cache_Disable`, `BSP_System_GetClockInfo` |
-| `BSP/Inc/bsp_uart.h`<br>`BSP/Src/bsp_uart.c` | Board resource binding for uart | `BSP_UART_Release_USART1_ForExternalDebug`, `BSP_UART_MaintInit`, `BSP_UART_MaintName`, `BSP_UART_IsMaint`, `BSP_UART_MaintRxStart` (+12) |
+| `BSP/Inc/bsp_uart.h`<br>`BSP/Src/bsp_uart.c` | Board resource binding for uart | `BSP_UART_Release_USART1_ForExternalDebug`, `BSP_UART_MaintInit`, `BSP_UART_MaintHandle`, `BSP_UART_MaintName`, `BSP_UART_IsMaint` (+13) |
+| `BSP/Inc/bsp_uart_events.h`<br>`BSP/Src/bsp_uart_events.c` | Board resource binding for uart events | `BSP_UartEvents_Register` |
+| `BSP/Inc/bsp_uart_link.h`<br>`BSP/Src/bsp_uart_link.c` | Board resource binding for uart link | `BSP_UartLink_RxIsRunning`, `BSP_UartLink_HasRxDma`, `BSP_UartLink_HasTxDma`, `BSP_UartLink_StartRxToIdle`, `BSP_UartLink_StartRxToIdleIt` (+11) |
 | `BSP/Inc/bsp_uart_tx.h`<br>`BSP/Src/bsp_uart_tx.c` | Board resource binding for uart tx | `BSP_UartTx_Attach`, `BSP_UartTx_Write`, `BSP_UartTx_Pending`, `BSP_UartTx_IsIdle`, `BSP_UartTx_OnComplete` (+3) |
+| `BSP/Inc/bsp_usb_cdc.h`<br>`BSP/Src/bsp_usb_cdc.c` | Board resource binding for usb cdc | `BSP_UsbCdc_Transmit`, `BSP_UsbCdc_Teardown` |
 
 Open the smallest listed interface first (normally a header or test), then its implementation only if needed.

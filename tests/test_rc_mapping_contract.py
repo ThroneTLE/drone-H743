@@ -238,7 +238,7 @@ def test_elrs_link_freshness_uses_valid_rc_frames_only() -> None:
     drv_source = read("Driver/Src/drv_elrs.c")
     drv_header = read("Driver/Inc/drv_elrs.h")
 
-    assert "DRV_ELRS_MarkRcFrameTime(HAL_GetTick());" in app_source
+    assert "DRV_ELRS_MarkRcFrameTime(SVC_Timestamp_Ms());" in app_source
     assert "uint8_t APP_ELRS_IsRcFresh(uint32_t now_ms, uint32_t timeout_ms);" in app_header
     assert "void     DRV_ELRS_MarkRcFrameTime(uint32_t now_ms);" in drv_header
     assert "uint8_t  DRV_ELRS_IsRcFresh(uint32_t now_ms, uint32_t timeout_ms);" in drv_header

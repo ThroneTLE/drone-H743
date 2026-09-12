@@ -4,7 +4,7 @@
 
 Read this shard only when the task uses serial/TCP diagnostics, log analysis, identification, capture, calibration, or desktop UIs.
 
-Source snapshot: `1cd7956b43de`; aggregate snapshot: `0332cf4130f0`. Covered files: 5374.
+Source snapshot: `adc8bc8663e8`; aggregate snapshot: `0332cf4130f0`. Covered files: 5375.
 
 | File/module or scope | Content outline | Key entry points / size |
 |---|---|---|
@@ -14,6 +14,7 @@ Source snapshot: `1cd7956b43de`; aggregate snapshot: `0332cf4130f0`. Covered fil
 | `tools/attitude_ident_pid.py` | Analyze closed-loop attitude-identification FLOG CSVs and suggest PD gains. This tool is intentionally conservative: it… | `SegmentFit`, `split_segments`, `clean_segment`, `uniform_signal`, `simulate_second_order` (+4) |
 | `tools/controller_cascade_analysis.py` | R-S5-1 evidence gate for same-recording controller cascade comparison. The tool deliberately refuses to compare an old/… | `inspect_candidate`, `build_report`, `main` |
 | `tools/decode_saleae_spi_csv.py` | Decode SPI bytes from a Saleae raw digital.csv export. Default mapping follows the current Saleae hookup: Channel 0 = C… | `parse_args`, `load_rows`, `decode`, `bits_to_bytes`, `fmt_bytes` (+1) |
+| `tools/decoupling_survey.py` | Report which App/Services files still touch hardware directly. Three signals, all measured on code with comments and st… | `strip_comments`, `strip_code`, `scan`, `main` |
 | `tools/drift_ab_check.py` | PIPELINE R-M3-2 · 静止漂移 A/B 采集与对比（只读）。 以 ~8Hz 轮询 `IMU?` 采集一段静止遥测，喂给 stationary_drift 分析器生成 DriftReport 并落盘，然后与最近一份历史基线（默… | `collect`, `main` |
 | `tools/drone_tcp_panel.py` | Ground-station panel for the drone-H743 Ai-WB2 transparent link | `firmware_update_link_gate`, `firmware_update_snapshot_advisory`, `airframe_record_from_line`, `ident_record_from_line`, `fit_ident_step` (+4) |
 | `tools/elrs_link_diag.py` | ELRS / CRSF 收链路分层计数 —— 用 SWD 直读，不占串口、不复位飞控。 这些计数**不进任何命令回包**（作者裁决 2026-09-06）：能挂的那几个报告函数都被 `tests/test_control_loop_blo… | `resolve_symbols`, `clusters`, `read_words`, `sample`, `main` |

@@ -3,6 +3,7 @@
 #include "app_control.h"
 #include "bsp_gps.h"
 
+#include "svc_timestamp.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -87,7 +88,7 @@ void APP_GPS_GetStatus(APP_GPS_Status *status)
 void APP_GPS_Report(void)
 {
     APP_GPS_Status gps_status;
-    uint32_t now_ms = HAL_GetTick();
+    uint32_t now_ms = SVC_Timestamp_Ms();
     uint32_t age_ms = 0U;
 
     APP_GPS_GetStatus(&gps_status);

@@ -159,7 +159,7 @@ def test_time_domains_telemetry_and_z_measurement_are_explicit() -> None:
     scheduler_c = (ROOT / "App/Src/app_control_scheduler.c").read_text(encoding="utf-8")
     port = (ROOT / "App/Src/app_telem_port.c").read_text(encoding="utf-8")
 
-    assert "frame.now_ms = HAL_GetTick();" in stabilizer
+    assert "frame.now_ms = SVC_Timestamp_Ms();" in stabilizer
     assert "navigation_sample_token" in scheduler_h
     assert "navigation_sample_us > now_us" not in scheduler_c
     assert "APP_ControlScheduler_Commit" in scheduler_h

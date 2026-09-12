@@ -43,7 +43,26 @@ typedef enum {
     HAL_TIMEOUT = 0x03
 } HAL_StatusTypeDef;
 
-typedef struct { int tag; } GPIO_TypeDef;
+/*
+ * GPIO 寄存器块。
+ *
+ * 只有 tag 是不够的：bsp_imu.c 的 `BSP_IMU_GetBusSnapshot()`（`REQ mod=IMUSEL
+ * op=BUS` 的数据来源）要读 MODER/AFR/ODR/IDR 才能把"引脚配置对不对"和
+ * "线上有没有电平"分开。这套 harness 编译的是**真实的 bsp_imu.c**，
+ * 假头缺一个成员就等于把真实源码换成了另一份。
+ */
+typedef struct {
+    int      tag;
+    uint32_t MODER;
+    uint32_t OTYPER;
+    uint32_t OSPEEDR;
+    uint32_t PUPDR;
+    uint32_t IDR;
+    uint32_t ODR;
+    uint32_t BSRR;
+    uint32_t LCKR;
+    uint32_t AFR[2];
+} GPIO_TypeDef;
 typedef struct { int tag; } I2C_HandleTypeDef;
 typedef struct { int tag; } USART_TypeDef;
 
@@ -127,6 +146,24 @@ typedef struct {
 
 extern SPI_RegDef fake_spi2_regs;
 #define SPI2 (&fake_spi2_regs)
+
+/*
+ * 引脚快照要按端口取值。真机上 GPIOA..GPIOD 是 CMSIS 里的地址常量；
+ * 这里给四个可寻址的结构体，harness 可以往里写值再检查解析对不对。
+ */
+extern GPIO_TypeDef fake_gpio_port_a;
+extern GPIO_TypeDef fake_gpio_port_b;
+extern GPIO_TypeDef fake_gpio_port_c;
+extern GPIO_TypeDef fake_gpio_port_d;
+#define GPIOA (&fake_gpio_port_a)
+#define GPIOB (&fake_gpio_port_b)
+#define GPIOC (&fake_gpio_port_c)
+#define GPIOD (&fake_gpio_port_d)
+
+/* PC2_C 那类模拟开关的状态在 SYSCFG->PMCR 里，快照会把它一起报出来。 */
+typedef struct { uint32_t PMCR; } SYSCFG_RegDef;
+extern SYSCFG_RegDef fake_syscfg_regs;
+#define SYSCFG (&fake_syscfg_regs)
 
 void HAL_Delay(uint32_t ms);
 uint32_t HAL_GetTick(void);
