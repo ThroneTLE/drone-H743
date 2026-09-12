@@ -1,0 +1,2 @@
+# Preserve the downloaded bytes and SHA256 across Windows checkouts.
+upstream_dshot.c.txt -text

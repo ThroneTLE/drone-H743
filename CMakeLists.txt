@@ -48,6 +48,7 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
 # Add sources to executable
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     # Driver layer
+    Driver/Src/drv_dshot.c
     Driver/Src/drv_imu.c
     Driver/Src/drv_bmi088.c
     Driver/Src/drv_bmi088_tables.c

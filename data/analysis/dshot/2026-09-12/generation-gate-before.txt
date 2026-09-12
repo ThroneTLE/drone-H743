@@ -1,0 +1,29 @@
+.FF                                                                      [100%]
+================================== FAILURES ===================================
+____________________ test_dshot_generated_dma_matches_ioc _____________________
+
+    def test_dshot_generated_dma_matches_ioc():
+        timers = read("Core/Src/tim.c")
+        uart = read("Core/Src/usart.c")
+        irq = read("Core/Src/stm32h7xx_it.c")
+>       assert "hdma_tim1_up.Instance = DMA1_Stream2;" in timers, REGENERATE
+E       AssertionError: Regenerate D:/stm32hal/drone-H743-dshot/drone-H743.ioc in CubeMX; do not hand-edit Core.
+E       assert 'hdma_tim1_up.Instance = DMA1_Stream2;' in '/* USER CODE BEGIN Header */\n/**\n  ******************************************************************************\n...DeInit 1 */\n\n  /* USER CODE END TIM17_MspDeInit 1 */\n  }\n}\n\n/* USER CODE BEGIN 1 */\n\n/* USER CODE END 1 */\n\n'
+
+tests\test_dshot_generated_config.py:35: AssertionError
+_________________ test_dshot_generated_bit_clock_matches_ioc __________________
+
+    def test_dshot_generated_bit_clock_matches_ioc():
+        timers = read("Core/Src/tim.c")
+>       assert "htim1.Init.Prescaler = 0;" in timers, REGENERATE
+E       AssertionError: Regenerate D:/stm32hal/drone-H743-dshot/drone-H743.ioc in CubeMX; do not hand-edit Core.
+E       assert 'htim1.Init.Prescaler = 0;' in '/* USER CODE BEGIN Header */\n/**\n  ******************************************************************************\n...DeInit 1 */\n\n  /* USER CODE END TIM17_MspDeInit 1 */\n  }\n}\n\n/* USER CODE BEGIN 1 */\n\n/* USER CODE END 1 */\n\n'
+
+tests\test_dshot_generated_config.py:46: AssertionError
+Physical serial open attempts: 0
+Flashing/probe tool invocation attempts: 0
+Tk display available at session start: True; Tk roots created: 0
+=========================== short test summary info ===========================
+FAILED tests/test_dshot_generated_config.py::test_dshot_generated_dma_matches_ioc
+FAILED tests/test_dshot_generated_config.py::test_dshot_generated_bit_clock_matches_ioc
+2 failed, 1 passed in 0.70s

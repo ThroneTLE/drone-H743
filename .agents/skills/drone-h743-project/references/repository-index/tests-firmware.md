@@ -4,7 +4,7 @@
 
 Read this shard only when you need existing firmware behavioral/architecture coverage or must choose focused regression tests.
 
-Source snapshot: `0c5bfebe3277`. Indexed files: 129.
+Source snapshot: `b7b15356aaee`. Indexed files: 135.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -12,6 +12,10 @@ Source snapshot: `0c5bfebe3277`. Indexed files: 129.
 | `tests/_micoair_hostfakes.py` | 宿主侧编译真实固件源码用的最小 HAL 替身。 为什么要有这个文件： tests/ 里绝大多数契约测试要么是纯函数（drv_*_tables.c），要么是读源码正则。 但 2026-09-10 那轮审计发现的四个缺陷都不在这两类里——它们… | `write_fakes` (+1) |
 | `tests/conftest.py` | 离线测试套件的全局硬件护栏与状态隔离。 两条路都要堵，而且必须在**收集之前**就装上： * 物理串口 —— `serial.Serial.open` * 烧录 / 调试探针 —— `subprocess.Popen`（openocd /… | `pytest_configure` (+4) |
 | `tests/data.txt` | — | — |
+| `tests/fixtures/dshot_px4/.gitattributes` | — | — |
+| `tests/fixtures/dshot_px4/driver_harness.c` | — | — |
+| `tests/fixtures/dshot_px4/README.md` | PX4 DShot 单向移植基线 | `实际移植与本地差异` |
+| `tests/fixtures/dshot_px4/upstream_dshot.c.txt` | — | — |
 | `tests/golden/telem_frames_v2.bin` | — | — |
 | `tests/test_acceptance_v2_runtime_contract.py` | — | `test_v2a_lease_and_esc_fail_safe_are_target_owned` (+2) |
 | `tests/test_action_contract.py` | Contract tests for the Action safety state machine (``App/Src/app_action.c``). An Action is any task that spans time an… | `test_01_armed_interlock_refuses_to_start` (+16) |
@@ -42,6 +46,8 @@ Source snapshot: `0c5bfebe3277`. Indexed files: 129.
 | `tests/test_data_organization.py` | — | `test_date_directory_helpers_are_sortable_and_validate_dates` (+2) |
 | `tests/test_documentation_contract.py` | Current documentation stays small, routed, and distinct from history | `test_current_document_map_has_one_small_human_entry` (+8) |
 | `tests/test_drone_validation_v0.py` | — | `test_snapshot_parser_requires_provenance_and_never_invents_zeroes` (+38) |
+| `tests/test_dshot_driver.py` | R-DSHOT-1 first phase: compile the real C driver and frozen PX4 encoder. No DMA/register simulation here: hardware star… | `test_real_driver` (+2) |
+| `tests/test_dshot_generated_config.py` | R-DSHOT-1: gate BSP integration on actual CubeMX-generated DMA ownership | `test_dshot_ioc_dma_owner_and_timer_groups` (+2) |
 | `tests/test_evidence_write_protection.py` | 历史验收证据不可变性契约。 2026-08-29 实际发生过一次证据破坏：面板启动时自动加载了 2026-08-28 的历史 验收会话，随后自动保存把 workflow.json 的 target_state_at_save（14 个键的… | `test_session_autosave_refuses_to_write_while_browsing_history` (+3) |
 | `tests/test_firmware_build_gate.py` | 烧录前必须先编译，且编译失败绝不能继续烧录。 背景：USB DFU 一键烧录默认烧的是 build/Debug/drone-H743.elf。如果改完源码 忘了编译，就会把上一次的旧固件刷进飞控，而且现场很难看出来——固件"烧成功了"，… | `test_build_failure_raises_instead_of_returning_a_stale_elf` (+20) |
 | `tests/test_flash_bdd.py` | — | `test_bdd_flash_diagnostics_flow_is_app_service_to_storage_backends` (+1) |

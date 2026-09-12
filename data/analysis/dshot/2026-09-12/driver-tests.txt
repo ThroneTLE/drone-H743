@@ -1,0 +1,9 @@
+encoding: independent golden vectors and all 65536 input values passed
+.mapping: all 65536 inputs, endpoints, monotonicity and command exclusion passed
+.PX4 reference: 2001 dual-channel pairs, MSB order, checksum and tails passed
+.timing: ARR+1, exact duty, invalid clocks and transactional rejection passed
+...
+Physical serial open attempts: 0
+Flashing/probe tool invocation attempts: 0
+Tk display available at session start: True; Tk roots created: 0
+6 passed in 1.49s

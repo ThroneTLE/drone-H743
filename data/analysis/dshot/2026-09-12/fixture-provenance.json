@@ -1,0 +1,6 @@
+{
+  "target": "D:/stm32hal/drone-H743-dshot/data/flight_logs/2026-09-02/rm1_3_block_queue/flightlog_20260902_202552.csv",
+  "sha256": "6B4FF1D30CB39819BE644759BD273247EBBFCF823284C7703A5A2D6F5FD3F0F8",
+  "source": "D:/stm32hal/drone-H743/data/flight_logs/2026-09-02/rm1_3_block_queue/flightlog_20260902_202552.csv",
+  "purpose": "Exact historical fixture already required by unchanged test_flu_seam3_controller_frame.py; source preserved"
+}

@@ -4,13 +4,13 @@
 
 Read this shard only when the task touches CubeMX output, pins/clocks/peripherals, startup/linker layout, USB, build configuration, HAL, FreeRTOS internals, or vendor code.
 
-Source snapshot: `abd82fe0769d`; aggregate snapshot: `a4f36b616ba1`. Covered files: 1442.
+Source snapshot: `05f6bf7c32d7`; aggregate snapshot: `fc9cb2803265`. Covered files: 1442.
 
 | File/module or scope | Content outline | Key entry points / size |
 |---|---|---|
 | `Core/Inc/FreeRTOSConfig.h` | CubeMX/HAL platform module for FreeRTOSConfig | — |
 | `Core/Inc/dma.h`<br>`Core/Src/dma.c` | CubeMX/HAL platform module for dma | `MX_DMA_Init` |
-| `Core/Src/freertos.c` | CubeMX-owned FreeRTOS objects and task entry wiring | `BSP_IMU_Init`, `APP_IMU_ReadDataReadyTimestamp`, `BSP_IMU_IsDataReady`, `BSP_IMU_ReadRaw`, `APP_Sensor_CalibrateGyroBias` (+2) |
+| `Core/Src/freertos.c` | CubeMX-owned FreeRTOS objects and task entry wiring | `BSP_IMU_Init`, `APP_IMU_ReadDataReadyTimestamp`, `BSP_IMU_IsDataReady`, `BSP_IMU_ReadRaw` (+3) |
 | `Core/Inc/gpio.h`<br>`Core/Src/gpio.c` | CubeMX/HAL platform module for gpio | `MX_GPIO_Init` |
 | `Core/Inc/i2c.h`<br>`Core/Src/i2c.c` | CubeMX/HAL platform module for i2c | `MX_I2C1_Init`, `MX_I2C2_Init` |
 | `Core/Inc/main.h`<br>`Core/Src/main.c` | CubeMX-owned board pin names and shared MCU declarations | `Error_Handler` |
@@ -25,7 +25,7 @@ Source snapshot: `abd82fe0769d`; aggregate snapshot: `a4f36b616ba1`. Covered fil
 | `Core/Src/sysmem.c` | CubeMX/HAL platform module for sysmem | — |
 | `Core/Src/system_stm32h7xx.c` | CubeMX/HAL platform module for system stm32h7xx | — |
 | `Core/Inc/tim.h`<br>`Core/Src/tim.c` | CubeMX/HAL platform module for tim | `MX_TIM1_Init`, `MX_TIM4_Init`, `MX_TIM17_Init`, `HAL_TIM_MspPostInit` |
-| `Core/Inc/usart.h`<br>`Core/Src/usart.c` | CubeMX/HAL platform module for usart | `MX_UART7_Init`, `MX_UART8_Init`, `MX_USART1_UART_Init`, `MX_USART2_UART_Init`, `MX_USART3_UART_Init` (+1) |
+| `Core/Inc/usart.h`<br>`Core/Src/usart.c` | CubeMX/HAL platform module for usart | `MX_UART7_Init`, `MX_UART8_Init`, `MX_USART1_UART_Init`, `MX_USART2_UART_Init` (+2) |
 | `USB_DEVICE/App/usb_device.h`<br>`USB_DEVICE/App/usb_device.c` | CubeMX USB device integration for usb device | `MX_USB_DEVICE_Init` |
 | `USB_DEVICE/App/usbd_cdc_if.h`<br>`USB_DEVICE/App/usbd_cdc_if.c` | CubeMX USB device integration for usbd cdc if | — |
 | `USB_DEVICE/Target/usbd_conf.h`<br>`USB_DEVICE/Target/usbd_conf.c` | CubeMX USB device integration for usbd conf | — |
@@ -33,7 +33,7 @@ Source snapshot: `abd82fe0769d`; aggregate snapshot: `a4f36b616ba1`. Covered fil
 | `.clangd` | clangd compile database and indexing settings | — |
 | `.gitignore` | Repository ignore policy for generated artifacts and local data | — |
 | `.mcp.json` | Repository-local MCP server configuration | — |
-| `AGENTS.md` | drone-H743 执行工程师常驻指令（AGENTS.md） | `开工前必读（每次会话，顺序固定）`, `任务领取`, `工作模式`, `硬约束（违反任意一条 = 打回重做）`, `完成协议` |
+| `AGENTS.md` | drone-H743 执行工程师常驻指令（AGENTS.md） | `开工前必读（每次会话，顺序固定）`, `任务领取`, `工作模式`, `硬约束（违反任意一条 = 打回重做）` (+1) |
 | `CLAUDE.md` | drone-H743 —— Claude 会话入口 | `每次会话按顺序读`, `两条最容易踩的硬约束` |
 | `cmake/gcc-arm-none-eabi.cmake` | Project configuration for gcc arm none eabi | — |
 | `cmake/starm-clang.cmake` | Project configuration for starm clang | — |
@@ -44,15 +44,15 @@ Source snapshot: `abd82fe0769d`; aggregate snapshot: `a4f36b616ba1`. Covered fil
 | `MDK-ARM/drone-H743.uvoptx` | Project configuration for drone H743 | — |
 | `MDK-ARM/drone-H743.uvprojx` | Project configuration for drone H743 | — |
 | `MDK-ARM/startup_stm32h743xx.s` | Project configuration for startup stm32h743xx | — |
-| `PIPELINE.md` | drone-H743 归零检查 Pipeline | `状态定义`, `主线、副线与当前状态`, `主线验收门`, `执行需求清单（派单用）`, `作者明确授权的附加需求` (+2) |
+| `PIPELINE.md` | drone-H743 归零检查 Pipeline | `状态定义`, `主线、副线与当前状态`, `主线验收门`, `执行需求清单（派单用）` (+3) |
 | `README.md` | drone-H743 | `当前事实从哪里读`, `常用命令` |
 | `startup_stm32h743xx.s` | GCC startup, vector table, and reset entry | — |
 | `STM32H743XX_FLASH.ld` | STM32H743 flash/RAM regions and linker section placement | — |
 | `temp_sizecheck.c` | Project configuration for temp sizecheck | — |
 | `root generated leftovers` | Compiler, disassembly, or operating-system leftovers; never use as source of truth | 2 files / 14.0 KiB / (none)×2 |
-| `Drivers/` | STM32 CMSIS and HAL vendor sources; read only for HAL behavior not documented by project code | 120 files / 10.7 MiB / .h×86, .c×31, .txt×3 |
+| `Drivers/` | STM32 CMSIS and HAL vendor sources; read only for HAL behavior not documented by project code | 120 files / 11.0 MiB / .h×86, .c×31, .txt×3 |
 | `Middlewares/` | FreeRTOS and STM32 USB middleware; vendor-owned unless a task explicitly requires internals | 48 files / 1.6 MiB / .h×30, .c×15, (none)×2, .txt×1 |
-| `ThirdParty/` | Third-party algorithm sources and licenses, including Fusion | 5 files / 37.8 KiB / .h×3, .c×1, .md×1 |
+| `ThirdParty/` | Third-party algorithm sources and licenses, including Fusion | 5 files / 39.0 KiB / .h×3, .c×1, .md×1 |
 | `driver_doc/` | Generated vendor API documentation; search for an exact peripheral or symbol before opening | 1213 files / 151.8 MiB / .h×589, .c×486, .pdf×20, .administrator×13, .s×12 |
 
 CubeMX-owned files are routing targets, not authorization to hand-edit generated configuration.

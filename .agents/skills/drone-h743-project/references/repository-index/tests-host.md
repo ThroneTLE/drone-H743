@@ -4,7 +4,7 @@
 
 Read this shard only when you need existing ground-station/tooling coverage or must choose focused regression tests.
 
-Source snapshot: `f4c0d88db737`. Indexed files: 38.
+Source snapshot: `d3775368bfb6`. Indexed files: 38.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
