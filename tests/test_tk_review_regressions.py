@@ -303,3 +303,27 @@ def test_host_rejects_exactly_what_the_firmware_rejects(name, value, ok):
     assert valid is ok, f"{name}={value} 期望 {ok}，实得 {valid}（{reason}）"
     if not ok:
         assert reason, "拒绝必须带原因，不能空着"
+
+def test_closed_panel_variables_can_be_released_by_a_worker(monkeypatch):
+    """Late Python collection must not execute Tcl after the UI closes."""
+    import sys
+    import threading
+    import tkinter as tk
+    from tools.drone_tcp_panel import DronePanel
+
+    root = DronePanel()
+    other = tk.Tk()
+    survivor = tk.StringVar(other, value="other interpreter")
+    held = [tk.StringVar(root, value="closed interpreter")]
+    exceptions = []
+    monkeypatch.setattr(sys, "unraisablehook", exceptions.append)
+    root.destroy()
+    worker = threading.Thread(target=held.clear)
+    worker.start()
+    worker.join(timeout=3)
+    try:
+        assert not worker.is_alive()
+        assert not exceptions, [str(event.exc_value) for event in exceptions]
+        assert survivor.get() == "other interpreter"
+    finally:
+        other.destroy()

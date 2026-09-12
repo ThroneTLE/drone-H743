@@ -1,0 +1,36 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+___________ test_closed_panel_variables_can_be_released_by_a_worker ___________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001B5E25D5AC0>
+
+    def test_closed_panel_variables_can_be_released_by_a_worker(monkeypatch):
+        """Late Python collection must not execute Tcl after the UI closes."""
+        import sys
+        import threading
+        import tkinter as tk
+        from tools.drone_tcp_panel import DronePanel
+    
+        root = DronePanel()
+        other = tk.Tk()
+        survivor = tk.StringVar(other, value="other interpreter")
+        held = [tk.StringVar(root, value="closed interpreter")]
+        exceptions = []
+        monkeypatch.setattr(sys, "unraisablehook", exceptions.append)
+        root.destroy()
+        worker = threading.Thread(target=held.clear)
+        worker.start()
+        worker.join(timeout=3)
+        try:
+            assert not worker.is_alive()
+>           assert not exceptions, [str(event.exc_value) for event in exceptions]
+E           AssertionError: ['main thread is not in main loop']
+E           assert not [UnraisableHookArgs(exc_type=<class 'RuntimeError'>, exc_value=RuntimeError('main thread is not in main loop'), exc_traceback=<traceback object at 0x000001B5E23D5C80>, err_msg=None, object=<function Variable.__del__ at 0x000001B5DDF23F60>)]
+
+tests\test_tk_review_regressions.py:325: AssertionError
+Physical serial open attempts: 0
+Flashing/probe tool invocation attempts: 0
+Tk display available at session start: True; Tk roots created: 2
+=========================== short test summary info ===========================
+FAILED tests/test_tk_review_regressions.py::test_closed_panel_variables_can_be_released_by_a_worker
+1 failed in 3.25s

@@ -24,6 +24,12 @@ RC_WIZARD_TRACE_LOG = LOG_DIR / "rc_wizard.log"
 
 
 class PanelStateMixin:
+    def destroy(self) -> None:
+        from .tk_lifecycle import release_variables
+        interpreter = self.tk
+        super().destroy()
+        release_variables(interpreter)
+
     def _load_panel_state(self) -> dict[str, object]:
         try:
             raw = PANEL_STATE_PATH.read_text(encoding="utf-8")

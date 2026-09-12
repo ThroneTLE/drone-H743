@@ -151,6 +151,7 @@ flowchart TB
 
 | 日期 | 范围 | 证据 | 结果 | 对状态的影响 |
 |---|---|---|---|---|
+| 2026-09-12 | 横切修复：窗口销毁后 Tk 变量被后台线程回收 | `data/analysis/current/2026-09-12/tk-lifetime-report.md`、red/green/verified 原文；真实窗口关闭后后台释放变量1 failed→独立1 passed，相关19 passed | 原来只销毁控件，没在UI线程清理仍存活变量；新增按解释器身份释放，另一窗口变量保留；不改通信超时/性能门，独立fix | 关闭本次联合回归阻塞；不改变实机门 |
 | 2026-09-12 | R-DSHOT-1 自查横切修复：DMA 完成/错误同次 IRQ 漏锁存 | `data/analysis/dshot/2026-09-12/self-review.md`、`self-review-red.txt`、`self-review-focused.txt`；真实 vendor IRQ 分支复现 2 failed/10 passed，修后相关 35 passed，双协议 Debug 零警告 | 原测试独立注入回调漏掉 HAL 先 TC 后 Error 的顺序；完成回调现先查 ErrorCode，错误不记完成并锁存关闭 | 独立 fix；不改控制律、阈值、Core 或历史数据 |
 | 2026-09-12 | R-DSHOT-1 / R-CURRENT-1 联合自查回归缺口 | 同目录 `self-review-full-dshot.txt`、`self-review-full-final.txt`：两轮各 1 failed/1526 passed，分别为 Dashboard 10.64ms>10ms 和 Scope 8.25ms>5ms；两项合并复跑 `self-review-ui-final.txt` 2 passed | 专项及双协议构建通过，但全量性能门未闭合；保留失败原文和门限，不把单项重跑等同全量通过；未证明桌面负载为根因，硬件调用为零 | 两项 REQ 保持待审核并明确回归缺口；不改变实机验收门 |
 | 2026-09-12 | R-CURRENT-1 电流采样软件交审 | `data/analysis/current/2026-09-12/final-report.md` 与 `validation.json`；ADC1/PC1 由 CubeMX 生成；全量 1525 passed，专项 26 passed，DSHOT300/PWM 两种 Debug 零警告；测试护栏无实机调用 | Driver/BSP/后台采样与 STATUS? CURRENT 快照接通；标称 12.75 mV/A、3.3 V 参考，明确未校准；失败/过期/饱和不伪报零电流 | R-CURRENT-1 置待审核；不改变任何实机验收门或保护条件 |
