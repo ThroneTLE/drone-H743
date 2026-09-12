@@ -153,6 +153,7 @@ flowchart TB
 
 | 日期 | 范围 | 证据 | 结果 | 对状态的影响 |
 |---|---|---|---|---|
+| 2026-09-12 | R-DSHOT/R-CURRENT 已同步原工程并验证保留工作 | `data/analysis/dshot/2026-09-12/main-merge-report.md`、main-merge-validation.json、main-merge-full.txt：1593 passed，无warnings/skips；专项77 passed；双协议Debug零警告 | feat/micoair743v2已快进到815450a7；原39个改动文件备份后恢复，电流计/状态灯及维护分组并存，合并冲突清零；验证绑定HEAD加保留工作树，未烧录 | 原目录整合已执行；原有工作仍未提交，各REQ仍待审核，不改变实机门 |
 | 2026-09-12 | 合并回归横切修复：Tk图像/字体及控件循环保留解释器 | `data/analysis/dshot/2026-09-12/merge-tcl-report.md`、merge-image-red.txt复现、merge-tcl-focused.txt 31 passed、merge-full-final.txt 1558 passed无warnings；双协议Debug零警告 | 在UI线程释放所属资源并解除关闭控件的解释器引用；另一窗口保留；不禁用GC、不增加超时/性能门限 | 已提交基线整合候选通过；原工程仍在并发编辑，尚未同步；各REQ仍待审核 |
 | 2026-09-12 | R-DSHOT/R-CURRENT 合回原工程的候选整合 | `data/analysis/dshot/2026-09-12/merge-preparation.md`、merge-full.txt：2 failed/1555 passed/15 warnings；双协议Debug零警告 | 930f7a35与d5ed69d3已在独立整合树消除文本冲突；GUI性能与Image回收错误待处理；原目录仍有作者确认的并发编辑，未同步 | 各REQ仍待审核；不宣称原工程合并完成，不改变实机门 |
 | 2026-09-12 | 横切修复：窗口销毁后 Tk 变量被后台线程回收 | `data/analysis/current/2026-09-12/tk-lifetime-report.md`、red/green/verified 原文；真实窗口关闭后后台释放变量1 failed→独立1 passed，相关19 passed | 原来只销毁控件，没在UI线程清理仍存活变量；新增按解释器身份释放，另一窗口变量保留；不改通信超时/性能门，独立fix | 关闭本次联合回归阻塞；不改变实机门 |

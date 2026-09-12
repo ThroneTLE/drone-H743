@@ -1,0 +1,6 @@
+........................................................................ [ 93%]
+.....                                                                    [100%]
+Physical serial open attempts: 0
+Flashing/probe tool invocation attempts: 0
+Tk display available at session start: True; Tk roots created: 25
+77 passed in 81.62s (0:01:21)

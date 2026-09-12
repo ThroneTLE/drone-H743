@@ -1,0 +1,63 @@
+{
+  "format": "drone-h743-main-merge-validation",
+  "schema": 1,
+  "created_at": "2026-09-12T18:46:31.738338+00:00",
+  "verdict": "PASS",
+  "scope": "host-only; HEAD plus preserved uncommitted work",
+  "head": "815450a736f4305a1bca76c74c0fa6cc27288de3",
+  "backup_stash": "e7a5c6433576d9f171ec186ee1d14f689c196a64",
+  "findings": [
+    "Original directory now contains DShot/current/V11 code.",
+    "Preexisting LED mapping, configuration V21 and maintenance UI retained as uncommitted work.",
+    "No unresolved merge conflicts; no hardware operations."
+  ],
+  "pytest": "1593 passed in 365.76s (0:06:05)",
+  "warnings": 0,
+  "hardware_operations": 0,
+  "source_hashes": {
+    ".agents/skills/drone-h743-project/scripts/update_repository_index.py": "b4d024fd52ec3d326353471e5ef1c9d0954b0f176c0873bbe366fbfc5b18ebb8",
+    "App/Inc/app_control_config_store.h": "5c05d362720d4c06ae0d09c464da4c158f2dbbad2b70eeced93eb5ca93905619",
+    "App/Inc/app_control_internal.h": "e0f9736d754546c10d326e1c0bc04b58471e5677ab7a2eaf3dfe2c954db31b81",
+    "App/Inc/app_led_config.h": "44f81f374c075ca86b8e36e2426dbea11fceb434b6436505dfcbf949d15a18e8",
+    "App/Src/app_cmd_fallback.c": "b4bb1cac8fc67aac6bcf85995d9407a09800e9247c62c8aa5fc14b2179114594",
+    "App/Src/app_cmd_ledmap.c": "67581aa54025b062b8700f344327c0c24fc57660b12811d2be115af566821e01",
+    "App/Src/app_control_config_store.c": "42f2e004ea09c2e14bd569a9f499ee839970c4330ee2cbb12165c3f0ec717793",
+    "App/Src/app_led.c": "063f83f3250196f9aa069a502379c53478caff3ba5a5be4b1099737039b803fe",
+    "App/Src/app_led_config.c": "a61a4c68e41d930f5b8c4819ff3597b6dbc79711dd6b0296b5e8ff372d3e2803",
+    "CMakeLists.txt": "c342dea5b9c1f1cdbb38f850bd4045743e9cee677c44f2705ed1d10751c79cca",
+    "tests/test_airframe_model_contract.py": "e6962d9f2805bcf663d01e3f430ac66891ddf9f5c8faddf9c6814eff2289bd18",
+    "tests/test_config_store_ab_slots.py": "b76ff41a090170989ae8cd126cc1dad94f1a4ae3df982ec384ee9dd525d67928",
+    "tests/test_control_config_v19.py": "af0256107ab174eda3a2025054b0448cf8c498e69e6196b780033a2a982081ea",
+    "tests/test_control_loop_blocking_contract.py": "93280f15c36ff9d02060c8a00784987eabcc7d8f004743bfacefe06b2f9c13b0",
+    "tests/test_drone_validation_v0.py": "6097b403da8f115bcfef9647f7997bcc78f5c3130afbd01b422db4e242df9be7",
+    "tests/test_led_config_contract.py": "670df5a633494ea51524958e3da08c94c4629b2040d6a046ef22493601bb6dbb",
+    "tests/test_led_map_page.py": "ad11f0ac863bc9e2ea7f17cdb64b2ebcce6590a9d9a0e8d4af44526cdb20822f",
+    "tests/test_led_status_contract.py": "93c24cc9b9c47ae784751b1ee9e6bfe569ee5fb0e993ba15cb6d61d840f5f5e6",
+    "tests/test_panel_qa_harness.py": "25314aa3e6d17999c31d7024cc96000030d337b14ec46396ccdd8e71b1a5a69c",
+    "tests/test_rc_mapping.py": "5f94d2cd2f2cf28e54ab5771dfca57dc50fcfaa13942ea787146baefae0b86f5",
+    "tests/test_servo_cal_contract.py": "d473f89f8cb692422511b469323c8dda230ce89dff70b2cfb112e9ebbd4da1ea",
+    "tests/test_servo_debug_theme.py": "226787a456d4fb1e3402c357be3587526e24841b058ab352899167e9b66e6a38",
+    "tests/test_tk_v_revamp.py": "cff486fb75b689555e6333f8fe2ced406ae90cbb49712daf4708ed56755f2a7a",
+    "tools/drone_tcp_panel.py": "88033dd8e15700a995ba71cfe9c53a5fd52056636ca5dd17e62524885ade25a6",
+    "tools/panel_lib/board_line_hooks.py": "0051af3472833a65935d97c0e9b040cace59b5764357c6b44996b37ff9529502",
+    "tools/panel_lib/pages/led_map.py": "8bb0af7ed3cb0b13f4cc692b8bdd2ca8d556e844daf9d32343036cb64b949892",
+    "tools/panel_lib/parameter_editor.py": "effcdb3854177ddfa85bc05bb85dc653a7282945a7fe8a00ee983f4a1b9f4bad",
+    "tools/panel_lib/shell.py": "f99453dd874e8fd1747574210707d586b01012a65d17258b4b048b5497bcd0bc",
+    "tools/panel_lib/viewport.py": "e5c71f1db4d2f9902439e0b970d51ebab15a4752296d71d56f375ebacfb39665",
+    "tools/panel_qa/harness.py": "cb4578396c4b07ad4127257329a1ef8f0af099dfae541c217ad0f2730896a03a"
+  },
+  "profiles": {
+    "DSHOT300": {
+      "build_type": "Debug",
+      "elf_sha256": "f51df24c5cb25597def45abad0556199fc729c661e740e55d8a0b300b509ba48",
+      "build_log": "main-merge-build-fresh.txt",
+      "warnings": 0
+    },
+    "PWM": {
+      "build_type": "Debug",
+      "elf_sha256": "b490dc27d7b73b0623d42f5805e1642735791983dabb01ca53041569d4f556e0",
+      "build_log": "main-merge-build-pwm.txt",
+      "warnings": 0
+    }
+  }
+}
