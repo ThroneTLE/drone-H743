@@ -1,5 +1,6 @@
 """Separate horizontal, vertical and attitude P-PID parameter workspaces."""
-from .dashboard.layout import Workspace, TileSpec, TILE_WAVE, TILE_PARAM
+from .dashboard.layout import (CONTROLLER_TUNING_WORKSPACE, Workspace, TileSpec,
+                               TILE_WAVE, TILE_PARAM)
 try:
     from ..sim_xz.control_catalog import PARAMETER_GROUPS
 except ImportError:  # Direct tools/drone_tcp_panel.py entrypoint.
@@ -23,5 +24,9 @@ def simulation_workspaces():
                   for i, (name, label) in enumerate(signals)]
         # ephemeral：这些工作区绑的是 sim_* 通道，而它们映射到真实的 coax.* 参数。
         # 标成不落盘，接真机时就不可能在仪表盘里翻到它们。
-        workspaces.append(Workspace(title, tiles, ephemeral=True))
+        #
+        # parent：它们是"控制器调参"的几种视图，不是和它平级的工作区。选择条据此
+        # 把它们收到第二行，仿真没开时那一行整个不显示。
+        workspaces.append(Workspace(title, tiles, ephemeral=True,
+                                    parent=CONTROLLER_TUNING_WORKSPACE))
     return workspaces

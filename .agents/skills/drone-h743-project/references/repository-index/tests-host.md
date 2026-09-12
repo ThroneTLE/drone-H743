@@ -4,7 +4,7 @@
 
 Read this shard only when you need existing ground-station/tooling coverage or must choose focused regression tests.
 
-Source snapshot: `7e64407de9d2`. Indexed files: 37.
+Source snapshot: `f4c0d88db737`. Indexed files: 38.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -12,6 +12,7 @@ Source snapshot: `7e64407de9d2`. Indexed files: 37.
 | `tests/test_dashboard_page.py` | R-T1-5：“状态监视”工作台页（`panel_lib/pages/dashboard.py` + `dashboard/`）。 全部用真实的 `DronePanel()` + FakeTransport 驱动，照 `test_flow… | `test_the_workbench_is_the_first_tab_and_selected_by_default` (+62) |
 | `tests/test_dashboard_record_service.py` | R-T1-6（TK-05）：录制的文件完整性、后台写入与失败恢复。 对应改版报告 N10–N13。每一条都先在 `tools/panel_qa/baseline_observations.py` 里作为 **基线观测**记录下修复前的事实… | `test_a_second_recording_in_the_same_second_does_not_destroy_the_first` (+22) |
 | `tests/test_dashboard_resize.py` | 状态监视工作台的窗口 resize 合并器。 这个层不能靠肉眼判“似乎顺了一点”：Tk 拖动窗口时会连续发出大量 Configure 事件。这里用无 Tk 的假调度器钉住三件事：同一个 12 列格宽的像素抖动不重排、 多个事件合成一次布局… | `test_resize_skips_pixel_events_that_do_not_change_a_grid_cell` (+2) |
+| `tests/test_dashboard_workspace_tree.py` | 仿真的三个 P—PID 参数页是"控制器调参"的子视图，不是和它平级的工作区。 作者看到的界面是这样的（截图）： 状态监视 ○飞行监控 ○控制器调参 ○水平平动·P—PID ○高度·P—PID ◉俯仰姿态·P—PID 五个平级单选钮，而且… | `test_simulation_workspaces_declare_the_tuning_workspace_as_parent` (+13) |
 | `tests/test_flight_log_rerun_replay.py` | — | `test_latest_csv_and_segment_helpers` (+6) |
 | `tests/test_ground_calibration.py` | — | `test_calibration_navigation_uses_function_names_instead_of_version_codes` (+20) |
 | `tests/test_log_pages.py` | Existing log decoders/analysis through the new embedded Tk workspace | `test_import_waveform_and_analysis_reuse_existing_tools` (+8) |
@@ -35,7 +36,7 @@ Source snapshot: `7e64407de9d2`. Indexed files: 37.
 | `tests/test_simulation_controller_bridge.py` | — | `test_bridge_exposes_real_runtime_parameters` (+2) |
 | `tests/test_simulation_experiments.py` | — | `test_three_approved_experiments_produce_five_state_channels` (+1) |
 | `tests/test_simulation_full_cascade.py` | The simulator exposes and executes the actual planar P-PID-P-PID cascade | `test_full_gains_are_bound_to_existing_c_parameters_and_visible` (+4) |
-| `tests/test_simulation_isolation.py` | 仿真调参不许污染真机调参。 风险是具体的：仿真的调参滑块绑 `sim_*` 通道，而 tools/sim_xz/control_catalog.py 第 6 列把它们一一映射到真实的 `coax.*` 参数。仿真工作区一旦留在仪表盘布局里… | `test_simulation_workspaces_are_marked_ephemeral` (+3) |
+| `tests/test_simulation_isolation.py` | 仿真调参不许污染真机调参。 风险是具体的：仿真的调参滑块绑 `sim_*` 通道，而 tools/sim_xz/control_catalog.py 第 6 列把它们一一映射到真实的 `coax.*` 参数。仿真工作区一旦留在仪表盘布局里… | `test_simulation_workspaces_are_marked_ephemeral` (+6) |
 | `tests/test_simulation_launcher.py` | Actual panel startup, loopback child lifecycle, and no hardware switching | `test_current_quick_editor_roundtrips_all_24_gains_over_real_tcp` (+5) |
 | `tests/test_simulation_physics.py` | — | `test_hover_does_not_accumulate_vertical_acceleration` (+4) |
 | `tests/test_simulation_protocol.py` | — | `test_frame_decoder_accepts_fragmented_real_protocol_frame` (+4) |

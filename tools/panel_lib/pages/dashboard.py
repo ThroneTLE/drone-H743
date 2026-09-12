@@ -49,6 +49,11 @@ from ..dashboard.tiles import (
     TileContext,
     build_tile,
 )
+from ..dashboard.workspace_bar import (
+    render_view_row,
+    render_workspace_bar,
+    workspace_tree,
+)
 from ..proto import PROTO_REQ_PARAM_SET, parse_kv
 from ..record_service import LinkIdentity, RecordSchema, TelemetryRecorder
 from ..scope import SCOPE_RENDER_PERIOD_MS
@@ -122,10 +127,12 @@ class DashboardPageMixin:
         self.dashboard_host = None
         self.dashboard_stat_vars: dict[str, tk.StringVar] = {}
         self.dashboard_workspace_var = None
+        self.dashboard_workspace_root_var = None
         self.dashboard_edit_var = None
         self.dashboard_record_var = None
         self.dashboard_hint_var = None
         self.dashboard_workspace_bar = None
+        self.dashboard_workspace_view_bar = None
         self.dashboard_context = PanelTileContext(self)
         self.dashboard_editor = None
         self.dashboard_resize = None
@@ -206,12 +213,20 @@ class DashboardPageMixin:
 
         self.dashboard_workspace_bar = ttk.Frame(bar)
         self.dashboard_workspace_bar.pack(side=tk.LEFT, padx=(12, 0))
+        # 一级工作区用自己的变量：子视图被选中时，第一行仍要停在它所属的那个
+        # 一级工作区上，而 dashboard_workspace_var 这时已经指向子视图了。
         self.dashboard_workspace_var = tk.IntVar(value=0)
+        self.dashboard_workspace_root_var = tk.IntVar(value=0)
 
         self.dashboard_record_var = tk.StringVar(value="未录制")
         ttk.Label(bar, textvariable=self.dashboard_record_var, style="Mono.TLabel").pack(
             side=tk.RIGHT
         )
+
+        # 子视图行常驻但通常是空的（空 frame 只占 1 px）。留着不 pack_forget，是为了
+        # 不必在重新显示时算它该插回哪一行——这条工具条上面下面都有别的行。
+        self.dashboard_workspace_view_bar = ttk.Frame(parent)
+        self.dashboard_workspace_view_bar.pack(fill=tk.X)
 
         actions = ttk.Frame(parent)
         actions.pack(fill=tk.X, pady=(0, 6))
@@ -353,18 +368,36 @@ class DashboardPageMixin:
 
     def _dashboard_rebuild_workspace_bar(self) -> None:
         bar = self.dashboard_workspace_bar
-        if bar is None:
+        view_bar = self.dashboard_workspace_view_bar
+        if bar is None or view_bar is None:
             return
-        for child in bar.winfo_children():
-            child.destroy()
-        for index, workspace in enumerate(self.dashboard_layout.workspaces):
-            ttk.Radiobutton(
-                bar, text=workspace.name, value=index,
-                variable=self.dashboard_workspace_var,
-                command=self._dashboard_switch_workspace,
-            ).pack(side=tk.LEFT, padx=(0, 6))
+        render_workspace_bar(
+            bar, view_bar,
+            workspace_tree(self.dashboard_layout.workspaces,
+                           int(self.dashboard_workspace_var.get())),
+            root_var=self.dashboard_workspace_root_var,
+            view_var=self.dashboard_workspace_var,
+            on_root=self._dashboard_select_root,
+            on_view=self._dashboard_switch_workspace,
+        )
 
-    def _dashboard_switch_workspace(self) -> None:
+    def _dashboard_select_root(self, index: int) -> None:
+        """点第一行：回到这个一级工作区自己的视图，并**只**重画第二行。
+
+        换了父，第二行的内容就全变了（或者整行该消失）；第一行不重画，因为这次
+        调用正来自第一行的某个单选钮。
+        """
+        self._dashboard_switch_workspace(index)
+        render_view_row(
+            self.dashboard_workspace_view_bar,
+            workspace_tree(self.dashboard_layout.workspaces, index),
+            view_var=self.dashboard_workspace_var,
+            on_view=self._dashboard_switch_workspace,
+        )
+
+    def _dashboard_switch_workspace(self, index: int | None = None) -> None:
+        if index is not None:
+            self.dashboard_workspace_var.set(index)
         self.dashboard_layout.active = int(self.dashboard_workspace_var.get())
         self._dashboard_rebuild_tiles()
         # 掩码跟着工作区走：看不见的工作区没有理由占数传带宽。

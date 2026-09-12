@@ -34,6 +34,9 @@ TILE_SECTION = "section"
 
 LAYOUT_VERSION = 1
 
+# 仿真通道的前缀。只在本机模拟器跑着的时候存在，接真机时一条都没有。
+SIMULATION_CHANNEL_PREFIX = "sim_"
+
 
 @dataclass(frozen=True)
 class TileGeometry:
@@ -184,6 +187,14 @@ class Workspace:
     # 滑块就是往飞机上写参数。靠"停止时记得移除"是不够的——进程被杀、断电、
     # 异常退出都不会走到那条路径，而落盘可能已经发生过了。
     ephemeral: bool = False
+    #
+    # 归属：本工作区是哪个一级工作区下面的一个视图（填父工作区的 `name`）。
+    # 选择条据此分两行，见 `dashboard/workspace_bar.py`。
+    #
+    # **不进 JSON**（`to_json` 里没有这一项）。目前只有 ephemeral 的仿真工作区用它，
+    # 而那些工作区本来就永不落盘；给一个落不了盘的字段加序列化，只会多出一条
+    # "写得进去、读不回来"的路径要维护。
+    parent: str | None = None
 
     def rows_used(self) -> int:
         return max((tile.row + tile.rowspan for tile in self.tiles), default=1)
@@ -223,6 +234,24 @@ class Workspace:
         return cls(name=name, tiles=tiles)
 
 
+def is_stale_simulation_view(workspace: "Workspace") -> bool:
+    """这个工作区是不是一份**遗留在状态文件里**的仿真视图。
+
+    `Workspace.ephemeral` 只挡得住"今天写进去"，挡不住"昨天已经写进去了"：
+    `from_json` 造出来的工作区一律 `ephemeral=False`，所以在 ephemeral 这条规矩
+    之前漏进状态文件的那几个，会一次次被读回来、又一次次被原样写回去，永远出不去。
+    作者截图里那三个"…· P—PID"就是这么来的——当时连飞控都没接，三页全是"通道不存在"。
+
+    判据是**绑定**而不是名字：名字能被改，而"这一页只认 sim_* 通道"这件事改不了。
+    要求 `all()` 而不是 `any()`：用户自己搭的工作区里混进一张仿真卡片，整页不该
+    被删掉——那张卡片在真机上只是显示"通道不存在"，删掉整页的代价大得多。
+    """
+    channels = workspace.bound_channels()
+    return bool(channels) and all(
+        name.startswith(SIMULATION_CHANNEL_PREFIX) for name in channels
+    )
+
+
 @dataclass
 class DashboardLayout:
     workspaces: list[Workspace] = field(default_factory=list)
@@ -256,13 +285,22 @@ class DashboardLayout:
         workspaces_raw = raw.get("workspaces", [])
         if not isinstance(workspaces_raw, list):
             return None
-        workspaces = [w for w in (Workspace.from_json(e) for e in workspaces_raw) if w]
-        if not workspaces:
-            return None
+        parsed = [w for w in (Workspace.from_json(e) for e in workspaces_raw) if w]
         try:
             active = int(raw.get("active", 0))
         except (TypeError, ValueError):
             active = 0
+        # 载入是清掉历史遗留仿真视图的唯一时机：写出去那一侧已经由 ephemeral 挡住，
+        # 但挡不住存量。这里不清，它们就会被原样写回去，一辈子留在选择条上。
+        kept = [index for index, w in enumerate(parsed) if not is_stale_simulation_view(w)]
+        workspaces = [parsed[index] for index in kept]
+        if not workspaces:
+            return None
+        # active 按存活项重新编号，而不是简单钳一下：被删的正好是选中项时，
+        # 钳出来的下标会落到一个完全无关的工作区上，用户看到的是"我的布局怎么变了"。
+        if parsed:
+            active = max(0, min(active, len(parsed) - 1))
+        active = min(sum(1 for index in kept if index < active), len(workspaces) - 1)
         layout = cls(workspaces=workspaces, active=active)
         layout.active_workspace()       # 顺手把 active 钳进范围
         return layout
@@ -309,6 +347,12 @@ PARAM_CHANNEL_NAMES = tuple(
     name for _, names in PARAM_LOOP_GROUPS for name in names
 )
 
+# 两个出厂工作区的名字。取成常量是因为"控制器调参"还被当作父工作区的**标识**用
+# （仿真的三个 P—PID 视图挂在它下面，见 `Workspace.parent`）；名字散成字面量，
+# 改一处漏一处的结果是那三个视图默默退回一级，正好回到本次要修的样子。
+FLIGHT_MONITOR_WORKSPACE = "飞行监控"
+CONTROLLER_TUNING_WORKSPACE = "控制器调参"
+
 WAVE_COLSPAN, WAVE_ROWSPAN = 6, 5
 CARD_COLSPAN, CARD_ROWSPAN = 3, 2
 SECTION_ROWSPAN = 1
@@ -323,7 +367,7 @@ def flight_monitor_workspace() -> Workspace:
     眼睛读刻度（作者看过 R-T1-3 截图后的原话）。
     """
     return Workspace(
-        name="飞行监控",
+        name=FLIGHT_MONITOR_WORKSPACE,
         tiles=[
             TileSpec(TILE_WAVE, 0, 0, WAVE_COLSPAN, WAVE_ROWSPAN,
                      ["roll", "pitch", "yaw"], {"title": "姿态角"}),
@@ -369,7 +413,7 @@ def controller_tuning_workspace() -> Workspace:
             ))
         card_rows = -(-len(names) // PARAM_CARDS_PER_ROW)
         row += card_rows * CARD_ROWSPAN
-    return Workspace(name="控制器调参", tiles=tiles)
+    return Workspace(name=CONTROLLER_TUNING_WORKSPACE, tiles=tiles)
 
 
 def default_layout() -> DashboardLayout:
@@ -380,24 +424,27 @@ def default_layout() -> DashboardLayout:
 
 
 PRESET_BUILDERS = {
-    "飞行监控": flight_monitor_workspace,
-    "控制器调参": controller_tuning_workspace,
+    FLIGHT_MONITOR_WORKSPACE: flight_monitor_workspace,
+    CONTROLLER_TUNING_WORKSPACE: controller_tuning_workspace,
 }
 
 
 __all__ = [
     "CARD_COLSPAN",
     "CARD_ROWSPAN",
+    "CONTROLLER_TUNING_WORKSPACE",
     "DASHBOARD_COLUMNS",
     "DASHBOARD_MAX_ROWS",
     "DASHBOARD_ROW_HEIGHT",
     "DashboardLayout",
+    "FLIGHT_MONITOR_WORKSPACE",
     "LAYOUT_VERSION",
     "PARAM_CARDS_PER_ROW",
     "PARAM_CHANNEL_NAMES",
     "PARAM_LOOP_GROUPS",
     "PRESET_BUILDERS",
     "SECTION_ROWSPAN",
+    "SIMULATION_CHANNEL_PREFIX",
     "TILE_ATTITUDE",
     "TILE_BUTTON",
     "TILE_CHANNELS",
@@ -417,4 +464,5 @@ __all__ = [
     "default_layout",
     "find_free_slot",
     "flight_monitor_workspace",
+    "is_stale_simulation_view",
 ]
