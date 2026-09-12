@@ -64,6 +64,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     App/Src/app_current.c
     BSP/Src/bsp_dshot.c
     App/Src/app_esc_diag.c
+    App/Src/app_esc_log.c
     Driver/Src/drv_imu.c
     Driver/Src/drv_bmi088.c
     Driver/Src/drv_bmi088_tables.c

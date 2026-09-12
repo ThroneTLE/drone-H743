@@ -90,8 +90,8 @@ def test_sector_geometry_and_region_safety_contracts_stay_4k_friendly() -> None:
 
     assert "#define APP_FLIGHT_LOG_SECTOR_HEADER_SIZE 256U" in header
     assert "#define APP_FLIGHT_LOG_RATE_HZ            125U" in header
-    assert "#define APP_FLIGHT_LOG_VERSION            10U" in source
-    assert "_Static_assert(sizeof(APP_FlightLogRecord) == 776U" in source
+    assert "#define APP_FLIGHT_LOG_VERSION            11U" in source
+    assert "_Static_assert(sizeof(APP_FlightLogRecord) == 808U" in source
     assert "header->sector_size = APP_FLASH_SERVICE_SECTOR_SIZE;" in source
     assert "#define APP_FLASH_SERVICE_SECTOR_SIZE           DRV_GD25Q32_SECTOR_SIZE" in app_service
     assert "#define DRV_GD25Q32_SECTOR_SIZE           4096U" in flash_driver

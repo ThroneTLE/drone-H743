@@ -215,14 +215,14 @@ def test_parse_record_and_csv_fields(tmp_path) -> None:
 
 
 def test_v10_record_exposes_full_cascade_debug() -> None:
-    values = list(flog.RECORD_STRUCT.unpack(bytes(flog.RECORD_SIZE)))
+    values = list(flog.V10_RECORD_STRUCT.unpack(bytes(flog.V10_RECORD_SIZE)))
     values[0] = flog.RECORD_MAGIC
     values[1] = 10
-    values[2] = flog.RECORD_SIZE
-    raw = flog.RECORD_STRUCT.pack(*values)
+    values[2] = flog.V10_RECORD_SIZE
+    raw = flog.V10_RECORD_STRUCT.pack(*values)
     values[-1] = flog.crc32(raw[:-4] + b"\x00\x00\x00\x00")
 
-    row = flog.parse_record(flog.RECORD_STRUCT.pack(*values))
+    row = flog.parse_record(flog.V10_RECORD_STRUCT.pack(*values))
 
     assert row is not None
     for name in (
@@ -389,7 +389,7 @@ def test_parse_v5_record_without_flow_and_bus_diagnostics() -> None:
 
 
 def make_sector_header(
-    *, version: int = 10, record_size: int = flog.RECORD_SIZE,
+    *, version: int = 11, record_size: int = flog.RECORD_SIZE,
     params_struct=flog.PARAMS_STRUCT, param_names=flog.PARAM_NAMES,
 ) -> bytes:
     params = [float(i) for i in range(len(param_names))]

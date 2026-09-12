@@ -23,7 +23,7 @@ def with_tag(header, tag):
     (b"\xff" * 4, "legacy_unspecified", "us"),
 ])
 def test_tagged_v10_and_legacy_v10(tag, protocol, unit):
-    original = make_sector_header()
+    original = make_sector_header(version=10, record_size=flog.V10_RECORD_SIZE)
     parsed = flog.parse_sector_header(with_tag(original, tag), 0)
     assert parsed["esc_protocol"] == protocol
     assert parsed["motor_command_unit"] == unit
@@ -47,9 +47,9 @@ def test_firmware_marker_location_and_crc_order_are_pinned():
 
 
 def test_protocol_metadata_follows_records_into_csv(tmp_path):
-    header = with_tag(make_sector_header(), b"\xd5\x01\x02\0")
-    record = bytearray(flog.RECORD_SIZE)
-    struct.pack_into("<IHH", record, 0, flog.RECORD_MAGIC, 10, flog.RECORD_SIZE)
+    header = with_tag(make_sector_header(version=10, record_size=flog.V10_RECORD_SIZE), b"\xd5\x01\x02\0")
+    record = bytearray(flog.V10_RECORD_SIZE)
+    struct.pack_into("<IHH", record, 0, flog.RECORD_MAGIC, 10, flog.V10_RECORD_SIZE)
     struct.pack_into("<I", record, len(record) - 4, flog.crc32(bytes(record)))
     image = header + bytes(record)
     image += b"\xff" * (flog.SECTOR_SIZE - len(image))

@@ -95,8 +95,8 @@ def test_flight_log_v7_records_flow_servo_bus_attitude_ident_and_z_integral() ->
     source = read("App/Src/app_flight_log.c")
     receiver = read("tools/flight_log_receive.py")
 
-    assert "sizeof(APP_FlightLogRecord) == 776U" in source
-    assert "#define APP_FLIGHT_LOG_VERSION            10U" in source
+    assert "sizeof(APP_FlightLogRecord) == 808U" in source
+    assert "#define APP_FLIGHT_LOG_VERSION            11U" in source
     assert "#define APP_FLIGHT_LOG_VERSION_V9         9U" in source
     assert "#define APP_FLIGHT_LOG_VERSION_V7         7U" in source
     assert "float desired_attitude_rpy_rad[3];" in header

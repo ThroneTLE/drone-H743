@@ -85,8 +85,9 @@ flowchart TB
 | REQ | 节点 | 需求 | 验收判据 | 状态 |
 |---|---|---|---|---|
 | R-CURRENT-2 | 作者授权附加需求 | 〔码〕传感器页增加 AM32 电流计回读，复用 STATUS? 和连接会话；模式默认+tk-ui+protocol-telemetry | 真实固件 CURRENT 格式到真实 Tk 页面；断连/换会话/非法/缺失/过期不伪报有效；显示标称未校准、原始 ADC、电压、年龄、错误；完整回归与 Debug | 待审核（回读/会话/布局/全量回归通过；未实机回读） |
+| R-DSHOT-2 | 作者授权附加需求 | 〔码〕解锁录制的 FlightLog 增加逐条 DShot 发送诊断；模式默认+dshot-esc+protocol-telemetry | 版本化记录、真实发送码/掩码/故障及计数，不把 DMA 完成当电调确认；旧日志无新字段而非补零；真实 C 编码对拍 Python 解码/CSV、双协议 Debug 与完整回归 | 待审核（V11逐条诊断与旧版兼容、双协议构建及全量回归通过；待实机日志复核） |
 | R-CURRENT-1 | 作者授权附加需求 | 〔码〕AM32 55A Curr/PC1 电流采样 Driver 与 ADC1 BSP，后台低频测量、STATUS? 诊断；默认 REQ + protocol-telemetry；作者确认原配 Curr/GND 排线 | 原始 ADC/标称比例/未校准标识明确；ADC 生成门、边界/超时/新鲜度测试、全量 pytest 与 Debug；不新增 DMA、不接入安全判据，实测校准归审核者 | 待审核（联合全量回归已通过；标称换算未实测校准） |
-| R-DSHOT-1 | 作者授权附加需求 | 〔码〕移植 PX4 单向 DShot300：M4/M3 电调、M7/M8 PWM 舵机；编译选择 DSHOT300/PWM；模式 dshot-esc，诊断接入时加 protocol-telemetry | 先交付纯 Driver/上游对拍/CubeMX 清单；作者生成后接入 TIM1_UP DMA、成对输出、物理禁用与诊断；最终双协议全量 pytest、Debug、索引；实机归审核者 | 待审核（自查修复 DMA 错误漏锁存；本次全量 GUI 性能门未闭合，未烧录、待实机复核） |
+| R-DSHOT-1 | 作者授权附加需求 | 〔码〕移植 PX4 单向 DShot300：M4/M3 电调、M7/M8 PWM 舵机；编译选择 DSHOT300/PWM；模式 dshot-esc，诊断接入时加 protocol-telemetry | 先交付纯 Driver/上游对拍/CubeMX 清单；作者生成后接入 TIM1_UP DMA、成对输出、物理禁用与诊断；最终双协议全量 pytest、Debug、索引；实机归审核者 | 待审核（DMA 错误锁存修复后联合全量已通过；未烧录、待实机复核） |
 | R-PARAM-1 | 作者授权附加需求 | 〔码〕作者明确要求上位机全部在线旧参数迁移，固件拒绝旧名称；模式protocol-telemetry+tk-ui；允许撤销旧PID/滑块命令和旧增益遥测绑定，历史存储读取保留 | 当前四环参数端到端一致；旧名称读写拒绝；历史配置不重解释；离线契约、全量pytest、Debug与索引 | 待审核 |
 | R-SIM-3 | 作者授权附加需求 | 〔码〕补全二维仿真的P–PID–P–PID及高度P–PID，X/Z完整增益回显与高度阶跃；保留真实控制律、执行器延迟/方向动态/推力曲线与饱和；模式simulation+tk-ui | 12项实际C增益可调与回读；6项I/D分别影响C输出；高度阶跃及限速行为；实际上位机子进程高度场景；模型来源/估计边界、截图与离线测试 | 待审核 |
 | R-SIM-2 | 作者授权附加需求 | 〔码〕上位机仿真标题栏：一键开启本机TCP、启动并连接仿真窗口，提供停止与状态；类别模式simulation+tk-ui | 真实DronePanel按钮到独立仿真进程、参数回显与自动时间推进；已连设备不被切换；重复启动无重复进程；失败/停止/主窗口关闭回收自有资源；禁止两巨文件增长与实机操作 | 待审核 |
@@ -154,6 +155,7 @@ flowchart TB
 |---|---|---|---|---|
 | 2026-09-12 | 横切修复：窗口销毁后 Tk 变量被后台线程回收 | `data/analysis/current/2026-09-12/tk-lifetime-report.md`、red/green/verified 原文；真实窗口关闭后后台释放变量1 failed→独立1 passed，相关19 passed | 原来只销毁控件，没在UI线程清理仍存活变量；新增按解释器身份释放，另一窗口变量保留；不改通信超时/性能门，独立fix | 关闭本次联合回归阻塞；不改变实机门 |
 | 2026-09-12 | R-CURRENT-2 传感器页电流计回读 | `data/analysis/current/2026-09-12/readback-report.md`、readback-validation.json、前后截图及 readback-full-verified.txt：1551 passed，无warnings/skips；页面17 passed、布局10 passed | 真实C格式→接收代次→Tk字段；断连/过期/非法不伪报有效；布局清单增1页而可达性门不变；仅离线截图，硬件调用0 | R-CURRENT-2待审核；R-CURRENT-1联合全量缺口关闭，未实测校准 |
+| 2026-09-12 | R-DSHOT-2 解锁录制日志V11逐条发送诊断 | `data/analysis/dshot/2026-09-12/v11-report.md`、v11-tests-second.txt：63 passed；真实Observe入队与C→CSV对拍；联合全量1551 passed，DSHOT300/PWM Debug零警告 | 808字节记录追加32字节DShot码/掩码/计数/故障，旧微秒语义和旧日志兼容保留；DMA完成不是电调确认 | R-DSHOT-2待审核；R-DSHOT-1联合全量缺口关闭，未实机录制 |
 | 2026-09-12 | R-DSHOT-1 自查横切修复：DMA 完成/错误同次 IRQ 漏锁存 | `data/analysis/dshot/2026-09-12/self-review.md`、`self-review-red.txt`、`self-review-focused.txt`；真实 vendor IRQ 分支复现 2 failed/10 passed，修后相关 35 passed，双协议 Debug 零警告 | 原测试独立注入回调漏掉 HAL 先 TC 后 Error 的顺序；完成回调现先查 ErrorCode，错误不记完成并锁存关闭 | 独立 fix；不改控制律、阈值、Core 或历史数据 |
 | 2026-09-12 | R-DSHOT-1 / R-CURRENT-1 联合自查回归缺口 | 同目录 `self-review-full-dshot.txt`、`self-review-full-final.txt`：两轮各 1 failed/1526 passed，分别为 Dashboard 10.64ms>10ms 和 Scope 8.25ms>5ms；两项合并复跑 `self-review-ui-final.txt` 2 passed | 专项及双协议构建通过，但全量性能门未闭合；保留失败原文和门限，不把单项重跑等同全量通过；未证明桌面负载为根因，硬件调用为零 | 两项 REQ 保持待审核并明确回归缺口；不改变实机验收门 |
 | 2026-09-12 | R-CURRENT-1 电流采样软件交审 | `data/analysis/current/2026-09-12/final-report.md` 与 `validation.json`；ADC1/PC1 由 CubeMX 生成；全量 1525 passed，专项 26 passed，DSHOT300/PWM 两种 Debug 零警告；测试护栏无实机调用 | Driver/BSP/后台采样与 STATUS? CURRENT 快照接通；标称 12.75 mV/A、3.3 V 参考，明确未校准；失败/过期/饱和不伪报零电流 | R-CURRENT-1 置待审核；不改变任何实机验收门或保护条件 |

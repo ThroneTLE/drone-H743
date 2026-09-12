@@ -4,7 +4,7 @@
 
 Read this shard only when the task uses serial/TCP diagnostics, log analysis, identification, capture, calibration, or desktop UIs.
 
-Source snapshot: `dc7541cdda4d`; aggregate snapshot: `5a1a95f38dc1`. Covered files: 5376.
+Source snapshot: `498601279143`; aggregate snapshot: `af338deb91c6`. Covered files: 5378.
 
 | File/module or scope | Content outline | Key entry points / size |
 |---|---|---|
@@ -99,6 +99,6 @@ Source snapshot: `dc7541cdda4d`; aggregate snapshot: `5a1a95f38dc1`. Covered fil
 | `tools/vofa_serial_capture.py` | Capture USART1/VOFA JustFloat telemetry from the flight controller. The firmware currently sends 28 little-endian float… | `RunningStats`, `build_parser`, `safe_text`, `split_lines` (+3) |
 | `tools/vofa_udp_bridge.py` | Bridge Ai-WB2 UDP transparent mode to fixed VOFA UDP ports. Why this exists: - Ai-WB2 auto transparent mode is configur… | `log`, `main` |
 | `tools/ground_station/ bundled tree` | Bundled application/runtime distribution; inspect an exact file only when maintaining that bundle | 5239 files / 135.6 MiB / .svg×854, .h×841, .cpp×635, .md×459, .py×257 |
-| `tools/panel_lib/ bundled tree` | Bundled application/runtime distribution; inspect an exact file only when maintaining that bundle | 47 files / 674.6 KiB / .py×47 |
+| `tools/panel_lib/ bundled tree` | Bundled application/runtime distribution; inspect an exact file only when maintaining that bundle | 49 files / 685.0 KiB / .py×49 |
 
 Open the smallest listed tool or bundle landmark first; do not preload bundled runtimes.

@@ -42,7 +42,7 @@ TX 继续使用 Stream3 DMA。PWM 后端启动前恢复 TIM1 的 1 MHz 计数/40
 原 esc_us 是等效命令；定时器诊断中的 CCR 是硬件 tick，不能当作微秒命令。
 
 FlightLog V10 头末尾 4 个保留字节使用 `[0xD5,1,protocol,0]`：1=PWM、2=DSHOT300；
-头/记录大小不变，标记受原 CRC 保护。导出 meta 的 sectors 与 CSV 每条记录带 esc_protocol/motor_command_unit。
+协议标记占用扇区头保留字节，受原 CRC 保护。导出 meta 的 sectors 与 CSV 每条记录带 esc_protocol/motor_command_unit；逐条诊断的 V11 扩展见下节。
 旧零保留区标为 legacy_unspecified；不根据当前固件推测历史协议，不改变历史 CSV 数值。
 
 ## 审核者验证
@@ -50,3 +50,17 @@ FlightLog V10 头末尾 4 个保留字节使用 `[0xD5,1,protocol,0]`：1=PWM、
 拆桨测 M4/M3 位序、校验、帧率、末位与中止，同时检查 M7/M8 的舵机 PWM。
 记录 AM32 55A 固件版本；验证上电停止、两路低油门、失联禁用、DFU 禁用与重连。
 并发 IMU/遥测/日志负载下记录 DMA 错误、控制周期和蓝牙收发；实际转速/推力差异另行实测。
+
+## FlightLog V11 逐条诊断（R-DSHOT-2）
+
+解锁录制仍用原来的125Hz门控，记录从V10的776字节升级为V11的808字节。
+原记录中CRC之前的772字节布局不变，追加32字节DShot诊断，然后计算全记录CRC。
+扩展为小端 `4B2H6I`：present、enabled_mask、busy、fault；upper_code、lower_code；
+submitted、completed、busy_rejected、errors、cancelled、timer_clock_hz。
+在 Observe 构建记录时读取 BSP 的临界区快照，排队后不再读取后续发送状态。
+code 是最后被 DMA 后端接受的发送码，原 motor_upper_us/motor_lower_us 仍表示等效PWM指令。
+completed 仅表示 DMA 完成，单向 DShot 无电调确认/转速反馈；计数为本次初始化后的累计值。
+present=0 表示 PWM 后端无 DShot 诊断；历史V10及更早的新增CSV字段为空，不能按当前协议推断历史值。
+256字节扇区头和已定义协议标记保留，固件扫描和主机解码继续识别V10。
+每4KiB扇区仍容纳4条记录；净记录数据量从97000增至101000 B/s，队列64条新增2048字节D1 RAM。
+Contract：数据与日志采集时刻绑定，历史不重解释；Boundary：新 app_esc_log 适配模块/日志格式与解码；Test seam：真实C结构、构建/Observe路径到Python解析及CSV。

@@ -1,0 +1,18 @@
+
+=================================== ERRORS ====================================
+_____________ ERROR collecting tests/test_dshot_flight_log_v11.py _____________
+ImportError while importing test module 'D:\stm32hal\drone-H743-dshot\tests\test_dshot_flight_log_v11.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+D:\ANACON\Lib\importlib\__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+tests\test_dshot_flight_log_v11.py:10: in <module>
+    from test_flight_log_receive import make_sector_header, make_record_v3
+E   ImportError: cannot import name 'make_record_v3' from 'test_flight_log_receive' (D:\stm32hal\drone-H743-dshot\tests\test_flight_log_receive.py). Did you mean: 'make_record'?
+Physical serial open attempts: 0
+Flashing/probe tool invocation attempts: 0
+Tk display available at session start: True; Tk roots created: 0
+=========================== short test summary info ===========================
+ERROR tests/test_dshot_flight_log_v11.py
+!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!
+1 error in 0.41s

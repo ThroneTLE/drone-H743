@@ -58,7 +58,7 @@ def slice_between(source: str, start: str, end: str) -> str:
 
 def test_sector_header_declares_provenance_in_reserved_area() -> None:
     source = read(LOG_SOURCE)
-    assert "#define APP_FLIGHT_LOG_VERSION            10U" in source
+    assert "#define APP_FLIGHT_LOG_VERSION            11U" in source
     # The previous version must remain a named, readable constant.
     assert "APP_FLIGHT_LOG_VERSION_V7" in source
     header = slice_between(
@@ -105,7 +105,7 @@ HARNESS = r"""
 
 /* The validator only takes sizeof() of the current record, so an opaque block
  * keeps drv_imu.h (which needs main.h) out of this host harness. */
-typedef struct __attribute__((packed)) { uint8_t raw[776]; } APP_FlightLogRecord;
+typedef struct __attribute__((packed)) { uint8_t raw[808]; } APP_FlightLogRecord;
 
 #define APP_FLASH_SERVICE_SECTOR_SIZE 4096UL
 
@@ -139,6 +139,13 @@ int main(void)
     CHECK(header.frame_orientation_code == 3U, 12);
     CHECK(header.firmware_crc32 == 0xF12AD9F5UL, 13);
     CHECK(header.calibration_generation == 3UL, 14);
+
+    /* V10 records keep the same header/params but their original record size. */
+    header.version = APP_FLIGHT_LOG_VERSION_V10;
+    header.record_size = APP_FLIGHT_LOG_V10_RECORD_SIZE;
+    header.header_crc32 = 0U;
+    header.header_crc32 = flight_log_crc32((const uint8_t *)&header, sizeof(header));
+    CHECK(flight_log_sector_header_valid(&header) == 1U, 15);
 
     /* V8 used the larger parameter/record layout and must remain exportable. */
     memset(&header, 0, sizeof(header));
@@ -214,6 +221,7 @@ def test_sector_header_migration_runs_on_host(tmp_path: Path) -> None:
         for line in source.splitlines()
         if line.startswith("#define APP_FLIGHT_LOG_SECTOR_MAGIC")
         or line.startswith("#define APP_FLIGHT_LOG_VERSION")
+        or line.startswith("#define APP_FLIGHT_LOG_V10")
         or line.startswith("#define APP_FLIGHT_LOG_V9")
         or line.startswith("#define APP_FLIGHT_LOG_V8")
     )

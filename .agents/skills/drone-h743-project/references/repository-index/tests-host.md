@@ -4,7 +4,7 @@
 
 Read this shard only when you need existing ground-station/tooling coverage or must choose focused regression tests.
 
-Source snapshot: `d3775368bfb6`. Indexed files: 38.
+Source snapshot: `c84791156bb7`. Indexed files: 38.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -44,7 +44,7 @@ Source snapshot: `d3775368bfb6`. Indexed files: 38.
 | `tests/test_simulation_session_reset.py` | Stopping a simulator must not leave its samples in the next session | `test_stopping_simulator_clears_its_telemetry_session` |
 | `tests/test_simulation_tcp.py` | — | `test_simulator_is_tcp_client_and_answers_caps_on_loopback` (+3) |
 | `tests/test_simulation_ui_contract.py` | Exercise actual Tk views rather than checking widget-name strings | `test_controls_and_five_chart_rows_fit` (+4) |
-| `tests/test_tk_review_regressions.py` | Regressions for the V/D-line review findings (R-S1-4 … R-S1-7). Every test here exists because the reviewer found a cri… | `test_hovering_a_viewport_does_not_steal_focus_from_an_entry` (+9) |
+| `tests/test_tk_review_regressions.py` | Regressions for the V/D-line review findings (R-S1-4 … R-S1-7). Every test here exists because the reviewer found a cri… | `test_hovering_a_viewport_does_not_steal_focus_from_an_entry` (+10) |
 | `tests/test_tk_v_revamp.py` | V 线 TK-01/TK-02 contracts against the real offline DronePanel | `test_theme_is_global_semantic_and_contrasted` (+4) |
 
 Open the smallest listed interface first (normally a header or test), then its implementation only if needed.

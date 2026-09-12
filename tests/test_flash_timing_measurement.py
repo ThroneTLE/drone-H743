@@ -59,7 +59,7 @@ def test_firmware_probe_is_thin_and_keeps_normal_polling_default() -> None:
     flight_log = (ROOT / "App/Src/app_flight_log.c").read_text(encoding="utf-8")
     assert "#define APP_FLIGHT_LOG_QUEUE_CAPACITY     64U" in flight_log
     assert "#define APP_FLIGHT_LOG_WRITE_BATCH_RECORDS 4U" in flight_log
-    assert "sizeof(APP_FlightLogRecord) == 776U" in flight_log
+    assert "sizeof(APP_FlightLogRecord) == 808U" in flight_log
 
 
 def test_page_program_count_matches_real_sector_layout_and_batching() -> None:

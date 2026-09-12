@@ -1,4 +1,5 @@
 #include "app_flight_log.h"
+#include "app_esc_log.h"
 
 #include "app_firmware_identity.h"
 #include "app_control_config_store.h"
@@ -37,7 +38,9 @@ _Static_assert(APP_FLIGHT_LOG_REGION_END_EXCL ==
  */
 #include "bsp_esc_protocol.h"
 
-#define APP_FLIGHT_LOG_VERSION            10U
+#define APP_FLIGHT_LOG_VERSION            11U
+#define APP_FLIGHT_LOG_VERSION_V10        10U
+#define APP_FLIGHT_LOG_V10_RECORD_SIZE     776U
 #define APP_FLIGHT_LOG_VERSION_V9         9U
 #define APP_FLIGHT_LOG_VERSION_V8         8U
 #define APP_FLIGHT_LOG_VERSION_V7         7U
@@ -179,6 +182,7 @@ typedef struct __attribute__((packed)) {
     uint32_t servo_feedback_parse_error_count;
     uint32_t servo_feedback_uart_error_count;
     uint32_t servo_feedback_busy_count;
+    APP_EscLog dshot;
     uint32_t record_crc32;
 } APP_FlightLogRecord;
 
@@ -197,7 +201,9 @@ _Static_assert(offsetof(APP_FlightLogSectorHeader, reserved) == 252U,
                "ESC protocol marker must remain at byte 252");
 _Static_assert(sizeof(APP_FlightLogSectorHeader) == APP_FLIGHT_LOG_SECTOR_HEADER_SIZE,
                "flight log sector header must stay 256 bytes");
-_Static_assert(sizeof(APP_FlightLogRecord) == 776U,
+_Static_assert(offsetof(APP_FlightLogRecord, dshot) == 772U,
+               "V10 payload offsets must not change");
+_Static_assert(sizeof(APP_FlightLogRecord) == 808U,
                "flight log record must match tools/flight_log_receive.py");
 _Static_assert(sizeof(APP_FlightLogExportBlockHeader) == 24U,
                "flight log export header must match tools/flight_log_receive.py");
@@ -401,6 +407,9 @@ static uint8_t flight_log_sector_header_valid(APP_FlightLogSectorHeader *header)
     layout_valid =
         (((header->version == APP_FLIGHT_LOG_VERSION) &&
           (header->record_size == sizeof(APP_FlightLogRecord)) &&
+          (header->params_size == sizeof(header->params))) ||
+         ((header->version == APP_FLIGHT_LOG_VERSION_V10) &&
+          (header->record_size == APP_FLIGHT_LOG_V10_RECORD_SIZE) &&
           (header->params_size == sizeof(header->params))) ||
          ((header->version == APP_FLIGHT_LOG_VERSION_V9) &&
           (header->record_size == APP_FLIGHT_LOG_V9_RECORD_SIZE) &&
@@ -758,6 +767,7 @@ static void flight_log_record_from_snapshot(APP_FlightLogRecord *record,
     record->servo_feedback_uart_error_count =
         snapshot->servo_feedback_uart_error_count;
     record->servo_feedback_busy_count = snapshot->servo_feedback_busy_count;
+    record->dshot = APP_EscLog_Capture();
     record->record_crc32 = 0U;
     record->record_crc32 = flight_log_crc32((const uint8_t *)record, sizeof(*record));
 }

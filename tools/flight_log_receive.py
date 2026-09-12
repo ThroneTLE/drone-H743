@@ -314,7 +314,7 @@ V9_RECORD_STRUCT = struct.Struct(
     + "I"
 )
 V9_RECORD_SIZE = V9_RECORD_STRUCT.size
-RECORD_STRUCT = struct.Struct(
+V10_RECORD_STRUCT = struct.Struct(
     "<IHHIIQII"
     + "h" * 7
     + "f" * 7
@@ -342,6 +342,11 @@ RECORD_STRUCT = struct.Struct(
     + "I" * 10
     + "I"
 )
+V10_RECORD_SIZE = V10_RECORD_STRUCT.size
+DSHOT_NAMES = ("dshot_present", "dshot_enabled_mask", "dshot_busy", "dshot_fault",
+               "dshot_upper_code", "dshot_lower_code", "dshot_submitted", "dshot_completed",
+               "dshot_busy_rejected", "dshot_errors", "dshot_cancelled", "dshot_timer_clock_hz")
+RECORD_STRUCT = struct.Struct(V10_RECORD_STRUCT.format[:-1] + "4B2H6II")
 RECORD_SIZE = RECORD_STRUCT.size
 
 
@@ -707,9 +712,9 @@ def parse_sector_header(data: bytes, offset: int) -> dict[str, object] | None:
                 FRAME_PROVENANCE_STRUCT.unpack_from(header, offset_provenance),
             )
         )
-    # Only this tagged V10 extension defines ESC protocol; never infer it from the host.
+    # Only the tagged V10/V11 extension defines ESC protocol; never infer it from the host.
     esc_protocol = "legacy_unspecified"
-    if int(prefix[1]) == 10 and header[252:254] == b"\xd5\x01" and header[255] == 0:
+    if int(prefix[1]) in (10, 11) and header[252:254] == b"\xd5\x01" and header[255] == 0:
         esc_protocol = {1: "PWM", 2: "DSHOT300"}.get(header[254], "unknown")
     return {
         **provenance,
@@ -836,13 +841,26 @@ def _parse_record_v3(record_bytes: bytes) -> dict[str, object] | None:
 
 def parse_record(record_bytes: bytes) -> dict[str, object] | None:
     if len(record_bytes) == V3_RECORD_SIZE:
-        return _parse_record_v3(record_bytes)
+        row = _parse_record_v3(record_bytes)
+        if row is not None:
+            row.update(dict.fromkeys(DSHOT_NAMES))
+        return row
     has_v6_diagnostics = False
     has_v7_z_integral = False
     has_v9_layout = False
     has_v10_layout = False
+    has_v11_layout = False
     if len(record_bytes) == RECORD_SIZE:
         record_struct = RECORD_STRUCT
+        has_v11_layout = True
+        has_servo_feedback = True
+        has_ident_att = True
+        has_v6_diagnostics = True
+        has_v7_z_integral = True
+        has_v9_layout = True
+        has_v10_layout = True
+    elif len(record_bytes) == V10_RECORD_SIZE:
+        record_struct = V10_RECORD_STRUCT
         has_servo_feedback = True
         has_ident_att = True
         has_v6_diagnostics = True
@@ -883,6 +901,8 @@ def parse_record(record_bytes: bytes) -> dict[str, object] | None:
         return None
     values = record_struct.unpack(record_bytes)
     if values[0] != RECORD_MAGIC or values[2] != len(record_bytes):
+        return None
+    if (has_v11_layout and values[1] != 11) or (has_v10_layout and not has_v11_layout and values[1] != 10):
         return None
     saved_crc = values[-1]
     check = bytearray(record_bytes)
@@ -1175,6 +1195,18 @@ def parse_record(record_bytes: bytes) -> dict[str, object] | None:
             "servo_feedback_busy_count",
         ):
             row[name] = 0
+    row.update(dict.fromkeys(DSHOT_NAMES))
+    if has_v11_layout:
+        dshot = dict(zip(DSHOT_NAMES, values[i:i + len(DSHOT_NAMES)]))
+        if (dshot["dshot_present"] not in (0, 1) or dshot["dshot_enabled_mask"] > 3 or
+                dshot["dshot_busy"] not in (0, 1) or dshot["dshot_fault"] not in (0, 1)):
+            return None
+        row["dshot_present"] = dshot["dshot_present"]
+        if dshot["dshot_present"]:
+            if any(code != 0 and not 48 <= code <= 2047 for code in
+                   (dshot["dshot_upper_code"], dshot["dshot_lower_code"])):
+                return None
+            row.update(dshot)
     row["record_crc32"] = saved_crc
     return row
 
@@ -1199,6 +1231,7 @@ def parse_flash_image(data: bytes) -> tuple[list[dict[str, object]], list[dict[s
                 continue
             if record_size not in (
                 RECORD_SIZE,
+                V10_RECORD_SIZE,
                 V9_RECORD_SIZE,
                 V8_RECORD_SIZE,
                 V6_RECORD_SIZE,
@@ -1222,6 +1255,8 @@ def parse_flash_image(data: bytes) -> tuple[list[dict[str, object]], list[dict[s
                 record["esc_protocol"] = sector["esc_protocol"]
                 record["motor_command_unit"] = sector["motor_command_unit"]
                 records.append(record)
+            elif sector["version"] == 11:
+                errors.append(f"invalid V11 record at image offset {pos}")
             pos += record_size
     return sectors, records, errors
 
