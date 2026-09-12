@@ -225,7 +225,8 @@ def base_purpose(path: str, kind: str) -> str:
 # 先动这里而不是再拆分片：单个分片都还在 32 KB 硬限之内，超的是总量，
 # 而入口名那一列每行砍一个就够（实测 98979 → 96077 B）。
 # 测试分片不受影响，它早就压到 1 了。
-def symbol_cell(symbols: list[str], limit: int = 5) -> str:
+# R-DSHOT-1 新模块使总量再次越界；继续压缩入口摘要而不改变容量上限。
+def symbol_cell(symbols: list[str], limit: int = 4) -> str:
     unique: list[str] = []
     for symbol in symbols:
         if symbol not in unique:
