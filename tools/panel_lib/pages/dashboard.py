@@ -133,6 +133,7 @@ class DashboardPageMixin:
         self.dashboard_hint_var = None
         self.dashboard_workspace_bar = None
         self.dashboard_workspace_view_bar = None
+        self.dashboard_actions_bar = None
         self.dashboard_context = PanelTileContext(self)
         self.dashboard_editor = None
         self.dashboard_resize = None
@@ -223,13 +224,19 @@ class DashboardPageMixin:
             side=tk.RIGHT
         )
 
-        # 子视图行常驻但通常是空的（空 frame 只占 1 px）。留着不 pack_forget，是为了
-        # 不必在重新显示时算它该插回哪一行——这条工具条上面下面都有别的行。
+        # 子视图行只在有内容时才占版面。
+        #
+        # 先写成"常驻但通常是空"，因为空 frame 只有 1 px、省掉了重新显示时的插入
+        # 位置计算。实测这是错的：`test_total_redraw_benchmark` 由 5/5 掉到 4/5。
+        # 下面 `columns = 4` 那段注释早就写着"排成三行会多占 39 px，实测把 dashboard
+        # 总重绘从 5/5 过压到 3/5 挂"——这一页的重绘预算本来就贴着线，多一行常驻
+        # 就是多一行要参与布局计算，哪怕它是空的。
         self.dashboard_workspace_view_bar = ttk.Frame(parent)
-        self.dashboard_workspace_view_bar.pack(fill=tk.X)
 
         actions = ttk.Frame(parent)
         actions.pack(fill=tk.X, pady=(0, 6))
+        # 记着它，第二行要插在工具条和按钮行之间（pack 默认追加到末尾）。
+        self.dashboard_actions_bar = actions
         action_specs = (
             ("录制 CSV", self._dashboard_toggle_record),
             ("清空缓冲", self._dashboard_clear_buffer),
@@ -371,7 +378,7 @@ class DashboardPageMixin:
         view_bar = self.dashboard_workspace_view_bar
         if bar is None or view_bar is None:
             return
-        render_workspace_bar(
+        self._dashboard_show_view_row(render_workspace_bar(
             bar, view_bar,
             workspace_tree(self.dashboard_layout.workspaces,
                            int(self.dashboard_workspace_var.get())),
@@ -379,7 +386,22 @@ class DashboardPageMixin:
             view_var=self.dashboard_workspace_var,
             on_root=self._dashboard_select_root,
             on_view=self._dashboard_switch_workspace,
-        )
+        ))
+
+    def _dashboard_show_view_row(self, visible: bool) -> None:
+        """第二行没内容时整行让出版面，不是留个 1 px 的空 frame。
+
+        这一页的重绘预算贴着线（见 `_build_dashboard_toolbar` 里的行高注释），
+        常驻一个空行就足以把 `test_total_redraw_benchmark` 从 5/5 压到 4/5。
+        """
+        row = self.dashboard_workspace_view_bar
+        if row is None:
+            return
+        if visible:
+            if not row.winfo_manager():
+                row.pack(fill=tk.X, before=self.dashboard_actions_bar)
+        elif row.winfo_manager():
+            row.pack_forget()
 
     def _dashboard_select_root(self, index: int) -> None:
         """点第一行：回到这个一级工作区自己的视图，并**只**重画第二行。
@@ -388,12 +410,12 @@ class DashboardPageMixin:
         调用正来自第一行的某个单选钮。
         """
         self._dashboard_switch_workspace(index)
-        render_view_row(
+        self._dashboard_show_view_row(render_view_row(
             self.dashboard_workspace_view_bar,
             workspace_tree(self.dashboard_layout.workspaces, index),
             view_var=self.dashboard_workspace_var,
             on_view=self._dashboard_switch_workspace,
-        )
+        ))
 
     def _dashboard_switch_workspace(self, index: int | None = None) -> None:
         if index is not None:

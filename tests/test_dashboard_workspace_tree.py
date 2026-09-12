@@ -166,6 +166,9 @@ def test_the_bar_shows_two_rows_only_while_the_views_exist(app) -> None:
     assert labels(app.dashboard_workspace_view_bar) == []
     # 空行也不许留下别的控件（那个"└ 视图"的记号也是仿真开着才有）。
     assert app.dashboard_workspace_view_bar.winfo_children() == []
+    # 而且整行要让出版面，不是留个 1 px 的空 frame：这一页的重绘预算贴着线，
+    # `_build_dashboard_toolbar` 里的行高注释写过多一行的代价。
+    assert app.dashboard_workspace_view_bar.winfo_manager() == ""
 
     install(app, with_simulation(), 4)
     assert labels(app.dashboard_workspace_bar) == [
@@ -173,6 +176,8 @@ def test_the_bar_shows_two_rows_only_while_the_views_exist(app) -> None:
     assert labels(app.dashboard_workspace_view_bar) == [PARENT_VIEW_LABEL, *SIM_NAMES]
     assert app.dashboard_workspace_root_var.get() == 1
     assert app.dashboard_workspace_var.get() == 4
+    # 有内容时才占版面，而且要插在按钮行之前，不能被 pack 追加到页面最底下。
+    assert app.dashboard_workspace_view_bar.winfo_manager() == "pack"
 
 
 def test_clicking_a_view_switches_the_tiles_without_rebuilding_the_bar(app) -> None:

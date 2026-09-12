@@ -11,7 +11,6 @@
 #include "bsp_optical_flow.h"
 #include "app_tasks.h"
 #include "bsp_aiwb2_power.h"
-#include "bsp_led.h"
 #include "bsp_uart.h"
 #include "bsp_uart_events.h"
 #include "bsp_cache.h"
@@ -34,8 +33,6 @@
 #define APP_UART_RX_USE_DMA 1U
 #define APP_UART_RX_LINE_SIZE 128U
 #define APP_UART_DMA_RX_SIZE  256U
-#define APP_UART_TX_LED_ENABLED 0U
-#define APP_UART_TX_LED_PULSE_MS 80U
 #define APP_UART_RX_IDLE_LINE_MS 60U
 #define APP_UART_DEBUG_LINE_LIMIT 64U
 #define APP_UART_EVENT_RX     0x00000001U
@@ -72,7 +69,6 @@ static uint32_t app_uart_rx_restarts;
 static uint32_t app_uart_last_rx_event_size;
 static uint32_t app_uart_last_stats_ms;
 static uint32_t app_uart_last_rx_byte_ms;
-static uint32_t app_uart_tx_led_until_ms;
 static uint32_t app_uart_tx_count;
 static uint32_t app_uart_last_tx_count;
 static uint32_t app_uart_debug_lines;
@@ -320,9 +316,6 @@ void APP_UART_Task_Init(void)
     static const char boot_text[] = "BOOT uart_task_init rx=it\r\n";
 #endif
 
-#if (APP_UART_TX_LED_ENABLED != 0U)
-    BSP_LED_Off(LED_1);
-#endif
     app_uart_rx_used = 0U;
     app_uart_rx_bytes = 0U;
     app_uart_rx_lines = 0U;
@@ -334,7 +327,6 @@ void APP_UART_Task_Init(void)
     app_uart_last_rx_event_size = 0U;
     app_uart_last_stats_ms = SVC_Timestamp_Ms();
     app_uart_last_rx_byte_ms = app_uart_last_stats_ms;
-    app_uart_tx_led_until_ms = app_uart_last_stats_ms;
     app_uart_tx_count = 0U;
     app_uart_last_tx_count = 0U;
     app_uart_debug_lines = 0U;
@@ -644,10 +636,6 @@ static void app_uart_poll_tx(void)
     }
 
     app_uart_tx_pending_valid = 0U;
-#if (APP_UART_TX_LED_ENABLED != 0U)
-    BSP_LED_On(LED_1);
-#endif
-    app_uart_tx_led_until_ms = SVC_Timestamp_Ms() + APP_UART_TX_LED_PULSE_MS;
 
 #else
     /* 原始 AiWB2 socket 发送协议 */
@@ -787,10 +775,6 @@ static void app_uart_poll_tx(void)
     app_uart_socket_tx_state = APP_UART_SOCKET_TX_WAIT_PROMPT;
     app_uart_socket_deadline_ms = now_ms + APP_UART_SOCKET_SEND_PROMPT_TIMEOUT_MS;
     app_uart_tx_pending_valid = 0U;
-#if (APP_UART_TX_LED_ENABLED != 0U)
-    BSP_LED_On(LED_1);
-#endif
-    app_uart_tx_led_until_ms = SVC_Timestamp_Ms() + APP_UART_TX_LED_PULSE_MS;
 #endif /* APP_UART_DIRECT_SERIAL_MODE */
 #endif /* APP_UART_DISABLE_USART1 */
 }
@@ -811,27 +795,6 @@ static void app_uart_sync_tx_state(void)
     }
 }
 
-static void app_uart_update_tx_led(uint32_t now_ms)
-{
-#if (APP_UART_TX_LED_ENABLED == 0U)
-    (void)now_ms;
-    return;
-#else
-    uint32_t tx_count = app_uart_tx_count;
-
-    if (tx_count != app_uart_last_tx_count) {
-        app_uart_last_tx_count = tx_count;
-        app_uart_tx_led_until_ms = now_ms + APP_UART_TX_LED_PULSE_MS;
-        BSP_LED_On(LED_1);
-        return;
-    }
-
-    if (app_uart_time_reached(now_ms, app_uart_tx_led_until_ms) != 0U) {
-        BSP_LED_Off(LED_1);
-    }
-#endif
-}
-
 void APP_UART_Task_Step(void)
 {
     uint32_t flags;
@@ -846,7 +809,8 @@ void APP_UART_Task_Step(void)
 #endif
 
     APP_OpticalFlow_ServiceRecovery();
-    APP_LED_Task_Step();
+    /* 状态灯不再搭本任务的车：它要 1 kHz 的稳定节拍做软件调光，而这里的节拍
+     * 是 osThreadFlagsWait(..., 20ms)，随串口忙闲变。见 APP_Task_LED_Start()。 */
     APP_USB_CDC_Task_Step();
 
     app_uart_ensure_control_ready();
@@ -905,7 +869,6 @@ void APP_UART_Task_Step(void)
     app_uart_last_stats_ms = now_ms;
 #endif
     app_uart_poll_tx();
-    app_uart_update_tx_led(SVC_Timestamp_Ms());
     flags = osThreadFlagsWait(APP_UART_EVENT_RX |
                               APP_UART_EVENT_TX |
                               APP_UART_EVENT_KICK |

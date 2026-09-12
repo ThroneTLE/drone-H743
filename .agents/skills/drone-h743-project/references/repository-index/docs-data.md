@@ -4,7 +4,7 @@
 
 Read this shard only when the task needs architecture rationale, controller math, historical evidence, captures, datasets, or agent-support documentation.
 
-Document snapshot: `46ac2ad88782`; aggregate snapshot: `97e7c45ad971`. Covered files: 464.
+Document snapshot: `c71a77ec19c9`; aggregate snapshot: `9899e31a168b`. Covered files: 470.
 
 ## Documents and agent support
 
@@ -43,7 +43,7 @@ Document snapshot: `46ac2ad88782`; aggregate snapshot: `97e7c45ad971`. Covered f
 | `doc/history/README.md` | 历史资料使用规则 | `保留内容` |
 | `doc/micoair743v2/baseline/MicoAir743v2-PX4-1.15.4-Bootloader+Firmware.bin` | Project documentation for MicoAir743v2 PX4 1.15.4 Bootloader+Firmware | — |
 | `doc/micoair743v2/baseline/MicoAir743v2_PX4-1.15.x_bootloader.bin` | Project documentation for MicoAir743v2 PX4 1.15.x bootloader | — |
-| `doc/micoair743v2/README.md` | MicoAir743v2 板级参考（备选硬件方案） | `权威边界`, `板级事实`, `UART 与 PWM 引脚`, `移植进度（2026-09-10）` (+32) |
+| `doc/micoair743v2/README.md` | MicoAir743v2 板级参考（备选硬件方案） | `权威边界`, `板级事实`, `UART 与 PWM 引脚`, `移植进度（2026-09-10）` (+35) |
 | `doc/micoair743v2/vendor/ardupilot-hwdef.dat` | Project documentation for ardupilot hwdef | — |
 | `doc/micoair743v2/vendor/ardupilot-README.md` | MicoAir743v2 Flight Controller | `Features`, `Physical`, `UART Mapping`, `RC Input` (+9) |
 | `doc/micoair743v2/vendor/betaflight-MICOAIR743V2_EXTMAG-config.h` | Project documentation for betaflight MICOAIR743V2 EXTMAG config | — |
@@ -60,6 +60,6 @@ Document snapshot: `46ac2ad88782`; aggregate snapshot: `97e7c45ad971`. Covered f
 | Scope | Content outline | Inventory |
 |---|---|---|
 | `.tmp/` | Temporary analysis results; inspect only a specifically named run | 105 files / 10.6 MiB / .json×25, .csv×19, .png×14, .md×11, .txt×11 |
-| `data/` | Canonical captures, flight logs, identification, calibration, telemetry, and analysis root | 315 files / 20.6 MiB / .txt×98, .csv×86, .json×65, .png×27, .md×22 |
+| `data/` | Canonical captures, flight logs, identification, calibration, telemetry, and analysis root | 321 files / 20.7 MiB / .txt×103, .csv×86, .json×65, .png×27, .md×23 |
 
 Do not load a whole dataset directory. Select one named run after code or test evidence points to it.

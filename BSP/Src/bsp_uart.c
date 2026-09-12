@@ -1,11 +1,9 @@
 #include "bsp_uart.h"
 
-#include "bsp_led.h"
 #include "usart.h"
 
 #include <stddef.h>
 
-#define BSP_UART_TX_LED_ENABLED 0U
 
 /* ---------------------------------------------------------- 维护口的板级绑定 */
 
@@ -55,9 +53,6 @@ HAL_StatusTypeDef BSP_UART_Transmit_USART1(const uint8_t *data,
     }
 
     ++bsp_uart_usart1_tx_count;
-#if (BSP_UART_TX_LED_ENABLED != 0U)
-    BSP_LED_On(LED_1);
-#endif
     return HAL_UART_Transmit(&huart1, (uint8_t *)data, length, timeout_ms);
 #endif
 }

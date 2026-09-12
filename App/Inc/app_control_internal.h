@@ -84,6 +84,15 @@ uint8_t app_control_param_get_any(const char *name, float *value);
 uint8_t app_control_param_set_any(const char *name, float value);
 void app_control_report_airframe_record(void);
 
+/*
+ * 命令兜底链（App/Src/app_cmd_fallback.c）。`app_control.c` 的 if-else 全都没
+ * 认领时落到这里；新命令族挂在它的链上，不再往 app_control.c 加分支（只减不增）。
+ */
+void app_control_handle_unclaimed(char **tokens, uint32_t count);
+
+/* LED 命令族（App/Src/app_cmd_led.c）：认领返回 1，否则 0。 */
+uint8_t app_control_handle_led(char **tokens, uint32_t count);
+
 /* ARM 命令族（App/Src/app_cmd_arm.c）：解锁状态与被拒原因。 */
 void app_control_report_arm(void);
 uint8_t app_control_req_arm(uint32_t id, const char *mod, const char *op);

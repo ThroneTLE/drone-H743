@@ -4,7 +4,7 @@
 
 Read this shard only when the task touches application behavior, RTOS task bodies, control flow, diagnostics, commands, or synchronous services.
 
-Source snapshot: `e8880a284951`. Indexed files: 122.
+Source snapshot: `13331ec88ce5`. Indexed files: 126.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -18,9 +18,11 @@ Source snapshot: `e8880a284951`. Indexed files: 122.
 | `App/Src/app_cmd_airframe.c` | Application behavior and task-facing logic for cmd airframe | `DRV_COAX_CTRL_GetParam`, `DRV_COAX_CTRL_SetParam` |
 | `App/Src/app_cmd_arm.c` | Application behavior and task-facing logic for cmd arm | — |
 | `App/Src/app_cmd_diag.c` | Application behavior and task-facing logic for cmd diag | — |
+| `App/Src/app_cmd_fallback.c` | Application behavior and task-facing logic for cmd fallback | — |
 | `App/Src/app_cmd_flow.c` | Application behavior and task-facing logic for cmd flow | `APP_Stabilizer_ReadFlowCompensationSnapshot` |
 | `App/Src/app_cmd_imucal.c` | Application behavior and task-facing logic for cmd imucal | `APP_FlightCalibration_ReadActive`, `SVC_Param_IsDirty`, `APP_Sensor_GetFluOrientation`, `APP_FlightCalibration_MergeV1Candidate` (+2) |
 | `App/Src/app_cmd_imusel.c` | Application behavior and task-facing logic for cmd imusel | `BSP_IMU_Init` |
+| `App/Src/app_cmd_led.c` | Application behavior and task-facing logic for cmd led | — |
 | `App/Src/app_cmd_probe.c` | Application behavior and task-facing logic for cmd probe | `APP_Stabilizer_IsArmed`, `BSP_IMU_DebugSpiBusIndex`, `BSP_I2C_GetHandle`, `BSP_UART_GetHandle` (+1) |
 | `App/Src/app_cmd_rcmap.c` | Application behavior and task-facing logic for cmd rcmap | `APP_RcConfig_Validate` |
 | `App/Src/app_cmd_servocal.c` | Application behavior and task-facing logic for cmd servocal | `APP_Sensor_GetFluOrientation`, `SVC_Param_IsDirty`, `APP_FlightCalibration_UpdateServoMechanical`, `APP_FlightCalibration_PublishPreview` |
@@ -47,7 +49,7 @@ Source snapshot: `e8880a284951`. Indexed files: 122.
 | `App/Inc/app_ident.h`<br>`App/Src/app_ident.c` | Application behavior and task-facing logic for ident | `APP_Ident_Init`, `APP_Ident_GetState`, `APP_Ident_IsRunning`, `APP_Ident_ReportStatus` (+17) |
 | `App/Inc/app_imu_capture.h`<br>`App/Src/app_imu_capture.c` | Application behavior and task-facing logic for imu capture | `APP_IMU_Capture_Init`, `APP_IMU_Capture_Push`, `APP_IMU_Capture_AnnotateFiltered`, `APP_IMU_Capture_AnnotateControl` (+9) |
 | `App/Inc/app_imu_health.h`<br>`App/Src/app_imu_health.c` | Application behavior and task-facing logic for imu health | `APP_ImuHealth_Init`, `APP_ImuHealth_NoteSample`, `APP_ImuHealth_Update`, `APP_ImuHealth_GetLevel` (+2) |
-| `App/Inc/app_led.h`<br>`App/Src/app_led.c` | Application behavior and task-facing logic for led | `APP_LED_Task_Init`, `APP_LED_Task_Step`, `APP_LED_SetArmStatus`, `APP_LED_SetServoCalMode` |
+| `App/Inc/app_led.h`<br>`App/Src/app_led.c` | Application behavior and task-facing logic for led | `APP_LED_Task_Init`, `APP_LED_Task_Step`, `APP_LED_SetArmStatus`, `APP_LED_SetServoCalMode` (+3) |
 | `App/Inc/app_mag.h`<br>`App/Src/app_mag.c` | Application behavior and task-facing logic for mag | `APP_MAG_Init`, `APP_MAG_Step`, `APP_MAG_GetStatus`, `APP_MAG_Report` (+1) |
 | `App/Inc/app_maint_uart.h`<br>`App/Src/app_maint_uart.c` | Application behavior and task-facing logic for maint uart | `APP_MaintUART_Init`, `APP_MaintUART_Step`, `APP_MaintUART_Write`, `APP_MaintUART_WriteRaw` (+6) |
 | `App/Inc/app_message.h`<br>`App/Src/app_message.c` | Application behavior and task-facing logic for message | `APP_Message_Task_Init`, `APP_Message_Task_Step` |
@@ -65,7 +67,7 @@ Source snapshot: `e8880a284951`. Indexed files: 122.
 | `App/Inc/app_servo_jog.h`<br>`App/Src/app_servo_jog.c` | Application behavior and task-facing logic for servo jog | `APP_ServoJog_Init`, `APP_ServoJog_HandleCommand`, `APP_ServoJog_Request`, `APP_ServoJog_RequestImmediate` (+5) |
 | `App/Inc/app_servo_type.h`<br>`App/Src/app_servo_type.c` | Application behavior and task-facing logic for servo type | `APP_ServoType_IsValid`, `APP_ServoType_Name`, `APP_ServoType_FromName`, `APP_ServoType_ResetActive` (+3) |
 | `App/Inc/app_stabilizer.h`<br>`App/Src/app_stabilizer.c` | Application behavior and task-facing logic for stabilizer | `APP_Stabilizer_LatchImuFault`, `APP_Stabilizer_ClearImuFault`, `APP_Stabilizer_MarkImuSample`, `APP_Stabilizer_ReadVofaDebug` (+10) |
-| `App/Inc/app_tasks.h`<br>`App/Src/app_tasks.c` | Application behavior and task-facing logic for tasks | `APP_Task_LED_Init`, `APP_Task_LED_Step`, `APP_Task_GPS_Init`, `APP_Task_GPS_Step` (+12) |
+| `App/Inc/app_tasks.h`<br>`App/Src/app_tasks.c` | Application behavior and task-facing logic for tasks | `APP_Task_LED_Init`, `APP_Task_LED_Step`, `APP_Task_LED_Start`, `APP_Task_GPS_Init` (+13) |
 | `App/Inc/app_telem_frame.h`<br>`App/Src/app_telem_frame.c` | Application behavior and task-facing logic for telem frame | `APP_TelemFrame_PopCount`, `APP_TelemFrame_HeaderBytes`, `APP_TelemFrame_PayloadLength`, `APP_TelemFrame_Encode` |
 | `App/Src/app_telem_port.c` | Application behavior and task-facing logic for telem port | `APP_TelemStream_PortNowUs`, `APP_TelemStream_PortDelayMs`, `APP_TelemStream_PortServiceExports`, `APP_IMU_Capture_IsExportActive` (+9) |
 | `App/Inc/app_telem_stream.h`<br>`App/Src/app_telem_stream.c` | Application behavior and task-facing logic for telem stream | `APP_TelemStream_Init`, `APP_TelemStream_Reset`, `APP_TelemStream_NoteCommandSource`, `APP_TelemStream_SetActive` (+22) |
@@ -75,6 +77,7 @@ Source snapshot: `e8880a284951`. Indexed files: 122.
 | `App/Inc/app_vofa.h`<br>`App/Src/app_vofa.c` | Application behavior and task-facing logic for vofa | `APP_VOFA_SendFloats`, `APP_VOFA_SendRaw` |
 | `Services/Inc/svc_flow_nav.h`<br>`Services/Src/svc_flow_nav.c` | Synchronous domain/data service for flow nav | `SVC_FlowNav_Init`, `SVC_FlowNav_Reset`, `SVC_FlowNav_PushSample`, `SVC_FlowNav_Age` (+13) |
 | `Services/Inc/svc_imu.h`<br>`Services/Src/svc_imu.c` | Synchronous domain/data service for imu | `SVC_IMU_RotateToFlu`, `SVC_IMU_ApplyMounting`, `SVC_IMU_DefaultRotation`, `APP_Sensor_AlignToAirframe` (+6) |
+| `Services/Inc/svc_led.h`<br>`Services/Src/svc_led.c` | Synchronous domain/data service for led | `SVC_Led_Init`, `SVC_Led_Publish`, `SVC_Led_PublishFor`, `SVC_Led_Tick` (+2) |
 | `Services/Inc/svc_param.h`<br>`Services/Src/svc_param.c` | Synchronous domain/data service for param | `SVC_Param_Init`, `SVC_Param_IsReady`, `SVC_Param_IsDirty`, `SVC_Param_GetGeneration` (+5) |
 | `Services/Inc/svc_timestamp.h`<br>`Services/Src/svc_timestamp.c` | Synchronous domain/data service for timestamp | `SVC_Timestamp_Us`, `SVC_Timestamp_Init`, `SVC_Timestamp_Tick`, `SVC_Timestamp_Ms` (+2) |
 

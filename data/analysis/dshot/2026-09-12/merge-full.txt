@@ -1,0 +1,129 @@
+........................................................................ [  4%]
+........................................................................ [  9%]
+........................................................................ [ 13%]
+.................................F...................................... [ 18%]
+........................................................................ [ 23%]
+........................................................................ [ 27%]
+........................................................................ [ 32%]
+........................................................................ [ 36%]
+........................................................................ [ 41%]
+........................................................................ [ 46%]
+........................................................................ [ 50%]
+........................................................................ [ 55%]
+........................................................................ [ 60%]
+........................................................................ [ 64%]
+........................................................................ [ 69%]
+........................................................................ [ 73%]
+........................................................................ [ 78%]
+........................................................................ [ 83%]
+........................................................................ [ 87%]
+........................................................................ [ 92%]
+..............................................F......................... [ 97%]
+.............................................                            [100%]
+================================== FAILURES ===================================
+_________________________ test_total_redraw_benchmark _________________________
+
+app = <tools.drone_tcp_panel.DronePanel object .>
+
+    def test_total_redraw_benchmark(app) -> None:
+        """规划 §2.8：4 波形 × 4 曲线 × 10 k 点 + 20 张卡，一次总重绘 ≤10 ms。"""
+        load_schema(app)
+        workspace = app.dashboard_layout.active_workspace()
+        workspace.tiles.clear()
+        for index in range(4):
+            workspace.tiles.append(dash_layout.TileSpec(
+                dash_layout.TILE_WAVE, (index % 2) * 6, (index // 2) * 5, 6, 5,
+                ["roll", "pitch", "yaw", "vel_est_x"],
+            ))
+        for index in range(20):
+            workspace.tiles.append(dash_layout.TileSpec(
+                dash_layout.TILE_VALUE, (index % 4) * 3, 10 + (index // 4) * 2, 3, 2,
+                ["flow_height"],
+            ))
+        app._dashboard_rebuild_tiles()
+    
+        # 每通道灌满 10 k 个样本，直接写环形缓冲（走帧要 10 k 次解码，测的就不是重绘了）。
+        times = np.linspace(0.0, 60.0, 10000, dtype=np.float64)
+        for name in ("roll", "pitch", "yaw", "vel_est_x", "flow_height"):
+            index = NAME_TO_INDEX[name]
+            ring = app.dashboard_ring
+            ring._time[index, :] = np.resize(times, ring.capacity)
+            ring._value[index, :] = np.resize(
+                np.sin(times * (index + 1)).astype(np.float32), ring.capacity
+            )
+            ring._used[index] = ring.capacity
+            ring._head[index] = 0
+    
+        for tile in app.dashboard_tiles:
+            tile.refresh()
+        app.update_idletasks()
+    
+        samples = []
+        for _ in range(11):
+            start = time.perf_counter()
+            for tile in app.dashboard_tiles:
+                tile.refresh()
+            samples.append(time.perf_counter() - start)
+        samples.sort()
+        median = samples[len(samples) // 2]
+>       assert median <= 0.010, (
+            f"median total redraw {median * 1000:.2f} ms "
+            f"(best {samples[0] * 1000:.2f}, worst {samples[-1] * 1000:.2f})"
+        )
+E       AssertionError: median total redraw 11.77 ms (best 5.28, worst 15.45)
+E       assert 0.011770400000386871 <= 0.01
+
+tests\test_dashboard_page.py:1375: AssertionError
+___________ test_closed_panel_variables_can_be_released_by_a_worker ___________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001DCC1D9C3B0>
+
+    def test_closed_panel_variables_can_be_released_by_a_worker(monkeypatch):
+        """Late Python collection must not execute Tcl after the UI closes."""
+        import sys
+        import threading
+        import tkinter as tk
+        from tools.drone_tcp_panel import DronePanel
+    
+        root = DronePanel()
+        other = tk.Tk()
+        survivor = tk.StringVar(other, value="other interpreter")
+        held = [tk.StringVar(root, value="closed interpreter")]
+        exceptions = []
+        monkeypatch.setattr(sys, "unraisablehook", exceptions.append)
+        root.destroy()
+        worker = threading.Thread(target=held.clear)
+        worker.start()
+        worker.join(timeout=3)
+        try:
+            assert not worker.is_alive()
+>           assert not exceptions, [str(event.exc_value) for event in exceptions]
+E           AssertionError: ['main thread is not in main loop']
+E           assert not [UnraisableHookArgs(exc_type=<class 'RuntimeError'>, exc_value=RuntimeError('main thread is not in main loop'), exc_traceback=<traceback object at 0x000001DCC1D14D40>, err_msg=None, object=<function Image.__del__ at 0x000001DCFFC92CA0>)]
+
+tests\test_tk_review_regressions.py:326: AssertionError
+============================== warnings summary ===============================
+tests/test_record_service_review_regressions.py: 2 warnings
+tests/test_rom_dfu_boot_contract.py: 1 warning
+tests/test_simulation_experiments.py: 1 warning
+tests/test_simulation_launcher.py: 4 warnings
+tests/test_telem_stream_decoder.py: 2 warnings
+tests/test_telemetry_schema_contract.py: 3 warnings
+tests/test_tk_review_regressions.py: 2 warnings
+  D:\ANACON\Lib\site-packages\_pytest\unraisableexception.py:78: PytestUnraisableExceptionWarning: Exception ignored in: <function Image.__del__ at 0x000001DCFFC92CA0>
+  
+  Traceback (most recent call last):
+    File "D:\ANACON\Lib\tkinter\__init__.py", line 4117, in __del__
+      self.tk.call('image', 'delete', self.name)
+  RuntimeError: main thread is not in main loop
+  
+    warnings.warn(pytest.PytestUnraisableExceptionWarning(msg))
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+Physical serial open attempts: 0
+Flashing/probe tool invocation attempts: 0
+Tk display available at session start: True; Tk roots created: 54
+=========================== short test summary info ===========================
+FAILED tests/test_dashboard_page.py::test_total_redraw_benchmark - AssertionE...
+FAILED tests/test_tk_review_regressions.py::test_closed_panel_variables_can_be_released_by_a_worker
+2 failed, 1555 passed, 15 warnings in 429.83s (0:07:09)

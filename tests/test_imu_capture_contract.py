@@ -22,6 +22,17 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def _strip_c_comments(text: str) -> str:
+    """去掉 C 注释。
+
+    断言"源码里有某个标识符"时，注释是**假阳性的主要来源**：解释一次改动的注释
+    几乎必然提到被改掉的旧值，于是断言永远为真。本文件就栽过一次，见
+    `test_export_runs_off_the_sampling_path`。
+    """
+    text = re.sub(r"/\*.*?\*/", " ", text, flags=re.S)
+    return re.sub(r"//[^\n]*", " ", text)
+
+
 def read(path: str) -> str:
     return (ROOT / path).read_text(encoding="utf-8")
 

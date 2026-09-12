@@ -100,29 +100,35 @@ def _clear(row: ttk.Frame) -> None:
 
 def render_workspace_bar(root_row: ttk.Frame, view_row: ttk.Frame, tree: WorkspaceTree,
                          *, root_var: tk.IntVar, view_var: tk.IntVar,
-                         on_root, on_view) -> None:
-    """整条选择条重画。工作区列表变了（换布局、仿真起停）才需要走这条。"""
+                         on_root, on_view) -> bool:
+    """整条选择条重画。工作区列表变了（换布局、仿真起停）才需要走这条。
+
+    返回第二行是否有内容。
+    """
     _clear(root_row)
     for chip in tree.roots:
         ttk.Radiobutton(root_row, text=chip.label, value=chip.index, variable=root_var,
                         command=lambda index=chip.index: on_root(index)).pack(
                             side=tk.LEFT, padx=(0, 6))
     root_var.set(tree.active_root)
-    render_view_row(view_row, tree, view_var=view_var, on_view=on_view)
+    return render_view_row(view_row, tree, view_var=view_var, on_view=on_view)
 
 
 def render_view_row(view_row: ttk.Frame, tree: WorkspaceTree, *,
-                    view_var: tk.IntVar, on_view) -> None:
-    """只重画第二行。
+                    view_var: tk.IntVar, on_view) -> bool:
+    """只重画第二行。返回它是否有内容，由调用方决定这一行占不占版面。
 
     单独开这个口子不是为了省几个控件：点第一行会换掉第二行的内容（换了个父），
     而**两行都重画就会销毁刚刚被点的那个单选钮**——Tk 事后再碰它就是
     `invalid command name`。第一行的内容只跟工作区列表有关、跟选中谁无关，
     所以这里不碰它，销毁的永远是"别人那一行"。
+
+    返回值而不是自己 pack：这一行该插在工具条的哪两行之间是页面的事，本模块
+    只认自己那个 frame。
     """
     _clear(view_row)
     if not tree.views:
-        return
+        return False
     ttk.Label(view_row, text=VIEW_ROW_PREFIX, style="Muted.TLabel").pack(
         side=tk.LEFT, padx=(16, 8))
     for chip in tree.views:
@@ -130,6 +136,7 @@ def render_view_row(view_row: ttk.Frame, tree: WorkspaceTree, *,
                         command=lambda index=chip.index: on_view(index)).pack(
                             side=tk.LEFT, padx=(0, 6))
     view_var.set(tree.active)
+    return True
 
 
 __all__ = [

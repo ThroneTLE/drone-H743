@@ -1,10 +1,13 @@
 #ifndef APP_LED_H
 #define APP_LED_H
 
+#include <stddef.h>
 #include <stdint.h>
 
+#include "drv_rgb_led.h"
+
 /*
- * 解锁被拒的原因。数值即 LED_3 的闪烁次数，所以**只能追加，不能重排**——
+ * 解锁被拒的原因。数值即琥珀色的闪烁次数，所以**只能追加，不能重排**——
  * 现场是靠数闪几下来判断的，改了编号等于把所有人的记忆作废。
  *
  * 每个能让 stabilizer_rc_update_armed() 拒绝解锁的条件，都必须在这里有一个
@@ -38,9 +41,25 @@ typedef enum {
     APP_LED_SERVO_CAL_ERROR = 3,
 } APP_LED_ServoCalMode;
 
+typedef struct {
+    DRV_RgbColor color;         /* 此刻算出来的颜色（未经调制） */
+    uint8_t      source;        /* SVC_LedSource；== SVC_LED_SOURCE_COUNT 表示没人说话 */
+    uint8_t      armed;
+    uint8_t      arm_published; /* 控制环是否已经发布过解锁状态 */
+    uint8_t      block_reason;
+    uint8_t      servo_cal;
+    uint32_t     ticks;         /* 灯的节拍计数，用来区分"没话说"和"根本没在跑" */
+    uint8_t      active_low;    /* 板级极性，报出来是为了让"看到的"和"写的"能对账 */
+} APP_LED_Debug;
+
 void APP_LED_Task_Init(void);
 void APP_LED_Task_Step(void);
 void APP_LED_SetArmStatus(uint8_t armed, APP_LED_ArmBlockReason reason);
 void APP_LED_SetServoCalMode(APP_LED_ServoCalMode mode);
+
+/* 上位机点名：hold_ms 之后自动交还，免得测试完忘记恢复把灯占死。 */
+void APP_LED_Identify(const DRV_RgbColor *color, uint32_t hold_ms);
+void APP_LED_IdentifyPattern(const DRV_RgbPattern *pattern, uint32_t hold_ms);
+void APP_LED_GetDebug(APP_LED_Debug *debug);
 
 #endif

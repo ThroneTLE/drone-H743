@@ -10,6 +10,5 @@ void BSP_Init(void)
     BSP_UART_MaintInit();
     (void)BSP_PWM_Init();
     BSP_AiWB2_PowerInit();
-    BSP_LED_Init();
     BSP_System_Init();
 }
