@@ -80,6 +80,8 @@
 
 ## 类别层：已有的类别模式
 
+- DShot 电调驱动（作者批准的分阶段移植）：[modes/dshot-esc.md](modes/dshot-esc.md)
+
 - 教学仿真（作者明确授权的独立电脑仿真）：[modes/simulation.md](modes/simulation.md)
 
 - 算法验证：[modes/algorithm-validation.md](modes/algorithm-validation.md)
