@@ -163,18 +163,6 @@ osThreadId_t VOFA_TaskHandle;
 const osThreadAttr_t VOFA_Task_attributes = {
   .name = "VOFA_Task",
   .stack_size = 512 * 4,
-  /*
-   * 2026-09-11 由 osPriorityLow 提到 BelowNormal。
-   *
-   * Low 比 messageTask / backgroundTask（都是 BelowNormal）还低，于是只有在
-   * 它们和 1 kHz 的 Stabilizer 全都让出 CPU 时才轮得到。实测这条件不成立：
-   * `RTOS?` 报 TELEM state=1(Ready)，而任务内第一条语句的计数器从上电起一直是
-   * 0——**一整拍都没跑过**，遥测流表现为 stream=1 却一个字节都不来。
-   *
-   * 遥测是要按固定节拍产出的任务，不该靠捡剩余时间片。放到 BelowNormal 与
-   * 消息/后台同级，仍然低于控制环（Normal），不会跟稳定环抢时间。
-   * 改这里必须同步改 drone-H743.ioc 的 FREERTOS.Tasks01（VOFA_Task 优先级 8→16）。
-   */
   .priority = (osPriority_t) osPriorityBelowNormal,
 };
 /* Definitions for uartTxQueue */
