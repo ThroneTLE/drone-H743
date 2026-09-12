@@ -84,6 +84,13 @@ static void dma_complete(DMA_HandleTypeDef *dma)
 {
     uint32_t lock = BSP_Critical_Enter();
     if ((dma == dma_handle()) && (state.busy == 2U) && !state.fault) {
+        /* HAL records TE/DME/FE before invoking TC, but invokes its error
+         * callback afterwards. A combined IRQ must never become a success. */
+        if (dma->ErrorCode != HAL_DMA_ERROR_NONE) {
+            latch_fault();
+            BSP_Critical_Exit(lock);
+            return;
+        }
         /* Two zero tail slots ensure the final data bit has finished even with
          * CCR preload. At TC the first zero is active, second zero is preloaded. */
         htim1.Instance->DIER &= ~TIM_DIER_UDE;

@@ -29,13 +29,16 @@ int HAL_DMA_Start_IT(DMA_HandleTypeDef *d,uint32_t src,uint32_t dst,uint32_t len
     (void)src; (void)dst;
     if(len!=36 || !cleaned || !flags_cleared || !irq_cleared) { abort(); }
     if(start_fail) { return HAL_ERROR; }
-    d->State=2; ((DMA_Stream_TypeDef*)d->Instance)->CR|=DMA_SxCR_EN; starts++; return HAL_OK;
+    d->State=2; d->ErrorCode=HAL_DMA_ERROR_NONE;
+    ((DMA_Stream_TypeDef*)d->Instance)->CR|=DMA_SxCR_EN|DMA_IT_TC|DMA_IT_TE|DMA_IT_DME;
+    starts++; return HAL_OK;
 }
 /* Compile the real BSP. File-local frame buffer is observed only by this test. */
 #include "bsp_dshot.c"
 #include "bsp_pwm.c"
 #include "arbitration_seam.h"
 #include "app_esc_diag.c"
+#include "hal_irq_seam.h"
 static char report[1024];
 void APP_Control_QueueText(const char *fmt, ...) {
     va_list ap; va_start(ap,fmt); vsnprintf(report,sizeof(report),fmt,ap); va_end(ap);
@@ -161,9 +164,36 @@ static int arbitration(void) {
 #endif
     return 0;
 }
+static int vendor_errors(void) {
+    const uint32_t flags[]={DMA_FLAG_TEIF0_4,DMA_FLAG_DMEIF0_4,DMA_FLAG_FEIF0_4};
+    uint16_t code[2]={48,2047};
+    for(unsigned i=0;i<3;i++) {
+        for(unsigned with_tc=0;with_tc<2;with_tc++) {
+            CHECK(setup()==0);
+            DMA_Base_Registers regs={0};
+            dma.StreamBaseAddress=(uintptr_t)&regs;
+            dma.StreamIndex=16; /* Stream2 */
+            CHECK(BSP_DShot_Submit(code,3)==BSP_DSHOT_OK);
+            test_stream2.FCR |= DMA_IT_FE;
+            regs.ISR=(flags[i] | (with_tc ? DMA_FLAG_TCIF0_4 : 0U)) << 16;
+            vendor_stream_irq(&dma);
+            CHECK(state.fault && state.errors==1 && state.completed==0);
+            CHECK(!state.enabled_mask && !state.busy);
+            CHECK(!(test_tim1.BDTR&TIM_BDTR_MOE));
+            CHECK(!(test_tim1.DIER&TIM_DIER_UDE));
+            CHECK(BSP_DShot_Submit(code,3)==BSP_DSHOT_ERROR);
+            CHECK(BSP_DShot_Init()==BSP_DSHOT_OK);
+            CHECK(BSP_DShot_Submit(code,3)==BSP_DSHOT_OK);
+            regs.ISR=DMA_FLAG_TCIF0_4 << 16;
+            vendor_stream_irq(&dma);
+            CHECK(!state.fault && state.completed==1);
+        }
+    }
+    return 0;
+}
 int main(int argc,char **argv) {
     if(argc!=2) return 2;
-    int n=atoi(argv[1]); int rc=n==0?waveform():(n==1?races():(n==2?faults():arbitration()));
+    int n=atoi(argv[1]); int rc=n==0?waveform():(n==1?races():(n==2?faults():(n==3?arbitration():vendor_errors())));
     if(!rc) puts("real BSP host state/register seam passed (not hardware validation)");
     return rc;
 }

@@ -4,7 +4,7 @@
 
 Read this shard only when you need existing firmware behavioral/architecture coverage or must choose focused regression tests.
 
-Source snapshot: `282f07352875`. Indexed files: 143.
+Source snapshot: `b98bd6680084`. Indexed files: 143.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|

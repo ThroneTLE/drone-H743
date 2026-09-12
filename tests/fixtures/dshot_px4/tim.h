@@ -4,15 +4,18 @@
 #include <stdint.h>
 #include <stddef.h>
 typedef struct { volatile uint32_t CR1,CR2,SMCR,DIER,SR,EGR,CCMR1,CCMR2,CCER,CNT,PSC,ARR,RCR,CCR1,CCR2,CCR3,CCR4,BDTR,DCR,DMAR; } TIM_TypeDef;
-typedef struct { volatile uint32_t CR; } DMA_Stream_TypeDef;
+typedef struct { volatile uint32_t CR, FCR; } DMA_Stream_TypeDef;
 typedef struct { uint32_t Request,Direction,Mode,MemDataAlignment,PeriphDataAlignment,MemInc,PeriphInc; } DMA_InitTypeDef;
 typedef struct DMA_HandleTypeDef DMA_HandleTypeDef;
 struct DMA_HandleTypeDef {
-    void *Instance; DMA_InitTypeDef Init; uint32_t State, Lock;
+    void *Instance; DMA_InitTypeDef Init; uint32_t State, Lock, ErrorCode, StreamIndex;
+    uintptr_t StreamBaseAddress;
     void (*XferCpltCallback)(DMA_HandleTypeDef*);
     void (*XferErrorCallback)(DMA_HandleTypeDef*);
     void (*XferHalfCpltCallback)(DMA_HandleTypeDef*);
     void (*XferAbortCallback)(DMA_HandleTypeDef*);
+    void (*XferM1CpltCallback)(DMA_HandleTypeDef*);
+    void (*XferM1HalfCpltCallback)(DMA_HandleTypeDef*);
 };
 typedef struct { TIM_TypeDef *Instance; DMA_HandleTypeDef *hdma[7]; } TIM_HandleTypeDef;
 typedef struct { volatile uint32_t CFGR; } RCC_TypeDef;
@@ -62,6 +65,30 @@ extern TIM_HandleTypeDef htim1, htim4;
 #define RCC_APB2_DIV2 0x400U
 #define RCC_APB2_DIV4 0x500U
 #define HAL_DMA_STATE_READY 1U
+#define HAL_DMA_STATE_ERROR 3U
+#define HAL_DMA_STATE_ABORT 4U
+#define HAL_DMA_ERROR_NONE 0U
+#define HAL_DMA_ERROR_TE 1U
+#define HAL_DMA_ERROR_FE 2U
+#define HAL_DMA_ERROR_DME 4U
+#define DMA_SxCR_DBM 0x40000U
+#define DMA_SxCR_CT 0x80000U
+#define DMA_SxCR_CIRC 0x100U
+#define DMA_IT_TC DMA_SxCR_TCIE
+#define DMA_IT_TE DMA_SxCR_TEIE
+#define DMA_IT_HT DMA_SxCR_HTIE
+#define DMA_IT_DME DMA_SxCR_DMEIE
+#define DMA_IT_FE 0x80U
+#define DMA_FLAG_FEIF0_4 1U
+#define DMA_FLAG_DMEIF0_4 4U
+#define DMA_FLAG_TEIF0_4 8U
+#define DMA_FLAG_HTIF0_4 16U
+#define DMA_FLAG_TCIF0_4 32U
+#define __IO volatile
+#define __HAL_UNLOCK(d) ((d)->Lock=0U)
+#define __HAL_DMA_DISABLE(d) (((DMA_Stream_TypeDef*)(d)->Instance)->CR &= ~DMA_SxCR_EN)
+#define __HAL_DMA_GET_IT_SOURCE(d,it) (((it)==DMA_IT_FE ? ((DMA_Stream_TypeDef*)(d)->Instance)->FCR : ((DMA_Stream_TypeDef*)(d)->Instance)->CR) & (it))
+typedef struct { volatile uint32_t ISR, IFCR; } DMA_Base_Registers;
 #define HAL_UNLOCKED 0U
 #define HAL_OK 0
 #define HAL_ERROR 1

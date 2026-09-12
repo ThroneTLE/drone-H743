@@ -2,7 +2,7 @@
 
 # drone-H743 Repository Index
 
-Snapshot: `2fe0e50815b7`. Covered non-index working files: 7670. Scope: Git-tracked plus non-ignored untracked files; ignored build outputs, caches, and local logs are intentionally excluded.
+Snapshot: `2cc79746faa8`. Covered non-index working files: 7681. Scope: Git-tracked plus non-ignored untracked files; ignored build outputs, caches, and local logs are intentionally excluded.
 
 ## Use this index
 
@@ -23,7 +23,7 @@ Freshness check: `python .agents/skills/drone-h743-project/scripts/update_reposi
 | [tests-firmware.md](tests-firmware.md) | Firmware regression/contract coverage and focused test selection | 143 |
 | [tests-host.md](tests-host.md) | Ground-station/tooling regression coverage | 38 |
 | [host-tools.md](host-tools.md) | Serial/TCP tools, capture, calibration, identification, log analysis and desktop UIs | 5376 |
-| [docs-data.md](docs-data.md) | Architecture/controller documents, agent references, datasets, captures and experimental evidence | 429 |
+| [docs-data.md](docs-data.md) | Architecture/controller documents, agent references, datasets, captures and experimental evidence | 440 |
 
 ## Ownership map
 

@@ -1,0 +1,41 @@
+{
+  "format": "drone-h743-dshot-current-self-review",
+  "schema": 1,
+  "created_at": "2026-09-12T12:41:26.191533+00:00",
+  "verdict": "INCOMPLETE",
+  "baseline": "af84478d",
+  "scope": "host-only",
+  "findings": [
+    {
+      "priority": "P1",
+      "status": "fixed",
+      "title": "Concurrent DMA completion and error flags bypassed fault latch",
+      "regression": "self-review-red.txt -> self-review-focused.txt"
+    },
+    {
+      "status": "open_validation_gap",
+      "title": "Full suite failed different existing GUI wall-clock performance gates in two runs; isolated combined rerun passed; thresholds unchanged"
+    }
+  ],
+  "full_runs": [
+    "1 failed, 1526 passed in 408.35s",
+    "1 failed, 1526 passed in 547.58s"
+  ],
+  "focused": "35 passed in 4.69s",
+  "ui_recheck": "2 passed in 5.76s",
+  "hardware_operations": 0,
+  "profiles": {
+    "DSHOT300": {
+      "build_type": "Debug",
+      "elf_sha256": "1a050860baab40f76443517f50242bbf6523470dd6ca41bf3f9edd3cc2b0c41e",
+      "log": "self-review-build-dshot.txt",
+      "warnings": 0
+    },
+    "PWM": {
+      "build_type": "Debug",
+      "elf_sha256": "637ff00379830ddfdc8d3c0ff86c474df54ddd20ed9fe1a58940c99a52196fad",
+      "log": "self-review-build-pwm.txt",
+      "warnings": 0
+    }
+  }
+}

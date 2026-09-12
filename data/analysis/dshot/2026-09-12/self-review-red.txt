@@ -1,0 +1,39 @@
+....F....F..                                                             [100%]
+================================== FAILURES ===================================
+____________________ test_real_bsp[PWM-vendor-irq-errors] _____________________
+
+executable = WindowsPath('C:/Users/23259/AppData/Local/Temp/pytest-of-23259/pytest-1976/dshot-bsp0/bsp.exe')
+case = 4
+
+    @pytest.mark.parametrize("case", [0, 1, 2, 3, 4], ids=["preload-tail", "busy-disable-races", "fault-latch", "real-arbitration", "vendor-irq-errors"])
+    def test_real_bsp(executable, case):
+        r = subprocess.run([str(executable), str(case)], capture_output=True, text=True)
+>       assert r.returncode == 0, r.stdout + r.stderr
+E       AssertionError: line 180: state.fault && state.errors==1 && state.completed==0
+E         
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['C:\\Users\\23259\\AppData\\Local\\Temp\\pytest-of-23259\\pytest-1976\\dshot-bsp0\\bsp.exe', '4'], returncode=1, stdout='', stderr='line 180: state.fault && state.errors==1 && state.completed==0\n').returncode
+
+tests\test_dshot_bsp.py:60: AssertionError
+__________________ test_real_bsp[DSHOT300-vendor-irq-errors] __________________
+
+executable = WindowsPath('C:/Users/23259/AppData/Local/Temp/pytest-of-23259/pytest-1976/dshot-bsp1/bsp.exe')
+case = 4
+
+    @pytest.mark.parametrize("case", [0, 1, 2, 3, 4], ids=["preload-tail", "busy-disable-races", "fault-latch", "real-arbitration", "vendor-irq-errors"])
+    def test_real_bsp(executable, case):
+        r = subprocess.run([str(executable), str(case)], capture_output=True, text=True)
+>       assert r.returncode == 0, r.stdout + r.stderr
+E       AssertionError: line 180: state.fault && state.errors==1 && state.completed==0
+E         
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['C:\\Users\\23259\\AppData\\Local\\Temp\\pytest-of-23259\\pytest-1976\\dshot-bsp1\\bsp.exe', '4'], returncode=1, stdout='', stderr='line 180: state.fault && state.errors==1 && state.completed==0\n').returncode
+
+tests\test_dshot_bsp.py:60: AssertionError
+Physical serial open attempts: 0
+Flashing/probe tool invocation attempts: 0
+Tk display available at session start: True; Tk roots created: 0
+=========================== short test summary info ===========================
+FAILED tests/test_dshot_bsp.py::test_real_bsp[PWM-vendor-irq-errors] - Assert...
+FAILED tests/test_dshot_bsp.py::test_real_bsp[DSHOT300-vendor-irq-errors] - A...
+2 failed, 10 passed in 2.48s

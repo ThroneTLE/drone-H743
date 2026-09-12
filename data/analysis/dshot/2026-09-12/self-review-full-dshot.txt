@@ -1,0 +1,82 @@
+........................................................................ [  4%]
+........................................................................ [  9%]
+........................................................................ [ 14%]
+................F....................................................... [ 18%]
+........................................................................ [ 23%]
+........................................................................ [ 28%]
+........................................................................ [ 33%]
+........................................................................ [ 37%]
+........................................................................ [ 42%]
+........................................................................ [ 47%]
+........................................................................ [ 51%]
+........................................................................ [ 56%]
+........................................................................ [ 61%]
+........................................................................ [ 66%]
+........................................................................ [ 70%]
+........................................................................ [ 75%]
+........................................................................ [ 80%]
+........................................................................ [ 84%]
+........................................................................ [ 89%]
+........................................................................ [ 94%]
+........................................................................ [ 99%]
+...............                                                          [100%]
+================================== FAILURES ===================================
+_________________________ test_total_redraw_benchmark _________________________
+
+app = <tools.drone_tcp_panel.DronePanel object .>
+
+    def test_total_redraw_benchmark(app) -> None:
+        """�滮 ��2.8��4 ���� �� 4 ���� �� 10 k �� + 20 �ſ���һ�����ػ� ��10 ms��"""
+        load_schema(app)
+        workspace = app.dashboard_layout.active_workspace()
+        workspace.tiles.clear()
+        for index in range(4):
+            workspace.tiles.append(dash_layout.TileSpec(
+                dash_layout.TILE_WAVE, (index % 2) * 6, (index // 2) * 5, 6, 5,
+                ["roll", "pitch", "yaw", "vel_est_x"],
+            ))
+        for index in range(20):
+            workspace.tiles.append(dash_layout.TileSpec(
+                dash_layout.TILE_VALUE, (index % 4) * 3, 10 + (index // 4) * 2, 3, 2,
+                ["flow_height"],
+            ))
+        app._dashboard_rebuild_tiles()
+    
+        # ÿͨ������ 10 k ��������ֱ��д���λ��壨��֡Ҫ 10 k �ν��룬��ľͲ����ػ��ˣ���
+        times = np.linspace(0.0, 60.0, 10000, dtype=np.float64)
+        for name in ("roll", "pitch", "yaw", "vel_est_x", "flow_height"):
+            index = NAME_TO_INDEX[name]
+            ring = app.dashboard_ring
+            ring._time[index, :] = np.resize(times, ring.capacity)
+            ring._value[index, :] = np.resize(
+                np.sin(times * (index + 1)).astype(np.float32), ring.capacity
+            )
+            ring._used[index] = ring.capacity
+            ring._head[index] = 0
+    
+        for tile in app.dashboard_tiles:
+            tile.refresh()
+        app.update_idletasks()
+    
+        samples = []
+        for _ in range(11):
+            start = time.perf_counter()
+            for tile in app.dashboard_tiles:
+                tile.refresh()
+            samples.append(time.perf_counter() - start)
+        samples.sort()
+        median = samples[len(samples) // 2]
+>       assert median <= 0.010, (
+            f"median total redraw {median * 1000:.2f} ms "
+            f"(best {samples[0] * 1000:.2f}, worst {samples[-1] * 1000:.2f})"
+        )
+E       AssertionError: median total redraw 10.64 ms (best 7.37, worst 30.16)
+E       assert 0.010642100009135902 <= 0.01
+
+tests\test_dashboard_page.py:1375: AssertionError
+Physical serial open attempts: 0
+Flashing/probe tool invocation attempts: 0
+Tk display available at session start: True; Tk roots created: 51
+=========================== short test summary info ===========================
+FAILED tests/test_dashboard_page.py::test_total_redraw_benchmark - AssertionE...
+1 failed, 1526 passed in 408.35s (0:06:48)

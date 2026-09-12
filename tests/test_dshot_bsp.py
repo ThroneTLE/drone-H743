@@ -32,6 +32,17 @@ static int APP_Acceptance_IsActive(void) { return acceptance_active; }
 static void run_motor_arbitration(ArbFrame *frame) {
 """ + body + "\n}\n"
     (build / "arbitration_seam.h").write_text(seam, encoding="utf-8")
+    # Compile the vendor's DMA1/2 IRQ branch verbatim, including callback order.
+    # BDMA and the unused BDMA preamble are outside this board binding's seam.
+    hal = (ROOT / "Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_dma.c").read_text()
+    irq = hal.split("void HAL_DMA_IRQHandler(DMA_HandleTypeDef *hdma)", 1)[1]
+    branch = irq.split("if(IS_DMA_STREAM_INSTANCE(hdma->Instance) != 0U)", 1)[1]
+    branch = branch.split("else if(IS_BDMA_CHANNEL_INSTANCE", 1)[0]
+    (build / "hal_irq_seam.h").write_text(
+        "static void vendor_stream_irq(DMA_HandleTypeDef *hdma) {\n"
+        "DMA_Base_Registers *regs_dma=(DMA_Base_Registers*)hdma->StreamBaseAddress;\n"
+        "uint32_t tmpisr_dma=regs_dma->ISR, count=0, timeout=480000000U/9600U;\n"
+        + branch + "\n}\n", encoding="utf-8")
     cmd = [shutil.which("gcc"), "-std=c11", "-O2", "-Wall", "-Wextra", "-Werror",
            "-I", str(FIXTURES), "-I", str(ROOT / "BSP/Inc"), "-I", str(ROOT / "BSP/Src"),
            f"-DBSP_ESC_PROTOCOL={request.param}", "-I", str(build),
@@ -43,7 +54,7 @@ static void run_motor_arbitration(ArbFrame *frame) {
     return path
 
 
-@pytest.mark.parametrize("case", [0, 1, 2, 3], ids=["preload-tail", "busy-disable-races", "fault-latch", "real-arbitration"])
+@pytest.mark.parametrize("case", [0, 1, 2, 3, 4], ids=["preload-tail", "busy-disable-races", "fault-latch", "real-arbitration", "vendor-irq-errors"])
 def test_real_bsp(executable, case):
     r = subprocess.run([str(executable), str(case)], capture_output=True, text=True)
     assert r.returncode == 0, r.stdout + r.stderr
@@ -61,7 +72,7 @@ def test_abort_is_bounded_and_does_not_depend_on_interrupts():
 
 def test_register_constants_match_actual_st_headers(tmp_path):
     mock = (FIXTURES / "tim.h").read_text()
-    constants = re.findall(r"^#define ((?:TIM|DMA|RCC)_\w+) (0x[\da-fA-F]+U?|\d+U?)$", mock, re.M)
+    constants = re.findall(r"^#define ((?:TIM|DMA|RCC|HAL_DMA)_\w+) (0x[\da-fA-F]+U?|\d+U?)$", mock, re.M)
     text = '#include "stm32h7xx_hal.h"\n' + "\n".join(
         f'_Static_assert({name} == {value}, "{name} mismatch");' for name, value in constants)
     src = tmp_path / "register_constants.c"
