@@ -22,6 +22,17 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def _strip_c_comments(text: str) -> str:
+    """去掉 C 注释。
+
+    断言"源码里有某个标识符"时，注释是**假阳性的主要来源**：解释一次改动的注释
+    几乎必然提到被改掉的旧值，于是断言永远为真。本文件就栽过一次，见
+    `test_export_runs_off_the_sampling_path`。
+    """
+    text = re.sub(r"/\*.*?\*/", " ", text, flags=re.S)
+    return re.sub(r"//[^\n]*", " ", text)
+
+
 def read(path: str) -> str:
     return (ROOT / path).read_text(encoding="utf-8")
 
@@ -100,8 +111,24 @@ def test_export_runs_off_the_sampling_path() -> None:
     vofa_task = source[source.index("void VOFA_task(void *argument)\n{"):]
     assert "APP_TelemStream_Tick();" in vofa_task[: vofa_task.index("\n}\n")]
 
-    attributes = source[source.index("VOFA_Task_attributes = {"):]
-    assert "osPriorityLow" in attributes[: attributes.index("};")]
+    # 遥测任务必须**低于控制环**（Normal），否则阻塞式 USB 导出会跟稳定环抢时间。
+    #
+    # 原来这条写的是 `assert "osPriorityLow" in attributes`，而该任务 2026-09-11
+    # 已经由 Low 提到 BelowNormal。它之所以一直是绿的，是因为解释这次改动的**注释**
+    # 里就有 "由 osPriorityLow 提到 BelowNormal" 这几个字——断言被散文喂饱了。
+    # 2026-09-12 那段注释在一次 stash 往返里丢了，这条才露出来。
+    #
+    # 所以现在先去注释再断言，并且钉"不高于 BelowNormal"这个**意图**，而不是钉
+    # 某一个具体档位——档位以后还可能调，意图不会变。
+    attributes = _strip_c_comments(
+        source[source.index("VOFA_Task_attributes = {"):])
+    attributes = attributes[: attributes.index("};")]
+    assert "osPriorityBelowNormal" in attributes, attributes
+    for too_high in ("osPriorityNormal,", "osPriorityAboveNormal",
+                     "osPriorityHigh", "osPriorityRealtime"):
+        assert too_high not in attributes, (
+            f"遥测任务不能跑在 {too_high}：阻塞式导出会跟 1 kHz 稳定环抢时间"
+        )
 
 
 def test_sample_layout_matches_host_decoder() -> None:

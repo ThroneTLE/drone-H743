@@ -3438,7 +3438,7 @@ static void app_control_dispatch_tokens(char **tokens, uint32_t count, uint8_t e
         vofaStreamActive = 0U;
         APP_Control_QueueText("OK IMU stream stopped\r\n");
     } else {
-        APP_Control_QueueText("ERR unknown cmd %s\r\n", tokens[0]);
+        app_control_handle_unclaimed(tokens, count);
     }
 }
 

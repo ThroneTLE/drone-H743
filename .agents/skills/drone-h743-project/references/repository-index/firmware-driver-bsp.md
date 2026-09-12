@@ -4,7 +4,7 @@
 
 Read this shard only when the task touches device protocols, reusable algorithms, buses, GPIO, DMA callbacks, cache hooks, or board bindings.
 
-Source snapshot: `e9d3ae432b81`. Indexed files: 106.
+Source snapshot: `f0b524576437`. Indexed files: 108.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -34,6 +34,7 @@ Source snapshot: `e9d3ae432b81`. Indexed files: 106.
 | `Driver/Inc/drv_optical_flow.h`<br>`Driver/Src/drv_optical_flow.c` | Reusable device or algorithm driver for optical flow | `DRV_OPTICAL_FLOW_Init`, `DRV_OPTICAL_FLOW_Service`, `DRV_OPTICAL_FLOW_OnUartRxCplt`, `DRV_OPTICAL_FLOW_OnUartRxEvent`, `DRV_OPTICAL_FLOW_OnUartError` (+5) |
 | `Driver/Inc/drv_position_control.h`<br>`Driver/Src/drv_position_control.c` | Reusable device or algorithm driver for position control | `DRV_POSITION_CONTROL_ResetState`, `DRV_POSITION_CONTROL_PositionStep`, `DRV_POSITION_CONTROL_VelocityStep` |
 | `Driver/Inc/drv_rate_control.h`<br>`Driver/Src/drv_rate_control.c` | Reusable device or algorithm driver for rate control | `DRV_RateControl_InitState`, `DRV_RateControl_Step`, `DRV_RateControl_Evaluate` |
+| `Driver/Inc/drv_rgb_led.h`<br>`Driver/Src/drv_rgb_led.c` | Reusable device or algorithm driver for rgb led | `DRV_RgbLed_Sample`, `DRV_RgbLed_DitherReset`, `DRV_RgbLed_Modulate` |
 | `Driver/Inc/drv_sdblock.h`<br>`Driver/Src/drv_sdblock.c` | Reusable device or algorithm driver for sdblock | `DRV_SDBLOCK_Init`, `DRV_SDBLOCK_IsReady`, `DRV_SDBLOCK_GetUsableBytes`, `DRV_SDBLOCK_Read`, `DRV_SDBLOCK_Write` (+1) |
 | `Driver/Inc/drv_servo.h`<br>`Driver/Src/drv_servo.c` | Reusable device or algorithm driver for servo | `DRV_SERVO_SendRaw`, `DRV_SERVO_ReadResponse`, `DRV_SERVO_GetBaudRate`, `DRV_SERVO_SetBaudRate`, `DRV_SERVO_PositionToPulse` (+32) |
 | `Driver/Inc/drv_servo_actuator_model.h` | Reusable device or algorithm driver for servo actuator model | — |
@@ -51,10 +52,10 @@ Source snapshot: `e9d3ae432b81`. Indexed files: 106.
 | `BSP/Inc/bsp_i2c.h`<br>`BSP/Src/bsp_i2c.c` | Board resource binding for i2c | `BSP_I2C_GetHandle`, `BSP_I2C_DebugXfer`, `BSP_I2C_DebugScan` |
 | `BSP/Inc/bsp_icm42688.h`<br>`BSP/Src/bsp_icm42688.c` | Board resource binding for icm42688 | — |
 | `BSP/Inc/bsp_imu.h`<br>`BSP/Src/bsp_imu.c` | Board resource binding for imu | `BSP_IMU_Init`, `BSP_IMU_ReadRaw`, `BSP_IMU_ReadScaled`, `BSP_IMU_IsDataReady`, `BSP_IMU_GetWhoAmI` (+13) |
-| `BSP/Inc/bsp_led.h`<br>`BSP/Src/bsp_led.c` | Board resource binding for led | `BSP_LED_Init`, `BSP_LED_On`, `BSP_LED_Off`, `BSP_LED_Toggle` |
 | `BSP/Inc/bsp_mag.h`<br>`BSP/Src/bsp_mag.c` | Board resource binding for mag | `BSP_MAG_Init`, `BSP_MAG_Read`, `BSP_MAG_Probe`, `BSP_MAG_GetStatus`, `BSP_MAG_Invalidate` (+1) |
 | `BSP/Inc/bsp_optical_flow.h`<br>`BSP/Src/bsp_optical_flow.c` | Board resource binding for optical flow | `BSP_OPTICAL_FLOW_Init`, `BSP_OPTICAL_FLOW_Service`, `BSP_OPTICAL_FLOW_OnUartRxCplt`, `BSP_OPTICAL_FLOW_OnUartRxEvent`, `BSP_OPTICAL_FLOW_OnUartError` (+5) |
 | `BSP/Inc/bsp_pwm.h`<br>`BSP/Src/bsp_pwm.c` | Board resource binding for pwm | `BSP_PWM_Init`, `BSP_PWM_SetEscPulse`, `BSP_PWM_SetEscPercent`, `BSP_PWM_DisableEsc`, `BSP_PWM_SetServoPulse` (+6) |
+| `BSP/Inc/bsp_rgb_led.h`<br>`BSP/Src/bsp_rgb_led.c` | Board resource binding for rgb led | `BSP_RgbLed_Init`, `BSP_RgbLed_WriteBits`, `BSP_RgbLed_PinName`, `BSP_RgbLed_IsActiveLow` |
 | `BSP/Inc/bsp_rom_bootloader.h`<br>`BSP/Src/bsp_rom_bootloader.c` | Board resource binding for rom bootloader | `BSP_RomBootloader_ReadVector`, `BSP_RomBootloader_WriteRequestMagic`, `BSP_RomBootloader_TakeRequestMagic`, `BSP_RomBootloader_Jump`, `BSP_RomBootloader_SystemReset` |
 | `BSP/Inc/bsp_spi.h`<br>`BSP/Src/bsp_spi.c` | Board resource binding for spi | `BSP_SPI_RegisterFlashDevice` |
 | `BSP/Inc/bsp_system.h`<br>`BSP/Src/bsp_system.c` | Board resource binding for system | `BSP_System_Init`, `BSP_Cache_Enable`, `BSP_Cache_Disable`, `BSP_System_GetClockInfo` |

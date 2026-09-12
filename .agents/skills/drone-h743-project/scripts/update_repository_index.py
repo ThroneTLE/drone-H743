@@ -129,7 +129,16 @@ def read_text(path: str) -> str:
     return data.decode("utf-8", errors="replace")
 
 
-def compact(text: str, limit: int = 120) -> str:
+# 用途列每格最多留多少字。
+#
+# 2026-09-12：RGB 状态灯拆成 drv_rgb_led / svc_led / bsp_rgb_led 三个模块外加两个
+# 命令模块与一个测试文件后，索引总量到 98649 B，越过 96 KB 总限 345 B。
+# 按既定处置——**改密度、不抬限制**——把用途列 120→112（实测 98649 → 97066 B）。
+#
+# 这次动用途列而不是再砍 symbol_cell（上次 6→5 动的是那里）：入口名是**精确的
+# 检索键**，砍掉一个就等于少一条能直接 grep 的线索；用途是散文，截到 112 字
+# 仍然读得懂它在说什么。两者都超限时先截散文。
+def compact(text: str, limit: int = 112) -> str:
     text = re.sub(r"\s+", " ", text).strip(" .:-\t\r\n")
     text = text.replace("|", "/")
     if len(text) > limit:

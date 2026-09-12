@@ -27,6 +27,20 @@ extern volatile uint8_t vofaStreamActive;
 
 void APP_Task_LED_Init(void);
 void APP_Task_LED_Step(void);
+/*
+ * 状态灯自己起一个 1 kHz 的低优先级任务，线程体也在 App 侧——freertos.c 里
+ * 只留 `USER CODE BEGIN RTOS_THREADS` 中的一行调用，CubeMX 重生成不会冲掉。
+ *
+ * 为什么非要独立任务：这三根脚（PE2/PE3/PE4）没有定时器复用，亮度只能靠软件
+ * 按固定节拍翻转。原来 LED 是搭在 UART 任务里走的，而那个任务的节拍是
+ * `osThreadFlagsWait(..., 20ms)` —— 有串口流量就快、没有就慢，节拍本身不稳。
+ * 拿它当调光时基，呼吸会随串口忙闲忽明忽暗。
+ *
+ * 也不挂在 1 kHz 的 SensorTask 上：那是 IMU DRDY 驱动的，DRDY 一停它就退到
+ * 20 ms 轮询兜底——**恰好在传感器出问题的时候，报故障的灯先跟着一起坏**。
+ */
+void APP_Task_LED_Start(void);
+extern osThreadId_t LEDTaskHandle;
 void APP_Task_GPS_Init(void);
 void APP_Task_GPS_Step(void);
 void APP_Task_OpticalFlow_Init(void);

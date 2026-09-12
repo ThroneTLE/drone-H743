@@ -120,6 +120,9 @@ void app_control_report_rtos(void)
     app_control_report_task_stack("UART", UARTTaskHandle);
     app_control_report_task_stack("BACKGROUND", backgroundTaskHandle);
     app_control_report_task_stack("TELEM", VOFA_TaskHandle);
+    /* LED 也要在列：它是软件调光的时基，停了灯就只会僵在一个电平上，
+     * 而"灯不动"和"固件死了"在眼睛里长得一模一样。 */
+    app_control_report_task_stack("LED", LEDTaskHandle);
 }
 
 void app_control_report_modules(void)

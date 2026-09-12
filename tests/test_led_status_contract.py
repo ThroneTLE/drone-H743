@@ -40,6 +40,7 @@ def test_led_status_reports_arm_block_reasons_and_flow_health() -> None:
     header = read("App/Inc/app_led.h")
     source = read("App/Src/app_led.c")
     uart = read("App/Src/app_uart.c")
+    tasks = read("App/Src/app_tasks.c")
     freertos = read("Core/Src/freertos.c") + read("App/Src/app_stabilizer.c")
 
     assert "APP_LED_ARM_BLOCK_NO_RC" in header
@@ -52,9 +53,14 @@ def test_led_status_reports_arm_block_reasons_and_flow_health() -> None:
     assert "APP_OPTICAL_FLOW_HEALTH_OK" in source
     assert "APP_OPTICAL_FLOW_HEALTH_RETRYING" in source
     assert "APP_OPTICAL_FLOW_HEALTH_FAILED" in source
-    assert "app_led_group_blink(now_ms, (uint8_t)reason)" in source
-    assert "APP_LED_Task_Step();" in uart
+    # 原因码**原样**当闪烁次数用。中间插一次换算（+1、查表、按颜色分档）就会让
+    # "数灯"和 `blinks=` 报的数字对不上，而两边单看都说得通。
+    assert "app_led_pulses(app_led_amber, (uint8_t)reason)" in source
+    # 灯的节拍归 LED 自己的任务，不再搭 UART 任务的车（那个节拍随串口忙闲变）。
+    assert "APP_LED_Task_Step();" not in uart
+    assert "APP_LED_Task_Step();" in tasks
     assert "APP_Task_LED_Init();" in freertos
+    assert "APP_Task_LED_Start();" in freertos
     assert "APP_LED_SetArmStatus(frame->rc_armed, frame->led_arm_block_reason);" in freertos
 
 

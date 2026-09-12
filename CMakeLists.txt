@@ -64,6 +64,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Driver/Src/drv_gps.c
     Driver/Src/drv_tx_ring.c
     Driver/Src/drv_servo.c
+    Driver/Src/drv_rgb_led.c
     Driver/Src/drv_motor.c
     Driver/Src/drv_elrs.c
     Driver/Src/drv_optical_flow.c
@@ -77,6 +78,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     ThirdParty/Fusion/FusionAhrs.c
     # Services layer
     Services/Src/svc_flow_nav.c
+    Services/Src/svc_led.c
     Services/Src/svc_imu.c
     Services/Src/svc_param.c
     Services/Src/svc_timestamp.c
@@ -85,7 +87,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     BSP/Src/bsp_board.c
     BSP/Src/bsp_cache.c
     BSP/Src/bsp_gpio.c
-    BSP/Src/bsp_led.c
+    BSP/Src/bsp_rgb_led.c
     BSP/Src/bsp_system.c
     BSP/Src/bsp_uart.c
     BSP/Src/bsp_uart_tx.c
@@ -130,6 +132,8 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     App/Src/app_cmd_probe.c
     App/Src/app_cmd_airframe.c
     App/Src/app_cmd_arm.c
+    App/Src/app_cmd_led.c
+    App/Src/app_cmd_fallback.c
     App/Src/app_diag.c
     App/Src/app_flash.c
     App/Src/app_firmware_identity.c

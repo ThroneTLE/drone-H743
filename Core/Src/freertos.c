@@ -174,6 +174,9 @@ const osThreadAttr_t VOFA_Task_attributes = {
    * 遥测是要按固定节拍产出的任务，不该靠捡剩余时间片。放到 BelowNormal 与
    * 消息/后台同级，仍然低于控制环（Normal），不会跟稳定环抢时间。
    * 改这里必须同步改 drone-H743.ioc 的 FREERTOS.Tasks01（VOFA_Task 优先级 8→16）。
+   *
+   * 2026-09-12：LED 任务按 Low 建时踩了一模一样的坑（ticks 一直是 0），
+   * 见 App/Src/app_tasks.c 的 LEDTask_attributes。
    */
   .priority = (osPriority_t) osPriorityBelowNormal,
 };
@@ -351,6 +354,7 @@ void MX_FREERTOS_Init(void) {
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
+  APP_Task_LED_Start();   /* 状态灯 1 kHz 软件调光，线程体在 App/Src/app_tasks.c */
   /* USER CODE END RTOS_THREADS */
 
   /* USER CODE BEGIN RTOS_EVENTS */

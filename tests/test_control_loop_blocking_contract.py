@@ -223,7 +223,7 @@ STEP_D4_SYSTEM_BODY_SHA256 = {
     # took hours precisely because the telemetry task was neither listed nor
     # showed a scheduler state -- it was Ready and never scheduled.
     "app_control_report_task_stack": "c26ae4ec0d80322969af8dadfbfe578fbd7e5f5c3b5cef38b2e47874bae41b84",
-    "app_control_report_rtos": "58f0bef3b98624f289b79a7214634dc6dd22c86b8cb6aa27f6885571bd90a380",
+    "app_control_report_rtos": "a8e77f82e3b162a41ab0ae4edd8314186cef8339f3ede655541170080a265ed9",
     # 2026-09-11：MODULES 之后跟发一条 ARM 状态行。MODULES 是上位机连上必发的
     # 那条，横幅因此第一次刷新就有内容，不用等自己的 2 Hz 轮询转到。
     # 报文体本身在 App/Src/app_cmd_arm.c，这里只是多了一个调用，不是 D4 搬家走样。
@@ -445,6 +445,7 @@ extern osThreadId_t SensorTaskHandle;
 extern osThreadId_t messageTaskHandle;
 extern osThreadId_t UARTTaskHandle;
 extern osThreadId_t backgroundTaskHandle;
+extern osThreadId_t LEDTaskHandle;
 uint32_t osMessageQueueGetCount(osMessageQueueId_t);
 uint32_t osMessageQueueGetCapacity(osMessageQueueId_t);
 UBaseType_t uxTaskGetStackHighWaterMark(TaskHandle_t);

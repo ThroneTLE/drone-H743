@@ -59,12 +59,29 @@ def test_stabilizer_freezes_motors_and_skips_normal_servo_send_during_cal() -> N
 
 
 def test_led_servo_cal_mode_overrides_normal_status() -> None:
+    """标定期间灯必须跟着标定流程走，不能被常态状态盖掉。
+
+    原来这条钉的是 `app_led.c` 里两条语句的**先后顺序**——标定的早返回要排在
+    心跳赋值之前。RGB 重构之后压制关系不再靠语句顺序表达，而是由
+    `SVC_LedSource` 的枚举顺序决定：仲裁取第一个有话说的源。所以断言改钉那个
+    顺序本身，它对**每一个**源都成立，比钉一个函数里的两行强。
+    """
     header = read("App/Inc/app_led.h")
     source = read("App/Src/app_led.c")
+    service = read("Services/Inc/svc_led.h")
 
     assert "APP_LED_SERVO_CAL_RELEASED" in header
     assert "APP_LED_SetServoCalMode(APP_LED_ServoCalMode mode)" in header
-    assert "if (servo_cal_mode == APP_LED_SERVO_CAL_RELEASED)" in source
-    assert "if (servo_cal_mode == APP_LED_SERVO_CAL_SAVE_ACK)" in source
-    assert "if (servo_cal_mode == APP_LED_SERVO_CAL_ERROR)" in source
-    assert source.index("if (servo_cal_mode == APP_LED_SERVO_CAL_RELEASED)") < source.index("heartbeat_period_ms =")
+    for mode in ("APP_LED_SERVO_CAL_RELEASED", "APP_LED_SERVO_CAL_SAVE_ACK",
+                 "APP_LED_SERVO_CAL_ERROR"):
+        assert f"case {mode}:" in source, mode
+    # 标定发布在 CALIBRATION 源上，而该源排在所有常态源之前。
+    assert "SVC_Led_Publish(SVC_LED_SOURCE_CALIBRATION, &pattern)" in source
+    calibration_at = service.index("SVC_LED_SOURCE_CALIBRATION")
+    for lower in ("SVC_LED_SOURCE_BLOCKED", "SVC_LED_SOURCE_WARNING",
+                  "SVC_LED_SOURCE_STATUS", "SVC_LED_SOURCE_HEARTBEAT"):
+        assert calibration_at < service.index(lower), (
+            f"{lower} 排到了 CALIBRATION 前面，标定期间的灯会被它盖掉"
+        )
+    # 唯一该压过标定的是人工点名——人正盯着灯找是哪块板。
+    assert service.index("SVC_LED_SOURCE_IDENTIFY") < calibration_at
