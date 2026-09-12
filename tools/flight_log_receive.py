@@ -707,8 +707,14 @@ def parse_sector_header(data: bytes, offset: int) -> dict[str, object] | None:
                 FRAME_PROVENANCE_STRUCT.unpack_from(header, offset_provenance),
             )
         )
+    # Only this tagged V10 extension defines ESC protocol; never infer it from the host.
+    esc_protocol = "legacy_unspecified"
+    if int(prefix[1]) == 10 and header[252:254] == b"\xd5\x01" and header[255] == 0:
+        esc_protocol = {1: "PWM", 2: "DSHOT300"}.get(header[254], "unknown")
     return {
         **provenance,
+        "esc_protocol": esc_protocol,
+        "motor_command_unit": "pwm_equivalent_us" if esc_protocol == "DSHOT300" else "us",
         "attitude_frame": attitude_frame_from_provenance(provenance),
         "magic": magic,
         "version": prefix[1],
@@ -1213,6 +1219,8 @@ def parse_flash_image(data: bytes) -> tuple[list[dict[str, object]], list[dict[s
                 record["frame_contract_version"] = sector["frame_contract_version"]
                 record["firmware_crc32"] = sector["firmware_crc32"]
                 record["calibration_generation"] = sector["calibration_generation"]
+                record["esc_protocol"] = sector["esc_protocol"]
+                record["motor_command_unit"] = sector["motor_command_unit"]
                 records.append(record)
             pos += record_size
     return sectors, records, errors

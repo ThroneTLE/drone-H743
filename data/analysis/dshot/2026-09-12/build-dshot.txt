@@ -1,0 +1,24 @@
+Build type: Debug
+-- Configuring done (0.3s)
+-- Generating done (0.0s)
+-- Build files have been written to: D:/stm32hal/drone-H743-dshot/build/Debug
+[0/1] Re-running CMake...
+[1/6] Building C object CMakeFiles/drone-H743.dir/App/Src/app_esc_diag.c.obj
+[2/6] Building C object CMakeFiles/drone-H743.dir/BSP/Src/bsp_pwm.c.obj
+[3/6] Building C object CMakeFiles/drone-H743.dir/BSP/Src/bsp_dshot.c.obj
+[4/6] Building C object CMakeFiles/drone-H743.dir/App/Src/app_cmd_system.c.obj
+[5/6] Building C object CMakeFiles/drone-H743.dir/App/Src/app_flight_log.c.obj
+[6/6] Linking C executable drone-H743.elf
+Memory region         Used Size  Region Size  %age Used
+         DTCMRAM:      110240 B       128 KB     84.11%
+
+             RAM:      360256 B       512 KB     68.71%
+
+          RAM_D2:       25024 B       288 KB      8.49%
+
+          RAM_D3:           0 B        64 KB      0.00%
+
+         ITCMRAM:           0 B        64 KB      0.00%
+
+           FLASH:      454772 B      1408 KB     31.54%
+

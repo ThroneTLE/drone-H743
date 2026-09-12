@@ -2150,6 +2150,7 @@ static void stabilizer_control_commit(StabilizerContext *ctx,
     BSP_PWM_DisableEsc(2);
     frame->motor_output_reason = APP_FLIGHT_LOG_MOTOR_REASON_RC_LOSS_DISABLE;
   }
+  (void)BSP_PWM_CommitEsc(); /* One two-channel frame after the existing arbitration. */
   if (APP_Acceptance_IsActive() != 0U) {
     APP_AcceptanceObservation observation;
     APP_ServoFeedbackLogSample feedback;

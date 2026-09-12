@@ -4,7 +4,7 @@
 
 Read this shard only when you need existing firmware behavioral/architecture coverage or must choose focused regression tests.
 
-Source snapshot: `b7b15356aaee`. Indexed files: 135.
+Source snapshot: `f9b2581548a1`. Indexed files: 140.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -13,8 +13,11 @@ Source snapshot: `b7b15356aaee`. Indexed files: 135.
 | `tests/conftest.py` | 离线测试套件的全局硬件护栏与状态隔离。 两条路都要堵，而且必须在**收集之前**就装上： * 物理串口 —— `serial.Serial.open` * 烧录 / 调试探针 —— `subprocess.Popen`（openocd /… | `pytest_configure` (+4) |
 | `tests/data.txt` | — | — |
 | `tests/fixtures/dshot_px4/.gitattributes` | — | — |
+| `tests/fixtures/dshot_px4/app_control.h` | — | `APP_Control_QueueText` |
+| `tests/fixtures/dshot_px4/bsp_harness.c` | — | `BSP_Critical_Enter` (+9) |
 | `tests/fixtures/dshot_px4/driver_harness.c` | — | — |
 | `tests/fixtures/dshot_px4/README.md` | PX4 DShot 单向移植基线 | `实际移植与本地差异` |
+| `tests/fixtures/dshot_px4/tim.h` | — | `HAL_NVIC_ClearPendingIRQ` (+4) |
 | `tests/fixtures/dshot_px4/upstream_dshot.c.txt` | — | — |
 | `tests/golden/telem_frames_v2.bin` | — | — |
 | `tests/test_acceptance_v2_runtime_contract.py` | — | `test_v2a_lease_and_esc_fail_safe_are_target_owned` (+2) |
@@ -46,8 +49,10 @@ Source snapshot: `b7b15356aaee`. Indexed files: 135.
 | `tests/test_data_organization.py` | — | `test_date_directory_helpers_are_sortable_and_validate_dates` (+2) |
 | `tests/test_documentation_contract.py` | Current documentation stays small, routed, and distinct from history | `test_current_document_map_has_one_small_human_entry` (+8) |
 | `tests/test_drone_validation_v0.py` | — | `test_snapshot_parser_requires_provenance_and_never_invents_zeroes` (+38) |
+| `tests/test_dshot_bsp.py` | Actual BSP in a host register/DMA seam; tests do not open hardware | `test_real_bsp` (+2) |
 | `tests/test_dshot_driver.py` | R-DSHOT-1 first phase: compile the real C driver and frozen PX4 encoder. No DMA/register simulation here: hardware star… | `test_real_driver` (+2) |
 | `tests/test_dshot_generated_config.py` | R-DSHOT-1: gate BSP integration on actual CubeMX-generated DMA ownership | `test_dshot_ioc_dma_owner_and_timer_groups` (+2) |
+| `tests/test_dshot_log_metadata.py` | Tagged sector metadata keeps equivalent PWM commands distinct from real PWM | `test_tagged_v10_and_legacy_v10` (+3) |
 | `tests/test_evidence_write_protection.py` | 历史验收证据不可变性契约。 2026-08-29 实际发生过一次证据破坏：面板启动时自动加载了 2026-08-28 的历史 验收会话，随后自动保存把 workflow.json 的 target_state_at_save（14 个键的… | `test_session_autosave_refuses_to_write_while_browsing_history` (+3) |
 | `tests/test_firmware_build_gate.py` | 烧录前必须先编译，且编译失败绝不能继续烧录。 背景：USB DFU 一键烧录默认烧的是 build/Debug/drone-H743.elf。如果改完源码 忘了编译，就会把上一次的旧固件刷进飞控，而且现场很难看出来——固件"烧成功了"，… | `test_build_failure_raises_instead_of_returning_a_stale_elf` (+20) |
 | `tests/test_flash_bdd.py` | — | `test_bdd_flash_diagnostics_flow_is_app_service_to_storage_backends` (+1) |
@@ -86,7 +91,7 @@ Source snapshot: `b7b15356aaee`. Indexed files: 135.
 | `tests/test_imu_attitude_tuner.py` | — | `test_persistent_openocd_telnet_word_parser` (+5) |
 | `tests/test_imu_axis_alignment_contract.py` | Legacy IMU intermediate-axis adapter checks. The canonical body-frame contract is Driver/Inc/drv_frame_contract.h. Thes… | `test_legacy_imu_mount_axis_adapter_is_documented` (+2) |
 | `tests/test_imu_calibration_runtime.py` | — | `test_driver_math` (+9) |
-| `tests/test_imu_capture_contract.py` | Contract tests for the full-rate raw IMU capture path. The capture exists to record undecimated pre-LPF samples for vib… | `test_capture_buffer_lives_outside_dtcm` (+10) |
+| `tests/test_imu_capture_contract.py` | Contract tests for the full-rate raw IMU capture path. The capture exists to record undecimated pre-LPF samples for vib… | `test_capture_buffer_lives_outside_dtcm` (+11) |
 | `tests/test_imu_health_guard.py` | IMU 采样链静默降级的检测与拦截。 背景（2026-08-28 实测）：Sensor_Task 在 DRDY 中断没来时会退到 20ms 轮询兜底。 兜底成功会把 imu_drdy_miss_count 清零，于是"中断永久失效"被当成… | `test_poll_fallback_no_longer_clears_the_drdy_miss_counter` (+19) |
 | `tests/test_imu_metrology.py` | — | `test_sample_requires_finite_and_complete_provenance` (+23) |
 | `tests/test_imu_nav_estimator.py` | — | `test_level_static_acceleration_becomes_zero_linear_nav_accel` (+4) |

@@ -4,7 +4,7 @@
 
 Read this shard only when the task touches device protocols, reusable algorithms, buses, GPIO, DMA callbacks, cache hooks, or board bindings.
 
-Source snapshot: `a0dd87f52933`. Indexed files: 108.
+Source snapshot: `b5c9afd5a52b`. Indexed files: 111.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -46,6 +46,8 @@ Source snapshot: `a0dd87f52933`. Indexed files: 108.
 | `BSP/Inc/bsp_bus_servo.h`<br>`BSP/Src/bsp_bus_servo.c` | Board resource binding for bus servo | `BSP_BusServo_SendRaw`, `BSP_BusServo_ReadResponse`, `BSP_BusServo_GetBaudRate`, `BSP_BusServo_SetBaudRate` (+31) |
 | `BSP/Inc/bsp_cache.h`<br>`BSP/Src/bsp_cache.c` | Board resource binding for cache | `BSP_Cache_Enable`, `BSP_Cache_Disable`, `BSP_Cache_AlignDown32`, `BSP_Cache_AlignedSize32` (+2) |
 | `BSP/Inc/bsp_critical.h`<br>`BSP/Src/bsp_critical.c` | Board resource binding for critical | `BSP_Critical_Enter`, `BSP_Critical_Exit`, `BSP_Critical_MemoryBarrier` |
+| `BSP/Inc/bsp_dshot.h`<br>`BSP/Src/bsp_dshot.c` | Board resource binding for dshot | `BSP_DShot_Init`, `BSP_DShot_Submit`, `BSP_DShot_Disable`, `BSP_DShot_GetSnapshot` |
+| `BSP/Inc/bsp_esc_protocol.h` | Board resource binding for esc protocol | — |
 | `BSP/Inc/bsp_flash_bus.h`<br>`BSP/Src/bsp_flash_bus.c` | Board resource binding for flash bus | `BSP_FlashBus_GetBus`, `BSP_FlashBus_Acquire`, `BSP_FlashBus_Release`, `BSP_FlashBus_RegisterDmaDevice` (+1) |
 | `BSP/Inc/bsp_gpio.h`<br>`BSP/Src/bsp_gpio.c` | Board resource binding for gpio | `BSP_GPIO_Init`, `BSP_GPIO_Write`, `BSP_GPIO_Read`, `BSP_GPIO_Toggle` |
 | `BSP/Inc/bsp_gps.h`<br>`BSP/Src/bsp_gps.c` | Board resource binding for gps | `BSP_GPS_Init`, `BSP_GPS_ConfigureM9NDefault`, `BSP_GPS_Service`, `BSP_GPS_OnUartRxCplt` (+3) |
@@ -55,7 +57,7 @@ Source snapshot: `a0dd87f52933`. Indexed files: 108.
 | `BSP/Inc/bsp_led.h`<br>`BSP/Src/bsp_led.c` | Board resource binding for led | `BSP_LED_Init`, `BSP_LED_On`, `BSP_LED_Off`, `BSP_LED_Toggle` |
 | `BSP/Inc/bsp_mag.h`<br>`BSP/Src/bsp_mag.c` | Board resource binding for mag | `BSP_MAG_Init`, `BSP_MAG_Read`, `BSP_MAG_Probe`, `BSP_MAG_GetStatus` (+2) |
 | `BSP/Inc/bsp_optical_flow.h`<br>`BSP/Src/bsp_optical_flow.c` | Board resource binding for optical flow | `BSP_OPTICAL_FLOW_Init`, `BSP_OPTICAL_FLOW_Service`, `BSP_OPTICAL_FLOW_OnUartRxCplt`, `BSP_OPTICAL_FLOW_OnUartRxEvent` (+6) |
-| `BSP/Inc/bsp_pwm.h`<br>`BSP/Src/bsp_pwm.c` | Board resource binding for pwm | `BSP_PWM_Init`, `BSP_PWM_SetEscPulse`, `BSP_PWM_SetEscPercent`, `BSP_PWM_DisableEsc` (+7) |
+| `BSP/Inc/bsp_pwm.h`<br>`BSP/Src/bsp_pwm.c` | Board resource binding for pwm | `BSP_PWM_Init`, `BSP_PWM_SetEscPulse`, `BSP_PWM_SetEscPercent`, `BSP_PWM_DisableEsc` (+9) |
 | `BSP/Inc/bsp_rom_bootloader.h`<br>`BSP/Src/bsp_rom_bootloader.c` | Board resource binding for rom bootloader | `BSP_RomBootloader_ReadVector`, `BSP_RomBootloader_WriteRequestMagic`, `BSP_RomBootloader_TakeRequestMagic`, `BSP_RomBootloader_Jump` (+1) |
 | `BSP/Inc/bsp_spi.h`<br>`BSP/Src/bsp_spi.c` | Board resource binding for spi | `BSP_SPI_RegisterFlashDevice` |
 | `BSP/Inc/bsp_system.h`<br>`BSP/Src/bsp_system.c` | Board resource binding for system | `BSP_System_Init`, `BSP_Cache_Enable`, `BSP_Cache_Disable`, `BSP_System_GetClockInfo` |

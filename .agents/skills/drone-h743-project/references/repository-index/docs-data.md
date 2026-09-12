@@ -4,7 +4,7 @@
 
 Read this shard only when the task needs architecture rationale, controller math, historical evidence, captures, datasets, or agent-support documentation.
 
-Document snapshot: `697a015cfc67`; aggregate snapshot: `65f516b9ea6b`. Covered files: 405.
+Document snapshot: `7773d2dcc77b`; aggregate snapshot: `0ecbc7ebcef3`. Covered files: 420.
 
 ## Documents and agent support
 
@@ -33,6 +33,7 @@ Document snapshot: `697a015cfc67`; aggregate snapshot: `65f516b9ea6b`. Covered f
 | `doc/current-architecture.md` | drone-H743 当前软件架构 | `分层`, `主要运行链`, `IMU 与姿态`, `光流与水平导航` (+5) |
 | `doc/drone-h743-architecture.html` | Project documentation for drone h743 architecture | — |
 | `doc/dshot-cubemx-checklist.md` | R-DSHOT-1：CubeMX 生成交接清单 | `当前阶段`, `在本工作树的 drone-H743.ioc 中修改`, `生成结果应包含`, `后续由执行者接入（不是 CubeMX 操作）` |
+| `doc/esc-output.md` | MicoAir743v2 电调输出 | `构建与回退`, `接口与时序`, `诊断与日志`, `审核者验证` |
 | `doc/hardware-reference.md` | drone-H743 硬件参考 | `权威边界`, `已登记器件`, `主机连接` |
 | `doc/history/2024050116133964(1)(1).pdf` | Project documentation for 2024050116133964(1)(1) | — |
 | `doc/history/coaxial_drone_controller_comparison.pdf` | Project documentation for coaxial drone controller comparison | — |
@@ -58,6 +59,6 @@ Document snapshot: `697a015cfc67`; aggregate snapshot: `65f516b9ea6b`. Covered f
 | Scope | Content outline | Inventory |
 |---|---|---|
 | `.tmp/` | Temporary analysis results; inspect only a specifically named run | 105 files / 10.6 MiB / .json×25, .csv×19, .png×14, .md×11, .txt×11 |
-| `data/` | Canonical captures, flight logs, identification, calibration, telemetry, and analysis root | 258 files / 20.4 MiB / .csv×86, .json×61, .txt×53, .png×25, .md×16 |
+| `data/` | Canonical captures, flight logs, identification, calibration, telemetry, and analysis root | 272 files / 20.4 MiB / .csv×86, .txt×65, .json×62, .png×25, .md×17 |
 
 Do not load a whole dataset directory. Select one named run after code or test evidence points to it.

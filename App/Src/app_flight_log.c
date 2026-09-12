@@ -35,6 +35,8 @@ _Static_assert(APP_FLIGHT_LOG_REGION_END_EXCL ==
  * v7 的那 12 个字节本就是清零的保留区，故其 header_crc32 无需重算即仍成立，
  * 读出来 frame_provenance_valid==0 天然表示「无溯源」。
  */
+#include "bsp_esc_protocol.h"
+
 #define APP_FLIGHT_LOG_VERSION            10U
 #define APP_FLIGHT_LOG_VERSION_V9         9U
 #define APP_FLIGHT_LOG_VERSION_V8         8U
@@ -191,6 +193,8 @@ typedef struct __attribute__((packed)) {
     uint32_t payload_crc32;
 } APP_FlightLogExportBlockHeader;
 
+_Static_assert(offsetof(APP_FlightLogSectorHeader, reserved) == 252U,
+               "ESC protocol marker must remain at byte 252");
 _Static_assert(sizeof(APP_FlightLogSectorHeader) == APP_FLIGHT_LOG_SECTOR_HEADER_SIZE,
                "flight log sector header must stay 256 bytes");
 _Static_assert(sizeof(APP_FlightLogRecord) == 776U,
@@ -561,6 +565,10 @@ static void flight_log_fill_sector_header(APP_FlightLogSectorHeader *header,
                                           uint32_t sector_index)
 {
     memset(header, 0, sizeof(*header));
+    /* Tagged extension; legacy reserved bytes stay uninterpreted. */
+    header->reserved[0] = 0xD5U;
+    header->reserved[1] = 1U;
+    header->reserved[2] = (BSP_ESC_PROTOCOL == BSP_ESC_PROTOCOL_DSHOT300) ? 2U : 1U;
     header->magic = APP_FLIGHT_LOG_SECTOR_MAGIC;
     header->version = APP_FLIGHT_LOG_VERSION;
     header->header_size = APP_FLIGHT_LOG_SECTOR_HEADER_SIZE;

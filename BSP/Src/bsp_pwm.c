@@ -1,4 +1,7 @@
 #include "bsp_pwm.h"
+#include "bsp_dshot.h"
+#include "bsp_esc_protocol.h"
+#include "drv_dshot.h"
 
 #include "tim.h"
 
@@ -28,6 +31,9 @@ _Static_assert(BSP_PWM_SERVO_FRAME_US > BSP_PWM_SERVO_MAX_US,
 _Static_assert((BSP_PWM_ESC_CHANNEL_COUNT + BSP_PWM_SERVO_CHANNEL_COUNT) ==
                    BSP_PWM_TIM_CHANNEL_COUNT,
                "start_status must cover every driven channel");
+_Static_assert(BSP_PWM_ESC_MIN_US == DRV_DSHOT_EQUIV_MIN_US &&
+               BSP_PWM_ESC_MAX_US == DRV_DSHOT_EQUIV_MAX_US,
+               "PWM command bounds and DShot mapping must remain identical");
 
 /*
  * ESC 两路在 TIM1_CH1/CH2 上（PE9 / PE11，即板上的 MOTOR4 / MOTOR3 焊盘）。
@@ -74,9 +80,19 @@ BSP_PWM_Status BSP_PWM_Init(void)
      * 所以 ARR = 帧长(us) - 1。必须在 PWM_Start 之前写，此时计数器还在 0，
      * 不会出现"计数值已超过新 ARR、要绕一整圈才回卷"的情况。
      */
+#if BSP_ESC_PROTOCOL == BSP_ESC_PROTOCOL_PWM
+    /* CubeMX supplies DShot timing; restore the PWM backend's 1 MHz counter. */
+    htim1.Instance->PSC = 119U;
     __HAL_TIM_SET_AUTORELOAD(&htim1, BSP_PWM_ESC_FRAME_US - 1U);
+    htim1.Instance->EGR = TIM_EGR_UG;
+#endif
     __HAL_TIM_SET_AUTORELOAD(&htim4, BSP_PWM_SERVO_FRAME_US - 1U);
 
+#if BSP_ESC_PROTOCOL == BSP_ESC_PROTOCOL_DSHOT300
+    BSP_DShotStatus dshot_status = BSP_DShot_Init();
+    start_status[0] = start_status[1] = (uint8_t)(dshot_status == BSP_DSHOT_OK ? HAL_OK : HAL_ERROR);
+    if (dshot_status != BSP_DSHOT_OK) { return BSP_PWM_ERROR; }
+#else
     for (channel = 1U; channel <= BSP_PWM_ESC_CHANNEL_COUNT; channel++) {
         HAL_StatusTypeDef status =
             HAL_TIM_PWM_Start(&htim1, pwm_esc_tim_channel(channel));
@@ -85,6 +101,7 @@ BSP_PWM_Status BSP_PWM_Init(void)
             return BSP_PWM_ERROR;
         }
     }
+#endif
     for (channel = 1U; channel <= BSP_PWM_SERVO_CHANNEL_COUNT; channel++) {
         HAL_StatusTypeDef status =
             HAL_TIM_PWM_Start(&htim4, pwm_servo_tim_channel(channel));
@@ -118,14 +135,25 @@ BSP_PWM_Status BSP_PWM_SetEscPulse(uint32_t channel, uint16_t pulse_us)
     }
 
     if (pwm_started == 0U) {
+#if BSP_ESC_PROTOCOL == BSP_ESC_PROTOCOL_DSHOT300
+        return BSP_PWM_ERROR; /* recovery must be explicit */
+#else
         BSP_PWM_Status init_status = BSP_PWM_Init();
-        if (init_status != BSP_PWM_OK) {
-            return init_status;
-        }
+        if (init_status != BSP_PWM_OK) { return init_status; }
+#endif
     }
 
+#if BSP_ESC_PROTOCOL == BSP_ESC_PROTOCOL_DSHOT300
+    BSP_DShotSnapshot snapshot;
+    BSP_DShot_GetSnapshot(&snapshot);
+    if (snapshot.fault) { return BSP_PWM_ERROR; }
+#endif
     esc_pulses_us[channel - 1U] = pulse_us;
+#if BSP_ESC_PROTOCOL == BSP_ESC_PROTOCOL_PWM
     __HAL_TIM_SET_COMPARE(&htim1, tim_channel, pulse_us);
+#else
+    (void)tim_channel;
+#endif
     return BSP_PWM_OK;
 }
 
@@ -138,14 +166,24 @@ BSP_PWM_Status BSP_PWM_DisableEsc(uint32_t channel)
     }
 
     if (pwm_started == 0U) {
+#if BSP_ESC_PROTOCOL == BSP_ESC_PROTOCOL_DSHOT300
+        esc_pulses_us[channel - 1U] = 0U;
+        return BSP_DShot_Disable((uint8_t)(1U << (channel - 1U))) == BSP_DSHOT_OK ? BSP_PWM_OK : BSP_PWM_ERROR;
+#else
         BSP_PWM_Status init_status = BSP_PWM_Init();
-        if (init_status != BSP_PWM_OK) {
-            return init_status;
-        }
+        if (init_status != BSP_PWM_OK) { return init_status; }
+#endif
     }
 
     esc_pulses_us[channel - 1U] = 0U;
+#if BSP_ESC_PROTOCOL == BSP_ESC_PROTOCOL_PWM
     __HAL_TIM_SET_COMPARE(&htim1, tim_channel, 0U);
+#else
+    (void)tim_channel;
+    if (BSP_DShot_Disable((uint8_t)(1U << (channel - 1U))) != BSP_DSHOT_OK) {
+        return BSP_PWM_ERROR;
+    }
+#endif
     return BSP_PWM_OK;
 }
 
@@ -209,6 +247,36 @@ uint16_t BSP_PWM_GetServoPulse(uint32_t channel)
     }
 
     return servo_pulses_us[channel - 1U];
+}
+
+const char *BSP_PWM_EscProtocol(void)
+{
+#if BSP_ESC_PROTOCOL == BSP_ESC_PROTOCOL_DSHOT300
+    return "DSHOT300";
+#else
+    return "PWM";
+#endif
+}
+
+BSP_PWM_Status BSP_PWM_CommitEsc(void)
+{
+#if BSP_ESC_PROTOCOL == BSP_ESC_PROTOCOL_DSHOT300
+    uint16_t codes[2] = {0U, 0U};
+    uint8_t mask = 0U;
+    for (uint32_t i = 0U; i < 2U; ++i) {
+        if (esc_pulses_us[i] != 0U) {
+            if (DRV_DShot_FromPulseUs(esc_pulses_us[i], &codes[i]) != DRV_DSHOT_OK) {
+                return BSP_PWM_INVALID_PARAM;
+            }
+            mask |= (uint8_t)(1U << i);
+        }
+    }
+    BSP_DShotStatus status = BSP_DShot_Submit(codes, mask);
+    if (status == BSP_DSHOT_BUSY) { return BSP_PWM_BUSY; }
+    return status == BSP_DSHOT_OK ? BSP_PWM_OK : BSP_PWM_ERROR;
+#else
+    return BSP_PWM_OK;
+#endif
 }
 
 uint8_t BSP_PWM_GetStartStatus(uint32_t channel)

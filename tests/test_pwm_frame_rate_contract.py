@@ -136,8 +136,12 @@ def test_timer_prescaler_in_ioc_yields_the_bsp_tick() -> None:
     """
     ioc = read("drone-H743.ioc")
 
-    for timer in ("TIM1", "TIM4"):
-        assert f"{timer}.Prescaler=120-1" in ioc, f"{timer} 分频必须给出 1 MHz 时基"
+    assert "TIM4.Prescaler=120-1" in ioc, "servo timer must retain its 1 MHz tick"
+    assert "TIM1.Prescaler=0" in ioc, "DShot bit timing is the generated default"
+    assert "TIM1.Period=399" in ioc
+    bsp = read("BSP/Src/bsp_pwm.c")
+    assert "htim1.Instance->PSC = 119U;" in bsp, "PWM fallback must restore the 1 MHz tick"
+    assert "#if BSP_ESC_PROTOCOL == BSP_ESC_PROTOCOL_PWM" in bsp
 
     assert "RCC.Tim1OutputFreq_Value=120000000" in ioc
     assert "RCC.Tim2OutputFreq_Value=120000000" in ioc

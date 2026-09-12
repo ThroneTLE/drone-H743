@@ -37,6 +37,16 @@ enable_language(C CXX ASM)
 # Create an executable object type
 add_executable(${CMAKE_PROJECT_NAME})
 
+set(ESC_PROTOCOL "DSHOT300" CACHE STRING "ESC output protocol: DSHOT300 or PWM")
+set_property(CACHE ESC_PROTOCOL PROPERTY STRINGS DSHOT300 PWM)
+if(ESC_PROTOCOL STREQUAL "DSHOT300")
+    target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE BSP_ESC_PROTOCOL=1)
+elseif(ESC_PROTOCOL STREQUAL "PWM")
+    target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE BSP_ESC_PROTOCOL=0)
+else()
+    message(FATAL_ERROR "ESC_PROTOCOL must be DSHOT300 or PWM")
+endif()
+
 # Add STM32CubeMX generated sources
 add_subdirectory(cmake/stm32cubemx)
 
@@ -49,6 +59,8 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     # Driver layer
     Driver/Src/drv_dshot.c
+    BSP/Src/bsp_dshot.c
+    App/Src/app_esc_diag.c
     Driver/Src/drv_imu.c
     Driver/Src/drv_bmi088.c
     Driver/Src/drv_bmi088_tables.c

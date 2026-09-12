@@ -1,4 +1,5 @@
 #include "app_control.h"
+#include "app_esc_diag.h"
 #include "app_control_internal.h"
 
 #include "app_aiwb2.h"
@@ -468,6 +469,7 @@ static void app_cmd_pwm_report_timer(const char *role,
  */
 void app_control_report_pwm(void)
 {
+    APP_EscDiag_Report();
     BSP_PWM_TimerDebug timer;
 
     BSP_PWM_GetEscTimerDebug(&timer);
