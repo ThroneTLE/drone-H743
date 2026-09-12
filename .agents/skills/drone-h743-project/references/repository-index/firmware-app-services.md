@@ -4,7 +4,7 @@
 
 Read this shard only when the task touches application behavior, RTOS task bodies, control flow, diagnostics, commands, or synchronous services.
 
-Source snapshot: `e63dd2dcd480`. Indexed files: 118.
+Source snapshot: `1cc50297600f`. Indexed files: 120.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -33,6 +33,7 @@ Source snapshot: `e63dd2dcd480`. Indexed files: 118.
 | `App/Src/app_control_core.c` | Application behavior and task-facing logic for control core | `APP_IMU_Capture_IsExportActive`, `APP_MaintUART_IsLinkActive` |
 | `App/Inc/app_control_internal.h` | Application behavior and task-facing logic for control internal | — |
 | `App/Inc/app_control_scheduler.h`<br>`App/Src/app_control_scheduler.c` | Application behavior and task-facing logic for control scheduler | `APP_ControlScheduler_Reset`, `APP_ControlScheduler_Step`, `APP_ControlScheduler_Commit` |
+| `App/Inc/app_current.h`<br>`App/Src/app_current.c` | Application behavior and task-facing logic for current | `APP_Current_Init`, `APP_Current_Step`, `APP_Current_GetSnapshot`, `APP_Current_Report` |
 | `App/Inc/app_diag.h`<br>`App/Src/app_diag.c` | Application behavior and task-facing logic for diag | `APP_Diag_RecordStackOverflow`, `APP_Diag_RecordMallocFailed`, `APP_Diag_GetFaultInfo` |
 | `App/Inc/app_elrs.h`<br>`App/Src/app_elrs.c` | Application behavior and task-facing logic for elrs | `APP_ELRS_Init`, `APP_ELRS_Step`, `APP_ELRS_GetChannels`, `APP_ELRS_GetLastRcMs` (+12) |
 | `App/Inc/app_esc_diag.h`<br>`App/Src/app_esc_diag.c` | Application behavior and task-facing logic for esc diag | `APP_EscDiag_Report` |

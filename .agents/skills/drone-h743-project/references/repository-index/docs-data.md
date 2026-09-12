@@ -4,7 +4,7 @@
 
 Read this shard only when the task needs architecture rationale, controller math, historical evidence, captures, datasets, or agent-support documentation.
 
-Document snapshot: `7773d2dcc77b`; aggregate snapshot: `0ecbc7ebcef3`. Covered files: 420.
+Document snapshot: `e065f0a46dc5`; aggregate snapshot: `1773f580baa4`. Covered files: 429.
 
 ## Documents and agent support
 
@@ -31,6 +31,7 @@ Document snapshot: `7773d2dcc77b`; aggregate snapshot: `0ecbc7ebcef3`. Covered f
 | `.codex/config.toml` | Repository-local Codex configuration | — |
 | `data/README.md` | Project Data Directory | — |
 | `doc/current-architecture.md` | drone-H743 当前软件架构 | `分层`, `主要运行链`, `IMU 与姿态`, `光流与水平导航` (+5) |
+| `doc/current-sensor.md` | R-CURRENT-1：AM32 55A 电流采样 | `硬件与标称换算`, `软件边界`, `CubeMX 交接`, `验证与审核` |
 | `doc/drone-h743-architecture.html` | Project documentation for drone h743 architecture | — |
 | `doc/dshot-cubemx-checklist.md` | R-DSHOT-1：CubeMX 生成交接清单 | `当前阶段`, `在本工作树的 drone-H743.ioc 中修改`, `生成结果应包含`, `后续由执行者接入（不是 CubeMX 操作）` |
 | `doc/esc-output.md` | MicoAir743v2 电调输出 | `构建与回退`, `接口与时序`, `诊断与日志`, `审核者验证` |
@@ -59,6 +60,6 @@ Document snapshot: `7773d2dcc77b`; aggregate snapshot: `0ecbc7ebcef3`. Covered f
 | Scope | Content outline | Inventory |
 |---|---|---|
 | `.tmp/` | Temporary analysis results; inspect only a specifically named run | 105 files / 10.6 MiB / .json×25, .csv×19, .png×14, .md×11, .txt×11 |
-| `data/` | Canonical captures, flight logs, identification, calibration, telemetry, and analysis root | 272 files / 20.4 MiB / .csv×86, .txt×65, .json×62, .png×25, .md×17 |
+| `data/` | Canonical captures, flight logs, identification, calibration, telemetry, and analysis root | 280 files / 20.4 MiB / .csv×86, .txt×71, .json×63, .png×25, .md×18 |
 
 Do not load a whole dataset directory. Select one named run after code or test evidence points to it.

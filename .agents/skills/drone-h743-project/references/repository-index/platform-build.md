@@ -4,11 +4,12 @@
 
 Read this shard only when the task touches CubeMX output, pins/clocks/peripherals, startup/linker layout, USB, build configuration, HAL, FreeRTOS internals, or vendor code.
 
-Source snapshot: `2cc1dea1f360`; aggregate snapshot: `ffab846c51fb`. Covered files: 1442.
+Source snapshot: `bd982a1c060e`; aggregate snapshot: `d40f7b2fdb9c`. Covered files: 1449.
 
 | File/module or scope | Content outline | Key entry points / size |
 |---|---|---|
 | `Core/Inc/FreeRTOSConfig.h` | CubeMX/HAL platform module for FreeRTOSConfig | — |
+| `Core/Inc/adc.h`<br>`Core/Src/adc.c` | CubeMX/HAL platform module for adc | `MX_ADC1_Init` |
 | `Core/Inc/dma.h`<br>`Core/Src/dma.c` | CubeMX/HAL platform module for dma | `MX_DMA_Init` |
 | `Core/Src/freertos.c` | CubeMX-owned FreeRTOS objects and task entry wiring | `BSP_IMU_Init`, `APP_IMU_ReadDataReadyTimestamp`, `BSP_IMU_IsDataReady`, `BSP_IMU_ReadRaw` (+3) |
 | `Core/Inc/gpio.h`<br>`Core/Src/gpio.c` | CubeMX/HAL platform module for gpio | `MX_GPIO_Init` |
@@ -50,7 +51,7 @@ Source snapshot: `2cc1dea1f360`; aggregate snapshot: `ffab846c51fb`. Covered fil
 | `STM32H743XX_FLASH.ld` | STM32H743 flash/RAM regions and linker section placement | — |
 | `temp_sizecheck.c` | Project configuration for temp sizecheck | — |
 | `root generated leftovers` | Compiler, disassembly, or operating-system leftovers; never use as source of truth | 2 files / 14.0 KiB / (none)×2 |
-| `Drivers/` | STM32 CMSIS and HAL vendor sources; read only for HAL behavior not documented by project code | 120 files / 10.7 MiB / .h×86, .c×31, .txt×3 |
+| `Drivers/` | STM32 CMSIS and HAL vendor sources; read only for HAL behavior not documented by project code | 125 files / 11.7 MiB / .h×89, .c×33, .txt×3 |
 | `Middlewares/` | FreeRTOS and STM32 USB middleware; vendor-owned unless a task explicitly requires internals | 48 files / 1.6 MiB / .h×30, .c×15, (none)×2, .txt×1 |
 | `ThirdParty/` | Third-party algorithm sources and licenses, including Fusion | 5 files / 39.0 KiB / .h×3, .c×1, .md×1 |
 | `driver_doc/` | Generated vendor API documentation; search for an exact peripheral or symbol before opening | 1213 files / 151.8 MiB / .h×589, .c×486, .pdf×20, .administrator×13, .s×12 |

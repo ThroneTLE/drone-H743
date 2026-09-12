@@ -59,6 +59,9 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     # Driver layer
     Driver/Src/drv_dshot.c
+    Driver/Src/drv_current.c
+    BSP/Src/bsp_current.c
+    App/Src/app_current.c
     BSP/Src/bsp_dshot.c
     App/Src/app_esc_diag.c
     Driver/Src/drv_imu.c

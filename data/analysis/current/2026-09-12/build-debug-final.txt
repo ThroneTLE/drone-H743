@@ -1,0 +1,17 @@
+[1/5] Building C object CMakeFiles/drone-H743.dir/App/Src/app_current.c.obj
+[2/5] Building C object CMakeFiles/drone-H743.dir/BSP/Src/bsp_current.c.obj
+[3/5] Building C object CMakeFiles/drone-H743.dir/App/Src/app_tasks.c.obj
+[4/5] Building C object CMakeFiles/drone-H743.dir/App/Src/app_cmd_system.c.obj
+[5/5] Linking C executable drone-H743.elf
+Memory region         Used Size  Region Size  %age Used
+         DTCMRAM:      110408 B       128 KB     84.23%
+             RAM:      360256 B       512 KB     68.71%
+
+          RAM_D2:       25024 B       288 KB      8.49%
+
+          RAM_D3:           0 B        64 KB      0.00%
+
+         ITCMRAM:           0 B        64 KB      0.00%
+
+           FLASH:      463792 B      1408 KB     32.17%
+

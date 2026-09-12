@@ -283,6 +283,8 @@ D4_STUB_HEADER = r"""
 #define D4_STUBS_H
 #include <stddef.h>
 #include <stdint.h>
+/* Current monitor is independently compiled/tested; this harness freezes D4. */
+static inline void APP_Current_Report(void) {}
 
 #define APP_CONTROL_SERVO_COUNT 2U
 typedef struct { uint8_t id; uint16_t pulse_us; uint16_t time_ms; uint8_t mode; uint8_t enabled; } APP_ControlServoConfig;
@@ -1146,7 +1148,7 @@ def _write_d4_stubs(stub_dir: Path) -> None:
         # 2026-09-11：`PWM?` 的寄存器快照改由 BSP 提供（原来 app_control.c 直接
         # 读 TIM2->CR1，而本板 PWM 早搬到 TIM1/TIM4，那条诊断一直在报一颗没初始化
         # 的定时器）。报文体随之搬进 app_cmd_system.c，于是这里要有它的头。
-        "bsp_pwm.h", "svc_timestamp.h",
+        "bsp_pwm.h", "svc_timestamp.h", "app_current.h",
     }
     for header in headers:
         (stub_dir / header).write_text(
@@ -1168,7 +1170,13 @@ def _check_app_control_step_d4(tmp_path: Path) -> None:
         (diag, STEP_D4_DIAG_BODY_SHA256),
     ):
         for name, expected_hash in expected.items():
-            assert hashlib.sha256(_c_function_body(owner, name).encode()).hexdigest() == expected_hash, (
+            body = _c_function_body(owner, name)
+            if name == "app_control_report_status":
+                # R-CURRENT-1 adds exactly one snapshot-only report delegation.
+                # Freeze every pre-existing statement rather than changing the old hash.
+                assert body.count("APP_Current_Report();") == 1
+                body = body.replace("\n    APP_Current_Report();", "", 1)
+            assert hashlib.sha256(body.encode()).hexdigest() == expected_hash, (
                 f"{name} diverged from D4 parent {STEP_D4_PARENT_COMMIT}"
             )
             assert not re.search(

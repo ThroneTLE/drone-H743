@@ -4,7 +4,7 @@
 
 Read this shard only when you need existing firmware behavioral/architecture coverage or must choose focused regression tests.
 
-Source snapshot: `f9b2581548a1`. Indexed files: 140.
+Source snapshot: `282f07352875`. Indexed files: 143.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -45,7 +45,10 @@ Source snapshot: `f9b2581548a1`. Indexed files: 140.
 | `tests/test_control_scheduler.py` | — | `test_control_scheduler_host_harness` (+1) |
 | `tests/test_controller_cascade_analysis.py` | — | `test_report_refuses_old_or_unknown_frame_logs` |
 | `tests/test_crsf_parser_resync.py` | CRSF 解析器的失步与重同步（`Driver/Src/drv_elrs.c`，宿主 gcc 直接编真实源码）。 为什么专门立一份：2026-09-06 实机取证发现遥控链路 **70% 错帧率**，而 SWD 直读 UART4 的 DM… | `test_a_clean_stream_decodes_every_frame` (+10) |
+| `tests/test_current_driver.py` | Compile the real current conversion driver; no ADC/board access | `test_current_conversion_on_real_c` (+1) |
+| `tests/test_current_generated.py` | ADC must really be generated, not merely look configured in the pin list | `test_pc1_shared_signal_activates_the_adc_mode` (+2) |
 | `tests/test_current_parameter_names.py` | R-PARAM-1: execute real C name lookup; no legacy online conversion | `test_real_c_rejects_old_names_without_mutating_current_params` (+4) |
+| `tests/test_current_runtime.py` | Compile actual ADC BSP + background monitor against a software-only HAL seam | `test_real_adc_and_monitor_on_host` (+1) |
 | `tests/test_data_organization.py` | — | `test_date_directory_helpers_are_sortable_and_validate_dates` (+2) |
 | `tests/test_documentation_contract.py` | Current documentation stays small, routed, and distinct from history | `test_current_document_map_has_one_small_human_entry` (+8) |
 | `tests/test_drone_validation_v0.py` | — | `test_snapshot_parser_requires_provenance_and_never_invents_zeroes` (+38) |

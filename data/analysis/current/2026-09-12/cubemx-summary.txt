@@ -1,0 +1,9 @@
+config load D:/stm32hal/drone-H743-dshot/drone-H743.ioc
+OK
+project generate
+2026-09-12 04:00:59,651 [INFO] CodeEngine:319 - Generated code: D:\stm32hal\drone-H743-dshot\Core\Src\adc.c
+2026-09-12 04:00:59,764 [INFO] CodeEngine:319 - Generated code: D:\stm32hal\drone-H743-dshot\Core\Inc\adc.h
+2026-09-12 04:01:04,721 [INFO] CodeEngine:319 - Generated code: D:\stm32hal\drone-H743-dshot\Core\Src\main.c
+OK
+exit
+Bye bye

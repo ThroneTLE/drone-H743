@@ -1,5 +1,6 @@
 #include "app_control.h"
 #include "app_esc_diag.h"
+#include "app_current.h"
 #include "app_control_internal.h"
 
 #include "app_aiwb2.h"
@@ -163,6 +164,7 @@ void app_control_report_modules(void)
 
 void app_control_report_status(void)
 {
+    APP_Current_Report();
     APP_Flash_Status flash_status;
     APP_Baro_Status baro_status;
     APP_IMU_Status imu_status;

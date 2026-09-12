@@ -84,6 +84,7 @@ flowchart TB
 
 | REQ | 节点 | 需求 | 验收判据 | 状态 |
 |---|---|---|---|---|
+| R-CURRENT-1 | 作者授权附加需求 | 〔码〕AM32 55A Curr/PC1 电流采样 Driver 与 ADC1 BSP，后台低频测量、STATUS? 诊断；默认 REQ + protocol-telemetry；作者确认原配 Curr/GND 排线 | 原始 ADC/标称比例/未校准标识明确；ADC 生成门、边界/超时/新鲜度测试、全量 pytest 与 Debug；不新增 DMA、不接入安全判据，实测校准归审核者 | 待审核（软件验证完成，标称换算未实测校准） |
 | R-DSHOT-1 | 作者授权附加需求 | 〔码〕移植 PX4 单向 DShot300：M4/M3 电调、M7/M8 PWM 舵机；编译选择 DSHOT300/PWM；模式 dshot-esc，诊断接入时加 protocol-telemetry | 先交付纯 Driver/上游对拍/CubeMX 清单；作者生成后接入 TIM1_UP DMA、成对输出、物理禁用与诊断；最终双协议全量 pytest、Debug、索引；实机归审核者 | 待审核（双协议软件验证完成；未烧录、待实机波形与电调复核） |
 | R-PARAM-1 | 作者授权附加需求 | 〔码〕作者明确要求上位机全部在线旧参数迁移，固件拒绝旧名称；模式protocol-telemetry+tk-ui；允许撤销旧PID/滑块命令和旧增益遥测绑定，历史存储读取保留 | 当前四环参数端到端一致；旧名称读写拒绝；历史配置不重解释；离线契约、全量pytest、Debug与索引 | 待审核 |
 | R-SIM-3 | 作者授权附加需求 | 〔码〕补全二维仿真的P–PID–P–PID及高度P–PID，X/Z完整增益回显与高度阶跃；保留真实控制律、执行器延迟/方向动态/推力曲线与饱和；模式simulation+tk-ui | 12项实际C增益可调与回读；6项I/D分别影响C输出；高度阶跃及限速行为；实际上位机子进程高度场景；模型来源/估计边界、截图与离线测试 | 待审核 |
@@ -150,6 +151,7 @@ flowchart TB
 
 | 日期 | 范围 | 证据 | 结果 | 对状态的影响 |
 |---|---|---|---|---|
+| 2026-09-12 | R-CURRENT-1 电流采样软件交审 | `data/analysis/current/2026-09-12/final-report.md` 与 `validation.json`；ADC1/PC1 由 CubeMX 生成；全量 1525 passed，专项 26 passed，DSHOT300/PWM 两种 Debug 零警告；测试护栏无实机调用 | Driver/BSP/后台采样与 STATUS? CURRENT 快照接通；标称 12.75 mV/A、3.3 V 参考，明确未校准；失败/过期/饱和不伪报零电流 | R-CURRENT-1 置待审核；不改变任何实机验收门或保护条件 |
 | 2026-09-12 | R-DSHOT-1 软件交审：PX4 DShot300 双电调与 PWM 回退 | `data/analysis/dshot/2026-09-12/final-report.md` / `validation.json`；两轮全量各 1518 passed、无 skipped，专项 68 passed；Debug DSHOT300/PWM 实际编译链接零警告；源快照/许可、DMA 模型/实际仲裁、日志单位、生成配置均覆盖；硬件工具调用为零 | M4/M3 电调双路 DMA，M7/M8 舵机不变；禁用、忙拒绝、故障锁存及独立诊断已接入；物理波形/AM32 响应尚未验证 | R-DSHOT-1 置待审核；不改变任何实机验收门 |
 | 2026-09-12 | R-DSHOT-1 横切修复：优先级契约误读注释 | 作者 CubeMX 生成只删除旧注释，实际 VOFA 优先级仍为 BelowNormal；旧测试却靠注释中的 osPriorityLow 误通过。`priority-contract-red.txt` 固定失败，测试改为剥离注释读取实际字段、按 CMSIS 枚举验证低于 Sensor/Stabilizer，另加注释诱骗负例 | `data/analysis/dshot/2026-09-12/priority-contract-green.txt`：12 passed；不改任务优先级、不放宽控制/采样隔离条件 | 独立 fix 提交；不改变任何硬件或验收门 |
 | 2026-09-12 | R-DSHOT-1 第一阶段：PX4 编码移植与 CubeMX 配置准备 | `data/analysis/dshot/2026-09-12/phase1-report.md`；纯 Driver `6 passed`；Debug 实际编译链接零警告；全量 `1492 passed, 4 skipped, 1 failed`，唯一失败为新工作树缺测试指定历史 CSV，同文件哈希校验复制后该用例 `1 passed`；`.ioc` 已准备，生成门仍如实报两个未同步项 | 纯协议与宿主证据已具备；尚无 BSP/运行链路接入，不把旧 PWM 构建当成 DShot 功能验证；原始日志及来源哈希均在报告目录 | R-DSHOT-1 保持进行中；等待作者生成；不改变主线验收门 |

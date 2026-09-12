@@ -4,7 +4,7 @@
 
 Read this shard only when the task touches device protocols, reusable algorithms, buses, GPIO, DMA callbacks, cache hooks, or board bindings.
 
-Source snapshot: `b5c9afd5a52b`. Indexed files: 111.
+Source snapshot: `1ef49a8ff4a3`. Indexed files: 115.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -18,6 +18,7 @@ Source snapshot: `b5c9afd5a52b`. Indexed files: 111.
 | `Driver/Inc/drv_bmi270_config.h`<br>`Driver/Src/drv_bmi270_config.c` | Reusable device or algorithm driver for bmi270 config | — |
 | `Driver/Inc/drv_bmi270_tables.h`<br>`Driver/Src/drv_bmi270_tables.c` | Reusable device or algorithm driver for bmi270 tables | `DRV_BMI270_AccelRangeCode`, `DRV_BMI270_AccelLsbPerG`, `DRV_BMI270_GyroRangeCode`, `DRV_BMI270_GyroLsbPerDps` (+6) |
 | `Driver/Inc/drv_coax_ctrl.h`<br>`Driver/Src/drv_coax_ctrl.c` | Reusable device or algorithm driver for coax ctrl | `DRV_COAX_CTRL_Init`, `DRV_COAX_CTRL_ResetState`, `DRV_COAX_CTRL_Run`, `DRV_COAX_CTRL_RunScheduled` (+19) |
+| `Driver/Inc/drv_current.h`<br>`Driver/Src/drv_current.c` | Reusable device or algorithm driver for current | `DRV_Current_Am32_55A_Default`, `DRV_Current_Convert` |
 | `Driver/Inc/drv_dshot.h`<br>`Driver/Src/drv_dshot.c` | Reusable device or algorithm driver for dshot | `DRV_DShot_MakeTiming`, `DRV_DShot_FromPulseUs`, `DRV_DShot_Encode`, `DRV_DShot_BuildBurst` |
 | `Driver/Inc/drv_elrs.h`<br>`Driver/Src/drv_elrs.c` | Reusable device or algorithm driver for elrs | `DRV_ELRS_Init`, `DRV_ELRS_ResetParser`, `DRV_ELRS_ProcessByte`, `DRV_ELRS_Crc8` (+13) |
 | `Driver/Inc/drv_frame_contract.h` | Reusable device or algorithm driver for frame contract | `DRV_FRAME_FluToFrd` |
@@ -46,6 +47,7 @@ Source snapshot: `b5c9afd5a52b`. Indexed files: 111.
 | `BSP/Inc/bsp_bus_servo.h`<br>`BSP/Src/bsp_bus_servo.c` | Board resource binding for bus servo | `BSP_BusServo_SendRaw`, `BSP_BusServo_ReadResponse`, `BSP_BusServo_GetBaudRate`, `BSP_BusServo_SetBaudRate` (+31) |
 | `BSP/Inc/bsp_cache.h`<br>`BSP/Src/bsp_cache.c` | Board resource binding for cache | `BSP_Cache_Enable`, `BSP_Cache_Disable`, `BSP_Cache_AlignDown32`, `BSP_Cache_AlignedSize32` (+2) |
 | `BSP/Inc/bsp_critical.h`<br>`BSP/Src/bsp_critical.c` | Board resource binding for critical | `BSP_Critical_Enter`, `BSP_Critical_Exit`, `BSP_Critical_MemoryBarrier` |
+| `BSP/Inc/bsp_current.h`<br>`BSP/Src/bsp_current.c` | Board resource binding for current | `BSP_Current_Init`, `BSP_Current_Read` |
 | `BSP/Inc/bsp_dshot.h`<br>`BSP/Src/bsp_dshot.c` | Board resource binding for dshot | `BSP_DShot_Init`, `BSP_DShot_Submit`, `BSP_DShot_Disable`, `BSP_DShot_GetSnapshot` |
 | `BSP/Inc/bsp_esc_protocol.h` | Board resource binding for esc protocol | — |
 | `BSP/Inc/bsp_flash_bus.h`<br>`BSP/Src/bsp_flash_bus.c` | Board resource binding for flash bus | `BSP_FlashBus_GetBus`, `BSP_FlashBus_Acquire`, `BSP_FlashBus_Release`, `BSP_FlashBus_RegisterDmaDevice` (+1) |
