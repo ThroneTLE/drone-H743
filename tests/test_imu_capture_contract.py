@@ -100,8 +100,28 @@ def test_export_runs_off_the_sampling_path() -> None:
     vofa_task = source[source.index("void VOFA_task(void *argument)\n{"):]
     assert "APP_TelemStream_Tick();" in vofa_task[: vofa_task.index("\n}\n")]
 
-    attributes = source[source.index("VOFA_Task_attributes = {"):]
-    assert "osPriorityLow" in attributes[: attributes.index("};")]
+    # Read executable fields, not a historical osPriorityLow word in a comment.
+    # Current generated configuration uses BelowNormal, below both producers.
+    assert task_priority(source, "VOFA_Task") == "osPriorityBelowNormal"
+    cmsis = read("Drivers/CMSIS/RTOS2/Include/cmsis_os2.h")
+    priorities = dict((name, int(value)) for name, value in re.findall(r"(osPriority\w+)\s*=\s*(\d+)", cmsis))
+    for producer in ("SensorTask", "Stabilizer"):
+        assert priorities[task_priority(source, "VOFA_Task")] < priorities[task_priority(source, producer)]
+
+
+def task_priority(source: str, task: str) -> str:
+    clean = re.sub(r"/\*.*?\*/|//[^\n]*", "", source, flags=re.DOTALL)
+    body = re.search(rf"\b{task}_attributes\s*=\s*\{{(.*?)\}};", clean, re.DOTALL).group(1)
+    return re.search(r"\.priority\s*=\s*\(osPriority_t\)\s*(osPriority\w+)", body).group(1)
+
+
+def test_task_priority_reader_cannot_be_satisfied_by_a_comment() -> None:
+    source = read("Core/Src/freertos.c")
+    start = source.index("VOFA_Task_attributes = {")
+    mutated = source[:start] + source[start:].replace(
+        "(osPriority_t) osPriorityBelowNormal",
+        "(osPriority_t) osPriorityNormal /* old: osPriorityLow, osPriorityBelowNormal */", 1)
+    assert task_priority(mutated, "VOFA_Task") == "osPriorityNormal"
 
 
 def test_sample_layout_matches_host_decoder() -> None:
