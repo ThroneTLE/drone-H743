@@ -20,6 +20,7 @@
 #include "main.h"
 #include "FreeRTOS.h"
 #include "cmsis_os2.h"
+#include "adc.h"
 #include "dma.h"
 #include "i2c.h"
 #include "sdmmc.h"
@@ -432,6 +433,7 @@ int main(void)
   MX_USART2_UART_Init();
   MX_USART3_UART_Init();
   MX_USART6_UART_Init();
+  MX_ADC1_Init();
   /* USER CODE BEGIN 2 */
   SVC_Timestamp_Init();
   Main_DebugUartPrint("BOOT user2_begin\r\n");
