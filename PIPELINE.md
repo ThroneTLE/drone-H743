@@ -153,6 +153,7 @@ flowchart TB
 
 | 日期 | 范围 | 证据 | 结果 | 对状态的影响 |
 |---|---|---|---|---|
+| 2026-09-12 | 合并回归横切修复：Tk图像/字体及控件循环保留解释器 | `data/analysis/dshot/2026-09-12/merge-tcl-report.md`、merge-image-red.txt复现、merge-tcl-focused.txt 31 passed、merge-full-final.txt 1558 passed无warnings；双协议Debug零警告 | 在UI线程释放所属资源并解除关闭控件的解释器引用；另一窗口保留；不禁用GC、不增加超时/性能门限 | 已提交基线整合候选通过；原工程仍在并发编辑，尚未同步；各REQ仍待审核 |
 | 2026-09-12 | R-DSHOT/R-CURRENT 合回原工程的候选整合 | `data/analysis/dshot/2026-09-12/merge-preparation.md`、merge-full.txt：2 failed/1555 passed/15 warnings；双协议Debug零警告 | 930f7a35与d5ed69d3已在独立整合树消除文本冲突；GUI性能与Image回收错误待处理；原目录仍有作者确认的并发编辑，未同步 | 各REQ仍待审核；不宣称原工程合并完成，不改变实机门 |
 | 2026-09-12 | 横切修复：窗口销毁后 Tk 变量被后台线程回收 | `data/analysis/current/2026-09-12/tk-lifetime-report.md`、red/green/verified 原文；真实窗口关闭后后台释放变量1 failed→独立1 passed，相关19 passed | 原来只销毁控件，没在UI线程清理仍存活变量；新增按解释器身份释放，另一窗口变量保留；不改通信超时/性能门，独立fix | 关闭本次联合回归阻塞；不改变实机门 |
 | 2026-09-12 | R-CURRENT-2 传感器页电流计回读 | `data/analysis/current/2026-09-12/readback-report.md`、readback-validation.json、前后截图及 readback-full-verified.txt：1551 passed，无warnings/skips；页面17 passed、布局10 passed | 真实C格式→接收代次→Tk字段；断连/过期/非法不伪报有效；布局清单增1页而可达性门不变；仅离线截图，硬件调用0 | R-CURRENT-2待审核；R-CURRENT-1联合全量缺口关闭，未实测校准 |

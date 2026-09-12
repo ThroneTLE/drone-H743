@@ -1,0 +1,87 @@
+........................................................................ [  4%]
+........................................................................ [  9%]
+........................................................................ [ 13%]
+........................................................................ [ 18%]
+........................................................................ [ 23%]
+........................................................................ [ 27%]
+........................................................................ [ 32%]
+........................................................................ [ 36%]
+........................................................................ [ 41%]
+........................................................................ [ 46%]
+........................................................................ [ 50%]
+........................................................................ [ 55%]
+........................................................................ [ 60%]
+........................................................................ [ 64%]
+........................................................................ [ 69%]
+........................................................................ [ 73%]
+........................................................................ [ 78%]
+........................................................................ [ 83%]
+Windows fatal exception: code 0x80000003
+
+Thread 0x00001328 (most recent call first):
+  File "D:\ANACON\Lib\socket.py", line 295 in accept
+  File "D:\stm32hal\drone-H743-integrate\tools\panel_lib\transport.py", line 503 in _run
+  File "D:\ANACON\Lib\threading.py", line 1010 in run
+  File "D:\ANACON\Lib\threading.py", line 1073 in _bootstrap_inner
+  File "D:\ANACON\Lib\threading.py", line 1030 in _bootstrap
+
+Thread 0x000011ec (most recent call first):
+  File "D:\ANACON\Lib\threading.py", line 359 in wait
+  File "D:\ANACON\Lib\queue.py", line 180 in get
+  File "D:\stm32hal\drone-H743-integrate\tools\panel_lib\transport.py", line 470 in _sender_loop
+  File "D:\ANACON\Lib\threading.py", line 1010 in run
+  File "D:\ANACON\Lib\threading.py", line 1073 in _bootstrap_inner
+  File "D:\ANACON\Lib\threading.py", line 1030 in _bootstrap
+
+Current thread 0x00008a64 (most recent call first):
+  Garbage-collecting
+  File "<string>", line 2 in __init__
+  File "D:\stm32hal\drone-H743-integrate\tools\panel_lib\telem_stream.py", line 366 in feed
+  File "D:\stm32hal\drone-H743-integrate\tools\panel_lib\pages\dashboard.py", line 812 in _dashboard_on_binary_frame
+  File "D:\stm32hal\drone-H743-integrate\tools\panel_lib\pages\dashboard.py", line 664 in sink
+  File "D:\stm32hal\drone-H743-integrate\tools\panel_lib\transport.py", line 323 in _deliver_binary
+  File "D:\stm32hal\drone-H743-integrate\tools\panel_lib\transport.py", line 364 in _consume_buffer
+  File "D:\stm32hal\drone-H743-integrate\tools\panel_lib\transport.py", line 536 in _read_client
+  File "D:\stm32hal\drone-H743-integrate\tools\panel_lib\transport.py", line 519 in _run
+  File "D:\ANACON\Lib\threading.py", line 1010 in run
+  File "D:\ANACON\Lib\threading.py", line 1073 in _bootstrap_inner
+  File "D:\ANACON\Lib\threading.py", line 1030 in _bootstrap
+
+Thread 0x00004770 (most recent call first):
+  File "D:\ANACON\Lib\tkinter\__init__.py", line 1373 in update
+  File "D:\stm32hal\drone-H743-integrate\tests\test_simulation_launcher.py", line 22 in pump
+  File "D:\stm32hal\drone-H743-integrate\tests\test_simulation_launcher.py", line 107 in test_process_start_failure_releases_listener_and_allows_retry
+  File "D:\ANACON\Lib\site-packages\_pytest\python.py", line 194 in pytest_pyfunc_call
+  File "D:\ANACON\Lib\site-packages\pluggy\_callers.py", line 39 in _multicall
+  File "D:\ANACON\Lib\site-packages\pluggy\_manager.py", line 80 in _hookexec
+  File "D:\ANACON\Lib\site-packages\pluggy\_hooks.py", line 265 in __call__
+  File "D:\ANACON\Lib\site-packages\_pytest\python.py", line 1792 in runtest
+  File "D:\ANACON\Lib\site-packages\_pytest\runner.py", line 169 in pytest_runtest_call
+  File "D:\ANACON\Lib\site-packages\pluggy\_callers.py", line 39 in _multicall
+  File "D:\ANACON\Lib\site-packages\pluggy\_manager.py", line 80 in _hookexec
+  File "D:\ANACON\Lib\site-packages\pluggy\_hooks.py", line 265 in __call__
+  File "D:\ANACON\Lib\site-packages\_pytest\runner.py", line 262 in <lambda>
+  File "D:\ANACON\Lib\site-packages\_pytest\runner.py", line 341 in from_call
+  File "D:\ANACON\Lib\site-packages\_pytest\runner.py", line 261 in call_runtest_hook
+  File "D:\ANACON\Lib\site-packages\_pytest\runner.py", line 222 in call_and_report
+  File "D:\ANACON\Lib\site-packages\_pytest\runner.py", line 133 in runtestprotocol
+  File "D:\ANACON\Lib\site-packages\_pytest\runner.py", line 114 in pytest_runtest_protocol
+  File "D:\ANACON\Lib\site-packages\pluggy\_callers.py", line 39 in _multicall
+  File "D:\ANACON\Lib\site-packages\pluggy\_manager.py", line 80 in _hookexec
+  File "D:\ANACON\Lib\site-packages\pluggy\_hooks.py", line 265 in __call__
+  File "D:\ANACON\Lib\site-packages\_pytest\main.py", line 350 in pytest_runtestloop
+  File "D:\ANACON\Lib\site-packages\pluggy\_callers.py", line 39 in _multicall
+  File "D:\ANACON\Lib\site-packages\pluggy\_manager.py", line 80 in _hookexec
+  File "D:\ANACON\Lib\site-packages\pluggy\_hooks.py", line 265 in __call__
+  File "D:\ANACON\Lib\site-packages\_pytest\main.py", line 325 in _main
+  File "D:\ANACON\Lib\site-packages\_pytest\main.py", line 271 in wrap_session
+  File "D:\ANACON\Lib\site-packages\_pytest\main.py", line 318 in pytest_cmdline_main
+  File "D:\ANACON\Lib\site-packages\pluggy\_callers.py", line 39 in _multicall
+  File "D:\ANACON\Lib\site-packages\pluggy\_manager.py", line 80 in _hookexec
+  File "D:\ANACON\Lib\site-packages\pluggy\_hooks.py", line 265 in __call__
+  File "D:\ANACON\Lib\site-packages\_pytest\config\__init__.py", line 169 in main
+  File "D:\ANACON\Lib\site-packages\_pytest\config\__init__.py", line 192 in console_main
+  File "D:\ANACON\Lib\site-packages\pytest\__main__.py", line 5 in <module>
+  File "<frozen runpy>", line 88 in _run_code
+  File "<frozen runpy>", line 198 in _run_module_as_main
+........................................F...

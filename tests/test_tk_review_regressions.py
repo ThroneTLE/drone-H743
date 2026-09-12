@@ -309,12 +309,16 @@ def test_closed_panel_variables_can_be_released_by_a_worker(monkeypatch):
     import sys
     import threading
     import tkinter as tk
+    from tkinter import font
     from tools.drone_tcp_panel import DronePanel
 
     root = DronePanel()
     other = tk.Tk()
     survivor = tk.StringVar(other, value="other interpreter")
-    held = [tk.StringVar(root, value="closed interpreter")]
+    survivor_image = tk.PhotoImage(master=other, width=1, height=1)
+    survivor_font = font.Font(root=other)
+    held = [tk.StringVar(root, value="closed interpreter"),
+            tk.PhotoImage(master=root, width=1, height=1), font.Font(root=root)]
     exceptions = []
     monkeypatch.setattr(sys, "unraisablehook", exceptions.append)
     root.destroy()
@@ -325,5 +329,37 @@ def test_closed_panel_variables_can_be_released_by_a_worker(monkeypatch):
         assert not worker.is_alive()
         assert not exceptions, [str(event.exc_value) for event in exceptions]
         assert survivor.get() == "other interpreter"
+        assert survivor_image.width() == 1
+        assert survivor_font.measure("test") > 0
     finally:
         other.destroy()
+
+
+def test_closed_tk_interpreter_cycles_are_safe_in_worker_gc(tmp_path):
+    """Crash-sensitive reproduction runs out of process, with no transport."""
+    import subprocess
+    import sys
+    script = r'''
+import gc,threading,tkinter as tk
+from tkinter import font,ttk
+from tools.panel_lib.state import PanelStateMixin
+class Window(PanelStateMixin,tk.Tk): pass
+root=Window();root.withdraw()
+root.child=tk.Frame(root)
+root.image=tk.PhotoImage(master=root,width=1,height=1)
+root.font=font.Font(root=root)
+root.style=ttk.Style(root)
+root.destroy()
+box=[root];del root
+def collect():
+    box.clear()
+    gc.collect()
+t=threading.Thread(target=collect);t.start();t.join(5)
+assert not t.is_alive()
+print("worker GC exited without Tcl destruction")
+'''
+    result = subprocess.run([sys.executable, "-c", script], cwd=ROOT,
+                            capture_output=True, text=True, timeout=20)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stderr == "", result.stderr
+    assert "worker GC exited" in result.stdout

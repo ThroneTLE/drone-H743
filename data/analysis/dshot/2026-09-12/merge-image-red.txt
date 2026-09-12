@@ -1,0 +1,38 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+___________ test_closed_panel_variables_can_be_released_by_a_worker ___________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000002BAE38E3FE0>
+
+    def test_closed_panel_variables_can_be_released_by_a_worker(monkeypatch):
+        """Late Python collection must not execute Tcl after the UI closes."""
+        import sys
+        import threading
+        import tkinter as tk
+        from tools.drone_tcp_panel import DronePanel
+    
+        root = DronePanel()
+        other = tk.Tk()
+        survivor = tk.StringVar(other, value="other interpreter")
+        survivor_image = tk.PhotoImage(master=other, width=1, height=1)
+        held = [tk.StringVar(root, value="closed interpreter"),
+                tk.PhotoImage(master=root, width=1, height=1)]
+        exceptions = []
+        monkeypatch.setattr(sys, "unraisablehook", exceptions.append)
+        root.destroy()
+        worker = threading.Thread(target=held.clear)
+        worker.start()
+        worker.join(timeout=3)
+        try:
+            assert not worker.is_alive()
+>           assert not exceptions, [str(event.exc_value) for event in exceptions]
+E           AssertionError: ['main thread is not in main loop']
+E           assert not [UnraisableHookArgs(exc_type=<class 'RuntimeError'>, exc_value=RuntimeError('main thread is not in main loop'), exc_traceback=<traceback object at 0x000002BAE7626380>, err_msg=None, object=<function Image.__del__ at 0x000002BAE33E2700>)]
+
+tests\test_tk_review_regressions.py:328: AssertionError
+Physical serial open attempts: 0
+Flashing/probe tool invocation attempts: 0
+Tk display available at session start: True; Tk roots created: 2
+=========================== short test summary info ===========================
+FAILED tests/test_tk_review_regressions.py::test_closed_panel_variables_can_be_released_by_a_worker
+1 failed in 3.64s
