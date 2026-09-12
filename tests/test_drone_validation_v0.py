@@ -956,7 +956,7 @@ def test_panel_builds_the_reordered_v0_layout_without_connecting(
             app.sensor_notebook.tab(tab_id, "text")
             for tab_id in app.sensor_notebook.tabs()
         ]
-        assert sensor_labels == ["气压计", "IMU 监视（旧链）", "GPS / 磁力计", "光流"]
+        assert sensor_labels == ["气压计", "IMU 监视（旧链）", "GPS / 磁力计", "光流", "电流计"]
         assert "气压计" not in labels
         assert "IMU 监视（旧链）" not in labels
         assert "GPS / 磁力计" not in labels
@@ -964,6 +964,7 @@ def test_panel_builds_the_reordered_v0_layout_without_connecting(
         assert str(app.imu_tab.master) == str(app.sensor_notebook)
         assert str(app.gps_tab.master) == str(app.sensor_notebook)
         assert str(app.flow_sensor_tab.master) == str(app.sensor_notebook)
+        assert str(app.current_tab.master) == str(app.sensor_notebook)
         # 总览的“打开气压计页/姿态页/GPS 页”跨两层跳转，直接 select 子页会抛 TclError。
         app._open_gps_tab()
         assert app.notebook.select() == str(app.sensor_group_tab)

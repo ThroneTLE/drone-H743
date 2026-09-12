@@ -1,0 +1,31 @@
+{
+  "format": "drone-h743-current-readback-dshot-log-validation",
+  "schema": 1,
+  "created_at": "2026-09-12T13:38:08.952354+00:00",
+  "verdict": "PASS",
+  "scope": "host-only",
+  "baseline": "ebf973f0",
+  "findings": [
+    "Current sensor page uses existing STATUS and receive provenance.",
+    "V11 appends 32 bytes of DShot diagnostics and preserves legacy reads.",
+    "Tk variable teardown bug fixed independently."
+  ],
+  "pytest": "1551 passed in 232.70s (0:03:52)",
+  "warnings": 0,
+  "skips": 0,
+  "hardware_operations": 0,
+  "profiles": {
+    "DSHOT300": {
+      "build_type": "Debug",
+      "elf_sha256": "485f41b86993376073fc90ebbc2f9806ad50b8a8078a47d3b985548b42698135",
+      "raw_output": "data/analysis/dshot/2026-09-12/v11-build.txt",
+      "warnings": 0
+    },
+    "PWM": {
+      "build_type": "Debug",
+      "elf_sha256": "043ea61ed6f5159bf61386faa1d1ab00d9089639393944a7463980613a7f8925",
+      "raw_output": "data/analysis/dshot/2026-09-12/v11-build-pwm.txt",
+      "warnings": 0
+    }
+  }
+}

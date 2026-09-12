@@ -167,8 +167,8 @@ with tempfile.TemporaryDirectory() as root:
         pytest.skip("Tk display unavailable")
     payload = result.stdout.strip().splitlines()[-1]
     report = json.loads(payload)
-    # 21 → 23 个叶页（新增「机体模型」「仿真」），每页 3 个尺寸。
-    assert report["reports"] == 69
+    # 包含新电流计页的全部叶页，每页覆盖三个尺寸。
+    assert report["reports"] == 72
     assert report["bad"] == [], report["bad"]
 
 

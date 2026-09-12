@@ -1,0 +1,107 @@
+........................................................................ [  4%]
+........................................................................ [  9%]
+........................................................................ [ 13%]
+........................................................................ [ 18%]
+........................................................................ [ 23%]
+........................................................................ [ 27%]
+........................................................................ [ 32%]
+........................................................................ [ 37%]
+........................................................................ [ 41%]
+........................................................................ [ 46%]
+........................................................................ [ 51%]
+........................................................................ [ 55%]
+........................................................................ [ 60%]
+........................................................................ [ 65%]
+........................................................................ [ 69%]
+........................................................................ [ 74%]
+........................................................................ [ 78%]
+........................................................................ [ 83%]
+Exception ignored in: <function Variable.__del__ at 0x000001F3E9CF3CE0>
+Traceback (most recent call last):
+  File "D:\ANACON\Lib\tkinter\__init__.py", line 414, in __del__
+    if self._tk.getboolean(self._tk.call("info", "exists", self._name)):
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+RuntimeError: main thread is not in main loop
+..................................F..................................... [ 88%]
+........................................................................ [ 92%]
+........................................................................ [ 97%]
+......................................                                   [100%]
+================================== FAILURES ===================================
+_______ test_current_quick_editor_roundtrips_all_24_gains_over_real_tcp _______
+
+panel = <tools.drone_tcp_panel.DronePanel object .>
+
+    def test_current_quick_editor_roundtrips_all_24_gains_over_real_tcp(panel):
+        bar = panel.simulation_bar
+        bar.headless = True
+        bar.start()
+        pump(panel, lambda: bar.connected_once and panel.dashboard_schema.complete)
+        desired = {name: .01 + i * .001 for i, name in enumerate(panel.quick_parameter_vars)}
+        assert len(desired) == 24
+        for name, value in desired.items():
+            panel.quick_parameter_vars[name].set(f"{value:g}")
+        panel._send_pid_values()
+    
+        def all_echoed():
+            for name, value in desired.items():
+                state = panel.param_states.get(name)
+                if state is None or state.target is None or abs(float(state.target) - value) > 1e-6:
+                    return False
+                if state.pending is not None:
+                    return False
+            return True
+    
+>       pump(panel, all_echoed)
+
+tests\test_simulation_launcher.py:48: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+app = <tools.drone_tcp_panel.DronePanel object .>
+condition = <function test_current_quick_editor_roundtrips_all_24_gains_over_real_tcp.<locals>.all_echoed at 0x000001F38F2D8CC0>
+timeout = 15
+
+    def pump(app, condition, timeout=15):
+        deadline = time.monotonic()+timeout
+        while time.monotonic()<deadline:
+            app.update()
+            if condition(): return
+            time.sleep(.015)
+>       raise AssertionError(app.simulation_bar.status.get())
+E       AssertionError: 仿真已启动 · 127.0.0.1:2341 · 参数在上位机调节
+
+tests\test_simulation_launcher.py:25: AssertionError
+============================== warnings summary ===============================
+tests/test_simulation_launcher.py: 6 warnings
+tests/test_simulation_review_boundaries.py: 1 warning
+tests/test_simulation_session_reset.py: 1 warning
+tests/test_simulation_tcp.py: 2 warnings
+tests/test_simulation_ui_contract.py: 2 warnings
+tests/test_telem_stream_contract.py: 1 warning
+tests/test_telem_stream_decoder.py: 1 warning
+tests/test_telemetry_schema_contract.py: 3 warnings
+tests/test_tk_review_regressions.py: 2 warnings
+tests/test_tk_v_revamp.py: 4 warnings
+tests/test_v1_evidence_table.py: 2 warnings
+  D:\ANACON\Lib\site-packages\_pytest\unraisableexception.py:78: PytestUnraisableExceptionWarning: Exception ignored in: <function Variable.__del__ at 0x000001F3E9CF3CE0>
+  
+  Traceback (most recent call last):
+    File "D:\ANACON\Lib\tkinter\__init__.py", line 414, in __del__
+      if self._tk.getboolean(self._tk.call("info", "exists", self._name)):
+                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  RuntimeError: main thread is not in main loop
+  
+    warnings.warn(pytest.PytestUnraisableExceptionWarning(msg))
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+Physical serial open attempts: 0
+Flashing/probe tool invocation attempts: 0
+Tk display available at session start: True; Tk roots created: 52
+=========================== short test summary info ===========================
+FAILED tests/test_simulation_launcher.py::test_current_quick_editor_roundtrips_all_24_gains_over_real_tcp
+1 failed, 1549 passed, 25 warnings in 248.77s (0:04:08)
+Exception ignored in: <function Variable.__del__ at 0x000001F3E9CF3CE0>
+Traceback (most recent call last):
+  File "D:\ANACON\Lib\tkinter\__init__.py", line 414, in __del__
+    if self._tk.getboolean(self._tk.call("info", "exists", self._name)):
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+RuntimeError: main thread is not in main loop

@@ -1,0 +1,309 @@
+........................................................................ [  4%]
+........................................................................ [  9%]
+........................................................................ [ 13%]
+........................................................................ [ 18%]
+....................................................F................... [ 23%]
+........................................................................ [ 27%]
+........................................................................ [ 32%]
+........................................................................ [ 37%]
+........................................................................ [ 41%]
+........................................................................ [ 46%]
+........................................................................ [ 51%]
+........................................................................ [ 55%]
+........................................................................ [ 60%]
+........................................................................ [ 65%]
+............F.....F..................................................... [ 69%]
+........................................................................ [ 74%]
+........................................................................ [ 78%]
+........................................................................ [ 83%]
+........................................................................ [ 88%]
+........................................................................ [ 92%]
+...........................................FFF.......................... [ 97%]
+......................................                                   [100%]
+================================== FAILURES ===================================
+________ test_panel_builds_the_reordered_v0_layout_without_connecting _________
+
+tmp_path = WindowsPath('C:/Users/23259/AppData/Local/Temp/pytest-of-23259/pytest-2000/test_panel_builds_the_reordere0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000025152311BE0>
+
+    def test_panel_builds_the_reordered_v0_layout_without_connecting(
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        calibration_dir = tmp_path / "calibration" / "airframe"
+        monkeypatch.setattr(panel_evidence, "AIRFRAME_CALIBRATION_DIR", calibration_dir)
+        monkeypatch.setattr(panel, "FIRMWARE_UPDATE_DIR", tmp_path / "firmware_updates")
+        dialog_messages: list[tuple[str, str]] = []
+        monkeypatch.setattr(
+            panel.messagebox,
+            "showwarning",
+            lambda title, message: dialog_messages.append((title, message)),
+        )
+        monkeypatch.setattr(
+            panel.messagebox,
+            "showinfo",
+            lambda title, message: dialog_messages.append((title, message)),
+        )
+        monkeypatch.setattr(panel.messagebox, "askyesno", lambda *_args, **_kwargs: True)
+        try:
+            app = panel.DronePanel()
+        except tk.TclError as exc:
+            pytest.skip(f"Tk display unavailable: {exc}")
+        try:
+            app.update_idletasks()
+            labels = [app.notebook.tab(tab_id, "text") for tab_id in app.notebook.tabs()]
+            # R-T1-5：状态监视工作台成为默认首页（作者裁决），排在“总览”之前。
+            assert labels[:5] == [
+                "状态监视", "总览", "校准", "维护 · 固件升级", "传感器",
+            ]
+            calibration_labels = [
+                app.calibration_notebook.tab(tab_id, "text")
+                for tab_id in app.calibration_notebook.tabs()
+            ]
+            assert calibration_labels == [
+                "坐标系与极性", "IMU 零偏与比例", "遥控器", "舵机机械中心与行程",
+                "光流与测距", "无桨控制链验收", "振动检测与滤波",
+            ]
+            # R-S1-1：四个传感器页收进“传感器”分组，顶层不再平铺它们。
+            sensor_labels = [
+                app.sensor_notebook.tab(tab_id, "text")
+                for tab_id in app.sensor_notebook.tabs()
+            ]
+>           assert sensor_labels == ["气压计", "IMU 监视（旧链）", "GPS / 磁力计", "光流"]
+E           AssertionError: assert ['气压计', 'IMU ..., '光流', '电流计'] == ['气压计', 'IMU ... / 磁力计', '光流']
+E             Left contains one more item: '电流计'
+E             Use -v to get more diff
+
+tests\test_drone_validation_v0.py:959: AssertionError
+_________ test_the_harness_builds_the_real_panel_with_all_leaf_pages __________
+
+offline = OfflinePanel(panel=<tools.drone_tcp_panel.DronePanel object .>, transport=<tools.panel_qa.harness.MemoryTransport obje...at 0x000002513D5925C0>), (<class 'tkinter.Misc'>, 'after_cancel', <function Misc.after_cancel at 0x000002513D592700>)])
+
+    def test_the_harness_builds_the_real_panel_with_all_leaf_pages(offline) -> None:
+        # 2026-09-11：新增「机体模型」与「仿真」两个顶层栏目（21 → 23）。
+        # 机体模型是新功能；仿真是把原来常驻主窗口顶部的启动栏搬进独立栏目，
+        # 把那个"每次上机先看一眼"的位置让给解锁状态横幅。
+        pages = offline.leaf_pages()
+>       assert len(pages) == 23
+E       AssertionError: assert 24 == 23
+E        +  where 24 = len([LeafPage(label='状态监视', top=<tkinter.ttk.Frame object .!frame.!panedwindow.!notebook.!frame3>, sub_notebook=None, sub_...w.!notebook.!frame.!notebook>, sub_tab='.!frame.!panedwindow.!notebook.!frame.!notebook.!verticalscrolledframe4'), ...])
+
+tests\test_panel_qa_harness.py:232: AssertionError
+__________ test_the_simulated_dpi_scale_actually_changes_the_layout ___________
+
+tmp_path = WindowsPath('C:/Users/23259/AppData/Local/Temp/pytest-of-23259/pytest-2000/test_the_simulated_dpi_scale_a0')
+
+    def test_the_simulated_dpi_scale_actually_changes_the_layout(tmp_path) -> None:
+        """三档缩放必须真的作用到布局，否则矩阵的 125/150% 是空跑。"""
+        child = """
+    import json
+    from pathlib import Path
+    import tempfile
+    from tools import panel_qa
+    
+    with tempfile.TemporaryDirectory() as root:
+        with panel_qa.hardware_guards() as guard:
+            with panel_qa.isolated_environment(Path(root)):
+                try:
+                    session = panel_qa.OfflinePanel.launch(scale=1.5, size=(1366, 768))
+                except BaseException as exc:
+                    if panel_qa.is_display_unavailable(exc):
+                        print("DISPLAY_UNAVAILABLE")
+                        raise SystemExit(0)
+                    raise
+                try:
+                    font = session.panel.tk.call("font", "actual", "TkDefaultFont", "-size")
+                    reports = session.probe_geometry(sizes=((1080, 700),))
+                    print(json.dumps({"scale": session.scale, "dpi": session.panel.ui_dpi_scale,
+                                      "font": font, "reports": len(reports),
+                                      "scales": [report.scale for report in reports],
+                                      "clean": guard.clean}))
+                finally:
+                    session.destroy()
+    """
+        result = subprocess.run(
+            [sys.executable, "-c", child], cwd=ROOT,
+            capture_output=True, text=True, timeout=120,
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+        if "DISPLAY_UNAVAILABLE" in result.stdout:
+            pytest.skip("Tk display unavailable")
+        payload = json.loads(result.stdout.strip().splitlines()[-1])
+        assert payload["scale"] == 1.5
+        assert payload["dpi"] == 1.5
+        assert isinstance(payload["font"], int)
+        # 2026-09-11：21 → 23，新增「机体模型」与「仿真」两个顶层栏目。
+>       assert payload["reports"] == 23
+E       assert 24 == 23
+
+tests\test_panel_qa_harness.py:335: AssertionError
+________ test_every_leaf_page_has_reachable_interactive_controls[1.0] _________
+
+tmp_path = WindowsPath('C:/Users/23259/AppData/Local/Temp/pytest-of-23259/pytest-2000/test_every_leaf_page_has_reach0')
+scale = 1.0
+
+    @pytest.mark.parametrize("scale", SCALES)
+    def test_every_leaf_page_has_reachable_interactive_controls(tmp_path, scale):
+        # Windows Tcl can retain a just-destroyed interpreter's library handle for
+        # a short interval.  Run each simulated DPI matrix in its own process so
+        # the three required scales are independent and deterministic.
+        child = """
+    import json
+    import sys
+    import tempfile
+    from pathlib import Path
+    from tools import panel_qa
+    
+    scale = float(sys.argv[1])
+    with tempfile.TemporaryDirectory() as root:
+        with panel_qa.hardware_guards() as guard:
+            with panel_qa.isolated_environment(Path(root)):
+                try:
+                    session = panel_qa.OfflinePanel.launch(scale=scale, size=(1366, 768))
+                except BaseException as exc:
+                    if panel_qa.is_display_unavailable(exc):
+                        print("DISPLAY_UNAVAILABLE")
+                        raise SystemExit(0)
+                    raise
+                try:
+                    reports = session.probe_geometry(sizes=panel_qa.WINDOW_SIZES)
+                    bad = [report.to_json() for report in reports if not report.clean]
+                    print(json.dumps({"bad": bad, "reports": len(reports),
+                                      "serial": guard.serial_opens,
+                                      "flash": guard.flash_invocations}))
+                finally:
+                    session.destroy()
+            if not guard.clean:
+                raise AssertionError((guard.serial_opens, guard.flash_invocations))
+    """
+        result = subprocess.run(
+            [sys.executable, "-c", child, str(scale)],
+            cwd=ROOT, capture_output=True, text=True, timeout=120,
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+        if "DISPLAY_UNAVAILABLE" in result.stdout:
+            pytest.skip("Tk display unavailable")
+        payload = result.stdout.strip().splitlines()[-1]
+        report = json.loads(payload)
+        # 21 → 23 个叶页（新增「机体模型」「仿真」），每页 3 个尺寸。
+>       assert report["reports"] == 69
+E       assert 72 == 69
+
+tests\test_tk_v_revamp.py:171: AssertionError
+________ test_every_leaf_page_has_reachable_interactive_controls[1.25] ________
+
+tmp_path = WindowsPath('C:/Users/23259/AppData/Local/Temp/pytest-of-23259/pytest-2000/test_every_leaf_page_has_reach1')
+scale = 1.25
+
+    @pytest.mark.parametrize("scale", SCALES)
+    def test_every_leaf_page_has_reachable_interactive_controls(tmp_path, scale):
+        # Windows Tcl can retain a just-destroyed interpreter's library handle for
+        # a short interval.  Run each simulated DPI matrix in its own process so
+        # the three required scales are independent and deterministic.
+        child = """
+    import json
+    import sys
+    import tempfile
+    from pathlib import Path
+    from tools import panel_qa
+    
+    scale = float(sys.argv[1])
+    with tempfile.TemporaryDirectory() as root:
+        with panel_qa.hardware_guards() as guard:
+            with panel_qa.isolated_environment(Path(root)):
+                try:
+                    session = panel_qa.OfflinePanel.launch(scale=scale, size=(1366, 768))
+                except BaseException as exc:
+                    if panel_qa.is_display_unavailable(exc):
+                        print("DISPLAY_UNAVAILABLE")
+                        raise SystemExit(0)
+                    raise
+                try:
+                    reports = session.probe_geometry(sizes=panel_qa.WINDOW_SIZES)
+                    bad = [report.to_json() for report in reports if not report.clean]
+                    print(json.dumps({"bad": bad, "reports": len(reports),
+                                      "serial": guard.serial_opens,
+                                      "flash": guard.flash_invocations}))
+                finally:
+                    session.destroy()
+            if not guard.clean:
+                raise AssertionError((guard.serial_opens, guard.flash_invocations))
+    """
+        result = subprocess.run(
+            [sys.executable, "-c", child, str(scale)],
+            cwd=ROOT, capture_output=True, text=True, timeout=120,
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+        if "DISPLAY_UNAVAILABLE" in result.stdout:
+            pytest.skip("Tk display unavailable")
+        payload = result.stdout.strip().splitlines()[-1]
+        report = json.loads(payload)
+        # 21 → 23 个叶页（新增「机体模型」「仿真」），每页 3 个尺寸。
+>       assert report["reports"] == 69
+E       assert 72 == 69
+
+tests\test_tk_v_revamp.py:171: AssertionError
+________ test_every_leaf_page_has_reachable_interactive_controls[1.5] _________
+
+tmp_path = WindowsPath('C:/Users/23259/AppData/Local/Temp/pytest-of-23259/pytest-2000/test_every_leaf_page_has_reach2')
+scale = 1.5
+
+    @pytest.mark.parametrize("scale", SCALES)
+    def test_every_leaf_page_has_reachable_interactive_controls(tmp_path, scale):
+        # Windows Tcl can retain a just-destroyed interpreter's library handle for
+        # a short interval.  Run each simulated DPI matrix in its own process so
+        # the three required scales are independent and deterministic.
+        child = """
+    import json
+    import sys
+    import tempfile
+    from pathlib import Path
+    from tools import panel_qa
+    
+    scale = float(sys.argv[1])
+    with tempfile.TemporaryDirectory() as root:
+        with panel_qa.hardware_guards() as guard:
+            with panel_qa.isolated_environment(Path(root)):
+                try:
+                    session = panel_qa.OfflinePanel.launch(scale=scale, size=(1366, 768))
+                except BaseException as exc:
+                    if panel_qa.is_display_unavailable(exc):
+                        print("DISPLAY_UNAVAILABLE")
+                        raise SystemExit(0)
+                    raise
+                try:
+                    reports = session.probe_geometry(sizes=panel_qa.WINDOW_SIZES)
+                    bad = [report.to_json() for report in reports if not report.clean]
+                    print(json.dumps({"bad": bad, "reports": len(reports),
+                                      "serial": guard.serial_opens,
+                                      "flash": guard.flash_invocations}))
+                finally:
+                    session.destroy()
+            if not guard.clean:
+                raise AssertionError((guard.serial_opens, guard.flash_invocations))
+    """
+        result = subprocess.run(
+            [sys.executable, "-c", child, str(scale)],
+            cwd=ROOT, capture_output=True, text=True, timeout=120,
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+        if "DISPLAY_UNAVAILABLE" in result.stdout:
+            pytest.skip("Tk display unavailable")
+        payload = result.stdout.strip().splitlines()[-1]
+        report = json.loads(payload)
+        # 21 → 23 个叶页（新增「机体模型」「仿真」），每页 3 个尺寸。
+>       assert report["reports"] == 69
+E       assert 72 == 69
+
+tests\test_tk_v_revamp.py:171: AssertionError
+Physical serial open attempts: 0
+Flashing/probe tool invocation attempts: 0
+Tk display available at session start: True; Tk roots created: 52
+=========================== short test summary info ===========================
+FAILED tests/test_drone_validation_v0.py::test_panel_builds_the_reordered_v0_layout_without_connecting
+FAILED tests/test_panel_qa_harness.py::test_the_harness_builds_the_real_panel_with_all_leaf_pages
+FAILED tests/test_panel_qa_harness.py::test_the_simulated_dpi_scale_actually_changes_the_layout
+FAILED tests/test_tk_v_revamp.py::test_every_leaf_page_has_reachable_interactive_controls[1.0]
+FAILED tests/test_tk_v_revamp.py::test_every_leaf_page_has_reachable_interactive_controls[1.25]
+FAILED tests/test_tk_v_revamp.py::test_every_leaf_page_has_reachable_interactive_controls[1.5]
+6 failed, 1544 passed in 237.37s (0:03:57)

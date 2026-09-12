@@ -3,6 +3,7 @@
 import queue
 
 from .connection_state import ReceivedMessage, snapshot_is_current
+from .pages.current_monitor import consume_current_message
 
 
 def drain_rx(panel, batch_size, busy_ms, idle_ms):
@@ -22,6 +23,7 @@ def drain_rx(panel, batch_size, busy_ms, idle_ms):
                 item = item.payload
             panel._rx_context = context
             try:
+                consume_current_message(panel, item)
                 if isinstance(item, tuple) and len(item) == 3 and item[0] == "proto":
                     _tag, function, text = item
                     panel._handle_proto_frame(int(function), str(text))
