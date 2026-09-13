@@ -1,4 +1,5 @@
 #include "app_gps.h"
+#include "app_components.h"
 
 #include "app_control.h"
 #include "bsp_gps.h"
@@ -17,6 +18,7 @@ static APP_GPS_Context app_gps_ctx;
 
 void APP_GPS_Init(void)
 {
+    APP_Components_RegisterGps();
     BSP_GPS_StatusCode st;
 
     memset(&app_gps_ctx, 0, sizeof(app_gps_ctx));

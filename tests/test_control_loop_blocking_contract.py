@@ -1172,6 +1172,10 @@ def _check_app_control_step_d4(tmp_path: Path) -> None:
     ):
         for name, expected_hash in expected.items():
             body = _c_function_body(owner, name)
+            if name == "app_control_report_caps":
+                # R-MODULES-1 adds one read-only discovery command; preserve D4.
+                assert body.count(",REGISTRY?") == 1
+                body = body.replace(",REGISTRY?", "", 1)
             if name == "app_control_report_status":
                 # R-CURRENT-1 adds exactly one snapshot-only report delegation.
                 # Freeze every pre-existing statement rather than changing the old hash.

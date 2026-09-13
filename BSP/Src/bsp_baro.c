@@ -9,6 +9,8 @@ static DRV_BARO_Device baro_dev;
 static uint8_t         baro_initialized;
 static uint8_t         baro_bound;
 
+uint8_t BSP_BARO_IsInitialized(void) { return baro_initialized; }
+
 static void baro_bind_bus(void)
 {
     if (baro_bound != 0U) { return; }

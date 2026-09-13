@@ -1,0 +1,244 @@
+{
+  "scope": "ARM ELF providers; cached uninitialized states + injected ADC; no board",
+  "elf": "build/PWM-check/drone-H743.elf",
+  "packets": 15,
+  "wire_bytes": 1721,
+  "rows": [
+    {
+      "id": 1,
+      "name": "IMU",
+      "model": "NONE",
+      "bus": "unselected",
+      "state": 4,
+      "fields": [
+        {
+          "label": "chip_id",
+          "value": null
+        },
+        {
+          "label": "init_stage",
+          "value": 0
+        },
+        {
+          "label": "error",
+          "value": 3
+        },
+        {
+          "label": "temperature",
+          "value": null
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "气压计",
+      "model": "SPL06",
+      "bus": "I2C2 / 0x77",
+      "state": 2,
+      "fields": [
+        {
+          "label": "chip_id",
+          "value": null
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "name": "磁力计",
+      "model": "NONE",
+      "bus": "I2C2",
+      "state": 2,
+      "fields": [
+        {
+          "label": "address",
+          "value": null
+        },
+        {
+          "label": "X",
+          "value": null
+        },
+        {
+          "label": "Y",
+          "value": null
+        },
+        {
+          "label": "Z",
+          "value": null
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "name": "光流与测距",
+      "model": "MicoLink",
+      "bus": "USART2",
+      "state": 2,
+      "fields": [
+        {
+          "label": "height",
+          "value": null
+        },
+        {
+          "label": "VX",
+          "value": null
+        },
+        {
+          "label": "VY",
+          "value": null
+        },
+        {
+          "label": "checksum_err",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "name": "电流计",
+      "model": "AM32 Curr",
+      "bus": "ADC1 / PC1",
+      "state": 1,
+      "fields": [
+        {
+          "label": "current",
+          "value": 47.392730712890625
+        },
+        {
+          "label": "ADC",
+          "value": 0.6042572855949402
+        },
+        {
+          "label": "raw",
+          "value": 12000
+        },
+        {
+          "label": "errors",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "name": "参数存储",
+      "model": "Internal Flash",
+      "bus": "Flash Bank2",
+      "state": 1,
+      "fields": [
+        {
+          "label": "stored_valid",
+          "value": 0
+        },
+        {
+          "label": "loaded",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "name": "日志存储",
+      "model": "SD raw blocks",
+      "bus": "SDMMC1",
+      "state": 2,
+      "fields": [
+        {
+          "label": "ready",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "name": "电调输出",
+      "model": "PWM",
+      "bus": "TIM1 / M4,M3",
+      "state": 2,
+      "fields": [
+        {
+          "label": "upper",
+          "value": 1100
+        },
+        {
+          "label": "lower",
+          "value": 1100
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "name": "舵机输出",
+      "model": "bus servo",
+      "bus": "UART7",
+      "state": 0,
+      "fields": [
+        {
+          "label": "alpha",
+          "value": null
+        },
+        {
+          "label": "beta",
+          "value": null
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "name": "遥控接收",
+      "model": "CRSF / ELRS",
+      "bus": "UART4",
+      "state": 0,
+      "fields": [
+        {
+          "label": "CRC errors",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "name": "数传接口",
+      "model": "Serial link",
+      "bus": "USART1",
+      "state": 2,
+      "fields": [
+        {
+          "label": "bytes",
+          "value": 0
+        },
+        {
+          "label": "errors",
+          "value": 0
+        },
+        {
+          "label": "overflow",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "name": "维护接口",
+      "model": "Bluetooth UART",
+      "bus": "UART8",
+      "state": 2,
+      "fields": []
+    },
+    {
+      "id": 13,
+      "name": "状态灯",
+      "model": "RGB LED",
+      "bus": "PE3,PE2,PE4",
+      "state": 2,
+      "fields": [
+        {
+          "label": "source",
+          "value": 7
+        },
+        {
+          "label": "active_low",
+          "value": 1
+        }
+      ]
+    }
+  ]
+}

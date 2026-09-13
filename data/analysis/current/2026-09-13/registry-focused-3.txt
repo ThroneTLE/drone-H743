@@ -1,0 +1,86 @@
+...........F                                                             [100%]
+================================== FAILURES ===================================
+_______________ test_binary_reply_preserves_bytes_and_failures ________________
+
+tmp_path = WindowsPath('C:/Users/23259/AppData/Local/Temp/pytest-of-23259/pytest-2041/test_binary_reply_preserves_by0')
+
+    def test_binary_reply_preserves_bytes_and_failures(tmp_path):
+        (tmp_path/'app_tasks.h').write_text('''
+    #include <stdint.h>
+    typedef int osStatus_t;
+    #define osOK 0
+    extern void *uartTxQueueHandle;
+    int osMessageQueuePut(void *, const void *, uint8_t, uint32_t);
+    ''')
+        source=r'''
+    #include "app_components.h"
+    #include "app_proto.h"
+    #include "app_messages.h"
+    #include <assert.h>
+    #include <string.h>
+    void *uartTxQueueHandle=(void *)1;
+    static int maint,usb_ready,usb_ok,uart_ok,maint_ok,flog,imu;
+    static int usb_count,uart_count,bt_count,notifications;
+    static unsigned char expected[256];static uint16_t expected_size;
+    uint32_t SVC_Timestamp_Ms(void){return 123;}
+    uint8_t APP_FlightLog_IsExportActive(void){return flog;}
+    uint8_t APP_IMU_Capture_IsExportActive(void){return imu;}
+    uint8_t app_control_internal_maint_output_active(void){return maint;}
+    uint8_t APP_MaintUART_WritePacket(const uint8_t *p,uint16_t n){
+        bt_count++;assert(n==expected_size&&!memcmp(p,expected,n));return maint_ok;
+    }
+    uint8_t APP_USB_CDC_IsReady(void){return usb_ready;}
+    uint8_t APP_USB_CDC_Write(const uint8_t *p,uint16_t n,uint32_t wait){
+        usb_count++;assert(wait==10&&n==expected_size&&!memcmp(p,expected,n));return usb_ok;
+    }
+    int osMessageQueuePut(void *q,const void *p,uint8_t priority,uint32_t wait){
+        assert(q==uartTxQueueHandle&&priority==0&&wait==0);const APP_UART_TxMessage *m=p;
+        assert(m->function==APP_UART_TX_FUNCTION_VOFA_SOCKET&&m->length==expected_size);
+        assert(!memcmp(m->text,expected,m->length));uart_count++;return uart_ok?0:-1;
+    }
+    void APP_UART_NotifyTxPending(void){notifications++;}
+    int main(void){
+        uint8_t payload[]={0,1,2,0,10,13,0xff,0xc3,0xa9,0};
+        assert(APP_Proto_BuildFrame('>',APP_PROTO_MSG_COMPONENTS,payload,sizeof(payload),expected,sizeof(expected),&expected_size));
+        assert(APP_Components_NowMs()==123);
+        assert(!APP_Components_ExportBusy());flog=1;assert(APP_Components_ExportBusy());flog=0;imu=1;assert(APP_Components_ExportBusy());
+        assert(!APP_Components_Send(payload,sizeof(payload))&&uart_count==1&&notifications==0);
+        uart_ok=1;assert(APP_Components_Send(payload,sizeof(payload))&&notifications==1);
+        usb_ready=usb_ok=1;uart_ok=0;assert(APP_Components_Send(payload,sizeof(payload))&&usb_count==1);
+        maint=maint_ok=1;int u=uart_count;
+        assert(APP_Components_Send(payload,sizeof(payload))&&bt_count==1&&uart_count==u&&usb_count==1);
+        maint_ok=0;assert(!APP_Components_Send(payload,sizeof(payload))&&bt_count==2);
+        assert(!APP_Components_Send(payload,248));return 0;
+    }
+    '''
+        (tmp_path/'test.c').write_text(source)
+        command=[shutil.which('gcc'),'-std=c11','-Wall','-Wextra','-Werror','-I',str(tmp_path)]
+        for directory in ('App/Inc','BSP/Inc','Driver/Inc','Services/Inc'):
+            command+=['-I',str(ROOT/directory)]
+        command+=[str(tmp_path/'test.c'),str(ROOT/'App/Src/app_components_transport.c'),
+                  str(ROOT/'App/Src/app_proto.c'),'-o',str(tmp_path/'test.exe')]
+        result=subprocess.run(command,capture_output=True,text=True)
+>       assert result.returncode==0,result.stdout+result.stderr
+E       AssertionError: In file included from D:\stm32hal\drone-H743-current-fix\App\Inc/app_messages.h:6,
+E                          from C:\Users\23259\AppData\Local\Temp\pytest-of-23259\pytest-2041\test_binary_reply_preserves_by0\test.c:4:
+E         D:\stm32hal\drone-H743-current-fix\Driver\Inc/drv_imu.h:8:10: fatal error: main.h: No such file or directory
+E          #include "main.h"
+E                   ^~~~~~~~
+E         compilation terminated.
+E         In file included from D:\stm32hal\drone-H743-current-fix\App\Inc/app_flight_log.h:5,
+E                          from D:\stm32hal\drone-H743-current-fix\App\Src\app_components_transport.c:4:
+E         D:\stm32hal\drone-H743-current-fix\Driver\Inc/drv_imu.h:8:10: fatal error: main.h: No such file or directory
+E          #include "main.h"
+E                   ^~~~~~~~
+E         compilation terminated.
+E         
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['D:\\mingw64\\bin\\gcc.EXE', '-std=c11', '-Wall', '-Wextra', '-Werror', '-I', 'C:\\Users\\23259...10: fatal error: main.h: No such file or directory\n #include "main.h"\n          ^~~~~~~~\ncompilation terminated.\n').returncode
+
+tests\test_component_transport.py:65: AssertionError
+Physical serial open attempts: 0
+Flashing/probe tool invocation attempts: 0
+Tk display available at session start: True; Tk roots created: 1
+=========================== short test summary info ===========================
+FAILED tests/test_component_transport.py::test_binary_reply_preserves_bytes_and_failures
+1 failed, 11 passed in 3.56s

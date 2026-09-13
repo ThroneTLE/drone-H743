@@ -4,7 +4,7 @@
 
 Read this shard only when the task needs architecture rationale, controller math, historical evidence, captures, datasets, or agent-support documentation.
 
-Document snapshot: `c71a77ec19c9`; aggregate snapshot: `2242e09800b2`. Covered files: 477.
+Document snapshot: `a9b3a6932dc4`; aggregate snapshot: `ea9579450a51`. Covered files: 512.
 
 ## Documents and agent support
 
@@ -30,6 +30,7 @@ Document snapshot: `c71a77ec19c9`; aggregate snapshot: `2242e09800b2`. Covered f
 | `.claude/skills/drone-h743-project/SKILL.md` | drone-H743 Project Skill (route) | — |
 | `.codex/config.toml` | Repository-local Codex configuration | — |
 | `data/README.md` | Project Data Directory | — |
+| `doc/component-registry.md` | 飞控元件注册与总览（R-MODULES-1） | `字节契约 v1`, `注册、传输与预算`, `可复核验证` |
 | `doc/current-architecture.md` | drone-H743 当前软件架构 | `分层`, `主要运行链`, `IMU 与姿态`, `光流与水平导航` (+5) |
 | `doc/current-sensor.md` | R-CURRENT-1：AM32 55A 电流采样 | `硬件与标称换算`, `软件边界`, `上位机回读（R-CURRENT-2）`, `CubeMX 交接` (+1) |
 | `doc/drone-h743-architecture.html` | Project documentation for drone h743 architecture | — |
@@ -60,6 +61,6 @@ Document snapshot: `c71a77ec19c9`; aggregate snapshot: `2242e09800b2`. Covered f
 | Scope | Content outline | Inventory |
 |---|---|---|
 | `.tmp/` | Temporary analysis results; inspect only a specifically named run | 105 files / 10.6 MiB / .json×25, .csv×19, .png×14, .md×11, .txt×11 |
-| `data/` | Canonical captures, flight logs, identification, calibration, telemetry, and analysis root | 328 files / 20.7 MiB / .txt×109, .csv×86, .json×65, .png×27, .md×24 |
+| `data/` | Canonical captures, flight logs, identification, calibration, telemetry, and analysis root | 362 files / 20.9 MiB / .txt×134, .csv×86, .json×66, .png×28, .md×26 |
 
 Do not load a whole dataset directory. Select one named run after code or test evidence points to it.

@@ -62,6 +62,11 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Driver/Src/drv_current.c
     BSP/Src/bsp_current.c
     App/Src/app_current.c
+    Driver/Src/drv_component_proto.c
+    BSP/Src/bsp_component_catalog.c
+    App/Src/app_components.c
+    App/Src/app_components_board.c
+    App/Src/app_components_transport.c
     BSP/Src/bsp_dshot.c
     App/Src/app_esc_diag.c
     App/Src/app_esc_log.c

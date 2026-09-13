@@ -37,6 +37,7 @@ DRV_BARO_Status BSP_BARO_ReadId(uint8_t *product_id);
 DRV_BARO_Status BSP_BARO_ReadRawRegister(uint8_t reg, uint8_t *value);
 DRV_BARO_Status BSP_BARO_ReadRawRegisters(uint8_t reg, uint8_t *data, uint16_t len);
 const DRV_BARO_Device *BSP_BARO_GetDevice(void);
+uint8_t BSP_BARO_IsInitialized(void);
 void BSP_BARO_DebugReadLevels(uint8_t *cs_level, uint8_t *miso_level);
 void BSP_BARO_Invalidate(void);
 

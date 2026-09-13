@@ -12,6 +12,7 @@
 
 #include "app_control.h"
 #include "app_control_internal.h"
+#include "app_components.h"
 
 #include <stddef.h>
 
@@ -23,5 +24,6 @@ void app_control_handle_unclaimed(char **tokens, uint32_t count)
     if (app_control_handle_led(tokens, count) != 0U) {
         return;
     }
+    if (APP_Components_Command(tokens, count) != 0U) { return; }
     APP_Control_QueueText("ERR unknown cmd %s\r\n", tokens[0]);
 }

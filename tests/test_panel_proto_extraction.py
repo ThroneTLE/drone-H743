@@ -76,7 +76,8 @@ def test_proto_module_owns_the_protocol_table_and_parsing_helpers() -> None:
     # 87 = 84 + PROTO_MSG_TELEM_FRAME（S8 / R-T1-1 的遥测掩码帧）
     #         + PROTO_MAX_FRAME_PAYLOAD（$X 解析器重同步用的长度上限）
     #         + PROTO_BINARY_FUNCTIONS（payload 是二进制、不许按 UTF-8 解的 fn 集合）。
-    assert len(proto_names) == 87
+    # R-MODULES-1 adds COMPONENTS; retain every legacy forwarding contract.
+    assert len(proto_names) == 88
     assert legacy_names == proto_names
     assert proto_names == owned_proto_assignments(PROTO_PATH)
     assert not owned_proto_assignments(LEGACY_PANEL_PATH)

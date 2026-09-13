@@ -49,7 +49,7 @@ void app_control_report_caps(void)
     app_control_queue_proto_text(APP_PROTO_MSG_CAPS_RECORD,
                                  "RSP id=0 mod=CAPS op=LIST proto=mspv2-lite-v1 resp=frame+typed req=frame+typed\r\n");
     app_control_queue_proto_text(APP_PROTO_MSG_CAPS_RECORD,
-                                 "RSP id=0 mod=CAPS op=LIST legacy=PING,STATUS?,CONFIG?,SAVE,LOAD,SERVO,SERVOTYPE? raw=custom-tab\r\n");
+                                 "RSP id=0 mod=CAPS op=LIST legacy=PING,STATUS?,CONFIG?,SAVE,LOAD,SERVO,SERVOTYPE?,REGISTRY? raw=custom-tab\r\n");
     app_control_queue_proto_text(APP_PROTO_MSG_CAPS_RECORD,
                                  "RSP id=0 mod=CAPS op=LIST mods=MODULES,SPL06,ICM42688,IMUSEL,MEM,SPI,I2C,UART,FLOW,MAG,PARAM,FLASH,RTOS,WIFI\r\n");
     app_control_queue_proto_text(APP_PROTO_MSG_CAPS_RECORD,

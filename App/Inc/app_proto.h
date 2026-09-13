@@ -98,6 +98,7 @@
  * 上位机侧同名登记在 tools/panel_lib/proto.py::PROTO_MSG_TELEM_FRAME。
  */
 #define APP_PROTO_MSG_TELEM_FRAME       0x2230U
+#define APP_PROTO_MSG_COMPONENTS        0x2231U
 
 /*
  * 成帧器（FC -> PC 方向）在 R-T1-1 重新启用：遥测流 v2 用它把掩码帧包进

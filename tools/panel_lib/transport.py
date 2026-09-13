@@ -288,6 +288,10 @@ class TransportBase(ABC):
             line.rstrip("\r\n").encode("utf-8"),
         )
 
+    def send_ascii_line(self, line: str) -> bool:
+        """Read-only discovery uses the firmware's existing ASCII command path."""
+        return self.send_line(line)
+
     def cancel_pending_sends(self) -> None:
         """Invalidate queued writes before entering a read-only V0 session."""
 
@@ -359,6 +363,10 @@ class TransportBase(ABC):
                     del buffer[:frame_length]
 
                     if frame[2] == PROTO_DIR_FROM_FC:
+                        from .proto import PROTO_MSG_COMPONENTS
+                        if function == PROTO_MSG_COMPONENTS:
+                            emit(("component_bin", payload))
+                            continue
                         if function in PROTO_BINARY_FUNCTIONS:
                             if context is None or context.is_current(self):
                                 self._deliver_binary(function, payload)
@@ -445,6 +453,12 @@ class TcpTransport(TransportBase):
 
     def send_frame(self, function: int, payload: bytes = b"") -> bool:
         frame = build_proto_frame(PROTO_DIR_TO_FC, function, payload)
+        return self._enqueue_bytes(frame)
+
+    def send_ascii_line(self, line: str) -> bool:
+        return self._enqueue_bytes((line.rstrip("\r\n") + "\r\n").encode("utf-8"))
+
+    def _enqueue_bytes(self, frame: bytes) -> bool:
         with self.lock:
             if self.client is None:
                 return False

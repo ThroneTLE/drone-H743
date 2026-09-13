@@ -19,6 +19,8 @@ void APP_MaintUART_Step(void);
  * 等不到才丢并计数）。命令回包走这条路：回包丢了比慢危险得多。
  */
 void APP_MaintUART_Write(const char *text, uint16_t length);
+/* Command-task packet reply: binary-safe, same bounded wait as text replies. */
+uint8_t APP_MaintUART_WritePacket(const uint8_t *data, uint16_t length);
 
 /*
  * 二进制安全的写，给遥测帧用。遥测帧里含 0x00，任何按 C 字符串处理的路径都会

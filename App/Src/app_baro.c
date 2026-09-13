@@ -261,6 +261,17 @@ void APP_Baro_GetStatus(APP_Baro_Status *status)
     *status = baro_status;
 }
 
+void APP_Baro_GetCachedStatus(APP_Baro_Status *status)
+{
+    if (status == NULL) { return; }
+    *status = baro_status;
+    if (BSP_BARO_IsInitialized()) {
+        status->product_id = BSP_BARO_GetDevice()->product_id;
+        status->init_status = DRV_BARO_OK;
+        status->report_done = 1U;
+    }
+}
+
 void APP_Baro_ReadSnapshot(APP_Baro_Snapshot *snapshot)
 {
     if (snapshot == 0) {

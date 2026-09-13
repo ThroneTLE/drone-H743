@@ -4,7 +4,7 @@
 
 Read this shard only when the task touches device protocols, reusable algorithms, buses, GPIO, DMA callbacks, cache hooks, or board bindings.
 
-Source snapshot: `e4f90c5cddd1`. Indexed files: 117.
+Source snapshot: `e3f175bcf8e8`. Indexed files: 121.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -18,6 +18,7 @@ Source snapshot: `e4f90c5cddd1`. Indexed files: 117.
 | `Driver/Inc/drv_bmi270_config.h`<br>`Driver/Src/drv_bmi270_config.c` | Reusable device or algorithm driver for bmi270 config | — |
 | `Driver/Inc/drv_bmi270_tables.h`<br>`Driver/Src/drv_bmi270_tables.c` | Reusable device or algorithm driver for bmi270 tables | `DRV_BMI270_AccelRangeCode`, `DRV_BMI270_AccelLsbPerG`, `DRV_BMI270_GyroRangeCode`, `DRV_BMI270_GyroLsbPerDps` (+6) |
 | `Driver/Inc/drv_coax_ctrl.h`<br>`Driver/Src/drv_coax_ctrl.c` | Reusable device or algorithm driver for coax ctrl | `DRV_COAX_CTRL_Init`, `DRV_COAX_CTRL_ResetState`, `DRV_COAX_CTRL_Run`, `DRV_COAX_CTRL_RunScheduled` (+19) |
+| `Driver/Inc/drv_component_proto.h`<br>`Driver/Src/drv_component_proto.c` | Reusable device or algorithm driver for component proto | `DRV_Component_Encode`, `DRV_Component_CrcUpdate` |
 | `Driver/Inc/drv_current.h`<br>`Driver/Src/drv_current.c` | Reusable device or algorithm driver for current | `DRV_Current_Am32_55A_Default`, `DRV_Current_Convert` |
 | `Driver/Inc/drv_dshot.h`<br>`Driver/Src/drv_dshot.c` | Reusable device or algorithm driver for dshot | `DRV_DShot_MakeTiming`, `DRV_DShot_FromPulseUs`, `DRV_DShot_Encode`, `DRV_DShot_BuildBurst` |
 | `Driver/Inc/drv_elrs.h`<br>`Driver/Src/drv_elrs.c` | Reusable device or algorithm driver for elrs | `DRV_ELRS_Init`, `DRV_ELRS_ResetParser`, `DRV_ELRS_ProcessByte`, `DRV_ELRS_Crc8` (+13) |
@@ -43,10 +44,11 @@ Source snapshot: `e4f90c5cddd1`. Indexed files: 117.
 | `Driver/Inc/drv_tx_ring.h`<br>`Driver/Src/drv_tx_ring.c` | Reusable device or algorithm driver for tx ring | `DRV_TxRing_Init`, `DRV_TxRing_Used`, `DRV_TxRing_Free`, `DRV_TxRing_Push` (+2) |
 | `BSP/Inc/bsp.h`<br>`BSP/Src/bsp.c` | Board resource binding for bsp | `BSP_Init` |
 | `BSP/Inc/bsp_aiwb2_power.h`<br>`BSP/Src/bsp_aiwb2_power.c` | Board resource binding for aiwb2 power | `BSP_AiWB2_PowerInit`, `BSP_AiWB2_SetEnabled`, `BSP_AiWB2_UpdateButton`, `BSP_AiWB2_IsEnabled` (+2) |
-| `BSP/Inc/bsp_baro.h`<br>`BSP/Src/bsp_baro.c` | Board resource binding for baro | `BSP_BARO_Init`, `BSP_BARO_ProbeId`, `BSP_BARO_ProbeIdTxRx`, `BSP_BARO_ReadId` (+5) |
+| `BSP/Inc/bsp_baro.h`<br>`BSP/Src/bsp_baro.c` | Board resource binding for baro | `BSP_BARO_Init`, `BSP_BARO_ProbeId`, `BSP_BARO_ProbeIdTxRx`, `BSP_BARO_ReadId` (+6) |
 | `BSP/Inc/bsp_board.h`<br>`BSP/Src/bsp_board.c` | Board resource binding for board | `BSP_Board_Init`, `BSP_DelayMs`, `BSP_Board_GetImuBus`, `BSP_Board_GetBmi088Bus` (+9) |
 | `BSP/Inc/bsp_bus_servo.h`<br>`BSP/Src/bsp_bus_servo.c` | Board resource binding for bus servo | `BSP_BusServo_SendRaw`, `BSP_BusServo_ReadResponse`, `BSP_BusServo_GetBaudRate`, `BSP_BusServo_SetBaudRate` (+31) |
 | `BSP/Inc/bsp_cache.h`<br>`BSP/Src/bsp_cache.c` | Board resource binding for cache | `BSP_Cache_Enable`, `BSP_Cache_Disable`, `BSP_Cache_AlignDown32`, `BSP_Cache_AlignedSize32` (+2) |
+| `BSP/Inc/bsp_component_catalog.h`<br>`BSP/Src/bsp_component_catalog.c` | Board resource binding for component catalog | `BSP_Component_Interface` |
 | `BSP/Inc/bsp_critical.h`<br>`BSP/Src/bsp_critical.c` | Board resource binding for critical | `BSP_Critical_Enter`, `BSP_Critical_Exit`, `BSP_Critical_MemoryBarrier` |
 | `BSP/Inc/bsp_current.h`<br>`BSP/Src/bsp_current.c` | Board resource binding for current | `BSP_Current_Init`, `BSP_Current_Read` |
 | `BSP/Inc/bsp_dshot.h`<br>`BSP/Src/bsp_dshot.c` | Board resource binding for dshot | `BSP_DShot_Init`, `BSP_DShot_Submit`, `BSP_DShot_Disable`, `BSP_DShot_GetSnapshot` |
@@ -59,7 +61,7 @@ Source snapshot: `e4f90c5cddd1`. Indexed files: 117.
 | `BSP/Inc/bsp_imu.h`<br>`BSP/Src/bsp_imu.c` | Board resource binding for imu | `BSP_IMU_Init`, `BSP_IMU_ReadRaw`, `BSP_IMU_ReadScaled`, `BSP_IMU_IsDataReady` (+14) |
 | `BSP/Inc/bsp_mag.h`<br>`BSP/Src/bsp_mag.c` | Board resource binding for mag | `BSP_MAG_Init`, `BSP_MAG_Read`, `BSP_MAG_Probe`, `BSP_MAG_GetStatus` (+2) |
 | `BSP/Inc/bsp_optical_flow.h`<br>`BSP/Src/bsp_optical_flow.c` | Board resource binding for optical flow | `BSP_OPTICAL_FLOW_Init`, `BSP_OPTICAL_FLOW_Service`, `BSP_OPTICAL_FLOW_OnUartRxCplt`, `BSP_OPTICAL_FLOW_OnUartRxEvent` (+6) |
-| `BSP/Inc/bsp_pwm.h`<br>`BSP/Src/bsp_pwm.c` | Board resource binding for pwm | `BSP_PWM_Init`, `BSP_PWM_SetEscPulse`, `BSP_PWM_SetEscPercent`, `BSP_PWM_DisableEsc` (+9) |
+| `BSP/Inc/bsp_pwm.h`<br>`BSP/Src/bsp_pwm.c` | Board resource binding for pwm | `BSP_PWM_Init`, `BSP_PWM_IsInitialized`, `BSP_PWM_SetEscPulse`, `BSP_PWM_SetEscPercent` (+10) |
 | `BSP/Inc/bsp_rgb_led.h`<br>`BSP/Src/bsp_rgb_led.c` | Board resource binding for rgb led | `BSP_RgbLed_Init`, `BSP_RgbLed_WriteBits`, `BSP_RgbLed_PinName`, `BSP_RgbLed_IsActiveLow` |
 | `BSP/Inc/bsp_rom_bootloader.h`<br>`BSP/Src/bsp_rom_bootloader.c` | Board resource binding for rom bootloader | `BSP_RomBootloader_ReadVector`, `BSP_RomBootloader_WriteRequestMagic`, `BSP_RomBootloader_TakeRequestMagic`, `BSP_RomBootloader_Jump` (+1) |
 | `BSP/Inc/bsp_spi.h`<br>`BSP/Src/bsp_spi.c` | Board resource binding for spi | `BSP_SPI_RegisterFlashDevice` |

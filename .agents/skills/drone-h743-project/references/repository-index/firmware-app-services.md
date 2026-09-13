@@ -4,7 +4,7 @@
 
 Read this shard only when the task touches application behavior, RTOS task bodies, control flow, diagnostics, commands, or synchronous services.
 
-Source snapshot: `13331ec88ce5`. Indexed files: 126.
+Source snapshot: `5396d8972080`. Indexed files: 131.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -13,12 +13,12 @@ Source snapshot: `13331ec88ce5`. Indexed files: 126.
 | `App/Inc/app_action.h`<br>`App/Src/app_action.c` | Application behavior and task-facing logic for action | `APP_Action_Init`, `APP_Action_Start`, `APP_Action_Heartbeat`, `APP_Action_Cancel` (+7) |
 | `App/Inc/app_aiwb2.h`<br>`App/Src/app_aiwb2.c` | Application behavior and task-facing logic for aiwb2 | `APP_AiWB2_Init`, `APP_AiWB2_Tick`, `APP_AiWB2_ProcessLine`, `APP_AiWB2_IsTransparent` (+23) |
 | `App/Inc/app_background.h`<br>`App/Src/app_background.c` | Application behavior and task-facing logic for background | `APP_Background_Init`, `APP_Background_Step`, `APP_Background_RequestReadBlock`, `APP_Background_RequestWriteBlock` (+3) |
-| `App/Inc/app_baro.h`<br>`App/Src/app_baro.c` | Application behavior and task-facing logic for baro | `APP_Baro_ReportStartup`, `APP_Baro_GetStatus`, `APP_Baro_ReadSnapshot` |
+| `App/Inc/app_baro.h`<br>`App/Src/app_baro.c` | Application behavior and task-facing logic for baro | `APP_Baro_ReportStartup`, `APP_Baro_GetStatus`, `APP_Baro_GetCachedStatus`, `APP_Baro_ReadSnapshot` |
 | `App/Inc/app_boot.h`<br>`App/Src/app_boot.c` | Application behavior and task-facing logic for boot | `APP_Boot_Init`, `APP_Boot_TryRomDfu`, `APP_Boot_EvaluateSafety`, `APP_Boot_IsVectorReasonable` (+7) |
 | `App/Src/app_cmd_airframe.c` | Application behavior and task-facing logic for cmd airframe | `DRV_COAX_CTRL_GetParam`, `DRV_COAX_CTRL_SetParam` |
 | `App/Src/app_cmd_arm.c` | Application behavior and task-facing logic for cmd arm | — |
 | `App/Src/app_cmd_diag.c` | Application behavior and task-facing logic for cmd diag | — |
-| `App/Src/app_cmd_fallback.c` | Application behavior and task-facing logic for cmd fallback | — |
+| `App/Src/app_cmd_fallback.c` | Application behavior and task-facing logic for cmd fallback | `APP_Components_Command` |
 | `App/Src/app_cmd_flow.c` | Application behavior and task-facing logic for cmd flow | `APP_Stabilizer_ReadFlowCompensationSnapshot` |
 | `App/Src/app_cmd_imucal.c` | Application behavior and task-facing logic for cmd imucal | `APP_FlightCalibration_ReadActive`, `SVC_Param_IsDirty`, `APP_Sensor_GetFluOrientation`, `APP_FlightCalibration_MergeV1Candidate` (+2) |
 | `App/Src/app_cmd_imusel.c` | Application behavior and task-facing logic for cmd imusel | `BSP_IMU_Init` |
@@ -29,6 +29,9 @@ Source snapshot: `13331ec88ce5`. Indexed files: 126.
 | `App/Src/app_cmd_servotype.c` | Application behavior and task-facing logic for cmd servotype | `APP_Stabilizer_IsArmed`, `APP_ServoType_FromName`, `APP_FlightCalibration_UpdateServoType`, `SVC_Param_IsDirty` |
 | `App/Src/app_cmd_system.c` | Application behavior and task-facing logic for cmd system | `APP_Control_ReportUartStats` |
 | `App/Src/app_cmd_telem.c` | Application behavior and task-facing logic for cmd telem | — |
+| `App/Inc/app_components.h`<br>`App/Src/app_components.c` | Application behavior and task-facing logic for components | `APP_Components_Register`, `APP_Components_Init`, `APP_Components_Command`, `APP_Components_Report` (+5) |
+| `App/Src/app_components_board.c` | Application behavior and task-facing logic for components board | `APP_Components_RegisterBoard`, `APP_Components_RegisterGps` |
+| `App/Src/app_components_transport.c` | Application behavior and task-facing logic for components transport | `APP_Components_NowMs`, `APP_Components_ExportBusy`, `APP_Components_Send`, `APP_Proto_BuildFrame` (+1) |
 | `App/Inc/app_control.h`<br>`App/Src/app_control.c` | Application behavior and task-facing logic for control | `APP_Control_Init`, `APP_Control_Tick`, `APP_Control_QueueText`, `APP_Control_ProcessLine` (+4) |
 | `App/Inc/app_control_config_compat.h`<br>`App/Src/app_control_config_compat.c` | Application behavior and task-facing logic for control config compat | `APP_ControlConfigCompat_CurrentPassthrough`, `APP_ControlConfigCompat_V18ToCurrent`, `APP_ControlConfigCompat_V17ToCurrent`, `APP_ControlConfigCompat_V15ToCurrent` |
 | `App/Inc/app_control_config_store.h`<br>`App/Src/app_control_config_store.c` | Application behavior and task-facing logic for control config store | `APP_ControlConfigStore_Load`, `APP_ControlConfigStore_Save`, `APP_ControlConfigStore_CaptureTunables` |
@@ -36,6 +39,7 @@ Source snapshot: `13331ec88ce5`. Indexed files: 126.
 | `App/Inc/app_control_internal.h` | Application behavior and task-facing logic for control internal | — |
 | `App/Inc/app_control_scheduler.h`<br>`App/Src/app_control_scheduler.c` | Application behavior and task-facing logic for control scheduler | `APP_ControlScheduler_Reset`, `APP_ControlScheduler_Step`, `APP_ControlScheduler_Commit` |
 | `App/Inc/app_current.h`<br>`App/Src/app_current.c` | Application behavior and task-facing logic for current | `APP_Current_Init`, `APP_Current_Step`, `APP_Current_GetSnapshot`, `APP_Current_Report` |
+| `App/Inc/app_current_format.h` | Application behavior and task-facing logic for current format | — |
 | `App/Inc/app_diag.h`<br>`App/Src/app_diag.c` | Application behavior and task-facing logic for diag | `APP_Diag_RecordStackOverflow`, `APP_Diag_RecordMallocFailed`, `APP_Diag_GetFaultInfo` |
 | `App/Inc/app_elrs.h`<br>`App/Src/app_elrs.c` | Application behavior and task-facing logic for elrs | `APP_ELRS_Init`, `APP_ELRS_Step`, `APP_ELRS_GetChannels`, `APP_ELRS_GetLastRcMs` (+12) |
 | `App/Inc/app_esc_diag.h`<br>`App/Src/app_esc_diag.c` | Application behavior and task-facing logic for esc diag | `APP_EscDiag_Report` |
@@ -51,7 +55,7 @@ Source snapshot: `13331ec88ce5`. Indexed files: 126.
 | `App/Inc/app_imu_health.h`<br>`App/Src/app_imu_health.c` | Application behavior and task-facing logic for imu health | `APP_ImuHealth_Init`, `APP_ImuHealth_NoteSample`, `APP_ImuHealth_Update`, `APP_ImuHealth_GetLevel` (+2) |
 | `App/Inc/app_led.h`<br>`App/Src/app_led.c` | Application behavior and task-facing logic for led | `APP_LED_Task_Init`, `APP_LED_Task_Step`, `APP_LED_SetArmStatus`, `APP_LED_SetServoCalMode` (+3) |
 | `App/Inc/app_mag.h`<br>`App/Src/app_mag.c` | Application behavior and task-facing logic for mag | `APP_MAG_Init`, `APP_MAG_Step`, `APP_MAG_GetStatus`, `APP_MAG_Report` (+1) |
-| `App/Inc/app_maint_uart.h`<br>`App/Src/app_maint_uart.c` | Application behavior and task-facing logic for maint uart | `APP_MaintUART_Init`, `APP_MaintUART_Step`, `APP_MaintUART_Write`, `APP_MaintUART_WriteRaw` (+6) |
+| `App/Inc/app_maint_uart.h`<br>`App/Src/app_maint_uart.c` | Application behavior and task-facing logic for maint uart | `APP_MaintUART_Init`, `APP_MaintUART_Step`, `APP_MaintUART_Write`, `APP_MaintUART_WritePacket` (+7) |
 | `App/Inc/app_message.h`<br>`App/Src/app_message.c` | Application behavior and task-facing logic for message | `APP_Message_Task_Init`, `APP_Message_Task_Step` |
 | `App/Inc/app_messages.h` | Application behavior and task-facing logic for messages | — |
 | `App/Inc/app_nav_estimator.h`<br>`App/Src/app_nav_estimator.c` | Application behavior and task-facing logic for nav estimator | `APP_NavEstimator_PublishVelocityEKF`, `APP_NavEstimator_GetVelocityEKF` |

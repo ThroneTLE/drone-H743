@@ -1,0 +1,49 @@
+............F..................................                          [100%]
+================================== FAILURES ===================================
+____________________ test_control_split_d4_system_and_diag ____________________
+
+tmp_path = WindowsPath('C:/Users/23259/AppData/Local/Temp/pytest-of-23259/pytest-2038/test_control_split_d4_system_a0')
+
+    def test_control_split_d4_system_and_diag(tmp_path: Path) -> None:
+>       _check_app_control_step_d4(tmp_path)
+
+tests\test_control_loop_blocking_contract.py:1402: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+tmp_path = WindowsPath('C:/Users/23259/AppData/Local/Temp/pytest-of-23259/pytest-2038/test_control_split_d4_system_a0')
+
+    def _check_app_control_step_d4(tmp_path: Path) -> None:
+        assert SYSTEM_CMD.is_file()
+        assert DIAG_CMD.is_file()
+        legacy = CONTROL.read_text(encoding="utf-8")
+        system = SYSTEM_CMD.read_text(encoding="utf-8")
+        diag = DIAG_CMD.read_text(encoding="utf-8")
+        internal = CONTROL_INTERNAL.read_text(encoding="utf-8")
+        cmake = CMAKE.read_text(encoding="utf-8")
+    
+        for owner, expected in (
+            (system, STEP_D4_SYSTEM_BODY_SHA256),
+            (diag, STEP_D4_DIAG_BODY_SHA256),
+        ):
+            for name, expected_hash in expected.items():
+                body = _c_function_body(owner, name)
+                if name == "app_control_report_status":
+                    # R-CURRENT-1 adds exactly one snapshot-only report delegation.
+                    # Freeze every pre-existing statement rather than changing the old hash.
+                    assert body.count("APP_Current_Report();") == 1
+                    body = body.replace("\n    APP_Current_Report();", "", 1)
+>               assert hashlib.sha256(body.encode()).hexdigest() == expected_hash, (
+                    f"{name} diverged from D4 parent {STEP_D4_PARENT_COMMIT}"
+                )
+E               AssertionError: app_control_report_caps diverged from D4 parent e44770bbaebd836d0df808bee80961db7db5cda0
+E               assert '1392fac1fbe7...26ed14833000e' == '455ddba19879...6c164fb2fe5c1'
+E                 - 455ddba198796f88c260faeb09a51babee4c19cb6dd81b55e926c164fb2fe5c1
+E                 + 1392fac1fbe7bfc84a3cf056753179cc93675214cd46e2f9de926ed14833000e
+
+tests\test_control_loop_blocking_contract.py:1180: AssertionError
+Physical serial open attempts: 0
+Flashing/probe tool invocation attempts: 0
+Tk display available at session start: True; Tk roots created: 2
+=========================== short test summary info ===========================
+FAILED tests/test_control_loop_blocking_contract.py::test_control_split_d4_system_and_diag
+1 failed, 46 passed in 8.48s

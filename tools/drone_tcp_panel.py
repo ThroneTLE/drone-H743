@@ -190,6 +190,7 @@ PROTO_MSG_RC_MAP = _panel_proto.PROTO_MSG_RC_MAP
 PROTO_MSG_SERVO_CAL = _panel_proto.PROTO_MSG_SERVO_CAL
 PROTO_MSG_SERVO_TYPE = _panel_proto.PROTO_MSG_SERVO_TYPE
 PROTO_MSG_TELEM_FRAME = _panel_proto.PROTO_MSG_TELEM_FRAME
+PROTO_MSG_COMPONENTS = _panel_proto.PROTO_MSG_COMPONENTS
 PROTO_MAX_FRAME_PAYLOAD = _panel_proto.PROTO_MAX_FRAME_PAYLOAD
 PROTO_BINARY_FUNCTIONS = _panel_proto.PROTO_BINARY_FUNCTIONS
 ProtocolLineMixin = _panel_proto.ProtocolLineMixin
@@ -569,16 +570,7 @@ Figure = _panel_plotting.Figure
 HAS_MATPLOTLIB = _panel_plotting.HAS_MATPLOTLIB
 MATPLOTLIB_ERROR = _panel_plotting.MATPLOTLIB_ERROR
 
-MODULES = [
-    ("FLASH", "GD25Q32 Flash", "STATUS?"),
-    ("SPL06", "SPL06 气压计", "STATUS?"),
-    ("ICM42688", "ICM42688 IMU", "STATUS?"),
-    ("FLOW", "光流 / 组合测距", "FLOW?"),
-    ("GPS", "M9N GPS", "GPS?"),
-    ("MAG", "I2C1 Magnetometer", "MAG?"),
-    ("UART1", "USART1 链路", "STATUS?"),
-    ("WIFI", "Ai-WB2 WiFi", "WIFI?"),
-]
+MODULES = ()  # Overview rows now arrive from the firmware registry.
 
 MODULE_ALIASES = {
     "FLASH": "FLASH",
@@ -821,7 +813,7 @@ class DronePanel(ValidationV0PageMixin, EvidenceMixin, AcceptanceV2PageMixin, Vi
         self.last_board_rx = 0.0
         self.last_reply_rx = 0.0
         self.last_keepalive_tx = 0.0
-        self.selected_module = "FLASH"
+        self.selected_module = None
         self.baro_capture_enabled = tk.BooleanVar(value=True)
         self.baro_buffer: list[dict[str, float | str]] = []
         self._baro_dirty = False
@@ -1482,100 +1474,11 @@ class DronePanel(ValidationV0PageMixin, EvidenceMixin, AcceptanceV2PageMixin, Vi
         self.transport_var.trace_add("write", self._on_transport_mode_change)
 
     def _build_overview_page(self, parent: ttk.Frame) -> None:
-        ttk.Label(parent, text="FLIGHT CONTROL WORKBENCH", style="Eyebrow.TLabel").pack(anchor=tk.W)
-        ttk.Label(parent, text="系统总览", style="PageTitle.TLabel").pack(anchor=tk.W)
-        ttk.Label(
-            parent, text="先看异常模块，再进入对应页面处理；绿色表示已就绪，灰色表示尚未取到数据，红色整行标注表示必须停止。",
-            style="Muted.TLabel",
-        ).pack(fill=tk.X, pady=(3, 8))
-        ttk.Frame(parent, height=1, style="Rule.TFrame").pack(fill=tk.X, pady=(0, 8))
-        panes = ttk.Frame(parent)
-        panes.pack(fill=tk.BOTH, expand=True)
-
-        left = ttk.Frame(panes)
-        right = ttk.Frame(panes)
-        left.pack(fill=tk.BOTH, expand=True)
-        right.pack(fill=tk.BOTH, expand=True, pady=(10, 0))
-
-        toolbar = ttk.Frame(left)
-        toolbar.pack(fill=tk.X, pady=(0, 8))
-        ttk.Button(toolbar, text="刷新全部", command=self._request_overview_status,
-                   style="Primary.TButton").pack(side=tk.LEFT)
-        ttk.Button(toolbar, text="读取 UART 统计", command=lambda: self._send_proto(PROTO_REQ_STATUS, "STATUS?"),
-                   style="Secondary.TButton").pack(side=tk.LEFT, padx=6)
-        ttk.Label(toolbar, textvariable=self.last_cmd_var).pack(side=tk.LEFT, padx=(16, 0))
-
-        columns = ("state", "stage", "value", "code", "hint")
-        self.module_tree = ttk.Treeview(left, columns=columns, show="tree headings", height=10)
-        self.module_tree.heading("#0", text="模块")
-        self.module_tree.column("#0", width=160, anchor=tk.W)
-        headings = {
-            "state": "状态",
-            "stage": "失败阶段",
-            "value": "关键读数",
-            "code": "返回码",
-            "hint": "提示",
-        }
-        widths = {"state": 80, "stage": 120, "value": 230, "code": 170, "hint": 360}
-        for col, label in headings.items():
-            self.module_tree.heading(col, text=label)
-            self.module_tree.column(col, width=widths[col], anchor=tk.W)
-
-        self.module_tree.pack(fill=tk.BOTH, expand=True)
-        self.module_tree.bind("<<TreeviewSelect>>", self._on_module_select)
-        # 正常/等待只给文字上色；整行填充只留给真正的故障，否则一屏全是色块。
-        self.module_tree.tag_configure("pass", foreground=UI_PALETTE["green"])
-        self.module_tree.tag_configure("warn", foreground=UI_PALETTE["muted"])
-        self.module_tree.tag_configure(
-            "fail", background=UI_PALETTE["red_soft"], foreground=UI_PALETTE["red"])
-
-        for key, title, _command in MODULES:
-            values = {
-                "title": tk.StringVar(value=title),
-                "state": tk.StringVar(value="等待数据"),
-                "stage": tk.StringVar(value="-"),
-                "value": tk.StringVar(value="-"),
-                "code": tk.StringVar(value="-"),
-                "hint": tk.StringVar(value="点击“硬件状态”或等待心跳"),
-                "last": tk.StringVar(value="-"),
-            }
-            self.module_state[key] = values
-            self.module_tree.insert(
-                "",
-                tk.END,
-                iid=key,
-                values=(values["state"].get(), values["stage"].get(), values["value"].get(), values["code"].get(), values["hint"].get()),
-                text=title,
-                tags=("warn",),
-            )
-        self.module_tree.selection_set("FLASH")
-
-        detail = ttk.LabelFrame(right, text="模块详情", padding=10)
-        detail.pack(fill=tk.BOTH, expand=True)
-        self.detail_vars = {
-            "title": tk.StringVar(value="GD25Q32 Flash"),
-            "state": tk.StringVar(value="等待数据"),
-            "stage": tk.StringVar(value="-"),
-            "value": tk.StringVar(value="-"),
-            "code": tk.StringVar(value="-"),
-            "hint": tk.StringVar(value="-"),
-            "last": tk.StringVar(value="-"),
-        }
-        self._detail_row(detail, 0, "模块", self.detail_vars["title"])
-        self._detail_row(detail, 1, "状态", self.detail_vars["state"])
-        self._detail_row(detail, 2, "失败阶段", self.detail_vars["stage"])
-        self._detail_row(detail, 3, "关键读数", self.detail_vars["value"])
-        self._detail_row(detail, 4, "返回码", self.detail_vars["code"])
-        self._detail_row(detail, 5, "提示", self.detail_vars["hint"], wrap=420)
-        self._detail_row(detail, 6, "最近原始行", self.detail_vars["last"], wrap=420)
-
-        actions = ttk.Frame(detail)
-        actions.grid(row=7, column=0, columnspan=2, sticky=tk.EW, pady=(12, 0))
-        ttk.Button(actions, text="请求该模块详情", command=self._request_selected_module).pack(side=tk.LEFT)
-        ttk.Button(actions, text="打开气压计页", command=self._open_baro_tab).pack(side=tk.LEFT, padx=6)
-        ttk.Button(actions, text="打开姿态页", command=self._open_imu_tab).pack(side=tk.LEFT)
-        ttk.Button(actions, text="打开 GPS 页", command=self._open_gps_tab).pack(side=tk.LEFT, padx=6)
-        detail.columnconfigure(1, weight=1)
+        try:
+            from .panel_lib.pages.overview import mount_overview
+        except ImportError:
+            from panel_lib.pages.overview import mount_overview
+        mount_overview(self, parent)
 
     def _detail_row(self, parent: ttk.Frame, row: int, label: str, variable: tk.StringVar, wrap: int = 0) -> None:
         ttk.Label(parent, text=label).grid(row=row, column=0, sticky=tk.NW, padx=(0, 8), pady=4)
@@ -3157,8 +3060,7 @@ class DronePanel(ValidationV0PageMixin, EvidenceMixin, AcceptanceV2PageMixin, Vi
             self.structured_protocol_supported = False
 
     def _request_overview_status(self) -> None:
-        self._send_proto(PROTO_REQ_MODULES, "MODULES?")
-        self._send_proto(PROTO_REQ_STATUS, "STATUS?")
+        self.overview_page.request()
 
     def _send_custom(self) -> None:
         line = self.cmd_var.get().strip()
@@ -3310,28 +3212,7 @@ class DronePanel(ValidationV0PageMixin, EvidenceMixin, AcceptanceV2PageMixin, Vi
         self._refresh_detail()
 
     def _request_selected_module(self) -> None:
-        if self.selected_module == "FLASH":
-            self._send_proto(PROTO_REQ_FLASH, "FLASH?")
-            return
-        if self.selected_module == "SPL06":
-            self._send_proto(PROTO_REQ_BARO, "BARO?")
-            return
-        if self.selected_module == "ICM42688":
-            self._send_proto(PROTO_REQ_IMU, "IMU?")
-            return
-        if self.selected_module == "FLOW":
-            self._send("FLOW?")
-            return
-        if self.selected_module == "GPS":
-            self._send_proto(PROTO_REQ_GPS, "GPS?")
-            return
-        if self.selected_module == "MAG":
-            self._send_proto(PROTO_REQ_MAG, "MAG?")
-            return
-        if self.selected_module == "WIFI":
-            self._send_proto(PROTO_REQ_WIFI, "WIFI?")
-            return
-        self._send_proto(PROTO_REQ_STATUS, "STATUS?")
+        self.overview_page.request()
 
     def _select_sensor_tab(self, tab: tk.Misc) -> None:
         # 气压计/IMU/GPS 现在挂在二级“传感器” Notebook 下，顶层 notebook.select(子页)
@@ -3356,9 +3237,9 @@ class DronePanel(ValidationV0PageMixin, EvidenceMixin, AcceptanceV2PageMixin, Vi
         self._send_proto(PROTO_REQ_GPS, "GPS?")
 
     def _refresh_detail(self) -> None:
-        state = self.module_state[self.selected_module]
-        for name in self.detail_vars:
-            self.detail_vars[name].set(state[name].get())
+        page = getattr(self, "overview_page", None)
+        if page is not None:
+            page.refresh_detail()
 
     def _update_module(self, key: str, *, state: str | None = None, stage: str | None = None, value: str | None = None, code: str | None = None, hint: str | None = None, line: str | None = None) -> None:
         module = self.module_state.get(key)

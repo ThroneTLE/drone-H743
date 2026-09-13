@@ -19,6 +19,7 @@ static uint16_t servo_pulses_us[BSP_PWM_SERVO_CHANNEL_COUNT] = {
 static uint8_t start_status[BSP_PWM_TIM_CHANNEL_COUNT];
 
 static uint8_t pwm_started;
+uint8_t BSP_PWM_IsInitialized(void) { return pwm_started; }
 
 /*
  * 一个帧里必须留得下最长脉冲，否则占空比会撞到 100%、输出退化成常高电平。

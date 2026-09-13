@@ -40,6 +40,7 @@ typedef enum {
 #define BSP_PWM_SERVO_FRAME_US (BSP_PWM_TIMER_TICK_HZ / BSP_PWM_SERVO_FRAME_HZ)
 
 BSP_PWM_Status BSP_PWM_Init(void);
+uint8_t BSP_PWM_IsInitialized(void);
 BSP_PWM_Status BSP_PWM_SetEscPulse(uint32_t channel, uint16_t pulse_us);
 BSP_PWM_Status BSP_PWM_SetEscPercent(uint32_t channel, uint32_t percent);
 BSP_PWM_Status BSP_PWM_DisableEsc(uint32_t channel);

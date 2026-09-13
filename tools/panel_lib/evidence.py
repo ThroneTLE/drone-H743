@@ -89,6 +89,7 @@ VALIDATION_ALLOWED_COMMANDS = frozenset(
         "CAPS?",
         "MODULES?",
         "STATUS?",
+        "REGISTRY?",
         "IMU?",
         "CONFIG?",
         "PARAM?",

@@ -1,0 +1,70 @@
+.............FFF                                                         [100%]
+================================== FAILURES ===================================
+___________________ test_overview_matrix_and_one_shot[1.0] ____________________
+
+scale = 1.0
+
+    @pytest.mark.parametrize('scale',SCALES)
+    def test_overview_matrix_and_one_shot(scale):
+        qa=OfflinePanel.launch(scale=scale)
+        try:
+            page=qa.panel.overview_page
+>           qa.select(next(leaf for leaf in qa.leaf_pages() if leaf.title=='����'))
+
+tests\test_component_overview_layout.py:14: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+.0 = <list_iterator object at 0x0000020349583D90>
+
+>   qa.select(next(leaf for leaf in qa.leaf_pages() if leaf.title=='����'))
+E   AttributeError: 'LeafPage' object has no attribute 'title'
+
+tests\test_component_overview_layout.py:14: AttributeError
+___________________ test_overview_matrix_and_one_shot[1.25] ___________________
+
+scale = 1.25
+
+    @pytest.mark.parametrize('scale',SCALES)
+    def test_overview_matrix_and_one_shot(scale):
+        qa=OfflinePanel.launch(scale=scale)
+        try:
+            page=qa.panel.overview_page
+>           qa.select(next(leaf for leaf in qa.leaf_pages() if leaf.title=='����'))
+
+tests\test_component_overview_layout.py:14: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+.0 = <list_iterator object at 0x0000020349557FD0>
+
+>   qa.select(next(leaf for leaf in qa.leaf_pages() if leaf.title=='����'))
+E   AttributeError: 'LeafPage' object has no attribute 'title'
+
+tests\test_component_overview_layout.py:14: AttributeError
+___________________ test_overview_matrix_and_one_shot[1.5] ____________________
+
+scale = 1.5
+
+    @pytest.mark.parametrize('scale',SCALES)
+    def test_overview_matrix_and_one_shot(scale):
+        qa=OfflinePanel.launch(scale=scale)
+        try:
+            page=qa.panel.overview_page
+>           qa.select(next(leaf for leaf in qa.leaf_pages() if leaf.title=='����'))
+
+tests\test_component_overview_layout.py:14: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+.0 = <list_iterator object at 0x0000020347E24C70>
+
+>   qa.select(next(leaf for leaf in qa.leaf_pages() if leaf.title=='����'))
+E   AttributeError: 'LeafPage' object has no attribute 'title'
+
+tests\test_component_overview_layout.py:14: AttributeError
+Physical serial open attempts: 0
+Flashing/probe tool invocation attempts: 0
+Tk display available at session start: True; Tk roots created: 4
+=========================== short test summary info ===========================
+FAILED tests/test_component_overview_layout.py::test_overview_matrix_and_one_shot[1.0]
+FAILED tests/test_component_overview_layout.py::test_overview_matrix_and_one_shot[1.25]
+FAILED tests/test_component_overview_layout.py::test_overview_matrix_and_one_shot[1.5]
+3 failed, 13 passed in 13.58s

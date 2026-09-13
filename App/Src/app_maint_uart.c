@@ -270,6 +270,12 @@ void APP_MaintUART_Write(const char *text, uint16_t length)
     (void)maint_tx_text((const uint8_t *)text, length);
 }
 
+uint8_t APP_MaintUART_WritePacket(const uint8_t *data, uint16_t length)
+{
+    if (data == NULL || length == 0U) { return 0U; }
+    return maint_tx_text(data, length);
+}
+
 uint8_t APP_MaintUART_WriteRaw(const uint8_t *data, uint16_t length)
 {
     if ((data == NULL) || (length == 0U)) {

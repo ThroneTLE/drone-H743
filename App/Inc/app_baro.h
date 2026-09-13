@@ -48,6 +48,8 @@ typedef struct {
 
 void APP_Baro_ReportStartup(void);
 void APP_Baro_GetStatus(APP_Baro_Status *status);
+/* Passive overview snapshot: never triggers BSP initialization or register I/O. */
+void APP_Baro_GetCachedStatus(APP_Baro_Status *status);
 void APP_Baro_ReadSnapshot(APP_Baro_Snapshot *snapshot);
 
 #endif

@@ -1,0 +1,52 @@
+........................................................................ [  4%]
+........................................................................ [  9%]
+........................................................................ [ 13%]
+........................................................................ [ 18%]
+........................................................................ [ 22%]
+........................................................................ [ 27%]
+........................................................................ [ 31%]
+........................................................................ [ 36%]
+........................................................................ [ 41%]
+........................................................................ [ 45%]
+........................................................................ [ 50%]
+........................................................................ [ 54%]
+........................................................................ [ 59%]
+........................................................................ [ 63%]
+....................FF.................................................. [ 68%]
+........................................................................ [ 73%]
+........................................................................ [ 77%]
+........................................................................ [ 82%]
+........................................................................ [ 86%]
+........................................................................ [ 91%]
+........................................................................ [ 95%]
+................................................................         [100%]
+================================== FAILURES ===================================
+________ test_proto_module_owns_the_protocol_table_and_parsing_helpers ________
+
+    def test_proto_module_owns_the_protocol_table_and_parsing_helpers() -> None:
+        proto_names = {name for name in vars(proto) if name.startswith("PROTO_")}
+        legacy_names = {name for name in vars(legacy_panel) if name.startswith("PROTO_")}
+    
+        # 87 = 84 + PROTO_MSG_TELEM_FRAME（S8 / R-T1-1 的遥测掩码帧）
+        #         + PROTO_MAX_FRAME_PAYLOAD（$X 解析器重同步用的长度上限）
+        #         + PROTO_BINARY_FUNCTIONS（payload 是二进制、不许按 UTF-8 解的 fn 集合）。
+>       assert len(proto_names) == 87
+E       AssertionError: assert 88 == 87
+E        +  where 88 = len({'PROTO_BINARY_FUNCTIONS', 'PROTO_COMPAT_FALLBACK_DELAY_MS', 'PROTO_DIR_FROM_FC', 'PROTO_DIR_TO_FC', 'PROTO_HEADER', 'PROTO_MAX_FRAME_PAYLOAD', ...})
+
+tests\test_panel_proto_extraction.py:79: AssertionError
+_______ test_legacy_panel_forwards_every_proto_symbol_without_wrappers ________
+
+    def test_legacy_panel_forwards_every_proto_symbol_without_wrappers() -> None:
+        for name in proto.__all__:
+>           assert getattr(legacy_panel, name) is getattr(proto, name), name
+E           AttributeError: module 'tools.drone_tcp_panel' has no attribute 'PROTO_MSG_COMPONENTS'
+
+tests\test_panel_proto_extraction.py:90: AttributeError
+Physical serial open attempts: 0
+Flashing/probe tool invocation attempts: 0
+Tk display available at session start: True; Tk roots created: 58
+=========================== short test summary info ===========================
+FAILED tests/test_panel_proto_extraction.py::test_proto_module_owns_the_protocol_table_and_parsing_helpers
+FAILED tests/test_panel_proto_extraction.py::test_legacy_panel_forwards_every_proto_symbol_without_wrappers
+2 failed, 1574 passed in 335.38s (0:05:35)
