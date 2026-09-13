@@ -8,7 +8,6 @@
 #include <stddef.h>
 #include <string.h>
 
-#define CURRENT_PERIOD_MS 20U
 #define CURRENT_STALE_MS 250U
 
 static DRV_CurrentConfig current_config;
@@ -27,13 +26,13 @@ void APP_Current_Init(void)
     ready = current_snapshot.adc_status == BSP_CURRENT_OK;
     has_sample = 0U;
     current_snapshot.errors = ready ? 0U : 1U;
-    last_attempt_ms = SVC_Timestamp_Ms() - CURRENT_PERIOD_MS;
+    last_attempt_ms = SVC_Timestamp_Ms() - APP_CURRENT_PERIOD_MS;
 }
 
 void APP_Current_Step(void)
 {
     uint32_t now = SVC_Timestamp_Ms();
-    if (!ready || (uint32_t)(now - last_attempt_ms) < CURRENT_PERIOD_MS) { return; }
+    if (!ready || (uint32_t)(now - last_attempt_ms) < APP_CURRENT_PERIOD_MS) { return; }
     last_attempt_ms = now;
     uint32_t raw;
     BSP_CurrentStatus status = BSP_Current_Read(&raw);

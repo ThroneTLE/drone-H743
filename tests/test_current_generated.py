@@ -34,11 +34,14 @@ def test_generated_adc_matches_the_current_driver():
     assert "MX_ADC1_Init();" in read("Core/Src/main.c")
 
 
-def test_current_monitor_is_wired_to_background_and_status():
+def test_current_monitor_is_wired_to_periodic_worker_and_status():
     tasks=read("App/Src/app_tasks.c")
     init=tasks.split("void APP_Task_Background_Init(void)")[1].split("\n}")[0]
     step=tasks.split("void APP_Task_Background_Step(void)")[1].split("\n}")[0]
-    assert "APP_Current_Init();" in init
-    assert "APP_Current_Step();" in step
+    assert "APP_Current_Init();" not in init
+    assert "APP_Current_Step();" not in step
+    message=read("App/Src/app_message.c")
+    assert "APP_Current_Init();" in message.split("void APP_Message_Task_Init(void)")[1].split("\n}")[0]
+    assert "APP_Current_Step();" in message.split("void APP_Message_Task_Step(void)")[1].split("\n}")[0]
     status=read("App/Src/app_cmd_system.c").split("void app_control_report_status(void)")[1].split("\n}")[0]
     assert "APP_Current_Report();" in status

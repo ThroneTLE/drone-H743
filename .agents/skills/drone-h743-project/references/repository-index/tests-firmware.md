@@ -4,7 +4,7 @@
 
 Read this shard only when you need existing firmware behavioral/architecture coverage or must choose focused regression tests.
 
-Source snapshot: `e56864ee3ca9`. Indexed files: 151.
+Source snapshot: `babf7be57406`. Indexed files: 152.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -54,7 +54,8 @@ Source snapshot: `e56864ee3ca9`. Indexed files: 151.
 | `tests/test_current_generated.py` | ADC must really be generated, not merely look configured in the pin list | `test_pc1_shared_signal_activates_the_adc_mode` (+2) |
 | `tests/test_current_monitor_page.py` | Current readback UI contracts | `test_real_firmware_readback_and_both_queue_formats` (+5) |
 | `tests/test_current_parameter_names.py` | R-PARAM-1: execute real C name lookup; no legacy online conversion | `test_real_c_rejects_old_names_without_mutating_current_params` (+4) |
-| `tests/test_current_runtime.py` | Compile actual ADC BSP + background monitor against a software-only HAL seam | `test_real_adc_and_monitor_on_host` (+1) |
+| `tests/test_current_runtime.py` | Compile actual ADC BSP + current monitor against a software-only HAL seam | `test_real_adc_and_monitor_on_host` (+1) |
+| `tests/test_current_task_cadence.py` | Actual task wrappers/monitor keep sampling while the storage worker is occupied | `test_real_task_chain_current_survives_slow_storage` |
 | `tests/test_data_organization.py` | — | `test_date_directory_helpers_are_sortable_and_validate_dates` (+2) |
 | `tests/test_documentation_contract.py` | Current documentation stays small, routed, and distinct from history | `test_current_document_map_has_one_small_human_entry` (+8) |
 | `tests/test_drone_validation_v0.py` | — | `test_snapshot_parser_requires_provenance_and_never_invents_zeroes` (+38) |

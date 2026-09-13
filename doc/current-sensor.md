@@ -15,7 +15,7 @@
 ## 软件边界
 
 默认 REQ 模式负责常规 Driver/BSP 分层，复用 STATUS? 回包时进入 protocol-telemetry 模式。
-Driver 只做电压/电流换算，BSP 只做 ADC 校准及原始采样，App 在 backgroundTask 中每 20 ms 尝试一次。
+Driver 只做电压/电流换算，BSP 只做 ADC 校准及原始采样。App 由现有 messageTask 单独负责初始化和周期采样，按 20 ms 换算 RTOS 等待 tick；不随 backgroundTask 的存储扫描、锁等待或导出停顿。没有新建 RTOS 对象或改变控制任务。250 ms 的样本过期判据保留；报告仅复制快照，不触发采样。
 不新增任务、DMA 或定时器；不在 IMU/稳定环执行 ADC 轮询，不改安全门、推力模型或电量保护。
 STATUS? 增加 CURRENT 原始值、电压、电流、有效性、年龄、错误数和未校准标识。
 

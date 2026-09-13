@@ -1,0 +1,9 @@
+slow-storage duration=51305 samples=2565 age=25 valid=1 errors=0
+CURRENT raw=0 adc_v=0.00000 current_a=0.000 valid=1 calibrated=0 saturated=0 age_ms=25 samples=2565 errors=0 adc_status=0 source=AM32_55A_CURR nominal_mv_per_a=12.75
+
+cadence, real zero, timeout recovery, stale gate, single owner: passed
+.
+Physical serial open attempts: 0
+Flashing/probe tool invocation attempts: 0
+Tk display available at session start: True; Tk roots created: 0
+1 passed in 1.33s

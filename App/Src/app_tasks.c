@@ -1,5 +1,4 @@
 #include "app_tasks.h"
-#include "app_current.h"
 #include "app_background.h"
 #include "app_message.h"
 #include "app_led.h"
@@ -125,11 +124,9 @@ void APP_Task_MaintUART_Step(void)
 void APP_Task_Background_Init(void)
 {
     APP_Background_Init();
-    APP_Current_Init();
 }
 
 void APP_Task_Background_Step(void)
 {
-    APP_Current_Step();
     APP_Background_Step();
 }

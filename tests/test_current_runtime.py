@@ -1,4 +1,4 @@
-"""Compile actual ADC BSP + background monitor against a software-only HAL seam."""
+"""Compile actual ADC BSP + current monitor against a software-only HAL seam."""
 from pathlib import Path
 import shutil
 import subprocess
@@ -105,7 +105,7 @@ def test_real_adc_and_monitor_on_host(tmp_path):
     assert r.returncode==0,r.stdout+r.stderr
 
 
-def test_current_polling_is_only_in_background_and_report_is_snapshot_only():
+def test_current_polling_is_outside_control_and_report_is_snapshot_only():
     source=(ROOT/"App/Src/app_current.c").read_text(encoding="utf-8")
     report=source.split("void APP_Current_Report(void)")[1]
     assert "BSP_Current_Read(" not in report and "APP_Current_GetSnapshot(&s)" in report
