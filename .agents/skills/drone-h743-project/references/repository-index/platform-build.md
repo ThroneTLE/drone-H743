@@ -4,7 +4,7 @@
 
 Read this shard only when the task touches CubeMX output, pins/clocks/peripherals, startup/linker layout, USB, build configuration, HAL, FreeRTOS internals, or vendor code.
 
-Source snapshot: `41f9941e7b9e`; aggregate snapshot: `d40f7b2fdb9c`. Covered files: 1449.
+Source snapshot: `4fca073636c7`; aggregate snapshot: `80ccf46d4ada`. Covered files: 1449.
 
 | File/module or scope | Content outline | Key entry points / size |
 |---|---|---|
@@ -51,7 +51,7 @@ Source snapshot: `41f9941e7b9e`; aggregate snapshot: `d40f7b2fdb9c`. Covered fil
 | `STM32H743XX_FLASH.ld` | STM32H743 flash/RAM regions and linker section placement | — |
 | `temp_sizecheck.c` | Project configuration for temp sizecheck | — |
 | `root generated leftovers` | Compiler, disassembly, or operating-system leftovers; never use as source of tr… | 2 files / 14.0 KiB / (none)×2 |
-| `Drivers/` | STM32 CMSIS and HAL vendor sources; read only for HAL behavior not documented b… | 125 files / 11.7 MiB / .h×89, .c×33, .txt×3 |
+| `Drivers/` | STM32 CMSIS and HAL vendor sources; read only for HAL behavior not documented b… | 125 files / 11.9 MiB / .h×89, .c×33, .txt×3 |
 | `Middlewares/` | FreeRTOS and STM32 USB middleware; vendor-owned unless a task explicitly requir… | 48 files / 1.6 MiB / .h×30, .c×15, (none)×2, .txt×1 |
 | `ThirdParty/` | Third-party algorithm sources and licenses, including Fusion | 5 files / 39.0 KiB / .h×3, .c×1, .md×1 |
 | `driver_doc/` | Generated vendor API documentation; search for an exact peripheral or symbol be… | 1213 files / 151.8 MiB / .h×589, .c×486, .pdf×20, .administrator×13, .s×12 |

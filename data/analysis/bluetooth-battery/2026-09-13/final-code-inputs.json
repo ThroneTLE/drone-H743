@@ -1,0 +1,10 @@
+{
+  "code_head": "670024ac9685f771910de2eb019bdd89ca0a682e",
+  "code_input_files": 3282,
+  "code_sha256": "e411a6ab28228ac854b61a4cf4febb64379f95b63a529299c58580bb3ce12739",
+  "elf_sha256": {
+    "build/Debug/drone-H743.elf": "1d6e844ae79473b464d29ef70bb874c7d9acb4e6d5391fff0479049ec64ab475",
+    "build/PWM-merge/drone-H743.elf": "fd70f4478846865d100f60874c381365771b424347d8bae02fe2bdc92602b11b"
+  },
+  "scope": "original project plus preserved LED/config/UI changes; no physical target operations"
+}

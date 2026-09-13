@@ -1,0 +1,30 @@
+.......F............                                                     [100%]
+================================== FAILURES ===================================
+_______________ test_every_block_reason_has_exactly_one_binding _______________
+
+    def test_every_block_reason_has_exactly_one_binding() -> None:
+        """解锁原因码与绑定必须一一对应，不能一多一少。
+    
+        少一条：某个原因永远显示成别的颜色。多一条：枚举错位，**每一条都错**。
+        两边的名单都从源码里抓，不手抄。
+        """
+        reasons = set(re.findall(r"APP_LED_ARM_BLOCK_(\w+)\s*=\s*[1-9]",
+                                 read("App/Inc/app_led.h")))
+        bindings = set(re.findall(r"APP_LED_BIND_BLOCK_(\w+)\s*=\s*\d+",
+                                  read("App/Inc/app_led_config.h")))
+        bindings.discard("BASE")
+        bindings.discard("COUNT")
+    
+        # 名字不完全一样（THROTTLE_HIGH vs THROTTLE），所以只比个数与顺序位置。
+>       assert len(reasons) == 7, sorted(reasons)
+E       AssertionError: ['AIRFRAME', 'ARM_SWITCH', 'BATTERY', 'FRAME', 'IMU', 'NO_RC', ...]
+E       assert 8 == 7
+E        +  where 8 = len({'AIRFRAME', 'ARM_SWITCH', 'BATTERY', 'FRAME', 'IMU', 'NO_RC', ...})
+
+tests\test_led_config_contract.py:682: AssertionError
+Physical serial open attempts: 0
+Flashing/probe tool invocation attempts: 0
+Tk display available at session start: True; Tk roots created: 6
+=========================== short test summary info ===========================
+FAILED tests/test_led_config_contract.py::test_every_block_reason_has_exactly_one_binding
+1 failed, 19 passed in 36.82s

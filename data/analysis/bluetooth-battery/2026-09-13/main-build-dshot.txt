@@ -1,0 +1,71 @@
+Build type: Debug
+-- Configuring done (0.3s)
+-- Generating done (0.1s)
+-- Build files have been written to: D:/stm32hal/drone-H743/build/Debug
+[0/1] Re-running CMake...
+[1/52] Building C object CMakeFiles/drone-H743.dir/App/Src/app_battery_led.c.obj
+[2/52] Building C object CMakeFiles/drone-H743.dir/Driver/Src/drv_battery.c.obj
+[3/52] Building C object CMakeFiles/drone-H743.dir/App/Src/app_battery.c.obj
+[4/52] Building C object CMakeFiles/drone-H743.dir/BSP/Src/bsp_component_catalog.c.obj
+[5/52] Building C object CMakeFiles/drone-H743.dir/App/Src/app_battery_telemetry.c.obj
+[6/52] Building C object CMakeFiles/drone-H743.dir/Driver/Src/drv_component_proto.c.obj
+[7/52] Building C object CMakeFiles/drone-H743.dir/App/Src/app_components.c.obj
+[8/52] Building C object CMakeFiles/drone-H743.dir/App/Src/app_current.c.obj
+[9/52] Building C object CMakeFiles/drone-H743.dir/App/Src/app_battery_proto.c.obj
+[10/52] Building C object CMakeFiles/drone-H743.dir/App/Src/app_boot.c.obj
+[11/52] Building C object CMakeFiles/drone-H743.dir/Core/Src/adc.c.obj
+[12/52] Building C object CMakeFiles/drone-H743.dir/BSP/Src/bsp_current.c.obj
+[13/52] Building C object CMakeFiles/drone-H743.dir/App/Src/app_diag_binary.c.obj
+[14/52] Building C object CMakeFiles/drone-H743.dir/Core/Src/freertos.c.obj
+[15/52] Building C object CMakeFiles/drone-H743.dir/App/Src/app_cmd_servotype.c.obj
+[16/52] Building C object CMakeFiles/drone-H743.dir/App/Src/app.c.obj
+[17/52] Building C object CMakeFiles/drone-H743.dir/App/Src/app_components_board.c.obj
+[18/52] Building C object CMakeFiles/drone-H743.dir/App/Src/app_components_transport.c.obj
+[19/52] Building C object CMakeFiles/drone-H743.dir/App/Src/app_baro.c.obj
+[20/52] Building C object CMakeFiles/drone-H743.dir/App/Src/app_cmd_servocal.c.obj
+[21/52] Building C object CMakeFiles/drone-H743.dir/App/Src/app_cmd_telem.c.obj
+[22/52] Building C object CMakeFiles/drone-H743.dir/App/Src/app_control_core.c.obj
+[23/52] Building C object CMakeFiles/drone-H743.dir/App/Src/app_cmd_imucal.c.obj
+[24/52] Building C object CMakeFiles/drone-H743.dir/App/Src/app_cmd_rcmap.c.obj
+[25/52] Building C object CMakeFiles/drone-H743.dir/App/Src/app_control_config_store.c.obj
+[26/52] Building C object CMakeFiles/drone-H743.dir/App/Src/app_cmd_airframe.c.obj
+[27/52] Building C object CMakeFiles/drone-H743.dir/App/Src/app_cmd_fallback.c.obj
+[28/52] Building C object CMakeFiles/drone-H743.dir/App/Src/app_cmd_arm.c.obj
+[29/52] Building C object CMakeFiles/drone-H743.dir/App/Src/app_cmd_flow.c.obj
+[30/52] Building C object CMakeFiles/drone-H743.dir/App/Src/app_cmd_system.c.obj
+[31/52] Building C object CMakeFiles/drone-H743.dir/App/Src/app_cmd_led.c.obj
+[32/52] Building C object CMakeFiles/drone-H743.dir/App/Src/app_control.c.obj
+[33/52] Building C object CMakeFiles/drone-H743.dir/App/Src/app_cmd_imusel.c.obj
+[34/52] Building C object CMakeFiles/drone-H743.dir/App/Src/app_led_config.c.obj
+[35/52] Building C object CMakeFiles/drone-H743.dir/App/Src/app_cmd_probe.c.obj
+[36/52] Building C object CMakeFiles/drone-H743.dir/App/Src/app_cmd_diag.c.obj
+[37/52] Building C object CMakeFiles/drone-H743.dir/App/Src/app_cmd_ledmap.c.obj
+[38/52] Building C object CMakeFiles/drone-H743.dir/App/Src/app_flash.c.obj
+[39/52] Building C object CMakeFiles/drone-H743.dir/App/Src/app_led.c.obj
+[40/52] Building C object CMakeFiles/drone-H743.dir/App/Src/app_proto.c.obj
+[41/52] Building C object CMakeFiles/drone-H743.dir/App/Src/app_telem_frame.c.obj
+[42/52] Building C object CMakeFiles/drone-H743.dir/App/Src/app_gps.c.obj
+[43/52] Building C object CMakeFiles/drone-H743.dir/App/Src/app_elrs.c.obj
+[44/52] Building C object CMakeFiles/drone-H743.dir/App/Src/app_sensor.c.obj
+[45/52] Building C object CMakeFiles/drone-H743.dir/App/Src/app_tasks.c.obj
+[46/52] Building C object CMakeFiles/drone-H743.dir/App/Src/app_stabilizer.c.obj
+[47/52] Building C object CMakeFiles/drone-H743.dir/App/Src/app_servo_cal.c.obj
+[48/52] Building C object CMakeFiles/drone-H743.dir/App/Src/app_message.c.obj
+[49/52] Building C object CMakeFiles/drone-H743.dir/App/Src/app_flight_log.c.obj
+[50/52] Building C object CMakeFiles/drone-H743.dir/App/Src/app_telem_port.c.obj
+[51/52] Building C object CMakeFiles/drone-H743.dir/App/Src/app_uart.c.obj
+[52/52] Linking C executable drone-H743.elf
+Memory region         Used Size  Region Size  %age Used
+
+         DTCMRAM:      111304 B       128 KB     84.92%
+
+             RAM:        354 KB       512 KB     69.14%
+
+          RAM_D2:       25024 B       288 KB      8.49%
+
+          RAM_D3:           0 B        64 KB      0.00%
+
+         ITCMRAM:           0 B        64 KB      0.00%
+
+           FLASH:      486424 B      1408 KB     33.74%
+

@@ -1,0 +1,236 @@
+[
+  {
+    "path": ".agents/skills/drone-h743-project/references/repository-index/README.md",
+    "same_content": false,
+    "overlap": true,
+    "adapted_contract": false
+  },
+  {
+    "path": ".agents/skills/drone-h743-project/references/repository-index/docs-data.md",
+    "same_content": false,
+    "overlap": true,
+    "adapted_contract": false
+  },
+  {
+    "path": ".agents/skills/drone-h743-project/references/repository-index/firmware-app-services.md",
+    "same_content": false,
+    "overlap": true,
+    "adapted_contract": false
+  },
+  {
+    "path": ".agents/skills/drone-h743-project/references/repository-index/firmware-driver-bsp.md",
+    "same_content": false,
+    "overlap": true,
+    "adapted_contract": false
+  },
+  {
+    "path": ".agents/skills/drone-h743-project/references/repository-index/host-tools.md",
+    "same_content": false,
+    "overlap": true,
+    "adapted_contract": false
+  },
+  {
+    "path": ".agents/skills/drone-h743-project/references/repository-index/platform-build.md",
+    "same_content": false,
+    "overlap": true,
+    "adapted_contract": false
+  },
+  {
+    "path": ".agents/skills/drone-h743-project/references/repository-index/tests-firmware.md",
+    "same_content": false,
+    "overlap": true,
+    "adapted_contract": false
+  },
+  {
+    "path": ".agents/skills/drone-h743-project/references/repository-index/tests-host.md",
+    "same_content": false,
+    "overlap": true,
+    "adapted_contract": false
+  },
+  {
+    "path": "App/Inc/app_control_config_store.h",
+    "same_content": true,
+    "overlap": false,
+    "adapted_contract": false
+  },
+  {
+    "path": "App/Inc/app_control_internal.h",
+    "same_content": true,
+    "overlap": false,
+    "adapted_contract": false
+  },
+  {
+    "path": "App/Src/app_cmd_fallback.c",
+    "same_content": false,
+    "overlap": true,
+    "adapted_contract": false
+  },
+  {
+    "path": "App/Src/app_control_config_store.c",
+    "same_content": true,
+    "overlap": false,
+    "adapted_contract": false
+  },
+  {
+    "path": "App/Src/app_led.c",
+    "same_content": false,
+    "overlap": true,
+    "adapted_contract": false
+  },
+  {
+    "path": "CMakeLists.txt",
+    "same_content": false,
+    "overlap": true,
+    "adapted_contract": false
+  },
+  {
+    "path": "PIPELINE.md",
+    "same_content": false,
+    "overlap": true,
+    "adapted_contract": false
+  },
+  {
+    "path": "doc/micoair743v2/README.md",
+    "same_content": true,
+    "overlap": false,
+    "adapted_contract": false
+  },
+  {
+    "path": "tests/test_airframe_model_contract.py",
+    "same_content": true,
+    "overlap": false,
+    "adapted_contract": false
+  },
+  {
+    "path": "tests/test_config_store_ab_slots.py",
+    "same_content": true,
+    "overlap": false,
+    "adapted_contract": false
+  },
+  {
+    "path": "tests/test_control_config_v19.py",
+    "same_content": true,
+    "overlap": false,
+    "adapted_contract": false
+  },
+  {
+    "path": "tests/test_control_loop_blocking_contract.py",
+    "same_content": false,
+    "overlap": true,
+    "adapted_contract": false
+  },
+  {
+    "path": "tests/test_drone_validation_v0.py",
+    "same_content": false,
+    "overlap": true,
+    "adapted_contract": false
+  },
+  {
+    "path": "tests/test_led_status_contract.py",
+    "same_content": true,
+    "overlap": false,
+    "adapted_contract": false
+  },
+  {
+    "path": "tests/test_panel_qa_harness.py",
+    "same_content": false,
+    "overlap": true,
+    "adapted_contract": false
+  },
+  {
+    "path": "tests/test_rc_mapping.py",
+    "same_content": true,
+    "overlap": false,
+    "adapted_contract": false
+  },
+  {
+    "path": "tests/test_servo_cal_contract.py",
+    "same_content": true,
+    "overlap": false,
+    "adapted_contract": false
+  },
+  {
+    "path": "tests/test_servo_debug_theme.py",
+    "same_content": true,
+    "overlap": false,
+    "adapted_contract": false
+  },
+  {
+    "path": "tests/test_tk_v_revamp.py",
+    "same_content": false,
+    "overlap": true,
+    "adapted_contract": false
+  },
+  {
+    "path": "tools/drone_tcp_panel.py",
+    "same_content": false,
+    "overlap": true,
+    "adapted_contract": false
+  },
+  {
+    "path": "tools/panel_lib/parameter_editor.py",
+    "same_content": true,
+    "overlap": false,
+    "adapted_contract": false
+  },
+  {
+    "path": "tools/panel_lib/shell.py",
+    "same_content": false,
+    "overlap": true,
+    "adapted_contract": false
+  },
+  {
+    "path": "tools/panel_lib/viewport.py",
+    "same_content": true,
+    "overlap": false,
+    "adapted_contract": false
+  },
+  {
+    "path": "tools/panel_qa/harness.py",
+    "same_content": true,
+    "overlap": false,
+    "adapted_contract": false
+  },
+  {
+    "path": "App/Inc/app_led_config.h",
+    "same_content": true,
+    "overlap": false,
+    "adapted_contract": false
+  },
+  {
+    "path": "App/Src/app_cmd_ledmap.c",
+    "same_content": true,
+    "overlap": false,
+    "adapted_contract": false
+  },
+  {
+    "path": "App/Src/app_led_config.c",
+    "same_content": true,
+    "overlap": false,
+    "adapted_contract": false
+  },
+  {
+    "path": "tests/test_led_config_contract.py",
+    "same_content": false,
+    "overlap": false,
+    "adapted_contract": true
+  },
+  {
+    "path": "tests/test_led_map_page.py",
+    "same_content": true,
+    "overlap": false,
+    "adapted_contract": false
+  },
+  {
+    "path": "tools/panel_lib/board_line_hooks.py",
+    "same_content": true,
+    "overlap": false,
+    "adapted_contract": false
+  },
+  {
+    "path": "tools/panel_lib/pages/led_map.py",
+    "same_content": true,
+    "overlap": false,
+    "adapted_contract": false
+  }
+]

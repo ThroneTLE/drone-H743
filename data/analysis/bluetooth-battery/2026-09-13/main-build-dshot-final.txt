@@ -1,0 +1,10 @@
+[1/2] Building C object CMakeFiles/drone-H743.dir/BSP/Src/bsp_current.c.obj
+[2/2] Linking C executable drone-H743.elf
+Memory region         Used Size  Region Size  %age Used
+         DTCMRAM:      111304 B       128 KB     84.92%
+             RAM:        354 KB       512 KB     69.14%
+          RAM_D2:       25024 B       288 KB      8.49%
+          RAM_D3:           0 B        64 KB      0.00%
+         ITCMRAM:           0 B        64 KB      0.00%
+           FLASH:      486432 B      1408 KB     33.74%
+

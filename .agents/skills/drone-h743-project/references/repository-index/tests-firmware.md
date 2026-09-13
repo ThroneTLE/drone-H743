@@ -4,7 +4,7 @@
 
 Read this shard only when you need existing firmware behavioral/architecture coverage or must choose focused regression tests.
 
-Source snapshot: `e2490488039b`. Indexed files: 159.
+Source snapshot: `a240e70955be`. Indexed files: 159.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|

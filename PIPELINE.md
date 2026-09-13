@@ -84,8 +84,8 @@ flowchart TB
 
 | REQ | 节点 | 需求 | 验收判据 | 状态 |
 |---|---|---|---|---|
-| R-BT-1 | 作者授权附加需求 | 〔码〕上位机增加蓝牙通道并自动匹配MicoAir经典SPP设备；模式tk-ui | 设备地址匹配、COM换号、歧义/未配对/取消/重连和真实Tk；保留串口/TCP/UDP协议及安全门；全量与Debug、自审后交付 | 进行中 |
-| R-BATT-1 | 作者授权附加需求 | 〔码〕PC0电压采样、3S电池告警及禁止低压解锁、ELRS电池回传；作者明确授权新增解锁门，飞行中不切电机；模式protocol-telemetry+tk-ui | CubeMX生成门、双ADC采样不覆盖、有效性/过期/低压滞回、真实C解锁路径、CRSF黄金帧及失效语义、回读配置、全量与双协议构建；实机归审核者 | 进行中 |
+| R-BT-1 | 作者授权附加需求 | 〔码〕上位机增加蓝牙通道并自动匹配MicoAir经典SPP设备；模式tk-ui | 设备地址匹配、COM换号、歧义/未配对/取消/重连和真实Tk；保留串口/TCP/UDP协议及安全门；全量与Debug、自审后交付 | 待审核（原工程自审/全量/双协议构建通过，未实机） |
+| R-BATT-1 | 作者授权附加需求 | 〔码〕PC0电压采样、3S电池告警及禁止低压解锁、ELRS电池回传；作者明确授权新增解锁门，飞行中不切电机；模式protocol-telemetry+tk-ui | CubeMX生成门、双ADC采样不覆盖、有效性/过期/低压滞回、真实C解锁路径、CRSF黄金帧及失效语义、回读配置、全量与双协议构建；实机归审核者 | 待审核（原工程自审/全量/双协议构建通过，未实机） |
 | R-MODULES-1 | 作者授权附加需求 | 〔码〕总览由飞控注册元件清单和状态生成，取消上位机硬编码型号/总线/故障提示；模式默认+protocol-telemetry+tk-ui | 真实固件注册与二进制回包到真实总览；完整事务、断连/过期/缺包/旧固件不伪造模块或正常状态；新元件只改固件注册即可显示；宿主与ARM编码验证、全量及Debug | 待审核（原工程全量及双协议构建通过，未实机） |
 | R-CURRENT-2 | 作者授权附加需求 | 〔码〕传感器页增加 AM32 电流计回读，复用 STATUS? 和连接会话；模式默认+tk-ui+protocol-telemetry | 真实固件 CURRENT 格式到真实 Tk 页面；断连/换会话/非法/缺失/过期不伪报有效；显示标称未校准、原始 ADC、电压、年龄、错误；完整回归与 Debug | 待审核（回读/会话/布局/全量回归通过；未实机回读） |
 | R-DSHOT-2 | 作者授权附加需求 | 〔码〕解锁录制的 FlightLog 增加逐条 DShot 发送诊断；模式默认+dshot-esc+protocol-telemetry | 版本化记录、真实发送码/掩码/故障及计数，不把 DMA 完成当电调确认；旧日志无新字段而非补零；真实 C 编码对拍 Python 解码/CSV、双协议 Debug 与完整回归 | 待审核（V11逐条诊断与旧版兼容、双协议构建及全量回归通过；待实机日志复核） |
@@ -156,6 +156,7 @@ flowchart TB
 
 | 日期 | 范围 | 证据 | 结果 | 对状态的影响 |
 |---|---|---|---|---|
+| 2026-09-13 | R-BT-1/R-BATT-1原工程整合与自审交付 | `data/analysis/bluetooth-battery/2026-09-13/handoff.md`、main-full-final.txt：1634 passed；双协议Debug零警告；真实C解锁/ADC/CRSF与真实Tk矩阵 | 蓝牙按地址匹配；3S电压、告警/低压新解锁门、ELRS周期回传；39个原改动保留，额外Stop故障边界修复后全量复核 | 两REQ置待审核，未烧录/复位/实际蓝牙连接 |
 | 2026-09-13 | 修bug：ADC停止失败后禁止继续假定rank顺序 | data/analysis/bluetooth-battery/2026-09-13/adc-stop-negative.txt、adc-stop-guard.txt（6 passed） | 旧BSP在Stop失败后仍继续启动，复现契约失败；现锁存ADC不可用，显式初始化前不再采样，防止电流/电压互换；普通超时仍可恢复 | R-BATT-1仍进行中；软件自审修复，未实机 |
 | 2026-09-13 | R-BT-1蓝牙通道实现 | `tests/test_bluetooth_channel.py`、`data/analysis/bluetooth-battery/2026-09-13/regression-fixes.txt`（60 passed含相关回归）、bluetooth-offline.png | 新增蓝牙选项、SPP地址匹配、异步打开和取消；保留USB连接记录与专用安全门；真实Tk验证 | 待联合全量复核，未建立实机连接 |
 | 2026-09-13 | 修bug：总览RC接口元数据仍写UART4 | `tests/test_component_rc_binding.py`、`data/analysis/bluetooth-battery/2026-09-13/rc-binding-tests.txt` | 实际BSP RC绑定huart6，元数据修正为USART6；仅改显示事实，未改引脚或RC逻辑；旧测试没比对实际绑定 | R-MODULES-1仍待审核 |

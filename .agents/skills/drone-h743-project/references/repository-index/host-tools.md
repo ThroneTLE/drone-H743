@@ -4,7 +4,7 @@
 
 Read this shard only when the task uses serial/TCP diagnostics, log analysis, identification, capture, calibration, or desktop UIs.
 
-Source snapshot: `8a9575c4b83e`; aggregate snapshot: `7df39d085084`. Covered files: 5385.
+Source snapshot: `8cedb53a89ee`; aggregate snapshot: `7ef99cc764c1`. Covered files: 5385.
 
 | File/module or scope | Content outline | Key entry points / size |
 |---|---|---|
@@ -99,6 +99,6 @@ Source snapshot: `8a9575c4b83e`; aggregate snapshot: `7df39d085084`. Covered fil
 | `tools/vofa_serial_capture.py` | Capture USART1/VOFA JustFloat telemetry from the flight controller. The firmwar… | `RunningStats`, `build_parser`, `safe_text`, `split_lines` (+3) |
 | `tools/vofa_udp_bridge.py` | Bridge Ai-WB2 UDP transparent mode to fixed VOFA UDP ports. Why this exists: -… | `log`, `main` |
 | `tools/ground_station/ bundled tree` | Bundled application/runtime distribution; inspect an exact file only when maint… | 5239 files / 135.6 MiB / .svg×854, .h×841, .cpp×635, .md×459, .py×257 |
-| `tools/panel_lib/ bundled tree` | Bundled application/runtime distribution; inspect an exact file only when maint… | 56 files / 772.3 KiB / .py×56 |
+| `tools/panel_lib/ bundled tree` | Bundled application/runtime distribution; inspect an exact file only when maint… | 56 files / 772.6 KiB / .py×56 |
 
 Open the smallest listed tool or bundle landmark first; do not preload bundled runtimes.
