@@ -82,7 +82,7 @@ def test_serial_select() -> None:
     transport = read(PANEL_TRANSPORT)
 
     assert "#define APP_USB_CDC_TX_SIZE 1536U" in usb_header
-    assert 'values=("tcp", "udp", "serial")' in panel
+    assert 'values=("tcp", "udp", "serial", "蓝牙")' in read(ROOT / "tools/panel_lib/connection_controls.py")
     assert "class SerialTransport" in transport
     assert "SerialTransport = _panel_transport.SerialTransport" in panel
     assert 'self._send_proto_silent(PROTO_REQ_IMU, "IMU?")' in panel

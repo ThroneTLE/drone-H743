@@ -84,6 +84,7 @@ flowchart TB
 
 | REQ | 节点 | 需求 | 验收判据 | 状态 |
 |---|---|---|---|---|
+| R-BT-1 | 作者授权附加需求 | 〔码〕上位机增加蓝牙通道并自动匹配MicoAir经典SPP设备；模式tk-ui | 设备地址匹配、COM换号、歧义/未配对/取消/重连和真实Tk；保留串口/TCP/UDP协议及安全门；全量与Debug、自审后交付 | 进行中 |
 | R-MODULES-1 | 作者授权附加需求 | 〔码〕总览由飞控注册元件清单和状态生成，取消上位机硬编码型号/总线/故障提示；模式默认+protocol-telemetry+tk-ui | 真实固件注册与二进制回包到真实总览；完整事务、断连/过期/缺包/旧固件不伪造模块或正常状态；新元件只改固件注册即可显示；宿主与ARM编码验证、全量及Debug | 待审核（原工程全量及双协议构建通过，未实机） |
 | R-CURRENT-2 | 作者授权附加需求 | 〔码〕传感器页增加 AM32 电流计回读，复用 STATUS? 和连接会话；模式默认+tk-ui+protocol-telemetry | 真实固件 CURRENT 格式到真实 Tk 页面；断连/换会话/非法/缺失/过期不伪报有效；显示标称未校准、原始 ADC、电压、年龄、错误；完整回归与 Debug | 待审核（回读/会话/布局/全量回归通过；未实机回读） |
 | R-DSHOT-2 | 作者授权附加需求 | 〔码〕解锁录制的 FlightLog 增加逐条 DShot 发送诊断；模式默认+dshot-esc+protocol-telemetry | 版本化记录、真实发送码/掩码/故障及计数，不把 DMA 完成当电调确认；旧日志无新字段而非补零；真实 C 编码对拍 Python 解码/CSV、双协议 Debug 与完整回归 | 待审核（V11逐条诊断与旧版兼容、双协议构建及全量回归通过；待实机日志复核） |
@@ -154,6 +155,7 @@ flowchart TB
 
 | 日期 | 范围 | 证据 | 结果 | 对状态的影响 |
 |---|---|---|---|---|
+| 2026-09-13 | R-BT-1蓝牙通道实现 | `tests/test_bluetooth_channel.py`、`data/analysis/bluetooth-battery/2026-09-13/regression-fixes.txt`（60 passed含相关回归）、bluetooth-offline.png | 新增蓝牙选项、SPP地址匹配、异步打开和取消；保留USB连接记录与专用安全门；真实Tk验证 | 待联合全量复核，未建立实机连接 |
 | 2026-09-13 | 修bug：总览RC接口元数据仍写UART4 | `tests/test_component_rc_binding.py`、`data/analysis/bluetooth-battery/2026-09-13/rc-binding-tests.txt` | 实际BSP RC绑定huart6，元数据修正为USART6；仅改显示事实，未改引脚或RC逻辑；旧测试没比对实际绑定 | R-MODULES-1仍待审核 |
 | 2026-09-13 | 修bug：蓝牙/电池模块使索引超出容量 | `data/analysis/bluetooth-battery/2026-09-13/index-overflow.txt`：98767B超过98304B | 用途摘要96→80，保留符号入口和8/32/96KiB预算；不扩大容量 | 解除索引生成阻塞，REQ仍进行中 |
 | 2026-09-13 | 修bug：CURRENT周期采样受慢存储阻塞 | `data/analysis/current/2026-09-13/cadence/main-handoff.md`、red.txt、green-trace.txt、main-full.txt：1612 passed；双协议Debug零警告；原目录ARM60秒3000次采样 | 复用messageTask承载20ms采样，从存储链移出；真实C慢存储51秒时从1样本恢复到2565样本/age=25ms，保留250ms过期判据；旧测试未覆盖真实任务链 | R-CURRENT-1/2仍待审核；已同步原工程并保留39项原工作，未操作目标板 |

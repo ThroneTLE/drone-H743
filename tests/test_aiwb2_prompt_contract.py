@@ -68,7 +68,8 @@ def test_usart1_wifi_udp_pid_tuning_path_is_text_line_based() -> None:
     assert "app_control_param_set_any(name, value)" in app_control
 
     assert "class UdpTransport" in transport
-    assert 'values=("tcp", "udp", "serial")' in panel
+    controls = (ROOT / "tools/panel_lib/connection_controls.py").read_text(encoding="utf-8")
+    assert 'values=("tcp", "udp", "serial", "蓝牙")' in controls
     assert "return self.send_line(text)" in transport
     assert "self.structured_protocol_supported = False" in panel
 

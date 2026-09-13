@@ -65,7 +65,7 @@ def serial_device_identity_policy(
     ).upper()
     rejected_tokens = (
         "STLINK", "ST-LINK", "CH340", "CH341", "CP210", "FTDI", "FT232",
-        "FT4232", "BLUETOOTH", " BLE ",
+        "FT4232", "BLUETOOTH", " BLE ", "BTHENUM", "蓝牙",
     )
     matched = next((token for token in rejected_tokens
                     if token in f" {combined} " and not (allow_cp210 and token == "CP210")), None)
@@ -87,6 +87,7 @@ def serial_device_identity_policy(
 def serial_port_identity(port: object) -> dict[str, object]:
     """Copy the stable USB identity fields from a pyserial ListPortInfo."""
 
+    from .bluetooth_devices import bluetooth_address
     return {
         "device": str(getattr(port, "device", "") or ""),
         "vid": getattr(port, "vid", None),
@@ -95,6 +96,7 @@ def serial_port_identity(port: object) -> dict[str, object]:
         "hwid": str(getattr(port, "hwid", "") or ""),
         "location": str(getattr(port, "location", "") or ""),
         "serial_number": str(getattr(port, "serial_number", "") or ""),
+        "bluetooth_address": bluetooth_address(str(getattr(port, "hwid", "") or "")),
     }
 
 
@@ -107,6 +109,8 @@ def serial_port_fingerprint(identity: dict[str, object] | None) -> str:
     """
     if not identity:
         return ""
+    if identity.get("bluetooth_address"):
+        return "BTH/" + str(identity["bluetooth_address"]).upper()
     serial_number = str(identity.get("serial_number") or "").strip()
     vid = identity.get("vid")
     pid = identity.get("pid")

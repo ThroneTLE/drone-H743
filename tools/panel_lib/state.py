@@ -9,6 +9,7 @@ from datetime import datetime
 from pathlib import Path
 
 from .transport import serial_port_fingerprint
+from .bluetooth_channel import channel_mode
 
 try:
     from ..project_paths import LOG_DIR, PANEL_STATE_PATH, ensure_directory
@@ -44,11 +45,18 @@ class PanelStateMixin:
     def _save_panel_state(self) -> None:
         """记下这次连的是什么，供下次启动自动重连。写失败不能影响正在跑的连接。"""
         state = dict(self._panel_state)
-        state["transport"] = self.transport_var.get()
+        state["transport"] = channel_mode(self)
         state["auto_connect"] = bool(self.auto_connect_var.get())
         if self.transport is self.serial_transport:
             device = self.serial_transport.active_port or ""
-            if device:
+            identity = self._serial_port_identity.get(device) or {}
+            if device and identity.get("bluetooth_address"):
+                state["transport"] = "bluetooth"
+                state["bluetooth_port"] = device
+                state["bluetooth_address"] = str(identity["bluetooth_address"])
+                state["bluetooth_name"] = str(identity.get("description") or "")
+            elif device:
+                state["transport"] = "serial"
                 state["serial_port"] = device
                 state["serial_fingerprint"] = serial_port_fingerprint(
                     self._serial_port_identity.get(device)

@@ -13,7 +13,8 @@ from tools import drone_tcp_panel as panel
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCE = (ROOT / "tools" / "drone_tcp_panel.py").read_text(encoding="utf-8")
+LEGACY_SOURCE = (ROOT / "tools" / "drone_tcp_panel.py").read_text(encoding="utf-8")
+SOURCE = (ROOT / "tools/panel_lib/connection_controls.py").read_text(encoding="utf-8")
 STATE_SOURCE = (ROOT / "tools" / "panel_lib" / "state.py").read_text(encoding="utf-8")
 
 
@@ -136,7 +137,7 @@ def test_state_records_the_fingerprint_not_just_the_com_number() -> None:
 
 
 def test_restore_runs_at_startup_and_can_be_switched_off() -> None:
-    assert "self.after_idle(self._restore_last_connection)" in SOURCE
+    assert "self.after_idle(self._restore_last_connection)" in LEGACY_SOURCE
     restore = function_body(SOURCE, "    def _restore_last_connection(")
     assert "match_remembered_serial_port(" in restore
     assert "if not self.auto_connect_var.get():" in restore

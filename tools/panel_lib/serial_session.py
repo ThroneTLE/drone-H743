@@ -97,6 +97,13 @@ class SerialSessionMixin:
         return claim_transfer(self, failure_type)
 
     def start(self, port_name, baudrate):
+        self._start_session(port_name, baudrate, asynchronous=False)
+
+    def start_async(self, port_name, baudrate):
+        """Bluetooth drivers may block during open; reserve cancellation on the caller thread."""
+        self._start_session(port_name, baudrate, asynchronous=True)
+
+    def _start_session(self, port_name, baudrate, *, asynchronous):
         from . import transport as wire
         if not wire.HAS_PYSERIAL or wire.serial is None:
             self.rx_queue.put(f"[上位机] 串口模式不可用: {wire.PYSERIAL_ERROR or '未安装 pyserial'}")
@@ -109,6 +116,10 @@ class SerialSessionMixin:
             self.rx_queue.put(f"[上位机] 等待旧串口释放后连接: {port_name}")
             self._opener_thread = threading.Thread(
                 target=self._open_after_close, args=(closing, token, port_name, baudrate), daemon=True)
+            self._opener_thread.start()
+        elif asynchronous:
+            self._opener_thread = threading.Thread(
+                target=self._open_port, args=(token, port_name, baudrate), daemon=True)
             self._opener_thread.start()
         else:
             self._open_port(token, port_name, baudrate)
