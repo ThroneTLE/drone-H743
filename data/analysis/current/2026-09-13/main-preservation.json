@@ -1,0 +1,247 @@
+{
+  "base": "c82f6eebfc0c427fca03a7f117112911d31f2151",
+  "integrated_head": "224a9d7fcae57c46b4776ba520ccde34ce86855a",
+  "stash": "29f0821b3e83d9c25b7bb256cd8f1458f8f4f1ac",
+  "files": [
+    {
+      "path": ".agents/skills/drone-h743-project/references/repository-index/README.md",
+      "status": "merged",
+      "overlap": true,
+      "sha256": "5d972a70895870a4e189c2a122cf40dc6eb56131409b09c080d3be5704f82f21"
+    },
+    {
+      "path": ".agents/skills/drone-h743-project/references/repository-index/docs-data.md",
+      "status": "merged",
+      "overlap": true,
+      "sha256": "78008fa58dd0586a15ad312a729ae7b7835021265de21e23a54e627f2fea05e6"
+    },
+    {
+      "path": ".agents/skills/drone-h743-project/references/repository-index/firmware-app-services.md",
+      "status": "merged",
+      "overlap": true,
+      "sha256": "4807d7135cfd13a7c1dfee1ad22601e540d68d5208a9666847eccf5fa1fb9f22"
+    },
+    {
+      "path": ".agents/skills/drone-h743-project/references/repository-index/firmware-driver-bsp.md",
+      "status": "merged",
+      "overlap": true,
+      "sha256": "cc60f1dbf6ea084fdc4750f0977b54bbd028f2a7a5ea9bc5458f509265b584c1"
+    },
+    {
+      "path": ".agents/skills/drone-h743-project/references/repository-index/host-tools.md",
+      "status": "merged",
+      "overlap": true,
+      "sha256": "fbebc2c655fbd93cc12edcc6f67e24cc732edb1522a9f0513218f9970bc0d26e"
+    },
+    {
+      "path": ".agents/skills/drone-h743-project/references/repository-index/platform-build.md",
+      "status": "merged",
+      "overlap": true,
+      "sha256": "1eb04559052e2a32b3b335e8517cef263a074e83c941599d2d89d5bfb6deae12"
+    },
+    {
+      "path": ".agents/skills/drone-h743-project/references/repository-index/tests-firmware.md",
+      "status": "merged",
+      "overlap": true,
+      "sha256": "ea722985be553c5567b79d36a43a06a8d124a2f8b3a5eb0817fa1a1726ae0aa8"
+    },
+    {
+      "path": ".agents/skills/drone-h743-project/references/repository-index/tests-host.md",
+      "status": "merged",
+      "overlap": true,
+      "sha256": "f4171afed2fb7a7b07796ce0632616d9a8e84d1eaa9e5bc895e13a6af0fb7e1c"
+    },
+    {
+      "path": ".agents/skills/drone-h743-project/scripts/update_repository_index.py",
+      "status": "unchanged",
+      "overlap": true,
+      "sha256": "b4d024fd52ec3d326353471e5ef1c9d0954b0f176c0873bbe366fbfc5b18ebb8"
+    },
+    {
+      "path": "App/Inc/app_control_config_store.h",
+      "status": "unchanged",
+      "overlap": false,
+      "sha256": "5c05d362720d4c06ae0d09c464da4c158f2dbbad2b70eeced93eb5ca93905619"
+    },
+    {
+      "path": "App/Inc/app_control_internal.h",
+      "status": "unchanged",
+      "overlap": false,
+      "sha256": "e0f9736d754546c10d326e1c0bc04b58471e5677ab7a2eaf3dfe2c954db31b81"
+    },
+    {
+      "path": "App/Src/app_cmd_fallback.c",
+      "status": "merged",
+      "overlap": true,
+      "sha256": "4f46eaae2256f39e00bc666b1d59584e8b6bcd9835fed861ed687dde59fc9367"
+    },
+    {
+      "path": "App/Src/app_control_config_store.c",
+      "status": "unchanged",
+      "overlap": false,
+      "sha256": "42f2e004ea09c2e14bd569a9f499ee839970c4330ee2cbb12165c3f0ec717793"
+    },
+    {
+      "path": "App/Src/app_led.c",
+      "status": "unchanged",
+      "overlap": false,
+      "sha256": "063f83f3250196f9aa069a502379c53478caff3ba5a5be4b1099737039b803fe"
+    },
+    {
+      "path": "CMakeLists.txt",
+      "status": "merged",
+      "overlap": true,
+      "sha256": "5850419c68e65ec8c15f31321535cc1a337bbf30933f1d622b13a3f12fc85e87"
+    },
+    {
+      "path": "PIPELINE.md",
+      "status": "merged",
+      "overlap": true,
+      "sha256": "9b544c30a593a81186023fee117ce6eb59f9747a638e168628ef309e45c83df2"
+    },
+    {
+      "path": "doc/micoair743v2/README.md",
+      "status": "unchanged",
+      "overlap": false,
+      "sha256": "afe48a5b72c454f51fb0707203f0c3f86032fe7ca74e0121944dabc65ae60d13"
+    },
+    {
+      "path": "tests/test_airframe_model_contract.py",
+      "status": "unchanged",
+      "overlap": false,
+      "sha256": "e6962d9f2805bcf663d01e3f430ac66891ddf9f5c8faddf9c6814eff2289bd18"
+    },
+    {
+      "path": "tests/test_config_store_ab_slots.py",
+      "status": "unchanged",
+      "overlap": false,
+      "sha256": "b76ff41a090170989ae8cd126cc1dad94f1a4ae3df982ec384ee9dd525d67928"
+    },
+    {
+      "path": "tests/test_control_config_v19.py",
+      "status": "unchanged",
+      "overlap": false,
+      "sha256": "af0256107ab174eda3a2025054b0448cf8c498e69e6196b780033a2a982081ea"
+    },
+    {
+      "path": "tests/test_control_loop_blocking_contract.py",
+      "status": "merged",
+      "overlap": true,
+      "sha256": "283e19908b33c35a99cc2d5417ea552bbc60e675f501799a3a32d77a1f8064a3"
+    },
+    {
+      "path": "tests/test_drone_validation_v0.py",
+      "status": "unchanged",
+      "overlap": false,
+      "sha256": "6097b403da8f115bcfef9647f7997bcc78f5c3130afbd01b422db4e242df9be7"
+    },
+    {
+      "path": "tests/test_led_status_contract.py",
+      "status": "unchanged",
+      "overlap": false,
+      "sha256": "93c24cc9b9c47ae784751b1ee9e6bfe569ee5fb0e993ba15cb6d61d840f5f5e6"
+    },
+    {
+      "path": "tests/test_panel_qa_harness.py",
+      "status": "unchanged",
+      "overlap": false,
+      "sha256": "25314aa3e6d17999c31d7024cc96000030d337b14ec46396ccdd8e71b1a5a69c"
+    },
+    {
+      "path": "tests/test_rc_mapping.py",
+      "status": "unchanged",
+      "overlap": false,
+      "sha256": "5f94d2cd2f2cf28e54ab5771dfca57dc50fcfaa13942ea787146baefae0b86f5"
+    },
+    {
+      "path": "tests/test_servo_cal_contract.py",
+      "status": "unchanged",
+      "overlap": false,
+      "sha256": "d473f89f8cb692422511b469323c8dda230ce89dff70b2cfb112e9ebbd4da1ea"
+    },
+    {
+      "path": "tests/test_servo_debug_theme.py",
+      "status": "unchanged",
+      "overlap": false,
+      "sha256": "226787a456d4fb1e3402c357be3587526e24841b058ab352899167e9b66e6a38"
+    },
+    {
+      "path": "tests/test_tk_v_revamp.py",
+      "status": "unchanged",
+      "overlap": false,
+      "sha256": "cff486fb75b689555e6333f8fe2ced406ae90cbb49712daf4708ed56755f2a7a"
+    },
+    {
+      "path": "tools/drone_tcp_panel.py",
+      "status": "merged",
+      "overlap": true,
+      "sha256": "612779ea319c0e587205bc3b9608e1d28975579404da434144950689f9a7ba44"
+    },
+    {
+      "path": "tools/panel_lib/parameter_editor.py",
+      "status": "unchanged",
+      "overlap": false,
+      "sha256": "effcdb3854177ddfa85bc05bb85dc653a7282945a7fe8a00ee983f4a1b9f4bad"
+    },
+    {
+      "path": "tools/panel_lib/shell.py",
+      "status": "unchanged",
+      "overlap": false,
+      "sha256": "f99453dd874e8fd1747574210707d586b01012a65d17258b4b048b5497bcd0bc"
+    },
+    {
+      "path": "tools/panel_lib/viewport.py",
+      "status": "unchanged",
+      "overlap": false,
+      "sha256": "e5c71f1db4d2f9902439e0b970d51ebab15a4752296d71d56f375ebacfb39665"
+    },
+    {
+      "path": "tools/panel_qa/harness.py",
+      "status": "unchanged",
+      "overlap": false,
+      "sha256": "cb4578396c4b07ad4127257329a1ef8f0af099dfae541c217ad0f2730896a03a"
+    },
+    {
+      "path": "App/Inc/app_led_config.h",
+      "status": "unchanged",
+      "overlap": false,
+      "sha256": "44f81f374c075ca86b8e36e2426dbea11fceb434b6436505dfcbf949d15a18e8"
+    },
+    {
+      "path": "App/Src/app_cmd_ledmap.c",
+      "status": "unchanged",
+      "overlap": false,
+      "sha256": "67581aa54025b062b8700f344327c0c24fc57660b12811d2be115af566821e01"
+    },
+    {
+      "path": "App/Src/app_led_config.c",
+      "status": "unchanged",
+      "overlap": false,
+      "sha256": "a61a4c68e41d930f5b8c4819ff3597b6dbc79711dd6b0296b5e8ff372d3e2803"
+    },
+    {
+      "path": "tests/test_led_config_contract.py",
+      "status": "unchanged",
+      "overlap": false,
+      "sha256": "670df5a633494ea51524958e3da08c94c4629b2040d6a046ef22493601bb6dbb"
+    },
+    {
+      "path": "tests/test_led_map_page.py",
+      "status": "unchanged",
+      "overlap": false,
+      "sha256": "ad11f0ac863bc9e2ea7f17cdb64b2ebcce6590a9d9a0e8d4af44526cdb20822f"
+    },
+    {
+      "path": "tools/panel_lib/board_line_hooks.py",
+      "status": "unchanged",
+      "overlap": false,
+      "sha256": "0051af3472833a65935d97c0e9b040cace59b5764357c6b44996b37ff9529502"
+    },
+    {
+      "path": "tools/panel_lib/pages/led_map.py",
+      "status": "unchanged",
+      "overlap": false,
+      "sha256": "8bb0af7ed3cb0b13f4cc692b8bdd2ca8d556e844daf9d32343036cb64b949892"
+    }
+  ]
+}

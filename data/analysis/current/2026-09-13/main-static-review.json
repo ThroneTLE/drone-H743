@@ -1,0 +1,30 @@
+{
+  "protected": {
+    "App/Src/app_control.c": true,
+    "Core/Src/freertos.c": true,
+    "Core/Src/main.c": true,
+    "drone-H743.ioc": true
+  },
+  "warnings": {
+    "main-debug-dshot.txt": 0,
+    "main-debug-pwm.txt": 0
+  },
+  "line_counts": {
+    "tools/drone_tcp_panel.py": {
+      "before": 4740,
+      "after": 4621
+    },
+    "App/Src/app_control.c": {
+      "before": 3489,
+      "after": 3489
+    },
+    "Core/Src/freertos.c": {
+      "before": 838,
+      "after": 838
+    }
+  },
+  "protocol_id": {
+    "COMPONENTS": "0x2231",
+    "unique_firmware_definition": true
+  }
+}

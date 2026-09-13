@@ -1,0 +1,57 @@
+{
+  "format": "drone-h743-component-registry",
+  "schema": 1,
+  "created_at": "2026-09-13T09:13:44.845430+00:00",
+  "verdict": "SOFTWARE_PASS_PENDING_REVIEW",
+  "head": "224a9d7fcae57c46b4776ba520ccde34ce86855a",
+  "workspace": "D:\\stm32hal\\drone-H743",
+  "scope": "HEAD plus preserved original LED/config/UI working changes",
+  "pytest": "1611 passed in 405.01s (0:06:45)",
+  "builds": {
+    "Debug": "DSHOT300, zero warnings",
+    "PWM-merge": "PWM, zero warnings"
+  },
+  "hardware_operations": false,
+  "code_inputs": {
+    "code_input_files": 3260,
+    "sha256": "21c966dbd3bac4ac8608180dbc51f8fe65efd30ac38c37e41d66176ee9792369",
+    "scope": "tracked and nonignored C/H/Python/CubeMX/CMake/linker/startup files; excludes evidence/runtime data"
+  },
+  "static_review": {
+    "protected": {
+      "App/Src/app_control.c": true,
+      "Core/Src/freertos.c": true,
+      "Core/Src/main.c": true,
+      "drone-H743.ioc": true
+    },
+    "warnings": {
+      "main-debug-dshot.txt": 0,
+      "main-debug-pwm.txt": 0
+    },
+    "line_counts": {
+      "tools/drone_tcp_panel.py": {
+        "before": 4740,
+        "after": 4621
+      },
+      "App/Src/app_control.c": {
+        "before": 3489,
+        "after": 3489
+      },
+      "Core/Src/freertos.c": {
+        "before": 838,
+        "after": 838
+      }
+    },
+    "protocol_id": {
+      "COMPONENTS": "0x2231",
+      "unique_firmware_definition": true
+    }
+  },
+  "preserved_files": 40,
+  "findings": [
+    "CURRENT target printf missing float support fixed and ARM-emulated",
+    "Two legacy protocol export regressions fixed; original-project full suite passes",
+    "Firmware-owned registry uses complete checked binary transactions",
+    "Original LED, CFG V21 and maintenance UI work preserved; physical review pending"
+  ]
+}
