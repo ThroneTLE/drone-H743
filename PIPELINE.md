@@ -154,6 +154,7 @@ flowchart TB
 
 | 日期 | 范围 | 证据 | 结果 | 对状态的影响 |
 |---|---|---|---|---|
+| 2026-09-13 | 修bug：总览RC接口元数据仍写UART4 | `tests/test_component_rc_binding.py`、`data/analysis/bluetooth-battery/2026-09-13/rc-binding-tests.txt` | 实际BSP RC绑定huart6，元数据修正为USART6；仅改显示事实，未改引脚或RC逻辑；旧测试没比对实际绑定 | R-MODULES-1仍待审核 |
 | 2026-09-13 | 修bug：蓝牙/电池模块使索引超出容量 | `data/analysis/bluetooth-battery/2026-09-13/index-overflow.txt`：98767B超过98304B | 用途摘要96→80，保留符号入口和8/32/96KiB预算；不扩大容量 | 解除索引生成阻塞，REQ仍进行中 |
 | 2026-09-13 | 修bug：CURRENT周期采样受慢存储阻塞 | `data/analysis/current/2026-09-13/cadence/main-handoff.md`、red.txt、green-trace.txt、main-full.txt：1612 passed；双协议Debug零警告；原目录ARM60秒3000次采样 | 复用messageTask承载20ms采样，从存储链移出；真实C慢存储51秒时从1样本恢复到2565样本/age=25ms，保留250ms过期判据；旧测试未覆盖真实任务链 | R-CURRENT-1/2仍待审核；已同步原工程并保留39项原工作，未操作目标板 |
 | 2026-09-13 | R-MODULES-1及CURRENT修复原工程整合/软件自审 | `data/analysis/current/2026-09-13/main-review.md`、main-full.txt：1611 passed；双协议Debug零警告；ARM回包及真实Tk九组合验证 | 飞控注册清单驱动总览，CURRENT目标库缺值修复；原40文件27内容保持/13合并，LED与CFG V21保留；初轮2项旧导出兼容失败已修复并全量复核 | R-MODULES-1置待审核，电流REQ保持待审核；未操作目标板 |

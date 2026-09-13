@@ -17,7 +17,7 @@ const char *BSP_Component_Interface(uint16_t id, uint8_t variant)
     case DRV_COMPONENT_LOG:return "SDMMC1";
     case DRV_COMPONENT_ESC:return "TIM1 / M4,M3";
     case DRV_COMPONENT_SERVO:return variant?"TIM4 / M7,M8":"UART7";
-    case DRV_COMPONENT_RC:return "UART4";
+    case DRV_COMPONENT_RC:return "USART6";
     case DRV_COMPONENT_UART:return "USART1";
     case DRV_COMPONENT_BT:return "UART8";
     case DRV_COMPONENT_LED:return "PE3,PE2,PE4";
