@@ -11,6 +11,6 @@
 - 不改DShot、UART8、USART6或现有任务/中断配置。
 
 生成后检查Core/Src/adc.c中：PC0与PC1均为模拟输入；CH11/rank1与CH10/rank2；2个regular conversion与1个discontinuous conversion。
-Driver/BSP将在两次Start/Poll/GetValue后统一Stop；失败时丢弃整个采样对，下一轮从rank1重新开始。
+Driver/BSP将在两次Start/Poll/GetValue后统一Stop；转换失败丢弃整个采样对，Stop成功后下一轮从rank1重新开始。若Stop失败则锁存不可用，显式初始化前不再启动转换，避免未知sequencer位置导致两路互换。
 
 板级来源：doc/micoair743v2/vendor/ardupilot-hwdef.dat的PC0/PC1与HAL_BATT_VOLT_SCALE=21.12；电流仍沿用AM32的12.75mV/A，不能误套其另一电调的40.2A/V。

@@ -31,7 +31,7 @@ def firmware_battery(tmp_path_factory):
 #include <string.h>
 int test_adc;ADC_HandleTypeDef hadc1={ADC1,{16,2,0,0,0,0,1,1,1,1}};
 static uint32_t now,rank,next_rank,raws[2]={12000,11283},depth,starts,stops,calibrations;
-static int fail_rank=-1,armed,tx_ok=1,preempt;static unsigned sent;static uint16_t sent_v,sent_i;
+static int fail_rank=-1,armed,tx_ok=1,preempt,stop_error;static unsigned sent;static uint16_t sent_v,sent_i;
 static uint8_t packet[256];static uint16_t packet_size;
 uint32_t SVC_Timestamp_Ms(void){return now;}
 uint32_t BSP_Critical_Enter(void){return depth++;}
@@ -43,7 +43,7 @@ int HAL_ADC_Start(ADC_HandleTypeDef*a){(void)a;assert(!depth);rank=next_rank;nex
 int HAL_ADC_PollForConversion(ADC_HandleTypeDef*a,uint32_t timeout){(void)a;assert(timeout==1);return fail_rank==(int)rank?HAL_TIMEOUT:0;}
 uint32_t HAL_ADC_GetError(ADC_HandleTypeDef*a){(void)a;return 0;}
 uint32_t HAL_ADC_GetValue(ADC_HandleTypeDef*a){(void)a;if(preempt&&rank==0)now+=300;return raws[rank];}
-int HAL_ADC_Stop(ADC_HandleTypeDef*a){(void)a;next_rank=0;stops++;return 0;}
+int HAL_ADC_Stop(ADC_HandleTypeDef*a){(void)a;next_rank=stop_error?1:0;stops++;return stop_error?HAL_ERROR:0;}
 void APP_Control_QueueText(const char*fmt,...){(void)fmt;assert(!depth);}
 uint8_t APP_Diag_SendBinary(uint16_t function,const uint8_t *p,uint16_t n){
     assert(!depth&&function==0x2232&&n==60);assert(APP_Proto_BuildFrame('>',function,p,n,packet,sizeof(packet),&packet_size));return 1;
@@ -81,6 +81,9 @@ int main(int argc,char **argv){
     now+=20;preempt=1;sample();APP_Current_GetSnapshot(&c);APP_Battery_GetSnapshot(&b);
     assert(!c.reading.valid&&!b.state.valid&&!b.can_arm&&b.age_ms==300);preempt=0;
     now+=20;raws[1]=65535;sample();APP_Battery_GetSnapshot(&b);assert(!b.state.valid&&b.state.saturated&&!b.can_arm);
+    now+=20;raws[1]=11283;stop_error=1;sample();APP_Battery_GetSnapshot(&b);assert(!b.can_arm);
+    uint32_t before_starts=starts;stop_error=0;now+=20;sample();assert(starts==before_starts);
+    APP_Battery_GetSnapshot(&b);assert(!b.state.valid&&!b.can_arm);
     hadc1.Init.DiscontinuousConvMode=0;assert(BSP_Current_Init()==BSP_CURRENT_ERROR);
     puts("battery ADC pairs/age/errors/RAM ACK/CRSF cadence: passed");return 0;
 }

@@ -77,6 +77,8 @@ int main(void){
     poll_rc=0;now+=20;raw=0;APP_Current_Step();APP_Current_GetSnapshot(&s);CHECK(s.reading.valid && s.reading.current_a==0);
     now+=20;raw=65535;APP_Current_Step();APP_Current_GetSnapshot(&s);CHECK(s.reading.saturated && !s.reading.valid && isnan(s.reading.current_a));
     uint32_t out=123;stop_rc=HAL_ERROR;CHECK(BSP_Current_Read(&out)==BSP_CURRENT_ERROR && out==123);stop_rc=0;
+    CHECK(BSP_Current_Read(&out)==BSP_CURRENT_NOT_READY && out==123);
+    CHECK(BSP_Current_Init()==BSP_CURRENT_OK);
     start_rc=HAL_ERROR;CHECK(BSP_Current_Read(&out)==BSP_CURRENT_ERROR && out==123);start_rc=0;
     error=1;CHECK(BSP_Current_Read(&out)==BSP_CURRENT_ERROR && out==123);error=0;
     CHECK(BSP_Current_Read(NULL)==BSP_CURRENT_ERROR);

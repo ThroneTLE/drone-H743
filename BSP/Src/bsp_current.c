@@ -47,7 +47,11 @@ BSP_CurrentStatus BSP_Current_Read(uint32_t *raw)
      * Stop only after the pair (or error), so every new pair starts at rank 1. */
     BSP_CurrentStatus status=read_rank(&current_raw);
     if (status==BSP_CURRENT_OK) { status=read_rank(&voltage_raw); }
-    if (HAL_ADC_Stop(&hadc1)!=HAL_OK) { status=BSP_CURRENT_ERROR; }
+    if (HAL_ADC_Stop(&hadc1)!=HAL_OK) {
+        /* Sequencer position is no longer proven. Never label the next rank as
+         * current/voltage until explicit initialization has restored the ADC. */
+        current_initialized=0U;status=BSP_CURRENT_ERROR;
+    }
     voltage_sample.sequence++;
     voltage_sample.status=status;
     if (status!=BSP_CURRENT_OK) { return status; }

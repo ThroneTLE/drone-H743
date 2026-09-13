@@ -15,7 +15,7 @@ Contract：自动选择不等于已连接；连接不等于飞控已应用命令
 
 作者确认3S，并明确要求告警和禁止低压解锁，飞行中不自动切断电机。
 PC1=ADC1 CH11/rank1电流；PC0=CH10/rank2电池电压。作者已Generate Code；详见[battery-cubemx-checklist.md](battery-cubemx-checklist.md)。
-两通道使用discontinuous group=1；每次Start/Poll/Get只读取一个rank，读完两路后Stop。任何一路失败时丢弃整个采样对，下次从rank1重来。
+两通道使用discontinuous group=1；每次Start/Poll/Get只读取一个rank，读完两路后Stop。任一路转换失败则丢弃整对；Stop成功才允许下一轮。Stop失败锁存ADC不可用，显式初始化前不再转换，防止通道顺序失去保证。
 采样对以开始时刻标时，避免任务抢占后把旧样本标成新鲜；所有ADC读取归现有messageTask，约20ms周期，不受慢存储和PC命令阻塞影响。
 
 总电压标称值：`mV = round(raw * 69696 / 65535)`，即3.3V参考×21.12分压比；比例来自仓库存档的ArduPilot MicoAir743v2 hwdef。未实测校准。

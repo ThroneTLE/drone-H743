@@ -1,0 +1,8 @@
+Prior committed BSP fails the new stop-failure contract:
+Assertion failed!
+
+Program: C:\Users\23259\AppData\Local\Temp\adc-stop-negative-cddsprh3\test.exe
+File: C:\Users\23259\AppData\Local\Temp\adc-stop-negative-cddsprh3\test.c, Line 65
+
+Expression: starts==before_starts
+

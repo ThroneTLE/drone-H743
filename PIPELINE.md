@@ -156,6 +156,7 @@ flowchart TB
 
 | 日期 | 范围 | 证据 | 结果 | 对状态的影响 |
 |---|---|---|---|---|
+| 2026-09-13 | 修bug：ADC停止失败后禁止继续假定rank顺序 | data/analysis/bluetooth-battery/2026-09-13/adc-stop-negative.txt、adc-stop-guard.txt（6 passed） | 旧BSP在Stop失败后仍继续启动，复现契约失败；现锁存ADC不可用，显式初始化前不再采样，防止电流/电压互换；普通超时仍可恢复 | R-BATT-1仍进行中；软件自审修复，未实机 |
 | 2026-09-13 | R-BT-1蓝牙通道实现 | `tests/test_bluetooth_channel.py`、`data/analysis/bluetooth-battery/2026-09-13/regression-fixes.txt`（60 passed含相关回归）、bluetooth-offline.png | 新增蓝牙选项、SPP地址匹配、异步打开和取消；保留USB连接记录与专用安全门；真实Tk验证 | 待联合全量复核，未建立实机连接 |
 | 2026-09-13 | 修bug：总览RC接口元数据仍写UART4 | `tests/test_component_rc_binding.py`、`data/analysis/bluetooth-battery/2026-09-13/rc-binding-tests.txt` | 实际BSP RC绑定huart6，元数据修正为USART6；仅改显示事实，未改引脚或RC逻辑；旧测试没比对实际绑定 | R-MODULES-1仍待审核 |
 | 2026-09-13 | 修bug：蓝牙/电池模块使索引超出容量 | `data/analysis/bluetooth-battery/2026-09-13/index-overflow.txt`：98767B超过98304B | 用途摘要96→80，保留符号入口和8/32/96KiB预算；不扩大容量 | 解除索引生成阻塞，REQ仍进行中 |
