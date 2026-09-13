@@ -17,11 +17,13 @@ def test_battery_warning_overrides_armed_solid_without_changing_arm_state(tmp_pa
 #include <assert.h>
 static uint8_t app_led_armed=1,app_led_arm_published=1;
 static APP_LED_ArmBlockReason app_led_arm_block_reason=APP_LED_ARM_BLOCK_BATTERY;
-static const DRV_RgbColor app_led_red={255,0,0},app_led_green={0,255,0},app_led_amber={255,110,0};
+const DRV_RgbColor app_led_red={255,0,0},app_led_green={0,255,0},app_led_amber={255,110,0};
 static unsigned armed_cleared,status_cleared,alarm;
-static DRV_RgbPattern app_led_solid(DRV_RgbColor c){(void)c;assert(0);return (DRV_RgbPattern){0};}
-static DRV_RgbPattern app_led_breathe(DRV_RgbColor c,uint16_t p,uint8_t d){(void)c;(void)p;(void)d;assert(0);return (DRV_RgbPattern){0};}
-static DRV_RgbPattern app_led_pulses(DRV_RgbColor c,uint8_t n){(void)c;(void)n;assert(0);return (DRV_RgbPattern){0};}
+DRV_RgbPattern app_led_solid(DRV_RgbColor c){(void)c;assert(0);return (DRV_RgbPattern){0};}
+DRV_RgbPattern app_led_breathe(DRV_RgbColor c,uint16_t p,uint8_t d){(void)c;(void)p;(void)d;assert(0);return (DRV_RgbPattern){0};}
+DRV_RgbPattern app_led_pulses(DRV_RgbColor c,uint8_t n){(void)c;(void)n;assert(0);return (DRV_RgbPattern){0};}
+void app_led_publish(SVC_LedSource source,uint8_t binding){(void)source;(void)binding;assert(0);}
+uint8_t APP_LedConfig_BindingForBlockReason(uint8_t reason){(void)reason;assert(0);return 0;}
 void SVC_Led_Publish(SVC_LedSource source,const DRV_RgbPattern *pattern){
     if(source==SVC_LED_SOURCE_ARMED){assert(!pattern);armed_cleared++;}
     else if(source==SVC_LED_SOURCE_STATUS){assert(!pattern);status_cleared++;}
@@ -30,6 +32,8 @@ void SVC_Led_Publish(SVC_LedSource source,const DRV_RgbPattern *pattern){
 ''' + actual + r'''
 int main(void){app_led_publish_arm();assert(app_led_armed==1&&armed_cleared==1&&status_cleared==1&&alarm==1);return 0;}
 '''
+    if (ROOT/'App/Inc/app_led_config.h').exists():
+        code='#include "app_led_config.h"\n'+code
     (tmp_path/'test.c').write_text(code,encoding='utf-8')
     cmd=[shutil.which('gcc'),'-std=c11','-Wall','-Wextra','-Werror']
     for directory in ('App/Inc','Driver/Inc','Services/Inc'):cmd+=['-I',str(ROOT/directory)]
