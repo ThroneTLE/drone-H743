@@ -84,9 +84,6 @@ flowchart TB
 
 | REQ | 节点 | 需求 | 验收判据 | 状态 |
 |---|---|---|---|---|
-| 2026-09-13 | R-MODULES-1及CURRENT修复原工程整合/软件自审 | `data/analysis/current/2026-09-13/main-review.md`、main-full.txt：1611 passed；双协议Debug零警告；ARM回包及真实Tk九组合验证 | 飞控注册清单驱动总览，CURRENT目标库缺值修复；原40文件27内容保持/13合并，LED与CFG V21保留；初轮2项旧导出兼容失败已修复并全量复核 | R-MODULES-1置待审核，电流REQ保持待审核；未操作目标板 |
-| 2026-09-13 | 修bug：新增元件模块使仓库索引超出容量门 | `data/analysis/current/2026-09-13/index-initial.txt`；99301 B超过98304 B | 复用原工程已有的96字符用途摘要压缩，保留符号入口和8/32/96KiB限制，当前索引94.4KiB；旧规模测试无法预判新增模块数量 | 仅修索引生成阻塞，不扩大容量，不改变实机门 |
-| 2026-09-13 | 修bug：CURRENT浮点字段在目标库下为空 | `data/analysis/current/2026-09-13/current-format-review.md`、arm-before.txt、arm-after.txt、focused.txt（23 passed） | 实际ARM ELF复现nano printf缺少浮点支持；改有界整数定点格式，正常字段与nan语义保留；旧宿主测试使用完整C库所以漏检 | R-CURRENT-1/2仍待审核；未操作目标板，实机回读由审核者复核 |
 | R-MODULES-1 | 作者授权附加需求 | 〔码〕总览由飞控注册元件清单和状态生成，取消上位机硬编码型号/总线/故障提示；模式默认+protocol-telemetry+tk-ui | 真实固件注册与二进制回包到真实总览；完整事务、断连/过期/缺包/旧固件不伪造模块或正常状态；新元件只改固件注册即可显示；宿主与ARM编码验证、全量及Debug | 待审核（原工程全量及双协议构建通过，未实机） |
 | R-CURRENT-2 | 作者授权附加需求 | 〔码〕传感器页增加 AM32 电流计回读，复用 STATUS? 和连接会话；模式默认+tk-ui+protocol-telemetry | 真实固件 CURRENT 格式到真实 Tk 页面；断连/换会话/非法/缺失/过期不伪报有效；显示标称未校准、原始 ADC、电压、年龄、错误；完整回归与 Debug | 待审核（回读/会话/布局/全量回归通过；未实机回读） |
 | R-DSHOT-2 | 作者授权附加需求 | 〔码〕解锁录制的 FlightLog 增加逐条 DShot 发送诊断；模式默认+dshot-esc+protocol-telemetry | 版本化记录、真实发送码/掩码/故障及计数，不把 DMA 完成当电调确认；旧日志无新字段而非补零；真实 C 编码对拍 Python 解码/CSV、双协议 Debug 与完整回归 | 待审核（V11逐条诊断与旧版兼容、双协议构建及全量回归通过；待实机日志复核） |
@@ -157,6 +154,9 @@ flowchart TB
 
 | 日期 | 范围 | 证据 | 结果 | 对状态的影响 |
 |---|---|---|---|---|
+| 2026-09-13 | R-MODULES-1及CURRENT修复原工程整合/软件自审 | `data/analysis/current/2026-09-13/main-review.md`、main-full.txt：1611 passed；双协议Debug零警告；ARM回包及真实Tk九组合验证 | 飞控注册清单驱动总览，CURRENT目标库缺值修复；原40文件27内容保持/13合并，LED与CFG V21保留；初轮2项旧导出兼容失败已修复并全量复核 | R-MODULES-1置待审核，电流REQ保持待审核；未操作目标板 |
+| 2026-09-13 | 修bug：新增元件模块使仓库索引超出容量门 | `data/analysis/current/2026-09-13/index-initial.txt`；99301 B超过98304 B | 复用原工程已有的96字符用途摘要压缩，保留符号入口和8/32/96KiB限制，当前索引94.4KiB；旧规模测试无法预判新增模块数量 | 仅修索引生成阻塞，不扩大容量，不改变实机门 |
+| 2026-09-13 | 修bug：CURRENT浮点字段在目标库下为空 | `data/analysis/current/2026-09-13/current-format-review.md`、arm-before.txt、arm-after.txt、focused.txt（23 passed） | 实际ARM ELF复现nano printf缺少浮点支持；改有界整数定点格式，正常字段与nan语义保留；旧宿主测试使用完整C库所以漏检 | R-CURRENT-1/2仍待审核；未操作目标板，实机回读由审核者复核 |
 | 2026-09-12 | R-DSHOT/R-CURRENT 已同步原工程并验证保留工作 | `data/analysis/dshot/2026-09-12/main-merge-report.md`、main-merge-validation.json、main-merge-full.txt：1593 passed，无warnings/skips；专项77 passed；双协议Debug零警告 | feat/micoair743v2已快进到815450a7；原39个改动文件备份后恢复，电流计/状态灯及维护分组并存，合并冲突清零；验证绑定HEAD加保留工作树，未烧录 | 原目录整合已执行；原有工作仍未提交，各REQ仍待审核，不改变实机门 |
 | 2026-09-12 | 合并回归横切修复：Tk图像/字体及控件循环保留解释器 | `data/analysis/dshot/2026-09-12/merge-tcl-report.md`、merge-image-red.txt复现、merge-tcl-focused.txt 31 passed、merge-full-final.txt 1558 passed无warnings；双协议Debug零警告 | 在UI线程释放所属资源并解除关闭控件的解释器引用；另一窗口保留；不禁用GC、不增加超时/性能门限 | 已提交基线整合候选通过；原工程仍在并发编辑，尚未同步；各REQ仍待审核 |
 | 2026-09-12 | R-DSHOT/R-CURRENT 合回原工程的候选整合 | `data/analysis/dshot/2026-09-12/merge-preparation.md`、merge-full.txt：2 failed/1555 passed/15 warnings；双协议Debug零警告 | 930f7a35与d5ed69d3已在独立整合树消除文本冲突；GUI性能与Image回收错误待处理；原目录仍有作者确认的并发编辑，未同步 | 各REQ仍待审核；不宣称原工程合并完成，不改变实机门 |
