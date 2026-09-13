@@ -136,9 +136,14 @@ def read_text(path: str) -> str:
 # 按既定处置——**改密度、不抬限制**——把用途列 120→112（实测 98649 → 97066 B）。
 #
 # 这次动用途列而不是再砍 symbol_cell（上次 6→5 动的是那里）：入口名是**精确的
-# 检索键**，砍掉一个就等于少一条能直接 grep 的线索；用途是散文，截到 112 字
-# 仍然读得懂它在说什么。两者都超限时先截散文。
-def compact(text: str, limit: int = 112) -> str:
+# 检索键**，砍掉一个就等于少一条能直接 grep 的线索；用途是散文，截短仍然读得懂
+# 它在说什么。两者都超限时先截散文。
+#
+# 2026-09-12（同日第二次）：状态灯颜色绑定新增 app_led_config / app_cmd_ledmap /
+# led_map.py 与两个测试文件后又到 98470 B。这次一步到 96 而不是再挪 8 个字——
+# 两次提交里撞了两次限，每次都要重跑全量，把余量一次留够（94.8 → 93.1 KiB）
+# 比反复贴着线省事。再超时按既定顺序继续截散文，最后才动 symbol_cell。
+def compact(text: str, limit: int = 96) -> str:
     text = re.sub(r"\s+", " ", text).strip(" .:-\t\r\n")
     text = text.replace("|", "/")
     if len(text) > limit:
