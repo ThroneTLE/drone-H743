@@ -1,0 +1,9 @@
+{
+  "scope": "actual ARM ELF task entries; simulated ADC zero and OS time; no hardware",
+  "elf": "build/Debug/drone-H743.elf",
+  "background_steps": 0,
+  "elapsed_ms": 60000,
+  "adc_reads": 3000,
+  "adc_initializations": 1,
+  "report": "CURRENT raw=0 adc_v=0.00000 current_a=0.000 valid=1 calibrated=0 saturated=0 age_ms=20 samples=3000 errors=0 adc_status=0 source=AM32_55A_CURR nominal_mv_per_a=12.75\r\n"
+}

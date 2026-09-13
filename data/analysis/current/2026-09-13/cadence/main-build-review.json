@@ -1,0 +1,18 @@
+{
+  "protected": {
+    "App/Src/app_control.c": true,
+    "Core/Src/main.c": true,
+    "Core/Src/freertos.c": true,
+    "drone-H743.ioc": true
+  },
+  "warnings": {
+    "main-build-dshot.txt": 0,
+    "main-build-pwm.txt": 0
+  },
+  "elf_sha256": {
+    "build/Debug/drone-H743.elf": "53d3dffc440df26808943b2c2071905789985d8e1cdf7a2c97f65b2c004643f7",
+    "build/PWM-merge/drone-H743.elf": "75661121f1f7d81e0253225e504a721c004389f77af4a3fd7bc2dca9e1d6a055"
+  },
+  "code_head": "7c8a8f10f68b7f9aab4d666d66b37bba064e793a",
+  "scope": "code head plus preserved LED/config/UI changes; no target operations"
+}
