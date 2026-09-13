@@ -143,7 +143,9 @@ def read_text(path: str) -> str:
 # led_map.py 与两个测试文件后又到 98470 B。这次一步到 96 而不是再挪 8 个字——
 # 两次提交里撞了两次限，每次都要重跑全量，把余量一次留够（94.8 → 93.1 KiB）
 # 比反复贴着线省事。再超时按既定顺序继续截散文，最后才动 symbol_cell。
-def compact(text: str, limit: int = 96) -> str:
+# Bluetooth/battery additions exceed the index cap; retain symbol keys and
+# shorten prose instead of raising the fixed 8/32/96 KiB budgets.
+def compact(text: str, limit: int = 80) -> str:
     text = re.sub(r"\s+", " ", text).strip(" .:-\t\r\n")
     text = text.replace("|", "/")
     if len(text) > limit:
