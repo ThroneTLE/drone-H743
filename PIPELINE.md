@@ -84,6 +84,7 @@ flowchart TB
 
 | REQ | 节点 | 需求 | 验收判据 | 状态 |
 |---|---|---|---|---|
+| 2026-09-13 | 修bug：CURRENT浮点字段在目标库下为空 | `data/analysis/current/2026-09-13/current-format-review.md`、arm-before.txt、arm-after.txt、focused.txt（23 passed） | 实际ARM ELF复现nano printf缺少浮点支持；改有界整数定点格式，正常字段与nan语义保留；旧宿主测试使用完整C库所以漏检 | R-CURRENT-1/2仍待审核；未操作目标板，实机回读由审核者复核 |
 | R-CURRENT-2 | 作者授权附加需求 | 〔码〕传感器页增加 AM32 电流计回读，复用 STATUS? 和连接会话；模式默认+tk-ui+protocol-telemetry | 真实固件 CURRENT 格式到真实 Tk 页面；断连/换会话/非法/缺失/过期不伪报有效；显示标称未校准、原始 ADC、电压、年龄、错误；完整回归与 Debug | 待审核（回读/会话/布局/全量回归通过；未实机回读） |
 | R-DSHOT-2 | 作者授权附加需求 | 〔码〕解锁录制的 FlightLog 增加逐条 DShot 发送诊断；模式默认+dshot-esc+protocol-telemetry | 版本化记录、真实发送码/掩码/故障及计数，不把 DMA 完成当电调确认；旧日志无新字段而非补零；真实 C 编码对拍 Python 解码/CSV、双协议 Debug 与完整回归 | 待审核（V11逐条诊断与旧版兼容、双协议构建及全量回归通过；待实机日志复核） |
 | R-CURRENT-1 | 作者授权附加需求 | 〔码〕AM32 55A Curr/PC1 电流采样 Driver 与 ADC1 BSP，后台低频测量、STATUS? 诊断；默认 REQ + protocol-telemetry；作者确认原配 Curr/GND 排线 | 原始 ADC/标称比例/未校准标识明确；ADC 生成门、边界/超时/新鲜度测试、全量 pytest 与 Debug；不新增 DMA、不接入安全判据，实测校准归审核者 | 待审核（联合全量回归已通过；标称换算未实测校准） |

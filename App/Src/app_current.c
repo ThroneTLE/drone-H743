@@ -1,4 +1,5 @@
 #include "app_current.h"
+#include "app_current_format.h"
 #include "app_control.h"
 #include "bsp_current.h"
 #include "bsp_critical.h"
@@ -74,10 +75,14 @@ void APP_Current_GetSnapshot(APP_CurrentSnapshot *out)
 void APP_Current_Report(void)
 {
     APP_CurrentSnapshot s;
+    char adc_text[16], current_text[16];
     APP_Current_GetSnapshot(&s);
+    uint8_t adc_ok = APP_Current_FormatFixed(adc_text, s.reading.adc_v, 5U);
+    uint8_t current_ok = APP_Current_FormatFixed(current_text, s.reading.current_a, 3U);
+    if (!adc_ok || !current_ok) { s.reading.valid = 0U; }
     APP_Control_QueueText(
-        "CURRENT raw=%lu adc_v=%.5f current_a=%.3f valid=%u calibrated=%u saturated=%u age_ms=%lu samples=%lu errors=%lu adc_status=%u source=AM32_55A_CURR nominal_mv_per_a=12.75\r\n",
-        (unsigned long)s.reading.raw, (double)s.reading.adc_v, (double)s.reading.current_a,
+        "CURRENT raw=%lu adc_v=%s current_a=%s valid=%u calibrated=%u saturated=%u age_ms=%lu samples=%lu errors=%lu adc_status=%u source=AM32_55A_CURR nominal_mv_per_a=12.75\r\n",
+        (unsigned long)s.reading.raw, adc_text, current_text,
         (unsigned)s.reading.valid, (unsigned)s.reading.calibrated, (unsigned)s.reading.saturated,
         (unsigned long)s.age_ms, (unsigned long)s.samples, (unsigned long)s.errors, (unsigned)s.adc_status);
 }

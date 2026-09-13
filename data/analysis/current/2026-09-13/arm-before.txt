@@ -1,0 +1,8 @@
+{
+  "source": "build/Debug/drone-H743.elf",
+  "scope": "ARM instruction emulation; ADC/transport mocked; no board operations",
+  "printf_float_linked": false,
+  "output": [
+    "CURRENT raw=12000 adc_v= current_a= valid=1 calibrated=0 saturated=0 age_ms=0 samples=1 errors=0 adc_status=0 source=AM32_55A_CURR nominal_mv_per_a=12.75\r\n\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000"
+  ]
+}
