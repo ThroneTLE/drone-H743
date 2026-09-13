@@ -77,7 +77,7 @@ def test_proto_module_owns_the_protocol_table_and_parsing_helpers() -> None:
     #         + PROTO_MAX_FRAME_PAYLOAD（$X 解析器重同步用的长度上限）
     #         + PROTO_BINARY_FUNCTIONS（payload 是二进制、不许按 UTF-8 解的 fn 集合）。
     # R-MODULES-1 adds COMPONENTS; retain every legacy forwarding contract.
-    assert len(proto_names) == 88
+    assert len(proto_names) == 89  # R-BATT-1 adds BATTERY.
     assert legacy_names == proto_names
     assert proto_names == owned_proto_assignments(PROTO_PATH)
     assert not owned_proto_assignments(LEGACY_PANEL_PATH)

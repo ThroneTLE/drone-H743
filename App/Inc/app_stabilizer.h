@@ -132,6 +132,7 @@ typedef struct {
   uint8_t  acceptance_idle;
   uint8_t  published;          /* 0 = 控制环还没跑过一圈，下面全是占位零值 */
   uint32_t now_ms;
+  uint8_t battery_ok; /* pre-arm only; low voltage never clears an armed latch */
 } APP_Stabilizer_ArmStatus;
 
 void APP_Stabilizer_GetArmStatus(APP_Stabilizer_ArmStatus *out);

@@ -11,6 +11,7 @@
 - 命令：`App/Src/app_cmd_telem.c`
 - 主机解码：`tools/panel_lib/telem_stream.py`
 - 元件注册快照：`REGISTRY? <nonce>` / `0x2231`，独立于实时遥测 schema；布局、事务与总览语义见 [component-registry.md](component-registry.md)。
+- 电池采样/3S保护与CRSF回传：`BATTERY?` / `0x2232`，字段布局与运行期配置见 [bluetooth-battery.md](bluetooth-battery.md)。
 
 ## Schema v4
 

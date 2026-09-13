@@ -1,0 +1,239 @@
+....................................................F........F..FFF.     [100%]
+================================== FAILURES ===================================
+_________ test_the_harness_builds_the_real_panel_with_all_leaf_pages __________
+
+offline = OfflinePanel(panel=<tools.drone_tcp_panel.DronePanel object .>, transport=<tools.panel_qa.harness.MemoryTransport obje...at 0x00000204FF5D2F20>), (<class 'tkinter.Misc'>, 'after_cancel', <function Misc.after_cancel at 0x00000204FF5D3060>)])
+
+    def test_the_harness_builds_the_real_panel_with_all_leaf_pages(offline) -> None:
+        # 2026-09-11：新增「机体模型」与「仿真」两个顶层栏目（21 → 23）。
+        # 机体模型是新功能；仿真是把原来常驻主窗口顶部的启动栏搬进独立栏目，
+        # 把那个"每次上机先看一眼"的位置让给解锁状态横幅。
+        pages = offline.leaf_pages()
+        assert len(pages) == 25
+        assert "传感器 / 电流计" in {page.label for page in pages}
+        assert "传感器 / 电池电压" in {page.label for page in pages}
+        assert "机体模型" in {page.label for page in pages}
+        assert "仿真" in {page.label for page in pages}
+        labels = [page.label for page in pages]
+        assert sum(label.startswith("日志 / ") for label in labels) == 3
+        # 分组页签本身不算叶页，它的子页才算。
+        assert any(label.startswith("校准 / ") for label in labels)
+        assert any(label.startswith("传感器 / ") for label in labels)
+        assert sum(label.startswith("校准 / ") for label in labels) == 7
+>       assert sum(label.startswith("传感器 / ") for label in labels) == 5
+E       assert 6 == 5
+E        +  where 6 = sum(<generator object test_the_harness_builds_the_real_panel_with_all_leaf_pages.<locals>.<genexpr> at 0x00000204903732A0>)
+
+tests\test_panel_qa_harness.py:243: AssertionError
+________________ test_theme_is_global_semantic_and_contrasted _________________
+
+qa = OfflinePanel(panel=<tools.drone_tcp_panel.DronePanel object .>, transport=<tools.panel_qa.harness.MemoryTransport obje...at 0x00000204FF5D2F20>), (<class 'tkinter.Misc'>, 'after_cancel', <function Misc.after_cancel at 0x00000204FF5D3060>)])
+
+    def test_theme_is_global_semantic_and_contrasted(qa):
+        """All input states use the shared palette; pages do not own a theme patch."""
+        assert not (ROOT / "tools" / "panel_lib" / "servo_debug_theme.py").exists()
+    
+        style = ttk.Style(qa.panel)
+        for style_name, option in (
+            ("TEntry", "fieldbackground"),
+            ("TSpinbox", "fieldbackground"),
+            ("TCombobox", "fieldbackground"),
+        ):
+            for states in ((), ("focus",), ("disabled",), ("readonly",), ("invalid",)):
+                background = style.lookup(style_name, option, state=states)
+                foreground = style.lookup(style_name, "foreground", state=states)
+                assert background, (style_name, option, states)
+                assert foreground, (style_name, states)
+    
+        def rgb(value: str) -> tuple[int, int, int]:
+            channels = qa.panel.winfo_rgb(value)
+            return tuple(channel // 257 for channel in channels)
+    
+        def luminance(value: str) -> float:
+            def linear(channel: int) -> float:
+                channel /= 255.0
+                return channel / 12.92 if channel <= 0.03928 else ((channel + 0.055) / 1.055) ** 2.4
+    
+            red, green, blue = rgb(value)
+            return 0.2126 * linear(red) + 0.7152 * linear(green) + 0.0722 * linear(blue)
+    
+        background = luminance(qa.panel.ui_palette["panel"])
+        foreground = luminance(qa.panel.ui_palette["ink"])
+        assert (max(background, foreground) + 0.05) / (min(background, foreground) + 0.05) >= 4.5
+    
+        spinboxes = [widget for widget in _descendants(qa.panel) if isinstance(widget, ttk.Spinbox)]
+        assert spinboxes
+>       assert all(widget.cget("style") == "Numeric.TSpinbox" for widget in spinboxes)
+E       assert False
+E        +  where False = all(<generator object test_theme_is_global_semantic_and_contrasted.<locals>.<genexpr> at 0x000002048C7517D0>)
+
+tests\test_tk_v_revamp.py:84: AssertionError
+________ test_every_leaf_page_has_reachable_interactive_controls[1.0] _________
+
+tmp_path = WindowsPath('C:/Users/23259/AppData/Local/Temp/pytest-of-23259/pytest-2066/test_every_leaf_page_has_reach0')
+scale = 1.0
+
+    @pytest.mark.parametrize("scale", SCALES)
+    def test_every_leaf_page_has_reachable_interactive_controls(tmp_path, scale):
+        # Windows Tcl can retain a just-destroyed interpreter's library handle for
+        # a short interval.  Run each simulated DPI matrix in its own process so
+        # the three required scales are independent and deterministic.
+        child = """
+    import json
+    import sys
+    import tempfile
+    from pathlib import Path
+    from tools import panel_qa
+    
+    scale = float(sys.argv[1])
+    with tempfile.TemporaryDirectory() as root:
+        with panel_qa.hardware_guards() as guard:
+            with panel_qa.isolated_environment(Path(root)):
+                try:
+                    session = panel_qa.OfflinePanel.launch(scale=scale, size=(1366, 768))
+                except BaseException as exc:
+                    if panel_qa.is_display_unavailable(exc):
+                        print("DISPLAY_UNAVAILABLE")
+                        raise SystemExit(0)
+                    raise
+                try:
+                    reports = session.probe_geometry(sizes=panel_qa.WINDOW_SIZES)
+                    bad = [report.to_json() for report in reports if not report.clean]
+                    print(json.dumps({"bad": bad, "reports": len(reports),
+                                      "serial": guard.serial_opens,
+                                      "flash": guard.flash_invocations}))
+                finally:
+                    session.destroy()
+            if not guard.clean:
+                raise AssertionError((guard.serial_opens, guard.flash_invocations))
+    """
+        result = subprocess.run(
+            [sys.executable, "-c", child, str(scale)],
+            cwd=ROOT, capture_output=True, text=True, timeout=120,
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+        if "DISPLAY_UNAVAILABLE" in result.stdout:
+            pytest.skip("Tk display unavailable")
+        payload = result.stdout.strip().splitlines()[-1]
+        report = json.loads(payload)
+        # 包含新电流计页的全部叶页，每页覆盖三个尺寸。
+>       assert report["reports"] == 72
+E       assert 75 == 72
+
+tests\test_tk_v_revamp.py:171: AssertionError
+________ test_every_leaf_page_has_reachable_interactive_controls[1.25] ________
+
+tmp_path = WindowsPath('C:/Users/23259/AppData/Local/Temp/pytest-of-23259/pytest-2066/test_every_leaf_page_has_reach1')
+scale = 1.25
+
+    @pytest.mark.parametrize("scale", SCALES)
+    def test_every_leaf_page_has_reachable_interactive_controls(tmp_path, scale):
+        # Windows Tcl can retain a just-destroyed interpreter's library handle for
+        # a short interval.  Run each simulated DPI matrix in its own process so
+        # the three required scales are independent and deterministic.
+        child = """
+    import json
+    import sys
+    import tempfile
+    from pathlib import Path
+    from tools import panel_qa
+    
+    scale = float(sys.argv[1])
+    with tempfile.TemporaryDirectory() as root:
+        with panel_qa.hardware_guards() as guard:
+            with panel_qa.isolated_environment(Path(root)):
+                try:
+                    session = panel_qa.OfflinePanel.launch(scale=scale, size=(1366, 768))
+                except BaseException as exc:
+                    if panel_qa.is_display_unavailable(exc):
+                        print("DISPLAY_UNAVAILABLE")
+                        raise SystemExit(0)
+                    raise
+                try:
+                    reports = session.probe_geometry(sizes=panel_qa.WINDOW_SIZES)
+                    bad = [report.to_json() for report in reports if not report.clean]
+                    print(json.dumps({"bad": bad, "reports": len(reports),
+                                      "serial": guard.serial_opens,
+                                      "flash": guard.flash_invocations}))
+                finally:
+                    session.destroy()
+            if not guard.clean:
+                raise AssertionError((guard.serial_opens, guard.flash_invocations))
+    """
+        result = subprocess.run(
+            [sys.executable, "-c", child, str(scale)],
+            cwd=ROOT, capture_output=True, text=True, timeout=120,
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+        if "DISPLAY_UNAVAILABLE" in result.stdout:
+            pytest.skip("Tk display unavailable")
+        payload = result.stdout.strip().splitlines()[-1]
+        report = json.loads(payload)
+        # 包含新电流计页的全部叶页，每页覆盖三个尺寸。
+>       assert report["reports"] == 72
+E       assert 75 == 72
+
+tests\test_tk_v_revamp.py:171: AssertionError
+________ test_every_leaf_page_has_reachable_interactive_controls[1.5] _________
+
+tmp_path = WindowsPath('C:/Users/23259/AppData/Local/Temp/pytest-of-23259/pytest-2066/test_every_leaf_page_has_reach2')
+scale = 1.5
+
+    @pytest.mark.parametrize("scale", SCALES)
+    def test_every_leaf_page_has_reachable_interactive_controls(tmp_path, scale):
+        # Windows Tcl can retain a just-destroyed interpreter's library handle for
+        # a short interval.  Run each simulated DPI matrix in its own process so
+        # the three required scales are independent and deterministic.
+        child = """
+    import json
+    import sys
+    import tempfile
+    from pathlib import Path
+    from tools import panel_qa
+    
+    scale = float(sys.argv[1])
+    with tempfile.TemporaryDirectory() as root:
+        with panel_qa.hardware_guards() as guard:
+            with panel_qa.isolated_environment(Path(root)):
+                try:
+                    session = panel_qa.OfflinePanel.launch(scale=scale, size=(1366, 768))
+                except BaseException as exc:
+                    if panel_qa.is_display_unavailable(exc):
+                        print("DISPLAY_UNAVAILABLE")
+                        raise SystemExit(0)
+                    raise
+                try:
+                    reports = session.probe_geometry(sizes=panel_qa.WINDOW_SIZES)
+                    bad = [report.to_json() for report in reports if not report.clean]
+                    print(json.dumps({"bad": bad, "reports": len(reports),
+                                      "serial": guard.serial_opens,
+                                      "flash": guard.flash_invocations}))
+                finally:
+                    session.destroy()
+            if not guard.clean:
+                raise AssertionError((guard.serial_opens, guard.flash_invocations))
+    """
+        result = subprocess.run(
+            [sys.executable, "-c", child, str(scale)],
+            cwd=ROOT, capture_output=True, text=True, timeout=120,
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+        if "DISPLAY_UNAVAILABLE" in result.stdout:
+            pytest.skip("Tk display unavailable")
+        payload = result.stdout.strip().splitlines()[-1]
+        report = json.loads(payload)
+        # 包含新电流计页的全部叶页，每页覆盖三个尺寸。
+>       assert report["reports"] == 72
+E       assert 75 == 72
+
+tests\test_tk_v_revamp.py:171: AssertionError
+Physical serial open attempts: 0
+Flashing/probe tool invocation attempts: 0
+Tk display available at session start: True; Tk roots created: 14
+=========================== short test summary info ===========================
+FAILED tests/test_panel_qa_harness.py::test_the_harness_builds_the_real_panel_with_all_leaf_pages
+FAILED tests/test_tk_v_revamp.py::test_theme_is_global_semantic_and_contrasted
+FAILED tests/test_tk_v_revamp.py::test_every_leaf_page_has_reachable_interactive_controls[1.0]
+FAILED tests/test_tk_v_revamp.py::test_every_leaf_page_has_reachable_interactive_controls[1.25]
+FAILED tests/test_tk_v_revamp.py::test_every_leaf_page_has_reachable_interactive_controls[1.5]
+5 failed, 63 passed in 95.93s (0:01:35)

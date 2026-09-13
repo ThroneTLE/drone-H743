@@ -4,7 +4,7 @@
 
 Read this shard only when the task touches application behavior, RTOS task bodies, control flow, diagnostics, commands, or synchronous services.
 
-Source snapshot: `5f8205ff26e7`. Indexed files: 131.
+Source snapshot: `bd336b5b050b`. Indexed files: 138.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -14,11 +14,15 @@ Source snapshot: `5f8205ff26e7`. Indexed files: 131.
 | `App/Inc/app_aiwb2.h`<br>`App/Src/app_aiwb2.c` | Application behavior and task-facing logic for aiwb2 | `APP_AiWB2_Init`, `APP_AiWB2_Tick`, `APP_AiWB2_ProcessLine`, `APP_AiWB2_IsTransparent` (+23) |
 | `App/Inc/app_background.h`<br>`App/Src/app_background.c` | Application behavior and task-facing logic for background | `APP_Background_Init`, `APP_Background_Step`, `APP_Background_RequestReadBlock`, `APP_Background_RequestWriteBlock` (+3) |
 | `App/Inc/app_baro.h`<br>`App/Src/app_baro.c` | Application behavior and task-facing logic for baro | `APP_Baro_ReportStartup`, `APP_Baro_GetStatus`, `APP_Baro_GetCachedStatus`, `APP_Baro_ReadSnapshot` |
+| `App/Inc/app_battery.h`<br>`App/Src/app_battery.c` | Application behavior and task-facing logic for battery | `APP_Battery_Init`, `APP_Battery_Step`, `APP_Battery_GetSnapshot`, `APP_Battery_CanArm` (+6) |
+| `App/Src/app_battery_led.c` | Application behavior and task-facing logic for battery led | `APP_Battery_PublishLedWarning` |
+| `App/Src/app_battery_proto.c` | Application behavior and task-facing logic for battery proto | `APP_Battery_SendReport`, `APP_Battery_Command`, `APP_Battery_Configure` |
+| `App/Src/app_battery_telemetry.c` | Application behavior and task-facing logic for battery telemetry | `APP_Battery_GetTxStats`, `APP_Battery_TelemetryStep`, `APP_ELRS_SendTelemetryBattery` |
 | `App/Inc/app_boot.h`<br>`App/Src/app_boot.c` | Application behavior and task-facing logic for boot | `APP_Boot_Init`, `APP_Boot_TryRomDfu`, `APP_Boot_EvaluateSafety`, `APP_Boot_IsVectorReasonable` (+7) |
 | `App/Src/app_cmd_airframe.c` | Application behavior and task-facing logic for cmd airframe | `DRV_COAX_CTRL_GetParam`, `DRV_COAX_CTRL_SetParam` |
 | `App/Src/app_cmd_arm.c` | Application behavior and task-facing logic for cmd arm | — |
 | `App/Src/app_cmd_diag.c` | Application behavior and task-facing logic for cmd diag | — |
-| `App/Src/app_cmd_fallback.c` | Application behavior and task-facing logic for cmd fallback | `APP_Components_Command` |
+| `App/Src/app_cmd_fallback.c` | Application behavior and task-facing logic for cmd fallback | `APP_Components_Command`, `APP_Battery_Command` |
 | `App/Src/app_cmd_flow.c` | Application behavior and task-facing logic for cmd flow | `APP_Stabilizer_ReadFlowCompensationSnapshot` |
 | `App/Src/app_cmd_imucal.c` | Application behavior and task-facing logic for cmd imucal | `APP_FlightCalibration_ReadActive`, `SVC_Param_IsDirty`, `APP_Sensor_GetFluOrientation`, `APP_FlightCalibration_MergeV1Candidate` (+2) |
 | `App/Src/app_cmd_imusel.c` | Application behavior and task-facing logic for cmd imusel | `BSP_IMU_Init` |
@@ -31,7 +35,7 @@ Source snapshot: `5f8205ff26e7`. Indexed files: 131.
 | `App/Src/app_cmd_telem.c` | Application behavior and task-facing logic for cmd telem | — |
 | `App/Inc/app_components.h`<br>`App/Src/app_components.c` | Application behavior and task-facing logic for components | `APP_Components_Register`, `APP_Components_Init`, `APP_Components_Command`, `APP_Components_Report` (+5) |
 | `App/Src/app_components_board.c` | Application behavior and task-facing logic for components board | `APP_Components_RegisterBoard`, `APP_Components_RegisterGps` |
-| `App/Src/app_components_transport.c` | Application behavior and task-facing logic for components transport | `APP_Components_NowMs`, `APP_Components_ExportBusy`, `APP_Components_Send`, `APP_Proto_BuildFrame` (+1) |
+| `App/Src/app_components_transport.c` | Application behavior and task-facing logic for components transport | `APP_Components_NowMs`, `APP_Components_ExportBusy`, `APP_Components_Send` |
 | `App/Inc/app_control.h`<br>`App/Src/app_control.c` | Application behavior and task-facing logic for control | `APP_Control_Init`, `APP_Control_Tick`, `APP_Control_QueueText`, `APP_Control_ProcessLine` (+4) |
 | `App/Inc/app_control_config_compat.h`<br>`App/Src/app_control_config_compat.c` | Application behavior and task-facing logic for control config compat | `APP_ControlConfigCompat_CurrentPassthrough`, `APP_ControlConfigCompat_V18ToCurrent`, `APP_ControlConfigCompat_V17ToCurrent`, `APP_ControlConfigCompat_V15ToCurrent` |
 | `App/Inc/app_control_config_store.h`<br>`App/Src/app_control_config_store.c` | Application behavior and task-facing logic for control config store | `APP_ControlConfigStore_Load`, `APP_ControlConfigStore_Save`, `APP_ControlConfigStore_CaptureTunables` |
@@ -41,6 +45,7 @@ Source snapshot: `5f8205ff26e7`. Indexed files: 131.
 | `App/Inc/app_current.h`<br>`App/Src/app_current.c` | Application behavior and task-facing logic for current | `APP_Current_Init`, `APP_Current_Step`, `APP_Current_GetSnapshot`, `APP_Current_Report` |
 | `App/Inc/app_current_format.h` | Application behavior and task-facing logic for current format | — |
 | `App/Inc/app_diag.h`<br>`App/Src/app_diag.c` | Application behavior and task-facing logic for diag | `APP_Diag_RecordStackOverflow`, `APP_Diag_RecordMallocFailed`, `APP_Diag_GetFaultInfo` |
+| `App/Inc/app_diag_binary.h`<br>`App/Src/app_diag_binary.c` | Application behavior and task-facing logic for diag binary | `APP_Diag_SendBinary` |
 | `App/Inc/app_elrs.h`<br>`App/Src/app_elrs.c` | Application behavior and task-facing logic for elrs | `APP_ELRS_Init`, `APP_ELRS_Step`, `APP_ELRS_GetChannels`, `APP_ELRS_GetLastRcMs` (+12) |
 | `App/Inc/app_esc_diag.h`<br>`App/Src/app_esc_diag.c` | Application behavior and task-facing logic for esc diag | `APP_EscDiag_Report` |
 | `App/Inc/app_esc_log.h`<br>`App/Src/app_esc_log.c` | Application behavior and task-facing logic for esc log | `APP_EscLog_Capture` |

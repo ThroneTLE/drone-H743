@@ -90,6 +90,7 @@ VALIDATION_ALLOWED_COMMANDS = frozenset(
         "MODULES?",
         "STATUS?",
         "REGISTRY?",
+        "BATTERY?",
         "IMU?",
         "CONFIG?",
         "PARAM?",

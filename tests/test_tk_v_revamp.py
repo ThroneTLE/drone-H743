@@ -168,7 +168,7 @@ with tempfile.TemporaryDirectory() as root:
     payload = result.stdout.strip().splitlines()[-1]
     report = json.loads(payload)
     # 包含新电流计页的全部叶页，每页覆盖三个尺寸。
-    assert report["reports"] == 72
+    assert report["reports"] == 75  # Includes the battery page at all three sizes.
     assert report["bad"] == [], report["bad"]
 
 

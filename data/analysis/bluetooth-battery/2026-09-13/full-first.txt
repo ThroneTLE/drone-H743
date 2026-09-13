@@ -1,0 +1,382 @@
+....................................................F................... [  4%]
+........................................................................ [  9%]
+........................................................................ [ 13%]
+........................................................................ [ 18%]
+........................................................................ [ 22%]
+...................F.................................................... [ 27%]
+........................................................................ [ 31%]
+........................................................................ [ 36%]
+........................................................................ [ 40%]
+........................................................................ [ 45%]
+........................................................................ [ 49%]
+........................................................................ [ 54%]
+........................................................................ [ 58%]
+........................................................................ [ 63%]
+.........................................................F.............. [ 67%]
+..................................................F..................... [ 72%]
+........................................................................ [ 76%]
+........................................................................ [ 81%]
+........................................................................ [ 85%]
+........................................................................ [ 90%]
+........................................................................ [ 94%]
+...............F..FFF......F............................................ [ 99%]
+.............                                                            [100%]
+================================== FAILURES ===================================
+___________ test_usart1_wifi_udp_pid_tuning_path_is_text_line_based ___________
+
+    def test_usart1_wifi_udp_pid_tuning_path_is_text_line_based() -> None:
+        usart = read("Core/Src/usart.c")
+        app_uart = read("App/Src/app_uart.c")
+        app_aiwb2 = read("App/Src/app_aiwb2.c")
+        app_control = read("App/Src/app_control.c")
+        panel = read("tools/drone_tcp_panel.py")
+        transport = read("tools/panel_lib/transport.py")
+    
+        assert "huart1.Init.Mode = UART_MODE_TX_RX;" in usart
+        assert "DMA_REQUEST_USART1_RX" in usart
+        assert "DMA_REQUEST_USART1_TX" in usart
+        assert "BSP_UartLink_StartRxToIdle(BSP_UART_ROLE_TELEMETRY" in app_uart
+        assert "BSP_UartLink_TransmitDma(BSP_UART_ROLE_TELEMETRY" in app_uart
+    
+        assert 'strcmp(line, "PARAM?") == 0' in app_aiwb2
+        assert 'strcmp(line, "PID?") == 0' in app_aiwb2
+        assert 'aiwb2_starts_with(line, "PARAM ")' in app_aiwb2
+        assert 'aiwb2_starts_with(line, "PID ")' in app_aiwb2
+        assert "APP_Control_ProcessLine(normalized);" in app_uart
+        assert "ERR retired PID use PARAM? or PARAM SET" in app_control
+        # 2026-09-11：写入路径改为 app_control_param_set_any()，它先试 coax.* 再试
+        # airframe.*。本条守的是"PID 调参走运行时参数写入"这个性质，路由器完整保留了
+        # 它；机体模型必须与控制增益分表，否则 DEFAULTS 会顺手抹掉量出来的机体数据。
+        assert "app_control_param_set_any(name, value)" in app_control
+    
+        assert "class UdpTransport" in transport
+>       assert 'values=("tcp", "udp", "serial")' in panel
+E       assert 'values=("tcp", "udp", "serial")' in '#!/usr/bin/env python3\n"""Ground-station panel for the drone-H743 Ai-WB2 transparent link."""\n\nfrom __future__ imp...可留下日志也不要静默消失\n        record_panel_crash(*sys.exc_info())\n        raise\n\n\nif __name__ == "__main__":\n    main()\n'
+
+tests\test_aiwb2_prompt_contract.py:71: AssertionError
+________ test_panel_builds_the_reordered_v0_layout_without_connecting _________
+
+tmp_path = WindowsPath('C:/Users/23259/AppData/Local/Temp/pytest-of-23259/pytest-2067/test_panel_builds_the_reordere0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000020B8C1EEC60>
+
+    def test_panel_builds_the_reordered_v0_layout_without_connecting(
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        calibration_dir = tmp_path / "calibration" / "airframe"
+        monkeypatch.setattr(panel_evidence, "AIRFRAME_CALIBRATION_DIR", calibration_dir)
+        monkeypatch.setattr(panel, "FIRMWARE_UPDATE_DIR", tmp_path / "firmware_updates")
+        dialog_messages: list[tuple[str, str]] = []
+        monkeypatch.setattr(
+            panel.messagebox,
+            "showwarning",
+            lambda title, message: dialog_messages.append((title, message)),
+        )
+        monkeypatch.setattr(
+            panel.messagebox,
+            "showinfo",
+            lambda title, message: dialog_messages.append((title, message)),
+        )
+        monkeypatch.setattr(panel.messagebox, "askyesno", lambda *_args, **_kwargs: True)
+        try:
+            app = panel.DronePanel()
+        except tk.TclError as exc:
+            pytest.skip(f"Tk display unavailable: {exc}")
+        try:
+            app.update_idletasks()
+            labels = [app.notebook.tab(tab_id, "text") for tab_id in app.notebook.tabs()]
+            # R-T1-5：状态监视工作台成为默认首页（作者裁决），排在“总览”之前。
+            assert labels[:5] == [
+                "状态监视", "总览", "校准", "维护 · 固件升级", "传感器",
+            ]
+            calibration_labels = [
+                app.calibration_notebook.tab(tab_id, "text")
+                for tab_id in app.calibration_notebook.tabs()
+            ]
+            assert calibration_labels == [
+                "坐标系与极性", "IMU 零偏与比例", "遥控器", "舵机机械中心与行程",
+                "光流与测距", "无桨控制链验收", "振动检测与滤波",
+            ]
+            # R-S1-1：四个传感器页收进“传感器”分组，顶层不再平铺它们。
+            sensor_labels = [
+                app.sensor_notebook.tab(tab_id, "text")
+                for tab_id in app.sensor_notebook.tabs()
+            ]
+>           assert sensor_labels == ["气压计", "IMU 监视（旧链）", "GPS / 磁力计", "光流", "电流计"]
+E           AssertionError: assert ['气压计', 'IMU ...'电流计', '电池电压'] == ['气压计', 'IMU ..., '光流', '电流计']
+E             Left contains one more item: '电池电压'
+E             Use -v to get more diff
+
+tests\test_drone_validation_v0.py:959: AssertionError
+_________ test_the_harness_builds_the_real_panel_with_all_leaf_pages __________
+
+offline = OfflinePanel(panel=<tools.drone_tcp_panel.DronePanel object .>, transport=<tools.panel_qa.harness.MemoryTransport obje...at 0x0000020BFC6571A0>), (<class 'tkinter.Misc'>, 'after_cancel', <function Misc.after_cancel at 0x0000020BFC6572E0>)])
+
+    def test_the_harness_builds_the_real_panel_with_all_leaf_pages(offline) -> None:
+        # 2026-09-11：新增「机体模型」与「仿真」两个顶层栏目（21 → 23）。
+        # 机体模型是新功能；仿真是把原来常驻主窗口顶部的启动栏搬进独立栏目，
+        # 把那个"每次上机先看一眼"的位置让给解锁状态横幅。
+        pages = offline.leaf_pages()
+        assert len(pages) == 25
+        assert "传感器 / 电流计" in {page.label for page in pages}
+        assert "传感器 / 电池电压" in {page.label for page in pages}
+        assert "机体模型" in {page.label for page in pages}
+        assert "仿真" in {page.label for page in pages}
+        labels = [page.label for page in pages]
+        assert sum(label.startswith("日志 / ") for label in labels) == 3
+        # 分组页签本身不算叶页，它的子页才算。
+        assert any(label.startswith("校准 / ") for label in labels)
+        assert any(label.startswith("传感器 / ") for label in labels)
+        assert sum(label.startswith("校准 / ") for label in labels) == 7
+>       assert sum(label.startswith("传感器 / ") for label in labels) == 5
+E       assert 6 == 5
+E        +  where 6 = sum(<generator object test_the_harness_builds_the_real_panel_with_all_leaf_pages.<locals>.<genexpr> at 0x0000020B830C9700>)
+
+tests\test_panel_qa_harness.py:243: AssertionError
+______________________ test_repository_index_is_current _______________________
+
+    def test_repository_index_is_current() -> None:
+        result = subprocess.run(
+            [sys.executable, str(GENERATOR), "--check"],
+            cwd=ROOT,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            timeout=30,
+        )
+>       assert result.returncode == 0, result.stdout
+E       AssertionError: Repository index is stale: host-tools.md, README.md
+E         Run: python .agents/skills/drone-h743-project/scripts/update_repository_index.py
+E         
+E       assert 1 == 0
+E        +  where 1 = CompletedProcess(args=['D:\\ANACON\\python.exe', 'D:\\stm32hal\\drone-H743-bt-power\\.agents\\skills\\drone-h743-proje...s stale: host-tools.md, README.md\nRun: python .agents/skills/drone-h743-project/scripts/update_repository_index.py\n').returncode
+
+tests\test_project_index_contract.py:23: AssertionError
+________________ test_theme_is_global_semantic_and_contrasted _________________
+
+qa = OfflinePanel(panel=<tools.drone_tcp_panel.DronePanel object .>, transport=<tools.panel_qa.harness.MemoryTransport obje...at 0x0000020BFC6571A0>), (<class 'tkinter.Misc'>, 'after_cancel', <function Misc.after_cancel at 0x0000020BFC6572E0>)])
+
+    def test_theme_is_global_semantic_and_contrasted(qa):
+        """All input states use the shared palette; pages do not own a theme patch."""
+        assert not (ROOT / "tools" / "panel_lib" / "servo_debug_theme.py").exists()
+    
+        style = ttk.Style(qa.panel)
+        for style_name, option in (
+            ("TEntry", "fieldbackground"),
+            ("TSpinbox", "fieldbackground"),
+            ("TCombobox", "fieldbackground"),
+        ):
+            for states in ((), ("focus",), ("disabled",), ("readonly",), ("invalid",)):
+                background = style.lookup(style_name, option, state=states)
+                foreground = style.lookup(style_name, "foreground", state=states)
+                assert background, (style_name, option, states)
+                assert foreground, (style_name, states)
+    
+        def rgb(value: str) -> tuple[int, int, int]:
+            channels = qa.panel.winfo_rgb(value)
+            return tuple(channel // 257 for channel in channels)
+    
+        def luminance(value: str) -> float:
+            def linear(channel: int) -> float:
+                channel /= 255.0
+                return channel / 12.92 if channel <= 0.03928 else ((channel + 0.055) / 1.055) ** 2.4
+    
+            red, green, blue = rgb(value)
+            return 0.2126 * linear(red) + 0.7152 * linear(green) + 0.0722 * linear(blue)
+    
+        background = luminance(qa.panel.ui_palette["panel"])
+        foreground = luminance(qa.panel.ui_palette["ink"])
+        assert (max(background, foreground) + 0.05) / (min(background, foreground) + 0.05) >= 4.5
+    
+        spinboxes = [widget for widget in _descendants(qa.panel) if isinstance(widget, ttk.Spinbox)]
+        assert spinboxes
+>       assert all(widget.cget("style") == "Numeric.TSpinbox" for widget in spinboxes)
+E       assert False
+E        +  where False = all(<generator object test_theme_is_global_semantic_and_contrasted.<locals>.<genexpr> at 0x0000020B83155BE0>)
+
+tests\test_tk_v_revamp.py:84: AssertionError
+________ test_every_leaf_page_has_reachable_interactive_controls[1.0] _________
+
+tmp_path = WindowsPath('C:/Users/23259/AppData/Local/Temp/pytest-of-23259/pytest-2067/test_every_leaf_page_has_reach0')
+scale = 1.0
+
+    @pytest.mark.parametrize("scale", SCALES)
+    def test_every_leaf_page_has_reachable_interactive_controls(tmp_path, scale):
+        # Windows Tcl can retain a just-destroyed interpreter's library handle for
+        # a short interval.  Run each simulated DPI matrix in its own process so
+        # the three required scales are independent and deterministic.
+        child = """
+    import json
+    import sys
+    import tempfile
+    from pathlib import Path
+    from tools import panel_qa
+    
+    scale = float(sys.argv[1])
+    with tempfile.TemporaryDirectory() as root:
+        with panel_qa.hardware_guards() as guard:
+            with panel_qa.isolated_environment(Path(root)):
+                try:
+                    session = panel_qa.OfflinePanel.launch(scale=scale, size=(1366, 768))
+                except BaseException as exc:
+                    if panel_qa.is_display_unavailable(exc):
+                        print("DISPLAY_UNAVAILABLE")
+                        raise SystemExit(0)
+                    raise
+                try:
+                    reports = session.probe_geometry(sizes=panel_qa.WINDOW_SIZES)
+                    bad = [report.to_json() for report in reports if not report.clean]
+                    print(json.dumps({"bad": bad, "reports": len(reports),
+                                      "serial": guard.serial_opens,
+                                      "flash": guard.flash_invocations}))
+                finally:
+                    session.destroy()
+            if not guard.clean:
+                raise AssertionError((guard.serial_opens, guard.flash_invocations))
+    """
+        result = subprocess.run(
+            [sys.executable, "-c", child, str(scale)],
+            cwd=ROOT, capture_output=True, text=True, timeout=120,
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+        if "DISPLAY_UNAVAILABLE" in result.stdout:
+            pytest.skip("Tk display unavailable")
+        payload = result.stdout.strip().splitlines()[-1]
+        report = json.loads(payload)
+        # 包含新电流计页的全部叶页，每页覆盖三个尺寸。
+>       assert report["reports"] == 75  # Includes the battery page at all three sizes.
+E       assert 75 == 72
+
+tests\test_tk_v_revamp.py:171: AssertionError
+________ test_every_leaf_page_has_reachable_interactive_controls[1.25] ________
+
+tmp_path = WindowsPath('C:/Users/23259/AppData/Local/Temp/pytest-of-23259/pytest-2067/test_every_leaf_page_has_reach1')
+scale = 1.25
+
+    @pytest.mark.parametrize("scale", SCALES)
+    def test_every_leaf_page_has_reachable_interactive_controls(tmp_path, scale):
+        # Windows Tcl can retain a just-destroyed interpreter's library handle for
+        # a short interval.  Run each simulated DPI matrix in its own process so
+        # the three required scales are independent and deterministic.
+        child = """
+    import json
+    import sys
+    import tempfile
+    from pathlib import Path
+    from tools import panel_qa
+    
+    scale = float(sys.argv[1])
+    with tempfile.TemporaryDirectory() as root:
+        with panel_qa.hardware_guards() as guard:
+            with panel_qa.isolated_environment(Path(root)):
+                try:
+                    session = panel_qa.OfflinePanel.launch(scale=scale, size=(1366, 768))
+                except BaseException as exc:
+                    if panel_qa.is_display_unavailable(exc):
+                        print("DISPLAY_UNAVAILABLE")
+                        raise SystemExit(0)
+                    raise
+                try:
+                    reports = session.probe_geometry(sizes=panel_qa.WINDOW_SIZES)
+                    bad = [report.to_json() for report in reports if not report.clean]
+                    print(json.dumps({"bad": bad, "reports": len(reports),
+                                      "serial": guard.serial_opens,
+                                      "flash": guard.flash_invocations}))
+                finally:
+                    session.destroy()
+            if not guard.clean:
+                raise AssertionError((guard.serial_opens, guard.flash_invocations))
+    """
+        result = subprocess.run(
+            [sys.executable, "-c", child, str(scale)],
+            cwd=ROOT, capture_output=True, text=True, timeout=120,
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+        if "DISPLAY_UNAVAILABLE" in result.stdout:
+            pytest.skip("Tk display unavailable")
+        payload = result.stdout.strip().splitlines()[-1]
+        report = json.loads(payload)
+        # 包含新电流计页的全部叶页，每页覆盖三个尺寸。
+>       assert report["reports"] == 75  # Includes the battery page at all three sizes.
+E       assert 75 == 72
+
+tests\test_tk_v_revamp.py:171: AssertionError
+________ test_every_leaf_page_has_reachable_interactive_controls[1.5] _________
+
+tmp_path = WindowsPath('C:/Users/23259/AppData/Local/Temp/pytest-of-23259/pytest-2067/test_every_leaf_page_has_reach2')
+scale = 1.5
+
+    @pytest.mark.parametrize("scale", SCALES)
+    def test_every_leaf_page_has_reachable_interactive_controls(tmp_path, scale):
+        # Windows Tcl can retain a just-destroyed interpreter's library handle for
+        # a short interval.  Run each simulated DPI matrix in its own process so
+        # the three required scales are independent and deterministic.
+        child = """
+    import json
+    import sys
+    import tempfile
+    from pathlib import Path
+    from tools import panel_qa
+    
+    scale = float(sys.argv[1])
+    with tempfile.TemporaryDirectory() as root:
+        with panel_qa.hardware_guards() as guard:
+            with panel_qa.isolated_environment(Path(root)):
+                try:
+                    session = panel_qa.OfflinePanel.launch(scale=scale, size=(1366, 768))
+                except BaseException as exc:
+                    if panel_qa.is_display_unavailable(exc):
+                        print("DISPLAY_UNAVAILABLE")
+                        raise SystemExit(0)
+                    raise
+                try:
+                    reports = session.probe_geometry(sizes=panel_qa.WINDOW_SIZES)
+                    bad = [report.to_json() for report in reports if not report.clean]
+                    print(json.dumps({"bad": bad, "reports": len(reports),
+                                      "serial": guard.serial_opens,
+                                      "flash": guard.flash_invocations}))
+                finally:
+                    session.destroy()
+            if not guard.clean:
+                raise AssertionError((guard.serial_opens, guard.flash_invocations))
+    """
+        result = subprocess.run(
+            [sys.executable, "-c", child, str(scale)],
+            cwd=ROOT, capture_output=True, text=True, timeout=120,
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+        if "DISPLAY_UNAVAILABLE" in result.stdout:
+            pytest.skip("Tk display unavailable")
+        payload = result.stdout.strip().splitlines()[-1]
+        report = json.loads(payload)
+        # 包含新电流计页的全部叶页，每页覆盖三个尺寸。
+>       assert report["reports"] == 75  # Includes the battery page at all three sizes.
+E       assert 75 == 72
+
+tests\test_tk_v_revamp.py:171: AssertionError
+_____________________________ test_serial_select ______________________________
+
+    def test_serial_select() -> None:
+        usb_header = read(USB_HEADER)
+        panel = read(PANEL)
+        transport = read(PANEL_TRANSPORT)
+    
+        assert "#define APP_USB_CDC_TX_SIZE 1536U" in usb_header
+>       assert 'values=("tcp", "udp", "serial")' in panel
+E       assert 'values=("tcp", "udp", "serial")' in '#!/usr/bin/env python3\n"""Ground-station panel for the drone-H743 Ai-WB2 transparent link."""\n\nfrom __future__ imp...可留下日志也不要静默消失\n        record_panel_crash(*sys.exc_info())\n        raise\n\n\nif __name__ == "__main__":\n    main()\n'
+
+tests\test_usb_v0_transport_contract.py:85: AssertionError
+Physical serial open attempts: 0
+Flashing/probe tool invocation attempts: 0
+Tk display available at session start: True; Tk roots created: 68
+=========================== short test summary info ===========================
+FAILED tests/test_aiwb2_prompt_contract.py::test_usart1_wifi_udp_pid_tuning_path_is_text_line_based
+FAILED tests/test_drone_validation_v0.py::test_panel_builds_the_reordered_v0_layout_without_connecting
+FAILED tests/test_panel_qa_harness.py::test_the_harness_builds_the_real_panel_with_all_leaf_pages
+FAILED tests/test_project_index_contract.py::test_repository_index_is_current
+FAILED tests/test_tk_v_revamp.py::test_theme_is_global_semantic_and_contrasted
+FAILED tests/test_tk_v_revamp.py::test_every_leaf_page_has_reachable_interactive_controls[1.0]
+FAILED tests/test_tk_v_revamp.py::test_every_leaf_page_has_reachable_interactive_controls[1.25]
+FAILED tests/test_tk_v_revamp.py::test_every_leaf_page_has_reachable_interactive_controls[1.5]
+FAILED tests/test_usb_v0_transport_contract.py::test_serial_select - assert '...
+9 failed, 1588 passed in 374.91s (0:06:14)

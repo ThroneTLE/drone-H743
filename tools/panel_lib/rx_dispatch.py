@@ -23,6 +23,11 @@ def drain_rx(panel, batch_size, busy_ms, idle_ms):
                 item = item.payload
             panel._rx_context = context
             try:
+                if isinstance(item, tuple) and len(item) == 2 and item[0] == "battery_bin":
+                    battery = getattr(panel, "battery_page", None)
+                    if battery is not None:
+                        battery.accept(item[1], context)
+                    continue
                 overview = getattr(panel, "overview_page", None)
                 if isinstance(item, tuple) and len(item) == 2 and item[0] == "component_bin":
                     if overview is not None:
@@ -30,6 +35,9 @@ def drain_rx(panel, batch_size, busy_ms, idle_ms):
                     continue
                 if overview is not None and isinstance(item, str):
                     overview.handle_line(item)
+                battery = getattr(panel, "battery_page", None)
+                if battery is not None and isinstance(item, str):
+                    battery.handle_line(item)
                 consume_current_message(panel, item)
                 if isinstance(item, tuple) and len(item) == 3 and item[0] == "proto":
                     _tag, function, text = item

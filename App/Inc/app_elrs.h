@@ -34,7 +34,7 @@ void APP_ELRS_SendTelemetryAttitude(int16_t pitch_rad_x10000,
 void APP_ELRS_SendTelemetryBaro(int32_t altitude_dm);
 
 /* 电池: 电压 0.1V, 电流 0.1A, 容量 mAh, 剩余 % */
-void APP_ELRS_SendTelemetryBattery(uint16_t voltage_dv,
+uint8_t APP_ELRS_SendTelemetryBattery(uint16_t voltage_dv,
                                    uint16_t current_da,
                                    uint32_t capacity_mah,
                                    uint8_t remaining_pct);

@@ -65,7 +65,7 @@ SVC_ParamStatus SVC_Param_SavePendingToFlash(void);
 #include <stdio.h>
 #include <stdarg.h>
 #include <math.h>
-int test_adc;ADC_HandleTypeDef hadc1={ADC1,{16,1,0,0,0,0}};
+int test_adc;ADC_HandleTypeDef hadc1={ADC1,{16,2,0,0,0,0,1,1,1,1}};
 void *backgroundReqQueueHandle=(void*)1,*backgroundRespQueueHandle=(void*)2;
 static uint32_t now,raw,calibrations,adc_calls,max_delay,hold_until;
 static int read_error;
@@ -92,6 +92,9 @@ uint32_t HAL_ADC_GetValue(ADC_HandleTypeDef*a){(void)a;return raw;}
 int HAL_ADC_Stop(ADC_HandleTypeDef*a){(void)a;return 0;}
 void APP_Control_QueueText(const char *fmt,...){va_list a;va_start(a,fmt);vprintf(fmt,a);va_end(a);}
 void SVC_Param_Init(void){}
+void APP_Battery_Init(void){}
+void APP_Battery_Step(void){}
+void APP_Battery_TelemetryStep(void){}
 int SVC_Param_LoadFromFlash(void){return 0;}
 int SVC_Param_SavePendingToFlash(void){return 0;}
 int APP_FlashService_ReadDataFast(uint32_t a,uint8_t*b,uint32_t c){(void)a;(void)b;(void)c;return 0;}

@@ -60,8 +60,14 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     # Driver layer
     Driver/Src/drv_dshot.c
     Driver/Src/drv_current.c
+    Driver/Src/drv_battery.c
     BSP/Src/bsp_current.c
     App/Src/app_current.c
+    App/Src/app_battery.c
+    App/Src/app_battery_led.c
+    App/Src/app_battery_proto.c
+    App/Src/app_battery_telemetry.c
+    App/Src/app_diag_binary.c
     Driver/Src/drv_component_proto.c
     BSP/Src/bsp_component_catalog.c
     App/Src/app_components.c

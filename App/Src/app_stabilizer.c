@@ -22,6 +22,7 @@
  */
 
 #include "app_stabilizer.h"
+#include "app_battery.h"
 #include <math.h>
 #include <string.h>
 
@@ -467,7 +468,8 @@
     if ((stabilizer_rc_arm_latched == 0U) &&
         (stabilizer_rc_switch_seen_low != 0U) &&
         (stabilizer_rc_switch_prev_high == 0U) &&
-        (throttle_low != 0U)) {
+        (throttle_low != 0U) &&
+        (APP_Battery_CanArm() != 0U)) {
       stabilizer_rc_arm_latched = 1U;
     }
 
@@ -1606,6 +1608,8 @@ static void stabilizer_control_prepare(StabilizerContext *ctx,
      * 油门已收的正常状态会一路掉进最后的 else，把"没写机体模型"误报成"拨杆没打"。
      */
     frame->led_arm_block_reason = APP_LED_ARM_BLOCK_AIRFRAME;
+  } else if (APP_Battery_CanArm() == 0U) {
+    frame->led_arm_block_reason = APP_LED_ARM_BLOCK_BATTERY;
   } else if (frame->rc_armed == 0U) {
     if ((frame->rc_arm_switch_high != 0U) && (frame->rc_arm_throttle_low == 0U)) {
       frame->led_arm_block_reason = APP_LED_ARM_BLOCK_THROTTLE_HIGH;
@@ -1643,6 +1647,7 @@ static void stabilizer_control_prepare(StabilizerContext *ctx,
     status.acceptance_idle = (APP_Acceptance_IsActive() == 0U) ? 1U : 0U;
     status.published = 1U;
     status.now_ms = frame->now_ms;
+    status.battery_ok = APP_Battery_CanArm();
     stabilizer_arm_status = status;
   }
 }

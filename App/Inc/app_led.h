@@ -32,6 +32,7 @@ typedef enum {
      * DRV_Airframe_FirstInvalidName() 具名报出，不用数闪灯猜。
      */
     APP_LED_ARM_BLOCK_AIRFRAME = 7,
+    APP_LED_ARM_BLOCK_BATTERY = 8, /* Low, stale or unavailable battery voltage. */
 } APP_LED_ArmBlockReason;
 
 typedef enum {

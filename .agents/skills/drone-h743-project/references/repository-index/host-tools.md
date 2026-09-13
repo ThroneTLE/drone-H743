@@ -4,83 +4,83 @@
 
 Read this shard only when the task uses serial/TCP diagnostics, log analysis, identification, capture, calibration, or desktop UIs.
 
-Source snapshot: `0c5648af12c0`; aggregate snapshot: `316f1c4cca2b`. Covered files: 5380.
+Source snapshot: `8a9575c4b83e`; aggregate snapshot: `7df39d085084`. Covered files: 5385.
 
 | File/module or scope | Content outline | Key entry points / size |
 |---|---|---|
 | `tools/__init__.py` | Host-side tools for the STM32H743 drone project | — |
-| `tools/aiwb2_net_tool.py` | PC-side helper for Ai-WB2-12F network bring-up. This tool keeps the computer side simple while… | `env_int`, `local_ip_for`, `print_line`, `run_udp_server` (+8) |
-| `tools/aiwb2_tcp_loop_test.py` | End-to-end Ai-WB2 TCP transparent-mode loop test via CH340. This script treats the CH340 serial… | `env_int`, `read_idle`, `send_at`, `ensure_at_mode` (+5) |
-| `tools/attitude_ident_pid.py` | Analyze closed-loop attitude-identification FLOG CSVs and suggest PD gains. This tool is intent… | `SegmentFit`, `split_segments`, `clean_segment`, `uniform_signal` (+5) |
-| `tools/controller_cascade_analysis.py` | R-S5-1 evidence gate for same-recording controller cascade comparison. The tool deliberately re… | `inspect_candidate`, `build_report`, `main` |
-| `tools/decode_saleae_spi_csv.py` | Decode SPI bytes from a Saleae raw digital.csv export. Default mapping follows the current Sale… | `parse_args`, `load_rows`, `decode`, `bits_to_bytes` (+2) |
-| `tools/decoupling_survey.py` | Report which App/Services files still touch hardware directly. Three signals, all measured on c… | `strip_comments`, `strip_code`, `scan`, `main` |
-| `tools/drift_ab_check.py` | PIPELINE R-M3-2 · 静止漂移 A/B 采集与对比（只读）。 以 ~8Hz 轮询 `IMU?` 采集一段静止遥测，喂给 stationary_drift 分析器生成 Drift… | `collect`, `main` |
+| `tools/aiwb2_net_tool.py` | PC-side helper for Ai-WB2-12F network bring-up. This tool keeps the computer si… | `env_int`, `local_ip_for`, `print_line`, `run_udp_server` (+8) |
+| `tools/aiwb2_tcp_loop_test.py` | End-to-end Ai-WB2 TCP transparent-mode loop test via CH340. This script treats… | `env_int`, `read_idle`, `send_at`, `ensure_at_mode` (+5) |
+| `tools/attitude_ident_pid.py` | Analyze closed-loop attitude-identification FLOG CSVs and suggest PD gains. Thi… | `SegmentFit`, `split_segments`, `clean_segment`, `uniform_signal` (+5) |
+| `tools/controller_cascade_analysis.py` | R-S5-1 evidence gate for same-recording controller cascade comparison. The tool… | `inspect_candidate`, `build_report`, `main` |
+| `tools/decode_saleae_spi_csv.py` | Decode SPI bytes from a Saleae raw digital.csv export. Default mapping follows… | `parse_args`, `load_rows`, `decode`, `bits_to_bytes` (+2) |
+| `tools/decoupling_survey.py` | Report which App/Services files still touch hardware directly. Three signals, a… | `strip_comments`, `strip_code`, `scan`, `main` |
+| `tools/drift_ab_check.py` | PIPELINE R-M3-2 · 静止漂移 A/B 采集与对比（只读）。 以 ~8Hz 轮询 `IMU?` 采集一段静止遥测，喂给 stationary_d… | `collect`, `main` |
 | `tools/drone_tcp_panel.py` | Ground-station panel for the drone-H743 Ai-WB2 transparent link | `firmware_update_link_gate`, `firmware_update_snapshot_advisory`, `airframe_record_from_line`, `ident_record_from_line` (+5) |
-| `tools/elrs_link_diag.py` | ELRS / CRSF 收链路分层计数 —— 用 SWD 直读，不占串口、不复位飞控。 这些计数**不进任何命令回包**（作者裁决 2026-09-06）：能挂的那几个报告函数都被 `tes… | `resolve_symbols`, `clusters`, `read_words`, `sample` (+1) |
+| `tools/elrs_link_diag.py` | ELRS / CRSF 收链路分层计数 —— 用 SWD 直读，不占串口、不复位飞控。 这些计数**不进任何命令回包**（作者裁决 2026-09-06）：能… | `resolve_symbols`, `clusters`, `read_words`, `sample` (+1) |
 | `tools/esp8266_pwm_calibrator/.gitignore` | Host-side utility for .gitignore | — |
 | `tools/esp8266_pwm_calibrator/platformio.ini` | Host-side utility for platformio | — |
 | `tools/esp8266_pwm_calibrator/README.md` | ESP8266 PWM Calibrator | `Wiring`, `Build And Upload`, `Serial Protocol`, `GUI Workflow` (+3) |
 | `tools/esp8266_pwm_calibrator/src/main.cpp` | Host-side utility for main | — |
-| `tools/fit_motor_hammerstein.py` | Fit a motor Hammerstein model from thrust-identification CSV data. The model is: throttle/PWM -… | `Sample`, `StepFit`, `TauFit`, `PredictionMetrics` (+23) |
-| `tools/flash_diag_test.py` | Run drone-H743 RTOS/flash diagnostics over a noisy UART stream. The firmware may continuously p… | `CommandSpec`, `CheckResult`, `SerialTransport`, `LineReader` (+16) |
+| `tools/fit_motor_hammerstein.py` | Fit a motor Hammerstein model from thrust-identification CSV data. The model is… | `Sample`, `StepFit`, `TauFit`, `PredictionMetrics` (+23) |
+| `tools/flash_diag_test.py` | Run drone-H743 RTOS/flash diagnostics over a noisy UART stream. The firmware ma… | `CommandSpec`, `CheckResult`, `SerialTransport`, `LineReader` (+16) |
 | `tools/flash_stlink_gdb.ps1` | Host-side utility for flash stlink gdb | — |
 | `tools/flash_timing_analysis.py` | Calculate conservative flight-log throughput from real Flash timings | `page_program_operations`, `page_programs_per_sector`, `distribution`, `overhead_distribution` (+6) |
-| `tools/flash_timing_capture.py` | Capture GD25Q32 page/block and suspend/resume timings for R-M1-3. This is deliberately a measur… | `parse_args`, `main` |
+| `tools/flash_timing_capture.py` | Capture GD25Q32 page/block and suspend/resume timings for R-M1-3. This is delib… | `parse_args`, `main` |
 | `tools/flight_acceptance_v2.py` | Strict, evidence-only V2A flight-control acceptance engine | `AcceptanceStatus`, `ServoType`, `V2Stage`, `StageDefinition` (+17) |
 | `tools/flight_log_receive.py` | Receive FlightLog dumps from USART1 and convert them to bin/csv/json | `FlightLogError`, `ExportBegin`, `ExportBlock`, `ExportEnd` (+27) |
-| `tools/flight_log_rerun_replay.py` | 把 H743 飞行日志导出为 Rerun 现场回放。 坐标系契约（seam 5 具名标注 R-F5，逐文件选口径 R-F5b，2026-08-30） 本工具的回放几何固定为 **X前/Y右/… | `ReplaySegment`, `require_pandas`, `require_rerun`, `latest_csv_in` (+33) |
+| `tools/flight_log_rerun_replay.py` | 把 H743 飞行日志导出为 Rerun 现场回放。 坐标系契约（seam 5 具名标注 R-F5，逐文件选口径 R-F5b，2026-08-30） 本工具的… | `ReplaySegment`, `require_pandas`, `require_rerun`, `latest_csv_in` (+33) |
 | `tools/flight_log_sysid.py` | Reusable system-identification summaries for H743 flight-log CSV files | `ChannelStats`, `SegmentSummary`, `GainGroupSummary`, `LinearFit` (+41) |
 | `tools/flight_log_sysid_ui.py` | H743 飞行日志系统辨识的 Tkinter 图形界面。 | `format_cell`, `default_report_dir`, `translate_flag`, `translate_severity` (+5) |
 | `tools/flight_log_waveform_ui.py` | H743 飞行日志通道波形查看器。 | `ChannelStats`, `discover_csv_files`, `human_size`, `choose_time_column` (+10) |
 | `tools/flight_log_workbench.py` | H743 飞行日志 All-in-One 查看与 Rerun 回放工作台。 | `segment_label`, `available_preset_channels`, `make_rerun_wrapper_command`, `format_optional` (+5) |
-| `tools/flight_validation.py` | Read-only V0 flight-sensor validation algorithms. This module deliberately has no transport, pa… | `ValidationStatus`, `ValidationStage`, `StageDefinition`, `ValidationThresholds` (+24) |
-| `tools/flow_quality_probe.py` | 光流质量 vs 噪声扫描：为质量门限取值提供实测依据。 用法（传感器保持静止，真值速度恒为 0）： python tools/flow_quality_probe.py --seconds… | `parse_kv`, `collect`, `sigma_v_m_s`, `report` (+1) |
-| `tools/flow_velocity_filter_eval.py` | Evaluate optical-flow velocity robustness from H743 flight-log CSV files. 这个脚本用于对比旧的光流直通速度和当前固件… | `SeriesStats`, `ReplayResult`, `parse_float`, `parse_int` (+8) |
-| `tools/gesture_sign_check.py` | PIPELINE R-M2-2 · 粗符号手势验证（录制 + 自动分段判号，只读）。 作者按口令做三个小动作（机头下压回平 / 右翼下压回平 / 机头左转转回）， 本工具全程 ~12Hz 轮… | `record`, `segments`, `judge`, `main` |
-| `tools/ground_calibration.py` | Host-only analysis for ground calibration evidence. The functions in this module never write ta… | `GroundCalibrationError`, `FlowRangeSample`, `analyze_flow_zero`, `analyze_flow_axis` (+3) |
-| `tools/ground_station/drone_simulator.py` | Drone-H743 High-Fidelity Flight Telemetry Simulator & Test Server for Serial-Studio. Simulates:… | `DroneSimulator` |
+| `tools/flight_validation.py` | Read-only V0 flight-sensor validation algorithms. This module deliberately has… | `ValidationStatus`, `ValidationStage`, `StageDefinition`, `ValidationThresholds` (+24) |
+| `tools/flow_quality_probe.py` | 光流质量 vs 噪声扫描：为质量门限取值提供实测依据。 用法（传感器保持静止，真值速度恒为 0）： python tools/flow_quality_pro… | `parse_kv`, `collect`, `sigma_v_m_s`, `report` (+1) |
+| `tools/flow_velocity_filter_eval.py` | Evaluate optical-flow velocity robustness from H743 flight-log CSV files. 这个脚本用… | `SeriesStats`, `ReplayResult`, `parse_float`, `parse_int` (+8) |
+| `tools/gesture_sign_check.py` | PIPELINE R-M2-2 · 粗符号手势验证（录制 + 自动分段判号，只读）。 作者按口令做三个小动作（机头下压回平 / 右翼下压回平 / 机头左转转回… | `record`, `segments`, `judge`, `main` |
+| `tools/ground_calibration.py` | Host-only analysis for ground calibration evidence. The functions in this modul… | `GroundCalibrationError`, `FlowRangeSample`, `analyze_flow_zero`, `analyze_flow_axis` (+3) |
+| `tools/ground_station/drone_simulator.py` | Drone-H743 High-Fidelity Flight Telemetry Simulator & Test Server for Serial-St… | `DroneSimulator` |
 | `tools/ground_station/README.md` | Serial Studio / Qt 上位机资料 | `当前可确认的内容`, `当前不应假设的内容`, `Agent 使用历史信息的规则` |
 | `tools/ground_station/ss-api-schema-gpl3.json` | Host-side utility for ss api schema gpl3 | — |
 | `tools/imu_attitude_tuner.py` | Record IMU samples and analyse x-io Fusion rejection/recovery diagnostics | `OpenOcdTelnet`, `decode_message`, `resolve_symbol_address`, `quality_summary` (+4) |
-| `tools/imu_filter_report.py` | Visualise the vibration spectrum and the 1st- vs 2nd-order filter tradeoff. Reads the throttle-… | `biquad_coeffs`, `apply_biquad`, `apply_iir1`, `response_db` (+7) |
-| `tools/imu_metrology.py` | Host-only V1 IMU metrology and immutable calibration evidence. V0 answers the discrete frame qu… | `NumpyRequiredError`, `MetrologyStatus`, `CaptureMethod`, `MetrologyStage` (+25) |
-| `tools/imu_vibration_capture.py` | Capture full-rate raw IMU samples over USB CDC and analyse the vibration spectrum. Why this exi… | `crc32`, `parse_header`, `decode_samples`, `rotate_legacy_to_flu` (+11) |
-| `tools/imu_vibration_ui.py` | Point-and-click UI for full-rate raw IMU vibration captures. Pick a COM port, pick a test step,… | `VibrationCaptureUI`, `main` |
+| `tools/imu_filter_report.py` | Visualise the vibration spectrum and the 1st- vs 2nd-order filter tradeoff. Rea… | `biquad_coeffs`, `apply_biquad`, `apply_iir1`, `response_db` (+7) |
+| `tools/imu_metrology.py` | Host-only V1 IMU metrology and immutable calibration evidence. V0 answers the d… | `NumpyRequiredError`, `MetrologyStatus`, `CaptureMethod`, `MetrologyStage` (+25) |
+| `tools/imu_vibration_capture.py` | Capture full-rate raw IMU samples over USB CDC and analyse the vibration spectr… | `crc32`, `parse_header`, `decode_samples`, `rotate_legacy_to_flu` (+11) |
+| `tools/imu_vibration_ui.py` | Point-and-click UI for full-rate raw IMU vibration captures. Pick a COM port, p… | `VibrationCaptureUI`, `main` |
 | `tools/imucal_protocol.py` | Host-side encoder and guarded transport for the target IMUCAL protocol | `ImuCalProtocolError`, `EncodedV1Candidate`, `ImuCalTransactionResult`, `encode_v1_candidate` (+7) |
-| `tools/m1_baseline_check.py` | PIPELINE M1 底层与原始数据健康 · 实机基线采集器。 通过 USB CDC 裸文本命令通道（APP_Control_ProcessLine）以固定频率轮询 `IMU?`，在静止条… | `poll_once`, `run`, `main` |
-| `tools/micoair743v2_ioc_migrate.py` | 把 drone-H743.ioc 从自制 H743 板改写成 MicoAir743v2 板级配置。 为什么用脚本而不是手改 .ioc： .ioc 有八百多行、引脚/DMA/NVIC/时钟四处… | `escape_key`, `load`, `is_pin_key`, `rename_dma` (+2) |
+| `tools/m1_baseline_check.py` | PIPELINE M1 底层与原始数据健康 · 实机基线采集器。 通过 USB CDC 裸文本命令通道（APP_Control_ProcessLine）以固定… | `poll_once`, `run`, `main` |
+| `tools/micoair743v2_ioc_migrate.py` | 把 drone-H743.ioc 从自制 H743 板改写成 MicoAir743v2 板级配置。 为什么用脚本而不是手改 .ioc： .ioc 有八百多行、… | `escape_key`, `load`, `is_pin_key`, `rename_dma` (+2) |
 | `tools/organize_data.py` | Move canonical project data into sortable YYYY-MM-DD subdirectories | `CategoryRule`, `MovePlan`, `plan_category`, `build_plan` (+3) |
 | `tools/panel_lib/__init__.py` | Reusable implementation modules for :mod:`tools.drone_tcp_panel` | — |
-| `tools/panel_lib/airframe_model.py` | 机体模型的上位机侧描述：字段分层、单位，以及派生值的预览计算。 飞控是权威。这里只做两件本地的事： 1. **告诉界面每个字段该怎么摆** —— 哪些是拿秤和尺量得到的（基础层，直接可改），… | `AirframeField`, `compute_derived`, `first_missing` |
-| `tools/panel_lib/arm_banner.py` | 主页面顶部的解锁状态横幅。 为什么放在最上面而不是塞进某一页：解锁状态是**每一次上机都要先看一眼**的东西。 在这之前，飞控表达"为什么解不了锁"的唯一途径是 LED_3 闪几下——要数、… | `ArmBanner`, `mount_arm_banner`, `handle_arm_rsp` |
+| `tools/panel_lib/airframe_model.py` | 机体模型的上位机侧描述：字段分层、单位，以及派生值的预览计算。 飞控是权威。这里只做两件本地的事： 1. **告诉界面每个字段该怎么摆** —— 哪些是拿秤和… | `AirframeField`, `compute_derived`, `first_missing` |
+| `tools/panel_lib/arm_banner.py` | 主页面顶部的解锁状态横幅。 为什么放在最上面而不是塞进某一页：解锁状态是**每一次上机都要先看一眼**的东西。 在这之前，飞控表达"为什么解不了锁"的唯一途径… | `ArmBanner`, `mount_arm_banner`, `handle_arm_rsp` |
+| `tools/panel_lib/battery_monitor.py` | Strict battery diagnostic v1 decoder; integer wire units, no Tk or hardware kno… | `BatterySnapshot`, `decode_battery` |
+| `tools/panel_lib/bluetooth_channel.py` | Tk Bluetooth selection and cancellable discovery; uses the existing serial sess… | `channel_mode`, `BluetoothChannelMixin` |
+| `tools/panel_lib/bluetooth_devices.py` | Classic Bluetooth SPP discovery and identity matching. Enumeration never opens… | `bluetooth_address`, `BluetoothDevice`, `windows_bluetooth_records`, `collect_devices` (+2) |
 | `tools/panel_lib/cascade_editor.py` | Compact current-parameter editor; wire names come from the capability table | `build_cascade_editor` |
 | `tools/panel_lib/component_registry.py` | Bounded, request-correlated component snapshots. No Tk or hardware knowledge | `Field`, `Component`, `decode_record`, `RegistryTransaction` (+1) |
-| `tools/panel_lib/connection_state.py` | Host receive provenance; monotonic seconds, never target uptime or UI time. Boundary: immutable… | `ReceiveContext`, `ReceivedMessage`, `receive_context`, `snapshot_receipt` (+1) |
-| `tools/panel_lib/evidence.py` | V0 validation evidence persistence, restoration, and write guards | `validation_history_artifacts`, `validation_sample_from_snapshot`, `validation_samples_from_csv`, `signed_permutation_descriptor` (+1) |
-| `tools/panel_lib/link_activity.py` | Busy reasons shared with the existing keepalive policy | `keepalive_suppressed_reason` |
-| `tools/panel_qa/__init__.py` | R-S1-3（TK-00）：上位机无硬件 QA 测试基础。 改版报告的每一条问题都是在“真实 `DronePanel` + 模拟 transport”上复现的，可是 复现装置当时散在 `da… | — |
-| `tools/panel_qa/baseline_observations.py` | R-S1-3（TK-00）：改版报告 N01–N13 的**基线观测**脚本。 这不是回归测试，也**不会**被 pytest 收集。它回答的是一个只有运行才能回答的问题： 报告写在基线 `… | `run`, `main` |
-| `tools/panel_qa/fixtures.py` | 协议夹具：键名从固件源码的格式串里抽出来，不许手打。 SKILL.md「Validation」写死了这条：主机工具解析固件输出时，测试夹具必须钉在**真实 发出的格式**上，因为固件从没发过… | `firmware_format_keys`, `gps_status_line`, `gps_position_line`, `telemetry_schema_lines` (+1) |
-| `tools/panel_qa/geometry.py` | 叶页枚举与几何探针。 判据照抄改版报告 §2 的三条，一个字不改，这样“修好了”能和报告里的告警逐条对上： 1. **横向越界** —— 控件右边界越过窗口右边界。横向没有滚动条，越界就是*… | `LeafPage`, `ClippedControl`, `PageGeometryReport`, `collect_clipped_controls` (+1) |
-| `tools/panel_qa/guards.py` | 全局硬件护栏：物理串口 + 烧录/复位程序。 `tests/conftest.py` 已经挡住了 `serial.Serial.open`。那只挡住一条路：AGENTS.md 第 5 条说的… | `HardwareAccessAttempt`, `HardwareGuardLog`, `is_flash_tool_command`, `install_hardware_guards` (+1) |
-| `tools/panel_qa/harness.py` | 真实 `DronePanel` 的离线装置。 “真实”是重点。报告 §2 明确要求用真实页面方法而不是字符串断言，因为被测的东西是 布局和交互，源码搜出来的关键字证明不了按钮点不点得到。所以… | `park_offscreen`, `confirm_display_available`, `display_available`, `is_display_unavailable` (+3) |
-| `tools/panel_qa/isolation.py` | 隔离：用户状态、日志、data 输出、时钟，以及“没动过用户数据”的可核验指纹。 四件事分开： * `isolated_environment()` 把面板会写的每一个路径常量改指到临时根目… | `QaEnvironment`, `isolated_environment`, `redirected_dated_directory`, `directory_digest` (+2) |
+| `tools/panel_qa/__init__.py` | R-S1-3（TK-00）：上位机无硬件 QA 测试基础。 改版报告的每一条问题都是在“真实 `DronePanel` + 模拟 transport”上复现的… | — |
+| `tools/panel_qa/baseline_observations.py` | R-S1-3（TK-00）：改版报告 N01–N13 的**基线观测**脚本。 这不是回归测试，也**不会**被 pytest 收集。它回答的是一个只有运行才… | `run`, `main` |
+| `tools/panel_qa/fixtures.py` | 协议夹具：键名从固件源码的格式串里抽出来，不许手打。 SKILL.md「Validation」写死了这条：主机工具解析固件输出时，测试夹具必须钉在**真实 发… | `firmware_format_keys`, `gps_status_line`, `gps_position_line`, `telemetry_schema_lines` (+1) |
+| `tools/panel_qa/geometry.py` | 叶页枚举与几何探针。 判据照抄改版报告 §2 的三条，一个字不改，这样“修好了”能和报告里的告警逐条对上： 1. **横向越界** —— 控件右边界越过窗口右… | `LeafPage`, `ClippedControl`, `PageGeometryReport`, `collect_clipped_controls` (+1) |
+| `tools/panel_qa/guards.py` | 全局硬件护栏：物理串口 + 烧录/复位程序。 `tests/conftest.py` 已经挡住了 `serial.Serial.open`。那只挡住一条路：A… | `HardwareAccessAttempt`, `HardwareGuardLog`, `is_flash_tool_command`, `install_hardware_guards` (+1) |
+| `tools/panel_qa/harness.py` | 真实 `DronePanel` 的离线装置。 “真实”是重点。报告 §2 明确要求用真实页面方法而不是字符串断言，因为被测的东西是 布局和交互，源码搜出来的关… | `park_offscreen`, `confirm_display_available`, `display_available`, `is_display_unavailable` (+3) |
+| `tools/panel_qa/isolation.py` | 隔离：用户状态、日志、data 输出、时钟，以及“没动过用户数据”的可核验指纹。 四件事分开： * `isolated_environment()` 把面板会… | `QaEnvironment`, `isolated_environment`, `redirected_dated_directory`, `directory_digest` (+2) |
 | `tools/pressure_rs485_gui.py` | Tkinter GUI for the RS485 Modbus pressure/weight transmitter | `IdentPoint`, `IdentRun`, `LossRow`, `motor_name` (+12) |
-| `tools/pressure_rs485_test.py` | RS485 Modbus-RTU test tool for the 4-channel weighing/pressure transmitter. Manual notes used h… | `ReadResult`, `crc16_modbus`, `add_crc`, `check_crc` (+10) |
+| `tools/pressure_rs485_test.py` | RS485 Modbus-RTU test tool for the 4-channel weighing/pressure transmitter. Man… | `ReadResult`, `crc16_modbus`, `add_crc`, `check_crc` (+10) |
 | `tools/project_paths.py` | Canonical repository paths for captures, logs, calibration, and analysis data | `canonical_path`, `ensure_directory`, `date_from_name`, `dated_directory` (+2) |
 | `tools/README.md` | drone-H743 PC 工具 | `主工作台`, `日志页`, `数据位置`, `常用离线工具` (+2) |
-| `tools/rom_dfu.py` | Safe host-side helpers for STM32 ROM USB DFU firmware updates. V0 deliberately delegates device… | `RomDfuError`, `DfuToolNotFoundError`, `FirmwareImageError`, `DfuEnumerationTimeoutError` (+17) |
+| `tools/rom_dfu.py` | Safe host-side helpers for STM32 ROM USB DFU firmware updates. V0 deliberately… | `RomDfuError`, `DfuToolNotFoundError`, `FirmwareImageError`, `DfuEnumerationTimeoutError` (+17) |
 | `tools/run_flight_log_rerun_replay.ps1` | Host-side utility for run flight log rerun replay | — |
-| `tools/saleae_imu_spi_capture.py` | Capture the ICM42688 SPI bus with Saleae Logic 2 Automation. Default channel mapping follows th… | `parse_args`, `add_spi_analyzer`, `export_capture`, `load_digital_csv` (+2) |
-| `tools/servo_baud_sweep.py` | Sweep Zhongling bus-servo baud rates from a PC serial adapter. This is meant for recovering a s… | `parse_args`, `read_reply`, `write_command`, `send_at_baud` (+1) |
-| `tools/sim_xz/__init__.py` | Public simulator API; metadata imports must not initialize its runtime. The panel also runs as… | `__getattr__` |
+| `tools/saleae_imu_spi_capture.py` | Capture the ICM42688 SPI bus with Saleae Logic 2 Automation. Default channel ma… | `parse_args`, `add_spi_analyzer`, `export_capture`, `load_digital_csv` (+2) |
+| `tools/servo_baud_sweep.py` | Sweep Zhongling bus-servo baud rates from a PC serial adapter. This is meant fo… | `parse_args`, `read_reply`, `write_command`, `send_at_baud` (+1) |
+| `tools/sim_xz/__init__.py` | Public simulator API; metadata imports must not initialize its runtime. The pan… | `__getattr__` |
 | `tools/sim_xz/__main__.py` | Host-side utility for main | — |
 | `tools/sim_xz/actuators.py` | Delayed, asymmetric first-order actuator response; no control equations | `lag`, `TiltActuator` |
 | `tools/sim_xz/app.py` | Tk front end for the host-only simulator | `SimulationApp`, `main` |
 | `tools/sim_xz/assets/r_sim_ui_preview.svg` | Host-side utility for r sim ui preview | — |
 | `tools/sim_xz/clocking.py` | Accumulate wall time without assuming sub-millisecond OS timer precision | `SimulationClock` |
-| `tools/sim_xz/control_catalog.py` | Presentation catalog of the real C P-PID-P-PID and vertical P-PID gains. Ranges describe slider… | — |
+| `tools/sim_xz/control_catalog.py` | Presentation catalog of the real C P-PID-P-PID and vertical P-PID gains. Ranges… | — |
 | `tools/sim_xz/controller_bridge.py` | ctypes bridge to the real pure-C cascade and allocator | `ControllerOutput`, `build_controller_library`, `ControllerBridge` |
 | `tools/sim_xz/device.py` | TCP client device process. The existing ground station remains the server | `SimulatorDevice` |
 | `tools/sim_xz/experiments.py` | Approved R-SIM-1 experiments and A/B result production | `ExperimentKind`, `SimulationSample`, `ExperimentTargets`, `run_experiment` (+4) |
@@ -90,15 +90,15 @@ Source snapshot: `0c5648af12c0`; aggregate snapshot: `316f1c4cca2b`. Covered fil
 | `tools/sim_xz/README.md` | R-SIM-1 X/Z teaching simulator | `上位机一键启动（推荐）`, `手动启动（可选）`, `Start`, `Experiments` (+5) |
 | `tools/sim_xz/sim_controller_bridge.c` | Host-side utility for sim controller bridge | — |
 | `tools/sim_xz/sim_controller_bridge.h` | Host-side utility for sim controller bridge | — |
-| `tools/stationary_drift.py` | 静止漂移自检：飞机不动放 30~60 秒，看它自己以为发生了什么。 为什么需要这一项： 六面标定解出来的是"摆在六个姿态下读数对不对"，但用户真正在意的是"放着不动 时它会不会自己飘"。这两… | `DriftSample`, `DriftReport`, `analyze_drift`, `summarise` (+6) |
+| `tools/stationary_drift.py` | 静止漂移自检：飞机不动放 30~60 秒，看它自己以为发生了什么。 为什么需要这一项： 六面标定解出来的是"摆在六个姿态下读数对不对"，但用户真正在意的是"放… | `DriftSample`, `DriftReport`, `analyze_drift`, `summarise` (+6) |
 | `tools/synex_config_builder.py` | Inspect and build Synex Qt INI configurations without editing @Variant text | `inspect_config`, `finalize_config`, `roundtrip`, `main` |
-| `tools/tcp_bidirectional_test.py` | Bidirectional TCP <-> WiFi module <-> CH340 serial test. Topology: PC (TCP server :6666) <--WiF… | `ts`, `main` |
+| `tools/tcp_bidirectional_test.py` | Bidirectional TCP <-> WiFi module <-> CH340 serial test. Topology: PC (TCP serv… | `ts`, `main` |
 | `tools/thrust_ident_auto_viewer.py` | Viewer for thrust_ident_auto CSV files | `Dataset`, `default_label`, `load_dataset`, `ThrustAutoViewer` (+1) |
 | `tools/update_vofa_tabview.ps1` | Host-side utility for update vofa tabview | `Replace-UniqueToken` |
 | `tools/v1_metrology_session.py` | Resumable host-side V1 IMU metrology capture sessions | `measure_capture_rate`, `validate_capture_sample_rate`, `CapturePlan`, `minimum_samples` (+19) |
-| `tools/vofa_serial_capture.py` | Capture USART1/VOFA JustFloat telemetry from the flight controller. The firmware currently send… | `RunningStats`, `build_parser`, `safe_text`, `split_lines` (+3) |
-| `tools/vofa_udp_bridge.py` | Bridge Ai-WB2 UDP transparent mode to fixed VOFA UDP ports. Why this exists: - Ai-WB2 auto tran… | `log`, `main` |
-| `tools/ground_station/ bundled tree` | Bundled application/runtime distribution; inspect an exact file only when maintaining that bund… | 5239 files / 135.6 MiB / .svg×854, .h×841, .cpp×635, .md×459, .py×257 |
-| `tools/panel_lib/ bundled tree` | Bundled application/runtime distribution; inspect an exact file only when maintaining that bund… | 51 files / 699.9 KiB / .py×51 |
+| `tools/vofa_serial_capture.py` | Capture USART1/VOFA JustFloat telemetry from the flight controller. The firmwar… | `RunningStats`, `build_parser`, `safe_text`, `split_lines` (+3) |
+| `tools/vofa_udp_bridge.py` | Bridge Ai-WB2 UDP transparent mode to fixed VOFA UDP ports. Why this exists: -… | `log`, `main` |
+| `tools/ground_station/ bundled tree` | Bundled application/runtime distribution; inspect an exact file only when maint… | 5239 files / 135.6 MiB / .svg×854, .h×841, .cpp×635, .md×459, .py×257 |
+| `tools/panel_lib/ bundled tree` | Bundled application/runtime distribution; inspect an exact file only when maint… | 56 files / 772.3 KiB / .py×56 |
 
 Open the smallest listed tool or bundle landmark first; do not preload bundled runtimes.

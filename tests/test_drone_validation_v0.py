@@ -956,7 +956,7 @@ def test_panel_builds_the_reordered_v0_layout_without_connecting(
             app.sensor_notebook.tab(tab_id, "text")
             for tab_id in app.sensor_notebook.tabs()
         ]
-        assert sensor_labels == ["气压计", "IMU 监视（旧链）", "GPS / 磁力计", "光流", "电流计"]
+        assert sensor_labels == ["气压计", "IMU 监视（旧链）", "GPS / 磁力计", "光流", "电流计", "电池电压"]
         assert "气压计" not in labels
         assert "IMU 监视（旧链）" not in labels
         assert "GPS / 磁力计" not in labels

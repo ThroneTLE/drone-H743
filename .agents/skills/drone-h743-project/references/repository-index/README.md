@@ -2,7 +2,7 @@
 
 # drone-H743 Repository Index
 
-Snapshot: `076725ea29f4`. Covered non-index working files: 7813. Scope: Git-tracked plus non-ignored untracked files; ignored build outputs, caches, and local logs are intentionally excluded.
+Snapshot: `9948b5db23c7`. Covered non-index working files: 7854. Scope: Git-tracked plus non-ignored untracked files; ignored build outputs, caches, and local logs are intentionally excluded.
 
 ## Use this index
 
@@ -17,13 +17,13 @@ Freshness check: `python .agents/skills/drone-h743-project/scripts/update_reposi
 
 | Read this shard | When it matches | Covered files |
 |---|---|---:|
-| [firmware-app-services.md](firmware-app-services.md) | App behavior, tasks, control, commands, diagnostics, application services | 131 |
-| [firmware-driver-bsp.md](firmware-driver-bsp.md) | Device/algorithm drivers, buses, GPIO, DMA callbacks, cache or board binding | 121 |
+| [firmware-app-services.md](firmware-app-services.md) | App behavior, tasks, control, commands, diagnostics, application services | 138 |
+| [firmware-driver-bsp.md](firmware-driver-bsp.md) | Device/algorithm drivers, buses, GPIO, DMA callbacks, cache or board binding | 123 |
 | [platform-build.md](platform-build.md) | CubeMX/Core, pins/clocks/peripherals, RTOS objects, linker/startup, USB, build, HAL/vendor internals | 1449 |
-| [tests-firmware.md](tests-firmware.md) | Firmware regression/contract coverage and focused test selection | 152 |
+| [tests-firmware.md](tests-firmware.md) | Firmware regression/contract coverage and focused test selection | 159 |
 | [tests-host.md](tests-host.md) | Ground-station/tooling regression coverage | 38 |
-| [host-tools.md](host-tools.md) | Serial/TCP tools, capture, calibration, identification, log analysis and desktop UIs | 5380 |
-| [docs-data.md](docs-data.md) | Architecture/controller documents, agent references, datasets, captures and experimental evidence | 542 |
+| [host-tools.md](host-tools.md) | Serial/TCP tools, capture, calibration, identification, log analysis and desktop UIs | 5385 |
+| [docs-data.md](docs-data.md) | Architecture/controller documents, agent references, datasets, captures and experimental evidence | 562 |
 
 ## Ownership map
 

@@ -1,0 +1,25 @@
+[1/12] Building C object CMakeFiles/drone-H743.dir/App/Src/app_battery.c.obj
+[2/12] Building C object CMakeFiles/drone-H743.dir/App/Src/app_cmd_fallback.c.obj
+[3/12] Building C object CMakeFiles/drone-H743.dir/App/Src/app_current.c.obj
+[4/12] Building C object CMakeFiles/drone-H743.dir/App/Src/app_battery_telemetry.c.obj
+[5/12] Building C object CMakeFiles/drone-H743.dir/App/Src/app_battery_proto.c.obj
+[6/12] Building C object CMakeFiles/drone-H743.dir/App/Src/app_elrs.c.obj
+[7/12] Building C object CMakeFiles/drone-H743.dir/BSP/Src/bsp_current.c.obj
+[8/12] Building C object CMakeFiles/drone-H743.dir/App/Src/app_message.c.obj
+[9/12] Building C object CMakeFiles/drone-H743.dir/App/Src/app_components_board.c.obj
+[10/12] Building C object CMakeFiles/drone-H743.dir/App/Src/app_uart.c.obj
+[11/12] Building C object CMakeFiles/drone-H743.dir/App/Src/app_stabilizer.c.obj
+[12/12] Linking C executable drone-H743.elf
+Memory region         Used Size  Region Size  %age Used
+         DTCMRAM:      110784 B       128 KB     84.52%
+
+             RAM:        354 KB       512 KB     69.14%
+
+          RAM_D2:       25024 B       288 KB      8.49%
+
+          RAM_D3:           0 B        64 KB      0.00%
+
+         ITCMRAM:           0 B        64 KB      0.00%
+
+           FLASH:      480952 B      1408 KB     33.36%
+

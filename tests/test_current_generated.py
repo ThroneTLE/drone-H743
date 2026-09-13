@@ -23,10 +23,12 @@ def test_generated_adc_matches_the_current_driver():
     assert (ROOT/"Core/Src/adc.c").exists(), "CubeMX must generate ADC1 before integration"
     adc=read("Core/Src/adc.c")
     for text in ("hadc1.Instance = ADC1;", "hadc1.Init.Resolution = ADC_RESOLUTION_16B;",
-                 "hadc1.Init.NbrOfConversion = 1;", "hadc1.Init.ContinuousConvMode = DISABLE;",
+                 "hadc1.Init.NbrOfConversion = 2;", "hadc1.Init.ContinuousConvMode = DISABLE;",
+                 "hadc1.Init.DiscontinuousConvMode = ENABLE;", "hadc1.Init.NbrOfDiscConversion = 1;",
                  "sConfig.Channel = ADC_CHANNEL_11;", "sConfig.SamplingTime = ADC_SAMPLETIME_387CYCLES_5;",
                  "hadc1.Init.ConversionDataManagement = ADC_CONVERSIONDATA_DR;"):
         assert text in adc, text
+    assert "sConfig.Channel = ADC_CHANNEL_10;" in adc and "GPIO_PIN_0|GPIO_PIN_1" in adc
     assert "hadc1.Init.OversamplingMode = DISABLE;" in adc
     assert "hadc1.Init.LeftBitShift = ADC_LEFTBITSHIFT_NONE;" in adc
     conf=re.sub(r"/\*.*?\*/", "", read("Core/Inc/stm32h7xx_hal_conf.h"),flags=re.S)

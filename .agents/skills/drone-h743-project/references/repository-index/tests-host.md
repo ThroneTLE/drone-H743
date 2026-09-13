@@ -4,28 +4,28 @@
 
 Read this shard only when you need existing ground-station/tooling coverage or must choose focused regression tests.
 
-Source snapshot: `4ea3fcf61966`. Indexed files: 38.
+Source snapshot: `48d3cd834c0f`. Indexed files: 38.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
-| `tests/test_dashboard_layout.py` | R-T1-5：工作台布局模型（`panel_lib/dashboard/layout.py`）。 布局规则是纯数据变换，所以这一份**不需要显示环境**：吸附、越界钳制、重叠拒绝、 序列化往… | `test_clamp_pulls_a_tile_back_into_the_grid` (+18) |
-| `tests/test_dashboard_page.py` | R-T1-5：“状态监视”工作台页（`panel_lib/pages/dashboard.py` + `dashboard/`）。 全部用真实的 `DronePanel()` + FakeT… | `test_the_workbench_is_the_first_tab_and_selected_by_default` (+62) |
-| `tests/test_dashboard_record_service.py` | R-T1-6（TK-05）：录制的文件完整性、后台写入与失败恢复。 对应改版报告 N10–N13。每一条都先在 `tools/panel_qa/baseline_observations.p… | `test_a_second_recording_in_the_same_second_does_not_destroy_the_first` (+22) |
-| `tests/test_dashboard_resize.py` | 状态监视工作台的窗口 resize 合并器。 这个层不能靠肉眼判“似乎顺了一点”：Tk 拖动窗口时会连续发出大量 Configure 事件。这里用无 Tk 的假调度器钉住三件事：同一个 12… | `test_resize_skips_pixel_events_that_do_not_change_a_grid_cell` (+2) |
-| `tests/test_dashboard_workspace_tree.py` | 仿真的三个 P—PID 参数页是"控制器调参"的子视图，不是和它平级的工作区。 作者看到的界面是这样的（截图）： 状态监视 ○飞行监控 ○控制器调参 ○水平平动·P—PID ○高度·P—PI… | `test_simulation_workspaces_declare_the_tuning_workspace_as_parent` (+13) |
+| `tests/test_dashboard_layout.py` | R-T1-5：工作台布局模型（`panel_lib/dashboard/layout.py`）。 布局规则是纯数据变换，所以这一份**不需要显示环境**：吸附… | `test_clamp_pulls_a_tile_back_into_the_grid` (+18) |
+| `tests/test_dashboard_page.py` | R-T1-5：“状态监视”工作台页（`panel_lib/pages/dashboard.py` + `dashboard/`）。 全部用真实的 `Drone… | `test_the_workbench_is_the_first_tab_and_selected_by_default` (+62) |
+| `tests/test_dashboard_record_service.py` | R-T1-6（TK-05）：录制的文件完整性、后台写入与失败恢复。 对应改版报告 N10–N13。每一条都先在 `tools/panel_qa/baselin… | `test_a_second_recording_in_the_same_second_does_not_destroy_the_first` (+22) |
+| `tests/test_dashboard_resize.py` | 状态监视工作台的窗口 resize 合并器。 这个层不能靠肉眼判“似乎顺了一点”：Tk 拖动窗口时会连续发出大量 Configure 事件。这里用无 Tk 的… | `test_resize_skips_pixel_events_that_do_not_change_a_grid_cell` (+2) |
+| `tests/test_dashboard_workspace_tree.py` | 仿真的三个 P—PID 参数页是"控制器调参"的子视图，不是和它平级的工作区。 作者看到的界面是这样的（截图）： 状态监视 ○飞行监控 ○控制器调参 ○水平平… | `test_simulation_workspaces_declare_the_tuning_workspace_as_parent` (+13) |
 | `tests/test_flight_log_rerun_replay.py` | — | `test_latest_csv_and_segment_helpers` (+6) |
 | `tests/test_ground_calibration.py` | — | `test_calibration_navigation_uses_function_names_instead_of_version_codes` (+20) |
 | `tests/test_log_pages.py` | Existing log decoders/analysis through the new embedded Tk workspace | `test_import_waveform_and_analysis_reuse_existing_tools` (+8) |
 | `tests/test_log_pages_geometry.py` | Three sizes x three simulated DPI scales, using the real panel and pages | `test_log_controls_remain_reachable` |
-| `tests/test_panel_autoconnect.py` | 记住上次的连接并在启动时自动连回去。 关键点是**按什么认板子**：Windows 给 USB 串口分配的 COM 号会变（本机就出现过同一块 飞控在 COM30/31/32 之间跳），而… | `test_fingerprint_is_stable_across_com_renumbering` (+15) |
+| `tests/test_panel_autoconnect.py` | 记住上次的连接并在启动时自动连回去。 关键点是**按什么认板子**：Windows 给 USB 串口分配的 COM 号会变（本机就出现过同一块 飞控在 COM… | `test_fingerprint_is_stable_across_com_renumbering` (+15) |
 | `tests/test_panel_connection_reliability.py` | H1/H2/H4: real transport and Tk boundaries with no physical device access | `test_slow_io_does_not_block_ui_queries_cancel_or_stop` (+18) |
 | `tests/test_panel_d_data_contract.py` | D 线 TK-03/TK-04 contracts: values must say what state they represent | `test_d_modules_are_imported_in_all_three_panel_contexts` (+16) |
 | `tests/test_panel_direct_script_startup.py` | Reproduce Python's script-path layout, without repository-root PYTHONPATH | `test_direct_script_builds_panel_from_an_unrelated_working_directory` (+2) |
 | `tests/test_panel_drift_page_extraction.py` | S6 stationary-drift page extraction ownership and compatibility contract | `test_drift_page_mixin_owns_only_its_builder_and_handlers` (+4) |
-| `tests/test_panel_flow_page_extraction.py` | R-S6-1 增量11（收官）：光流与测距页搬进 panel_lib/pages/flow_ranging.py。 搬家的判据只有一条——行为零变更。这里用三种独立方式钉： 1. 逐方法 A… | `test_flow_mixin_owns_every_moved_method_with_the_pre_move_ast` (+4) |
+| `tests/test_panel_flow_page_extraction.py` | R-S6-1 增量11（收官）：光流与测距页搬进 panel_lib/pages/flow_ranging.py。 搬家的判据只有一条——行为零变更。这里用三… | `test_flow_mixin_owns_every_moved_method_with_the_pre_move_ast` (+4) |
 | `tests/test_panel_proto_extraction.py` | S6 panel protocol extraction ownership and compatibility contract | `test_proto_module_owns_the_protocol_table_and_parsing_helpers` (+3) |
-| `tests/test_panel_qa_harness.py` | R-S1-3（TK-00）：无硬件 QA 测试基础的**装置契约**。 这份文件只证明装置本身可信，**不证明产品正确**。区别很重要：报告里 N01–N13 那些 缺陷在这里一条都不会被断… | `test_opening_a_physical_serial_port_fails_immediately` (+20) |
-| `tests/test_panel_qa_review_regressions.py` | R-S1-3 返修：关闭 2026-09-04 软件审核的 Q1~Q6。 审核对象是 `3269a7fe`。六条的共同点是：**装置声称的保证比它实际做到的强**，而且原来 那批测试恰好都绕… | `test_every_data_path_constant_is_redirected` (+16) |
+| `tests/test_panel_qa_harness.py` | R-S1-3（TK-00）：无硬件 QA 测试基础的**装置契约**。 这份文件只证明装置本身可信，**不证明产品正确**。区别很重要：报告里 N01–N13… | `test_opening_a_physical_serial_port_fails_immediately` (+20) |
+| `tests/test_panel_qa_review_regressions.py` | R-S1-3 返修：关闭 2026-09-04 软件审核的 Q1~Q6。 审核对象是 `3269a7fe`。六条的共同点是：**装置声称的保证比它实际做到的强… | `test_every_data_path_constant_is_redirected` (+16) |
 | `tests/test_panel_rc_wizard_page_extraction.py` | S6 RC page extraction contract | `test_method_ownership` (+6) |
 | `tests/test_panel_state_extraction.py` | S6 panel-state persistence extraction ownership and compatibility contract | `test_state_module_owns_persistence_and_logging_implementation` (+3) |
 | `tests/test_panel_transport_extraction.py` | S6 panel transport extraction ownership and compatibility contract | `test_transport_module_owns_moved_definitions` (+2) |
@@ -36,7 +36,7 @@ Source snapshot: `4ea3fcf61966`. Indexed files: 38.
 | `tests/test_simulation_controller_bridge.py` | — | `test_bridge_exposes_real_runtime_parameters` (+2) |
 | `tests/test_simulation_experiments.py` | — | `test_three_approved_experiments_produce_five_state_channels` (+1) |
 | `tests/test_simulation_full_cascade.py` | The simulator exposes and executes the actual planar P-PID-P-PID cascade | `test_full_gains_are_bound_to_existing_c_parameters_and_visible` (+4) |
-| `tests/test_simulation_isolation.py` | 仿真调参不许污染真机调参。 风险是具体的：仿真的调参滑块绑 `sim_*` 通道，而 tools/sim_xz/control_catalog.py 第 6 列把它们一一映射到真实的 `co… | `test_simulation_workspaces_are_marked_ephemeral` (+6) |
+| `tests/test_simulation_isolation.py` | 仿真调参不许污染真机调参。 风险是具体的：仿真的调参滑块绑 `sim_*` 通道，而 tools/sim_xz/control_catalog.py 第 6… | `test_simulation_workspaces_are_marked_ephemeral` (+6) |
 | `tests/test_simulation_launcher.py` | Actual panel startup, loopback child lifecycle, and no hardware switching | `test_current_quick_editor_roundtrips_all_24_gains_over_real_tcp` (+5) |
 | `tests/test_simulation_physics.py` | — | `test_hover_does_not_accumulate_vertical_acceleration` (+4) |
 | `tests/test_simulation_protocol.py` | — | `test_frame_decoder_accepts_fragmented_real_protocol_frame` (+4) |
@@ -44,7 +44,7 @@ Source snapshot: `4ea3fcf61966`. Indexed files: 38.
 | `tests/test_simulation_session_reset.py` | Stopping a simulator must not leave its samples in the next session | `test_stopping_simulator_clears_its_telemetry_session` |
 | `tests/test_simulation_tcp.py` | — | `test_simulator_is_tcp_client_and_answers_caps_on_loopback` (+3) |
 | `tests/test_simulation_ui_contract.py` | Exercise actual Tk views rather than checking widget-name strings | `test_controls_and_five_chart_rows_fit` (+4) |
-| `tests/test_tk_review_regressions.py` | Regressions for the V/D-line review findings (R-S1-4 … R-S1-7). Every test here exists because… | `test_hovering_a_viewport_does_not_steal_focus_from_an_entry` (+11) |
+| `tests/test_tk_review_regressions.py` | Regressions for the V/D-line review findings (R-S1-4 … R-S1-7). Every test here… | `test_hovering_a_viewport_does_not_steal_focus_from_an_entry` (+11) |
 | `tests/test_tk_v_revamp.py` | V 线 TK-01/TK-02 contracts against the real offline DronePanel | `test_theme_is_global_semantic_and_contrasted` (+4) |
 
 Open the smallest listed interface first (normally a header or test), then its implementation only if needed.

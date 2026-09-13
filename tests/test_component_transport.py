@@ -61,6 +61,7 @@ int main(void){
     for directory in ('App/Inc','BSP/Inc','Driver/Inc','Services/Inc'):
         command+=['-I',str(ROOT/directory)]
     command+=[str(tmp_path/'test.c'),str(ROOT/'App/Src/app_components_transport.c'),
+              str(ROOT/'App/Src/app_diag_binary.c'),
               str(ROOT/'App/Src/app_proto.c'),'-o',str(tmp_path/'test.exe')]
     result=subprocess.run(command,capture_output=True,text=True)
     assert result.returncode==0,result.stdout+result.stderr

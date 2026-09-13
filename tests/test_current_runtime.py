@@ -9,13 +9,16 @@ ADC_STUB=r"""
 #ifndef TEST_CURRENT_ADC_H
 #define TEST_CURRENT_ADC_H
 #include <stdint.h>
-typedef struct { uint32_t Resolution,NbrOfConversion,ContinuousConvMode,ConversionDataManagement,LeftBitShift,OversamplingMode; } ADC_InitTypeDef;
+typedef struct { uint32_t Resolution,NbrOfConversion,ContinuousConvMode,ConversionDataManagement,LeftBitShift,OversamplingMode,ScanConvMode,DiscontinuousConvMode,NbrOfDiscConversion,EOCSelection; } ADC_InitTypeDef;
 typedef struct { void *Instance; ADC_InitTypeDef Init; } ADC_HandleTypeDef;
 extern ADC_HandleTypeDef hadc1;
 extern int test_adc;
 #define ADC1 (&test_adc)
 #define ADC_RESOLUTION_16B 16U
 #define DISABLE 0U
+#define ENABLE 1U
+#define ADC_SCAN_ENABLE 1U
+#define ADC_EOC_SINGLE_CONV 1U
 #define ADC_CONVERSIONDATA_DR 0U
 #define ADC_LEFTBITSHIFT_NONE 0U
 #define ADC_CALIB_OFFSET_LINEARITY 1U
@@ -42,7 +45,7 @@ HARNESS=r"""
 #include <stdarg.h>
 #include <string.h>
 int test_adc;
-ADC_HandleTypeDef hadc1={ADC1,{16,1,0,0,0,0}};
+ADC_HandleTypeDef hadc1={ADC1,{16,2,0,0,0,0,1,1,1,1}};
 static uint32_t raw=12000,now,starts,stops,error;
 static int calibration_rc,start_rc,poll_rc,stop_rc;
 static char report[512];
@@ -63,10 +66,10 @@ int main(void){
     APP_Current_Init();APP_Current_GetSnapshot(&s);CHECK(!s.reading.valid && s.age_ms==UINT32_MAX);
     APP_Current_Step();APP_Current_GetSnapshot(&s);
     CHECK(s.reading.valid && s.samples==1 && !s.reading.calibrated && s.reading.raw==12000);
-    CHECK(starts==1 && stops==1);
-    APP_Current_Step();CHECK(starts==1);
-    now=19;APP_Current_Step();CHECK(starts==1);
-    now=20;APP_Current_Step();CHECK(starts==2);
+    CHECK(starts==2 && stops==1);
+    APP_Current_Step();CHECK(starts==2);
+    now=19;APP_Current_Step();CHECK(starts==2);
+    now=20;APP_Current_Step();CHECK(starts==4);
     now=271;APP_Current_GetSnapshot(&s);CHECK(!s.reading.valid && isnan(s.reading.current_a) && s.age_ms==251);
     APP_Current_Report();CHECK(strstr(report,"valid=0") && strstr(report,"calibrated=0") && strstr(report,"source=AM32_55A_CURR"));
     poll_rc=HAL_TIMEOUT;APP_Current_Step();APP_Current_GetSnapshot(&s);

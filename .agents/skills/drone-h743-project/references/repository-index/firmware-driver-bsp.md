@@ -4,7 +4,7 @@
 
 Read this shard only when the task touches device protocols, reusable algorithms, buses, GPIO, DMA callbacks, cache hooks, or board bindings.
 
-Source snapshot: `e3f175bcf8e8`. Indexed files: 121.
+Source snapshot: `ad7489dc04bc`. Indexed files: 123.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
@@ -12,6 +12,7 @@ Source snapshot: `e3f175bcf8e8`. Indexed files: 121.
 | `Driver/Inc/drv_attitude_control.h`<br>`Driver/Src/drv_attitude_control.c` | Reusable device or algorithm driver for attitude control | `DRV_AttitudeControl_Step` |
 | `Driver/Inc/drv_attitude_fusion.h`<br>`Driver/Src/drv_attitude_fusion.c` | Reusable device or algorithm driver for attitude fusion | `DRV_AttitudeFusion_Init`, `DRV_AttitudeFusion_InitForConvention`, `DRV_AttitudeFusion_Update`, `DRV_AttitudeFusion_GetOutput` |
 | `Driver/Inc/drv_baro.h`<br>`Driver/Src/drv_baro.c` | Reusable device or algorithm driver for baro | `DRV_BARO_Init`, `DRV_BARO_ReadId`, `DRV_BARO_ReadIdTxRx`, `DRV_BARO_ReadRegister` (+2) |
+| `Driver/Inc/drv_battery.h`<br>`Driver/Src/drv_battery.c` | Reusable device or algorithm driver for battery | `DRV_Battery_Init`, `DRV_Battery_Configure`, `DRV_Battery_Update`, `DRV_Battery_IsFresh` (+1) |
 | `Driver/Inc/drv_bmi088.h`<br>`Driver/Src/drv_bmi088.c` | Reusable device or algorithm driver for bmi088 | `DRV_BMI088_GetOps`, `DRV_BMI088_Probe`, `DRV_BMI088_Init`, `DRV_BMI088_ReadRaw` (+2) |
 | `Driver/Inc/drv_bmi088_tables.h`<br>`Driver/Src/drv_bmi088_tables.c` | Reusable device or algorithm driver for bmi088 tables | `DRV_BMI088_AccelRangeCode`, `DRV_BMI088_AccelLsbPerG`, `DRV_BMI088_GyroRangeCode`, `DRV_BMI088_GyroLsbPerDps` (+6) |
 | `Driver/Inc/drv_bmi270.h`<br>`Driver/Src/drv_bmi270.c` | Reusable device or algorithm driver for bmi270 | `DRV_BMI270_GetOps`, `DRV_BMI270_Probe`, `DRV_BMI270_Init`, `DRV_BMI270_ReadRaw` (+2) |
@@ -50,7 +51,7 @@ Source snapshot: `e3f175bcf8e8`. Indexed files: 121.
 | `BSP/Inc/bsp_cache.h`<br>`BSP/Src/bsp_cache.c` | Board resource binding for cache | `BSP_Cache_Enable`, `BSP_Cache_Disable`, `BSP_Cache_AlignDown32`, `BSP_Cache_AlignedSize32` (+2) |
 | `BSP/Inc/bsp_component_catalog.h`<br>`BSP/Src/bsp_component_catalog.c` | Board resource binding for component catalog | `BSP_Component_Interface` |
 | `BSP/Inc/bsp_critical.h`<br>`BSP/Src/bsp_critical.c` | Board resource binding for critical | `BSP_Critical_Enter`, `BSP_Critical_Exit`, `BSP_Critical_MemoryBarrier` |
-| `BSP/Inc/bsp_current.h`<br>`BSP/Src/bsp_current.c` | Board resource binding for current | `BSP_Current_Init`, `BSP_Current_Read` |
+| `BSP/Inc/bsp_current.h`<br>`BSP/Src/bsp_current.c` | Board resource binding for current | `BSP_Current_Init`, `BSP_Current_Read`, `BSP_Current_GetVoltageSample` |
 | `BSP/Inc/bsp_dshot.h`<br>`BSP/Src/bsp_dshot.c` | Board resource binding for dshot | `BSP_DShot_Init`, `BSP_DShot_Submit`, `BSP_DShot_Disable`, `BSP_DShot_GetSnapshot` |
 | `BSP/Inc/bsp_esc_protocol.h` | Board resource binding for esc protocol | — |
 | `BSP/Inc/bsp_flash_bus.h`<br>`BSP/Src/bsp_flash_bus.c` | Board resource binding for flash bus | `BSP_FlashBus_GetBus`, `BSP_FlashBus_Acquire`, `BSP_FlashBus_Release`, `BSP_FlashBus_RegisterDmaDevice` (+1) |

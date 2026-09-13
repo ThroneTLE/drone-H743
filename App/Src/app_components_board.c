@@ -1,6 +1,7 @@
 /* Firmware-owned registrations. The host knows neither this list nor chip names. */
 #include "app_components.h"
 #include "app_baro.h"
+#include "app_battery.h"
 #include "app_current.h"
 #include "app_flash_service.h"
 #include "app_gps.h"
@@ -180,6 +181,19 @@ static void gps(DRV_ComponentRecord *r)
     r->stage=s.initialized?"waiting / receiving":"initialization";
     integer(r,"satellites","",s.num_sv,0,s.bytes!=0);integer(r,"fix_valid","",s.valid_fix,0,1);
 }
+static void battery(DRV_ComponentRecord *r)
+{
+    APP_BatterySnapshot s;APP_Battery_GetSnapshot(&s);
+    identity(r,DRV_COMPONENT_BATTERY,"电池电压","Battery pack",0);
+    r->code=s.state.adc_status;r->age_ms=s.age_ms;r->samples=s.state.samples;
+    r->state=s.can_arm?DRV_COMPONENT_READY:DRV_COMPONENT_FAULT;
+    r->stage=!s.state.valid?"voltage unavailable":(s.state.low?"low voltage":"voltage ready");
+    r->note="Nominal divider; average cell voltage; pre-arm gate only";
+    number(r,"voltage","V",s.state.voltage_mv*0.001f,s.state.valid);
+    integer(r,"cells","",s.state.config.cells,0,1);
+    integer(r,"low_per_cell","mV",s.state.config.low_cell_mv,0,1);
+    integer(r,"can_arm","",s.can_arm,0,1);
+}
 void APP_Components_RegisterBoard(void)
 {
     (void)APP_Components_Register(DRV_COMPONENT_IMU,imu);
@@ -187,6 +201,7 @@ void APP_Components_RegisterBoard(void)
     (void)APP_Components_Register(DRV_COMPONENT_MAG,mag);
     (void)APP_Components_Register(DRV_COMPONENT_FLOW,flow);
     (void)APP_Components_Register(DRV_COMPONENT_CURRENT,current);
+    (void)APP_Components_Register(DRV_COMPONENT_BATTERY,battery);
     (void)APP_Components_Register(DRV_COMPONENT_PARAMS,params);
     (void)APP_Components_Register(DRV_COMPONENT_LOG,logs);
     (void)APP_Components_Register(DRV_COMPONENT_ESC,esc);

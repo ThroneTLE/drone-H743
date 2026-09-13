@@ -7,6 +7,7 @@ from .pages.airframe import mount_airframe
 from .pages.logs import mount_logs
 from .pages.simulation import mount_simulation
 from .pages.current_monitor import mount_current
+from .pages.battery import mount_battery
 
 
 def build_ui(self):
@@ -55,6 +56,7 @@ def build_ui(self):
     gps_scroll = VerticalScrolledFrame(self.sensor_notebook)
     flow_sensor_scroll = VerticalScrolledFrame(self.sensor_notebook)
     current_scroll = VerticalScrolledFrame(self.sensor_notebook)
+    battery_scroll = VerticalScrolledFrame(self.sensor_notebook)
     ident_scroll = VerticalScrolledFrame(self.notebook)
     params_scroll = VerticalScrolledFrame(self.notebook)
     airframe_scroll = VerticalScrolledFrame(self.notebook)
@@ -79,6 +81,7 @@ def build_ui(self):
     self.sensor_group_tab = sensors
     self.flow_sensor_tab = flow_sensor_scroll
     self.current_tab = current_scroll
+    self.battery_tab = battery_scroll
     self.validation_tab = validation_scroll
     self.v1_tab = metrology_scroll
     self.rc_tab = rc_scroll
@@ -106,6 +109,7 @@ def build_ui(self):
     self.sensor_notebook.add(gps_scroll, text="GPS / 磁力计")
     self.sensor_notebook.add(flow_sensor_scroll, text="光流")
     self.sensor_notebook.add(current_scroll, text="电流计")
+    self.sensor_notebook.add(battery_scroll, text="电池电压")
     self.notebook.add(servos_view, text="维护 · 舵机调试")
     self.notebook.add(params_scroll, text="参数 / PID")
     self.notebook.add(airframe_scroll, text="机体模型")
@@ -127,6 +131,7 @@ def build_ui(self):
     self._build_gps_page(gps)
     self._build_sensor_flow_page(flow_sensor)
     mount_current(self, current_scroll.content)
+    mount_battery(self, battery_scroll.content)
     self._build_ident_page(ident)
     self._build_params_page(params)
     mount_airframe(self, airframe)

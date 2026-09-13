@@ -4,7 +4,7 @@
 
 Read this shard only when the task needs architecture rationale, controller math, historical evidence, captures, datasets, or agent-support documentation.
 
-Document snapshot: `00da1a7efc72`; aggregate snapshot: `520135912c8b`. Covered files: 542.
+Document snapshot: `1816ecb9eec3`; aggregate snapshot: `db02395633b2`. Covered files: 562.
 
 ## Documents and agent support
 
@@ -30,6 +30,8 @@ Document snapshot: `00da1a7efc72`; aggregate snapshot: `520135912c8b`. Covered f
 | `.claude/skills/drone-h743-project/SKILL.md` | drone-H743 Project Skill (route) | — |
 | `.codex/config.toml` | Repository-local Codex configuration | — |
 | `data/README.md` | Project Data Directory | — |
+| `doc/battery-cubemx-checklist.md` | R-BATT-1：ADC双通道生成交接 | — |
+| `doc/bluetooth-battery.md` | 蓝牙通道与电池电压（R-BT-1 / R-BATT-1） | `蓝牙`, `电压采样与保护`, `电池诊断协议v1`, `ELRS电池回传` |
 | `doc/component-registry.md` | 飞控元件注册与总览（R-MODULES-1） | `字节契约 v1`, `注册、传输与预算`, `可复核验证` |
 | `doc/current-architecture.md` | drone-H743 当前软件架构 | `分层`, `主要运行链`, `IMU 与姿态`, `光流与水平导航` (+5) |
 | `doc/current-sensor.md` | R-CURRENT-1：AM32 55A 电流采样 | `硬件与标称换算`, `软件边界`, `上位机回读（R-CURRENT-2）`, `CubeMX 交接` (+1) |
@@ -61,6 +63,6 @@ Document snapshot: `00da1a7efc72`; aggregate snapshot: `520135912c8b`. Covered f
 | Scope | Content outline | Inventory |
 |---|---|---|
 | `.tmp/` | Temporary analysis results; inspect only a specifically named run | 105 files / 10.6 MiB / .json×25, .csv×19, .png×14, .md×11, .txt×11 |
-| `data/` | Canonical captures, flight logs, identification, calibration, telemetry, and analysis root | 392 files / 21.1 MiB / .txt×150, .csv×86, .json×72, .png×30, .md×29 |
+| `data/` | Canonical captures, flight logs, identification, calibration, telemetry, and an… | 410 files / 21.4 MiB / .txt×164, .csv×86, .json×72, .png×33, .md×29 |
 
 Do not load a whole dataset directory. Select one named run after code or test evidence points to it.

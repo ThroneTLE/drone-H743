@@ -35,6 +35,7 @@ BLOCK_TEXT = {
     "imu": "IMU 采样链不健康",
     "frame_migration": "坐标系迁移未完成 / 标定候选未提交",
     "airframe": "机体模型未写入或不完整",
+    "battery": "电池电压低或采样无效；恢复后需重新拨动解锁开关",
     "unknown": "未知（飞控控制环尚未跑过一圈）",
 }
 
@@ -45,6 +46,7 @@ CONDITIONS = (
     ("frame", "坐标迁移已完成"),
     ("imu_health", "IMU 采样健康"),
     ("airframe", "机体模型有效"),
+    ("battery_ok", "电池电压满足解锁要求"),
     ("switch", "解锁拨杆已打"),
     ("throttle_low", "油门已收到底"),
     ("imu", "IMU 数据可用"),
@@ -115,6 +117,8 @@ class ArmBanner(ttk.LabelFrame):
                 reason = f"{reason}（缺 {missing}）"
         if armed:
             reason = "飞机处于解锁状态，桨会转"
+            if payload.get("battery_ok") == "0":
+                reason = "电池低压或电压数据失效告警 · 当前仍处于解锁状态"
         self.reason_var.set(reason)
 
         for key, label in CONDITIONS:

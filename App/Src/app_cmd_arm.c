@@ -34,6 +34,7 @@ static const char *arm_block_name(uint8_t reason)
     case APP_LED_ARM_BLOCK_IMU:           return "imu";
     case APP_LED_ARM_BLOCK_FRAME:         return "frame_migration";
     case APP_LED_ARM_BLOCK_AIRFRAME:      return "airframe";
+    case APP_LED_ARM_BLOCK_BATTERY:       return "battery";
     default:                              return "unknown";
     }
 }
@@ -55,7 +56,7 @@ void app_control_report_arm(void)
         "RSP id=0 mod=ARM op=STATUS armed=%u block=%s blinks=%u known=%u "
         "rc_seen=%u rc_ok=%u switch=%u throttle_low=%u imu=%u imu_health=%u "
         "frame=%u airframe=%u servo_cal_idle=%u accept_idle=%u "
-        "airframe_missing=%s t_ms=%lu\r\n",
+        "airframe_missing=%s t_ms=%lu battery_ok=%u\r\n",
         (unsigned int)status.armed,
         (status.published != 0U) ? arm_block_name(status.block_reason) : "unknown",
         (unsigned int)status.block_reason,
@@ -71,7 +72,8 @@ void app_control_report_arm(void)
         (unsigned int)status.servo_cal_idle,
         (unsigned int)status.acceptance_idle,
         (missing != NULL) ? missing : "-",
-        (unsigned long)status.now_ms);
+        (unsigned long)status.now_ms,
+        (unsigned int)status.battery_ok);
 }
 
 uint8_t app_control_req_arm(uint32_t id, const char *mod, const char *op)

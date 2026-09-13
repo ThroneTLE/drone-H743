@@ -1,4 +1,5 @@
 #include "app_led.h"
+#include "app_battery.h"
 
 #include "app_optical_flow.h"
 #include "bsp_rgb_led.h"
@@ -121,9 +122,12 @@ static void app_led_publish_servo_cal(APP_LED_ServoCalMode mode)
 static void app_led_publish_arm(void)
 {
     APP_LED_ArmBlockReason reason = app_led_arm_block_reason;
+    if (reason==APP_LED_ARM_BLOCK_BATTERY) {
+        APP_Battery_PublishLedWarning();return;
+    }
     DRV_RgbPattern pattern;
 
-    if (app_led_armed != 0U) {
+    if ((app_led_armed != 0U) && (reason != APP_LED_ARM_BLOCK_BATTERY)) {
         pattern = app_led_solid(app_led_red);
         SVC_Led_Publish(SVC_LED_SOURCE_ARMED, &pattern);
         SVC_Led_Publish(SVC_LED_SOURCE_BLOCKED, NULL);

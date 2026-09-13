@@ -229,8 +229,9 @@ def test_the_harness_builds_the_real_panel_with_all_leaf_pages(offline) -> None:
     # 机体模型是新功能；仿真是把原来常驻主窗口顶部的启动栏搬进独立栏目，
     # 把那个"每次上机先看一眼"的位置让给解锁状态横幅。
     pages = offline.leaf_pages()
-    assert len(pages) == 24
+    assert len(pages) == 25
     assert "传感器 / 电流计" in {page.label for page in pages}
+    assert "传感器 / 电池电压" in {page.label for page in pages}
     assert "机体模型" in {page.label for page in pages}
     assert "仿真" in {page.label for page in pages}
     labels = [page.label for page in pages]
@@ -239,7 +240,7 @@ def test_the_harness_builds_the_real_panel_with_all_leaf_pages(offline) -> None:
     assert any(label.startswith("校准 / ") for label in labels)
     assert any(label.startswith("传感器 / ") for label in labels)
     assert sum(label.startswith("校准 / ") for label in labels) == 7
-    assert sum(label.startswith("传感器 / ") for label in labels) == 5
+    assert sum(label.startswith("传感器 / ") for label in labels) == 6
 
 
 def test_the_qa_window_says_it_is_not_connected_to_hardware(offline) -> None:
@@ -333,7 +334,7 @@ with tempfile.TemporaryDirectory() as root:
     assert payload["dpi"] == 1.5
     assert isinstance(payload["font"], int)
     # R-CURRENT-2 增加电流计叶页，全部页面继续参与缩放矩阵。
-    assert payload["reports"] == 24
+    assert payload["reports"] == 25
     assert all(scale == 1.5 for scale in payload["scales"])
 
 

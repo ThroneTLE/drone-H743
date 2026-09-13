@@ -13,6 +13,7 @@ const char *BSP_Component_Interface(uint16_t id, uint8_t variant)
     case DRV_COMPONENT_MAG:return "I2C2";
     case DRV_COMPONENT_FLOW:return "USART2";
     case DRV_COMPONENT_CURRENT:return "ADC1 / PC1";
+    case DRV_COMPONENT_BATTERY:return "ADC1 / PC0";
     case DRV_COMPONENT_PARAMS:return "Flash Bank2";
     case DRV_COMPONENT_LOG:return "SDMMC1";
     case DRV_COMPONENT_ESC:return "TIM1 / M4,M3";

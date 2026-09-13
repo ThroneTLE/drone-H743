@@ -39,7 +39,9 @@ void APP_Current_Step(void)
     DRV_CurrentReading reading;
     DRV_CurrentStatus converted = DRV_CURRENT_INVALID;
     if (status == BSP_CURRENT_OK) { converted = DRV_Current_Convert(&current_config, raw, &reading); }
-    uint32_t sampled_ms = SVC_Timestamp_Ms();
+    /* Timestamp the start of the pair. A preempted conversion must not make an
+     * old current sample appear fresh merely because rank 2 finished later. */
+    uint32_t sampled_ms = now;
     uint32_t lock = BSP_Critical_Enter();
     if (status == BSP_CURRENT_OK && converted != DRV_CURRENT_INVALID) {
         current_snapshot.reading = reading;

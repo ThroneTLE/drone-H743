@@ -4,13 +4,13 @@
 
 Read this shard only when you need existing firmware behavioral/architecture coverage or must choose focused regression tests.
 
-Source snapshot: `babf7be57406`. Indexed files: 152.
+Source snapshot: `e2490488039b`. Indexed files: 159.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
-| `tests/_airframe_fixture.py` | 宿主测试共用的参考机体。 为什么需要它：2026-09-11 起机体模型的**唯一来源是 Flash**，固件里一个默认值 都没有（Driver/Inc/drv_airframe_param… | — |
-| `tests/_micoair_hostfakes.py` | 宿主侧编译真实固件源码用的最小 HAL 替身。 为什么要有这个文件： tests/ 里绝大多数契约测试要么是纯函数（drv_*_tables.c），要么是读源码正则。 但 2026-09-1… | `write_fakes` (+1) |
-| `tests/conftest.py` | 离线测试套件的全局硬件护栏与状态隔离。 两条路都要堵，而且必须在**收集之前**就装上： * 物理串口 —— `serial.Serial.open` * 烧录 / 调试探针 —— `sub… | `pytest_configure` (+4) |
+| `tests/_airframe_fixture.py` | 宿主测试共用的参考机体。 为什么需要它：2026-09-11 起机体模型的**唯一来源是 Flash**，固件里一个默认值 都没有（Driver/Inc/dr… | — |
+| `tests/_micoair_hostfakes.py` | 宿主侧编译真实固件源码用的最小 HAL 替身。 为什么要有这个文件： tests/ 里绝大多数契约测试要么是纯函数（drv_*_tables.c），要么是读源… | `write_fakes` (+1) |
+| `tests/conftest.py` | 离线测试套件的全局硬件护栏与状态隔离。 两条路都要堵，而且必须在**收集之前**就装上： * 物理串口 —— `serial.Serial.open` * 烧… | `pytest_configure` (+4) |
 | `tests/data.txt` | — | — |
 | `tests/fixtures/dshot_px4/.gitattributes` | — | — |
 | `tests/fixtures/dshot_px4/app_control.h` | — | `APP_Control_QueueText` |
@@ -21,34 +21,41 @@ Source snapshot: `babf7be57406`. Indexed files: 152.
 | `tests/fixtures/dshot_px4/upstream_dshot.c.txt` | — | — |
 | `tests/golden/telem_frames_v2.bin` | — | — |
 | `tests/test_acceptance_v2_runtime_contract.py` | — | `test_v2a_lease_and_esc_fail_safe_are_target_owned` (+2) |
-| `tests/test_action_contract.py` | Contract tests for the Action safety state machine (``App/Src/app_action.c``). An Action is any… | `test_01_armed_interlock_refuses_to_start` (+16) |
+| `tests/test_action_contract.py` | Contract tests for the Action safety state machine (``App/Src/app_action.c``).… | `test_01_armed_interlock_refuses_to_start` (+16) |
 | `tests/test_airframe_model_contract.py` | — | `test_measured_airframe_geometry_has_no_compile_time_copy_left` (+6) |
-| `tests/test_airframe_page.py` | 机体模型页与其预览计算的契约。 最要紧的一条在最前面：上位机那份派生值预览必须和飞控算的是**同一件事**。 预览之所以存在，是因为手动派生档允许派生值和部件表对不上（惯量可能来自双线摆 实… | `test_host_preview_matches_the_firmware_derivation` (+9) |
-| `tests/test_airframe_params.py` | 机体模型运行时参数的契约（2026-09-11 立）。 为什么值得单独一套测试：这些数**直接进控制律**——质量、惯量、力臂、推力点到重心的 距离。填错一个不会编译失败、不会报错，只会让每… | `test_airframe_params_contract` |
+| `tests/test_airframe_page.py` | 机体模型页与其预览计算的契约。 最要紧的一条在最前面：上位机那份派生值预览必须和飞控算的是**同一件事**。 预览之所以存在，是因为手动派生档允许派生值和部件… | `test_host_preview_matches_the_firmware_derivation` (+9) |
+| `tests/test_airframe_params.py` | 机体模型运行时参数的契约（2026-09-11 立）。 为什么值得单独一套测试：这些数**直接进控制律**——质量、惯量、力臂、推力点到重心的 距离。填错一个… | `test_airframe_params_contract` |
 | `tests/test_aiwb2_prompt_contract.py` | — | `test_aiwb2_prompt_symbol_is_preserved_for_transparent_entry` (+4) |
-| `tests/test_arm_banner.py` | 主页面解锁横幅的契约。 它要回答的只有一个问题：**现在能不能解锁，不能的话差什么。** 在这之前飞控表达这件事的唯一途径是 LED_3 闪几下——要数、要查表、室外看不清。 而且原因链是有… | `test_banner_reports_the_firmware_block_reason_not_a_local_guess` (+5) |
+| `tests/test_arm_banner.py` | 主页面解锁横幅的契约。 它要回答的只有一个问题：**现在能不能解锁，不能的话差什么。** 在这之前飞控表达这件事的唯一途径是 LED_3 闪几下——要数、要查… | `test_banner_reports_the_firmware_block_reason_not_a_local_guess` (+5) |
 | `tests/test_attitude_fusion_contract.py` | — | `test_xio_fusion_is_vendored_and_replaces_height_gated_attitude` (+1) |
 | `tests/test_attitude_ident_pid.py` | — | `test_closed_loop_attitude_ident_script_fits_synthetic_prbs` |
 | `tests/test_attitude_rate_control.py` | Host-gcc contract tests for the pure SO(3) attitude/rate cascade | `test_attitude_rate_host_harness` (+1) |
 | `tests/test_balance_controller_model.py` | — | `test_identified_attitude_gains_stabilize_with_80_ms_delay` (+1) |
 | `tests/test_balance_controller_runtime.py` | — | `test_real_controller_runtime_math` |
 | `tests/test_baro_contract.py` | — | `test_baro_ok_requires_real_spl06_who_am_i_not_only_spi_success` |
-| `tests/test_bluetooth_link_parity.py` | 板载蓝牙（UART8）必须和 USB、数传是同一条链路，不是半条。 MicoAir743V2 的 UART8（PE1/PE0，115200）接的是板载蓝牙模块。命令面本来就是同一套 ——维护… | `test_bluetooth_is_a_telemetry_sink_like_usb_and_the_radio` (+6) |
+| `tests/test_battery_arming.py` | Execute the actual arming state machine with the real battery voltage policy | `test_real_arming_edges_low_voltage_stale_and_existing_gates` |
+| `tests/test_battery_crsf.py` | Actual ELRS battery packing and DMA admission, including full unavailable values | `test_real_crsf_battery_bytes_and_busy_admission` |
+| `tests/test_battery_page.py` | Real firmware bytes through transport/Rx dispatch to the actual battery page | `test_actual_c_voltage_and_current_are_separate_from_signal_voltage` (+4) |
+| `tests/test_battery_runtime.py` | Actual ADC pair, battery service, diagnostic encoder and periodic CRSF adapter | `test_actual_c_battery_frame` (+1) |
+| `tests/test_battery_warning.py` | Actual LED policy keeps an eight-pulse battery alarm visible while armed | `test_battery_warning_overrides_armed_solid_without_changing_arm_state` |
+| `tests/test_bluetooth_channel.py` | SPP identity, real Tk selection and asynchronous serial cancellation contracts | `test_join_outgoing_port_and_name_excludes_incoming_and_usb` (+6) |
+| `tests/test_bluetooth_link_parity.py` | 板载蓝牙（UART8）必须和 USB、数传是同一条链路，不是半条。 MicoAir743V2 的 UART8（PE1/PE0，115200）接的是板载蓝牙模块… | `test_bluetooth_is_a_telemetry_sink_like_usb_and_the_radio` (+6) |
 | `tests/test_cascade_controller_contract.py` | R-S5-1 integration contract for the real coax-controller entry path | `test_scheduled_cascade_and_allocator_feedback_on_host` (+1) |
 | `tests/test_cascade_review_regressions.py` | Regression tests for the 919fcfd9 software-review findings | `test_allocator_lifecycle_antiwindup_and_param_regressions` (+2) |
 | `tests/test_coax_ctrl_contract.py` | — | `test_servo_output_compensates_90_degree_ccw_mounting` (+16) |
-| `tests/test_coax_sign_convention.py` | Sign-convention self-check for the coaxial attitude controller. This is a legacy runtime-adapte… | `test_gains_are_positive_so_polarity_errors_cannot_be_masked` (+6) |
-| `tests/test_coax_yaw_so3_contract.py` | 偏航并入 SO(3) 控制律的契约。 偏航 PD（2026-07-24，`85a5cacb`）比 SO(3) 控制器（2026-07-25，`2d1d2cd2`）早一天， 当天的设计记录 §… | `test_yaw_is_produced_by_the_so3_law_not_a_separate_pd` (+1) |
+| `tests/test_coax_sign_convention.py` | Sign-convention self-check for the coaxial attitude controller. This is a legac… | `test_gains_are_positive_so_polarity_errors_cannot_be_masked` (+6) |
+| `tests/test_coax_yaw_so3_contract.py` | 偏航并入 SO(3) 控制律的契约。 偏航 PD（2026-07-24，`85a5cacb`）比 SO(3) 控制器（2026-07-25，`2d1d2cd2… | `test_yaw_is_produced_by_the_so3_law_not_a_separate_pd` (+1) |
 | `tests/test_component_codec_bounds.py` | Real C registry bounds, cancellation and immutable enumeration contracts | `test_codec_and_manager_boundaries` |
-| `tests/test_component_overview_layout.py` | Real Tk overview selection, one-shot queries and scroll access at nine sizes/scales | `test_overview_matrix_and_one_shot` |
+| `tests/test_component_overview_layout.py` | Real Tk overview selection, one-shot queries and scroll access at nine sizes/sc… | `test_overview_matrix_and_one_shot` |
+| `tests/test_component_rc_binding.py` | Overview RC interface follows the actual MicoAir UART binding | `test_rc_metadata_matches_the_real_uart_role` |
 | `tests/test_component_registry.py` | Real C registry frames through transport and a hardware-agnostic overview | `test_actual_c_snapshot_and_empty_busy_duplicate` (+10) |
 | `tests/test_component_transport.py` | Actual C component reply routing, with OS/physical outputs captured in memory | `test_binary_reply_preserves_bytes_and_failures` |
-| `tests/test_config_store_ab_slots.py` | 配置记录的 A/B 双槽与两阶段提交，用真实源码在宿主上跑。 为什么必须是**可执行**测试而不是读源码正则：2026-09-11 这条路径上叠着两个缺陷， 而且互相遮掩—— 1. 配置记录… | `test_config_store_ab_slots` |
+| `tests/test_config_store_ab_slots.py` | 配置记录的 A/B 双槽与两阶段提交，用真实源码在宿主上跑。 为什么必须是**可执行**测试而不是读源码正则：2026-09-11 这条路径上叠着两个缺陷，… | `test_config_store_ab_slots` |
 | `tests/test_control_config_v19.py` | CFG V19 cascade migration contract; synthetic records are unit tests only | `test_v18_v17_v15_migration_math_on_host` (+2) |
 | `tests/test_control_loop_blocking_contract.py` | S6 control contracts | `test_no_blocking` (+5) |
 | `tests/test_control_scheduler.py` | — | `test_control_scheduler_host_harness` (+1) |
 | `tests/test_controller_cascade_analysis.py` | — | `test_report_refuses_old_or_unknown_frame_logs` |
-| `tests/test_crsf_parser_resync.py` | CRSF 解析器的失步与重同步（`Driver/Src/drv_elrs.c`，宿主 gcc 直接编真实源码）。 为什么专门立一份：2026-09-06 实机取证发现遥控链路 **70% 错… | `test_a_clean_stream_decodes_every_frame` (+10) |
+| `tests/test_crsf_parser_resync.py` | CRSF 解析器的失步与重同步（`Driver/Src/drv_elrs.c`，宿主 gcc 直接编真实源码）。 为什么专门立一份：2026-09-06 实机… | `test_a_clean_stream_decodes_every_frame` (+10) |
 | `tests/test_current_driver.py` | Compile the real current conversion driver; no ADC/board access | `test_current_conversion_on_real_c` (+1) |
 | `tests/test_current_format.py` | CURRENT decimal contract without target floating printf | `test_fixed_current_format_on_host` (+1) |
 | `tests/test_current_generated.py` | ADC must really be generated, not merely look configured in the pin list | `test_pc1_shared_signal_activates_the_adc_mode` (+2) |
@@ -60,12 +67,12 @@ Source snapshot: `babf7be57406`. Indexed files: 152.
 | `tests/test_documentation_contract.py` | Current documentation stays small, routed, and distinct from history | `test_current_document_map_has_one_small_human_entry` (+8) |
 | `tests/test_drone_validation_v0.py` | — | `test_snapshot_parser_requires_provenance_and_never_invents_zeroes` (+38) |
 | `tests/test_dshot_bsp.py` | Actual BSP in a host register/DMA seam; tests do not open hardware | `test_real_bsp` (+2) |
-| `tests/test_dshot_driver.py` | R-DSHOT-1 first phase: compile the real C driver and frozen PX4 encoder. No DMA/register simula… | `test_real_driver` (+2) |
+| `tests/test_dshot_driver.py` | R-DSHOT-1 first phase: compile the real C driver and frozen PX4 encoder. No DMA… | `test_real_driver` (+2) |
 | `tests/test_dshot_flight_log_v11.py` | V11 C/Python log contract | `test_c_to_csv` (+2) |
 | `tests/test_dshot_generated_config.py` | R-DSHOT-1: gate BSP integration on actual CubeMX-generated DMA ownership | `test_dshot_ioc_dma_owner_and_timer_groups` (+2) |
 | `tests/test_dshot_log_metadata.py` | Tagged sector metadata keeps equivalent PWM commands distinct from real PWM | `test_tagged_v10_and_legacy_v10` (+3) |
-| `tests/test_evidence_write_protection.py` | 历史验收证据不可变性契约。 2026-08-29 实际发生过一次证据破坏：面板启动时自动加载了 2026-08-28 的历史 验收会话，随后自动保存把 workflow.json 的 tar… | `test_session_autosave_refuses_to_write_while_browsing_history` (+3) |
-| `tests/test_firmware_build_gate.py` | 烧录前必须先编译，且编译失败绝不能继续烧录。 背景：USB DFU 一键烧录默认烧的是 build/Debug/drone-H743.elf。如果改完源码 忘了编译，就会把上一次的旧固件刷进… | `test_build_failure_raises_instead_of_returning_a_stale_elf` (+20) |
+| `tests/test_evidence_write_protection.py` | 历史验收证据不可变性契约。 2026-08-29 实际发生过一次证据破坏：面板启动时自动加载了 2026-08-28 的历史 验收会话，随后自动保存把 wor… | `test_session_autosave_refuses_to_write_while_browsing_history` (+3) |
+| `tests/test_firmware_build_gate.py` | 烧录前必须先编译，且编译失败绝不能继续烧录。 背景：USB DFU 一键烧录默认烧的是 build/Debug/drone-H743.elf。如果改完源码 忘… | `test_build_failure_raises_instead_of_returning_a_stale_elf` (+20) |
 | `tests/test_flash_bdd.py` | — | `test_bdd_flash_diagnostics_flow_is_app_service_to_storage_backends` (+1) |
 | `tests/test_flash_layering.py` | — | `test_app_uses_flash_service_not_bsp_flash_api` (+6) |
 | `tests/test_flash_timing_measurement.py` | R-M1-3 block-erase timing measurement and throughput contracts | `test_firmware_probe_is_thin_and_keeps_normal_polling_default` (+7) |
@@ -81,60 +88,60 @@ Source snapshot: `babf7be57406`. Indexed files: 152.
 | `tests/test_flight_log_waveform_ui.py` | — | `test_waveform_ui_helpers_do_not_start_tk` (+1) |
 | `tests/test_flight_log_workbench.py` | — | `test_workbench_helpers_build_segment_labels_and_presets` (+2) |
 | `tests/test_flight_validation.py` | — | `test_fixed_stages_document_the_requested_flu_actions` (+19) |
-| `tests/test_flow_lateral_direction_evidence.py` | 光流横向方向：用 2026-08-30 的地面实录把控制器系 Y 的正方向钉死。 R-F6-2 卡在一个问题上：控制器系的 `y_m` / `vy_m_s` 到底是机体**右**正还是 **… | `test_recording_is_the_flu_ground_evidence` (+3) |
-| `tests/test_flow_monitor_page.py` | R-S1-2：“传感器 · 光流”实时监控页。 这里全部用真实的 `DronePanel()` 驱动，不做源码文本断言（那部分在 `tests/test_ground_calibration… | `test_flow_poll_only_runs_while_the_flow_tab_is_selected` (+15) |
-| `tests/test_flow_nav_service_contract.py` | R-M5-5：光流导航 Service（Services/Src/svc_flow_nav.c）契约测试。 分两部分： 1. 行为部分用宿主 gcc 真编译 svc_flow_nav.c +… | `test_flow_nav_service_behaviour_on_host_gcc` (+9) |
-| `tests/test_flow_rotation_comp_frame.py` | 光流方言边界契约（2026-09-07）。 实测现象：手飞画圆时，传感器页的原始光流两轴都是干净的正弦，状态页却只剩 X 的 正弦、Y 被压到接近 0。 根因不在 EKF（`drv_nav_… | `test_dialect_boundary_lives_where_the_driver_frame_becomes_a_sample` (+5) |
-| `tests/test_flow_yaw_gyro_capture.py` | M5 台架实测暴露的缺陷：旋转补偿阶永远拿不到偏航角速度。 2026-08-30 现场证据：`flow_range_20260830_200716.json` 里 299 个实采样本， `g… | `test_firmware_still_emits_bare_gz_in_mdps` (+2) |
+| `tests/test_flow_lateral_direction_evidence.py` | 光流横向方向：用 2026-08-30 的地面实录把控制器系 Y 的正方向钉死。 R-F6-2 卡在一个问题上：控制器系的 `y_m` / `vy_m_s`… | `test_recording_is_the_flu_ground_evidence` (+3) |
+| `tests/test_flow_monitor_page.py` | R-S1-2：“传感器 · 光流”实时监控页。 这里全部用真实的 `DronePanel()` 驱动，不做源码文本断言（那部分在 `tests/test_gr… | `test_flow_poll_only_runs_while_the_flow_tab_is_selected` (+15) |
+| `tests/test_flow_nav_service_contract.py` | R-M5-5：光流导航 Service（Services/Src/svc_flow_nav.c）契约测试。 分两部分： 1. 行为部分用宿主 gcc 真编译… | `test_flow_nav_service_behaviour_on_host_gcc` (+9) |
+| `tests/test_flow_rotation_comp_frame.py` | 光流方言边界契约（2026-09-07）。 实测现象：手飞画圆时，传感器页的原始光流两轴都是干净的正弦，状态页却只剩 X 的 正弦、Y 被压到接近 0。 根因… | `test_dialect_boundary_lives_where_the_driver_frame_becomes_a_sample` (+5) |
+| `tests/test_flow_yaw_gyro_capture.py` | M5 台架实测暴露的缺陷：旋转补偿阶永远拿不到偏航角速度。 2026-08-30 现场证据：`flow_range_20260830_200716.json`… | `test_firmware_still_emits_bare_gz_in_mdps` (+2) |
 | `tests/test_flu_frame_contract.py` | — | `test_skill_routes_coordinate_work_to_the_normative_contract` (+3) |
-| `tests/test_flu_nav_frame_alignment.py` | EKF 的两路输入必须处在同一个坐标系里。 背景：`SVC_FlowNav_Fuse` 用 IMU 水平加速度做预测、用光流水平速度做更新，两者 按同一组 X/Y 直接对应。光流给的是**机… | `test_imu_level_adapter_takes_no_yaw` (+7) |
+| `tests/test_flu_nav_frame_alignment.py` | EKF 的两路输入必须处在同一个坐标系里。 背景：`SVC_FlowNav_Fuse` 用 IMU 水平加速度做预测、用光流水平速度做更新，两者 按同一组 X… | `test_imu_level_adapter_takes_no_yaw` (+7) |
 | `tests/test_flu_runtime_candidate_pipeline.py` | — | `test_frame_candidate_is_applied_once_before_any_estimator_consumer` (+5) |
 | `tests/test_flu_seam0_sensor_frame.py` | R-F0 seam 0 sensor FLU contract | `test_persisted_code_descriptor` (+2) |
 | `tests/test_flu_seam1_estimator_frame.py` | R-F1 seam 1 estimator FLU contract | `test_convention_tracks_frame` (+4) |
-| `tests/test_flu_seam2_navigation_frame.py` | R-F6-1 seam 2 navigation frame contract. Seam 2 (navigation) was the only one of the six FLU ru… | `test_svc_flow_nav_header_names_its_frames_units_and_timebases` (+4) |
+| `tests/test_flu_seam2_navigation_frame.py` | R-F6-1 seam 2 navigation frame contract. Seam 2 (navigation) was the only one o… | `test_svc_flow_nav_header_names_its_frames_units_and_timebases` (+4) |
 | `tests/test_flu_seam3_controller_frame.py` | R-F6-2 seam 3 controller FLU migration contract | `test_force_frame_constants_are_deleted` (+5) |
-| `tests/test_flu_seam3_force_frame_derivation.py` | R-F6-2 核心矩阵重导：力坐标系符号常量到底在做什么。 这个模块存在的唯一理由，是仓库里曾经有一句被复述了四遍的论断： "此符号同时作用于实测姿态和目标姿态，因此在姿态误差中相消" 它是… | `test_force_frame_roll_sign_was_load_bearing_before_deletion` (+4) |
+| `tests/test_flu_seam3_force_frame_derivation.py` | R-F6-2 核心矩阵重导：力坐标系符号常量到底在做什么。 这个模块存在的唯一理由，是仓库里曾经有一句被复述了四遍的论断： "此符号同时作用于实测姿态和目标姿… | `test_force_frame_roll_sign_was_load_bearing_before_deletion` (+4) |
 | `tests/test_flu_seam4_rc_actuator_frame.py` | R-F4 seam 4 RC/actuator polarity contract | `test_stick_direction_has_exactly_one_decision_point` (+7) |
 | `tests/test_flu_seam5_telemetry_frame.py` | R-F5 seam 5 telemetry/log frame contract | `test_replay_geometry_is_frozen` (+6) |
-| `tests/test_hardware_decoupling.py` | 换板子时应该只改板级绑定那几处，不该逐个文件重写。 把固件从自制 H743 板移到 MicoAir743V2，最费时间的改动几乎都不是算法，而是 **外设实例名被写进了上层逻辑**：PWM… | `test_app_and_services_do_not_touch_hardware` (+13) |
+| `tests/test_hardware_decoupling.py` | 换板子时应该只改板级绑定那几处，不该逐个文件重写。 把固件从自制 H743 板移到 MicoAir743V2，最费时间的改动几乎都不是算法，而是 **外设实例… | `test_app_and_services_do_not_touch_hardware` (+13) |
 | `tests/test_ident_decoupled.py` | — | `test_ident_control_payload_and_decoupled_servo_takeover` (+4) |
-| `tests/test_imu_aaf_contract.py` | Contract tests for the ICM-42688 anti-alias filter and accelerometer range. The AAF is an analo… | `test_accel_range_is_16g_to_avoid_vibration_clipping` (+4) |
+| `tests/test_imu_aaf_contract.py` | Contract tests for the ICM-42688 anti-alias filter and accelerometer range. The… | `test_accel_range_is_16g_to_avoid_vibration_clipping` (+4) |
 | `tests/test_imu_attitude_tuner.py` | — | `test_persistent_openocd_telnet_word_parser` (+5) |
-| `tests/test_imu_axis_alignment_contract.py` | Legacy IMU intermediate-axis adapter checks. The canonical body-frame contract is Driver/Inc/dr… | `test_legacy_imu_mount_axis_adapter_is_documented` (+2) |
+| `tests/test_imu_axis_alignment_contract.py` | Legacy IMU intermediate-axis adapter checks. The canonical body-frame contract… | `test_legacy_imu_mount_axis_adapter_is_documented` (+2) |
 | `tests/test_imu_calibration_runtime.py` | — | `test_driver_math` (+9) |
-| `tests/test_imu_capture_contract.py` | Contract tests for the full-rate raw IMU capture path. The capture exists to record undecimated… | `test_capture_buffer_lives_outside_dtcm` (+11) |
-| `tests/test_imu_health_guard.py` | IMU 采样链静默降级的检测与拦截。 背景（2026-08-28 实测）：Sensor_Task 在 DRDY 中断没来时会退到 20ms 轮询兜底。 兜底成功会把 imu_drdy_mis… | `test_poll_fallback_no_longer_clears_the_drdy_miss_counter` (+19) |
+| `tests/test_imu_capture_contract.py` | Contract tests for the full-rate raw IMU capture path. The capture exists to re… | `test_capture_buffer_lives_outside_dtcm` (+11) |
+| `tests/test_imu_health_guard.py` | IMU 采样链静默降级的检测与拦截。 背景（2026-08-28 实测）：Sensor_Task 在 DRDY 中断没来时会退到 20ms 轮询兜底。 兜底成… | `test_poll_fallback_no_longer_clears_the_drdy_miss_counter` (+19) |
 | `tests/test_imu_metrology.py` | — | `test_sample_requires_finite_and_complete_provenance` (+23) |
 | `tests/test_imu_nav_estimator.py` | — | `test_level_static_acceleration_becomes_zero_linear_nav_accel` (+4) |
 | `tests/test_imu_timing_contract.py` | — | `test_stabilizer_uses_drdy_timed_fusion_ahrs` (+15) |
-| `tests/test_imu_vibration_ui.py` | Tests for the vibration capture UI helpers. The UI is a thin driver over tools/imu_vibration_ca… | `test_test_steps_cover_the_documented_sweep` (+5) |
+| `tests/test_imu_vibration_ui.py` | Tests for the vibration capture UI helpers. The UI is a thin driver over tools/… | `test_test_steps_cover_the_documented_sweep` (+5) |
 | `tests/test_imucal_candidate_protocol.py` | IMUCAL split contracts | `test_upload_runtime` (+4) |
-| `tests/test_imucal_context_diagnostics.py` | IMUCAL? 上下文校验的报错。 背景：2026-08-29 点"应用候选到 RAM"弹出 `target IMUCAL context reply is incomplete`。这句话把… | `test_a_silent_target_is_reported_as_a_link_problem_not_a_calibration_one` (+9) |
+| `tests/test_imucal_context_diagnostics.py` | IMUCAL? 上下文校验的报错。 背景：2026-08-29 点"应用候选到 RAM"弹出 `target IMUCAL context reply is… | `test_a_silent_target_is_reported_as_a_link_problem_not_a_calibration_one` (+9) |
 | `tests/test_imucal_host_protocol.py` | — | `test_wire_abi_and_chunk_commands_match_firmware` (+3) |
 | `tests/test_imuframe_param_protocol.py` | IMU frame correction persistence and command-safety contract | `test_protocol_reserves_a_stable_imuframe_request_id` (+6) |
-| `tests/test_led_service.py` | RGB 状态灯的三层：效果算法（Driver）、仲裁（Service）、板级绑定（BSP）。 这一份和 `test_led_status_contract.py` 分工不同：那一份钉的是"解… | `test_rgb_led_driver_and_service_on_host_gcc` (+5) |
-| `tests/test_led_status_contract.py` | LED 状态灯契约。 原来这一份只做字符串存在性检查（`assert "APP_LED_ARM_BLOCK_NO_RC" in header`）， 从来没有验证过原因**选择逻辑**。于是… | `test_led_status_reports_arm_block_reasons_and_flow_health` (+4) |
-| `tests/test_link_keepalive.py` | USB CDC 空闲探活回归测试。 背景（2026-08-28 ST-Link 实测确认）：飞控在 USB CDC 上是纯命令/响应通道—— 周期性 VOFA 遥测在 App/Src/app… | `test_firmware_has_no_unsolicited_usb_telemetry` (+18) |
+| `tests/test_led_service.py` | RGB 状态灯的三层：效果算法（Driver）、仲裁（Service）、板级绑定（BSP）。 这一份和 `test_led_status_contract.p… | `test_rgb_led_driver_and_service_on_host_gcc` (+5) |
+| `tests/test_led_status_contract.py` | LED 状态灯契约。 原来这一份只做字符串存在性检查（`assert "APP_LED_ARM_BLOCK_NO_RC" in header`）， 从来没有验… | `test_led_status_reports_arm_block_reasons_and_flow_health` (+4) |
+| `tests/test_link_keepalive.py` | USB CDC 空闲探活回归测试。 背景（2026-08-28 ST-Link 实测确认）：飞控在 USB CDC 上是纯命令/响应通道—— 周期性 VOFA… | `test_firmware_has_no_unsolicited_usb_telemetry` (+18) |
 | `tests/test_mech.py` | — | `test_s6` |
 | `tests/test_mechanical_cp210_gate.py` | Regression for the author's CP210x COM10 telemetry-link screenshot | `test_cp210_move_allowed_but_firmware_upgrade_still_rejected` (+1) |
-| `tests/test_micoair743v2_generated_code_sync.py` | CubeMX 生成代码必须与 drone-H743.ioc 同步。 **本文件全红 = 还没跑 Generate Code，不是代码写错了。** 移植到 MicoAir743v2 改的是 .… | `test_usb_pll3_matches_ioc` (+4) |
-| `tests/test_micoair743v2_imu_drivers.py` | MicoAir743v2 移植：IMU 换算表与装配变换的宿主侧契约测试。 为什么这些东西必须单测： 量程码填错、LSB 表抄错、坐标轴符号翻反 —— 这三类错误**都不会报错**， 只会让… | `test_imu_tables_and_mounting_host_harness` (+2) |
-| `tests/test_micoair743v2_review_fixes.py` | 2026-09-10 软件审计发现的四个 P1 + 两个接线错位，逐条钉死。 每一条都属于**编译能过、测试全绿、要通电才发现**的类型，而且原来那 1404 条测试 一条都没覆盖到——因为… | `test_baro_i2c_path_runs_in_the_driver_that_is_actually_built` (+9) |
+| `tests/test_micoair743v2_generated_code_sync.py` | CubeMX 生成代码必须与 drone-H743.ioc 同步。 **本文件全红 = 还没跑 Generate Code，不是代码写错了。** 移植到 Mi… | `test_usb_pll3_matches_ioc` (+4) |
+| `tests/test_micoair743v2_imu_drivers.py` | MicoAir743v2 移植：IMU 换算表与装配变换的宿主侧契约测试。 为什么这些东西必须单测： 量程码填错、LSB 表抄错、坐标轴符号翻反 —— 这三类… | `test_imu_tables_and_mounting_host_harness` (+2) |
+| `tests/test_micoair743v2_review_fixes.py` | 2026-09-10 软件审计发现的四个 P1 + 两个接线错位，逐条钉死。 每一条都属于**编译能过、测试全绿、要通电才发现**的类型，而且原来那 1404… | `test_baro_i2c_path_runs_in_the_driver_that_is_actually_built` (+9) |
 | `tests/test_nav_ekf_contract.py` | — | `test_quality_adaptive_flow_ekf_is_owned_by_the_flow_nav_service` (+3) |
 | `tests/test_optical_flow_contract.py` | — | `test_micolink_parser_accepts_live_range_and_flow_payload_shape` (+11) |
 | `tests/test_parameter_numeric_echo.py` | Real C six-decimal replies must confirm equivalent user numeric text | `test_equivalent_real_c_reply_clears_pending` (+1) |
 | `tests/test_pipeline_contract.py` | — | `test_pipeline_exists_with_required_sections` (+6) |
-| `tests/test_position_control.py` | R-S5-1 pure translational controller contract. The executable part compiles the real Driver C m… | `test_position_control_source_is_pure_and_documented` (+1) |
+| `tests/test_position_control.py` | R-S5-1 pure translational controller contract. The executable part compiles the… | `test_position_control_source_is_pure_and_documented` (+1) |
 | `tests/test_project_index_contract.py` | — | `test_repository_index_is_current` (+2) |
-| `tests/test_proto_frame_resync.py` | 修 bug：`$X` 解析器有两处会永久停摆的重同步空洞。 发现于 2026-09-03，R-T1-2 的模糊测试。缺陷早于遥测流工作，命中的是所有 `$X` 帧共用的 `Transport… | `test_intact_stream_still_decodes_every_frame` (+8) |
-| `tests/test_pwm_frame_rate_contract.py` | 执行器出口帧率契约（2026-09-07 立，2026-09-10 随 MicoAir743v2 移植更新）。 原始动机是延迟，不是功能：四路 PWM 曾经共用 TIM2 的 50 Hz 帧… | `test_actuator_pins_match_the_board` (+4) |
-| `tests/test_rc_mapping.py` | 遥控通道映射与端点标定。 背景：通道号原来是 app_stabilizer.c 里的 6 个 #define（CH1..CH6），端点是 1000/1500/2000 三个字面量。换发射机、… | `test_moving_one_stick_identifies_that_channel` (+63) |
+| `tests/test_proto_frame_resync.py` | 修 bug：`$X` 解析器有两处会永久停摆的重同步空洞。 发现于 2026-09-03，R-T1-2 的模糊测试。缺陷早于遥测流工作，命中的是所有 `$X`… | `test_intact_stream_still_decodes_every_frame` (+8) |
+| `tests/test_pwm_frame_rate_contract.py` | 执行器出口帧率契约（2026-09-07 立，2026-09-10 随 MicoAir743v2 移植更新）。 原始动机是延迟，不是功能：四路 PWM 曾经共… | `test_actuator_pins_match_the_board` (+4) |
+| `tests/test_rc_mapping.py` | 遥控通道映射与端点标定。 背景：通道号原来是 app_stabilizer.c 里的 6 个 #define（CH1..CH6），端点是 1000/1500/… | `test_moving_one_stick_identifies_that_channel` (+63) |
 | `tests/test_rc_mapping_contract.py` | — | `test_freertos_documents_fixed_elrs_channel_map` (+8) |
-| `tests/test_record_service_review_regressions.py` | R-T1-6 返修：关闭 2026-09-04 软件审核的 R1~R4。 审核对象是 `63223acd`。四条都不是"再多测一点"能发现的，它们各自对应第一版实现里 一个具体的结构错误：… | `test_start_does_no_disk_io_on_the_calling_thread` (+10) |
+| `tests/test_record_service_review_regressions.py` | R-T1-6 返修：关闭 2026-09-04 软件审核的 R1~R4。 审核对象是 `63223acd`。四条都不是"再多测一点"能发现的，它们各自对应第一… | `test_start_does_no_disk_io_on_the_calling_thread` (+10) |
 | `tests/test_rom_dfu_boot_contract.py` | Safety and reset-context contract for the STM32H743 factory USB DFU path | `test_boot_command_is_explicit_scheduled_and_safety_gated` (+3) |
 | `tests/test_rom_dfu_host.py` | — | `test_cli_discovery_prefers_path_and_finds_common_cubeclt_layout` (+10) |
-| `tests/test_scope_canvas.py` | `panel_lib/scope.py` 的 `ScopeCanvas` 与 min/max 抽稀。 从 `tests/test_scope_page.py` 迁过来（R-T1-5 让 `p… | `test_min_max_decimation_keeps_the_extremes` (+3) |
-| `tests/test_sensor_biquad_contract.py` | Contract tests for the 2nd-order Butterworth sensor filter. The filter was upgraded from a 1st-… | `test_filter_is_second_order_biquad` (+4) |
+| `tests/test_scope_canvas.py` | `panel_lib/scope.py` 的 `ScopeCanvas` 与 min/max 抽稀。 从 `tests/test_scope_page.py`… | `test_min_max_decimation_keeps_the_extremes` (+3) |
+| `tests/test_sensor_biquad_contract.py` | Contract tests for the 2nd-order Butterworth sensor filter. The filter was upgr… | `test_filter_is_second_order_biquad` (+4) |
 | `tests/test_sensor_orientation_runtime.py` | Runtime IMU orientation selection at the raw-to-airframe seam | `test_public_api_uses_one_byte_legacy_sentinel_and_stable_descriptors` (+1) |
 | `tests/test_service_param_background_contract.py` | — | `test_services_layer_contains_only_param_service` (+4) |
 | `tests/test_servo_bus_guard_contract.py` | R-S7-3 contract: bus-only servo paths are inert in PWM mode | `test_guard_owns_pwm_selection_and_all_bus_only_commands` (+6) |
@@ -144,20 +151,20 @@ Source snapshot: `babf7be57406`. Indexed files: 152.
 | `tests/test_servo_dma_contract.py` | — | `test_stabilizer_uses_nonblocking_servo_dma_path` (+9) |
 | `tests/test_servo_feedback_bench_contract.py` | — | `test_driver_uses_manual_prad_request_and_fixed_length_dma_receive` (+4) |
 | `tests/test_servo_feedback_runtime_contract.py` | — | `test_runtime_feedback_uses_deterministic_50_hz_per_servo_slots` (+1) |
-| `tests/test_servo_jog_contract.py` | SERVO JOG（保持型地面点动）契约测试。 背景（M4 台架实测缺陷）：稳定环 commit 以 3µs 死区 + 500ms 强制刷新持续流式 下发舵机目标，一次性 SERVO MOV… | `test_servo_jog_runtime_behaviour` (+4) |
+| `tests/test_servo_jog_contract.py` | SERVO JOG（保持型地面点动）契约测试。 背景（M4 台架实测缺陷）：稳定环 commit 以 3µs 死区 + 500ms 强制刷新持续流式 下发舵机… | `test_servo_jog_runtime_behaviour` (+4) |
 | `tests/test_servo_mechanical_calibration.py` | Persistent servo-mechanical calibration and flow-compensation evidence | `test_servo_mechanical_fields_reuse_fcal_reserved_space_without_abi_growth` (+4) |
-| `tests/test_servo_pwm_immediate_move_contract.py` | R-S7-7：PWM 调试页即时移动通路 与 标定页慢速点动 的解耦契约。 缺陷背景（R-S7-4 遗留）：PWM 模式下 servo_debug.py 的「移动此舵机」下发裸 `SERVO… | `test_pwm_debug_move_uses_immediate_path_not_the_calibration_slew` (+6) |
+| `tests/test_servo_pwm_immediate_move_contract.py` | R-S7-7：PWM 调试页即时移动通路 与 标定页慢速点动 的解耦契约。 缺陷背景（R-S7-4 遗留）：PWM 模式下 servo_debug.py 的「… | `test_pwm_debug_move_uses_immediate_path_not_the_calibration_slew` (+6) |
 | `tests/test_servo_type_panel_contract.py` | R-S7-5 host contracts for servo type controls and transactions | `test_servo_type_protocol_ids_are_unique_and_forwarded` (+3) |
 | `tests/test_servo_type_protocol.py` | S7 servo output type persistence and command protocol contracts | `test_servo_type_reuses_reserved_fcal_byte_without_abi_growth` (+5) |
 | `tests/test_shared_log_transfer.py` | Single-reader export over the already-open serial session, using FLOG fixtures | `test_current_connection_can_be_borrowed_without_reopen` (+6) |
-| `tests/test_stationary_drift.py` | 静止漂移自检。 背景：六面标定解的是"摆在六个姿态下读数对不对"，但用户真正在意的是"放着不动会 不会自己飘"。这两件事不等价。飞机不动时真实角速度就是 0、真实比力就是 1 g，所以 这个… | `test_a_still_aircraft_reports_no_drift_and_one_g` (+13) |
-| `tests/test_telem_stream_contract.py` | R-T1-1：遥测流 v2（固件侧）契约测试。 三部分： 1. **黄金向量**：宿主 gcc 真编译 `app_telem_frame.c` + `app_proto.c`，让固件 自己的… | `test_encoder_matches_the_golden_vectors_byte_for_byte` (+14) |
-| `tests/test_telem_stream_decoder.py` | R-T1-2：上位机遥测流解码（`tools/panel_lib/telem_stream.py` + transport 二进制分支）。 四件事： 1. **黄金向量对称**：`tests… | `test_transport_delivers_telemetry_payloads_as_bytes` (+26) |
-| `tests/test_telemetry_schema_contract.py` | Contract tests for the VOFA telemetry channel schema (``TELEM?``). The schema exists so the gro… | `test_header_reports_version_count_rate_and_hash` (+14) |
-| `tests/test_tx_ring.py` | `drv_tx_ring` 的宿主侧单测，外加"它必须留在 PC 上可测的形态"这条约束。 这个环形队列是蓝牙出口从阻塞发送改成 DMA 发送时唯一会算错的部分：回绕、 满与空的区分、整包要… | `test_tx_ring_on_host_gcc` (+1) |
+| `tests/test_stationary_drift.py` | 静止漂移自检。 背景：六面标定解的是"摆在六个姿态下读数对不对"，但用户真正在意的是"放着不动会 不会自己飘"。这两件事不等价。飞机不动时真实角速度就是 0、… | `test_a_still_aircraft_reports_no_drift_and_one_g` (+13) |
+| `tests/test_telem_stream_contract.py` | R-T1-1：遥测流 v2（固件侧）契约测试。 三部分： 1. **黄金向量**：宿主 gcc 真编译 `app_telem_frame.c` + `app_… | `test_encoder_matches_the_golden_vectors_byte_for_byte` (+14) |
+| `tests/test_telem_stream_decoder.py` | R-T1-2：上位机遥测流解码（`tools/panel_lib/telem_stream.py` + transport 二进制分支）。 四件事： 1. *… | `test_transport_delivers_telemetry_payloads_as_bytes` (+26) |
+| `tests/test_telemetry_schema_contract.py` | Contract tests for the VOFA telemetry channel schema (``TELEM?``). The schema e… | `test_header_reports_version_count_rate_and_hash` (+14) |
+| `tests/test_tx_ring.py` | `drv_tx_ring` 的宿主侧单测，外加"它必须留在 PC 上可测的形态"这条约束。 这个环形队列是蓝牙出口从阻塞发送改成 DMA 发送时唯一会算错的部… | `test_tx_ring_on_host_gcc` (+1) |
 | `tests/test_usb_v0_transport_contract.py` | — | `test_usb_route` (+3) |
-| `tests/test_v0_guidance_flow.py` | V0 引导可达性回归测试。 V0 页的四项准备清单（连接/快照/零偏/安全输出）与 A/B/C 按钮全部由 _validation_refresh_readiness 依据实时 stabil… | `test_v0_page_polls_as_soon_as_it_is_visible` (+7) |
-| `tests/test_v1_evidence_table.py` | V1 采集页的证据表格。 背景：2026-08-29 的会话里同时躺着三条 50 Hz 的降级采集和两条重复的 accel_pos_x， 表格是平铺的，既看不出哪些步骤还没采、也删不掉，点"… | `test_every_planned_step_gets_a_row_even_before_it_is_captured` (+16) |
+| `tests/test_v0_guidance_flow.py` | V0 引导可达性回归测试。 V0 页的四项准备清单（连接/快照/零偏/安全输出）与 A/B/C 按钮全部由 _validation_refresh_readi… | `test_v0_page_polls_as_soon_as_it_is_visible` (+7) |
+| `tests/test_v1_evidence_table.py` | V1 采集页的证据表格。 背景：2026-08-29 的会话里同时躺着三条 50 Hz 的降级采集和两条重复的 accel_pos_x， 表格是平铺的，既看不… | `test_every_planned_step_gets_a_row_even_before_it_is_captured` (+16) |
 | `tests/test_v1_metrology_session.py` | — | `test_v4_exact_abi_header_sample_and_temperature_conversion` (+17) |
 | `tests/test_validation_snapshot_contract.py` | — | `test_public_snapshot_contains_the_read_only_validation_payload` (+5) |
 

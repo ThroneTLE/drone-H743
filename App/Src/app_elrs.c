@@ -1,6 +1,7 @@
 #include "app_elrs.h"
 
 #include "bsp_cache.h"
+#include "bsp_critical.h"
 #include "bsp_uart_events.h"
 #include "bsp_uart_link.h"
 
@@ -148,10 +149,10 @@ static uint16_t DmaWritePos(void)
 
 /* ---- telemetry TX ---- */
 
-static void StartTxDma(const uint8_t *frame, uint8_t len)
+static uint8_t StartTxDma(const uint8_t *frame, uint8_t len)
 {
     if (BSP_UartLink_HasTxDma(BSP_UART_ROLE_RC) == 0U)
-        return;
+        return 0U;
 
     tx_busy = 1U;
     memcpy(tx_buf, frame, len);
@@ -161,19 +162,21 @@ static void StartTxDma(const uint8_t *frame, uint8_t len)
     if (BSP_UartLink_TransmitDma(BSP_UART_ROLE_RC, tx_buf, len) == 0U) {
         tx_busy = 0U;
         rx_errors++;
+        return 0U;
     }
+    return 1U;
 }
 
-static void SendTelemetryFrame(uint8_t type, const uint8_t *payload, uint8_t payload_len)
+static uint8_t SendTelemetryFrame(uint8_t type, const uint8_t *payload, uint8_t payload_len)
 {
+    if (dma_started==0U) { return 0U; }
     uint8_t frame[CRSF_MAX_FRAME_SIZE];
     uint8_t len = DRV_ELRS_BuildTelemetry(type, payload, payload_len, frame);
-    if (len == 0U) return;
-
-    if (tx_busy != 0U)
-        return;  /* drop — previous frame still in flight */
-
-    StartTxDma(frame, len);
+    if (len == 0U) return 0U;
+    /* The RX task also checks TX idle. Publish busy and start DMA atomically. */
+    uint32_t lock=BSP_Critical_Enter();
+    uint8_t started=tx_busy?0U:StartTxDma(frame,len);
+    BSP_Critical_Exit(lock);return started;
 }
 
 /* ---- public API ---- */
@@ -309,7 +312,7 @@ void APP_ELRS_SendTelemetryBaro(int32_t altitude_dm)
     SendTelemetryFrame(CRSF_FRAME_BARO_ALTITUDE, payload, sizeof(payload));
 }
 
-void APP_ELRS_SendTelemetryBattery(uint16_t voltage_dv, uint16_t current_da,
+uint8_t APP_ELRS_SendTelemetryBattery(uint16_t voltage_dv, uint16_t current_da,
                                    uint32_t capacity_mah, uint8_t remaining_pct)
 {
     uint8_t payload[8];
@@ -321,7 +324,7 @@ void APP_ELRS_SendTelemetryBattery(uint16_t voltage_dv, uint16_t current_da,
     payload[5] = (uint8_t)(capacity_mah >> 8);
     payload[6] = (uint8_t)(capacity_mah);
     payload[7] = remaining_pct;
-    SendTelemetryFrame(CRSF_FRAME_BATTERY_SENSOR, payload, sizeof(payload));
+    return SendTelemetryFrame(CRSF_FRAME_BATTERY_SENSOR, payload, sizeof(payload));
 }
 
 void APP_ELRS_SendTelemetryGps(int32_t lat_e7, int32_t lon_e7,

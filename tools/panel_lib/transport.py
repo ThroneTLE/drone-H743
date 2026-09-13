@@ -367,9 +367,12 @@ class TransportBase(ABC):
                     del buffer[:frame_length]
 
                     if frame[2] == PROTO_DIR_FROM_FC:
-                        from .proto import PROTO_MSG_COMPONENTS
+                        from .proto import PROTO_MSG_COMPONENTS, PROTO_MSG_BATTERY
                         if function == PROTO_MSG_COMPONENTS:
                             emit(("component_bin", payload))
+                            continue
+                        if function == PROTO_MSG_BATTERY:
+                            emit(("battery_bin", payload))
                             continue
                         if function in PROTO_BINARY_FUNCTIONS:
                             if context is None or context.is_current(self):
