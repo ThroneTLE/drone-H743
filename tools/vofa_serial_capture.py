@@ -42,8 +42,11 @@ CHANNEL_NAMES = [
     "fc_time_s",
     "vel_est_x_m_s",
     "vel_est_y_m_s",
-    "reserved_7",
-    "reserved_8",
+    # R-PWR-1：7/8 号退役槽位改成电源通道，名字与固件 schema 一字不差
+    # （App/Src/app_telemetry.c）。无效样本在线上是 NaN，本工具原样落 CSV，
+    # 不要在这里补 0——分析脚本要能区分"不耗电"和"没采到"。
+    "batt_v",
+    "batt_i",
     "reserved_9",
     "reserved_10",
     "coax_pos_x_kp",

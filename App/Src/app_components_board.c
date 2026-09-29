@@ -119,16 +119,16 @@ static void esc(DRV_ComponentRecord *r)
 {
     identity(r,DRV_COMPONENT_ESC,"电调输出",BSP_PWM_EscProtocol(),0);
     r->note="Command / TX state; no ESC acknowledgement";
-#if BSP_ESC_PROTOCOL == BSP_ESC_PROTOCOL_DSHOT300
+#if BSP_ESC_PROTOCOL_IS_DSHOT
     BSP_DShotSnapshot s;BSP_DShot_GetSnapshot(&s);
     r->state=s.fault?DRV_COMPONENT_FAULT:(s.timer_clock_hz?DRV_COMPONENT_READY:DRV_COMPONENT_WAITING);
     r->stage=s.enabled_mask?"outputs enabled":"outputs disabled";r->samples=s.completed;
-    integer(r,"upper_code","",s.code[0],0,s.submitted!=0);
-    integer(r,"lower_code","",s.code[1],0,s.submitted!=0);
+    integer(r,"code_ch1","",s.code[0],0,s.submitted!=0);
+    integer(r,"code_ch2","",s.code[1],0,s.submitted!=0);
     integer(r,"enabled","mask",s.enabled_mask,1,1);integer(r,"errors","",s.errors,0,1);
 #else
     r->state=BSP_PWM_IsInitialized()?DRV_COMPONENT_READY:DRV_COMPONENT_WAITING;r->stage="PWM command";
-    integer(r,"upper","us",BSP_PWM_GetEscPulse(1),0,1);integer(r,"lower","us",BSP_PWM_GetEscPulse(2),0,1);
+    integer(r,"ch1","us",BSP_PWM_GetEscPulse(1),0,1);integer(r,"ch2","us",BSP_PWM_GetEscPulse(2),0,1);
 #endif
 }
 static void servo(DRV_ComponentRecord *r)

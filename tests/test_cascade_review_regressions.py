@@ -139,6 +139,8 @@ def _compile_and_run(tmp_path: Path, source: str) -> subprocess.CompletedProcess
          *(str(ROOT / "Driver" / "Src" / name) for name in (
              # 机体模型没有编译期默认值，控制律要靠它取质量/惯量/力臂。
              "drv_airframe_params.c",
+             # 偏航极性的唯一来源；不编它偏航极性恒为 0。
+             "drv_prop_map.c",
              "drv_coax_ctrl.c", "drv_position_control.c",
              "drv_attitude_control.c", "drv_rate_control.c")),
          str(harness), "-lm", "-o", str(exe)],

@@ -55,8 +55,41 @@ typedef struct {
     float prop_plane_d_m;
     float roll_axis_to_prop_plane_m;
     float pitch_axis_to_prop_plane_m;
-    float pitch_thrust_lever_arm_m;
-    float roll_thrust_lever_arm_m;
+
+    /*
+     * ⚠ 已退役（2026-09-27）。**不要读它，不要写它，不要按它的名字理解它。**
+     *
+     * 这两个数曾是俯仰/横滚的"推力力臂"（都填 0.145 m），控制律再乘上
+     * DRV_COAX_CTRL_PITCH/ROLL_EFFECTIVENESS（0.569/0.581）当倾转力矩的大小。
+     * 它们出自 2026-07-25 的辨识，量的是**旧机体（1.367 kg）**上"重心到舵机转轴"
+     * 的距离；机体换成 0.7546 kg、重心移到 −0.0946 m 之后没人更新过，于是固件把
+     * 俯仰/横滚的倾转权限高估了约 2.3 倍（2026-09-27 光杆辨识 + 直接测量）。
+     *
+     * 现在力臂不再是一个可以单独填的数，而是两个实测高度相减：
+     *     r_z = servoN_axis_z_m − cg_z_m
+     * （推力作用线穿过舵机转轴，推导见 drv_coax_ctrl.c 倾转力矩那一段）。
+     * 没有经验系数可调，也就不会再有一份和几何对不上的副本。
+     *
+     * 字段本身保留是因为它是 **Flash ABI**：`DRV_Airframe_Params` 整体嵌在 CFG
+     * 记录里，删掉会让 v20 起每一版记录的字节布局变化，迁移读取器再也认不出用户
+     * 板子上已经存着的那份配置。旧记录里的值照原样读进来、存回去，但没有任何代码
+     * 再读它。名字加了 `retired_` 前缀，好让任何一处漏改的旧代码编译失败，而不是
+     * 安静地继续读一个和几何对不上的数。参数表里已经没有这两个名字，
+     * `PARAM SET` 写它们会被拒。
+     */
+    float retired_pitch_thrust_lever_arm_m;
+    float retired_roll_thrust_lever_arm_m;
+
+    /*
+     * 两个倾转舵机转轴的高度 [m]（原点板中心，z+ 向上，在板下方填负数）。
+     *   servo1 = alpha 通道 = PWM ch1，管左右倾 → 横滚力矩；
+     *   servo2 = beta  通道 = PWM ch2，管前后倾 → 俯仰力矩。
+     *
+     * 2026-09-27 起它们是**控制关键量**：倾转力矩的力臂就是
+     * r_z = servoN_axis_z_m − cg_z_m，力矩的大小和方向都由它定。为 0（= 没填）、
+     * 离重心不到 DRV_AIRFRAME_TILT_AXIS_MIN_LEVER_M、或与推力点不在重心同侧时
+     * 禁止解锁（见 DRV_Airframe_FirstInvalidName）。
+     */
     float servo1_axis_z_m;
     float servo2_axis_z_m;
     float thrust_point_z_m;
@@ -69,23 +102,24 @@ typedef struct {
     float izz_kgm2;
 
     /*
-     * 下桨旋向（俯视）。+1 = 逆时针（与规范 FLU 的 +yaw 同向），-1 = 顺时针。
-     * 上下桨共轴反转，所以上桨旋向恒为它的相反数，不单独设字段。
+     * ⚠ 已退役（2026-09-13）。**不要读它，不要写它，不要按它的名字理解它。**
      *
-     * ⚠ 仓库里现有的 -1 是**反推**的，不是量出来的，作者已知悉并同意暂用
-     * （2026-09-07）。推理链（三步，任一步被推翻则该值作废）：
-     *   1. 作者实测：偏航角速度环 Kp 加大到一定程度会**抖振**而不是一路发散。
-     *      抖振是负反馈失稳的表现，发散才是正反馈，所以整条
-     *      gyro_z → 力矩 → 差动推力 → 真实机体力矩 的符号是自洽的。
-     *   2. 于是 Mz > 0 必须真的产生 +yaw（机头左转 = 俯视逆时针）。
-     *   3. 桨对机体的反作用力矩与自身旋向相反；分配式让 Mz > 0 时**下桨**推力
-     *      增大，要它给出逆时针反作用，下桨自身就必须是顺时针 → -1。
+     * 它曾经是下桨旋向，偏航极性由它推导。但那个值不是量出来的，是从调参现象
+     * **反推**的：偏航角速度环 Kp 加大会抖振而不是发散 → 闭环是负反馈 →
+     * 反推出下桨俯视顺时针 = -1。推理自洽，可它证明的只是"整条链的符号彼此不
+     * 矛盾"，不是"桨真的往那边转"——换一套增益、或者把某处符号和它一起翻过来，
+     * 现象一模一样，而飞机的偏航方向已经反了。
      *
-     * 待办：**拆桨**直接看一眼桨面/桨型号（或核对电机线序）即可证实或推翻。
-     * 若结论相反，只改这一个字段——偏航极性由它推导
-     * （coax_ctrl_yaw_torque_polarity），不要去翻分配式或遥控映射。
+     * 现在旋向与 ESC 通道归属都由上位机标定，存在 `Driver/Inc/drv_prop_map.h`：
+     * 人通电点一下电机，看着它转，把事实填进去。参数表里已经没有这个名字，
+     * `PARAM SET` 写它会被拒。
+     *
+     * 字段本身保留是因为它是 **Flash ABI**：`DRV_Airframe_Params` 整体嵌在 CFG
+     * 记录里，删掉会让 v20/v21 记录的字节布局变化，迁移读取器再也认不出用户
+     * 板子上已经存着的那份配置。名字加了 `retired_` 前缀，好让任何一处漏改的
+     * 旧代码编译失败，而不是安静地继续读一个没人维护的数。
      */
-    float lower_rotor_spin_sense;
+    float retired_lower_rotor_spin_sense;
     float gravity_m_s2;
     float max_total_thrust_g;       /* 双桨合计最大推力 */
     float servo_deg_per_us;
@@ -94,7 +128,13 @@ typedef struct {
     float mass_kg;
     float cg_z_m;
     float weight_n;
-    float thrust_point_to_cg_z_m;   /* tau = r x F 里的 r，决定倾转力矩的**符号** */
+    /*
+     * 推力点（双桨中点）到重心。2026-09-27 起它**不再**决定倾转力矩——力矩看的
+     * 是推力作用线穿过的舵机转轴（见 servo1/2_axis_z_m）。它留在解锁闸门里当
+     * 独立的交叉核对：舵机转轴与推力点必须在重心同侧，否则多半是某一个的符号
+     * 填反了。
+     */
+    float thrust_point_to_cg_z_m;
     float tether_attach_to_cg_m;
     float tether_rod_to_cg_m;
     float max_total_force_n;
@@ -106,13 +146,42 @@ typedef struct {
 } DRV_Airframe_Params;
 
 /*
+ * 倾转转轴离重心至少要有多远 [m]。低于它倾转几乎产生不了力矩，力矩反解会
+ * 一路顶到倾角限位——那不是"权限小"，是"没有权限还假装有"。1 cm 远小于任何
+ * 能飞的构型（2026-09-27 板上部件表重心算出的力臂 3.5 cm；作者随后实测重心
+ * −0.01 m，力臂约 12 cm），只用来挡住"量错/填错"那一类情形。控制律的倾转反解也用同一个下限：低于它
+ * 或机体模型无效时不驱动舵机（回中），见 drv_coax_ctrl.c。
+ */
+#define DRV_AIRFRAME_TILT_AXIS_MIN_LEVER_M 0.01f
+
+/*
  * 机体模型是否可用。0 = Flash 里没有有效记录，或记录里有物理上不可能的值
- * （质量为零、惯量为零、重力为零……）。为 0 时必须禁止解锁。
+ * （质量为零、惯量为零、重力为零、倾转转轴没填或方向矛盾……）。为 0 时必须禁止解锁。
  */
 uint8_t DRV_Airframe_IsValid(void);
 
-/* 逐项体检，返回第一个不合格字段的名字；全部合格返回 NULL。供诊断如实回报。 */
+/*
+ * 逐项体检，返回第一个不合格项的名字；全部合格返回 NULL。供诊断如实回报。
+ *
+ * 单字段判据返回字段名本身（"airframe.mass_kg"）。倾转转轴的两条复合判据
+ * 返回"该去改的那个字段名 + 冒号 + 原因"，用户一眼知道改哪一项、为什么：
+ *   "airframe.servo1_axis_z_m:near" —— |转轴 z − 重心 z| < DRV_AIRFRAME_TILT_AXIS_MIN_LEVER_M
+ *   "airframe.servo1_axis_z_m:sign" —— 转轴与推力点不在重心同侧
+ * （servo2 同理）。原因词刻意取短：这个名字要塞进 ARM 报文那一行，
+ * 行缓冲只有 APP_UART_TX_TEXT_SIZE（256）字节，不能比现有最长的字段名更长
+ * （最坏整行现为 250 字符、余量 5，这两个数由 tests/test_arm_status_line_budget.py
+ * 按真实格式串算出并核对）。
+ * ±Inf 与 NaN 一样判不合格：单字段项报字段名，转轴复合项报 :near。
+ */
 const char *DRV_Airframe_FirstInvalidName(void);
+
+/*
+ * 倾转转轴相对整机重心的 z 偏移 r_z = servoN_axis_z_m − cg_z_m [m]，
+ * 即 τ = r × F 里的 r（推导见 drv_coax_ctrl.c）。负值 = 转轴在重心下方。
+ * Roll 用 1 号舵机转轴，Pitch 用 2 号舵机转轴。控制律与解锁闸门共用这一处定义。
+ */
+float DRV_Airframe_RollTiltAxisToCgZ(const DRV_Airframe_Params *p);
+float DRV_Airframe_PitchTiltAxisToCgZ(const DRV_Airframe_Params *p);
 
 /* 清空为"未写入"状态。上电时若 Flash 无记录即为此状态。 */
 void DRV_Airframe_Clear(void);
@@ -131,6 +200,8 @@ void DRV_Airframe_SetParams(const DRV_Airframe_Params *in);
 /*
  * 具名读写，名字形如 "airframe.battery_mass_g"。
  * 返回 0 表示名字不认识；写派生值且 derived_auto 为 1 时同样返回 0（拒绝）。
+ * 写入后按**新的** derived_auto 决定是否重算：把 derived_auto 从 0 写成 1
+ * 当场重算全部派生值（含重心，也就含倾转力臂），不等重启。
  */
 uint8_t DRV_Airframe_GetParam(const char *name, float *value);
 uint8_t DRV_Airframe_SetParam(const char *name, float value);

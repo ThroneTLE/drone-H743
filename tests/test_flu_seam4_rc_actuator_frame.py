@@ -25,7 +25,7 @@ import subprocess
 import pytest
 
 
-from _airframe_fixture import AIRFRAME_FIXTURE_C, AIRFRAME_SOURCE
+from _airframe_fixture import AIRFRAME_FIXTURE_C, AIRFRAME_SOURCE, PROP_MAP_SOURCE
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -194,6 +194,7 @@ int main(void) {
          f"-I{ROOT / 'Driver' / 'Inc'}",
          str(RC_INTENT_SOURCE),
          str(AIRFRAME_SOURCE),
+         str(PROP_MAP_SOURCE),
          str(ROOT / "Driver" / "Src" / "drv_coax_ctrl.c"),
          str(ROOT / "Driver" / "Src" / "drv_position_control.c"),
          str(ROOT / "Driver" / "Src" / "drv_attitude_control.c"),

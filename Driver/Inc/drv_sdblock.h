@@ -65,11 +65,43 @@ typedef struct {
 /*
  * 绑定总线并确认卡在位。没有卡不是错误，是一种正常降级状态：
  * 返回 NOT_READY，由上层决定"不记日志继续飞"还是拒飞（decoupling-spec D1-3）。
+ *
+ * 卡在位后先试读一块。4 线读不出时整卡重新初始化成 1 线再试：HAL 的 4→1 线切换
+ * 要先在 4 线下读 SCR，4 线不通时切不过去，只能靠 CMD0 复位回 1 线。
  */
 DRV_SDBLOCK_Status DRV_SDBLOCK_Init(const DRV_SDBLOCK_Bus *bus);
 
 uint8_t  DRV_SDBLOCK_IsReady(void);
 uint64_t DRV_SDBLOCK_GetUsableBytes(void);
+
+/* 试读结果：0 未试，1 成功，2 失败。 */
+#define DRV_SDBLOCK_PROBE_NONE 0U
+#define DRV_SDBLOCK_PROBE_OK   1U
+#define DRV_SDBLOCK_PROBE_FAIL 2U
+
+/* 运行期首次失败发生在哪一步。 */
+#define DRV_SDBLOCK_OP_NONE  0U
+#define DRV_SDBLOCK_OP_WAIT  1U
+#define DRV_SDBLOCK_OP_READ  2U
+#define DRV_SDBLOCK_OP_WRITE 3U
+
+/* 只读诊断快照，给 STATUS? 分清"卡没认到 / 4 线读不通 / 运行中坏掉"。error 都是 HAL ErrorCode。 */
+typedef struct {
+    uint8_t  init_status;    /* 最近一次 Init 的 DRV_SDBLOCK_Status */
+    uint8_t  bus_bits;       /* 当前数据线宽度 1 或 4；0 表示没走到 */
+    uint8_t  probe_first;    /* 按配置线宽试读 */
+    uint8_t  probe_1bit;     /* 首次失败后重新初始化成 1 线再试读 */
+    uint32_t first_error;
+    uint32_t first_ms;
+    uint32_t retry_error;    /* 1 线重试：重新初始化或试读的错误码 */
+    uint32_t retry_ms;
+    uint32_t card_type;      /* HAL CardType：0 SDSC，1 SDHC/SDXC */
+    uint32_t card_blocks;
+    uint8_t  fail_op;        /* Init 成功后的首次失败，DRV_SDBLOCK_OP_* */
+    uint32_t fail_error;
+} DRV_SDBLOCK_Diag;
+
+void DRV_SDBLOCK_GetDiag(DRV_SDBLOCK_Diag *out);
 
 DRV_SDBLOCK_Status DRV_SDBLOCK_Read(uint32_t offset, uint8_t *data, uint32_t length);
 DRV_SDBLOCK_Status DRV_SDBLOCK_Write(uint32_t offset, const uint8_t *data,

@@ -31,6 +31,24 @@ Contract：只显示本连接最近的完整 CURRENT；Boundary：页面/接收�
 叠加既有 ARM 2Hz按800 B/s估算约2600 B/s，占57600/8N1有效5760 B/s的45%，低于60%预算。
 这是静态估算，其他手动开启的遥测流另计；不改变当前遥测流参数。
 
+## R-PWR-1：并入「电源」页，实时值改走遥测流
+
+上面这一节描述的独立「电流计」页已退役。它与「电池电压」页都是 0.5 Hz 轮询，
+而且两页都显示电流——同一个物理量在同一个分组里有两个可能不一致的读数。
+两页合并为 `tools/panel_lib/pages/power.py`（「传感器 → 电源」），按数据的时间
+尺度分成两半：
+
+- **实时区**（总压 / 电流 / 平均单节 / 功率）走遥测流推送，通道 `batt_v` `batt_i`，
+  页面可见才订阅、不可见就退订。**没有任何定时轮询**，原来两个 2 秒定时器已删除。
+- **配置与诊断区**（串数 / 告警恢复阈值 / 电压与电流两路 ADC 计数 / ELRS tx 统计 /
+  标称灵敏度与"未校准"提示）改为"打开页面取一次 + 手动『刷新诊断』"，仍走
+  `BATTERY? <nonce>` 与 `STATUS?`。`BATTERY SET` 的 nonce 问答确认原样保留——
+  写入确认必须能对上是哪一次写入，没法用推送替代。
+
+`parse_current()` 搬进纯解码模块 `tools/panel_lib/current_monitor.py`（无 Tk，
+可直接单测），解析严格度与本节原有描述一致。掩码 / 流开关 / 二进制 sink 三件
+共享资源的仲裁规则见 [telemetry-protocol.md](telemetry-protocol.md) 的 Dashboard 契约。
+
 ## CubeMX 交接
 
 执行者准备独立工作树 `D:/stm32hal/drone-H743-dshot/drone-H743.ioc`。可用 GUI 或 CubeMX 官方 CLI 生成；不手改 Core。

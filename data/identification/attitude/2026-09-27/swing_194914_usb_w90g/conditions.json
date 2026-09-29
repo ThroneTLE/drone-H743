@@ -1,0 +1,68 @@
+{
+  "schema": "rig_swing_v1",
+  "aircraft": "drone-H743：MicoAir743v2 飞控，共轴双桨 + 两轴舵机倾转（机体 FLU）",
+  "firmware": {
+    "image": ".tmp/fw_notch_20260927.elf（烧录时的快照，SHA256 前缀 1e5b2456）",
+    "features": "几何力臂力矩模型（R-TORQUE-1）、转速陷波（R-NOTCH-1，本次录制时关闭）、SYSID 记录 v3"
+  },
+  "rig": {
+    "type": "光杆台架：机体绕水平碳杆自由转动，质心在杆下方（单摆）",
+    "rod_axis": "平行机体 Y 轴（Pitch），psi = 90°",
+    "rod_above_board_m": 0.04,
+    "servo_tilt_axes_below_board_m": 0.13,
+    "servo_axes_note": "俯仰、横滚舵机转轴相交，均在飞控板下方 0.13 m（作者尺量）"
+  },
+  "state": "电机不转、全程上锁；只读遥测，不发解锁/电机/舵机命令",
+  "recording": {
+    "tool": "data/analysis/sysid-rig-params/2026-09-27/scripts/rig_swing_record.py（TELEM 遥测流）",
+    "rate_hz": 40,
+    "time_column": "t_us：飞控微秒时间戳",
+    "channels": {
+      "roll": "deg，融合姿态（FLU）",
+      "pitch": "deg，融合姿态（FLU），本实验的主测量量",
+      "yaw": "deg",
+      "fusion_acc_err": "deg，加速度计与融合姿态的偏差，摆动时判断角度读数受加速度影响的程度",
+      "ctrl_rate_err_x": "rad/s，控制器角速度误差（未解锁时无意义，仅附带）",
+      "ctrl_rate_err_y": "rad/s，同上"
+    }
+  },
+  "airframe_params_on_fc_during_recording": {
+    "note": "录制时飞控里仍是部件表参数（之后才改手动档），本实验是被动测量，不受这些参数影响",
+    "mass_kg": 0.7546,
+    "cg_z_m": -0.094558
+  },
+  "measured_aircraft_mass_kg": 1.1453,
+  "measured_aircraft_mass_note": "作者 2026-09-27 称重，飞行状态整机（含电池、不含台架夹具）",
+  "start_local": "2026-09-27T19:49:14（本机时间）",
+  "duration_s": 240,
+  "link": "USB（COM22）",
+  "usb_cable_attached": true,
+  "weight": {
+    "mass_g": 89.7,
+    "position_as_used_m": {
+      "above_rod_z": 0.227,
+      "fore_aft_x": "±0.053（先前后后）"
+    },
+    "position_as_stated_by_author": "杆上方 53 mm、前后偏移 ±227 mm",
+    "position_note": "按作者原话（上 53、前后 227）静态偏角与摆频推出的刚度相差约 10 倍；按上 227、前后 53 两者吻合（摆频残差约 1%），分析采用后者，待作者确认"
+  },
+  "sequence": "无砝码松手摆 → 砝码前方静置并松手摆 → 挪到后方静置并松手摆 → 取下",
+  "segments_s": {
+    "free_swing": "4–9",
+    "front_swing": "17–25",
+    "front_static": "26.1–28.3",
+    "back_swing": "31–38",
+    "back_static": "39.7–42.2",
+    "removed_static": "46–240"
+  },
+  "results": {
+    "baseline_deg": -0.086,
+    "front_static_deg": 5.482,
+    "back_static_deg": -4.647,
+    "free_swing_f0_hz": 0.68,
+    "weighted_swing_hz": 0.532,
+    "stiffness_K_n_m_per_rad": 0.725,
+    "I_rod_kg_m2": 0.0415,
+    "method": "U = K(1−cosθ)近似线性 Kθ + 砝码势能 m_w g (z cosθ − x sinθ)；平衡角与小振动频率联合最小二乘解 K、I_rod"
+  }
+}

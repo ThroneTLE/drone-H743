@@ -46,6 +46,7 @@
 #define APP_PROTO_REQ_RCMAP          0x1023U
 #define APP_PROTO_REQ_SERVO_CAL      0x1024U
 #define APP_PROTO_REQ_SERVOTYPE      0x1025U
+#define APP_PROTO_REQ_SYSID          0x1026U
 
 #define APP_PROTO_MSG_CMD_LINE  0x2000U
 #define APP_PROTO_MSG_TEXT_LINE 0x2001U
@@ -100,6 +101,17 @@
 #define APP_PROTO_MSG_TELEM_FRAME       0x2230U
 #define APP_PROTO_MSG_COMPONENTS        0x2231U
 #define APP_PROTO_MSG_BATTERY           0x2232U
+/*
+ * 系统辨识的高速采样通道。布局见 Driver/Inc/drv_sysid_record.h，
+ * 上位机侧同名登记在 tools/panel_lib/proto.py。
+ *
+ * 为什么不复用 0x2230 遥测帧：遥测限速 40 Hz、采样发生在遥测任务自己的节拍上
+ * （陀螺会混叠），且通道表里没有 gx/gy/gz、舵机脉宽、油门。辨识要在 500 Hz
+ * 控制拍上采、用固件微秒时间戳，两者的取数时刻根本不是一回事。
+ */
+#define APP_PROTO_MSG_SYSID_SCHEMA      0x2233U
+#define APP_PROTO_MSG_SYSID_BATCH       0x2234U
+#define APP_PROTO_MSG_THRUST_BENCH      0x2235U
 
 /*
  * 成帧器（FC -> PC 方向）在 R-T1-1 重新启用：遥测流 v2 用它把掩码帧包进

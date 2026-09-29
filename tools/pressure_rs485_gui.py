@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Tkinter GUI for the RS485 Modbus pressure/weight transmitter."""
+"""Pressure calibration and H743 measured thrust control in one workflow.
+
+The original scale/calibration workflow is retained. Motor controls use the H743
+TBENCH state machine. Historical CSV helpers remain for the offline viewer only.
+"""
 
 from __future__ import annotations
 
@@ -45,16 +49,35 @@ try:
 except ImportError as exc:  # pragma: no cover
     raise SystemExit("pyserial is required: pip install pyserial") from exc
 
-from pressure_rs485_test import (
-    DEFAULT_BAUD,
-    DEFAULT_DIP,
-    DEFAULT_TIMEOUT,
-    dip_to_addr,
-    read_channel_weight,
-    read_holding_registers,
-    scan_addresses,
-    write_single_register,
-)
+try:
+    from tools.pressure_rs485_test import (
+        DEFAULT_BAUD, DEFAULT_DIP, DEFAULT_TIMEOUT, dip_to_addr,
+        read_channel_weight, read_holding_registers, scan_addresses,
+        write_single_register,
+    )
+    from tools.thrust_bench.legacy_calibration import legacy_grams
+    from tools.thrust_bench.pressure_host import PressureGuiBenchBridge
+    from tools.thrust_bench.ui import ThrustBenchFrame
+except ImportError:  # Direct script: python tools/pressure_rs485_gui.py
+    import importlib.util
+    import sys
+    tools_dir = Path(__file__).resolve().parent
+    spec = importlib.util.spec_from_file_location(
+        "tools", tools_dir / "__init__.py",
+        submodule_search_locations=[str(tools_dir)])
+    if spec is None or spec.loader is None:
+        raise ImportError("cannot initialize tools package for direct script")
+    tools_package = importlib.util.module_from_spec(spec)
+    sys.modules.setdefault("tools", tools_package)
+    spec.loader.exec_module(tools_package)
+    from tools.pressure_rs485_test import (
+        DEFAULT_BAUD, DEFAULT_DIP, DEFAULT_TIMEOUT, dip_to_addr,
+        read_channel_weight, read_holding_registers, scan_addresses,
+        write_single_register,
+    )
+    from tools.thrust_bench.legacy_calibration import legacy_grams
+    from tools.thrust_bench.pressure_host import PressureGuiBenchBridge
+    from tools.thrust_bench.ui import ThrustBenchFrame
 
 CALIBRATION_FILE = PRESSURE_CALIBRATION_DIR / "pressure_calibration.json"
 DEFAULT_REFERENCE_WEIGHTS = (231.8, 346.5, 504.9)
@@ -63,24 +86,6 @@ DEFAULT_BATTERY_VOLTAGE = 12.6
 DEFAULT_PROP = "9050"
 DEFAULT_LOAD_FACTOR = 0.80
 HISTORY_TAIL_SAMPLES = 5
-ESP_CONTROLLER_NAMES = {"ESP12E", "ESP8266"}
-AUTO_IDENT_TEXT = "AUTO"
-AUTO_TARE_COMMAND = 2
-AUTO_PRE_TARE_SETTLE_S = 2.0
-AUTO_TARE_SETTLE_S = 1.2
-AUTO_TARE_VERIFY_SAMPLES = 8
-AUTO_TARE_VERIFY_INTERVAL_S = 0.08
-AUTO_TARE_WARN_ABS_G = 200.0
-ESP_STATUS_RE = re.compile(
-    r"STATUS mode=(?P<mode>\S+) armed=(?P<armed>\d+) "
-    r"m1_pulse_us=(?P<m1_pulse>\d+) m2_pulse_us=(?P<m2_pulse>\d+) "
-    r"arm_settled=(?P<arm_settled>\d+) ident_motor=(?P<ident_motor>\d+) "
-    r"ident_seq=(?P<ident_seq>\d+) ident_pct=(?P<ident_pct>\d+)"
-)
-IDENT_SAMPLE_RE = re.compile(
-    r"IDENT sample seq=(?P<seq>\d+) motor=(?P<motor>\d+) pct=(?P<pct>\d+) "
-    r"pulse=(?P<pulse>\d+) dwell_ms=(?P<dwell>\d+) ms=(?P<ms>\d+)"
-)
 
 
 @dataclass(frozen=True)
@@ -116,12 +121,10 @@ class LossRow:
 
 def motor_name(motor: int) -> str:
     if motor == 0:
-        return "Dual"
+        return "双桨"
     return f"M{motor}"
 
 
-def is_esp_controller(controller: str) -> bool:
-    return controller in ESP_CONTROLLER_NAMES
 
 
 def percent_to_pulse(percent: int) -> int:
@@ -131,7 +134,7 @@ def percent_to_pulse(percent: int) -> int:
 def parse_prop(prop: str) -> tuple[float, float]:
     text = prop.strip().lower().replace("x", "")
     if len(text) != 4 or not text.isdigit():
-        raise ValueError("prop must look like 9050, 9047, or 1045")
+        raise ValueError("桨叶规格请填写 9050、9047 或 1045 这样的四位数字")
     diameter_code = int(text[:2])
     pitch_code = int(text[2:])
     diameter_in = diameter_code / 10.0 if diameter_code >= 50 else float(diameter_code)
@@ -311,253 +314,65 @@ def write_loss_report(path: Path, rows: list[LossRow]) -> None:
 class PressureGui(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
-        self.title("RS485 Pressure Sensor Test")
-        self.geometry("1120x780")
-        self.minsize(980, 660)
-
-        self.events: queue.Queue[tuple[str, object]] = queue.Queue()
-        self.stop_event = threading.Event()
-        self.ident_stop_event = threading.Event()
-        self.pwm_stop_event = threading.Event()
-        self.manual_pwm_lock = threading.Lock()
-        self.fc_serial_lock = threading.RLock()
-        self.worker: threading.Thread | None = None
-        self.ident_worker: threading.Thread | None = None
-        self.pwm_worker: threading.Thread | None = None
-        self.fc_worker: threading.Thread | None = None
-        self.fc_serial: serial.Serial | None = None
-        self.calibration_points: list[tuple[float, float]] = []
-        self.last_raw_value: int | None = None
-        self.latest_loss_rows: list[LossRow] = []
-        self.manual_pwm_target = {"m1_pct": 0, "m2_pct": 0, "hold_ms": 3000}
-        self.raw_log_enabled = True
-
-        self.port_var = tk.StringVar()
-        self.baud_var = tk.StringVar(value=str(DEFAULT_BAUD))
-        self.dip_var = tk.StringVar(value=DEFAULT_DIP)
-        self.addr_var = tk.StringVar(value="")
-        self.channel_var = tk.StringVar(value="1")
-        self.interval_var = tk.StringVar(value="0.2")
-        self.timeout_var = tk.StringVar(value=str(DEFAULT_TIMEOUT))
-        self.raw_var = tk.BooleanVar(value=True)
-        self.value_var = tk.StringVar(value="raw --")
-        self.cal_value_var = tk.StringVar(value="cal -- g")
-        self.status_var = tk.StringVar(value="Idle")
-        self.ref_weight_var = tk.StringVar(value=str(DEFAULT_REFERENCE_WEIGHTS[0]))
-        self.fc_port_var = tk.StringVar()
-        self.fc_baud_var = tk.StringVar(value="115200")
-        self.pwm_controller_var = tk.StringVar(value="H743")
-        self.ident_motor_var = tk.StringVar(value=AUTO_IDENT_TEXT)
-        self.ident_min_var = tk.StringVar(value="0")
-        self.ident_max_var = tk.StringVar(value="100")
-        self.ident_step_var = tk.StringVar(value="5")
-        self.ident_dwell_var = tk.StringVar(value="2000")
-        self.ident_samples_var = tk.StringVar(value="20")
-        self.ident_file_var = tk.StringVar(value="")
-        self.manual_m1_pct_var = tk.IntVar(value=0)
-        self.manual_m2_pct_var = tk.IntVar(value=0)
-        self.manual_hold_ms_var = tk.StringVar(value="3000")
-        self.manual_target_var = tk.StringVar(value="Target M1 0% 1100us | M2 0% 1100us")
-        self.esp_status_var = tk.StringVar(value="ESP STATUS: unknown")
-        self.esp_serial_var = tk.StringVar(value="ESP SERIAL: closed")
-        self.kv_var = tk.StringVar(value=f"{DEFAULT_MOTOR_KV:g}")
-        self.voltage_var = tk.StringVar(value=f"{DEFAULT_BATTERY_VOLTAGE:g}")
-        self.prop_var = tk.StringVar(value=DEFAULT_PROP)
-        self.load_factor_var = tk.StringVar(value=f"{DEFAULT_LOAD_FACTOR:g}")
-        self.history_var = tk.StringVar(value="History: not loaded")
-
-        self._build_ui()
-        self.on_pwm_slider_change()
-        self.load_calibration()
-        self.refresh_ports()
-        self.refresh_history()
-        self.protocol("WM_DELETE_WINDOW", self.on_close)
-        self.after(60, self._poll_events)
+        self.title("H743 共轴推力台 · 称重与实测辨识")
+        self.geometry("1120x860"); self.minsize(900, 660)
+        self.events = queue.Queue(); self.stop_event = threading.Event()
+        self.worker = None; self.calibration_points = []; self.last_raw_value = None
+        self.raw_log_enabled = True; self._closing = False; self._poll_id = None
+        defaults = {"port":"", "baud":str(DEFAULT_BAUD), "dip":DEFAULT_DIP,
+                    "addr":"", "channel":"1", "interval":"0.2", "timeout":str(DEFAULT_TIMEOUT),
+                    "value":"原始值 --", "cal_value":"重量 -- 克", "status":"待命",
+                    "ref_weight":str(DEFAULT_REFERENCE_WEIGHTS[0]), "fc_port":"", "fc_baud":"115200"}
+        for name,value in defaults.items(): setattr(self,name+"_var",tk.StringVar(self,value=value))
+        self.raw_var = tk.BooleanVar(self,value=True)
+        self.bench_bridge = PressureGuiBenchBridge(self)
+        self._build_ui(); self.load_calibration(); self.refresh_ports()
+        self.protocol("WM_DELETE_WINDOW",self.on_close)
+        self._poll_id = self.after(60,self._poll_events)
 
     def _build_ui(self) -> None:
-        root = ttk.Frame(self, padding=12)
-        root.pack(fill=tk.BOTH, expand=True)
-
-        cfg = ttk.LabelFrame(root, text="Connection")
-        cfg.pack(fill=tk.X)
-
-        ttk.Label(cfg, text="Port").grid(row=0, column=0, sticky="w", padx=6, pady=6)
-        self.port_combo = ttk.Combobox(cfg, textvariable=self.port_var, width=14)
-        self.port_combo.grid(row=0, column=1, sticky="w", padx=6, pady=6)
-        ttk.Button(cfg, text="Refresh", command=self.refresh_ports).grid(row=0, column=2, padx=6, pady=6)
-
-        ttk.Label(cfg, text="Baud").grid(row=0, column=3, sticky="w", padx=6, pady=6)
-        ttk.Entry(cfg, textvariable=self.baud_var, width=10).grid(row=0, column=4, sticky="w", padx=6, pady=6)
-
-        ttk.Label(cfg, text="DIP").grid(row=0, column=5, sticky="w", padx=6, pady=6)
-        ttk.Entry(cfg, textvariable=self.dip_var, width=8).grid(row=0, column=6, sticky="w", padx=6, pady=6)
-
-        ttk.Label(cfg, text="Addr").grid(row=1, column=0, sticky="w", padx=6, pady=6)
-        ttk.Entry(cfg, textvariable=self.addr_var, width=8).grid(row=1, column=1, sticky="w", padx=6, pady=6)
-
-        ttk.Label(cfg, text="Channel").grid(row=1, column=3, sticky="w", padx=6, pady=6)
-        ttk.Spinbox(cfg, from_=1, to=4, textvariable=self.channel_var, width=8).grid(row=1, column=4, sticky="w", padx=6, pady=6)
-
-        ttk.Label(cfg, text="Interval s").grid(row=1, column=5, sticky="w", padx=6, pady=6)
-        ttk.Entry(cfg, textvariable=self.interval_var, width=8).grid(row=1, column=6, sticky="w", padx=6, pady=6)
-
-        ttk.Checkbutton(cfg, text="Raw TX/RX", variable=self.raw_var).grid(row=1, column=7, sticky="w", padx=6, pady=6)
-
-        readout = ttk.Frame(root)
-        readout.pack(fill=tk.X, pady=(12, 8))
-
-        value_box = ttk.LabelFrame(readout, text="Realtime Value")
-        value_box.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        ttk.Label(value_box, textvariable=self.value_var, font=("Consolas", 28, "bold")).pack(padx=18, pady=(14, 4))
-        ttk.Label(value_box, textvariable=self.cal_value_var, font=("Consolas", 26, "bold")).pack(padx=18, pady=(4, 14))
-
-        buttons = ttk.LabelFrame(readout, text="Actions")
-        buttons.pack(side=tk.LEFT, fill=tk.Y, padx=(12, 0))
-        self.start_btn = ttk.Button(buttons, text="Start", command=self.start_reading)
-        self.start_btn.pack(fill=tk.X, padx=10, pady=(10, 5))
-        self.stop_btn = ttk.Button(buttons, text="Stop", command=self.stop_reading, state=tk.DISABLED)
-        self.stop_btn.pack(fill=tk.X, padx=10, pady=5)
-        ttk.Button(buttons, text="Read Once", command=self.read_once).pack(fill=tk.X, padx=10, pady=5)
-        ttk.Button(buttons, text="Scan Addr", command=self.scan_addr).pack(fill=tk.X, padx=10, pady=5)
-        ttk.Button(buttons, text="Tare", command=lambda: self.write_command(2)).pack(fill=tk.X, padx=10, pady=5)
-        ttk.Button(buttons, text="Zero", command=lambda: self.write_command(1)).pack(fill=tk.X, padx=10, pady=(5, 10))
-
-        cal = ttk.LabelFrame(root, text="Software Calibration")
-        cal.pack(fill=tk.X, pady=(0, 8))
-        ttk.Label(cal, text="Reference g").grid(row=0, column=0, sticky="w", padx=6, pady=6)
-        self.ref_combo = ttk.Combobox(
-            cal,
-            textvariable=self.ref_weight_var,
-            values=[str(v) for v in DEFAULT_REFERENCE_WEIGHTS],
-            width=12,
-        )
-        self.ref_combo.grid(row=0, column=1, sticky="w", padx=6, pady=6)
-        ttk.Button(cal, text="Capture Current Raw", command=self.capture_calibration_point).grid(row=0, column=2, padx=6, pady=6)
-        ttk.Button(cal, text="Write Module Cal", command=self.write_module_calibration).grid(row=0, column=3, padx=6, pady=6)
-        ttk.Button(cal, text="Clear Software Cal", command=self.clear_calibration).grid(row=0, column=4, padx=6, pady=6)
-        ttk.Label(cal, text="Points").grid(row=1, column=0, sticky="e", padx=6, pady=6)
-        self.cal_points_var = tk.StringVar(value="none")
-        ttk.Label(cal, textvariable=self.cal_points_var).grid(row=1, column=1, columnspan=5, sticky="w", padx=6, pady=6)
-
-        ident = ttk.LabelFrame(root, text="Thrust Identification")
-        ident.pack(fill=tk.X, pady=(0, 8))
-        ttk.Label(ident, text="PWM Controller").grid(row=0, column=0, sticky="w", padx=6, pady=6)
-        ttk.Combobox(
-            ident,
-            textvariable=self.pwm_controller_var,
-            values=("H743", "ESP12E"),
-            width=10,
-            state="readonly",
-        ).grid(row=0, column=1, sticky="w", padx=6, pady=6)
-        ttk.Label(ident, text="Serial").grid(row=0, column=2, sticky="w", padx=6, pady=6)
-        self.fc_port_combo = ttk.Combobox(ident, textvariable=self.fc_port_var, width=14)
-        self.fc_port_combo.grid(row=0, column=3, sticky="w", padx=6, pady=6)
-        ttk.Label(ident, text="Baud").grid(row=0, column=4, sticky="w", padx=6, pady=6)
-        ttk.Entry(ident, textvariable=self.fc_baud_var, width=10).grid(row=0, column=5, sticky="w", padx=6, pady=6)
-        ttk.Label(ident, text="Run").grid(row=0, column=6, sticky="w", padx=6, pady=6)
-        ttk.Combobox(
-            ident,
-            textvariable=self.ident_motor_var,
-            values=(AUTO_IDENT_TEXT, "1", "2", "0"),
-            width=7,
-            state="readonly",
-        ).grid(row=0, column=7, sticky="w", padx=6, pady=6)
-
-        ttk.Label(ident, text="Min").grid(row=1, column=0, sticky="w", padx=6, pady=6)
-        ttk.Entry(ident, textvariable=self.ident_min_var, width=7).grid(row=1, column=1, sticky="w", padx=6, pady=6)
-        ttk.Label(ident, text="Max").grid(row=1, column=2, sticky="w", padx=6, pady=6)
-        ttk.Entry(ident, textvariable=self.ident_max_var, width=7).grid(row=1, column=3, sticky="w", padx=6, pady=6)
-        ttk.Label(ident, text="Step").grid(row=1, column=4, sticky="w", padx=6, pady=6)
-        ttk.Entry(ident, textvariable=self.ident_step_var, width=7).grid(row=1, column=5, sticky="w", padx=6, pady=6)
-        ttk.Label(ident, text="Dwell ms").grid(row=1, column=6, sticky="w", padx=6, pady=6)
-        ttk.Entry(ident, textvariable=self.ident_dwell_var, width=9).grid(row=1, column=7, sticky="w", padx=6, pady=6)
-        ttk.Label(ident, text="Samples").grid(row=1, column=8, sticky="w", padx=6, pady=6)
-        ttk.Entry(ident, textvariable=self.ident_samples_var, width=7).grid(row=1, column=9, sticky="w", padx=6, pady=6)
-
-        ttk.Label(ident, text="CSV").grid(row=2, column=0, sticky="w", padx=6, pady=6)
-        ttk.Entry(ident, textvariable=self.ident_file_var, width=58).grid(row=2, column=1, columnspan=6, sticky="we", padx=6, pady=6)
-        ttk.Button(ident, text="New File", command=self.new_ident_file).grid(row=2, column=7, padx=6, pady=6)
-        self.ident_start_btn = ttk.Button(ident, text="Start Identification", command=self.start_identification)
-        self.ident_start_btn.grid(row=2, column=8, padx=6, pady=6)
-        self.ident_stop_btn = ttk.Button(ident, text="Stop", command=self.stop_identification, state=tk.DISABLED)
-        self.ident_stop_btn.grid(row=2, column=9, padx=6, pady=6)
-
-        manual = ttk.LabelFrame(root, text="ESP12E Manual PWM")
-        manual.pack(fill=tk.X, pady=(0, 8))
-        ttk.Label(manual, text="M1 %").grid(row=0, column=0, sticky="w", padx=6, pady=6)
-        ttk.Scale(
-            manual,
-            from_=0,
-            to=100,
-            orient=tk.HORIZONTAL,
-            variable=self.manual_m1_pct_var,
-            command=self.on_pwm_slider_change,
-        ).grid(row=0, column=1, columnspan=4, sticky="we", padx=6, pady=6)
-        ttk.Label(manual, text="M2 %").grid(row=1, column=0, sticky="w", padx=6, pady=6)
-        ttk.Scale(
-            manual,
-            from_=0,
-            to=100,
-            orient=tk.HORIZONTAL,
-            variable=self.manual_m2_pct_var,
-            command=self.on_pwm_slider_change,
-        ).grid(row=1, column=1, columnspan=4, sticky="we", padx=6, pady=6)
-        ttk.Label(manual, text="Hold ms").grid(row=0, column=5, sticky="w", padx=6, pady=6)
-        ttk.Entry(manual, textvariable=self.manual_hold_ms_var, width=9).grid(row=0, column=6, sticky="w", padx=6, pady=6)
-        self.esp_open_btn = ttk.Button(manual, text="Open ESP", command=self.open_esp_serial)
-        self.esp_open_btn.grid(row=0, column=7, padx=6, pady=6)
-        self.esp_close_btn = ttk.Button(manual, text="Close ESP", command=self.close_esp_serial, state=tk.DISABLED)
-        self.esp_close_btn.grid(row=0, column=8, padx=6, pady=6)
-        self.pwm_status_btn = ttk.Button(manual, text="Status", command=self.query_pwm_status, state=tk.DISABLED)
-        self.pwm_status_btn.grid(row=0, column=9, padx=6, pady=6)
-        self.pwm_arm_btn = ttk.Button(manual, text="Arm", command=self.arm_pwm, state=tk.DISABLED)
-        self.pwm_arm_btn.grid(row=0, column=10, padx=6, pady=6)
-        self.pwm_stop_btn = ttk.Button(manual, text="Stop/Disarm", command=self.stop_pwm_manual, state=tk.DISABLED)
-        self.pwm_stop_btn.grid(row=0, column=11, padx=6, pady=6)
-        self.pwm_apply_btn = ttk.Button(manual, text="Apply Once", command=self.apply_pwm_once)
-        self.pwm_apply_btn.grid(row=1, column=10, padx=6, pady=6)
-        self.pwm_start_btn = ttk.Button(manual, text="Start Manual", command=self.start_pwm_manual)
-        self.pwm_start_btn.grid(row=1, column=11, padx=6, pady=6)
-        self.pwm_apply_btn.configure(state=tk.DISABLED)
-        self.pwm_start_btn.configure(state=tk.DISABLED)
-        ttk.Label(manual, textvariable=self.manual_target_var).grid(row=1, column=5, columnspan=3, sticky="w", padx=6, pady=6)
-        ttk.Label(manual, textvariable=self.esp_status_var, font=("Consolas", 10)).grid(
-            row=1, column=8, columnspan=2, sticky="w", padx=6, pady=6
-        )
-        ttk.Label(manual, textvariable=self.esp_serial_var, font=("Consolas", 10)).grid(
-            row=2, column=5, columnspan=7, sticky="w", padx=6, pady=(0, 6)
-        )
-        manual.columnconfigure(1, weight=1)
-        manual.columnconfigure(2, weight=1)
-        manual.columnconfigure(3, weight=1)
-        manual.columnconfigure(4, weight=1)
-
-        history = ttk.LabelFrame(root, text="History And Loss")
-        history.pack(fill=tk.X, pady=(0, 8))
-        ttk.Label(history, text="KV").grid(row=0, column=0, sticky="w", padx=6, pady=6)
-        ttk.Entry(history, textvariable=self.kv_var, width=8).grid(row=0, column=1, sticky="w", padx=6, pady=6)
-        ttk.Label(history, text="Voltage").grid(row=0, column=2, sticky="w", padx=6, pady=6)
-        ttk.Entry(history, textvariable=self.voltage_var, width=8).grid(row=0, column=3, sticky="w", padx=6, pady=6)
-        ttk.Label(history, text="Prop").grid(row=0, column=4, sticky="w", padx=6, pady=6)
-        ttk.Entry(history, textvariable=self.prop_var, width=8).grid(row=0, column=5, sticky="w", padx=6, pady=6)
-        ttk.Label(history, text="Load").grid(row=0, column=6, sticky="w", padx=6, pady=6)
-        ttk.Entry(history, textvariable=self.load_factor_var, width=8).grid(row=0, column=7, sticky="w", padx=6, pady=6)
-        ttk.Button(history, text="Refresh History", command=self.refresh_history).grid(row=0, column=8, padx=6, pady=6)
-        ttk.Button(history, text="Export Loss CSV", command=self.export_loss_csv).grid(row=0, column=9, padx=6, pady=6)
-        ttk.Label(history, textvariable=self.history_var, justify=tk.LEFT, wraplength=1060).grid(
-            row=1, column=0, columnspan=10, sticky="w", padx=6, pady=(0, 6)
-        )
-
-        log_frame = ttk.LabelFrame(root, text="Log")
-        log_frame.pack(fill=tk.BOTH, expand=True)
-        self.log_text = tk.Text(log_frame, height=14, wrap=tk.NONE, font=("Consolas", 10))
-        self.log_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        scroll = ttk.Scrollbar(log_frame, orient=tk.VERTICAL, command=self.log_text.yview)
-        scroll.pack(side=tk.RIGHT, fill=tk.Y)
-        self.log_text.configure(yscrollcommand=scroll.set)
-
-        status = ttk.Label(root, textvariable=self.status_var, anchor="w")
-        status.pack(fill=tk.X, pady=(6, 0))
+        footer=ttk.Frame(self,padding=(10,6)); footer.pack(side=tk.BOTTOM,fill=tk.X)
+        body=ttk.Frame(self); body.pack(fill=tk.BOTH,expand=True)
+        self.main_canvas=tk.Canvas(body,highlightthickness=0)
+        scrollbar=ttk.Scrollbar(body,orient=tk.VERTICAL,command=self.main_canvas.yview)
+        scrollbar.pack(side=tk.RIGHT,fill=tk.Y); self.main_canvas.pack(fill=tk.BOTH,expand=True)
+        self.main_canvas.configure(yscrollcommand=scrollbar.set)
+        root=ttk.Frame(self.main_canvas,padding=10)
+        window=self.main_canvas.create_window((0,0),window=root,anchor="nw")
+        root.bind("<Configure>",lambda _e:self.main_canvas.configure(scrollregion=self.main_canvas.bbox("all")))
+        self.main_canvas.bind("<Configure>",lambda e:self.main_canvas.itemconfigure(window,width=e.width))
+        cfg=ttk.LabelFrame(root,text="1  称重连接与读数",padding=6); cfg.pack(fill=tk.X)
+        for col,(text,key,width) in enumerate((("称重串口","port",12),("波特率","baud",8),("拨码","dip",6),("地址","addr",5),("通道","channel",3))):
+            ttk.Label(cfg,text=text).grid(row=0,column=col*2,padx=3)
+            w=ttk.Combobox(cfg,textvariable=getattr(self,key+"_var"),width=width) if key=="port" else ttk.Entry(cfg,textvariable=getattr(self,key+"_var"),width=width)
+            w.grid(row=0,column=col*2+1,padx=3)
+            if key=="port": self.port_combo=w
+        ttk.Button(cfg,text="刷新串口",command=self.refresh_ports).grid(row=0,column=10,padx=3)
+        controls=ttk.Frame(cfg);controls.grid(row=1,column=0,columnspan=11,sticky="ew",pady=(6,0))
+        self.start_btn=ttk.Button(controls,text="开始称重",command=self.start_reading);self.start_btn.pack(side=tk.LEFT)
+        self.stop_btn=ttk.Button(controls,text="停止读取",command=self.stop_reading,state=tk.DISABLED);self.stop_btn.pack(side=tk.LEFT,padx=3)
+        for text,callback in (("读取一次",self.read_once),("扫描地址",self.scan_addr),("去皮",lambda:self.write_command(2)),("置零",lambda:self.write_command(1))):
+            ttk.Button(controls,text=text,command=callback).pack(side=tk.LEFT,padx=3)
+        ttk.Checkbutton(controls,text="原始收发",variable=self.raw_var).pack(side=tk.LEFT,padx=4)
+        readings=ttk.Frame(cfg);readings.grid(row=2,column=0,columnspan=11,sticky="ew",pady=4)
+        ttk.Label(readings,textvariable=self.cal_value_var,font=("Microsoft YaHei UI",18,"bold")).pack(side=tk.LEFT,padx=8)
+        ttk.Label(readings,textvariable=self.value_var).pack(side=tk.LEFT,padx=15)
+        ttk.Label(readings,textvariable=self.status_var).pack(side=tk.RIGHT,padx=5)
+        cal=ttk.LabelFrame(root,text="2  砝码标定（沿用已有记录）",padding=6);cal.pack(fill=tk.X,pady=6)
+        ttk.Label(cal,text="砝码重量（克）").grid(row=0,column=0,padx=3)
+        self.ref_combo=ttk.Combobox(cal,textvariable=self.ref_weight_var,values=DEFAULT_REFERENCE_WEIGHTS,width=10)
+        self.ref_combo.grid(row=0,column=1,padx=3)
+        for col,(text,callback) in enumerate((("采集标定点",self.capture_calibration_point),("写入传感器标定",self.write_module_calibration),("清除软件标定",self.clear_calibration)),2):
+            ttk.Button(cal,text=text,command=callback).grid(row=0,column=col,padx=4)
+        self.cal_points_var=tk.StringVar(self,value="尚无标定点")
+        ttk.Label(cal,textvariable=self.cal_points_var,wraplength=820).grid(row=1,column=0,columnspan=5,sticky="w",padx=4,pady=(4,0))
+        self.thrust_bench_frame=ThrustBenchFrame(root,host_bridge=self.bench_bridge)
+        self.thrust_bench_frame.pack(fill=tk.X)
+        self.log_text=self.thrust_bench_frame.live
+        self.global_stop=ttk.Button(footer,text="立即停止上下桨",command=self.thrust_bench_frame.stop)
+        self.global_stop.pack(side=tk.RIGHT,padx=6)
+        self.thrust_bench_frame.status_label=ttk.Label(footer,textvariable=self.thrust_bench_frame.status,wraplength=680)
+        self.thrust_bench_frame.status_label.pack(side=tk.LEFT,fill=tk.X,expand=True)
 
     def refresh_ports(self) -> None:
         ports = [p.device for p in list_ports.comports()]
@@ -567,7 +382,7 @@ class PressureGui(tk.Tk):
             self.port_var.set(ports[0])
         if ports and not self.fc_port_var.get():
             self.fc_port_var.set(ports[1] if len(ports) > 1 else ports[0])
-        self._log(f"Ports: {', '.join(ports) if ports else '(none)'}")
+        self._log(f"可用串口：{', '.join(ports) if ports else '无'}")
 
     def load_calibration(self) -> None:
         if not CALIBRATION_FILE.exists():
@@ -581,9 +396,9 @@ class PressureGui(tk.Tk):
                 for item in points
             ]
             self.calibration_points.sort(key=lambda item: item[0])
-            self._log(f"Loaded calibration: {CALIBRATION_FILE}")
+            self._log(f"已加载标定：{CALIBRATION_FILE}")
         except Exception as exc:
-            self._log(f"ERR load calibration: {exc}")
+            self._log(f"标定加载失败：{exc}")
         self._update_calibration_label()
 
     def save_calibration(self) -> None:
@@ -598,43 +413,23 @@ class PressureGui(tk.Tk):
         self._update_calibration_label()
 
     def calibrated_grams(self, raw_value: float) -> float | None:
-        points = sorted(self.calibration_points, key=lambda item: item[0])
-        if not points:
-            return None
-        if len(points) == 1:
-            raw, grams = points[0]
-            return grams if raw_value == raw else raw_value * (grams / raw) if raw != 0 else None
+        return legacy_grams(raw_value, self.calibration_points)
 
-        if raw_value <= points[0][0]:
-            p0, p1 = points[0], points[1]
-        elif raw_value >= points[-1][0]:
-            p0, p1 = points[-2], points[-1]
-        else:
-            p0, p1 = points[0], points[1]
-            for left, right in zip(points, points[1:]):
-                if left[0] <= raw_value <= right[0]:
-                    p0, p1 = left, right
-                    break
-
-        raw0, grams0 = p0
-        raw1, grams1 = p1
-        if raw1 == raw0:
-            return grams0
-        ratio = (raw_value - raw0) / (raw1 - raw0)
-        return grams0 + ratio * (grams1 - grams0)
+    def _bench_blocks_legacy(self, action: str) -> bool:
+        return self.bench_bridge.scale_blocked(action)
 
     def _update_value_display(self, raw_value: int) -> None:
         self.last_raw_value = raw_value
-        self.value_var.set(f"raw {raw_value}")
+        self.value_var.set(f"原始值 {raw_value}")
         calibrated = self.calibrated_grams(float(raw_value))
         if calibrated is None:
-            self.cal_value_var.set("cal -- g")
+            self.cal_value_var.set("重量 -- 克")
         else:
-            self.cal_value_var.set(f"cal {calibrated:.1f} g")
+            self.cal_value_var.set(f"重量 {calibrated:.1f} 克")
 
     def _update_calibration_label(self) -> None:
         if not self.calibration_points:
-            self.cal_points_var.set("none")
+            self.cal_points_var.set("尚无标定点")
             return
         items = [
             f"{raw:g}->{grams:g}g"
@@ -643,13 +438,14 @@ class PressureGui(tk.Tk):
         self.cal_points_var.set("; ".join(items))
 
     def capture_calibration_point(self) -> None:
+        if self._bench_blocks_legacy("采集砝码点"): return
         if self.last_raw_value is None:
-            messagebox.showinfo("No raw value", "Read the sensor once before capturing a calibration point.")
+            messagebox.showinfo("尚无读数", "请先读取一次传感器，再采集标定点。")
             return
         try:
             grams = float(self.ref_weight_var.get())
         except ValueError:
-            messagebox.showerror("Bad reference", "Reference weight must be a number, e.g. 346.5")
+            messagebox.showerror("砝码重量有误", "砝码重量须为数字，例如 346.5 克。")
             return
 
         raw = float(self.last_raw_value)
@@ -661,21 +457,22 @@ class PressureGui(tk.Tk):
         self.calibration_points.sort(key=lambda item: item[0])
         self.save_calibration()
         self._update_value_display(self.last_raw_value)
-        self._log(f"CAL raw={raw:g} -> {grams:g}g")
+        self._log(f"标定：原始值={raw:g} -> {grams:g}g")
 
     def clear_calibration(self) -> None:
+        if self._bench_blocks_legacy("清除软件标定"): return
         self.calibration_points = []
         if CALIBRATION_FILE.exists():
             CALIBRATION_FILE.unlink()
         self._update_calibration_label()
         if self.last_raw_value is not None:
             self._update_value_display(self.last_raw_value)
-        self._log("Calibration cleared")
+        self._log("软件标定已清除")
 
     def _settings(self) -> tuple[str, int, int, int, float, float]:
         port = self.port_var.get().strip()
         if not port:
-            raise ValueError("serial port is empty")
+            raise ValueError("请选择称重串口")
         baud = int(self.baud_var.get(), 0)
         channel = int(self.channel_var.get(), 0)
         interval = float(self.interval_var.get())
@@ -683,9 +480,9 @@ class PressureGui(tk.Tk):
         addr_text = self.addr_var.get().strip()
         addr = int(addr_text, 0) if addr_text else dip_to_addr(self.dip_var.get())
         if not 1 <= addr <= 254:
-            raise ValueError("address must be 1..254")
+            raise ValueError("地址必须为 1～254")
         if not 1 <= channel <= 4:
-            raise ValueError("channel must be 1..4")
+            raise ValueError("通道必须为 1～4")
         return port, baud, addr, channel, interval, timeout
 
     def _open_serial(self) -> serial.Serial:
@@ -703,433 +500,28 @@ class PressureGui(tk.Tk):
             write_timeout=timeout,
         )
 
-    def _open_fc_serial(self) -> serial.Serial:
-        port = self.fc_port_var.get().strip()
-        if not port:
-            raise ValueError("flight controller serial port is empty")
-        baud = int(self.fc_baud_var.get(), 0)
-        return self._make_fc_serial(port, baud)
-
-    def _make_fc_serial(self, port: str, baud: int) -> serial.Serial:
-        return serial.Serial(
-            port,
-            baudrate=baud,
-            bytesize=serial.EIGHTBITS,
-            parity=serial.PARITY_NONE,
-            stopbits=serial.STOPBITS_ONE,
-            timeout=0.1,
-            write_timeout=0.5,
-        )
-
-    def _esp_serial_is_open(self) -> bool:
-        with self.fc_serial_lock:
-            return self.fc_serial is not None and self.fc_serial.is_open
-
-    def _require_open_esp_serial(self) -> serial.Serial:
-        if self.fc_serial is None or not self.fc_serial.is_open:
-            raise ValueError("Open ESP serial first")
-        return self.fc_serial
-
-    def _set_esp_controls_state(self, opened: bool) -> None:
-        opened_state = tk.NORMAL if opened else tk.DISABLED
-        closed_state = tk.DISABLED if opened else tk.NORMAL
-        self.esp_open_btn.configure(state=closed_state)
-        self.esp_close_btn.configure(state=opened_state)
-        self.pwm_status_btn.configure(state=opened_state)
-        self.pwm_arm_btn.configure(state=opened_state)
-        self.pwm_stop_btn.configure(state=opened_state)
-        self.pwm_apply_btn.configure(state=opened_state)
-        self.pwm_start_btn.configure(state=opened_state)
-
-    def open_esp_serial(self) -> None:
-        if self.fc_worker and self.fc_worker.is_alive():
-            return
-        if self._pwm_busy():
-            return
-        try:
-            self._require_esp_pwm()
-            if self._esp_serial_is_open():
-                messagebox.showinfo("ESP serial", "ESP serial is already open.")
-                return
-            port = self.fc_port_var.get().strip()
-            if not port:
-                raise ValueError("ESP serial port is empty")
-            baud = int(self.fc_baud_var.get(), 0)
-        except Exception as exc:
-            messagebox.showerror("Bad ESP settings", str(exc))
-            return
-
-        self.esp_open_btn.configure(state=tk.DISABLED)
-        self.esp_serial_var.set("ESP SERIAL: opening...")
-        self.fc_worker = threading.Thread(target=self._open_esp_serial_worker, args=(port, baud), daemon=True)
-        self.fc_worker.start()
-
-    def _open_esp_serial_worker(self, port: str, baud: int) -> None:
-        ser: serial.Serial | None = None
-        try:
-            ser = self._make_fc_serial(port, baud)
-            try:
-                ser.setDTR(False)
-                ser.setRTS(False)
-            except Exception:
-                pass
-            with self.fc_serial_lock:
-                if self.fc_serial is not None and self.fc_serial.is_open:
-                    self.fc_serial.close()
-                self.fc_serial = ser
-            self._sync_esp_after_open(ser)
-            self.events.put(
-                (
-                    "esp_serial_state",
-                    {
-                        "open": True,
-                        "text": f"ESP SERIAL: open {ser.port} @ {ser.baudrate}",
-                    },
-                )
-            )
-        except Exception as exc:
-            if ser is not None:
-                with contextlib.suppress(Exception):
-                    ser.close()
-            with self.fc_serial_lock:
-                if self.fc_serial is ser:
-                    self.fc_serial = None
-            self.events.put(("error", str(exc)))
-            self.events.put(("esp_serial_state", {"open": False, "text": "ESP SERIAL: closed"}))
-
-    def close_esp_serial(self) -> None:
-        if self.ident_worker and self.ident_worker.is_alive():
-            self.stop_identification()
-            messagebox.showinfo("Busy", "Identification is stopping. Close ESP after it stops.")
-            return
-        if self.pwm_worker and self.pwm_worker.is_alive():
-            self.pwm_stop_event.set()
-            messagebox.showinfo("Busy", "PWM is stopping. Close ESP after it stops.")
-            return
-        self._close_esp_serial("closed")
-
-    def _close_esp_serial(self, reason: str) -> None:
-        with self.fc_serial_lock:
-            if self.fc_serial is not None:
-                with contextlib.suppress(Exception):
-                    if self.fc_serial.is_open:
-                        self.fc_serial.write(b"DISARM\r\n")
-                        self.fc_serial.flush()
-                        time.sleep(0.05)
-                with contextlib.suppress(Exception):
-                    self.fc_serial.close()
-                self.fc_serial = None
-        self.events.put(("esp_serial_state", {"open": False, "text": f"ESP SERIAL: {reason}"}))
-
-    def _require_esp_pwm(self) -> None:
-        if not is_esp_controller(self.pwm_controller_var.get()):
-            raise ValueError("manual PWM controls require PWM Controller = ESP12E")
-
-    def _update_manual_pwm_target(self) -> tuple[int, int, int]:
-        m1_pct = int(round(float(self.manual_m1_pct_var.get())))
-        m2_pct = int(round(float(self.manual_m2_pct_var.get())))
-        hold_ms = int(self.manual_hold_ms_var.get(), 0)
-        if not 0 <= m1_pct <= 100:
-            raise ValueError("M1 percent must be 0..100")
-        if not 0 <= m2_pct <= 100:
-            raise ValueError("M2 percent must be 0..100")
-        if not 1 <= hold_ms <= 5000:
-            raise ValueError("hold_ms must be 1..5000")
-        with self.manual_pwm_lock:
-            self.manual_pwm_target = {
-                "m1_pct": m1_pct,
-                "m2_pct": m2_pct,
-                "hold_ms": hold_ms,
-            }
-        self.manual_target_var.set(
-            f"Target M1 {m1_pct}% {percent_to_pulse(m1_pct)}us | "
-            f"M2 {m2_pct}% {percent_to_pulse(m2_pct)}us"
-        )
-        return m1_pct, m2_pct, hold_ms
-
-    def _current_manual_pwm_target(self) -> tuple[int, int, int]:
-        with self.manual_pwm_lock:
-            target = dict(self.manual_pwm_target)
-        return int(target["m1_pct"]), int(target["m2_pct"]), int(target["hold_ms"])
-
-    def on_pwm_slider_change(self, _value: str | None = None) -> None:
-        try:
-            self._update_manual_pwm_target()
-        except Exception as exc:
-            self.manual_target_var.set(f"Target error: {exc}")
-
-    def _manual_pwm_settings(self) -> tuple[int, int, int]:
-        self._require_esp_pwm()
-        return self._update_manual_pwm_target()
-
-    def _pwm_busy(self) -> bool:
-        if self.fc_worker and self.fc_worker.is_alive():
-            messagebox.showinfo("Busy", "ESP serial is opening.")
-            return True
-        if self.pwm_worker and self.pwm_worker.is_alive():
-            messagebox.showinfo("Busy", "PWM command is already running.")
-            return True
-        if self.ident_worker and self.ident_worker.is_alive():
-            messagebox.showinfo("Busy", "Identification is using the PWM serial port.")
-            return True
-        return False
-
-    def _read_fc_lines(self, fc_ser: serial.Serial, duration_s: float) -> None:
-        deadline = time.monotonic() + duration_s
-        while time.monotonic() < deadline:
-            raw_line = fc_ser.readline()
-            if not raw_line:
-                continue
-            line = raw_line.decode("utf-8", errors="replace").strip()
-            if line:
-                self._handle_esp_line(line)
-
-    def _handle_esp_line(self, line: str) -> None:
-        self.events.put(("log", f"ESP RX {line}"))
-        match = ESP_STATUS_RE.search(line)
-        if match is not None:
-            payload: dict[str, int | str] = {"mode": match.group("mode")}
-            for key in (
-                "armed",
-                "m1_pulse",
-                "m2_pulse",
-                "arm_settled",
-                "ident_motor",
-                "ident_seq",
-                "ident_pct",
-            ):
-                payload[key] = int(match.group(key))
-            self.events.put(("esp_status", payload))
-
-    def _write_fc_line(self, fc_ser: serial.Serial, command: str) -> None:
-        fc_ser.write((command + "\r\n").encode("ascii"))
-        fc_ser.flush()
-        self.events.put(("log", f"ESP TX {command}"))
-
-    def _request_esp_status(self, fc_ser: serial.Serial) -> None:
-        self._write_fc_line(fc_ser, "STATUS?")
-
-    def _sync_esp_after_open(self, fc_ser: serial.Serial) -> None:
-        try:
-            fc_ser.setDTR(False)
-            fc_ser.setRTS(False)
-        except Exception:
-            pass
-
-        self.events.put(("log", "ESP sync after serial open"))
-        ready = False
-        deadline = time.monotonic() + 2.5
-        while time.monotonic() < deadline:
-            raw_line = fc_ser.readline()
-            if not raw_line:
-                continue
-            line = raw_line.decode("utf-8", errors="replace").strip()
-            if not line:
-                continue
-            if "PWM calibrator ready" in line:
-                ready = True
-                self._handle_esp_line(line)
-                break
-
-        if not ready:
-            self.events.put(("log", "WARN ESP ready banner not seen; querying STATUS anyway"))
-        fc_ser.reset_input_buffer()
-        self._request_esp_status(fc_ser)
-        self._read_fc_lines(fc_ser, 0.5)
-
-    def _send_manual_pair(self, fc_ser: serial.Serial, m1_pct: int, m2_pct: int, hold_ms: int) -> None:
-        if m1_pct == m2_pct:
-            self._write_fc_line(fc_ser, f"PCT 0 {m1_pct} {hold_ms}")
-            return
-        self._write_fc_line(fc_ser, f"PCT 1 {m1_pct} {hold_ms}")
-        self._write_fc_line(fc_ser, f"PCT 2 {m2_pct} {hold_ms}")
-
-    def _wait_pwm_stop_or_timeout(self, fc_ser: serial.Serial, duration_s: float) -> bool:
-        deadline = time.monotonic() + duration_s
-        while not self.pwm_stop_event.is_set() and time.monotonic() < deadline:
-            self._read_fc_lines(fc_ser, 0.05)
-        return self.pwm_stop_event.is_set()
-
-    def _start_pwm_thread(self, target: Callable[..., None], *args: object) -> None:
-        if self._pwm_busy():
-            return
-        try:
-            self._require_esp_pwm()
-            if not self._esp_serial_is_open():
-                raise ValueError("Open ESP serial first")
-        except Exception as exc:
-            messagebox.showerror("Bad PWM settings", str(exc))
-            return
-        self.pwm_stop_event.clear()
-        self.pwm_apply_btn.configure(state=tk.DISABLED)
-        self.pwm_start_btn.configure(state=tk.DISABLED)
-        self.pwm_worker = threading.Thread(target=target, args=args, daemon=True)
-        self.pwm_worker.start()
-
-    def arm_pwm(self) -> None:
-        self._start_pwm_thread(self._pwm_single_command, "ARM", 0.5)
-
-    def query_pwm_status(self) -> None:
-        self._start_pwm_thread(self._pwm_single_command, "STATUS?", 0.7)
-
-    def apply_pwm_once(self) -> None:
-        try:
-            m1_pct, m2_pct, hold_ms = self._manual_pwm_settings()
-        except Exception as exc:
-            messagebox.showerror("Bad PWM settings", str(exc))
-            return
-        self._start_pwm_thread(self._pwm_apply_once, m1_pct, m2_pct, hold_ms)
-
-    def start_pwm_manual(self) -> None:
-        try:
-            m1_pct, m2_pct, hold_ms = self._manual_pwm_settings()
-        except Exception as exc:
-            messagebox.showerror("Bad PWM settings", str(exc))
-            return
-        self._start_pwm_thread(self._pwm_manual_loop, m1_pct, m2_pct, hold_ms)
-
-    def stop_pwm_manual(self) -> None:
-        if self.ident_worker and self.ident_worker.is_alive():
-            self.stop_identification()
-            return
-        if self.pwm_worker and self.pwm_worker.is_alive():
-            self.pwm_stop_event.set()
-            self.status_var.set("Stopping PWM...")
-            return
-        self._start_pwm_thread(self._pwm_single_command, "DISARM", 0.5)
-
-    def _pwm_single_command(self, command: str, read_s: float) -> None:
-        try:
-            with self.fc_serial_lock:
-                fc_ser = self._require_open_esp_serial()
-                self._write_fc_line(fc_ser, command)
-                if command == "ARM":
-                    self._read_fc_lines(fc_ser, 0.3)
-                    for _ in range(7):
-                        if self.pwm_stop_event.is_set():
-                            break
-                        self._request_esp_status(fc_ser)
-                        self._read_fc_lines(fc_ser, 0.45)
-                elif command in ("DISARM", "STOP", "IDENT STOP"):
-                    self._read_fc_lines(fc_ser, 0.2)
-                    self._request_esp_status(fc_ser)
-                    self._read_fc_lines(fc_ser, 0.4)
-                else:
-                    self._read_fc_lines(fc_ser, read_s)
-        except Exception as exc:
-            self.events.put(("error", str(exc)))
-        finally:
-            self.events.put(("pwm_stopped", None))
-
-    def _pwm_apply_once(self, m1_pct: int, m2_pct: int, hold_ms: int) -> None:
-        try:
-            with self.fc_serial_lock:
-                fc_ser = self._require_open_esp_serial()
-                self._write_fc_line(fc_ser, "ARM")
-                self.events.put(("log", "ESP arm settle 3.2 s"))
-                if self._wait_pwm_stop_or_timeout(fc_ser, 3.2):
-                    self._write_fc_line(fc_ser, "DISARM")
-                    return
-                self._send_manual_pair(fc_ser, m1_pct, m2_pct, hold_ms)
-                hold_deadline = time.monotonic() + (hold_ms / 1000.0) + 0.4
-                while not self.pwm_stop_event.is_set() and time.monotonic() < hold_deadline:
-                    self._request_esp_status(fc_ser)
-                    self._read_fc_lines(fc_ser, 0.35)
-                self.events.put(
-                    (
-                        "log",
-                        f"PWM once m1={m1_pct}% m2={m2_pct}% hold={hold_ms}ms; ESP firmware will timeout",
-                    )
-                )
-        except Exception as exc:
-            self.events.put(("error", str(exc)))
-        finally:
-            self.events.put(("pwm_stopped", None))
-
-    def _pwm_manual_loop(self, m1_pct: int, m2_pct: int, hold_ms: int) -> None:
-        try:
-            with self.fc_serial_lock:
-                fc_ser = self._require_open_esp_serial()
-                self._write_fc_line(fc_ser, "ARM")
-                self.events.put(("log", "ESP arm settle 3.2 s"))
-                if self._wait_pwm_stop_or_timeout(fc_ser, 3.2):
-                    return
-                self.events.put(("status", f"Manual PWM m1={m1_pct}% m2={m2_pct}%"))
-                while not self.pwm_stop_event.is_set():
-                    m1_pct, m2_pct, hold_ms = self._current_manual_pwm_target()
-                    self._send_manual_pair(fc_ser, m1_pct, m2_pct, hold_ms)
-                    self._request_esp_status(fc_ser)
-                    self.events.put(("status", f"Manual PWM m1={m1_pct}% m2={m2_pct}%"))
-                    if self._wait_pwm_stop_or_timeout(fc_ser, 0.4):
-                        break
-                self._write_fc_line(fc_ser, "DISARM")
-                self._read_fc_lines(fc_ser, 0.5)
-        except Exception as exc:
-            self.events.put(("error", str(exc)))
-        finally:
-            self.events.put(("pwm_stopped", None))
-
-    def _ident_settings(self) -> tuple[list[int], int, int, int, int, int, Path]:
-        motor_text = self.ident_motor_var.get().strip().upper()
-        min_percent = int(self.ident_min_var.get(), 0)
-        max_percent = int(self.ident_max_var.get(), 0)
-        step_percent = int(self.ident_step_var.get(), 0)
-        dwell_ms = int(self.ident_dwell_var.get(), 0)
-        samples = int(self.ident_samples_var.get(), 0)
-
-        if motor_text in (AUTO_IDENT_TEXT, "ALL", "AUTO 1+2+DUAL"):
-            motors = [1, 2, 0]
-            file_motor: int | None = None
-        else:
-            motor = int(motor_text, 0)
-            if motor not in (0, 1, 2):
-                raise ValueError("run must be AUTO, 0, 1 or 2")
-            motors = [motor]
-            file_motor = motor
-        if not 0 <= min_percent <= 100:
-            raise ValueError("min must be 0..100")
-        if not 0 <= max_percent <= 100:
-            raise ValueError("max must be 0..100")
-        if min_percent > max_percent:
-            raise ValueError("min must be <= max")
-        if step_percent <= 0:
-            raise ValueError("step must be > 0")
-        if dwell_ms <= 0:
-            raise ValueError("dwell_ms must be > 0")
-        if samples <= 0:
-            raise ValueError("samples must be > 0")
-
-        csv_text = self.ident_file_var.get().strip()
-        csv_path = Path(csv_text) if csv_text else self.default_ident_file(file_motor)
-        if csv_path.exists():
-            csv_path = self.default_ident_file(file_motor)
-        return motors, min_percent, max_percent, step_percent, dwell_ms, samples, csv_path
-
-    def default_ident_file(self, motor: int | None = None) -> Path:
-        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        suffix = "auto" if motor is None else ("dual" if motor == 0 else f"m{motor}")
-        return dated_directory(THRUST_IDENT_DIR) / f"thrust_ident_{suffix}_{stamp}.csv"
-
     def _raw_log(self, request: bytes, response: bytes) -> None:
         if not self.raw_log_enabled:
             return
-        self.events.put(("log", f"TX {request.hex(' ').upper()}"))
-        self.events.put(("log", f"RX {response.hex(' ').upper() if response else '(timeout)'}"))
+        self.events.put(("log", f"发送：{request.hex(' ').upper()}"))
+        self.events.put(("log", f"接收：{response.hex(' ').upper() if response else '超时'}"))
 
     def start_reading(self) -> None:
+        if self._bench_blocks_legacy("连续称重"):
+            return
         if self.worker and self.worker.is_alive():
             return
         try:
             port, baud, addr, channel, interval, _timeout = self._settings()
         except Exception as exc:
-            messagebox.showerror("Bad settings", str(exc))
+            messagebox.showerror("连接设置有误", str(exc))
             return
 
         self.raw_log_enabled = bool(self.raw_var.get())
         self.stop_event.clear()
         self.start_btn.configure(state=tk.DISABLED)
         self.stop_btn.configure(state=tk.NORMAL)
-        self.status_var.set(f"Reading {port} {baud} addr={addr} ch={channel}")
+        self.status_var.set(f"正在读取 {port}，波特率 {baud}，地址 {addr}，通道 {channel}")
 
         self.worker = threading.Thread(
             target=self._read_loop,
@@ -1140,7 +532,7 @@ class PressureGui(tk.Tk):
 
     def stop_reading(self) -> None:
         self.stop_event.set()
-        self.status_var.set("Stopping...")
+        self.status_var.set("正在停止读取…")
 
     def read_once(self) -> None:
         self._run_once_worker("read")
@@ -1149,216 +541,40 @@ class PressureGui(tk.Tk):
         self._run_once_worker("scan")
 
     def write_command(self, value: int) -> None:
+        if self.bench_bridge.bench_active and value == 2:
+            self.thrust_bench_frame.tare()
+            return
         self._run_once_worker("write", value)
 
     def write_module_calibration(self) -> None:
         try:
             grams = float(self.ref_weight_var.get())
         except ValueError:
-            messagebox.showerror("Bad reference", "Reference weight must be a number, e.g. 346.5")
+            messagebox.showerror("砝码重量有误", "砝码重量须为数字，例如 346.5 克。")
             return
         if grams <= 0.0 or grams > 65535.0:
-            messagebox.showerror("Bad reference", "Module calibration weight must be in 1..65535.")
+            messagebox.showerror("砝码重量有误", "传感器标定重量必须为 1～65535 克。")
             return
         weight_value = int(round(grams))
         if abs(weight_value - grams) > 0.001:
             ok = messagebox.askyesno(
-                "Round weight",
-                f"The module stores integer weights only.\nWrite {weight_value} for {grams:g} g?",
+                "确认重量取整",
+                f"传感器仅支持整数克数。\n是否将 {grams:g} 克取整为 {weight_value} 克写入？",
             )
             if not ok:
                 return
         self._run_once_worker("module_cal", weight_value)
 
-    def new_ident_file(self) -> None:
-        motor_text = self.ident_motor_var.get().strip().upper()
-        if motor_text in (AUTO_IDENT_TEXT, "ALL", "AUTO 1+2+DUAL"):
-            motor = None
-        else:
-            try:
-                motor = int(motor_text, 0)
-            except ValueError:
-                motor = None
-        path = self.default_ident_file(motor)
-        self.ident_file_var.set(str(path))
-        self._log(f"IDENT csv={path}")
-
-    def _history_settings(self) -> tuple[float, float, float, str]:
-        kv = float(self.kv_var.get())
-        voltage = float(self.voltage_var.get())
-        load_factor = float(self.load_factor_var.get())
-        prop = self.prop_var.get().strip()
-        if kv <= 0.0:
-            raise ValueError("KV must be > 0")
-        if voltage <= 0.0:
-            raise ValueError("voltage must be > 0")
-        if not 0.0 < load_factor <= 1.0:
-            raise ValueError("load factor must be in (0, 1]")
-        parse_prop(prop)
-        return kv, voltage, load_factor, prop
-
-    def _history_csv_paths(self) -> list[Path]:
-        paths = set(THRUST_IDENT_DIR.rglob("thrust_ident_*.csv"))
-        current_text = self.ident_file_var.get().strip()
-        if current_text:
-            current_path = Path(current_text)
-            if current_path.exists():
-                paths.add(current_path)
-        return sorted(paths, key=lambda item: item.stat().st_mtime if item.exists() else 0.0)
-
-    def refresh_history(self) -> None:
-        self.latest_loss_rows = []
-        try:
-            kv, voltage, load_factor, prop = self._history_settings()
-        except Exception as exc:
-            self.history_var.set(f"History settings error: {exc}")
-            return
-
-        paths = self._history_csv_paths()
-        runs = load_ident_runs(paths)
-        if not runs:
-            self.history_var.set("History: no thrust_ident_*.csv data yet")
-            return
-
-        best_by_motor: dict[int, tuple[IdentRun, IdentPoint]] = {}
-        latest_by_motor: dict[int, IdentRun] = {}
-        for run in runs:
-            net_points = zero_baseline_points(run.points)
-            if not net_points:
-                continue
-            best_point = max(net_points.values(), key=lambda item: item.thrust_g)
-            old_best = best_by_motor.get(run.motor)
-            if old_best is None or best_point.thrust_g > old_best[1].thrust_g:
-                best_by_motor[run.motor] = (run, best_point)
-
-            old_latest = latest_by_motor.get(run.motor)
-            if old_latest is None or run.modified_s > old_latest.modified_s:
-                latest_by_motor[run.motor] = IdentRun(
-                    path=run.path,
-                    modified_s=run.modified_s,
-                    motor=run.motor,
-                    points=net_points,
-                )
-
-        lines = [
-            f"History: {len(set(run.path for run in runs))} csv file(s), {len(runs)} motor run(s)",
-            "History uses net thrust after subtracting each run's 0% baseline.",
-        ]
-        for motor in (1, 2, 0):
-            best = best_by_motor.get(motor)
-            if best is None:
-                lines.append(f"{motor_name(motor)} max: no data")
-                continue
-            run, point = best
-            stamp = datetime.fromtimestamp(run.modified_s).strftime("%m-%d %H:%M")
-            rpm_est = kv * voltage * (point.pct / 100.0) * load_factor
-            lines.append(
-                f"{motor_name(motor)} max: {point.thrust_g:.1f} g @ {point.pct}%/"
-                f"{point.pulse_us} us, rpm_est {rpm_est:.0f}, {stamp}, {run.path.name}"
-            )
-
-        missing = [motor_name(motor) for motor in (1, 2, 0) if motor not in latest_by_motor]
-        if missing:
-            lines.append(f"Loss latest set: waiting for {', '.join(missing)}")
-            self.history_var.set("\n".join(lines))
-            return
-
-        try:
-            rows = compute_loss_rows(
-                latest_by_motor[1].points,
-                latest_by_motor[2].points,
-                latest_by_motor[0].points,
-                kv,
-                voltage,
-                load_factor,
-                prop,
-            )
-        except Exception as exc:
-            lines.append(f"Loss latest set: {exc}")
-            self.history_var.set("\n".join(lines))
-            return
-
-        self.latest_loss_rows = rows
-        if not rows:
-            lines.append("Loss latest set: no common pct points")
-            self.history_var.set("\n".join(lines))
-            return
-
-        usable_rows = [row for row in rows if row.pct > 0 and row.single_sum_g > 0.0]
-        selected_rows = usable_rows if usable_rows else rows
-        mean_coeff = statistics.fmean(row.loss_coeff for row in selected_rows)
-        best_dual = max(rows, key=lambda item: item.dual_g)
-        lines.append(
-            f"Loss latest set: coeff {mean_coeff:.3f}, loss {(1.0 - mean_coeff) * 100.0:.1f}%, "
-            f"points {len(rows)}, dual max {best_dual.dual_g:.1f} g @ {best_dual.pct}%"
-        )
-        lines.append("RPM/tip/pitch values are estimates from KV, voltage, command pct, prop, and load factor.")
-        self.history_var.set("\n".join(lines))
-
-    def export_loss_csv(self) -> None:
-        self.refresh_history()
-        if not self.latest_loss_rows:
-            messagebox.showinfo("No loss data", "Need M1, M2, and Dual runs with common pct points first.")
-            return
-        path = dated_directory(THRUST_IDENT_DIR) / "dual_prop_loss_report.csv"
-        try:
-            write_loss_report(path, self.latest_loss_rows)
-        except Exception as exc:
-            messagebox.showerror("Export failed", str(exc))
-            return
-        self._log(f"LOSS csv={path}")
-
-    def start_identification(self) -> None:
-        if self.ident_worker and self.ident_worker.is_alive():
-            return
-        if self.worker and self.worker.is_alive():
-            messagebox.showinfo("Busy", "Stop continuous pressure reading first.")
-            return
-        try:
-            pressure_settings = self._settings()
-            motors, min_percent, max_percent, step_percent, dwell_ms, samples, csv_path = self._ident_settings()
-            if is_esp_controller(self.pwm_controller_var.get()) and not self._esp_serial_is_open():
-                raise ValueError("Open ESP serial before starting ESP12E identification")
-        except Exception as exc:
-            messagebox.showerror("Bad identification settings", str(exc))
-            return
-
-        self.raw_log_enabled = bool(self.raw_var.get())
-        run_text = "->".join(motor_name(motor) for motor in motors)
-        self.ident_file_var.set(str(csv_path))
-        self.ident_stop_event.clear()
-        self.ident_start_btn.configure(state=tk.DISABLED)
-        self.ident_stop_btn.configure(state=tk.NORMAL)
-        self.status_var.set(f"IDENT {run_text} {min_percent}..{max_percent}%")
-        self.ident_worker = threading.Thread(
-            target=self._ident_loop,
-            args=(
-                self.pwm_controller_var.get(),
-                motors,
-                min_percent,
-                max_percent,
-                step_percent,
-                dwell_ms,
-                samples,
-                csv_path,
-                pressure_settings,
-            ),
-            daemon=True,
-        )
-        self.ident_worker.start()
-
-    def stop_identification(self) -> None:
-        self.ident_stop_event.set()
-        self.status_var.set("Stopping identification...")
-
     def _run_once_worker(self, action: str, value: int = 0) -> None:
+        if self._bench_blocks_legacy("称重短操作"):
+            return
         if self.worker and self.worker.is_alive():
-            messagebox.showinfo("Busy", "Stop continuous reading first.")
+            messagebox.showinfo("正在使用", "请先停止连续读取。")
             return
         try:
             settings = self._settings()
         except Exception as exc:
-            messagebox.showerror("Bad settings", str(exc))
+            messagebox.showerror("连接设置有误", str(exc))
             return
         self.raw_log_enabled = bool(self.raw_var.get())
         self.worker = threading.Thread(target=self._single_action, args=(action, value, settings), daemon=True)
@@ -1377,339 +593,6 @@ class PressureGui(tk.Tk):
         finally:
             self.events.put(("stopped", None))
 
-    def _ident_loop(
-        self,
-        controller: str,
-        motors: list[int],
-        min_percent: int,
-        max_percent: int,
-        step_percent: int,
-        dwell_ms: int,
-        samples: int,
-        csv_path: Path,
-        pressure_settings: tuple[str, int, int, int, float, float],
-    ) -> None:
-        try:
-            port, baud, addr, channel, _interval, timeout = pressure_settings
-            csv_path.parent.mkdir(parents=True, exist_ok=True)
-            with contextlib.ExitStack() as stack:
-                pressure_ser = stack.enter_context(self._make_pressure_serial(port, baud, timeout))
-                csv_file = stack.enter_context(csv_path.open("w", newline="", encoding="utf-8"))
-                if is_esp_controller(controller):
-                    self.fc_serial_lock.acquire()
-                    stack.callback(self.fc_serial_lock.release)
-                    fc_ser = self._require_open_esp_serial()
-                else:
-                    fc_ser = stack.enter_context(self._open_fc_serial())
-                writer = csv.DictWriter(
-                    csv_file,
-                    fieldnames=[
-                        "kind",
-                        "host_time",
-                        "seq",
-                        "motor",
-                        "pct",
-                        "pulse_us",
-                        "fc_ms",
-                        "dwell_ms",
-                        "sample_index",
-                        "raw",
-                        "grams",
-                        "count",
-                        "mean_g",
-                        "min_g",
-                        "max_g",
-                        "std_g",
-                        "error",
-                    ],
-                )
-                writer.writeheader()
-
-                self.events.put(("log", f"IDENT csv={csv_path}"))
-
-                for stage_index, motor in enumerate(motors, start=1):
-                    if self.ident_stop_event.is_set():
-                        break
-                    self.events.put(
-                        (
-                            "status",
-                            f"IDENT {stage_index}/{len(motors)} {motor_name(motor)} "
-                            f"{min_percent}..{max_percent}%",
-                        )
-                    )
-
-                    if is_esp_controller(controller):
-                        fc_ser.write(b"ARM\r\n")
-                        fc_ser.flush()
-                        self.events.put(("log", f"ESP TX ARM for {motor_name(motor)}; waiting 3.2 s at 1100 us"))
-                        settle_deadline = time.monotonic() + 3.2
-                        while not self.ident_stop_event.is_set() and time.monotonic() < settle_deadline:
-                            self._read_fc_lines(fc_ser, 0.1)
-                    else:
-                        fc_ser.reset_input_buffer()
-
-                    if self.ident_stop_event.is_set():
-                        break
-                    command = f"IDENT START {motor} {min_percent} {max_percent} {step_percent} {dwell_ms}\r\n"
-                    fc_ser.write(command.encode("ascii"))
-                    fc_ser.flush()
-                    self.events.put(("log", f"{controller} TX {command.strip()}"))
-
-                    next_keepalive = time.monotonic() + 0.4
-                    next_status = time.monotonic() + 0.5
-
-                    def service_ident_serial() -> None:
-                        nonlocal next_keepalive, next_status
-                        if not is_esp_controller(controller):
-                            return
-                        now = time.monotonic()
-                        if now >= next_keepalive:
-                            fc_ser.write(b"IDENT KEEPALIVE\r\n")
-                            fc_ser.flush()
-                            next_keepalive = now + 0.4
-                        if now >= next_status:
-                            self._request_esp_status(fc_ser)
-                            next_status = now + 0.5
-
-                    stage_finished = False
-                    while not self.ident_stop_event.is_set():
-                        service_ident_serial()
-                        raw_line = fc_ser.readline()
-                        if not raw_line:
-                            continue
-                        line = raw_line.decode("utf-8", errors="replace").strip()
-                        if not line:
-                            continue
-
-                        if is_esp_controller(controller):
-                            self._handle_esp_line(line)
-                        else:
-                            self.events.put(("log", f"FC RX {line}"))
-                        match = IDENT_SAMPLE_RE.search(line)
-                        if match is not None:
-                            record = {key: int(value) for key, value in match.groupdict().items()}
-                            self._capture_ident_step(
-                                writer,
-                                pressure_ser,
-                                addr,
-                                channel,
-                                samples,
-                                record,
-                                service_ident_serial,
-                            )
-                            csv_file.flush()
-                        elif line.startswith("IDENT stop") or line.startswith("IDENT done"):
-                            stage_finished = True
-                            break
-
-                    if stage_finished and not self.ident_stop_event.is_set():
-                        if is_esp_controller(controller):
-                            fc_ser.write(b"DISARM\r\n")
-                            fc_ser.flush()
-                            self._read_fc_lines(fc_ser, 0.3)
-                        self._tare_pressure_after_stage(pressure_ser, addr, channel, motor_name(motor))
-        except Exception as exc:
-            self.events.put(("error", str(exc)))
-        finally:
-            try:
-                if is_esp_controller(controller):
-                    with self.fc_serial_lock:
-                        fc_ser = self._require_open_esp_serial()
-                        fc_ser.write(b"IDENT STOP\r\n")
-                        fc_ser.write(b"DISARM\r\n")
-                        fc_ser.flush()
-                else:
-                    with self._open_fc_serial() as fc_ser:
-                        fc_ser.write(b"IDENT STOP\r\n")
-                        fc_ser.flush()
-            except Exception:
-                pass
-            self.events.put(("ident_stopped", None))
-
-    def _capture_ident_step(
-        self,
-        writer: csv.DictWriter,
-        pressure_ser: serial.Serial,
-        addr: int,
-        channel: int,
-        samples: int,
-        record: dict[str, int],
-        keepalive: Callable[[], None] | None = None,
-    ) -> None:
-        grams_values: list[float] = []
-
-        for sample_index in range(samples):
-            if self.ident_stop_event.is_set():
-                break
-            if keepalive is not None:
-                keepalive()
-            error_text = ""
-            raw_value: int | str = ""
-            grams_value: float | str = ""
-            try:
-                raw_reading = read_channel_weight(pressure_ser, addr, channel, log=self._raw_log)
-                if keepalive is not None:
-                    keepalive()
-                grams = self.calibrated_grams(float(raw_reading))
-                grams_value = float(raw_reading) if grams is None else float(grams)
-                raw_value = raw_reading
-                grams_values.append(float(grams_value))
-                self.events.put(("value", raw_reading))
-            except Exception as exc:
-                error_text = str(exc)
-                self.events.put(
-                    (
-                        "log",
-                        f"WARN pressure seq={record['seq']} sample={sample_index} {error_text}",
-                    )
-                )
-
-            writer.writerow(
-                {
-                    "kind": "sample",
-                    "host_time": time.time(),
-                    "seq": record["seq"],
-                    "motor": record["motor"],
-                    "pct": record["pct"],
-                    "pulse_us": record["pulse"],
-                    "fc_ms": record["ms"],
-                    "dwell_ms": record["dwell"],
-                    "sample_index": sample_index,
-                    "raw": raw_value,
-                    "grams": grams_value,
-                    "count": "",
-                    "mean_g": "",
-                    "min_g": "",
-                    "max_g": "",
-                    "std_g": "",
-                    "error": error_text,
-                }
-            )
-
-        if grams_values:
-            mean_g = statistics.fmean(grams_values)
-            std_g = statistics.pstdev(grams_values) if len(grams_values) > 1 else 0.0
-            writer.writerow(
-                {
-                    "kind": "summary",
-                    "host_time": time.time(),
-                    "seq": record["seq"],
-                    "motor": record["motor"],
-                    "pct": record["pct"],
-                    "pulse_us": record["pulse"],
-                    "fc_ms": record["ms"],
-                    "dwell_ms": record["dwell"],
-                    "sample_index": "",
-                    "raw": "",
-                    "grams": "",
-                    "count": len(grams_values),
-                    "mean_g": f"{mean_g:.3f}",
-                    "min_g": f"{min(grams_values):.3f}",
-                    "max_g": f"{max(grams_values):.3f}",
-                    "std_g": f"{std_g:.3f}",
-                    "error": "",
-                }
-            )
-            self.events.put(
-                (
-                    "log",
-                    f"IDENT seq={record['seq']} motor={record['motor']} pct={record['pct']} "
-                    f"n={len(grams_values)} mean={mean_g:.2f}g std={std_g:.2f}g",
-                )
-            )
-        else:
-            writer.writerow(
-                {
-                    "kind": "summary",
-                    "host_time": time.time(),
-                    "seq": record["seq"],
-                    "motor": record["motor"],
-                    "pct": record["pct"],
-                    "pulse_us": record["pulse"],
-                    "fc_ms": record["ms"],
-                    "dwell_ms": record["dwell"],
-                    "sample_index": "",
-                    "raw": "",
-                    "grams": "",
-                    "count": 0,
-                    "mean_g": "",
-                    "min_g": "",
-                    "max_g": "",
-                    "std_g": "",
-                    "error": "no_valid_pressure_samples",
-                }
-            )
-            self.events.put(("log", f"WARN IDENT seq={record['seq']} no valid pressure samples"))
-
-    def _read_pressure_sample_grams(
-        self,
-        pressure_ser: serial.Serial,
-        addr: int,
-        channel: int,
-    ) -> tuple[int, float]:
-        raw_value = read_channel_weight(pressure_ser, addr, channel, log=self._raw_log)
-        grams = self.calibrated_grams(float(raw_value))
-        return raw_value, float(raw_value) if grams is None else float(grams)
-
-    def _read_pressure_sample_window(
-        self,
-        pressure_ser: serial.Serial,
-        addr: int,
-        channel: int,
-    ) -> tuple[float, float, float]:
-        raw_values: list[int] = []
-        gram_values: list[float] = []
-        for _ in range(AUTO_TARE_VERIFY_SAMPLES):
-            raw_value, grams = self._read_pressure_sample_grams(pressure_ser, addr, channel)
-            raw_values.append(raw_value)
-            gram_values.append(grams)
-            time.sleep(AUTO_TARE_VERIFY_INTERVAL_S)
-        mean_raw = statistics.fmean(raw_values)
-        mean_g = statistics.fmean(gram_values)
-        std_g = statistics.pstdev(gram_values) if len(gram_values) > 1 else 0.0
-        return mean_raw, mean_g, std_g
-
-    def _tare_pressure_after_stage(
-        self,
-        pressure_ser: serial.Serial,
-        addr: int,
-        channel: int,
-        stage_name: str,
-    ) -> None:
-        command_register = 0x0028 + (channel - 1) * 10
-        time.sleep(AUTO_PRE_TARE_SETTLE_S)
-        try:
-            before_raw, before_g, before_std = self._read_pressure_sample_window(pressure_ser, addr, channel)
-        except Exception as exc:
-            before_raw = before_g = before_std = float("nan")
-            self.events.put(("log", f"WARN tare pre-read after {stage_name}: {exc}"))
-
-        write_single_register(pressure_ser, addr, command_register, AUTO_TARE_COMMAND, log=self._raw_log)
-        time.sleep(AUTO_TARE_SETTLE_S)
-
-        try:
-            after_raw, after_g, after_std = self._read_pressure_sample_window(pressure_ser, addr, channel)
-            if abs(after_g) > AUTO_TARE_WARN_ABS_G:
-                self.events.put(
-                    (
-                        "log",
-                        f"WARN tare after {stage_name} still offset {after_g:.1f}g; "
-                        "check fixture rest state before next run",
-                    )
-                )
-        except Exception as exc:
-            after_raw = after_g = after_std = float("nan")
-            self.events.put(("log", f"WARN tare verify after {stage_name}: {exc}"))
-
-        self.events.put(
-            (
-                "log",
-                f"TARE after {stage_name} ch{channel} reg=0x{command_register:04X} value={AUTO_TARE_COMMAND} "
-                f"before raw={before_raw:.1f} {before_g:.1f}g std={before_std:.1f}g; "
-                f"after raw={after_raw:.1f} {after_g:.1f}g std={after_std:.1f}g",
-            )
-        )
-
     def _single_action(
         self,
         action: str,
@@ -1727,16 +610,16 @@ class PressureGui(tk.Tk):
                     self.events.put(("log", f"{time.strftime('%H:%M:%S')} ch{channel}={value}"))
                 elif action == "scan":
                     found = scan_addresses(ser, 1, 15, verbose=False)
-                    self.events.put(("log", f"scan result: {found}"))
+                    self.events.put(("log", f"地址扫描结果：{found}"))
                     if found:
                         self.events.put(("addr", found[0]))
                 elif action == "write":
                     write_single_register(ser, addr, command_register, command_value, log=self._raw_log)
-                    name = "zero" if command_value == 1 else "tare"
-                    self.events.put(("log", f"OK {name} ch{channel} reg=0x{command_register:04X}"))
+                    name = "置零" if command_value == 1 else "去皮"
+                    self.events.put(("log", f"{name}完成，通道{channel}，寄存器=0x{command_register:04X}"))
                 elif action == "module_cal":
                     write_single_register(ser, addr, cal_weight_register, command_value, log=self._raw_log)
-                    self.events.put(("log", f"OK module_cal ch{channel} reg=0x{cal_weight_register:04X} weight={command_value}g"))
+                    self.events.put(("log", f"传感器标定完成，通道{channel}，寄存器0x{cal_weight_register:04X}，重量{command_value}克"))
                 else:
                     raise ValueError(action)
         except Exception as exc:
@@ -1745,93 +628,31 @@ class PressureGui(tk.Tk):
             self.events.put(("single_done", None))
 
     def _poll_events(self) -> None:
-        while True:
-            try:
-                event, payload = self.events.get_nowait()
-            except queue.Empty:
-                break
+        if self._closing: return
+        for _ in range(100):
+            try: event,payload=self.events.get_nowait()
+            except queue.Empty: break
+            if event=="value": self._update_value_display(int(payload)); self.status_var.set("读取正常")
+            elif event=="log": self._log(str(payload))
+            elif event=="addr": self.addr_var.set(str(payload))
+            elif event=="error": self.status_var.set(f"错误：{payload}"); self._log(str(payload))
+            elif event=="stopped":
+                self.start_btn.configure(state=tk.NORMAL);self.stop_btn.configure(state=tk.DISABLED)
+                self.status_var.set("读取已停止")
+        self._poll_id=self.after(60,self._poll_events)
 
-            if event == "value":
-                self._update_value_display(int(payload))
-                self.status_var.set("OK")
-            elif event == "log":
-                self._log(str(payload))
-            elif event == "addr":
-                self.addr_var.set(str(payload))
-                self._log(f"using addr={payload}")
-            elif event == "error":
-                self.status_var.set(f"ERR {payload}")
-                self._log(f"ERR {payload}")
-            elif event == "status":
-                self.status_var.set(str(payload))
-            elif event == "esp_status":
-                status = payload
-                if isinstance(status, dict):
-                    self.esp_status_var.set(
-                        "ESP STATUS: "
-                        f"{status.get('mode')} "
-                        f"armed={status.get('armed')} "
-                        f"settled={status.get('arm_settled')} "
-                        f"M1={status.get('m1_pulse')}us "
-                        f"M2={status.get('m2_pulse')}us "
-                        f"ident={status.get('ident_motor')}:{status.get('ident_pct')}%"
-                    )
-            elif event == "esp_serial_state":
-                state = payload
-                if isinstance(state, dict):
-                    opened = bool(state.get("open"))
-                    self.esp_serial_var.set(str(state.get("text", "ESP SERIAL: unknown")))
-                    self._set_esp_controls_state(opened)
-                    if not opened:
-                        self.esp_status_var.set("ESP STATUS: unknown")
-            elif event == "stopped":
-                self.start_btn.configure(state=tk.NORMAL)
-                self.stop_btn.configure(state=tk.DISABLED)
-                if self.status_var.get() == "Stopping...":
-                    self.status_var.set("Stopped")
-            elif event == "ident_stopped":
-                self.ident_start_btn.configure(state=tk.NORMAL)
-                self.ident_stop_btn.configure(state=tk.DISABLED)
-                if self.status_var.get() == "Stopping identification...":
-                    self.status_var.set("Identification stopped")
-                else:
-                    self.status_var.set("Identification done")
-                self.refresh_history()
-            elif event == "pwm_stopped":
-                self._set_esp_controls_state(self._esp_serial_is_open())
-                if self.status_var.get() == "Stopping PWM...":
-                    self.status_var.set("PWM stopped")
-                elif self.status_var.get().startswith("Manual PWM"):
-                    self.status_var.set("PWM done")
-            elif event == "single_done":
-                pass
-
-        self.after(60, self._poll_events)
-
-    def _log(self, text: str) -> None:
-        self.log_text.insert(tk.END, text + "\n")
-        self.log_text.see(tk.END)
+    def _log(self,text: str) -> None:
+        self.thrust_bench_frame._append(text)
 
     def on_close(self) -> None:
-        self.stop_event.set()
-        self.ident_stop_event.set()
-        self.pwm_stop_event.set()
-        with self.fc_serial_lock:
-            if self.fc_serial is not None:
-                with contextlib.suppress(Exception):
-                    if self.fc_serial.is_open:
-                        self.fc_serial.write(b"DISARM\r\n")
-                        self.fc_serial.flush()
-                with contextlib.suppress(Exception):
-                    self.fc_serial.close()
-                self.fc_serial = None
-        self.destroy()
+        self._closing=True;self.stop_event.set()
+        if self._poll_id is not None:
+            with contextlib.suppress(tk.TclError): self.after_cancel(self._poll_id)
+        try: self.thrust_bench_frame.shutdown()
+        finally: self.destroy()
 
 
 def main() -> None:
-    app = PressureGui()
-    app.mainloop()
+    PressureGui().mainloop()
 
-
-if __name__ == "__main__":
-    main()
+if __name__ == "__main__": main()

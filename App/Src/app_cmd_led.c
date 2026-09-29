@@ -118,9 +118,24 @@ uint8_t app_control_handle_led(char **tokens, uint32_t count)
     }
 
     if (strcmp(tokens[1], "AUTO") == 0) {
+        /* 撤销点名任何时候都允许——它只会让灯回到真实状态。 */
         APP_LED_Identify(NULL, 0U);
         APP_Control_QueueText("OK LED AUTO\r\n");
         return 1U;
+    }
+
+    /*
+     * 解锁后拒绝点名。策略层每拍都会撤销 IDENTIFY（见 app_led_publish_arm），
+     * 所以此刻发下去也是白发；这里明说一句，免得操作者对着一盏不听话的灯排查。
+     */
+    {
+        APP_LED_Debug debug;
+
+        APP_LED_GetDebug(&debug);
+        if (debug.armed != 0U) {
+            APP_Control_QueueText("ERR LED identify refused: armed\r\n");
+            return 1U;
+        }
     }
 
     memset(&pattern, 0, sizeof(pattern));

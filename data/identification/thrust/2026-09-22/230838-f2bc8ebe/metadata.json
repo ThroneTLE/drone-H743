@@ -1,0 +1,107 @@
+{
+  "tool": "thrust_bench",
+  "plan_kind": "自动补数（换电继续）",
+  "two_propellers_installed": true,
+  "motor_model": "AEO CRM2413-KV1300",
+  "prop_installation": "两片桨均安装",
+  "prop_spacing": "",
+  "speed_domain": "electrical_erpm",
+  "speed_source": "dshot_erpm",
+  "current_source": "dshot",
+  "esc_current_calibrated": false,
+  "current_resolution_a": 1.0,
+  "current_resolution_source": "TBENCH v1 whole-amp ESC current fields",
+  "snapshot_hz_requested": 50.0,
+  "fc_link_rate": {
+    "snapshot_hz": 50.0,
+    "estimated_wire_bytes_per_second": 6800,
+    "serial_budget_bytes_per_second": 3456,
+    "identity_status": "allowed",
+    "identity_reason": "STM32 application USB CDC VID:PID=0483:5740",
+    "confirmed_stm32_usb_cdc": true,
+    "device": "COM22",
+    "vid": 1155,
+    "pid": 22336,
+    "rate_policy": "confirmed_usb_high_rate"
+  },
+  "channel_mapping_source": "firmware_snapshot",
+  "non_driven_propeller": "unknown_or_windmilling",
+  "scale_calibration_file": "原窗口内存标定快照",
+  "scale_calibration": {
+    "kind": "legacy_single_point_ratio",
+    "points": [
+      {
+        "raw": 239.0,
+        "grams": 240.0
+      }
+    ],
+    "single_point_assumes_zero_origin": true
+  },
+  "notes": "电转速不除极对数；板总电流仅诊断，不用于电流/功耗拟合；双桨保持安装。",
+  "scale_settings_source": "pressure_rs485_gui",
+  "scale_port": "COM29",
+  "scale_baud": 9600,
+  "scale_address": 1,
+  "scale_channel": 1,
+  "scale_register": 0,
+  "scale_timeout_s": 0.25,
+  "schema_version": 2,
+  "created_at": "2026-09-22T23:08:38.176386-07:00",
+  "upper_channel": 2,
+  "lower_channel": 1,
+  "runs": [
+    {
+      "run_id": "3cf281dee5d4",
+      "plan_name": "automatic_dataset_collection",
+      "mode": "dual",
+      "recorded_points": 98,
+      "stop_reason": "user_stop",
+      "max_percent": 20.0,
+      "stop_voltage_v": 10.8,
+      "max_duration_s": 900.0,
+      "max_points": 120,
+      "target_erpm_pairs": [
+        [
+          4545.777777777777,
+          4545.777777777777
+        ],
+        [
+          4545.777777777777,
+          12929.826388888889
+        ],
+        [
+          4545.777777777777,
+          21313.875
+        ],
+        [
+          12929.826388888889,
+          4545.777777777777
+        ],
+        [
+          12929.826388888889,
+          12929.826388888889
+        ],
+        [
+          12929.826388888889,
+          21313.875
+        ],
+        [
+          21313.875,
+          4545.777777777777
+        ],
+        [
+          21313.875,
+          12929.826388888889
+        ],
+        [
+          21313.875,
+          21313.875
+        ]
+      ],
+      "loaded_voltage_min_v": 12.095,
+      "loaded_voltage_max_v": 12.25,
+      "completed": false,
+      "cancelled": true
+    }
+  ]
+}

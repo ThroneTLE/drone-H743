@@ -22,7 +22,7 @@ from pathlib import Path
 import pytest
 
 
-from _airframe_fixture import AIRFRAME_FIXTURE_C, AIRFRAME_SOURCE
+from _airframe_fixture import AIRFRAME_FIXTURE_C, AIRFRAME_SOURCE, PROP_MAP_SOURCE
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -283,6 +283,7 @@ def test_yaw_so3_runtime_matches_legacy_pd_in_hover(tmp_path: Path) -> None:
             f"-I{stub_dir}",
             f"-I{ROOT / 'Driver' / 'Inc'}",
             str(AIRFRAME_SOURCE),
+            str(PROP_MAP_SOURCE),
             str(ROOT / "Driver" / "Src" / "drv_coax_ctrl.c"),
             str(ROOT / "Driver" / "Src" / "drv_position_control.c"),
             str(ROOT / "Driver" / "Src" / "drv_attitude_control.c"),

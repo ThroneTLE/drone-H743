@@ -9,11 +9,11 @@
 - 解禁 `app_proto.c` 里的 `APP_Proto_BuildFrame` 及其 CRC；**不**解禁解析器。
 - 在 `App/Inc/app_proto.h` 与 `tools/panel_lib/proto.py` **同一提交**登记新 function ID（历史教训：0x1022/0x1023 曾单方定义）。
 - 改 `tools/panel_lib/transport.py::_consume_buffer` 增加二进制分支；改 `app_telemetry.c/h` 表结构与版本号。
-- 缩减 `Core/Src/freertos.c` USER CODE 段（只搬出、不新增）。
+- 早期遥测迁移中的生成入口搬移不是后续任务的常驻授权；涉及 `Core/Src/freertos.c` 等生成代码仍走当前 CubeMX/作者授权流程。
 
 ## 判据
 
-1. **帧格式以规划文档 §2.2 为准**；要改格式，先改文档、再改两端、再提交——三者同一提交。
+1. **帧格式以 `doc/telemetry-protocol.md` 的当前线上规范为准**；格式变化先由主控明确约定，再协调两端实现和文档作为完整单元集成，不能交付半套协议。
 2. 两端**逐字节一致**由黄金向量钉住：固件 host 装置产出的字节 == pytest 解码器的期望输入。不允许各写各的"看起来一样"。
 3. 上位机解码器必须过**模糊测试**：任意截断/插入/翻转，永不产出错长度样本、一帧内重同步、hash 不符不入缓冲。
 4. **静默失败零容忍**：长度不符、hash 不符、超限配置都必须可观测（计数器 + `ERR` 回复），不能悄悄截断、悄悄丢弃。
@@ -25,10 +25,9 @@
 - 改 `$X` 帧头、方向字节、CRC 算法；改既有 function ID 的语义。
 - 改 `PARAM SET` / `PID` 的现有回复文本；改任何参数写入的钳位或安全门。
 - 在控制环任务上下文里调用 `APP_Control_QueueText`/`queue_proto_text`/`APP_USB_CDC_Write`（spec §5 上下文契约）。
-- 向 `drone_tcp_panel.py`、`app_control.c` 追加超出规划文档允许的挂载行。
+- 向 `drone_tcp_panel.py`、`app_control.c` 追加内容；两入口只减不增，新功能通过模块接入。
 - 持久化流配置到 Param blob。
 
 ## 交付物
 
-除常规交付外，附：黄金向量文件路径、模糊测试用例数与运行时间、每个默认配置的带宽表、
-两端 function ID 登记的 diff 片段、`freertos.c`/`app_control.c`/`drone_tcp_panel.py` 三个文件的行数前后对比。
+按改动附真实编码器/黄金向量、解码容错输出、相关带宽计算及两端 ID 登记差异；公共文件由主控指定唯一负责人。触及超限入口时证明其未增长。开发阶段定向检查，最终跨端组合及全量时机统一按 [验证策略](../validation-policy.md)，不要求每个子 Agent 重复整套。

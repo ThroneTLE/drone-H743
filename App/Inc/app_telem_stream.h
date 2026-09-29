@@ -90,6 +90,7 @@ APP_TelemMask APP_TelemStream_DefaultMask(void);
 
 /* 当前实际出口（把 AUTO 解开）。 */
 APP_TelemSink APP_TelemStream_ActiveSink(void);
+APP_TelemSink APP_TelemStream_CommandSink(void);
 
 /* `TELEM?` 的第二行：流状态。 */
 void APP_TelemStream_ReportStatus(void);

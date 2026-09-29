@@ -203,6 +203,15 @@ class ScopeCanvas:
             start = int(np.searchsorted(times, oldest, side="left"))
             slice_t = times[start:]
             slice_v = values[start:]
+            # 固件对"无效 / 过期"发的是 NaN 而不是 0。NaN 不能进画布：
+            # `min()/max()` 会把整张图的自动量程变成 NaN（于是所有曲线一起退回
+            # ±1 的兜底量程），坐标里的 NaN 还会进 Tcl。丢掉这些样本，曲线在那
+            # 段时间留一个空档——空档是事实，一条掉到 0 的线是假数据。
+            if slice_v.size:
+                finite = np.isfinite(slice_v)
+                if not finite.all():
+                    slice_t = slice_t[finite]
+                    slice_v = slice_v[finite]
             if slice_v.size == 0:
                 continue
             slice_t, slice_v = decimate_min_max(slice_t, slice_v, columns)

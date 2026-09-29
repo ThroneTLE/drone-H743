@@ -229,18 +229,32 @@ def test_the_harness_builds_the_real_panel_with_all_leaf_pages(offline) -> None:
     # 机体模型是新功能；仿真是把原来常驻主窗口顶部的启动栏搬进独立栏目，
     # 把那个"每次上机先看一眼"的位置让给解锁状态横幅。
     pages = offline.leaf_pages()
-    assert len(pages) == 25
-    assert "传感器 / 电流计" in {page.label for page in pages}
-    assert "传感器 / 电池电压" in {page.label for page in pages}
+    # 2026-09-13：「系统辨识」从单个叶页改成带 3 个子页的分组（27 → 29）。
+    # 三件事的物理特性不同——内环靠倾转产生力矩、XY 外环靠倾角产生水平加速度、
+    # 高度靠总推力直接产生升力且强非线性——共用一页只会互相污染。
+    # 2026-09-20：电流计与电池电压并成「电源」页（29 → 28，R-PWR-1）。
+    # 2026-09-20：新增「校准 / 磁力计校准」叶页（28 → 29，R-MAG-1）。
+    assert len(pages) == 29
+    assert "传感器 / 电源" in {page.label for page in pages}
+    assert "传感器 / 电流计" not in {page.label for page in pages}
+    assert "传感器 / 电池电压" not in {page.label for page in pages}
+    assert "维护 / 状态灯" in {page.label for page in pages}
     assert "机体模型" in {page.label for page in pages}
     assert "仿真" in {page.label for page in pages}
+    assert "校准 / 磁力计校准" in {page.label for page in pages}
     labels = [page.label for page in pages]
     assert sum(label.startswith("日志 / ") for label in labels) == 3
     # 分组页签本身不算叶页，它的子页才算。
     assert any(label.startswith("校准 / ") for label in labels)
     assert any(label.startswith("传感器 / ") for label in labels)
-    assert sum(label.startswith("校准 / ") for label in labels) == 7
-    assert sum(label.startswith("传感器 / ") for label in labels) == 6
+    # 2026-09-20：「磁力计校准」进了「校准」组（8 → 9，R-MAG-1）。
+    assert sum(label.startswith("校准 / ") for label in labels) == 9
+    assert sum(label.startswith("传感器 / ") for label in labels) == 5
+    # 2026-09-12：固件升级 / 舵机调试 / 状态灯三个页签原来在顶层各占一格、
+    # 前缀都写着「维护 · 」——用文字模拟一层本该存在的结构。收进分组后
+    # 叶页总数不变，但它们必须真的挂在分组里，否则几何遍历会漏掉。
+    assert sum(label.startswith("维护 / ") for label in labels) == 3
+    assert sum(label.startswith("系统辨识 / ") for label in labels) == 3
 
 
 def test_the_qa_window_says_it_is_not_connected_to_hardware(offline) -> None:
@@ -333,8 +347,10 @@ with tempfile.TemporaryDirectory() as root:
     assert payload["scale"] == 1.5
     assert payload["dpi"] == 1.5
     assert isinstance(payload["font"], int)
-    # R-CURRENT-2 增加电流计叶页，全部页面继续参与缩放矩阵。
-    assert payload["reports"] == 25
+    # 电源页与状态灯均参加完整页面缩放矩阵。
+    # 2026-09-20：电流计与电池电压并成「电源」页（29 → 28，R-PWR-1）。
+    # 2026-09-20：新增「校准 / 磁力计校准」叶页（28 → 29，R-MAG-1）。
+    assert payload["reports"] == 29
     assert all(scale == 1.5 for scale in payload["scales"])
 
 

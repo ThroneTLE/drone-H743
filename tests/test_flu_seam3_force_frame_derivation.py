@@ -31,7 +31,7 @@ from pathlib import Path
 import pytest
 
 
-from _airframe_fixture import AIRFRAME_FIXTURE_C, AIRFRAME_SOURCE
+from _airframe_fixture import AIRFRAME_FIXTURE_C, AIRFRAME_SOURCE, PROP_MAP_SOURCE
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -195,6 +195,7 @@ def _build_and_run(tmp_path: Path, tag: str, source_text: str,
          f"-I{stub}", f"-I{ROOT / 'Driver' / 'Inc'}",
          str(ctrl),
          str(AIRFRAME_SOURCE),
+         str(PROP_MAP_SOURCE),
          str(ROOT / "Driver" / "Src" / "drv_position_control.c"),
          str(ROOT / "Driver" / "Src" / "drv_attitude_control.c"),
          str(ROOT / "Driver" / "Src" / "drv_rate_control.c"),

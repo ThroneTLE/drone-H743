@@ -111,7 +111,17 @@ def test_cfg_v19_store_is_extracted_and_backward_compatible() -> None:
     )
     control = (ROOT / "App" / "Src" / "app_control.c").read_text(encoding="utf-8")
     # v19 已不是当前版本（v20 追加了机体模型块），但它必须仍在迁移链上。
-    assert "APP_CONTROL_CFG_VERSION     20U" in header
+    # v21 起记录里多了状态灯颜色绑定块（APP_LedConfig）；v20 的读取器
+    # 仍在（config_read_v20），所以旧记录照样读得回来。
+    # 2026-09-20（R-MAG-1）：v23 在记录尾部追加磁力计校准块，当前版本号随之
+    # 推进到 23；v19 仍在迁移链上不受影响，v22 → v23 的覆盖见下一条测试。
+    # 2026-09-28：v24 在记录尾部追加横滚/俯仰指令整形与出口陷波块（默认关），
+    # v23 → v24 由 config_read_v23 读取、新块落回"关"（tests/test_attitude_shaping.py 实跑覆盖）。
+    # 同日晚 v25 在整形块尾部追加第二级出口陷波，v24 由 config_read_v24 读取、第二级落回"关"。
+    assert "APP_CONTROL_CFG_VERSION     25U" in header
+    assert "APP_CONTROL_CFG_VERSION_V24 24U" in header
+    assert "APP_CONTROL_CFG_VERSION_V23 23U" in header
+    assert "config_read_v24" in store
     assert "APP_CONTROL_CFG_VERSION_V19 19U" in header
     for version in ("V18", "V17", "V16", "V15"):
         assert f"APP_CONTROL_CFG_VERSION_{version}" in header
@@ -121,6 +131,28 @@ def test_cfg_v19_store_is_extracted_and_backward_compatible() -> None:
     assert "APP_ControlConfigStore_Save(&control_config)" in control
     assert "APP_ControlFlashRecordV17" not in control
     assert "pos_z_ki" not in store
+
+
+def test_cfg_v22_migrates_into_v23_keeping_old_blocks_and_defaulting_the_new_mag_block() -> None:
+    """v22 → v23 迁移覆盖，钉法与上面 v19 一节同构：旧记录只读不丢。
+
+    2026-09-20（R-MAG-1）：v23 在记录尾部追加磁力计校准块。config_read_v22
+    读一条 v22 记录时，必须把它已有的四块（遥控映射/机体模型/LED/桨叶标定）
+    按记录里的真实字段原样应用——不能因为加了新块就退化成像它们自己都没有
+    过的版本那样落回默认。新出现的磁力计块在 v22 记录里不存在，必须显式落回
+    "未校准"（NULL），不能留着 RAM 里上一次的系数。
+    """
+    store = (ROOT / "App" / "Src" / "app_control_config_store.c").read_text(
+        encoding="utf-8"
+    )
+    reader = store[store.index("APP_CONTROL_DEFINE_LEGACY_READER(config_read_v22"):]
+    reader = reader[:reader.index("APP_CONTROL_DEFINE_LEGACY_READER(config_read_v21")]
+
+    assert "app_cmd_rcmap_apply_config(&record.rc_config);" in reader
+    assert "DRV_Airframe_SetParams(&record.airframe);" in reader
+    assert "app_cmd_ledmap_apply_config(&record.led);" in reader
+    assert "app_cmd_propcal_apply_config(&record.prop);" in reader
+    assert "app_cmd_magcal_apply_config(NULL);" in reader
 
 
 def test_v18_yaw_migration_divisor_is_frozen_not_the_live_airframe_model() -> None:

@@ -91,7 +91,7 @@ def test_c_to_csv(encoded, tmp_path):
     assert first["motor_upper_us"] == 1500 and first["motor_lower_us"] == 1600
     assert first["timestamp_us"] == 1000 and fault["timestamp_us"] == 2000
     if protocol:
-        assert first["dshot_upper_code"] == 313 and first["dshot_lower_code"] == 2047
+        assert first["dshot_code_ch1"] == 313 and first["dshot_code_ch2"] == 2047
         assert first["dshot_enabled_mask"] == 3 and first["dshot_busy"] == 1
         assert first["dshot_submitted"] == 20 and first["dshot_completed"] == 18
         assert first["dshot_busy_rejected"] == 7 and first["dshot_timer_clock_hz"] == 120000000

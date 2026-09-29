@@ -355,6 +355,7 @@ STREAM_HARNESS = r"""
 #include "app_telem_stream.h"
 #include "app_telemetry.h"
 
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -389,6 +390,7 @@ static uint8_t  port_uart_fails;
 static uint8_t  port_bt_fails;
 static uint8_t  port_last_frame[512];
 static uint16_t port_last_length;
+static uint32_t port_full_refresh_frames;
 static char     port_last_reply[256];
 static uint32_t port_reply_count;
 
@@ -414,6 +416,11 @@ static void port_capture(const uint8_t *frame, uint16_t length)
     port_last_length = (length < sizeof(port_last_frame))
                            ? length : (uint16_t)sizeof(port_last_frame);
     memcpy(port_last_frame, frame, port_last_length);
+    /* payload 偏移 14 是 flags 低字节；全量刷新帧要能数出个数，不能只看最后一帧。 */
+    if ((port_last_length > (8U + 14U)) &&
+        ((port_last_frame[8 + 14] & APP_TELEM_FRAME_FLAG_FULL_REFRESH) != 0U)) {
+        port_full_refresh_frames++;
+    }
 }
 
 uint8_t APP_TelemStream_PortSendUart(const uint8_t *frame, uint16_t length)
@@ -528,6 +535,7 @@ static void reset_world(void)
     port_uart_fails = 0U;
     port_bt_fails = 0U;
     port_last_length = 0U;
+    port_full_refresh_frames = 0U;
     port_reply_count = 0U;
     APP_TelemStream_Reset();
 }
@@ -618,18 +626,25 @@ static int test_refresh_period(void)
     CHECK(APP_TelemStream_SetRefresh(1U) == APP_TELEM_STREAM_OK, 300);
     (void)APP_TelemStream_SetActive(1U);
 
-    /* 40 Hz -> 25 ms/拍，1 s = 第 40 拍是全量帧。 */
+    /*
+     * 激活那一拍**立刻**发一帧全量刷新（fix：SetActive 把累加器顶满而不是清零）。
+     * 新订阅者因此第一帧就拿到全通道 + 全部参数回显，不用等最多 refresh_s 秒。
+     */
+    APP_TelemStream_Tick();
+    CHECK((frame_flags() & APP_TELEM_FRAME_FLAG_FULL_REFRESH) != 0U, 305);
+
+    /* 之后回到 refresh 周期：40 Hz -> 25 ms/拍，1 s = 再过 40 拍。 */
     for (tick = 1U; tick <= 39U; ++tick) {
         APP_TelemStream_Tick();
-        if (tick > 1U) {
-            /*
-             * 稳态帧必须两位全 0：FULL_REFRESH 不用说，WIDE_MASK 也必须是 0。
-             * 实时通道全在低 64 位，稳态帧因此只发 8 字节掩码；一旦哪个高通道
-             * 漏进了稳态掩码，每帧就白涨 8 B，40 Hz 下 312 B/s，默认配置会被
-             * 顶过数传 60% 带宽门限——那种回归在波形上完全看不出来。
-             */
-            CHECK(frame_flags() == 0U, 301);
-        }
+        /*
+         * 稳态帧必须两位全 0：FULL_REFRESH 不用说，WIDE_MASK 也必须是 0。
+         * 实时通道全在低 64 位，稳态帧因此只发 8 字节掩码；一旦哪个高通道
+         * 漏进了稳态掩码，每帧就白涨 8 B，40 Hz 下 312 B/s，默认配置会被
+         * 顶过数传 60% 带宽门限——那种回归在波形上完全看不出来。
+         *
+         * 首帧不再需要豁免：开流那一拍已经是全量刷新帧，脏位随它一起清掉了。
+         */
+        CHECK(frame_flags() == 0U, 301);
     }
     APP_TelemStream_Tick();
     /* 全量帧带上真名增益（通道 >= 64），所以它是宽掩码帧。 */
@@ -922,6 +937,166 @@ static int test_the_profile_says_where_the_time_went(void)
     return 0;
 }
 
+static int test_power_channels_keep_the_narrow_mask(void)
+{
+    /*
+     * R-PWR-1：订阅两路电源通道之后，稳态帧必须**仍然是 24 字节窄掩码头**。
+     *
+     * 这正是电源通道复用 reserved_7/8 而不是追加到表尾的全部理由：通道号就是
+     * 掩码位号，只要全部置位的通道号都 < 64，掩码就只发 8 字节。有人把它们挪到
+     * 表尾的话，这里会变成 32 字节头 —— 每帧多 8 B，40 Hz 下多 320 B/s，
+     * 而默认配置离 60% 门限只剩 100 B/s。挪动本身不报任何错，只有这条测试会红。
+     */
+    APP_TelemMask mask;
+    APP_TelemMask power = APP_TelemMask_Or(
+        APP_TelemMask_FromBit((uint32_t)APP_TELEM_CH_BATT_V),
+        APP_TelemMask_FromBit((uint32_t)APP_TELEM_CH_BATT_I));
+
+    reset_world();
+    APP_TelemStream_NoteCommandSource(APP_TELEM_SINK_UART);
+
+    /* 编号必须留在低 64 位，否则下面的窄掩码断言就只是巧合。 */
+    CHECK((uint32_t)APP_TELEM_CH_BATT_V < 64U, 800);
+    CHECK((uint32_t)APP_TELEM_CH_BATT_I < 64U, 801);
+    /* 默认掩码里没有它们：默认配置的带宽余量不够，要看得自己订阅。 */
+    CHECK(APP_TelemMask_IsEmpty(
+              APP_TelemMask_And(APP_TelemStream_DefaultMask(), power)) != 0U, 802);
+
+    mask = APP_TelemMask_Or(APP_TelemStream_DefaultMask(), power);
+    CHECK(APP_TelemStream_SetMask(mask) == APP_TELEM_STREAM_OK, 803);
+    CHECK(APP_TelemStream_SetRefresh(0U) == APP_TELEM_STREAM_OK, 804);
+    CHECK(APP_TelemStream_SetActive(1U) == APP_TELEM_STREAM_OK, 805);
+
+    APP_TelemStream_Tick();   /* 首帧建影子，带全部参数通道 */
+    APP_TelemStream_Tick();   /* 稳态帧 */
+
+    CHECK(port_uart_frames == 2U, 806);
+    CHECK((frame_flags() & APP_TELEM_FRAME_FLAG_WIDE_MASK) == 0U, 807);
+    /* 电源是测量值不是参数回显，所以稳态帧每拍都带上它们。 */
+    CHECK(mask_equal(APP_TelemMask_And(frame_mask(), power), power), 808);
+    /* 12 路默认实时 + 2 路电源 -> 9 + 24 + 4*14 = 89 B。宽掩码会是 97 B。 */
+    CHECK(port_last_length == 89U, 809);
+    return 0;
+}
+
+static int test_invalid_power_samples_stay_nan_on_the_wire(void)
+{
+    /*
+     * 无效值必须以 NaN 出现在帧里，不能是 0。装置这一层只能钉"编码器原样透传
+     * NaN"——真正判"什么时候算无效"的是 app_telem_port.c，那条由
+     * tests/test_telem_power_channels.py 在宿主上编译真代码来跑。
+     *
+     * 两头都要钉：任何一头把 NaN 换成 0，上位机就再也分不清"电流为零"和
+     * "根本没采到"，而这两种情况的处置完全相反。
+     */
+    APP_TelemMask power = APP_TelemMask_Or(
+        APP_TelemMask_FromBit((uint32_t)APP_TELEM_CH_BATT_V),
+        APP_TelemMask_FromBit((uint32_t)APP_TELEM_CH_BATT_I));
+    uint32_t bits_v = 0U;
+    uint32_t bits_i = 0U;
+
+    reset_world();
+    APP_TelemStream_NoteCommandSource(APP_TELEM_SINK_UART);
+    port_values[APP_TELEM_CH_BATT_V] = NAN;
+    port_values[APP_TELEM_CH_BATT_I] = NAN;
+
+    CHECK(APP_TelemStream_SetMask(power) == APP_TELEM_STREAM_OK, 820);
+    CHECK(APP_TelemStream_SetRefresh(0U) == APP_TELEM_STREAM_OK, 821);
+    CHECK(APP_TelemStream_SetActive(1U) == APP_TELEM_STREAM_OK, 822);
+    APP_TelemStream_Tick();
+
+    CHECK(port_uart_frames == 1U, 823);
+    /* 掩码只有这两位，所以数据区就是 payload 偏移 24 起的两个 f32。 */
+    CHECK(port_last_length == (9U + 24U + 8U), 824);
+    memcpy(&bits_v, &port_last_frame[8 + 24], sizeof(bits_v));
+    memcpy(&bits_i, &port_last_frame[8 + 28], sizeof(bits_i));
+    CHECK(bits_v != 0U, 825);
+    CHECK(bits_i != 0U, 826);
+    {
+        float decoded_v;
+        float decoded_i;
+        memcpy(&decoded_v, &bits_v, sizeof(decoded_v));
+        memcpy(&decoded_i, &bits_i, sizeof(decoded_i));
+        CHECK(isnan(decoded_v), 827);
+        CHECK(isnan(decoded_i), 828);
+    }
+
+    /* 电源通道不是参数通道：NaN 不参与脏位，不会每帧重复置位骚扰上位机。 */
+    APP_TelemStream_Tick();
+    CHECK(port_uart_frames == 2U, 829);
+    CHECK(mask_equal(APP_TelemMask_And(frame_mask(), power), power), 830);
+    return 0;
+}
+
+static int test_repeated_stream_on_does_not_starve_the_full_refresh(void)
+{
+    /*
+     * fix(telem-stream)：`SetActive(1)` 原来无条件把 refresh_accum_ms 清零，
+     * 于是只要 `TELEM STREAM on` 的重发频率高于 refresh 周期（默认 1 s），
+     * 全量刷新帧就**一帧都发不出来**。实测 40 Hz 跑 80 拍：不重发 2 帧，
+     * 每 0.5 s 重发一次 0 帧。
+     *
+     * 为什么以前没测出来：旧的使用模式是"连上就开、一直开着"，SetActive(1)
+     * 一条链路上总共只发一次，无条件清零和有条件清零看不出区别。上位机改成
+     * 按页面可见性做引用计数之后，用户每切一次 tab 就可能触发一次 STREAM on，
+     * 重发频率正好落进会触发的区间。症状是"调参滑块永远停在初值"——参数通道
+     * 平时不进稳态帧，只搭全量刷新帧的车。
+     */
+    uint32_t i;
+
+    /* --- 1) 真正激活的那一拍就该是全量刷新帧 --- */
+    reset_world();
+    APP_TelemStream_NoteCommandSource(APP_TELEM_SINK_UART);
+    CHECK(APP_TelemStream_SetRefresh(1U) == APP_TELEM_STREAM_OK, 840);
+    CHECK(APP_TelemStream_SetActive(1U) == APP_TELEM_STREAM_OK, 841);
+    APP_TelemStream_Tick();
+    CHECK(port_uart_frames == 1U, 842);
+    CHECK((frame_flags() & APP_TELEM_FRAME_FLAG_FULL_REFRESH) != 0U, 843);
+
+    /* --- 2) 重发 STREAM on 比 refresh 周期快，也不许饿死全量刷新帧 --- */
+    reset_world();
+    APP_TelemStream_NoteCommandSource(APP_TELEM_SINK_UART);
+    CHECK(APP_TelemStream_SetRefresh(1U) == APP_TELEM_STREAM_OK, 844);
+    CHECK(APP_TelemStream_SetActive(1U) == APP_TELEM_STREAM_OK, 845);
+    port_full_refresh_frames = 0U;
+    for (i = 0U; i < 80U; ++i) {
+        /* 每 20 拍（0.5 s）重发一次，模拟用户来回切 tab。 */
+        if ((i % 20U) == 0U) {
+            CHECK(APP_TelemStream_SetActive(1U) == APP_TELEM_STREAM_OK, 846);
+        }
+        APP_TelemStream_Tick();
+    }
+    /* 40 Hz、refresh=1 s、80 拍 = 2 s：激活那一拍一帧 + 第 41 拍一帧。
+     * 修复前这里是 0。 */
+    CHECK(port_full_refresh_frames == 2U, 847);
+
+    /* --- 3) 但**不是**早返回：已开着时重发仍要重锁 auto_sink --- */
+    reset_world();
+    APP_TelemStream_NoteCommandSource(APP_TELEM_SINK_UART);
+    CHECK(APP_TelemStream_SetActive(1U) == APP_TELEM_STREAM_OK, 848);
+    CHECK(APP_TelemStream_ActiveSink() == APP_TELEM_SINK_UART, 849);
+    APP_TelemStream_Tick();
+    CHECK(port_uart_frames == 1U, 850);
+
+    /*
+     * 第二个订阅者从 USB 进来。`sink=auto` 的语义是"跟着发起 STREAM on 的链路
+     * 走"，所以流必须**搬到 USB 上去**。如果这里退化成"已经开着就早返回"，
+     * auto_sink 会停在 UART，第二条链路永远拉不走这条流——那是行为倒退，
+     * 不是修复，所以单独钉一条。
+     */
+    APP_TelemStream_NoteCommandSource(APP_TELEM_SINK_USB);
+    CHECK(APP_TelemStream_SetActive(1U) == APP_TELEM_STREAM_OK, 851);
+    CHECK(APP_TelemStream_ActiveSink() == APP_TELEM_SINK_USB, 852);
+    APP_TelemStream_Tick();
+    CHECK(port_usb_frames == 1U, 853);
+    CHECK(port_uart_frames == 1U, 854);
+
+    /* 校验失败的 SetActive 不该留下副作用：USB 拔掉时直接 ERR，流保持原状。 */
+    port_usb_ready = 0U;
+    CHECK(APP_TelemStream_SetActive(1U) == APP_TELEM_STREAM_ERR_SINK, 855);
+    return 0;
+}
+
 int main(void)
 {
     int rc;
@@ -940,6 +1115,9 @@ int main(void)
     rc = test_the_period_absorbs_the_send_time(); if (rc) { return rc; }
     rc = test_a_refused_bluetooth_frame_is_counted_not_claimed_sent(); if (rc) { return rc; }
     rc = test_the_profile_says_where_the_time_went(); if (rc) { return rc; }
+    rc = test_power_channels_keep_the_narrow_mask(); if (rc) { return rc; }
+    rc = test_invalid_power_samples_stay_nan_on_the_wire(); if (rc) { return rc; }
+    rc = test_repeated_stream_on_does_not_starve_the_full_refresh(); if (rc) { return rc; }
 
     printf("telem stream harness ok\n");
     return 0;
@@ -982,11 +1160,26 @@ def test_channel_assembly_moved_verbatim_into_the_port_module() -> None:
     for statement in (
         "vofa_data[APP_TELEM_CH_ROLL] = msg.roll_deg;",
         "vofa_data[APP_TELEM_CH_TIME] = (float)(SVC_Timestamp_Us() / 1000ULL) * 0.001f;",
-        'vofa_data[APP_TELEM_CH_RESERVED_7] = 0.0f;',
         'vofa_data[APP_TELEM_CH_RESERVED_9] = 0.0f;',
         "vofa_data[APP_TELEM_CH_FUSION_ACC_NORM_REJECTED] = (float)msg.fusion_accel_norm_rejected;",
     ):
         assert statement in port, statement
+    # 7/8 号槽位在 R-PWR-1 由 reserved 改成电源通道。原来这里钉的是"退役槽位
+    # 必须恒 0"（防有人往退役槽偷偷塞数据）；现在槽位有真实含义，改钉相反的
+    # 方向——**防有人把 NaN 改回 0**。0 A / 0 V 是合法读数，用它表示"没数据"
+    # 会让上位机永远分不清"不耗电"和"没采到"。
+    assert "vofa_data[APP_TELEM_CH_BATT_V]" in port
+    assert "vofa_data[APP_TELEM_CH_BATT_I]" in port
+    for forbidden in (
+        "vofa_data[APP_TELEM_CH_BATT_V] = 0.0f;",
+        "vofa_data[APP_TELEM_CH_BATT_I] = 0.0f;",
+        "vofa_data[APP_TELEM_CH_RESERVED_7]",
+        "vofa_data[APP_TELEM_CH_RESERVED_8]",
+    ):
+        assert forbidden not in port, forbidden
+    power_block = port.split("vofa_data[APP_TELEM_CH_BATT_V]", 1)[1]
+    power_block = power_block.split("vofa_data[APP_TELEM_CH_RESERVED_9]", 1)[0]
+    assert power_block.count("NAN") == 2, "两条电源通道的无效分支都必须是 NaN"
     # 搬家后唯一允许的改动：删掉旧代码对四个角度增益的显示取反。遥测回显与
     # `PARAM?`（app_control_param_to_ui_value，现为恒等）必须同口径——审核实机
     # 复核见 test_coax_ctrl_contract.test_vofa_exports_compact_slider_parameter_feedback。
@@ -1068,6 +1261,12 @@ def test_default_configuration_fits_the_telemetry_link() -> None:
 
     assert realtime == 12
     assert params == 27, "27 current parameters; retired slots have no binding"
+    # R-PWR-1：电源通道**不进**默认掩码。默认配置的余量只有 3456-3356 = 100 B/s，
+    # 两路 f32 × 40 Hz = 320 B/s，加进来必定顶破 60% 门限。上位机按需下
+    # `TELEM MASK` 订阅，谁要看谁付带宽。
+    assert "APP_TELEM_CH_BATT_V" not in default_block
+    assert "APP_TELEM_CH_BATT_I" not in default_block
+    assert '"batt_v"' in table_src and '"batt_i"' in table_src
 
     steady_bytes = 9 + 24 + 4 * realtime
     refresh_bytes = 9 + 32 + 4 * (realtime + params)

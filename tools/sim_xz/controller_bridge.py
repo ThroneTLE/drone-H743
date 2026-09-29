@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import ctypes
-import re
 import hashlib
 import os
 import shutil
@@ -26,6 +25,7 @@ def _dependency_paths() -> tuple[Path, ...]:
         ROOT / "App" / "Src" / "app_control_scheduler.c",
         ROOT / "BSP" / "Inc" / "bsp_pwm.h",
         ROOT / "Driver" / "Src" / "drv_airframe_params.c",
+        ROOT / "Driver" / "Src" / "drv_prop_map.c",
         ROOT / "Driver" / "Src" / "drv_coax_ctrl.c",
         ROOT / "Driver" / "Src" / "drv_position_control.c",
         ROOT / "Driver" / "Src" / "drv_attitude_control.c",
@@ -92,16 +92,11 @@ def _dependency_digest(paths: tuple[Path, ...], flags: tuple[str, ...] = _BUILD_
     return digest.hexdigest()[:16]
 
 
+# 2026-09-27：倾转力矩改为纯几何（力臂 = 重心 z − 舵机转轴 z，见 drv_coax_ctrl.c），
+# 经验系数 DRV_COAX_CTRL_PITCH_EFFECTIVENESS 已删除。被控对象的力臂直接经
+# sim_controller_pitch_lever_arm_m() 从控制律取，不再从源码里正则抠宏值另编一个 -D。
 def _source_digest() -> str:
-    return _dependency_digest(_dependency_paths(), (*_BUILD_FLAGS, *_model_defines()))
-
-
-def _model_defines() -> list[str]:
-    source = (ROOT / "Driver/Src/drv_coax_ctrl.c").read_text(encoding="utf-8")
-    value = re.search(r"^#define\s+DRV_COAX_CTRL_PITCH_EFFECTIVENESS\s+([0-9.eE+-]+f?)\s*$", source, re.MULTILINE)
-    if value is None:
-        raise RuntimeError("Cannot resolve source pitch effectiveness; refusing an invented model value")
-    return ["-DSIM_PITCH_EFFECTIVENESS=" + value.group(1)]
+    return _dependency_digest(_dependency_paths(), _BUILD_FLAGS)
 
 
 def build_controller_library(instance_tag: str = "default") -> Path:
@@ -115,11 +110,12 @@ def build_controller_library(instance_tag: str = "default") -> Path:
     output = output_dir / f"controller_{_source_digest()}_{safe_tag}{suffix}"
     if output.exists():
         return output
-    command = [compiler, *_BUILD_FLAGS, *_model_defines(),
+    command = [compiler, *_BUILD_FLAGS,
                "-I", str(ROOT / "Driver" / "Inc"), "-I", str(ROOT / "BSP" / "Inc"),
                "-I", str(SIM_ROOT), "-I", str(ROOT / "App" / "Inc"),
                str(SIM_ROOT / "sim_controller_bridge.c"),
                str(ROOT / "Driver" / "Src" / "drv_airframe_params.c"),
+               str(ROOT / "Driver" / "Src" / "drv_prop_map.c"),
                str(ROOT / "Driver" / "Src" / "drv_coax_ctrl.c"),
                str(ROOT / "Driver" / "Src" / "drv_position_control.c"),
                str(ROOT / "Driver" / "Src" / "drv_attitude_control.c"),
@@ -145,7 +141,7 @@ class ControllerBridge:
                      "sim_controller_tilt_tau_decrease_s",
                      "sim_controller_max_total_thrust_n",
                      "sim_controller_servo_limit_rad",
-                     "sim_controller_pitch_pulse_direction", "sim_controller_pitch_effectiveness"):
+                     "sim_controller_pitch_pulse_direction"):
             getattr(self._lib, name).restype = ctypes.c_float
         self._lib.sim_controller_param_count.restype = ctypes.c_uint32
         self._lib.sim_controller_param_name.argtypes = [ctypes.c_uint32]
@@ -173,8 +169,7 @@ class ControllerBridge:
                     "tilt_tau_decrease_s": float(self._lib.sim_controller_tilt_tau_decrease_s()),
                     "max_total_thrust_n": float(self._lib.sim_controller_max_total_thrust_n()),
                     "servo_limit_rad": float(self._lib.sim_controller_servo_limit_rad()),
-                    "pitch_pulse_direction": float(self._lib.sim_controller_pitch_pulse_direction()),
-                    "pitch_effectiveness": float(self._lib.sim_controller_pitch_effectiveness())}
+                    "pitch_pulse_direction": float(self._lib.sim_controller_pitch_pulse_direction())}
 
     def parameter_snapshot(self) -> dict[str, float]:
         with self._lock:

@@ -43,7 +43,10 @@ Python 面板在当前工作树中提供以下能力；哪些版本已经烧录�
 | 飞行日志接收 | `tools/flight_log_receive.py` |
 | 飞行日志波形工作台 | `tools/flight_log_workbench.py` |
 | Rerun 回放 | `tools/run_flight_log_rerun_replay.ps1` |
-| 电机/姿态辨识 | `tools/flight_log_sysid.py`、`tools/attitude_ident_pid.py` |
+| 内环系统辨识（当前） | `tools/sysid/`，界面在面板「系统辨识」页；方法见 [`doc/system-identification.md`](../doc/system-identification.md) |
+| 推力台标定（当前） | `python tools/pressure_rs485_gui.py`（`python -m tools.thrust_bench` 同入口）；原称重/砝码标定与H743上下桨控制、实测扫描的单页流程，DShot电转速eRPM、分路电流与带载电压标定（无需极对数），见 [`doc/thrust-bench.md`](../doc/thrust-bench.md) |
+| 历史日志事后分析 | `tools/flight_log_sysid.py`、`tools/attitude_ident_pid.py`（静态 OLS / 旧台架，不用于新辨识） |
+| 历史推力数据查看 | `tools/thrust_ident_auto_viewer.py` 仅事后读取旧格式 `thrust_ident_auto_*.csv`；仓库内旧CSV已于2026-09-23删除，需要时从外部选择文件；旧ESP控制已从推力台窗口移除 |
 | IMU 漂移分析 | `tools/stationary_drift.py`、`tools/drift_ab_check.py` |
 | 光流数据评估 | `tools/flow_velocity_filter_eval.py`、`tools/flow_quality_probe.py` |
 | Flash 诊断与时序 | `tools/flash_diag_test.py`、`tools/flash_timing_capture.py` |

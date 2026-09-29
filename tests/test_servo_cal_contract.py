@@ -76,7 +76,11 @@ def test_led_servo_cal_mode_overrides_normal_status() -> None:
                  "APP_LED_SERVO_CAL_ERROR"):
         assert f"case {mode}:" in source, mode
     # 标定发布在 CALIBRATION 源上，而该源排在所有常态源之前。
-    assert "SVC_Led_Publish(SVC_LED_SOURCE_CALIBRATION, &pattern)" in source
+    # 三种标定模式各自映射到一条绑定，再统一发布到 CALIBRATION 源上。
+    assert "app_led_publish(SVC_LED_SOURCE_CALIBRATION, binding)" in source
+    for binding in ("APP_LED_BIND_CAL_RELEASED", "APP_LED_BIND_CAL_SAVE_ACK",
+                    "APP_LED_BIND_CAL_ERROR"):
+        assert binding in source, binding
     calibration_at = service.index("SVC_LED_SOURCE_CALIBRATION")
     for lower in ("SVC_LED_SOURCE_BLOCKED", "SVC_LED_SOURCE_WARNING",
                   "SVC_LED_SOURCE_STATUS", "SVC_LED_SOURCE_HEARTBEAT"):

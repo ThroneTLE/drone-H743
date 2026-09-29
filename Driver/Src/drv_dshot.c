@@ -77,11 +77,22 @@ DRV_DShotStatus DRV_DShot_FromPulseUs(uint16_t pulse_us, uint16_t *out)
     return DRV_DSHOT_OK;
 }
 
+/*
+ * 单向 DShot 的 4 bit 校验：对 packet 高 12 bit（value<<1 | telemetry）
+ * 三个 nibble 做异或折叠。throttle 帧与命令帧共用同一条公式，只是 value 字段
+ * 的含义不同；提取成一份实现，避免同一算法在本文件里出现第二份手抄。
+ * `packet` 传入时校验 nibble 必须是 0（调用方先移位拼好高 12 bit 再调用）。
+ */
+static uint16_t dshot_crc4(uint16_t packet)
+{
+    const uint16_t x = (uint16_t)(packet >> 4U);
+
+    return (uint16_t)((x ^ (x >> 4U) ^ (x >> 8U)) & 0x0FU);
+}
+
 DRV_DShotStatus DRV_DShot_Encode(uint16_t throttle, uint16_t *out)
 {
-    uint16_t checksum = 0U;
     uint16_t packet;
-    uint16_t csum_data;
 
     if ((out == NULL) || (throttle > DRV_DSHOT_THROTTLE_MAX) ||
         ((throttle != DRV_DSHOT_STOP) && (throttle < DRV_DSHOT_THROTTLE_MIN))) {
@@ -89,24 +100,35 @@ DRV_DShotStatus DRV_DShot_Encode(uint16_t throttle, uint16_t *out)
     }
     /* PX4 dshot_motor_data_set(): telemetry bit stays zero for this port. */
     packet = (uint16_t)(throttle << 5U);
-    csum_data = (uint16_t)(packet >> 4U);
-    for (uint8_t i = 0U; i < 3U; ++i) {
-        checksum ^= (uint16_t)(csum_data & 0x0FU);
-        csum_data >>= 4U;
-    }
-    packet |= (uint16_t)(checksum & 0x0FU);
+    packet |= dshot_crc4(packet);
     *out = packet;
     return DRV_DSHOT_OK;
 }
 
-DRV_DShotStatus DRV_DShot_BuildBurst(const uint16_t throttle[DRV_DSHOT_CHANNELS],
-                                    const DRV_DShotTiming *timing,
-                                    uint32_t *out, size_t capacity_words)
+DRV_DShotStatus DRV_DShot_EncodeCommand(uint16_t command, uint16_t *out)
+{
+    uint16_t value12;
+    uint16_t packet;
+
+    if ((out == NULL) || (command < DRV_DSHOT_CMD_MIN) || (command > DRV_DSHOT_CMD_MAX)) {
+        return DRV_DSHOT_INVALID;
+    }
+    /* Betaflight dshotCommandWrite() 对命令帧固定置 requestTelemetry=1；
+     * 这一位写 0，电调会把命令值当成一个极低的油门而不是命令来执行。 */
+    value12 = (uint16_t)((command << 1U) | 1U);
+    packet = (uint16_t)(value12 << 4U);
+    packet |= dshot_crc4(packet);
+    *out = packet;
+    return DRV_DSHOT_OK;
+}
+
+static DRV_DShotStatus dshot_check_timing(const DRV_DShotTiming *timing,
+                                          const uint32_t *out,
+                                          size_t capacity_words)
 {
     DRV_DShotTiming expected;
-    uint16_t packet[DRV_DSHOT_CHANNELS];
 
-    if ((throttle == NULL) || (timing == NULL) || (out == NULL) ||
+    if ((timing == NULL) || (out == NULL) ||
         (capacity_words < DRV_DSHOT_BURST_WORDS) ||
         (DRV_DShot_MakeTiming(timing->timer_clock_hz, &expected) != DRV_DSHOT_OK)) {
         return DRV_DSHOT_INVALID;
@@ -117,10 +139,24 @@ DRV_DShotStatus DRV_DShot_BuildBurst(const uint16_t throttle[DRV_DSHOT_CHANNELS]
         (timing->one_ticks != expected.one_ticks)) {
         return DRV_DSHOT_INVALID;
     }
+    return DRV_DSHOT_OK;
+}
+
+DRV_DShotStatus DRV_DShot_BuildBurstFromPackets(
+    const uint16_t packet_in[DRV_DSHOT_CHANNELS],
+    const DRV_DShotTiming *timing,
+    uint32_t *out, size_t capacity_words)
+{
+    uint16_t packet[DRV_DSHOT_CHANNELS];
+
+    if (packet_in == NULL) {
+        return DRV_DSHOT_INVALID;
+    }
+    if (dshot_check_timing(timing, out, capacity_words) != DRV_DSHOT_OK) {
+        return DRV_DSHOT_INVALID;
+    }
     for (size_t channel = 0U; channel < DRV_DSHOT_CHANNELS; ++channel) {
-        if (DRV_DShot_Encode(throttle[channel], &packet[channel]) != DRV_DSHOT_OK) {
-            return DRV_DSHOT_INVALID;
-        }
+        packet[channel] = packet_in[channel];
     }
     /* All validation is complete before modifying the caller's buffer. */
     for (size_t bit = 0U; bit < DRV_DSHOT_BITS; ++bit) {
@@ -133,4 +169,24 @@ DRV_DShotStatus DRV_DShot_BuildBurst(const uint16_t throttle[DRV_DSHOT_CHANNELS]
     memset(&out[DRV_DSHOT_BITS * DRV_DSHOT_CHANNELS], 0,
            DRV_DSHOT_TAIL_SLOTS * DRV_DSHOT_CHANNELS * sizeof(*out));
     return DRV_DSHOT_OK;
+}
+
+DRV_DShotStatus DRV_DShot_BuildBurst(const uint16_t throttle[DRV_DSHOT_CHANNELS],
+                                    const DRV_DShotTiming *timing,
+                                    uint32_t *out, size_t capacity_words)
+{
+    uint16_t packet[DRV_DSHOT_CHANNELS];
+
+    if (throttle == NULL) {
+        return DRV_DSHOT_INVALID;
+    }
+    if (dshot_check_timing(timing, out, capacity_words) != DRV_DSHOT_OK) {
+        return DRV_DSHOT_INVALID;
+    }
+    for (size_t channel = 0U; channel < DRV_DSHOT_CHANNELS; ++channel) {
+        if (DRV_DShot_Encode(throttle[channel], &packet[channel]) != DRV_DSHOT_OK) {
+            return DRV_DSHOT_INVALID;
+        }
+    }
+    return DRV_DShot_BuildBurstFromPackets(packet, timing, out, capacity_words);
 }

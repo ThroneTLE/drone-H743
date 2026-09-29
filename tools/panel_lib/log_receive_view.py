@@ -15,6 +15,7 @@ except ImportError:
     import flight_log_receive as receive
     from project_paths import FLIGHT_LOG_DIR, dated_directory
 
+from .telem_subscription import TELEM_EXCLUSIVE_FLIGHT_LOG
 from .theme import UI_PALETTE
 
 
@@ -61,6 +62,16 @@ class ReceiverView(ttk.Frame):
     def busy(self):
         return self.worker is not None and self.worker.is_alive()
 
+    def _telem_exclusive(self, active):
+        """占用 / 交还遥测链路。面板替身（离线测试）没有工作台，缺方法就跳过。"""
+        name = "_telem_suppress" if active else "_telem_release_exclusive"
+        hook = getattr(self.panel, name, None)
+        if hook is None:
+            return False
+        if active:
+            return hook(TELEM_EXCLUSIVE_FLIGHT_LOG, "日志导出独占当前串口")
+        return hook(TELEM_EXCLUSIVE_FLIGHT_LOG)
+
     def _browse(self):
         directory = filedialog.askdirectory(parent=self, title="选择日志保存位置")
         if directory:
@@ -90,6 +101,10 @@ class ReceiverView(ttk.Frame):
             return
         self.lease = lease
         self.source_transport = transport
+        # 导出要独占链路。这是**独占抑制**，不是引用计数里的一票：只要还有页面
+        # 订阅着遥测，引用计数就会立刻把流重新打开，遥测帧会插进日志字节流里。
+        # 必须在 worker 写 `TELEM STREAM off` 之前先把 sink 摘掉。
+        self._telem_exclusive(True)
         self.cancel_requested = False
         self.latest_progress = (0, 0)
         self.started_at = time.monotonic()
@@ -163,9 +178,11 @@ class ReceiverView(ttk.Frame):
                 self._append_log(value)
                 continue
             lease, result, error = value
+            # 导出结束就交还链路。之后由仲裁器决定要不要重新开流——现在可能有
+            # 不止一个页面在订阅，这里不能替它们做主。
+            self._telem_exclusive(False)
             if (self.panel.transport is self.source_transport
                     and self.source_transport.connection_generation == lease.session.generation):
-                # Existing page logic re-enables streaming if the current page needs it.
                 self.panel.dashboard_stream_requested = False
             self.receive_btn.configure(state="normal")
             self.cancel_btn.configure(state="disabled")

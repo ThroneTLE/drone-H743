@@ -7,14 +7,15 @@
 #include <string.h>
 
 /* CURRENT diagnostic decimals without newlib-nano floating printf or heap.
- * Caller owns 16 bytes. Supports the existing 3/5 decimal wire fields.
+ * Caller owns 16 bytes. Supports 2..5 decimals (CURRENT uses 3/5, MAGCAL 2/3/4).
  * Non-finite/out-of-range values remain explicit nan, never fabricated zero.
  */
 static inline uint8_t APP_Current_FormatFixed(char out[16], float value, unsigned digits)
 {
-    uint32_t scale = digits == 5U ? 100000U : 1000U;
+    static const uint32_t scales[6] = {0U, 0U, 100U, 1000U, 10000U, 100000U};
+    uint32_t scale = (digits >= 2U && digits <= 5U) ? scales[digits] : 0U;
     double scaled = fabs((double)value) * (double)scale;
-    if ((digits != 3U && digits != 5U) || !isfinite(scaled) ||
+    if (scale == 0U || !isfinite(scaled) ||
         scaled > (double)UINT32_MAX - 0.5) {
         memcpy(out, "nan", 4U);
         return 0U;

@@ -354,7 +354,7 @@ class OfflinePanel:
                 for item in self.pending_after if not item.cancelled]
 
     def leaf_pages(self) -> list[LeafPage]:
-        """展开“校准”“传感器”两个分组，得到真正有内容的叶页。"""
+        """展开“日志”“校准”“传感器”“维护”几个分组，得到真正有内容的叶页。"""
         panel = self.panel
         pages: list[LeafPage] = []
         groups = {
@@ -363,6 +363,13 @@ class OfflinePanel:
                 panel, "calibration_notebook", None),
             id(getattr(panel, "sensor_group_tab", None)): getattr(
                 panel, "sensor_notebook", None),
+            id(getattr(panel, "maintenance_group_tab", None)): getattr(
+                panel, "maintenance_notebook", None),
+            # 「系统辨识」的三个子页（内环 / XY / 高度）。不登记的话几何遍历
+            # 只会走到分组框本身，三个子页一个都不会被检查——而且那种漏检在
+            # 测试结果里表现为"全绿"。
+            id(getattr(panel, "sysid_tab", None)): getattr(
+                panel, "sysid_notebook", None),
         }
         for tab in panel.notebook.tabs():
             top = panel.nametowidget(tab)

@@ -20,6 +20,7 @@ import time
 import tkinter as tk
 from tkinter import ttk
 
+from .airframe_model import describe_invalid
 from .proto import PROTO_REQ_STATUS
 
 
@@ -114,7 +115,8 @@ class ArmBanner(ttk.LabelFrame):
         if block == "airframe":
             missing = payload.get("airframe_missing", "-")
             if missing not in ("-", ""):
-                reason = f"{reason}（缺 {missing}）"
+                # 倾转转轴的复合判据报成 "<字段>:<原因>"，翻成人话而不是"缺"。
+                reason = f"{reason}（{describe_invalid(missing)}）"
         if armed:
             reason = "飞机处于解锁状态，桨会转"
             if payload.get("battery_ok") == "0":

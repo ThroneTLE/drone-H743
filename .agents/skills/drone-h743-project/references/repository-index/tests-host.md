@@ -4,47 +4,58 @@
 
 Read this shard only when you need existing ground-station/tooling coverage or must choose focused regression tests.
 
-Source snapshot: `a428b454f656`. Indexed files: 38.
+Source snapshot: `8b47021f99cb`. Indexed files: 56.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
-| `tests/test_dashboard_layout.py` | R-T1-5：工作台布局模型（`panel_lib/dashboard/layout.py`）。 布局规则是纯数据变换，所以这一份**不需要显示环境**：吸附… | `test_clamp_pulls_a_tile_back_into_the_grid` (+18) |
-| `tests/test_dashboard_page.py` | R-T1-5：“状态监视”工作台页（`panel_lib/pages/dashboard.py` + `dashboard/`）。 全部用真实的 `Drone… | `test_the_workbench_is_the_first_tab_and_selected_by_default` (+62) |
-| `tests/test_dashboard_record_service.py` | R-T1-6（TK-05）：录制的文件完整性、后台写入与失败恢复。 对应改版报告 N10–N13。每一条都先在 `tools/panel_qa/baselin… | `test_a_second_recording_in_the_same_second_does_not_destroy_the_first` (+22) |
-| `tests/test_dashboard_resize.py` | 状态监视工作台的窗口 resize 合并器。 这个层不能靠肉眼判“似乎顺了一点”：Tk 拖动窗口时会连续发出大量 Configure 事件。这里用无 Tk 的… | `test_resize_skips_pixel_events_that_do_not_change_a_grid_cell` (+2) |
-| `tests/test_dashboard_workspace_tree.py` | 仿真的三个 P—PID 参数页是"控制器调参"的子视图，不是和它平级的工作区。 作者看到的界面是这样的（截图）： 状态监视 ○飞行监控 ○控制器调参 ○水平平… | `test_simulation_workspaces_declare_the_tuning_workspace_as_parent` (+13) |
+| `tests/test_dashboard_layout.py` | R-T1-5：工作台布局模型（`panel_lib/dashboard/l… | `test_clamp_pulls_a_tile_back_into_the_grid` (+18) |
+| `tests/test_dashboard_page.py` | R-T1-5：“状态监视”工作台页（`panel_lib/pages/da… | `test_the_workbench_is_the_first_tab_and_selected_by_default` (+62) |
+| `tests/test_dashboard_record_service.py` | R-T1-6（TK-05）：录制的文件完整性、后台写入与失败恢复。 对应改… | `test_a_second_recording_in_the_same_second_does_not_destroy_the_first` (+22) |
+| `tests/test_dashboard_resize.py` | 状态监视工作台的窗口 resize 合并器。 这个层不能靠肉眼判“似乎顺了… | `test_resize_skips_pixel_events_that_do_not_change_a_grid_cell` (+2) |
+| `tests/test_dashboard_workspace_tree.py` | 仿真的三个 P—PID 参数页是"控制器调参"的子视图，不是和它平级的工作… | `test_simulation_workspaces_declare_the_tuning_workspace_as_parent` (+13) |
 | `tests/test_flight_log_rerun_replay.py` | — | `test_latest_csv_and_segment_helpers` (+6) |
 | `tests/test_ground_calibration.py` | — | `test_calibration_navigation_uses_function_names_instead_of_version_codes` (+20) |
-| `tests/test_log_pages.py` | Existing log decoders/analysis through the new embedded Tk workspace | `test_import_waveform_and_analysis_reuse_existing_tools` (+8) |
-| `tests/test_log_pages_geometry.py` | Three sizes x three simulated DPI scales, using the real panel and pages | `test_log_controls_remain_reachable` |
-| `tests/test_panel_autoconnect.py` | 记住上次的连接并在启动时自动连回去。 关键点是**按什么认板子**：Windows 给 USB 串口分配的 COM 号会变（本机就出现过同一块 飞控在 COM… | `test_fingerprint_is_stable_across_com_renumbering` (+15) |
-| `tests/test_panel_connection_reliability.py` | H1/H2/H4: real transport and Tk boundaries with no physical device access | `test_slow_io_does_not_block_ui_queries_cancel_or_stop` (+18) |
-| `tests/test_panel_d_data_contract.py` | D 线 TK-03/TK-04 contracts: values must say what state they represent | `test_d_modules_are_imported_in_all_three_panel_contexts` (+16) |
-| `tests/test_panel_direct_script_startup.py` | Reproduce Python's script-path layout, without repository-root PYTHONPATH | `test_direct_script_builds_panel_from_an_unrelated_working_directory` (+2) |
-| `tests/test_panel_drift_page_extraction.py` | S6 stationary-drift page extraction ownership and compatibility contract | `test_drift_page_mixin_owns_only_its_builder_and_handlers` (+4) |
-| `tests/test_panel_flow_page_extraction.py` | R-S6-1 增量11（收官）：光流与测距页搬进 panel_lib/pages/flow_ranging.py。 搬家的判据只有一条——行为零变更。这里用三… | `test_flow_mixin_owns_every_moved_method_with_the_pre_move_ast` (+4) |
-| `tests/test_panel_proto_extraction.py` | S6 panel protocol extraction ownership and compatibility contract | `test_proto_module_owns_the_protocol_table_and_parsing_helpers` (+3) |
-| `tests/test_panel_qa_harness.py` | R-S1-3（TK-00）：无硬件 QA 测试基础的**装置契约**。 这份文件只证明装置本身可信，**不证明产品正确**。区别很重要：报告里 N01–N13… | `test_opening_a_physical_serial_port_fails_immediately` (+20) |
-| `tests/test_panel_qa_review_regressions.py` | R-S1-3 返修：关闭 2026-09-04 软件审核的 Q1~Q6。 审核对象是 `3269a7fe`。六条的共同点是：**装置声称的保证比它实际做到的强… | `test_every_data_path_constant_is_redirected` (+16) |
+| `tests/test_log_pages.py` | Existing log decoders/analysis throug… | `test_import_waveform_and_analysis_reuse_existing_tools` (+8) |
+| `tests/test_log_pages_geometry.py` | Three sizes x three simulated DPI sca… | `test_log_controls_remain_reachable` |
+| `tests/test_panel_autoconnect.py` | 记住上次的连接并在启动时自动连回去。 关键点是**按什么认板子**：Win… | `test_fingerprint_is_stable_across_com_renumbering` (+15) |
+| `tests/test_panel_connection_reliability.py` | H1/H2/H4: real transport and Tk bound… | `test_slow_io_does_not_block_ui_queries_cancel_or_stop` (+18) |
+| `tests/test_panel_d_data_contract.py` | D 线 TK-03/TK-04 contracts: values mus… | `test_d_modules_are_imported_in_all_three_panel_contexts` (+16) |
+| `tests/test_panel_direct_script_startup.py` | Reproduce Python's script-path layout… | `test_direct_script_builds_panel_from_an_unrelated_working_directory` (+2) |
+| `tests/test_panel_drift_page_extraction.py` | S6 stationary-drift page extraction o… | `test_drift_page_mixin_owns_only_its_builder_and_handlers` (+4) |
+| `tests/test_panel_flow_page_extraction.py` | R-S6-1 增量11（收官）：光流与测距页搬进 panel_lib/pa… | `test_flow_mixin_owns_every_moved_method_with_the_pre_move_ast` (+4) |
+| `tests/test_panel_proto_extraction.py` | S6 panel protocol extraction ownershi… | `test_proto_module_owns_the_protocol_table_and_parsing_helpers` (+3) |
+| `tests/test_panel_qa_harness.py` | R-S1-3（TK-00）：无硬件 QA 测试基础的**装置契约**。 这… | `test_opening_a_physical_serial_port_fails_immediately` (+20) |
+| `tests/test_panel_qa_review_regressions.py` | R-S1-3 返修：关闭 2026-09-04 软件审核的 Q1~Q6。… | `test_every_data_path_constant_is_redirected` (+16) |
 | `tests/test_panel_rc_wizard_page_extraction.py` | S6 RC page extraction contract | `test_method_ownership` (+6) |
-| `tests/test_panel_state_extraction.py` | S6 panel-state persistence extraction ownership and compatibility contract | `test_state_module_owns_persistence_and_logging_implementation` (+3) |
-| `tests/test_panel_transport_extraction.py` | S6 panel transport extraction ownership and compatibility contract | `test_transport_module_owns_moved_definitions` (+2) |
-| `tests/test_panel_v1_page_extraction.py` | S6 V1-metrology page extraction ownership and compatibility contract | `test_v1_page_mixin_owns_the_builder_and_every_v1_handler` (+5) |
+| `tests/test_panel_state_extraction.py` | S6 panel-state persistence extraction… | `test_state_module_owns_persistence_and_logging_implementation` (+3) |
+| `tests/test_panel_transport_extraction.py` | S6 panel transport extraction ownersh… | `test_transport_module_owns_moved_definitions` (+2) |
+| `tests/test_panel_v1_page_extraction.py` | S6 V1-metrology page extraction owner… | `test_v1_page_mixin_owns_the_builder_and_every_v1_handler` (+5) |
 | `tests/test_simulation_actuators.py` | — | `test_delay_and_static_gain_match_fopdt_response` (+2) |
-| `tests/test_simulation_axis_parameters.py` | X, Z and pitch gains are distinct C fields, including after mode changes | `test_each_axis_gain_changes_only_its_own_c_field` (+2) |
+| `tests/test_simulation_axis_parameters.py` | X, Z and pitch gains are distinct C f… | `test_each_axis_gain_changes_only_its_own_c_field` (+2) |
 | `tests/test_simulation_clock.py` | — | `test_windows_coarse_timer_preserves_simulation_speed` (+2) |
 | `tests/test_simulation_controller_bridge.py` | — | `test_bridge_exposes_real_runtime_parameters` (+2) |
 | `tests/test_simulation_experiments.py` | — | `test_three_approved_experiments_produce_five_state_channels` (+1) |
-| `tests/test_simulation_full_cascade.py` | The simulator exposes and executes the actual planar P-PID-P-PID cascade | `test_full_gains_are_bound_to_existing_c_parameters_and_visible` (+4) |
-| `tests/test_simulation_isolation.py` | 仿真调参不许污染真机调参。 风险是具体的：仿真的调参滑块绑 `sim_*` 通道，而 tools/sim_xz/control_catalog.py 第 6… | `test_simulation_workspaces_are_marked_ephemeral` (+6) |
-| `tests/test_simulation_launcher.py` | Actual panel startup, loopback child lifecycle, and no hardware switching | `test_current_quick_editor_roundtrips_all_24_gains_over_real_tcp` (+5) |
+| `tests/test_simulation_full_cascade.py` | The simulator exposes and executes th… | `test_full_gains_are_bound_to_existing_c_parameters_and_visible` (+4) |
+| `tests/test_simulation_isolation.py` | 仿真调参不许污染真机调参。 风险是具体的：仿真的调参滑块绑 `sim_*`… | `test_simulation_workspaces_are_marked_ephemeral` (+6) |
+| `tests/test_simulation_launcher.py` | Actual panel startup, loopback child… | `test_current_quick_editor_roundtrips_all_24_gains_over_real_tcp` (+5) |
 | `tests/test_simulation_physics.py` | — | `test_hover_does_not_accumulate_vertical_acceleration` (+4) |
 | `tests/test_simulation_protocol.py` | — | `test_frame_decoder_accepts_fragmented_real_protocol_frame` (+4) |
-| `tests/test_simulation_review_boundaries.py` | Regression cases from the 2026-09-08 final review | `test_nonfinite_target_is_rejected_without_changing_active_targets` (+3) |
-| `tests/test_simulation_session_reset.py` | Stopping a simulator must not leave its samples in the next session | `test_stopping_simulator_clears_its_telemetry_session` |
+| `tests/test_simulation_review_boundaries.py` | Regression cases from the 2026-09-08… | `test_nonfinite_target_is_rejected_without_changing_active_targets` (+3) |
+| `tests/test_simulation_session_reset.py` | Stopping a simulator must not leave i… | `test_stopping_simulator_clears_its_telemetry_session` |
 | `tests/test_simulation_tcp.py` | — | `test_simulator_is_tcp_client_and_answers_caps_on_loopback` (+3) |
-| `tests/test_simulation_ui_contract.py` | Exercise actual Tk views rather than checking widget-name strings | `test_controls_and_five_chart_rows_fit` (+4) |
-| `tests/test_tk_review_regressions.py` | Regressions for the V/D-line review findings (R-S1-4 … R-S1-7). Every test here… | `test_hovering_a_viewport_does_not_steal_focus_from_an_entry` (+11) |
-| `tests/test_tk_v_revamp.py` | V 线 TK-01/TK-02 contracts against the real offline DronePanel | `test_theme_is_global_semantic_and_contrasted` (+4) |
+| `tests/test_simulation_ui_contract.py` | Exercise actual Tk views rather than… | `test_controls_and_five_chart_rows_fit` (+4) |
+| `tests/test_sysid_amplitude_scale.py` | 激励幅值 → 预计舵机摆幅，以及按当前力臂自动换默认幅值（2026-09-… | `test_legacy_doublet_matches_the_recorded_run` (+19) |
+| `tests/test_sysid_host_core.py` | 主机分析核心：档案、推力源、拟合、整定、报告。 这些判据钉的都是"旧那套具… | `test_the_45_degree_rod_identifies_ixx_directly` (+48) |
+| `tests/test_sysid_lever_units.py` | 候选增益的力矩单位换算（2026-09-27 评审确认的安全问题）。 候选… | `test_the_real_run_records_legacy_torque_units` (+6) |
+| `tests/test_sysid_notch_panel.py` | 「系统辨识 · 高级设置」里的「陷波（桨叶振动）」与本轮陷波溯源（假链路，… | `test_reading_the_status_sends_the_query_and_renders_it_in_chinese` (+15) |
+| `tests/test_sysid_page.py` | 「系统辨识」三个子页的契约。 钉的都是这次重写要解决的具体问题： * 旧页… | `test_the_old_page_left_no_trace_in_the_append_banned_file` (+118) |
+| `tests/test_sysid_pendulum_fit.py` | 杆不过质心的单摆台架：量出杆高 d，用重力标定惯量，辨出力矩模型比例 κ。… | `test_the_synthetic_record_looks_like_the_firmware` (+37) |
+| `tests/test_sysid_real_runs.py` | 实录回归：2026-09-27 同一台架的两轮双脉冲（A、B）与一轮扫频（… | `test_the_recorded_runs_use_the_legacy_torque_model` (+16) |
+| `tests/test_sysid_rig_stiffness.py` | 台架刚度（挂砝码试验）：换算公式、前后一致性，以及它代替 m·g·d 之后… | `test_the_weight_test_formula` (+13) |
+| `tests/test_sysid_servo_only.py` | 舵机单独（电机不转、全程上锁）：拟合、折算与页面流程。 真值数据由本文件合… | `test_the_reaction_servo_and_delay_are_recovered` (+26) |
+| `tests/test_sysid_vibration.py` | 陀螺振动主频 ÷ (eRPM/60) = 1/极对数：用合成数据钉住算法，… | `test_the_vibration_line_matches_one_over_the_pole_pairs` (+4) |
+| `tests/test_tk_review_regressions.py` | Regressions for the V/D-line review f… | `test_hovering_a_viewport_does_not_steal_focus_from_an_entry` (+11) |
+| `tests/test_tk_v_revamp.py` | V 线 TK-01/TK-02 contracts against the… | `test_theme_is_global_semantic_and_contrasted` (+4) |
+| `tests/test_thrust_autocollect.py`<br>`tests/test_thrust_bench_acquisition.py`<br>`tests/test_thrust_dataset_model.py`<br>`tests/test_thrust_experiment_library.py`<br>`tests/test_thrust_library_ui.py`<br>`tests/test_thrust_manual_control.py`<br>`tests/test_thrust_mapping_control.py`<br>`tests/test_thrust_smart_scan.py` | Experiment library, grouped validation, smart scan and Tk workflow. | Whole-run isolation; bounded acquisition. |
 
 Open the smallest listed interface first (normally a header or test), then its implementation only if needed.

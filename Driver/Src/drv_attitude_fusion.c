@@ -1,6 +1,7 @@
 #include "drv_attitude_fusion.h"
 
 #include "FusionAhrs.h"
+#include "drv_mag_calibration.h"
 
 #include <math.h>
 #include <stddef.h>
@@ -20,6 +21,20 @@
  * flight remains an M7 same-data A/B validation item.
  */
 #define DRV_ATTITUDE_FUSION_ACCEL_REJECTION_DEG 10.0f
+/*
+ * Directional innovation gate for the magnetometer, mirroring
+ * DRV_ATTITUDE_FUSION_ACCEL_REJECTION_DEG above. This complements (does not
+ * replace) the field-magnitude plausibility gate in
+ * DRV_AttitudeFusion_Update(): magnitude alone cannot catch interference
+ * that happens to sit inside [DRV_MAG_FIELD_MIN_MGAUSS,
+ * DRV_MAG_FIELD_MAX_MGAUSS] but points the wrong way (nearby ferrous
+ * hardware, motor phase current). Setting this unconditionally is safe even
+ * before any magnetometer is calibrated: the library's own magnetic block
+ * is skipped whenever the fed magnetometer vector is exactly zero (see the
+ * magnetometer_valid handling below), so this threshold is inert until a
+ * real magnetometer sample is actually fed.
+ */
+#define DRV_ATTITUDE_FUSION_MAG_REJECTION_DEG 10.0f
 #define DRV_ATTITUDE_FUSION_REJECTION_TIMEOUT_S 0.5f
 /* Reject only physically implausible specific force (impact, free fall). */
 #define DRV_ATTITUDE_FUSION_ACCEL_NORM_MIN_G 0.40f
@@ -64,7 +79,7 @@ void DRV_AttitudeFusion_InitForConvention(
     settings.gyroscopeRange = DRV_ATTITUDE_FUSION_GYRO_RANGE_DPS;
     settings.accelerationRejection =
         DRV_ATTITUDE_FUSION_ACCEL_REJECTION_DEG;
-    settings.magneticRejection = 0.0f;
+    settings.magneticRejection = DRV_ATTITUDE_FUSION_MAG_REJECTION_DEG;
     settings.rejectionTimeout =
         DRV_ATTITUDE_FUSION_REJECTION_TIMEOUT_S;
     FusionAhrsSetSettings(&attitude_fusion_state.ahrs, &settings);
@@ -129,10 +144,75 @@ uint8_t DRV_AttitudeFusion_Update(
         }
     }
 
-    FusionAhrsSetSamplePeriod(&attitude_fusion_state.ahrs, input->dt_s);
-    FusionAhrsUpdateNoMagnetometer(&attitude_fusion_state.ahrs,
-                                   gyroscope,
-                                   accelerometer);
+    {
+        FusionVector magnetometer = FUSION_VECTOR_ZERO;
+        uint8_t mag_subsystem_enabled = (input->magnetometer_valid != 0U) ?
+            1U : 0U;
+        uint8_t mag_field_rejected = 0U;
+        uint8_t mag_used = 0U;
+
+        if (mag_subsystem_enabled != 0U) {
+            if (DRV_MAG_FieldMagnitude_InRange(input->magnetometer_mgauss) ==
+                0U) {
+                mag_field_rejected = 1U;
+
+                /*
+                 * Mirrors the accelerometer norm-gate fix above: advance the
+                 * library's own magnetic recovery trigger manually. Feeding
+                 * a zero vector makes FusionAhrsUpdate() skip its whole
+                 * magnetic rejection/recovery block, so a sustained run of
+                 * field-magnitude-gated samples (motor-current interference,
+                 * a spike) would otherwise leave magneticRecoveryTrigger
+                 * frozen instead of climbing -- the first good sample after
+                 * a long gated stretch would then face the ordinary (not
+                 * recovery) admission threshold even though heading may have
+                 * drifted through the whole gated interval on gyro
+                 * integration alone. Only advance while the subsystem is
+                 * actually enabled (calibrated + axis-verified): a vehicle
+                 * with no magnetometer configured at all has no recovery
+                 * concept to bootstrap.
+                 */
+                if (attitude_fusion_state.ahrs.rejectionTimeout > 0) {
+                    int32_t trigger =
+                        attitude_fusion_state.ahrs.magneticRecoveryTrigger +
+                        1;
+                    if (trigger > attitude_fusion_state.ahrs.rejectionTimeout) {
+                        trigger = attitude_fusion_state.ahrs.rejectionTimeout;
+                    }
+                    attitude_fusion_state.ahrs.magneticRecoveryTrigger =
+                        trigger;
+                }
+            } else {
+                magnetometer.axis.x = input->magnetometer_mgauss[0];
+                magnetometer.axis.y = input->magnetometer_mgauss[1];
+                magnetometer.axis.z = input->magnetometer_mgauss[2];
+                mag_used = 1U;
+            }
+        }
+
+        attitude_fusion_state.output.magnetometer_subsystem_enabled =
+            mag_subsystem_enabled;
+        attitude_fusion_state.output.magnetometer_field_rejected =
+            mag_field_rejected;
+        attitude_fusion_state.output.magnetometer_used = mag_used;
+
+        FusionAhrsSetSamplePeriod(&attitude_fusion_state.ahrs, input->dt_s);
+        if (mag_used != 0U) {
+            FusionAhrsUpdate(&attitude_fusion_state.ahrs, gyroscope,
+                             accelerometer, magnetometer);
+        } else {
+            /*
+             * Identical call to every prior build whenever mag_used is 0
+             * (subsystem disabled, or this sample's field magnitude was
+             * rejected) -- this is the C4 safety requirement: default state
+             * must produce attitude output bit-identical to a
+             * magnetometer-free build.
+             */
+            FusionAhrsUpdateNoMagnetometer(&attitude_fusion_state.ahrs,
+                                           gyroscope,
+                                           accelerometer);
+        }
+    }
 
     quaternion = FusionAhrsGetQuaternion(&attitude_fusion_state.ahrs);
     euler = FusionQuaternionToEuler(quaternion);
@@ -152,6 +232,14 @@ uint8_t DRV_AttitudeFusion_Update(
         internal_states.accelerationError;
     attitude_fusion_state.output.acceleration_recovery_trigger =
         internal_states.accelerationRecoveryTrigger;
+    attitude_fusion_state.output.magnetometer_ignored =
+        internal_states.magnetometerIgnored ? 1U : 0U;
+    attitude_fusion_state.output.magnetic_recovery =
+        flags.magneticRecovery ? 1U : 0U;
+    attitude_fusion_state.output.magnetic_error_deg =
+        internal_states.magneticError;
+    attitude_fusion_state.output.magnetic_recovery_trigger =
+        internal_states.magneticRecoveryTrigger;
     attitude_fusion_state.output.sample_period_s = input->dt_s;
     ++attitude_fusion_state.output.sample_count;
     attitude_fusion_state.output.initialized = 1U;

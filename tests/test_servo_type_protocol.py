@@ -25,15 +25,17 @@ def test_servo_type_reuses_reserved_fcal_byte_without_abi_growth() -> None:
     assert "APP_FlightCalibration_UpdateServoType" in header
     assert "APP_FlightCalibration_BuildServoType" in header
     assert "sizeof(APP_FlightCalibration) == 160U" in source
-    assert "APP_SERVO_TYPE_BUS" in source
+    assert "APP_SERVO_TYPE_DEFAULT" in source
 
 
-def test_servo_type_runtime_module_defaults_legacy_records_to_bus() -> None:
+def test_servo_type_runtime_module_defaults_unset_records_to_pwm() -> None:
+    """Author 2026-09-25: PWM servos (MOTOR7/8) unless FCAL explicitly says bus; record codes unchanged."""
     header = read("App/Inc/app_servo_type.h")
     source = read("App/Src/app_servo_type.c")
 
     assert "APP_SERVO_TYPE_BUS = 0U" in header
     assert "APP_SERVO_TYPE_PWM = 1U" in header
+    assert "#define APP_SERVO_TYPE_DEFAULT APP_SERVO_TYPE_PWM" in header
     assert "APP_ServoType_ResetActive" in header
     assert "APP_ServoType_PublishActive" in header
     assert "APP_ServoType_GetActive" in header
@@ -126,8 +128,16 @@ int main(void) {
 
     APP_FlightCalibration_Defaults(&source);
     assert(sizeof(source) == 160U);
+    type = APP_SERVO_TYPE_BUS;
     assert(APP_FlightCalibration_BuildServoType(&source, &type) == 0U);
-    assert(type == APP_SERVO_TYPE_BUS);
+    assert(type == APP_SERVO_TYPE_PWM);  /* never set: the PWM default */
+    {
+        APP_FlightCalibration bus_record = source;
+        APP_ServoType bus_type = APP_SERVO_TYPE_PWM;
+        assert(APP_FlightCalibration_UpdateServoType(&bus_record, APP_SERVO_TYPE_BUS) == 1U);
+        assert(APP_FlightCalibration_BuildServoType(&bus_record, &bus_type) == 1U);
+        assert(bus_type == APP_SERVO_TYPE_BUS);  /* an explicit bus record stays bus */
+    }
     assert(APP_FlightCalibration_UpdateServoType(&source, APP_SERVO_TYPE_PWM) == 1U);
     assert((source.valid_mask & APP_FLIGHT_CAL_VALID_SERVO_TYPE) != 0U);
     assert(APP_FlightCalibration_BuildServoType(&source, &type) == 1U);
@@ -139,7 +149,7 @@ int main(void) {
     assert(type == APP_SERVO_TYPE_PWM);
 
     APP_ServoType_ResetActive();
-    assert(APP_ServoType_GetActive() == APP_SERVO_TYPE_BUS);
+    assert(APP_ServoType_GetActive() == APP_SERVO_TYPE_PWM);
     assert(APP_ServoType_PublishActive(APP_SERVO_TYPE_PWM) == 1U);
     assert(APP_ServoType_GetActive() == APP_SERVO_TYPE_PWM);
     assert(APP_ServoType_GetGeneration() == 1U);

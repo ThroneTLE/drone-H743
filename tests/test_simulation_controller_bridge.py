@@ -25,11 +25,14 @@ def test_bridge_exposes_real_runtime_parameters(bridge: ControllerBridge) -> Non
 def test_parameter_change_changes_position_experiment(bridge: ControllerBridge) -> None:
     isolated = ControllerBridge(instance_tag="parameter_effect")
     isolated.reset_params()
-    baseline = run_experiment(isolated, ExperimentKind.POSITION_STEP, duration_s=1.4)
+    # 1.4 s -> 1.6 s (step at 1.0 s): since 2026-09-27 the plant uses the real 0.035 m
+    # tilt lever and default rate gains are x0.43, so pitch (hence x) reacts ~2.3x slower
+    # than the old sim that overstated tilt authority; at +0.4 s the gap is only 4e-5 m.
+    baseline = run_experiment(isolated, ExperimentKind.POSITION_STEP, duration_s=1.6)
     value = isolated.get_param("coax.pos_x_kp")
     assert value is not None
     assert isolated.set_param("coax.pos_x_kp", value * 1.8)
-    tuned = run_experiment(isolated, ExperimentKind.POSITION_STEP, duration_s=1.4,
+    tuned = run_experiment(isolated, ExperimentKind.POSITION_STEP, duration_s=1.6,
                            reset_controller=False)
     assert max(abs(a.x_m - b.x_m) for a, b in zip(baseline, tuned)) > 1e-4
     bridge.reset()

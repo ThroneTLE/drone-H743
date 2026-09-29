@@ -148,9 +148,16 @@ def test_every_channel_reported_exactly_once_in_fill_order(
 # recorded flight logs) is indexed by these positions, so the table may only
 # ever APPEND. Reordering or inserting here silently mis-binds every plot and
 # invalidates historical captures.
+#
+# R-PWR-1 是这条规则唯一允许的例外形态：槽位 7/8 在 R-PARAM-1 已经**退役**
+# （reserved_7/8，无参数绑定、恒 0），没有任何在线含义可以被打乱，于是电源通道
+# 直接就地复用它们，而不是追加到表尾。这不是重排——每条通道的编号都没有动过。
+# 之所以不能追加：通道号即掩码位号，表尾已越过 64，追加会让订阅了电源通道的
+# 稳态帧从 24 字节窄掩码头变成 32 字节宽掩码头（40 Hz 下 +320 B/s）。
+# 名称变化会改 schema hash，上位机据此重建面板，所以旧捕获不会被重新解释。
 HISTORICAL_WIRE_ORDER = [
     "roll", "pitch", "yaw", "flow_height", "uptime", "vel_est_x", "vel_est_y",
-    "reserved_7", "reserved_8", "reserved_9", "reserved_10",
+    "batt_v", "batt_i", "reserved_9", "reserved_10",
     "pos_x_kp", "pos_y_kp", "vel_x_kd", "vel_y_kd",
     "pos_est_x", "pos_est_y", "vel_loop_enable",
     "reserved_18", "reserved_19", "pos_z_kp", "reserved_21", "vel_z_kd",
@@ -168,6 +175,44 @@ def test_wire_order_is_unchanged_from_the_pre_table_layout(
     # Prefix comparison, so appending new channels stays legal.
     assert names[: len(HISTORICAL_WIRE_ORDER)] == HISTORICAL_WIRE_ORDER
     assert len(names) >= len(HISTORICAL_WIRE_ORDER)
+
+
+def test_power_channels_reuse_the_retired_slots(schema_lines: list[str]) -> None:
+    """电源通道必须停在 7/8 号，不许搬到表尾。
+
+    这条测试钉的是**带宽**，不是美观。通道号就是掩码位号：7/8 在低 64 位，
+    订阅它们的稳态帧仍是 24 字节窄掩码头；一旦有人"顺手"把它们挪到表尾
+    （编号 >= 64），每帧掩码就从 8 字节变 16 字节，40 Hz 下白付 320 B/s，
+    而默认配置的带宽余量只剩 100 B/s。挪动之后没有任何报错，只是链路慢慢变挤。
+    """
+    channels = {
+        int(parse_kv(line)["idx"]): parse_kv(line)
+        for line in schema_lines
+        if line.startswith("TELEM CH ")
+    }
+
+    assert channels[7]["name"] == "batt_v"
+    assert channels[7]["unit"] == "V"
+    assert channels[7]["grp"] == "power"
+    assert channels[7]["param"] == "-", "电源是测量值，不是参数回显"
+    assert float(channels[7]["min"]) == 0.0
+    assert float(channels[7]["max"]) == 30.0
+
+    assert channels[8]["name"] == "batt_i"
+    assert channels[8]["unit"] == "A"
+    assert channels[8]["grp"] == "power"
+    assert channels[8]["param"] == "-"
+    # 下限是负的：制动回充是真实读数，钳到 0 会把它藏起来。
+    assert float(channels[8]["min"]) == -10.0
+    assert float(channels[8]["max"]) == 60.0
+
+    names = {channel["name"] for channel in channels.values()}
+    assert "reserved_7" not in names
+    assert "reserved_8" not in names
+    # 退役槽位的编号仍然保留，只有 7/8 被复用。
+    for retired in ("reserved_9", "reserved_10", "reserved_18", "reserved_19",
+                    "reserved_21"):
+        assert retired in names, retired
 
 
 def test_channel_fields_are_wire_safe(schema_lines: list[str]) -> None:

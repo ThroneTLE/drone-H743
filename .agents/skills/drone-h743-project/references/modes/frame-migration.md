@@ -40,7 +40,7 @@
 7. **禁止削弱解锁锁。** `APP_Stabilizer_IsImuFrameArmLocked()` 及其调用点、
    `DRV_FRAME_RUNTIME_MIGRATION_COMPLETE` 的判定式，都不得为了"方便测试"
    放宽。需要在半迁移状态下动电机，走 REQ 明文授权的拆桨流程，不是改门。
-   （AGENTS.md 硬约束 4 的"削弱安全门"在本类里包含这一条。）
+   （项目 SKILL 的安全边界在本类里包含这一条。）
 
 8. **一次一个 seam。** 不许在同一个提交里动两个 seam。符号错误的定位成本随
    同时改动的 seam 数指数上升。
@@ -54,14 +54,10 @@
 - 每个 seam 的测试文件命名固定为 `tests/test_flu_seam<N>_<name>_frame.py`，
   不要另起名字——`DONE_MASK` 的位与它一一对应是可机检的。
 
-## 必跑
+## 验证分工
 
-```powershell
-python -m pytest tests\test_flu_frame_contract.py -q
-python -m pytest tests\test_flu_seam<N>_*.py -q
-python -m pytest tests -q
-cmake --build --preset Debug
-```
+执行者定向运行 `tests/test_flu_frame_contract.py` 及所负责 seam 的实际测试文件（展开文件名后交给 pytest），附同源数据对拍。
+坐标运行时迁移属于关键改动；最终合并版本由主控按 [验证策略](../validation-policy.md) 跑全量与所需 Debug 构建，物理方向证据仍单独要求，不由主机测试替代。
 
 改了契约头本身时，`drv_frame_contract.h`、`flu-coordinate-contract.md`、
 SKILL.md 的路由段、`test_flu_frame_contract.py` 必须在**同一个任务**里改齐。

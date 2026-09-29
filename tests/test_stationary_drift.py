@@ -1,4 +1,6 @@
-"""静止漂移自检。
+"""Stationary drift self-check: a still aircraft reads 0 rad/s and 1 g, so error is direct.
+
+静止漂移自检。
 
 背景：六面标定解的是"摆在六个姿态下读数对不对"，但用户真正在意的是"放着不动会
 不会自己飘"。这两件事不等价。飞机不动时真实角速度就是 0、真实比力就是 1 g，所以

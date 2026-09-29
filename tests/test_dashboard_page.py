@@ -1152,7 +1152,12 @@ def test_gauge_channel_can_be_changed_without_entering_layout_edit_mode(app) -> 
     assert gauge.name_var.get() == "yaw"
     assert gauge.canvas.itemcget(gauge._low, "text") == "-180"
     assert gauge.canvas.itemcget(gauge._high, "text") == "180"
-    assert [line for line in app.transport.lines if line.startswith("TELEM MASK ")]
+    # R-PWR-1 起 `_dashboard_send_mask()` 是幂等收敛：并集没变就不重发。`yaw` 本来
+    # 就被预设的波形卡绑着，所以这里断言的是更强的那条——线上那条掩码等于改绑
+    # 之后真正想要的并集——而不是"又发了一条命令"。
+    assert app.telem_mask_sent is not None
+    assert app.telem_mask_sent[0] == app._dashboard_mask()
+    assert app.telem_mask_sent[0] & (1 << NAME_TO_INDEX["yaw"])
 
     persisted = dash_layout.DashboardLayout.from_json(app._panel_state["dashboard"])
     assert persisted is not None

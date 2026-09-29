@@ -25,8 +25,19 @@ static const APP_TelemChannel app_telem_channels[APP_TELEM_CH_COUNT] = {
     [APP_TELEM_CH_VEL_EST_X]   = {"vel_est_x",   "m/s",   "nav",        -5.0f,   5.0f, "-"},
     [APP_TELEM_CH_VEL_EST_Y]   = {"vel_est_y",   "m/s",   "nav",        -5.0f,   5.0f, "-"},
 
-    [APP_TELEM_CH_RESERVED_7] = {"reserved_7", "-", "reserved", 0.0f, 1.0f, "-"},
-    [APP_TELEM_CH_RESERVED_8] = {"reserved_8", "-", "reserved", 0.0f, 1.0f, "-"},
+    /*
+     * 电源通道（R-PWR-1），占用退役的 7/8 号槽位——理由见 app_telemetry.h 的枚举
+     * 注释（低 64 位 = 窄掩码 = 不涨带宽）。
+     *
+     * param 是 "-"：它们是实时测量值而不是参数回显，所以每拍都进稳态帧，
+     * 不走"变了才发"的脏位路径。
+     *
+     * 量程不是拍脑袋：0..30 V 覆盖 3S~7S；电流下限给 -10 A 而不是 0，是因为
+     * 制动回充是真实存在的负读数，把下限钳到 0 会让仪表盘把它画成贴地的假值。
+     * 无效时通道值是 NaN，不是量程内的某个数。
+     */
+    [APP_TELEM_CH_BATT_V] = {"batt_v", "V", "power",   0.0f, 30.0f, "-"},
+    [APP_TELEM_CH_BATT_I] = {"batt_i", "A", "power", -10.0f, 60.0f, "-"},
     [APP_TELEM_CH_RESERVED_9] = {"reserved_9", "-", "reserved", 0.0f, 1.0f, "-"},
     [APP_TELEM_CH_RESERVED_10] = {"reserved_10", "-", "reserved", 0.0f, 1.0f, "-"},
     [APP_TELEM_CH_POS_X_KP]        = {"pos_x_kp",        "-", "gain", 0.0f, 10.0f, "coax.pos_x_kp"},
@@ -94,11 +105,11 @@ static const APP_TelemChannel app_telem_channels[APP_TELEM_CH_COUNT] = {
      * 下界一律 0：DRV_COAX_CTRL_SetParam 直接拒绝负值，给负量程只会让滑块
      * 左半段全是静默失败。
      */
-    /* 角速度环 P：N.m/(rad/s)。默认 roll/pitch 0.1104/0.1138，yaw = Izz*0.15。 */
+    /* 角速度环 P：N.m/(rad/s)。默认 roll/pitch 0.1418/0.2914（2026-09-28 按实测力臂 0.1082 m；俯仰为辨识整定），yaw = Izz*0.525。 */
     [APP_TELEM_CH_RATE_ROLL_KP]  = {"rate_roll_kp",  "N.m/(rad/s)", "gain", 0.0f, 1.0f,    "coax.rate_roll_kp"},
     [APP_TELEM_CH_RATE_PITCH_KP] = {"rate_pitch_kp", "N.m/(rad/s)", "gain", 0.0f, 1.0f,    "coax.rate_pitch_kp"},
     [APP_TELEM_CH_RATE_YAW_KP]   = {"rate_yaw_kp",   "N.m/(rad/s)", "gain", 0.0f, 0.002f,  "coax.rate_yaw_kp"},
-    /* 角速度环 I：N.m/rad。上界锚在各轴积分限幅（0.010 / 0.010 / 0.0002 N.m）。 */
+    /* 角速度环 I：N.m/rad。上界锚在各轴积分限幅（默认 0.05 / 0.05 / 0.0002 N.m；俯仰辨识 ki 0.375）。 */
     [APP_TELEM_CH_RATE_ROLL_KI]  = {"rate_roll_ki",  "N.m/rad", "gain", 0.0f, 0.5f,   "coax.rate_roll_ki"},
     [APP_TELEM_CH_RATE_PITCH_KI] = {"rate_pitch_ki", "N.m/rad", "gain", 0.0f, 0.5f,   "coax.rate_pitch_ki"},
     [APP_TELEM_CH_RATE_YAW_KI]   = {"rate_yaw_ki",   "N.m/rad", "gain", 0.0f, 0.01f,  "coax.rate_yaw_ki"},

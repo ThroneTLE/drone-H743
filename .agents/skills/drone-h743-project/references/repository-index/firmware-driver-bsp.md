@@ -4,73 +4,90 @@
 
 Read this shard only when the task touches device protocols, reusable algorithms, buses, GPIO, DMA callbacks, cache hooks, or board bindings.
 
-Source snapshot: `1e9c6457a52c`. Indexed files: 123.
+Source snapshot: `12bd43b8be25`. Indexed files: 152.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
-| `Driver/Inc/drv_airframe_params.h`<br>`Driver/Src/drv_airframe_params.c` | Reusable device or algorithm driver for airframe params | `DRV_Airframe_IsValid`, `DRV_Airframe_FirstInvalidName`, `DRV_Airframe_Clear`, `DRV_Airframe_Get` (+8) |
-| `Driver/Inc/drv_attitude_control.h`<br>`Driver/Src/drv_attitude_control.c` | Reusable device or algorithm driver for attitude control | `DRV_AttitudeControl_Step` |
-| `Driver/Inc/drv_attitude_fusion.h`<br>`Driver/Src/drv_attitude_fusion.c` | Reusable device or algorithm driver for attitude fusion | `DRV_AttitudeFusion_Init`, `DRV_AttitudeFusion_InitForConvention`, `DRV_AttitudeFusion_Update`, `DRV_AttitudeFusion_GetOutput` |
-| `Driver/Inc/drv_baro.h`<br>`Driver/Src/drv_baro.c` | Reusable device or algorithm driver for baro | `DRV_BARO_Init`, `DRV_BARO_ReadId`, `DRV_BARO_ReadIdTxRx`, `DRV_BARO_ReadRegister` (+2) |
-| `Driver/Inc/drv_battery.h`<br>`Driver/Src/drv_battery.c` | Reusable device or algorithm driver for battery | `DRV_Battery_Init`, `DRV_Battery_Configure`, `DRV_Battery_Update`, `DRV_Battery_IsFresh` (+1) |
-| `Driver/Inc/drv_bmi088.h`<br>`Driver/Src/drv_bmi088.c` | Reusable device or algorithm driver for bmi088 | `DRV_BMI088_GetOps`, `DRV_BMI088_Probe`, `DRV_BMI088_Init`, `DRV_BMI088_ReadRaw` (+2) |
-| `Driver/Inc/drv_bmi088_tables.h`<br>`Driver/Src/drv_bmi088_tables.c` | Reusable device or algorithm driver for bmi088 tables | `DRV_BMI088_AccelRangeCode`, `DRV_BMI088_AccelLsbPerG`, `DRV_BMI088_GyroRangeCode`, `DRV_BMI088_GyroLsbPerDps` (+6) |
-| `Driver/Inc/drv_bmi270.h`<br>`Driver/Src/drv_bmi270.c` | Reusable device or algorithm driver for bmi270 | `DRV_BMI270_GetOps`, `DRV_BMI270_Probe`, `DRV_BMI270_Init`, `DRV_BMI270_ReadRaw` (+2) |
-| `Driver/Inc/drv_bmi270_config.h`<br>`Driver/Src/drv_bmi270_config.c` | Reusable device or algorithm driver for bmi270 config | — |
-| `Driver/Inc/drv_bmi270_tables.h`<br>`Driver/Src/drv_bmi270_tables.c` | Reusable device or algorithm driver for bmi270 tables | `DRV_BMI270_AccelRangeCode`, `DRV_BMI270_AccelLsbPerG`, `DRV_BMI270_GyroRangeCode`, `DRV_BMI270_GyroLsbPerDps` (+6) |
-| `Driver/Inc/drv_coax_ctrl.h`<br>`Driver/Src/drv_coax_ctrl.c` | Reusable device or algorithm driver for coax ctrl | `DRV_COAX_CTRL_Init`, `DRV_COAX_CTRL_ResetState`, `DRV_COAX_CTRL_Run`, `DRV_COAX_CTRL_RunScheduled` (+19) |
-| `Driver/Inc/drv_component_proto.h`<br>`Driver/Src/drv_component_proto.c` | Reusable device or algorithm driver for component proto | `DRV_Component_Encode`, `DRV_Component_CrcUpdate` |
-| `Driver/Inc/drv_current.h`<br>`Driver/Src/drv_current.c` | Reusable device or algorithm driver for current | `DRV_Current_Am32_55A_Default`, `DRV_Current_Convert` |
-| `Driver/Inc/drv_dshot.h`<br>`Driver/Src/drv_dshot.c` | Reusable device or algorithm driver for dshot | `DRV_DShot_MakeTiming`, `DRV_DShot_FromPulseUs`, `DRV_DShot_Encode`, `DRV_DShot_BuildBurst` |
-| `Driver/Inc/drv_elrs.h`<br>`Driver/Src/drv_elrs.c` | Reusable device or algorithm driver for elrs | `DRV_ELRS_Init`, `DRV_ELRS_ResetParser`, `DRV_ELRS_ProcessByte`, `DRV_ELRS_Crc8` (+13) |
-| `Driver/Inc/drv_frame_contract.h` | Reusable device or algorithm driver for frame contract | `DRV_FRAME_FluToFrd` |
-| `Driver/Inc/drv_gd25q32.h`<br>`Driver/Src/drv_gd25q32.c` | Reusable device or algorithm driver for gd25q32 | `DRV_GD25Q32_Init`, `DRV_GD25Q32_ReleaseFromPowerDown`, `DRV_GD25Q32_ReadJedecId`, `DRV_GD25Q32_ReadStatus1` (+14) |
-| `Driver/Inc/drv_gd25q32_timing_probe.h`<br>`Driver/Src/drv_gd25q32_timing_probe.c` | Reusable device or algorithm driver for gd25q32 timing probe | `DRV_GD25Q32_TimingProbe_TightPollEnabled`, `DRV_GD25Q32_TimingProbe_SuspendResumeEnabled`, `DRV_GD25Q32_TimingProbe_StartCycles`, `DRV_GD25Q32_TimingProbe_ElapsedUs` (+5) |
-| `Driver/Inc/drv_gps.h`<br>`Driver/Src/drv_gps.c` | Reusable device or algorithm driver for gps | `DRV_GPS_Init`, `DRV_GPS_ConfigureM9NDefault`, `DRV_GPS_Service`, `DRV_GPS_OnUartRxCplt` (+2) |
-| `Driver/Inc/drv_imu.h`<br>`Driver/Src/drv_imu.c` | Reusable device or algorithm driver for imu | `DRV_IMU_DefaultConfig`, `DRV_IMU_AafSettingForCutoff`, `DRV_IMU_Init`, `DRV_IMU_Reset` (+11) |
-| `Driver/Inc/drv_imu_calibration.h`<br>`Driver/Src/drv_imu_calibration.c` | Reusable device or algorithm driver for imu calibration | `DRV_IMU_Calibration_Apply` |
-| `Driver/Inc/drv_imu_iface.h` | Reusable device or algorithm driver for imu iface | `DRV_IMU_Status`, `DRV_IMU_GetOps` |
-| `Driver/Inc/drv_imu_types.h` | Reusable device or algorithm driver for imu types | — |
-| `Driver/Inc/drv_intflash.h`<br>`Driver/Src/drv_intflash.c` | Reusable device or algorithm driver for intflash | `DRV_INTFLASH_SetBus`, `DRV_INTFLASH_EraseSector`, `DRV_INTFLASH_Write`, `DRV_INTFLASH_Read` (+1) |
-| `Driver/Inc/drv_mag.h`<br>`Driver/Src/drv_mag.c` | Reusable device or algorithm driver for mag | `DRV_MAG_Init`, `DRV_MAG_Read`, `DRV_MAG_Invalidate`, `DRV_MAG_TypeName` |
-| `Driver/Inc/drv_motor.h`<br>`Driver/Src/drv_motor.c` | Reusable device or algorithm driver for motor | `DRV_Motor_SetPercent`, `DRV_Motor_Stop`, `DRV_Motor_StopAll`, `DRV_Motor_GetPercent` (+3) |
-| `Driver/Inc/drv_nav_ekf.h`<br>`Driver/Src/drv_nav_ekf.c` | Reusable device or algorithm driver for nav ekf | `DRV_NAV_EKF_DefaultConfig`, `DRV_NAV_EKF_Reset`, `DRV_NAV_EKF_Predict`, `DRV_NAV_EKF_FuseFlow` (+2) |
-| `Driver/Inc/drv_optical_flow.h`<br>`Driver/Src/drv_optical_flow.c` | Reusable device or algorithm driver for optical flow | `DRV_OPTICAL_FLOW_Init`, `DRV_OPTICAL_FLOW_Service`, `DRV_OPTICAL_FLOW_OnUartRxCplt`, `DRV_OPTICAL_FLOW_OnUartRxEvent` (+6) |
-| `Driver/Inc/drv_position_control.h`<br>`Driver/Src/drv_position_control.c` | Reusable device or algorithm driver for position control | `DRV_POSITION_CONTROL_ResetState`, `DRV_POSITION_CONTROL_PositionStep`, `DRV_POSITION_CONTROL_VelocityStep` |
-| `Driver/Inc/drv_rate_control.h`<br>`Driver/Src/drv_rate_control.c` | Reusable device or algorithm driver for rate control | `DRV_RateControl_InitState`, `DRV_RateControl_Step`, `DRV_RateControl_Evaluate` |
-| `Driver/Inc/drv_rgb_led.h`<br>`Driver/Src/drv_rgb_led.c` | Reusable device or algorithm driver for rgb led | `DRV_RgbLed_Sample`, `DRV_RgbLed_DitherReset`, `DRV_RgbLed_Modulate` |
-| `Driver/Inc/drv_sdblock.h`<br>`Driver/Src/drv_sdblock.c` | Reusable device or algorithm driver for sdblock | `DRV_SDBLOCK_Init`, `DRV_SDBLOCK_IsReady`, `DRV_SDBLOCK_GetUsableBytes`, `DRV_SDBLOCK_Read` (+2) |
-| `Driver/Inc/drv_servo.h`<br>`Driver/Src/drv_servo.c` | Reusable device or algorithm driver for servo | `DRV_SERVO_SendRaw`, `DRV_SERVO_ReadResponse`, `DRV_SERVO_GetBaudRate`, `DRV_SERVO_SetBaudRate` (+33) |
-| `Driver/Inc/drv_servo_actuator_model.h` | Reusable device or algorithm driver for servo actuator model | — |
-| `Driver/Inc/drv_tx_ring.h`<br>`Driver/Src/drv_tx_ring.c` | Reusable device or algorithm driver for tx ring | `DRV_TxRing_Init`, `DRV_TxRing_Used`, `DRV_TxRing_Free`, `DRV_TxRing_Push` (+2) |
+| `Driver/Inc/drv_airframe_params.h`<br>`Driver/Src/drv_airframe_params.c` | Reusable device or algorithm driver f… | `DRV_Airframe_IsValid`, `DRV_Airframe_FirstInvalidName` (+12) |
+| `Driver/Inc/drv_att_reference.h` | Reusable device or algorithm driver f… | `DRV_AttRef_Lookup` |
+| `Driver/Inc/drv_attitude_control.h`<br>`Driver/Src/drv_attitude_control.c` | Reusable device or algorithm driver f… | `DRV_AttitudeControl_Step` |
+| `Driver/Inc/drv_attitude_fusion.h`<br>`Driver/Src/drv_attitude_fusion.c` | Reusable device or algorithm driver f… | `DRV_AttitudeFusion_Init`, `DRV_AttitudeFusion_InitForConvention` (+2) |
+| `Driver/Inc/drv_baro.h`<br>`Driver/Src/drv_baro.c` | Reusable device or algorithm driver f… | `DRV_BARO_Init`, `DRV_BARO_ReadId` (+4) |
+| `Driver/Inc/drv_battery.h`<br>`Driver/Src/drv_battery.c` | Reusable device or algorithm driver f… | `DRV_Battery_Init`, `DRV_Battery_Configure` (+3) |
+| `Driver/Inc/drv_bmi088.h`<br>`Driver/Src/drv_bmi088.c` | Reusable device or algorithm driver f… | `DRV_BMI088_GetOps`, `DRV_BMI088_Probe` (+4) |
+| `Driver/Inc/drv_bmi088_tables.h`<br>`Driver/Src/drv_bmi088_tables.c` | Reusable device or algorithm driver f… | `DRV_BMI088_AccelRangeCode`, `DRV_BMI088_AccelLsbPerG` (+8) |
+| `Driver/Inc/drv_bmi270.h`<br>`Driver/Src/drv_bmi270.c` | Reusable device or algorithm driver f… | `DRV_BMI270_GetOps`, `DRV_BMI270_Probe` (+4) |
+| `Driver/Inc/drv_bmi270_config.h`<br>`Driver/Src/drv_bmi270_config.c` | Reusable device or algorithm driver f… | — |
+| `Driver/Inc/drv_bmi270_tables.h`<br>`Driver/Src/drv_bmi270_tables.c` | Reusable device or algorithm driver f… | `DRV_BMI270_AccelRangeCode`, `DRV_BMI270_AccelLsbPerG` (+8) |
+| `Driver/Inc/drv_coax_ctrl.h`<br>`Driver/Src/drv_coax_ctrl.c` | Reusable device or algorithm driver f… | `DRV_COAX_CTRL_Init`, `DRV_COAX_CTRL_ResetState` (+25) |
+| `Driver/Inc/drv_component_proto.h`<br>`Driver/Src/drv_component_proto.c` | Reusable device or algorithm driver f… | `DRV_Component_Encode`, `DRV_Component_CrcUpdate` |
+| `Driver/Inc/drv_current.h`<br>`Driver/Src/drv_current.c` | Reusable device or algorithm driver f… | `DRV_Current_Am32_55A_Default`, `DRV_Current_Convert` |
+| `Driver/Inc/drv_current_filter.h`<br>`Driver/Src/drv_current_filter.c` | Reusable device or algorithm driver f… | `DRV_CurrentFilter_Init`, `DRV_CurrentFilter_Push` (+1) |
+| `Driver/Inc/drv_dshot.h`<br>`Driver/Src/drv_dshot.c` | Reusable device or algorithm driver f… | `DRV_DShot_MakeTiming`, `DRV_DShot_FromPulseUs` (+4) |
+| `Driver/Inc/drv_dshot_bitbang.h`<br>`Driver/Src/drv_dshot_bitbang.c` | Reusable device or algorithm driver f… | `DRV_DShotBitbang_BuildFrame`, `DRV_DShotTelem_DecodeRaw` |
+| `Driver/Inc/drv_dshot_telemetry.h`<br>`Driver/Src/drv_dshot_telemetry.c` | Reusable device or algorithm driver f… | `DRV_DShotTelem_EncodeRequest`, `DRV_DShotTelem_EncodeCommand` (+6) |
+| `Driver/Inc/drv_elrs.h`<br>`Driver/Src/drv_elrs.c` | Reusable device or algorithm driver f… | `DRV_ELRS_Init`, `DRV_ELRS_ResetParser` (+15) |
+| `Driver/Inc/drv_frame_contract.h` | Reusable device or algorithm driver f… | `DRV_FRAME_FluToFrd` |
+| `Driver/Inc/drv_gd25q32.h`<br>`Driver/Src/drv_gd25q32.c` | Reusable device or algorithm driver f… | `DRV_GD25Q32_Init`, `DRV_GD25Q32_ReleaseFromPowerDown` (+16) |
+| `Driver/Inc/drv_gd25q32_timing_probe.h`<br>`Driver/Src/drv_gd25q32_timing_probe.c` | Reusable device or algorithm driver f… | `DRV_GD25Q32_TimingProbe_TightPollEnabled`, `DRV_GD25Q32_TimingProbe_SuspendResumeEnabled` (+7) |
+| `Driver/Inc/drv_gps.h`<br>`Driver/Src/drv_gps.c` | Reusable device or algorithm driver f… | `DRV_GPS_Init`, `DRV_GPS_ConfigureM9NDefault` (+4) |
+| `Driver/Inc/drv_imu.h`<br>`Driver/Src/drv_imu.c` | Reusable device or algorithm driver f… | `DRV_IMU_DefaultConfig`, `DRV_IMU_AafSettingForCutoff` (+13) |
+| `Driver/Inc/drv_imu_calibration.h`<br>`Driver/Src/drv_imu_calibration.c` | Reusable device or algorithm driver f… | `DRV_IMU_Calibration_Apply` |
+| `Driver/Inc/drv_imu_iface.h` | Reusable device or algorithm driver f… | `DRV_IMU_Status`, `DRV_IMU_GetOps` |
+| `Driver/Inc/drv_imu_types.h` | Reusable device or algorithm driver f… | — |
+| `Driver/Inc/drv_intflash.h`<br>`Driver/Src/drv_intflash.c` | Reusable device or algorithm driver f… | `DRV_INTFLASH_SetBus`, `DRV_INTFLASH_EraseSector` (+3) |
+| `Driver/Inc/drv_mag.h`<br>`Driver/Src/drv_mag.c` | Reusable device or algorithm driver f… | `DRV_MAG_Init`, `DRV_MAG_Read` (+2) |
+| `Driver/Inc/drv_mag_calibration.h`<br>`Driver/Src/drv_mag_calibration.c` | Reusable device or algorithm driver f… | `DRV_MAG_Calibration_Validate`, `DRV_MAG_Calibration_Apply` (+1) |
+| `Driver/Inc/drv_moment_notch.h` | Reusable device or algorithm driver f… | `DRV_MomentNotch_Reset`, `DRV_MomentNotch_Apply` (+1) |
+| `Driver/Inc/drv_motor.h`<br>`Driver/Src/drv_motor.c` | Reusable device or algorithm driver f… | `DRV_Motor_SetPercent`, `DRV_Motor_Stop` (+5) |
+| `Driver/Inc/drv_nav_ekf.h`<br>`Driver/Src/drv_nav_ekf.c` | Reusable device or algorithm driver f… | `DRV_NAV_EKF_DefaultConfig`, `DRV_NAV_EKF_Reset` (+4) |
+| `Driver/Inc/drv_optical_flow.h`<br>`Driver/Src/drv_optical_flow.c` | Reusable device or algorithm driver f… | `DRV_OPTICAL_FLOW_Init`, `DRV_OPTICAL_FLOW_Service` (+8) |
+| `Driver/Inc/drv_position_control.h`<br>`Driver/Src/drv_position_control.c` | Reusable device or algorithm driver f… | `DRV_POSITION_CONTROL_ResetState`, `DRV_POSITION_CONTROL_PositionStep` (+1) |
+| `Driver/Inc/drv_prop_map.h`<br>`Driver/Src/drv_prop_map.c` | Reusable device or algorithm driver f… | `DRV_PropMap_Defaults`, `DRV_PropMap_Validate` (+12) |
+| `Driver/Inc/drv_rate_control.h`<br>`Driver/Src/drv_rate_control.c` | Reusable device or algorithm driver f… | `DRV_RateControl_InitState`, `DRV_RateControl_Step` (+1) |
+| `Driver/Inc/drv_rgb_led.h`<br>`Driver/Src/drv_rgb_led.c` | Reusable device or algorithm driver f… | `DRV_RgbLed_Sample`, `DRV_RgbLed_DitherReset` (+1) |
+| `Driver/Inc/drv_rpm_notch.h`<br>`Driver/Src/drv_rpm_notch.c` | Reusable device or algorithm driver f… | `DRV_Notch_Design`, `DRV_Notch_Reset` (+10) |
+| `Driver/Inc/drv_sdblock.h`<br>`Driver/Src/drv_sdblock.c` | Reusable device or algorithm driver f… | `DRV_SDBLOCK_Init`, `DRV_SDBLOCK_IsReady` (+5) |
+| `Driver/Inc/drv_servo.h`<br>`Driver/Src/drv_servo.c` | Reusable device or algorithm driver f… | `DRV_SERVO_SendRaw`, `DRV_SERVO_ReadResponse` (+35) |
+| `Driver/Inc/drv_servo_actuator_model.h` | Reusable device or algorithm driver f… | — |
+| `Driver/Inc/drv_servo_backlash.h`<br>`Driver/Src/drv_servo_backlash.c` | Reusable device or algorithm driver f… | `DRV_ServoBacklash_DefaultConfig`, `DRV_ServoBacklash_ConfigValid` (+3) |
+| `Driver/Inc/drv_sysid_excitation.h`<br>`Driver/Src/drv_sysid_excitation.c` | Reusable device or algorithm driver f… | `DRV_SysIdExcitation_Validate`, `DRV_SysIdExcitation_TotalMs` (+1) |
+| `Driver/Inc/drv_sysid_record.h`<br>`Driver/Src/drv_sysid_record.c` | Reusable device or algorithm driver f… | `DRV_SysIdRecord_SchemaHash`, `DRV_SysIdRecord_FieldCount` (+6) |
+| `Driver/Inc/drv_sysid_rig.h`<br>`Driver/Src/drv_sysid_rig.c` | Reusable device or algorithm driver f… | `DRV_SysIdRig_Axis`, `DRV_SysIdRig_EffectiveInertia` (+4) |
+| `Driver/Inc/drv_thrust_lut.h`<br>`Driver/Src/drv_thrust_lut.c` | Reusable device or algorithm driver f… | `DRV_ThrustLut_ReadGrid`, `DRV_ThrustLut_ThrustFromSpeed` (+7) |
+| `Driver/Inc/drv_tx_ring.h`<br>`Driver/Src/drv_tx_ring.c` | Reusable device or algorithm driver f… | `DRV_TxRing_Init`, `DRV_TxRing_Used` (+4) |
 | `BSP/Inc/bsp.h`<br>`BSP/Src/bsp.c` | Board resource binding for bsp | `BSP_Init` |
-| `BSP/Inc/bsp_aiwb2_power.h`<br>`BSP/Src/bsp_aiwb2_power.c` | Board resource binding for aiwb2 power | `BSP_AiWB2_PowerInit`, `BSP_AiWB2_SetEnabled`, `BSP_AiWB2_UpdateButton`, `BSP_AiWB2_IsEnabled` (+2) |
-| `BSP/Inc/bsp_baro.h`<br>`BSP/Src/bsp_baro.c` | Board resource binding for baro | `BSP_BARO_Init`, `BSP_BARO_ProbeId`, `BSP_BARO_ProbeIdTxRx`, `BSP_BARO_ReadId` (+6) |
-| `BSP/Inc/bsp_board.h`<br>`BSP/Src/bsp_board.c` | Board resource binding for board | `BSP_Board_Init`, `BSP_DelayMs`, `BSP_Board_GetImuBus`, `BSP_Board_GetBmi088Bus` (+9) |
-| `BSP/Inc/bsp_bus_servo.h`<br>`BSP/Src/bsp_bus_servo.c` | Board resource binding for bus servo | `BSP_BusServo_SendRaw`, `BSP_BusServo_ReadResponse`, `BSP_BusServo_GetBaudRate`, `BSP_BusServo_SetBaudRate` (+31) |
-| `BSP/Inc/bsp_cache.h`<br>`BSP/Src/bsp_cache.c` | Board resource binding for cache | `BSP_Cache_Enable`, `BSP_Cache_Disable`, `BSP_Cache_AlignDown32`, `BSP_Cache_AlignedSize32` (+2) |
-| `BSP/Inc/bsp_component_catalog.h`<br>`BSP/Src/bsp_component_catalog.c` | Board resource binding for component catalog | `BSP_Component_Interface` |
-| `BSP/Inc/bsp_critical.h`<br>`BSP/Src/bsp_critical.c` | Board resource binding for critical | `BSP_Critical_Enter`, `BSP_Critical_Exit`, `BSP_Critical_MemoryBarrier` |
-| `BSP/Inc/bsp_current.h`<br>`BSP/Src/bsp_current.c` | Board resource binding for current | `BSP_Current_Init`, `BSP_Current_Read`, `BSP_Current_GetVoltageSample` |
-| `BSP/Inc/bsp_dshot.h`<br>`BSP/Src/bsp_dshot.c` | Board resource binding for dshot | `BSP_DShot_Init`, `BSP_DShot_Submit`, `BSP_DShot_Disable`, `BSP_DShot_GetSnapshot` |
-| `BSP/Inc/bsp_esc_protocol.h` | Board resource binding for esc protocol | — |
-| `BSP/Inc/bsp_flash_bus.h`<br>`BSP/Src/bsp_flash_bus.c` | Board resource binding for flash bus | `BSP_FlashBus_GetBus`, `BSP_FlashBus_Acquire`, `BSP_FlashBus_Release`, `BSP_FlashBus_RegisterDmaDevice` (+1) |
-| `BSP/Inc/bsp_gpio.h`<br>`BSP/Src/bsp_gpio.c` | Board resource binding for gpio | `BSP_GPIO_Init`, `BSP_GPIO_Write`, `BSP_GPIO_Read`, `BSP_GPIO_Toggle` |
-| `BSP/Inc/bsp_gps.h`<br>`BSP/Src/bsp_gps.c` | Board resource binding for gps | `BSP_GPS_Init`, `BSP_GPS_ConfigureM9NDefault`, `BSP_GPS_Service`, `BSP_GPS_OnUartRxCplt` (+3) |
-| `BSP/Inc/bsp_i2c.h`<br>`BSP/Src/bsp_i2c.c` | Board resource binding for i2c | `BSP_I2C_GetHandle`, `BSP_I2C_DebugXfer`, `BSP_I2C_DebugScan` |
+| `BSP/Inc/bsp_aiwb2_power.h`<br>`BSP/Src/bsp_aiwb2_power.c` | Board resource binding for aiwb2 power | `BSP_AiWB2_PowerInit`, `BSP_AiWB2_SetEnabled` (+4) |
+| `BSP/Inc/bsp_baro.h`<br>`BSP/Src/bsp_baro.c` | Board resource binding for baro | `BSP_BARO_Init`, `BSP_BARO_ProbeId` (+8) |
+| `BSP/Inc/bsp_board.h`<br>`BSP/Src/bsp_board.c` | Board resource binding for board | `BSP_Board_Init`, `BSP_Board_SdInitBegin` (+16) |
+| `BSP/Inc/bsp_bus_servo.h`<br>`BSP/Src/bsp_bus_servo.c` | Board resource binding for bus servo | `BSP_BusServo_SendRaw`, `BSP_BusServo_ReadResponse` (+33) |
+| `BSP/Inc/bsp_cache.h`<br>`BSP/Src/bsp_cache.c` | Board resource binding for cache | `BSP_Cache_Enable`, `BSP_Cache_Disable` (+4) |
+| `BSP/Inc/bsp_component_catalog.h`<br>`BSP/Src/bsp_component_catalog.c` | Board resource binding for component… | `BSP_Component_Interface` |
+| `BSP/Inc/bsp_critical.h`<br>`BSP/Src/bsp_critical.c` | Board resource binding for critical | `BSP_Critical_Enter`, `BSP_Critical_Exit` (+1) |
+| `BSP/Inc/bsp_current.h`<br>`BSP/Src/bsp_current.c` | Board resource binding for current | `BSP_Current_Init`, `BSP_Current_Read` (+5) |
+| `BSP/Inc/bsp_dshot.h`<br>`BSP/Src/bsp_dshot.c` | Board resource binding for dshot | `BSP_DShot_Init`, `BSP_DShot_Submit` (+4) |
+| `BSP/Src/bsp_dshot_bitbang.c` | Board resource binding for dshot bitb… | `DRV_DShotBitbang_BitsFromSamples`, `DRV_DShotTelem_DecodeRaw` (+10) |
+| `BSP/Inc/bsp_dshot_rx.h`<br>`BSP/Src/bsp_dshot_rx.c` | Board resource binding for dshot rx | `BSP_DShotRx_Init`, `BSP_DShotRx_Start` (+3) |
+| `BSP/Inc/bsp_esc_protocol.h` | Board resource binding for esc protoc… | — |
+| `BSP/Inc/bsp_flash_bus.h`<br>`BSP/Src/bsp_flash_bus.c` | Board resource binding for flash bus | `BSP_FlashBus_GetBus`, `BSP_FlashBus_Acquire` (+3) |
+| `BSP/Inc/bsp_gpio.h`<br>`BSP/Src/bsp_gpio.c` | Board resource binding for gpio | `BSP_GPIO_Init`, `BSP_GPIO_Write` (+2) |
+| `BSP/Inc/bsp_gps.h`<br>`BSP/Src/bsp_gps.c` | Board resource binding for gps | `BSP_GPS_Init`, `BSP_GPS_ConfigureM9NDefault` (+5) |
+| `BSP/Inc/bsp_i2c.h`<br>`BSP/Src/bsp_i2c.c` | Board resource binding for i2c | `BSP_I2C_GetHandle`, `BSP_I2C_DebugXfer` (+1) |
 | `BSP/Inc/bsp_icm42688.h`<br>`BSP/Src/bsp_icm42688.c` | Board resource binding for icm42688 | — |
-| `BSP/Inc/bsp_imu.h`<br>`BSP/Src/bsp_imu.c` | Board resource binding for imu | `BSP_IMU_Init`, `BSP_IMU_ReadRaw`, `BSP_IMU_ReadScaled`, `BSP_IMU_IsDataReady` (+14) |
-| `BSP/Inc/bsp_mag.h`<br>`BSP/Src/bsp_mag.c` | Board resource binding for mag | `BSP_MAG_Init`, `BSP_MAG_Read`, `BSP_MAG_Probe`, `BSP_MAG_GetStatus` (+2) |
-| `BSP/Inc/bsp_optical_flow.h`<br>`BSP/Src/bsp_optical_flow.c` | Board resource binding for optical flow | `BSP_OPTICAL_FLOW_Init`, `BSP_OPTICAL_FLOW_Service`, `BSP_OPTICAL_FLOW_OnUartRxCplt`, `BSP_OPTICAL_FLOW_OnUartRxEvent` (+6) |
-| `BSP/Inc/bsp_pwm.h`<br>`BSP/Src/bsp_pwm.c` | Board resource binding for pwm | `BSP_PWM_Init`, `BSP_PWM_IsInitialized`, `BSP_PWM_SetEscPulse`, `BSP_PWM_SetEscPercent` (+10) |
-| `BSP/Inc/bsp_rgb_led.h`<br>`BSP/Src/bsp_rgb_led.c` | Board resource binding for rgb led | `BSP_RgbLed_Init`, `BSP_RgbLed_WriteBits`, `BSP_RgbLed_PinName`, `BSP_RgbLed_IsActiveLow` |
-| `BSP/Inc/bsp_rom_bootloader.h`<br>`BSP/Src/bsp_rom_bootloader.c` | Board resource binding for rom bootloader | `BSP_RomBootloader_ReadVector`, `BSP_RomBootloader_WriteRequestMagic`, `BSP_RomBootloader_TakeRequestMagic`, `BSP_RomBootloader_Jump` (+1) |
+| `BSP/Inc/bsp_imu.h`<br>`BSP/Src/bsp_imu.c` | Board resource binding for imu | `BSP_IMU_Init`, `BSP_IMU_ReadRaw` (+16) |
+| `BSP/Inc/bsp_imu_rate.h` | Board resource binding for imu rate | `BSP_IMU_GetGyroOdrHz` |
+| `BSP/Inc/bsp_mag.h`<br>`BSP/Src/bsp_mag.c` | Board resource binding for mag | `BSP_MAG_Init`, `BSP_MAG_Read` (+4) |
+| `BSP/Inc/bsp_optical_flow.h`<br>`BSP/Src/bsp_optical_flow.c` | Board resource binding for optical fl… | `BSP_OPTICAL_FLOW_Init`, `BSP_OPTICAL_FLOW_Service` (+8) |
+| `BSP/Inc/bsp_pwm.h`<br>`BSP/Src/bsp_pwm.c` | Board resource binding for pwm | `BSP_PWM_Init`, `BSP_PWM_IsInitialized` (+17) |
+| `BSP/Inc/bsp_rgb_led.h`<br>`BSP/Src/bsp_rgb_led.c` | Board resource binding for rgb led | `BSP_RgbLed_Init`, `BSP_RgbLed_WriteBits` (+2) |
+| `BSP/Inc/bsp_rom_bootloader.h`<br>`BSP/Src/bsp_rom_bootloader.c` | Board resource binding for rom bootlo… | `BSP_RomBootloader_ReadVector`, `BSP_RomBootloader_WriteRequestMagic` (+3) |
 | `BSP/Inc/bsp_spi.h`<br>`BSP/Src/bsp_spi.c` | Board resource binding for spi | `BSP_SPI_RegisterFlashDevice` |
-| `BSP/Inc/bsp_system.h`<br>`BSP/Src/bsp_system.c` | Board resource binding for system | `BSP_System_Init`, `BSP_Cache_Enable`, `BSP_Cache_Disable`, `BSP_System_GetClockInfo` |
-| `BSP/Inc/bsp_uart.h`<br>`BSP/Src/bsp_uart.c` | Board resource binding for uart | `BSP_UART_Release_USART1_ForExternalDebug`, `BSP_UART_MaintInit`, `BSP_UART_MaintHandle`, `BSP_UART_MaintName` (+14) |
+| `BSP/Inc/bsp_system.h`<br>`BSP/Src/bsp_system.c` | Board resource binding for system | `BSP_System_Init`, `BSP_Cache_Enable` (+2) |
+| `BSP/Inc/bsp_uart.h`<br>`BSP/Src/bsp_uart.c` | Board resource binding for uart | `BSP_UART_Release_USART1_ForExternalDebug`, `BSP_UART_MaintInit` (+16) |
 | `BSP/Inc/bsp_uart_events.h`<br>`BSP/Src/bsp_uart_events.c` | Board resource binding for uart events | `BSP_UartEvents_Register` |
-| `BSP/Inc/bsp_uart_link.h`<br>`BSP/Src/bsp_uart_link.c` | Board resource binding for uart link | `BSP_UartLink_RxIsRunning`, `BSP_UartLink_HasRxDma`, `BSP_UartLink_HasTxDma`, `BSP_UartLink_StartRxToIdle` (+12) |
-| `BSP/Inc/bsp_uart_tx.h`<br>`BSP/Src/bsp_uart_tx.c` | Board resource binding for uart tx | `BSP_UartTx_Attach`, `BSP_UartTx_Write`, `BSP_UartTx_Pending`, `BSP_UartTx_IsIdle` (+4) |
+| `BSP/Inc/bsp_uart_link.h`<br>`BSP/Src/bsp_uart_link.c` | Board resource binding for uart link | `BSP_UartLink_RxIsRunning`, `BSP_UartLink_HasRxDma` (+14) |
+| `BSP/Inc/bsp_uart_tx.h`<br>`BSP/Src/bsp_uart_tx.c` | Board resource binding for uart tx | `BSP_UartTx_Attach`, `BSP_UartTx_Write` (+6) |
 | `BSP/Inc/bsp_usb_cdc.h`<br>`BSP/Src/bsp_usb_cdc.c` | Board resource binding for usb cdc | `BSP_UsbCdc_Transmit`, `BSP_UsbCdc_Teardown` |
+| `Driver/Src/drv_thrust_lut_table.inc` | Reusable device or algorithm driver f… | — |
 
 Open the smallest listed interface first (normally a header or test), then its implementation only if needed.

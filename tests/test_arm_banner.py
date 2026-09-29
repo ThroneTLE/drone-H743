@@ -1,4 +1,6 @@
-"""主页面解锁横幅的契约。
+"""Home-page arm banner answers whether arming is possible and what is missing.
+
+主页面解锁横幅的契约。
 
 它要回答的只有一个问题：**现在能不能解锁，不能的话差什么。**
 

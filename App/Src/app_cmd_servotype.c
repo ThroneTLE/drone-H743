@@ -73,8 +73,8 @@ static uint8_t app_servotype_transaction_available(void)
 
 void app_cmd_servotype_init(void)
 {
-    control_servotype_persisted = APP_SERVO_TYPE_BUS;
-    control_servotype_preview = APP_SERVO_TYPE_BUS;
+    control_servotype_persisted = APP_SERVO_TYPE_DEFAULT;
+    control_servotype_preview = APP_SERVO_TYPE_DEFAULT;
     memset(&control_servotype_pending_record, 0,
            sizeof(control_servotype_pending_record));
     control_servotype_record_generation = 0U;
@@ -90,7 +90,7 @@ void app_cmd_servotype_on_persisted(const void *record_ptr)
 {
     const APP_FlightCalibration *record =
         (const APP_FlightCalibration *)record_ptr;
-    APP_ServoType persisted = APP_SERVO_TYPE_BUS;
+    APP_ServoType persisted = APP_SERVO_TYPE_DEFAULT;
     uint8_t explicit_value = APP_FlightCalibration_BuildServoType(
         record, &persisted);
 

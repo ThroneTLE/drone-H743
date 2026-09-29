@@ -295,6 +295,12 @@ void APP_TelemStream_NoteCommandSource(APP_TelemSink source)
     }
 }
 
+APP_TelemSink APP_TelemStream_CommandSink(void)
+{
+    APP_TelemStream_Init();
+    return app_telem_stream.last_command_sink;
+}
+
 /*
  * 一个配置在某个出口上到底放不放得下。最坏一帧是全量刷新帧（掩码全置位），
  * 所以按 popcount(mask) 算，不按稳态帧算——否则会出现"平时好好的，刷新那一拍
@@ -338,9 +344,6 @@ APP_TelemStreamStatus APP_TelemStream_SetActive(uint8_t active)
         app_telem_stream.auto_sink = app_telem_stream.last_command_sink;
     }
 
-    /* 重新起算定时基准：留着上次关流前的截止时刻会让第一拍白等一大段。 */
-    app_telem_stream.pace_valid = 0U;
-
     if ((APP_TelemStream_ActiveSink() == APP_TELEM_SINK_USB) &&
         (APP_TelemStream_PortUsbReady() == 0U)) {
         return APP_TELEM_STREAM_ERR_SINK;
@@ -360,7 +363,34 @@ APP_TelemStreamStatus APP_TelemStream_SetActive(uint8_t active)
         }
     }
 
-    app_telem_stream.refresh_accum_ms     = 0U;
+    /*
+     * 相位状态只在**真的从关到开**时才动，而且必须落在上面四道校验之后——
+     * 校验失败时这条命令等于没发生，不该留下副作用。
+     *
+     * 为什么要加 `vofaStreamActive == 0U` 这个条件：原来这里无条件把
+     * refresh_accum_ms 清零，而全量刷新帧要靠它累计到 refresh_s*1000 ms 才触发。
+     * 只要 `TELEM STREAM on` 的重发频率高于 refresh 周期（默认 1 s），累加器就
+     * 每次都被打回原点，**全量刷新帧一帧都发不出来**。实测：40 Hz 跑 80 拍，
+     * 不重发时 2 帧全量刷新，每 0.5 s 重发一次则是 0 帧。
+     * 参数回显平时不占稳态帧、只搭全量刷新帧的车，所以症状是"调参滑块永远
+     * 停在初值"——而上位机按页面可见性做引用计数之后，用户每切一次 tab 就
+     * 可能触发一次 STREAM on，这个重发频率正好落在会触发的区间里。
+     *
+     * 注意这里**不是**"已经开着就整个函数早返回"。早返回会连带跳过上面的
+     * auto_sink 重锁（另一条链路的第二个订阅者就再也拉不走这条流）以及
+     * USB ready / 格式-出口 / 容量三道复检，那是行为倒退，不是修复。
+     *
+     * 清零改成**顶满**：新订阅者在第一拍就拿到全通道 + 全部参数回显，而不是
+     * 等最多 refresh_s 秒。代价是每次真激活多发一帧（197 B 而不是 81 B）。
+     * refresh_s == 0 的语义是"关闭全量刷新"，顶满自然退化成 0，而 tick 里的
+     * `refresh_s > 0U` 守卫会让它继续不刷新——这正是关闭者要的，不要在这里
+     * 反过来强发一帧。
+     */
+    if (vofaStreamActive == 0U) {
+        /* 重新起算定时基准：留着上次关流前的截止时刻会让第一拍白等一大段。 */
+        app_telem_stream.pace_valid       = 0U;
+        app_telem_stream.refresh_accum_ms = app_telem_stream.refresh_s * 1000U;
+    }
     app_telem_stream.encode_error_latched = 0U;
     vofaStreamActive = 1U;
     return APP_TELEM_STREAM_OK;

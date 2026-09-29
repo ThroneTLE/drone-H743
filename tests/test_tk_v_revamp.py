@@ -86,8 +86,14 @@ def test_theme_is_global_semantic_and_contrasted(qa):
 
 def test_matplotlib_pages_share_the_dark_chart_theme(qa):
     checked = 0
-    for figure_name in ("baro_figure", "gps_figure", "ident_figure"):
-        figure = getattr(qa.panel, figure_name, None)
+    # 2026-09-13：辨识页的图从 `panel.ident_figure` 搬到了
+    # `panel.sysid_page.figure`（整页迁出 drone_tcp_panel.py 重写）。
+    figures = {
+        "baro_figure": getattr(qa.panel, "baro_figure", None),
+        "gps_figure": getattr(qa.panel, "gps_figure", None),
+        "sysid_figure": getattr(getattr(qa.panel, "sysid_page", None), "figure", None),
+    }
+    for figure_name, figure in figures.items():
         if figure is None:
             continue
         expected = qa.panel.winfo_rgb(qa.panel.ui_palette["panel"])
@@ -167,15 +173,18 @@ with tempfile.TemporaryDirectory() as root:
         pytest.skip("Tk display unavailable")
     payload = result.stdout.strip().splitlines()[-1]
     report = json.loads(payload)
-    # 包含新电流计页的全部叶页，每页覆盖三个尺寸。
-    assert report["reports"] == 75  # Includes the battery page at all three sizes.
+    # 电源页、状态灯及其余叶页，每页覆盖三个尺寸。
+    # 2026-09-20：电流计与电池电压并成「电源」页（29 → 28 叶页，R-PWR-1）。
+    # 2026-09-20：新增「校准 / 磁力计校准」叶页（28 → 29 叶页，R-MAG-1）：
+    # 29 页 × 3 个窗口尺寸 = 87。
+    assert report["reports"] == 87
     assert report["bad"] == [], report["bad"]
 
 
 def test_stop_and_key_actions_are_present_without_deleting_controls(qa):
     servo_tab = next(
-        tab for tab in qa.panel.notebook.tabs()
-        if qa.panel.notebook.tab(tab, "text") == "维护 · 舵机调试"
+        tab for tab in qa.panel.maintenance_notebook.tabs()
+        if qa.panel.maintenance_notebook.tab(tab, "text") == "舵机调试"
     )
     servo_page = qa.panel.nametowidget(servo_tab)
     fixed = getattr(servo_page, "fixed")
@@ -201,5 +210,10 @@ def test_stop_and_key_actions_are_present_without_deleting_controls(qa):
         if isinstance(widget, ttk.Button)
     ]
     assert labels.count("停止") >= 3  # connection stop + one fixed servo stop per slot
-    assert {"Fit", "四环调参说明", "Save", "Open CSV Folder", "Pause VOFA", "Resume VOFA"} <= set(labels)
+    # 2026-09-13：这一组按钮全在旧辨识页上，整页已删除重写。
+    # 新页的按钮名换成中文并落在 panel_lib/pages/sysid/ 里。
+    # 2026-09-27：一键开始后分析与建议参数自动完成，保留手动「重新分析」与写 RAM/撤销。
+    assert {"开始辨识", "停止（电机回到遥控器油门）", "重新分析",
+            "临时应用到飞控（RAM，不存 Flash）", "恢复原参数",
+            "下发台架几何", "读取采集格式（诊断）"} <= set(labels)
     assert "重置累计位移" in labels

@@ -45,6 +45,10 @@ typedef enum {
     APP_FLIGHT_LOG_MOTOR_REASON_IDENT_DIRECT = 6,
     APP_FLIGHT_LOG_MOTOR_REASON_IMU_INVALID_DIRECT = 7,
     APP_FLIGHT_LOG_MOTOR_REASON_ATTITUDE_DEBUG = 8,
+    /* 上位机桨叶旋向标定窗口在给单路油门（PROPCAL SPIN，心跳保护）。
+     * 单独一个值而不是复用 direct_throttle：这些样本里只有一路在转，
+     * 拿去做辨识或当成"直接油门"读会得出完全错的结论。 */
+    APP_FLIGHT_LOG_MOTOR_REASON_PROP_SPIN_TEST = 9,
 } APP_FlightLogMotorOutputReason;
 
 typedef struct {

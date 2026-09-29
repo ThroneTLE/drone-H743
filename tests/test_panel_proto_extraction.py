@@ -77,8 +77,29 @@ def test_proto_module_owns_the_protocol_table_and_parsing_helpers() -> None:
     #         + PROTO_MAX_FRAME_PAYLOAD（$X 解析器重同步用的长度上限）
     #         + PROTO_BINARY_FUNCTIONS（payload 是二进制、不许按 UTF-8 解的 fn 集合）。
     # R-MODULES-1 adds COMPONENTS; retain every legacy forwarding contract.
-    assert len(proto_names) == 89  # R-BATT-1 adds BATTERY.
-    assert legacy_names == proto_names
+    # 89 + R-SYSID-1 的三个（REQ_SYSID / MSG_SYSID_SCHEMA / MSG_SYSID_BATCH）
+    # + R-THRUST-2 的 THRUST_BENCH = 93。
+    assert len(proto_names) == 93
+    assert proto.PROTO_MSG_THRUST_BENCH == 0x2235
+    assert proto.PROTO_MSG_THRUST_BENCH in proto.PROTO_BINARY_FUNCTIONS
+
+    protocol_ids = {
+        name: value for name, value in vars(proto).items()
+        if isinstance(value, int)
+        and name.startswith(("PROTO_REQ_", "PROTO_MSG_"))
+    }
+    assert len(protocol_ids.values()) == len(set(protocol_ids.values())), protocol_ids
+
+    # 旧面板**只转发、不自创**：它拥有的每个名字都必须来自 proto.py。
+    assert legacy_names <= proto_names
+    # 反过来不再要求相等。`drone_tcp_panel.py` 只减不增，而 R-SYSID-1 之后的新
+    # 报文只被 panel_lib 用；为它们在那个文件里加转发行等于给一个已经在收缩的
+    # 文件重新开口子。没被转发的必须逐个列在这里——让下一次新增仍然是显式决定，
+    # 而不是悄悄地多一个。
+    assert proto_names - legacy_names == {
+        "PROTO_REQ_SYSID", "PROTO_MSG_SYSID_SCHEMA", "PROTO_MSG_SYSID_BATCH",
+        "PROTO_MSG_THRUST_BENCH",
+    }
     assert proto_names == owned_proto_assignments(PROTO_PATH)
     assert not owned_proto_assignments(LEGACY_PANEL_PATH)
     assert not owned_proto_assignments(TRANSPORT_PATH)
@@ -87,7 +108,14 @@ def test_proto_module_owns_the_protocol_table_and_parsing_helpers() -> None:
 
 
 def test_legacy_panel_forwards_every_proto_symbol_without_wrappers() -> None:
+    """转发的必须是**同一个对象**，不能是抄了一份的常量。
+
+    抄一份的表现是两边慢慢对不上，而且没人会想到去比。
+    """
+    legacy_names = {name for name in vars(legacy_panel) if name.startswith("PROTO_")}
     for name in proto.__all__:
+        if name.startswith("PROTO_") and name not in legacy_names:
+            continue  # R-SYSID-1 之后的新报文只走 panel_lib，见上一条测试
         assert getattr(legacy_panel, name) is getattr(proto, name), name
 
     assert legacy_panel.DronePanel._normalize_proto_line is proto.ProtocolLineMixin._normalize_proto_line

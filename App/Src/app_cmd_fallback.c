@@ -14,6 +14,9 @@
 #include "app_control_internal.h"
 #include "app_components.h"
 #include "app_battery.h"
+#include "app_rpm_notch.h"
+#include "app_servo_backlash.h"
+#include "app_servo_hz.h"
 
 #include <stddef.h>
 
@@ -27,5 +30,36 @@ void app_control_handle_unclaimed(char **tokens, uint32_t count)
     }
     if (APP_Components_Command(tokens, count) != 0U) { return; }
     if (APP_Battery_Command(tokens, count) != 0U) { return; }
+    if (app_control_handle_thrust_bench(tokens, count) != 0U) { return; }
+    if (app_control_handle_ledmap(tokens, count) != 0U) {
+        return;
+    }
+    if (app_control_handle_propcal(tokens, count) != 0U) {
+        return;
+    }
+    if (app_control_handle_magcal(tokens, count) != 0U) {
+        return;
+    }
+    if (app_control_handle_sysid(tokens, count) != 0U) {
+        return;
+    }
+    if (app_control_handle_currprobe(tokens, count) != 0U) {
+        return;
+    }
+    if (app_control_handle_esc_kv(tokens, count) != 0U) {
+        return;
+    }
+    if (app_control_handle_thrust_lut(tokens, count) != 0U) {
+        return;
+    }
+    if (app_control_handle_esc_edt_set(tokens, count) != 0U) {
+        return;
+    }
+    if (app_control_handle_esc_edt(tokens, count) != 0U) {
+        return;
+    }
+    if (APP_RpmNotch_Command(tokens, count) != 0U) { return; }
+    if (APP_ServoHz_Command(tokens, count) != 0U) { return; }
+    if (APP_ServoBacklash_Command(tokens, count) != 0U) { return; }
     APP_Control_QueueText("ERR unknown cmd %s\r\n", tokens[0]);
 }

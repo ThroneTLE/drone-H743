@@ -225,6 +225,19 @@ typedef struct {
     float vel_loop_enable;
     float mass_kg;
     float gravity_m_s2;
+    /*
+     * 倾转力臂 [m]，**带符号的几何量**（2026-09-27 起）：
+     *     roll_tilt_lever_arm_m  = cg_z_m − servo1_axis_z_m
+     *     pitch_tilt_lever_arm_m = cg_z_m − servo2_axis_z_m
+     * 即 −r_z，舵机转轴在重心下方时为正；倾转力矩 = 力臂 × T × sin(倾角)，
+     * 极性已含在符号里。不是可调参数：每拍由机体模型重算（2026-09-27 当晚
+     * 板上几何按部件表重心算出两轴都是 +0.035442，默认 N·m 增益按它换算；
+     * 作者随后实测重心 −0.01 m，力臂约 0.12 m——机体模型一改，横滚/俯仰
+     * N·m 增益须重新辨识推导）。机体模型无效或 |力臂| 小于
+     * DRV_AIRFRAME_TILT_AXIS_MIN_LEVER_M 时倾转反解回中、正向力矩记 0。
+     * 2026-09-27 之前这里存的是 0.145 m 的输入力臂，
+     * 再乘 0.569/0.581 的经验系数——解读旧飞行日志（v6~v9 参数快照）时别混用。
+     */
     float pitch_tilt_lever_arm_m;
     float roll_tilt_lever_arm_m;
     float tilt_limit_rad;
@@ -232,6 +245,23 @@ typedef struct {
     float motor_single_max_thrust_n;
     float yaw_torque_upper_m_per_n;
     float yaw_torque_lower_m_per_n;
+    /*
+     * 横滚/俯仰的指令整形与力矩出口陷波（2026-09-28，光杆辨识模型设计），默认全关：
+     *   rate_out_notch_hz  速率环反馈力矩出口陷波中心 [Hz]，0 = 关（drv_moment_notch.h）
+     *   rate_out_notch_q   陷波 Q
+     *   rate_out_notch2_hz 第二级出口陷波中心 [Hz]，0 = 关；串在第一级之后、滤同一信号
+     *   rate_out_notch2_q  第二级 Q（范围与深度同第一级）
+     *   att_ref_wr_rad_s   姿态参考模型固有频率 [rad/s]，0 = 关（drv_att_reference.h）
+     *   att_ref_delay_ms   角度环反馈用参考的延后 Td [ms]
+     * 三个开关都为 0 时控制律与加入它们之前逐位相同。参考模型开启时力矩前馈走
+     * rate.ff_gain × I × θ̈_ref；力矩已是真实 N·m，台架启用时 ff 倍率应为 1。
+     */
+    float rate_out_notch_hz;
+    float rate_out_notch_q;
+    float rate_out_notch2_hz;
+    float rate_out_notch2_q;
+    float att_ref_wr_rad_s;
+    float att_ref_delay_ms;
 } DRV_COAX_CTRL_Params;
 
 /*
@@ -286,6 +316,52 @@ void DRV_COAX_CTRL_BodyTiltRadToServoPulses(float body_x_tilt_rad,
                                             uint16_t *servo_beta_us);
 uint16_t DRV_COAX_CTRL_ThrustToMotorPulse(float thrust_n);
 float DRV_COAX_CTRL_MotorPulseToTotalThrust(uint16_t pulse_us);
+
+/*
+ * 推力 <-> 电机脉宽的换算可由上层注入：App 启动时装推力台查补表（带电池电压补偿，
+ * 见 app_thrust_lut.c）。未注入或传 NULL 时用本文件内置的 21 点旧曲线，供 A/B 对照。
+ * 两个回调都在控制节拍里调用，不得阻塞；只在未解锁时切换。
+ */
+typedef struct {
+    uint16_t (*pulse_for_motor_thrust)(float thrust_n); /* 单桨推力（N），已夹到 [0, 单桨上限] */
+    float (*total_thrust_for_pulse)(uint16_t pulse_us); /* 两桨同脉宽时的合推力（N） */
+    /*
+     * 可选：上下桨一起换算。差速时两桨合推力不等于各自按同油门曲线之和（共轴互扰），
+     * 提供它的实现可按二维表让合推力正好等于 upper_n + lower_n。NULL 时逐桨换算。
+     */
+    void (*pulses_for_pair)(float upper_n, float lower_n, uint16_t *upper_us, uint16_t *lower_us);
+} DRV_COAX_CTRL_ThrustMap;
+
+void DRV_COAX_CTRL_SetThrustMap(const DRV_COAX_CTRL_ThrustMap *map);
+const DRV_COAX_CTRL_ThrustMap *DRV_COAX_CTRL_GetThrustMap(void);
+
+/*
+ * 期望机体力矩 -> 机体倾转角。**这是分配器内部那两个反解器的公开出口**，
+ * 不是另写一份：内部直接调 coax_ctrl_solve_roll/pitch_tilt_from_moment，
+ * 因此系统辨识算出来的倾角与在飞的控制律逐位一致。
+ *
+ * 输出可以直接喂给 DRV_COAX_CTRL_BodyTiltRadToServoPulses。
+ * moment_n_m 是规范 FLU 机体系力矩 [N·m]；只用 X（roll）与 Y（pitch）两个分量，
+ * 偏航靠上下桨差速、不由倾转产生，Z 分量被忽略。
+ * 倾角上限取自当前生效的 `coax.tilt_limit_rad`，调用方不能绕过它。
+ *
+ * total_force_n 必须为正：力矩来自"推力 × 力臂 × sin(倾角)"，推力为零时
+ * 任何倾角都产生不了力矩。此时返回零倾角并报 0——**不要**把它当成"可以随便倾"，
+ * 反解器在零推力下会收敛到限位，那是最危险的一种输出。
+ * 机体模型无效（DRV_Airframe_IsValid() == 0）或 |力臂| 小于
+ * DRV_AIRFRAME_TILT_AXIS_MIN_LEVER_M 时同样返回零倾角并报 0：那时力臂的方向
+ * 都不可信，给出的倾角可能正好是反的。
+ */
+uint8_t DRV_COAX_CTRL_SolveBodyTiltFromMoment(const float moment_n_m[3],
+                                              float total_force_n,
+                                              float *body_x_tilt_rad,
+                                              float *body_y_tilt_rad);
+
+/* Command-based moment estimate after pulse quantisation and mechanical limits.
+ * FLU N*m; excludes unmeasured actuator lag. Same forward map as RunScheduled.
+ * 机体模型无效或 |力臂| 过小时写 0 力矩并返回 0（与上面的反解同一判据）。 */
+uint8_t DRV_COAX_CTRL_MomentFromServoPulses(float total_force_n,
+    uint16_t alpha_us, uint16_t beta_us, float moment[3]);
 
 #ifdef __cplusplus
 }

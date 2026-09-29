@@ -19,6 +19,20 @@ extern "C" {
 
 void BSP_Board_Init(void);
 
+/*
+ * 开机 SD 初始化窗口。CubeMX 生成的 MX_SDMMC1_SD_Init 在 USER CODE 里调 Begin/End；
+ * 没插卡时 HAL_SD_Init 失败，生成代码会进 Error_Handler 把整机卡死在开机。
+ * Error_Handler 的 USER CODE 先问 SdInitFailed()：正处在这个窗口里就记为无卡、返回 1，
+ * 由调用者返回继续开机；窗口外返回 0，其他外设出错照旧停机。
+ * BSP_Board_Init 在无卡时不把 SD 交给日志驱动，日志降级为不记录。
+ */
+void BSP_Board_SdInitBegin(void);
+void BSP_Board_SdInitEnd(void);
+uint8_t BSP_Board_SdInitFailed(void);
+uint8_t BSP_Board_SdCardPresent(void);
+/* 开机识别失败时 hsd1 的 HAL ErrorCode；识别成功为 0。 */
+uint32_t BSP_Board_SdInitError(void);
+
 void BSP_DelayMs(uint32_t ms);
 
 const DRV_IMU_Bus   *BSP_Board_GetImuBus(void);

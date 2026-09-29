@@ -97,6 +97,30 @@ uint32_t app_control_tokenize(char *buffer, char **tokens, uint32_t max_tokens)
     return count;
 }
 
+uint32_t app_control_split_line(const char *line, char *buffer, uint32_t buffer_size,
+                                char **tokens, uint32_t max_tokens)
+{
+    size_t length;
+    uint32_t count;
+
+    if ((line == NULL) || (buffer == NULL) || (tokens == NULL) ||
+        (buffer_size == 0U) || (max_tokens < 2U)) {
+        return 0U;
+    }
+    length = strlen(line);
+    if (length >= (size_t)buffer_size) {
+        APP_Control_QueueText("ERR line too long max=%u\r\n", (unsigned int)(buffer_size - 1U));
+        return 0U;
+    }
+    memcpy(buffer, line, length + 1U);
+    count = app_control_tokenize(buffer, tokens, max_tokens);
+    if (count >= max_tokens) {
+        APP_Control_QueueText("ERR too many tokens max=%u\r\n", (unsigned int)(max_tokens - 1U));
+        return 0U;
+    }
+    return count;
+}
+
 uint8_t app_control_parse_u32(const char *text, uint32_t *value)
 {
     char *end_ptr;

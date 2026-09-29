@@ -103,9 +103,9 @@ def test_parameter_capabilities_match_the_driver_table() -> None:
 def test_airframe_capabilities_cover_the_firmware_field_table() -> None:
     """机体模型的名字同样只能来自固件，而且必须允许负值。
 
-    允许负值这条是本质的，不是宽松一点而已：重心 z、推力作用点 z、下桨旋向
-    都可以是负的。照搬 coax.* 的 `minimum=0` 会把"推力挂在板子下方"这件事
-    直接拦掉，而那正是这架飞机的构型。
+    允许负值这条是本质的，不是宽松一点而已：重心 z、推力作用点 z 都可以是负的。
+    照搬 coax.* 的 `minimum=0` 会把"推力挂在板子下方"这件事直接拦掉，
+    而那正是这架飞机的构型。
     """
     table = (ROOT / "Driver" / "Src" / "drv_airframe_params.c").read_text(encoding="utf-8")
     # 只扫参数表本体，跳过上面那两个 `#define AIRFRAME_ENTRY(field)` 宏定义。
@@ -115,8 +115,7 @@ def test_airframe_capabilities_cover_the_firmware_field_table() -> None:
     assert host == firmware
 
     assert PARAMETER_CAPABILITIES["airframe.cg_z_m"].minimum < 0.0
-    assert PARAMETER_CAPABILITIES["airframe.lower_rotor_spin_sense"].minimum < 0.0
-    ok, _ = validate_parameter_text("airframe.lower_rotor_spin_sense", "-1")
+    ok, _ = validate_parameter_text("airframe.thrust_point_z_m", "-0.2955")
     assert ok
 
 

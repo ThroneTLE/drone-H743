@@ -1,0 +1,33 @@
+{
+  "run_id": "b75e9cfe7b4e",
+  "plan_name": "model_validation",
+  "mode": "dual",
+  "stop_reason": "stop_voltage",
+  "model_id": "c373e7ca19c8",
+  "model_path": "D:\\stm32hal\\drone-H743\\data\\identification\\thrust\\models\\throttle\\2026-09-23\\050740-c373e7ca19c8\\throttle_model.json",
+  "error_limit_gf": 50.0,
+  "summary": {
+    "targets": 1,
+    "measured": 1,
+    "skipped": 0,
+    "mae_gf": 26.88284518828459,
+    "max_abs_gf": 26.88284518828459,
+    "within_limit": 1
+  },
+  "targets": [
+    {
+      "target_gf": 585,
+      "charge_v_before": 12.302,
+      "command_pct": 46.36410066410414,
+      "measured_gf": 611.8828451882846,
+      "error_gf": 26.88284518828459,
+      "charge_v_measured": 12.35298439698834,
+      "predicted_at_measured_charge_gf": 588.624379866533,
+      "upper_erpm": 41551.0,
+      "lower_erpm": 41095.0
+    }
+  ],
+  "recorded_points": 1,
+  "completed": false,
+  "cancelled": false
+}

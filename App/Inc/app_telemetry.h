@@ -27,9 +27,27 @@ typedef enum {
     APP_TELEM_CH_TIME,              /* 飞控运行时间戳 */
     APP_TELEM_CH_VEL_EST_X,         /* 融合 X 速度估计 */
     APP_TELEM_CH_VEL_EST_Y,         /* 融合 Y 速度估计 */
-    APP_TELEM_CH_RESERVED_7,      /* 以下为参数回显，供上位机滑块反馈 */
-    APP_TELEM_CH_RESERVED_8,
-    APP_TELEM_CH_RESERVED_9,
+    /*
+     * 电源遥测（R-PWR-1）。**故意占用退役的 7/8 号槽位，不追加到表尾**：
+     * 通道号就是掩码位号，表尾已经越过 64，订阅一条就会把稳态帧的掩码头从
+     * 8 字节撑到 16 字节（24 B 头 -> 32 B 头），40 Hz 下白付 320 B/s。
+     * 7/8 在低 64 位，订阅后稳态帧仍是窄掩码。
+     *
+     * 契约（D4-3）：
+     *   batt_v —— 电池总压，单位 V，取自 APP_Battery_GetSnapshot() 的
+     *             DRV_BatteryState.voltage_mv / 1000。
+     *   batt_i —— 母线电流，单位 A，取自 APP_Current_GetSnapshot() 的
+     *             DRV_CurrentReading.current_a（放电为正）。
+     *   时间戳来源：两者同属 ADC1 的一对采样，50 Hz，由 messageTask 刷新。
+     *
+     * **无效语义：快照无效或过期时填 NaN，绝不填 0.0f。**
+     * 0 V / 0 A 都是合法读数，用 0 表示"没数据"会让上位机永远分不清
+     * "此刻不耗电"和"根本没采到"。flow_height 失效填 0 是那条通道自己写明的
+     * 历史例外，不要外推到这里。
+     */
+    APP_TELEM_CH_BATT_V,
+    APP_TELEM_CH_BATT_I,
+    APP_TELEM_CH_RESERVED_9,      /* 以下为退役的参数回显槽位，仅保留编号 */
     APP_TELEM_CH_RESERVED_10,
     APP_TELEM_CH_POS_X_KP,
     APP_TELEM_CH_POS_Y_KP,

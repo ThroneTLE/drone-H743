@@ -27,6 +27,7 @@
 #include "drv_intflash.h"
 #include "drv_sdblock.h"
 
+#include <stdio.h>
 #include <string.h>
 
 static DRV_GD25Q32_Device flash_device;
@@ -58,6 +59,29 @@ const char *APP_FlashService_BackendName(APP_FlashService_Backend backend)
 uint8_t APP_FlashService_IsLogStorageReady(void)
 {
     return DRV_SDBLOCK_IsReady();
+}
+
+void APP_FlashService_FormatSdDiag(char *out, uint32_t size)
+{
+    DRV_SDBLOCK_Diag d;
+
+    if ((out == NULL) || (size == 0U)) {
+        return;
+    }
+    DRV_SDBLOCK_GetDiag(&d);
+    (void)snprintf(out, size,
+                   "HW SD present=%u init_err=0x%08lX ready=%u init=%u bits=%u type=%lu "
+                   "blocks=%lu probe=%u first_err=0x%08lX first_ms=%lu retry1=%u "
+                   "retry_err=0x%08lX retry_ms=%lu fail_op=%u fail_err=0x%08lX",
+                   (unsigned int)BSP_Board_SdCardPresent(),
+                   (unsigned long)BSP_Board_SdInitError(),
+                   (unsigned int)DRV_SDBLOCK_IsReady(), (unsigned int)d.init_status,
+                   (unsigned int)d.bus_bits, (unsigned long)d.card_type,
+                   (unsigned long)d.card_blocks, (unsigned int)d.probe_first,
+                   (unsigned long)d.first_error, (unsigned long)d.first_ms,
+                   (unsigned int)d.probe_1bit, (unsigned long)d.retry_error,
+                   (unsigned long)d.retry_ms, (unsigned int)d.fail_op,
+                   (unsigned long)d.fail_error);
 }
 
 /*

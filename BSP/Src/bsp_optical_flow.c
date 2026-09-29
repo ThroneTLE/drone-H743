@@ -24,9 +24,22 @@ void BSP_OPTICAL_FLOW_Service(void)
     DRV_OPTICAL_FLOW_Service(&flow_dev);
 }
 
+/*
+ * 回调认哪个串口，从板级绑定里问（与 bsp_gps.c 同一做法），不写死实例名。
+ * 2026-09-29 光流从 USART2 迁到 UART4 时，这三处原本写死的 USART2 就是
+ * "绑定改了、回调没跟着改"的现成隐患。
+ */
+static uint8_t flow_owns_uart(const UART_HandleTypeDef *huart)
+{
+    const DRV_OPTICAL_FLOW_Bus *bus = BSP_Board_GetOpticalFlowBus();
+
+    if ((huart == NULL) || (bus == NULL) || (bus->huart == NULL)) { return 0U; }
+    return (huart->Instance == bus->huart->Instance) ? 1U : 0U;
+}
+
 void BSP_OPTICAL_FLOW_OnUartRxCplt(UART_HandleTypeDef *huart)
 {
-    if ((huart == NULL) || (huart->Instance != USART2)) {
+    if (flow_owns_uart(huart) == 0U) {
         return;
     }
     DRV_OPTICAL_FLOW_OnUartRxCplt(&flow_dev);
@@ -34,7 +47,7 @@ void BSP_OPTICAL_FLOW_OnUartRxCplt(UART_HandleTypeDef *huart)
 
 void BSP_OPTICAL_FLOW_OnUartRxEvent(UART_HandleTypeDef *huart, uint16_t size)
 {
-    if ((huart == NULL) || (huart->Instance != USART2)) {
+    if (flow_owns_uart(huart) == 0U) {
         return;
     }
     DRV_OPTICAL_FLOW_OnUartRxEvent(&flow_dev, size);
@@ -42,7 +55,7 @@ void BSP_OPTICAL_FLOW_OnUartRxEvent(UART_HandleTypeDef *huart, uint16_t size)
 
 void BSP_OPTICAL_FLOW_OnUartError(UART_HandleTypeDef *huart)
 {
-    if ((huart == NULL) || (huart->Instance != USART2)) {
+    if (flow_owns_uart(huart) == 0U) {
         return;
     }
     DRV_OPTICAL_FLOW_OnUartError(&flow_dev, huart->ErrorCode);

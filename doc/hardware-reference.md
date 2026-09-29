@@ -23,7 +23,7 @@ CubeMX 生成文件不得手改。硬件安装或接线与本文冲突时，先�
 | 光流 | MicoLink 光流帧 | `drv_optical_flow → app_optical_flow → svc_flow_nav` |
 | 测距 | 仅光流模块内的组合测距（独立 TFmini 路径已删除，硬件不再使用） | `drv_optical_flow → app_optical_flow → svc_flow_nav` |
 | 舵机 | 运行时选择 BUS 或 PWM | `app_servo_type`、`app_stabilizer` |
-| 电机 | 双 ESC PWM | `drv_motor`、`bsp_pwm` |
+| 电机 | 双 ESC，编译期选择 DShot300（默认）/ 双向 DShot300（eRPM 与 EDT 回传）/ PWM，见 [电调输出](esc-output.md) | `drv_motor`、`bsp_pwm`、`bsp_dshot` |
 
 外部 Flash 当前板级绑定以 `.ioc` 和 BSP 为准；历史记录中的 SPI1/PA4..PA7 只可作为
 线索，不能替代当前工程配置核对。

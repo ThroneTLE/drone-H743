@@ -17,13 +17,15 @@
  * 第二处把"某个功能"和"某个 UART 实例"钉在一起的地方。
  *
  * 这两条不在表里，因为它们的事件直接向下分发（见文件头的方向规矩）：
- *   光流  -> USART2   总线舵机 -> UART7
- * GPS（USART3）目前没有消费者：任务还被注释掉，注册表里留空即可，
+ *   光流  -> UART4    总线舵机 -> UART7
+ * 光流 2026-09-29 从 USART2 迁到 UART4（4 针 5 V 口）；这里须与 bsp_board.c 的
+ * optical_flow_bus 保持一致（tests/test_optical_flow_contract.py 核对）。
+ * USART2（DJI 图传口）与 GPS（USART3）目前都没有消费者：注册表里留空即可，
  * 事件会被静默丢弃——这是正常状态，不是错误。
  */
 #define BSP_UART_EVENTS_TELEMETRY_INSTANCE USART1
 #define BSP_UART_EVENTS_RC_INSTANCE        USART6
-#define BSP_UART_EVENTS_FLOW_INSTANCE      USART2
+#define BSP_UART_EVENTS_FLOW_INSTANCE      UART4
 #define BSP_UART_EVENTS_SERVO_INSTANCE     UART7
 
 static const BSP_UartRoleHandlers *bsp_uart_role_handlers[BSP_UART_ROLE_COUNT];

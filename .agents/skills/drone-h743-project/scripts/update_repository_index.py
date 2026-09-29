@@ -145,7 +145,24 @@ def read_text(path: str) -> str:
 # 比反复贴着线省事。再超时按既定顺序继续截散文，最后才动 symbol_cell。
 # Bluetooth/battery additions exceed the index cap; retain symbol keys and
 # shorten prose instead of raising the fixed 8/32/96 KiB budgets.
-def compact(text: str, limit: int = 80) -> str:
+# 2026-09-13：双向 DShot 回传新增 drv_dshot_telemetry / bsp_dshot_rx 两组模块与一个
+# 测试文件后到 98576 B，越限 272 B。按上面既定顺序继续截散文而不动 symbol_cell。
+# 80→74 只剩 744 B 余量，等于下一个模块立刻再撞一次；按"把余量一次留够"的先例
+# 直接到 68（实测 94.0 KiB，余 2056 B）。
+# 2026-09-20（R-MAG-1）：摘要宽度 68 → 64。磁力计一批新增 8 个模块后总索引到
+# 98340 B，超 TOTAL_LIMIT 36 B。按 SKILL「超限优先改善摘要」压缩而不是抬上限，
+# 沿用 2026-09-12 R-DSHOT-1 的同一处置。摘要本来就是截断的提要，少 4 个字符不
+# 改变"去哪找"的作用；行数一行不减，所有模块仍然可见。
+# R-THRUST-2 增加采集/建模模块后总索引再次超限；继续压缩摘要，保留所有路由项，
+# 不提高总计 96 KiB 上限。文件入口、符号和覆盖范围均保留。
+# SYSID v2 readiness: retain all file/symbol routes; leave room below the fixed
+# 96 KiB budget by shortening prose two characters, rather than raising the cap.
+# 2026-09-27（R-SYSID-1 / R-TORQUE-1 / R-NOTCH-1）：陷波、舵机单独、台架刚度等一批模块与测试后
+# 总索引 102596 B。先把光杆辨识的上位机测试按"测的是哪一侧"归到 tests-host（固件分片因此回到
+# 限内），再按既定顺序压摘要 54 → 44（95.2 KiB，余约 3 KB，一次留够）；路由项与符号一个不减。
+# 2026-09-27 夜（R-BACKLASH-1）：舵机回差补偿新增驱动/策略/命令模块与四个测试文件后到 99137 B，
+# 超 833 B。按既定顺序压摘要 44 → 38（95.7 KiB，余约 2.6 KB，一次留够）；路由项与符号一个不减。
+def compact(text: str, limit: int = 38) -> str:
     text = re.sub(r"\s+", " ", text).strip(" .:-\t\r\n")
     text = text.replace("|", "/")
     if len(text) > limit:
@@ -242,7 +259,16 @@ def base_purpose(path: str, kind: str) -> str:
 # 而入口名那一列每行砍一个就够（实测 98979 → 96077 B）。
 # 测试分片不受影响，它早就压到 1 了。
 # R-DSHOT-1 新模块使总量再次越界；继续压缩入口摘要而不改变容量上限。
-def symbol_cell(symbols: list[str], limit: int = 4) -> str:
+# 2026-09-13（同日第二次）：系统辨识新增 drv_sysid_rig / _excitation / _record 三组
+# 模块与四个测试文件后到 99162 B。散文列已经压到 68，再砍就开始伤"这文件是干嘛的"
+# 这个最基本的判断力；按注释里既定的顺序，这次轮到 symbol_cell（4→3）。
+# 入口名少列一个仍有 (+N) 计数兜底，知道"还有几个"比知道第 4 个叫什么更重要。
+# 2026-09-13（同日第三次）：系统辨识落地（app_sysid / app_cmd_sysid、tools/sysid 七个
+# 模块、tools/thrust_bench 七个模块、panel_lib/pages/sysid 五个模块、五个测试文件）
+# 之后到 100279 B，越限 1975 B。散文列仍在 68（再砍开始伤"这文件是干嘛的"这个最基本
+# 的判断力，实测 60 也只省 2.4 KiB 且换不来多少余量），所以继续按同一条路走 symbol_cell
+# 3→2：实测 95253 B，余 3051 B。(+N) 计数照旧在，"还有几个"这个信息没丢。
+def symbol_cell(symbols: list[str], limit: int = 2) -> str:
     unique: list[str] = []
     for symbol in symbols:
         if symbol not in unique:
@@ -422,7 +448,18 @@ def build_outputs(files: list[str]) -> dict[str, str]:
     host_prefixes = ("tests/test_panel", "tests/test_tk", "tests/test_dashboard",
                      "tests/test_sim", "tests/test_gui", "tests/test_tool",
                      "tests/test_flight_log_rerun", "tests/test_log_",
-                     "tests/test_aiwb2_net", "tests/test_ground_")
+                     "tests/test_aiwb2_net", "tests/test_ground_",
+                     "tests/test_thrust_dataset", "tests/test_thrust_experiment_library",
+                     "tests/test_thrust_library_ui", "tests/test_thrust_smart_scan",
+                     "tests/test_thrust_manual_control", "tests/test_thrust_mapping_control",
+                     "tests/test_thrust_autocollect", "tests/test_thrust_bench_acquisition",
+                     # 2026-09-27：光杆辨识的上位机侧（拟合、整定、页面、分析）按同一条线归上位机；
+                     # 编译固件的 sysid 测试（runtime/record/auto_throttle/servo_mode/moment_inverse）仍归固件。
+                     "tests/test_sysid_page", "tests/test_sysid_notch_panel",
+                     "tests/test_sysid_amplitude_scale", "tests/test_sysid_lever_units",
+                     "tests/test_sysid_servo_only", "tests/test_sysid_rig_stiffness",
+                     "tests/test_sysid_vibration", "tests/test_sysid_pendulum_fit",
+                     "tests/test_sysid_real_runs", "tests/test_sysid_host_core")
     host_paths = [path for path in test_paths if path.startswith(host_prefixes)]
     firmware_paths = [path for path in test_paths if path not in set(host_paths)]
 
@@ -432,10 +469,20 @@ def build_outputs(files: list[str]) -> dict[str, str]:
         [individual_row(path, "test") for path in firmware_paths],
         firmware_paths,
     )
+    dataset_test_paths = [path for path in host_paths if path.startswith((
+        "tests/test_thrust_dataset", "tests/test_thrust_experiment_library",
+        "tests/test_thrust_library_ui", "tests/test_thrust_smart_scan",
+        "tests/test_thrust_manual_control", "tests/test_thrust_mapping_control",
+        "tests/test_thrust_autocollect", "tests/test_thrust_bench_acquisition"))]
+    host_test_rows = [individual_row(path, "test") for path in host_paths
+                      if path not in dataset_test_paths]
+    if dataset_test_paths:
+        host_test_rows.append(
+            f"| {path_cell(dataset_test_paths)} | Experiment library, grouped validation, smart scan and Tk workflow. | Whole-run isolation; bounded acquisition. |")
     outputs["tests-host.md"] = render_detail_shard(
         "Verification Index · Host tools & panel",
         "you need existing ground-station/tooling coverage or must choose focused regression tests.",
-        [individual_row(path, "test") for path in host_paths],
+        host_test_rows,
         host_paths,
     )
 

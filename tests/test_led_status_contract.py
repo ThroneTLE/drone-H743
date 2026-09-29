@@ -53,9 +53,25 @@ def test_led_status_reports_arm_block_reasons_and_flow_health() -> None:
     assert "APP_OPTICAL_FLOW_HEALTH_OK" in source
     assert "APP_OPTICAL_FLOW_HEALTH_RETRYING" in source
     assert "APP_OPTICAL_FLOW_HEALTH_FAILED" in source
-    # 原因码**原样**当闪烁次数用。中间插一次换算（+1、查表、按颜色分档）就会让
-    # "数灯"和 `blinks=` 报的数字对不上，而两边单看都说得通。
-    assert "app_led_pulses(app_led_amber, (uint8_t)reason)" in source
+    # 原因码 → 绑定 ID → 闪烁次数，这条链必须首尾相接。
+    #
+    # 2026-09-12 颜色变成可配置之后，次数不再和颜色写在同一行上，但**次数仍然
+    # 只能来自原因码**：配置里压根没有 count 字段（tests/test_led_config_contract.py
+    # 钉住）。中间插一次换算（+1、查表、按颜色分档）就会让"数灯"和 `blinks=`
+    # 对不上，而两边单看都说得通。
+    #
+    # 那个一一对应的偏移量当天晚些时候从这里搬进了 APP_LedConfig_PulseCount()：
+    # 留在 app_led.c 的那份只覆盖 BLOCK 段，于是 flow_failed（同样是数闪）拿到
+    # count=0，而驱动遇到 count=0 直接返回黑——光流失败时整盏灯不亮。
+    # 所以这里改钉"两端都只认那一张表"，别再钉算式本身。
+    assert "APP_LedConfig_BindingForBlockReason((uint8_t)reason)" in source
+    assert "APP_LedConfig_PulseCount(binding_id)" in source
+    assert "APP_LED_BIND_BLOCK_BASE + 1U" not in source, (
+        "偏移算式只准留一份，在 app_led_config.c 里"
+    )
+    config = read("App/Src/app_led_config.c")
+    assert "binding_id - (uint8_t)APP_LED_BIND_BLOCK_BASE + 1U" in config
+    assert "APP_LedConfig_GetPattern" in source, "颜色必须来自配置，不许再硬编码"
     # 灯的节拍归 LED 自己的任务，不再搭 UART 任务的车（那个节拍随串口忙闲变）。
     assert "APP_LED_Task_Step();" not in uart
     assert "APP_LED_Task_Step();" in tasks

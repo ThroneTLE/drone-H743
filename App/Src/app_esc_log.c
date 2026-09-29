@@ -7,15 +7,15 @@ _Static_assert(sizeof(APP_EscLog) == 32U, "FlightLog DShot extension ABI");
 APP_EscLog APP_EscLog_Capture(void)
 {
     APP_EscLog out = {0};
-#if BSP_ESC_PROTOCOL == BSP_ESC_PROTOCOL_DSHOT300
+#if BSP_ESC_PROTOCOL_IS_DSHOT
     BSP_DShotSnapshot s;
     BSP_DShot_GetSnapshot(&s);
     out.present = 1U;
     out.enabled_mask = s.enabled_mask;
     out.busy = s.busy;
     out.fault = s.fault;
-    out.upper_code = s.code[0];
-    out.lower_code = s.code[1];
+    out.code_ch1 = s.code[0];
+    out.code_ch2 = s.code[1];
     out.submitted = s.submitted;
     out.completed = s.completed;
     out.busy_rejected = s.busy_rejected;

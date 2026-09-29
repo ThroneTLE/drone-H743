@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 
-from _airframe_fixture import AIRFRAME_FIXTURE_C, AIRFRAME_SOURCE
+from _airframe_fixture import AIRFRAME_FIXTURE_C, AIRFRAME_SOURCE, PROP_MAP_SOURCE
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -100,8 +100,8 @@ int main(void)
     DRV_COAX_CTRL_GetLastDebug(&debug);
     /*
      * Tilt-to-moment polarity is now derived from the measured geometry
-     * (DRV_COAX_CTRL_TILT_MOMENT_POLARITY): the thrust point is below the CG,
-     * so a positive tilt makes a positive FLU moment.  Flying forward needs
+     * (2026-09-27: signed lever cg_z - servo-axis z): the tilt axis is below
+     * the CG, so a positive tilt makes a positive FLU moment.  Flying forward needs
      * nose-down (+pitch), so the rotor axis must tilt REARWARD -- alpha > 0.
      * That is counter-intuitive and it is exactly what the old -1 model got
      * backwards; checks 12/13 are about the attitude target and are unchanged.
@@ -111,9 +111,15 @@ int main(void)
     CHECK(debug.desired_attitude_rpy_rad[1] > 0.0f, 12);
     CHECK(debug.moment_cmd_n_m[1] > 0.0f, 13);
     CHECK(output.servo_beta_us < DRV_COAX_CTRL_SERVO_BETA_CENTER_US, 14);
+    /*
+     * 2026-09-27: the forward model is now the signed geometric lever
+     * cg_z - servo2_axis_z (no EFFECTIVENESS factor).  The fixture's axis
+     * height is chosen so this equals the retired 0.569 * 0.145, so the
+     * expected number and its 1e-5 tolerance are unchanged.
+     */
     CHECK(nearly_equal(
         debug.moment_achieved_n_m[1],
-        0.569f * DRV_Airframe_Get()->pitch_thrust_lever_arm_m *
+        (DRV_Airframe_Get()->cg_z_m - DRV_Airframe_Get()->servo2_axis_z_m) *
             debug.total_force_n * sinf(output.alpha_rad) * cosf(output.beta_rad),
         1.0e-5f), 15);
     {
@@ -184,7 +190,7 @@ int main(void)
     CHECK(output.servo_alpha_us > DRV_COAX_CTRL_SERVO_ALPHA_CENTER_US, 24);
     CHECK(nearly_equal(
         debug.moment_achieved_n_m[0],
-        0.581f * DRV_Airframe_Get()->roll_thrust_lever_arm_m *
+        (DRV_Airframe_Get()->cg_z_m - DRV_Airframe_Get()->servo1_axis_z_m) *
             debug.total_force_n * sinf(output.beta_rad),
         1.0e-5f), 25);
     {
@@ -376,6 +382,8 @@ int main(void)
     params.attitude.att_kp[1] = 0.0f;
     params.rate.kp[0] = 0.0f;
     params.rate.kp[1] = 0.0f;
+    params.rate.ki[0] = 0.0f;   /* default pitch ki is non-zero since 2026-09-28: isolate the gyroscopic term */
+    params.rate.ki[1] = 0.0f;
     DRV_COAX_CTRL_SetParams(&params);
     attitude.gyro_x_rad_s = 0.7f;
     attitude.gyro_y_rad_s = -0.4f;
@@ -448,6 +456,7 @@ def test_real_controller_runtime_math(tmp_path: Path) -> None:
             f"-I{stub_dir}",
             f"-I{ROOT / 'Driver' / 'Inc'}",
             str(AIRFRAME_SOURCE),
+            str(PROP_MAP_SOURCE),
             str(ROOT / "Driver" / "Src" / "drv_coax_ctrl.c"),
             str(ROOT / "Driver" / "Src" / "drv_position_control.c"),
             str(ROOT / "Driver" / "Src" / "drv_attitude_control.c"),

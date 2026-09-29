@@ -39,16 +39,22 @@
 
 ### UART 与 PWM 引脚
 
-| UART | TX | RX | ArduPilot 默认用途 |
-|---|---|---|---|
-| USART1 | PA9 | PA10 | MAVLink2 |
-| USART2 | PA2 | PA3 | DisplayPort |
-| USART3 | PD8 | PD9 | GPS |
-| UART4 | PA0 | PA1 | MAVLink2 |
-| UART5 | PB6 | PB5 | User |
-| USART6 | PC6 | PC7 | RCIN |
-| **UART7** | **PE8** | PE7 | ESC 遥测（仅 RX） |
-| UART8 | PE1 | PE0 | 蓝牙模块 |
+| UART | TX | RX | ArduPilot 默认用途 | 本工程实际用途 |
+|---|---|---|---|---|
+| USART1 | PA9 | PA10 | MAVLink2 | 数传 / 遥测 |
+| USART2 | PA2 | PA3 | DisplayPort | **DJI 图传 6 针口**：该版板子第 1 脚是 **12 V**，别给 5 V 外设供电。保留为普通串口（不带 DMA），暂未挂功能 |
+| USART3 | PD8 | PD9 | GPS | GPS（任务仍停用） |
+| UART4 | PA0 | PA1 | MAVLink2 | **MTF 光流**（MicoLink，115200）：4 针口 GND / 5V / TX4 / RX4，**5 V 供电** |
+| UART5 | PB6 | PB5 | User | 未启用 |
+| USART6 | PC6 | PC7 | RCIN | ELRS / CRSF（板载 RC 口） |
+| **UART7** | **PE8** | PE7 | ESC 遥测（仅 RX） | 总线舵机（PE8 半双工单线） |
+| UART8 | PE1 | PE0 | 蓝牙模块 | 蓝牙 / 维护口 |
+
+光流 2026-09-29 从 USART2 迁到 UART4：原先插在 DJI 图传口上，而那个口第 1 脚是 12 V，
+不适合 5 V 的光流模块取电。UART4 直接接过 USART2 原来的两路 DMA（RX `DMA1_Stream4`
+循环、TX `DMA1_Stream5` 单次，优先级 High；H7 有 DMAMUX，只换请求名），DMA 仍是 16/16、
+没有新占 stream；UART4 与 USART2 同属 USART234578 时钟复用（D2PCLK1），时钟树不用改。
+板级绑定只改 `BSP/Src/bsp_board.c` 一处，回调按绑定认串口。**待实机验证。**
 
 PWM 1–11：PE14 / PE13 / PE11 / PE9（TIM1）、PB1 / PB0（TIM3）、PD12 / PD13（TIM4）、
 PE5 / PE6（TIM15）、PD14（TIM4，兼 LED 焊盘）。
@@ -113,7 +119,7 @@ PE5 / PE6（TIM15）、PD14（TIM4，兼 LED 焊盘）。
 |---|---|---|---|
 | 控制律（Driver 层） | HAL-free 纯 C | — | **不动** |
 | 总线舵机 | UART7 半双工 @ **PE8** | `PE8 = UART7_TX` | **引脚同址**，待确认焊盘引出 |
-| 光流 | MicoLink 帧 | 同厂 MTF 系列 | 任意 UART，直接用 |
+| 光流 | MicoLink 帧 | 同厂 MTF 系列 | 任意 UART，直接用；现接 UART4（4 针 5 V 口） |
 | ELRS / CRSF | UART4 + DMA | **USART6 (PC6/PC7)**，板载 RC 口 | 已搬过去，接收机按丝印插 |
 | GPS | USART2 | USART3 为默认 GPS 口 | 可用 |
 | 调参口 / 维护口 | USART1 / UART8 | 均在 | 可用 |
@@ -244,7 +250,8 @@ PE5 / PE6（TIM15）、PD14（TIM4，兼 LED 焊盘）。
 | 片内 Flash 参数 | ✅ 加载默认值（刚整片擦过，`cfg_valid=0` 符合预期） |
 | ELRS @USART6 | ⏸ `frames=0`，接收机尚未接上 |
 | GPS @USART3 | ⏸ 任务仍被注释掉（`Core/Src/freertos.c`，需 CubeMX 侧启用） |
-| 光流 @USART2 / SDMMC / PWM | ⏸ 未测 |
+| 光流 @UART4（2026-09-29 迁移，待实机） | ⏸ 未测 |
+| SDMMC / PWM | ⏸ 未测 |
 
 软件跳 DFU 可用：`BOOT?` 看安全前置条件，`BOOT DFU CONFIRM` 让固件自己跳进 ROM
 bootloader，不用按 BOOT 键。**前提是命令任务没卡死**。
@@ -695,6 +702,7 @@ backgroundTask 在 BelowNormal 上长期 Ready，Low 永远轮不到——实测
 | 绿 呼吸（2.6 s 一个来回） | 就绪，可以解锁 |
 | 琥珀 闪 N 下 + 停顿 | 解锁被拒，N = 原因码（1 没遥控 / 2 遥控丢 / 3 拨杆没打 / 4 油门没收 / 5 IMU / 6 坐标迁移 / 7 机体模型） |
 | 青 闪 | 光流告警：慢闪=启动中、快闪=重试中、3 下=失败 |
+| （灯全黑） | 不是一种状态。看到全黑就是固件出了问题——每一档都有颜色，"没话说"时也还有蓝色心跳 |
 | 青 / 绿 / 红 齐闪 | 舵机标定：释放扭矩 / 保存成功 / 出错 |
 | 蓝 快闪 | 控制环还没发布过解锁状态（刚上电那几百毫秒） |
 
@@ -702,16 +710,62 @@ backgroundTask 在 BelowNormal 上长期 Ready，Low 永远轮不到——实测
 而 LED_4 映射到 PD10——本板上那是根空闲脚。结果条件一旦全部满足，灯直接黑掉，
 和"固件死了""板子没电"长得一模一样，恰好在最需要确认的时刻失去指示。
 
+### 颜色可以改（2026-09-12）
+
+上表是**默认值**，不是写死的。上位机「维护 → 状态灯」页有取色盘和常用色块，
+16 条绑定（9 个状态 + 7 个解锁被拒原因）每条都能单独挑颜色和节奏，存进飞控 Flash，
+掉电不丢，换一台上位机读回来也一样。
+
+**节奏按档位挑，界面不让填毫秒。** 固件收的是 on/off/gap/period/dim 五个毫秒数，
+但"闪多快"本来就只有那么几种有意义的取值——分不清 160 ms 和 180 ms 的闪，
+填第二个数字只是在制造一种"我在精细调节"的错觉。界面给的是
+常亮 / 慢呼吸 / 快呼吸 / 轻点一下 / 慢闪 / 中闪 / 快闪 / 更快闪 / 急闪 / 数闪 / 熄灭，
+每档带着秒数，所以名字不必独自承担区分。出厂表用到的每一种节奏都在档位里，
+刚开机的板子不会有任何一条显示成「自定义」（`tests/test_led_map_page.py` 对着
+固件默认表核这一点）。`自定义…` 仍留着，退到第二层。
+
+两条不可配：
+
+* **闪几下**。它就是解锁被拒的原因码，运行期注入，配置结构体里连这个字段都没有——
+  所以"现场数到 N 下"和 `ARM? block=N` 结构上不可能对不上。
+* **数不出次数的绑定不许配成数闪**。次数只对"解锁被拒"那 7 条和"光流失败"有定义，
+  别的绑定配成数闪会拿到 count=0，而驱动遇到 count=0 直接返回黑——灯灭，
+  `LEDMAP?` 却照回 effect=pulses，上位机照画波形，三处各自自洽地说灯在闪。
+  固件当场拒，回 `pulses_not_countable`；界面索性不提供这个选项。
+
+固件唯一硬拦的一条是"和已解锁撞色"：把「就绪」配成和「已解锁」一样，会让人以为
+没解锁就去装桨。判据是**看起来像不像**，不是 effect 枚举相不相等——高谷底的呼吸
+（`breathe 60000 dim=200`，红色在 78%..100% 之间走 60 秒）和长亮短灭的闪
+（`blink 60000 50`）肉眼都是红常亮，只比枚举的话两者都能大摇大摆绕过去。
+其余撞色不拦，上位机把两条波形并排画出来由人自己判断。
+
 ### 在线试
 
     LED?                              当前在说什么 + 接线与极性 + 节拍计数
     LED RGB 255 0 0 3000              点名：红色常亮 3 秒（核对通道顺序与极性）
     LED BREATHE 0 255 0 2000 8000     绿色呼吸，2 秒一个来回，占灯 8 秒
-    LED BLINK 255 110 0 160 160 6000  琥珀闪烁
     LED AUTO                          交还自动逻辑
+
+    LEDMAP?                           16 条绑定的当前值 + 哪些字段锁死
+    LEDMAP SET block_imu 120 0 255    给「IMU 不健康」配成紫色（只改 RAM）
+    LEDMAP RHYTHM ready breathe 0 0 0 2600 10
+    LEDMAP PREVIEW block_imu          在板子上试一下（连闪几下一起预览）
+    LEDMAP RESET                      恢复出厂颜色
+    LEDMAP COMMIT                     存进 Flash
+
+拒绝都带具名原因，不是笼统的失败：`bad_bind` / `bad_effect` / `bad_channel` /
+`bad_number` / `bad_period` / `zero_timing` / `gap_too_short` / `dim_too_high` /
+`pulses_not_countable` / `conflicts_with_armed`。解锁状态下所有写操作一律回
+`armed_blocked`——改灯色等于改"红是什么意思"，桨转着的时候不许改。
+
+`SET` / `RHYTHM` 只改 RAM，所见即所得；`COMMIT` 才落盘。分开是因为落盘是**同步**
+擦一个 128 KB 扇区，拖动取色盘时每次都存就是几十次擦除加几十次秒级卡顿。
 
 点名一律带自动到期（默认 5 s）：占着灯不还的话，之后所有真实状态都被盖住，
 而"灯不动了"最容易被当成固件死了。
+
+存储走 CFG 配置记录（v21），和增益、遥控映射、机体模型同住一条 A/B 双槽记录。
+不挂参数表：参数表只有 float、回显固定六位小数、而且 `DEFAULTS` 会把颜色一起抹掉。
 
 ## 上游来源与抓取版本
 

@@ -23,6 +23,26 @@ KEYBOARD_OWNER_CLASSES = frozenset(
 )
 
 
+def leaf_tab_visible(panel, leaf, outer_selection: str) -> bool:
+    """叶页此刻是不是真的露在前台——不管它挂在顶层还是某个二级分组里。
+
+    轮询/重绘的闸门都拿"这一页看得见吗"当条件。页面被收进二级 Notebook 之后，
+    顶层 selection 变成了**分组**，再拿它和叶页比就永远为假：页面看着是开的，
+    数据却不再刷新，而且没有任何报错——`sensor_notebook` 那次就是这么停摆的。
+
+    这里按 widget 的实际父子关系判断，所以以后再收一层分组也不用改调用方。
+    """
+    if leaf is None:
+        return False
+    holder = getattr(leaf, "master", None)
+    top = getattr(panel, "notebook", None)
+    if (holder is None) or (top is None) or (str(holder) == str(top)):
+        return outer_selection == str(leaf)
+    return (outer_selection == str(getattr(holder, "master", ""))) and (
+        str(holder.select()) == str(leaf)
+    )
+
+
 class VerticalScrolledFrame(ttk.Frame):
     """A width-following viewport with local wheel and keyboard routing.
 

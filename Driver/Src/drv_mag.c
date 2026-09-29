@@ -28,8 +28,16 @@
 #define QMC5883_DATA_LEN     6U
 #define QMC5883_REG_CTRL1    0x09U
 #define QMC5883_REG_CTRL2    0x0AU
+#define QMC5883_REG_SETRESET 0x0BU
 #define QMC5883_REG_CHIP_ID  0x0DU
 #define QMC5883_CHIP_ID_VALUE 0xFFU
+/*
+ * CTRL1 = 0x1D：OSR 512、量程 ±8 G、200 Hz、连续测量（数据手册 9.2.4 的示例值）。
+ * 量程和换算必须成对改：±8 G 是 3000 LSB/G，±2 G 才是 12000。
+ * 2026-09-26 之前这里按 12000 换算，读数只有真值的 1/4，地磁落在融合门槛 200 mG 以下。
+ */
+#define QMC5883_CTRL1_CONT_8G      0x1DU
+#define QMC5883_LSB_PER_GAUSS_8G   3000
 
 static uint16_t mag_i2c_addr8(uint8_t addr7)
 {
@@ -168,7 +176,11 @@ static DRV_MAG_Status mag_configure_qmc5883(DRV_MAG_Device *dev)
 
     st = mag_i2c_write(dev, QMC5883_ADDR_7BIT, QMC5883_REG_CTRL2, 0x01U);
     if (st != DRV_MAG_OK) { return st; }
-    return mag_i2c_write(dev, QMC5883_ADDR_7BIT, QMC5883_REG_CTRL1, 0x1DU);
+    /* 数据手册要求连续模式前把 SET/RESET 周期写成 0x01。 */
+    st = mag_i2c_write(dev, QMC5883_ADDR_7BIT, QMC5883_REG_SETRESET, 0x01U);
+    if (st != DRV_MAG_OK) { return st; }
+    return mag_i2c_write(dev, QMC5883_ADDR_7BIT, QMC5883_REG_CTRL1,
+                         QMC5883_CTRL1_CONT_8G);
 }
 
 static void mag_scale_data(DRV_MAG_Type type, const DRV_MAG_RawData *raw,
@@ -179,7 +191,7 @@ static void mag_scale_data(DRV_MAG_Type type, const DRV_MAG_RawData *raw,
     if ((raw == NULL) || (scaled == NULL)) { return; }
 
     if (type == DRV_MAG_TYPE_QMC5883L) {
-        lsb_per_gauss = 12000;
+        lsb_per_gauss = QMC5883_LSB_PER_GAUSS_8G;
     } else if (type == DRV_MAG_TYPE_IST8310) {
         lsb_per_gauss = 1600;
     }

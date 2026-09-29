@@ -21,6 +21,23 @@
  * Body angular rates use the same signs: p=+roll, q=+pitch, r=+yaw.
  * Accelerometer values crossing the canonical boundary are specific force;
  * a stationary, level airframe therefore measures approximately [0, 0, +1] g.
+ *
+ * Magnetometer values crossing the canonical boundary are the local magnetic
+ * field vector expressed in body FLU axes, in milligauss (mGa) -- the same
+ * scale Driver/Src/drv_mag.c already produces (DRV_MAG_ScaledData), so no
+ * unit conversion happens at this boundary, only a frame rotation. A magnetic
+ * field is a polar vector, exactly like specific force above (not an
+ * axial/pseudo vector like angular rate); under the proper, determinant +1
+ * mounting rotations this contract requires, polar and axial vectors take
+ * the identical rotation matrix, so a single adapter table (see
+ * Services/Inc/svc_mag.h) serves both. This header fixes only the frame and
+ * unit; it does not define hard-iron/soft-iron calibration coefficients
+ * (a separate, not-yet-written Services/svc_mag_cal contract) or whether a
+ * given sample is trustworthy enough to feed the estimator -- that is
+ * `SVC_MAG_AxisVerification` in Services/Inc/svc_mag.h plus the calibrated
+ * state the future calibration service owns. An uncalibrated or
+ * axis-unverified magnetometer must not influence attitude.
+ *
  * Navigation/world frames are separate contracts and must be named explicitly.
  */
 
@@ -37,6 +54,17 @@
 #define DRV_FRAME_LEVEL_SPECIFIC_FORCE_X_G                 0.0f
 #define DRV_FRAME_LEVEL_SPECIFIC_FORCE_Y_G                 0.0f
 #define DRV_FRAME_LEVEL_SPECIFIC_FORCE_Z_G                 1.0f
+
+/*
+ * Magnetometer normative semantics (see the doc comment above). These two
+ * macros are machine-readable evidence for tests/test_flu_frame_contract.py;
+ * they intentionally do not participate in DRV_FRAME_RUNTIME_MIGRATION_*
+ * below -- see Services/Inc/svc_mag.h and the FLU coordinate contract
+ * reference for why a newly introduced, already-compliant adapter gets no
+ * migration bit of its own.
+ */
+#define DRV_FRAME_MAGNETOMETER_UNIT_IS_MILLIGAUSS          1U
+#define DRV_FRAME_MAGNETOMETER_IS_POLAR_VECTOR             1U
 
 /* Runtime migration is tracked per seam so completion cannot be hand-waved. */
 #define DRV_FRAME_MIGRATION_SENSOR_TO_FLU_BIT               (1U << 0)

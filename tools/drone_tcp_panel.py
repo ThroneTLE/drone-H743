@@ -534,7 +534,6 @@ DEFAULT_UDP_LOCAL_PORT = 6668
 DEFAULT_UDP_MODULE_PORT = 7777
 MAX_BARO_SAMPLES = 2000
 MAX_GPS_TRACK_POINTS = 5000
-MAX_IDENT_SAMPLES = 5000
 BARO_STREAM_PERIOD_MS = 50
 IMU_POLL_PERIOD_MS = 100
 RC_POLL_PERIOD_MS = 50
@@ -676,89 +675,6 @@ def airframe_record_from_line(line: str) -> dict[str, str | float] | None:
     return record
 
 
-def ident_record_from_line(line: str) -> dict[str, str | float | int] | None:
-    if not line.startswith("IDENT sample "):
-        return None
-    values = parse_kv(line)
-    record: dict[str, str | float | int] = {"line": line}
-    for key, value in values.items():
-        record[key] = value
-    for key in ("id", "seq", "t_ms", "alpha_us", "beta_us", "rc_arm", "throttle_us"):
-        if key in values:
-            record[key] = safe_int(values[key])
-    if "roll_mdeg" in values:
-        record["roll"] = safe_int(values["roll_mdeg"]) / 1000.0
-    elif "roll" in values:
-        parsed = first_float(values, "roll")
-        if parsed is not None:
-            record["roll"] = parsed
-    if "pitch_mdeg" in values:
-        record["pitch"] = safe_int(values["pitch_mdeg"]) / 1000.0
-    elif "pitch" in values:
-        parsed = first_float(values, "pitch")
-        if parsed is not None:
-            record["pitch"] = parsed
-    if "gx_cdps" in values:
-        record["gx"] = safe_int(values["gx_cdps"]) / 100.0
-    elif "gx" in values:
-        parsed = first_float(values, "gx")
-        if parsed is not None:
-            record["gx"] = parsed
-    if "gy_cdps" in values:
-        record["gy"] = safe_int(values["gy_cdps"]) / 100.0
-    elif "gy" in values:
-        parsed = first_float(values, "gy")
-        if parsed is not None:
-            record["gy"] = parsed
-    return record
-
-
-def fit_ident_step(samples: list[dict[str, str | float | int]], axis: str) -> dict[str, float] | None:
-    if len(samples) < 8:
-        return None
-    value_key = "roll" if axis == "roll" else "pitch"
-    input_key = "alpha_us" if axis == "roll" else "beta_us"
-    rows = [
-        row for row in samples
-        if isinstance(row.get("t_ms"), int)
-        and isinstance(row.get(value_key), float)
-        and isinstance(row.get(input_key), int)
-    ]
-    if len(rows) < 8:
-        return None
-    t0 = float(rows[0]["t_ms"]) / 1000.0
-    times = [(float(row["t_ms"]) / 1000.0) - t0 for row in rows]
-    outputs = [float(row[value_key]) for row in rows]
-    inputs = [float(row[input_key]) for row in rows]
-    baseline_n = max(1, min(5, len(outputs) // 5))
-    baseline_y = sum(outputs[:baseline_n]) / baseline_n
-    baseline_u = sum(inputs[:baseline_n]) / baseline_n
-    final_n = max(1, min(8, len(outputs) // 4))
-    final_y = sum(outputs[-final_n:]) / final_n
-    final_u = sum(inputs[-final_n:]) / final_n
-    du = final_u - baseline_u
-    dy = final_y - baseline_y
-    if abs(du) < 1.0 or abs(dy) < 0.01:
-        return None
-    target_10 = baseline_y + (0.10 * dy)
-    target_63 = baseline_y + (0.632 * dy)
-
-    def crossing(target: float) -> float | None:
-        for t, y in zip(times, outputs):
-            if (dy >= 0.0 and y >= target) or (dy < 0.0 and y <= target):
-                return t
-        return None
-
-    t10 = crossing(target_10)
-    t63 = crossing(target_63)
-    delay = t10 if t10 is not None else 0.0
-    tau = max(0.02, (t63 - delay) if t63 is not None else (times[-1] / 3.0))
-    gain = dy / du
-    kp = max(0.0, min(10.0, 0.35 / max(abs(gain), 0.001)))
-    kd = max(0.0, min(5.0, kp * tau * 0.25))
-    return {"K": gain, "tau": tau, "L": delay, "kp": kp, "kd": kd}
-
-
 def normalize_module_key(key: str) -> str | None:
     return MODULE_ALIASES.get(key.upper())
 
@@ -871,15 +787,6 @@ class DronePanel(_panel_connection_controls.ConnectionControlsMixin, ValidationV
         self._last_validation_readiness_ns = 0
         self.servo_widgets: list[dict[str, tk.Variable]] = []
         self.structured_protocol_supported: bool | None = None
-        self.ident_samples: list[dict[str, str | float | int]] = []
-        self.ident_csv_file = None
-        self.ident_csv_writer: csv.DictWriter | None = None
-        self.ident_current_path: Path | None = None
-        self.ident_current_meta_path: Path | None = None
-        self._last_ident_flush_ns = 0
-        self._last_ident_plot_ns = 0
-        self.ident_last_fit: dict[str, float] | None = None
-        self.ident_current_command = ""
         self.airframe_info: dict[str, str | float] = {}
         self.udp_raw_hidden_count = 0
         self.udp_raw_last_note = ""
@@ -906,32 +813,7 @@ class DronePanel(_panel_connection_controls.ConnectionControlsMixin, ValidationV
             value=bool(self._panel_state.get("auto_connect", True))
         )
         self.autoconnect_var = tk.StringVar(value="上次连接：读取中…")
-        self.ident_axis_var = tk.StringVar(value="roll")
-        self.ident_mode_var = tk.StringVar(value="STEP")
-        self.ident_pulse_var = tk.IntVar(value=20)
-        self.ident_duration_var = tk.IntVar(value=3000)
-        self.ident_hold_var = tk.IntVar(value=800)
-        self.ident_repeat_var = tk.IntVar(value=2)
-        self.ident_bit_var = tk.IntVar(value=250)
-        self.ident_seed_var = tk.IntVar(value=1)
-        self.ident_alpha_center_var = tk.IntVar(value=1500)
-        self.ident_beta_center_var = tk.IntVar(value=1500)
-        self.ident_status_var = tk.StringVar(value="idle")
-        self.ident_sample_count_var = tk.StringVar(value="samples=0")
-        self.ident_reason_var = tk.StringVar(value="-")
-        self.ident_current_var = tk.StringVar(value="-")
-        self.ident_fit_var = tk.StringVar(value="no fit")
-        self.ident_airframe_var = tk.StringVar(value="AIRFRAME: not loaded")
-        self.ident_save_dir = dated_directory(ATTITUDE_IDENT_DIR)
-        self.ident_output_dir_var = tk.StringVar(value=f"save dir: {self.ident_save_dir}")
-        self.ident_last_file_var = tk.StringVar(value="last file: none")
         self.ident_link_var = tk.StringVar(value="UDP text: waiting")
-        self.ident_command_preview_var = tk.StringVar(value="")
-        self.ident_mode_hint_var = tk.StringVar(value="")
-        self.ident_safety_hint_var = tk.StringVar(
-            value="建议第一次：STEP，小幅 20us，3s；确认方向后再加到 30-40us。"
-        )
-        self.ident_field_rows: dict[str, tuple[ttk.Label, ttk.Widget, ttk.Label]] = {}
 
         first_stage = VALIDATION_UI_STAGES[0]
         self.validation_stage_var = tk.StringVar(value=first_stage.value)
@@ -1150,20 +1032,6 @@ class DronePanel(_panel_connection_controls.ConnectionControlsMixin, ValidationV
         self._build_ui()
         self._bind_gps_visibility_events()
         self.serial_port_var.trace_add("write", self._on_serial_port_selection_change)
-        self.ident_axis_var.trace_add("write", self._on_ident_config_change)
-        self.ident_mode_var.trace_add("write", self._on_ident_config_change)
-        for var in (
-            self.ident_pulse_var,
-            self.ident_duration_var,
-            self.ident_hold_var,
-            self.ident_repeat_var,
-            self.ident_bit_var,
-            self.ident_seed_var,
-            self.ident_alpha_center_var,
-            self.ident_beta_center_var,
-        ):
-            var.trace_add("write", self._on_ident_config_change)
-        self._on_ident_config_change()
         self.after(1000, self._check_link_health)
         self.after(RX_DRAIN_IDLE_MS, self._drain_rx)
         self.after(LOG_FLUSH_PERIOD_MS, self._flush_log)
@@ -2410,112 +2278,6 @@ class DronePanel(_panel_connection_controls.ConnectionControlsMixin, ValidationV
 
         info.columnconfigure(1, weight=1)
 
-    def _build_ident_page(self, parent: ttk.Frame) -> None:
-        top = ttk.Frame(parent)
-        top.pack(fill=tk.X)
-        ttk.Button(top, text="ARM 辨识", command=lambda: self._send_proto(PROTO_REQ_IDENT, "IDENT ARM")).pack(side=tk.LEFT)
-        ttk.Button(top, text="DISARM", command=lambda: self._send_proto(PROTO_REQ_IDENT, "IDENT DISARM")).pack(side=tk.LEFT, padx=4)
-        ttk.Button(top, text="STOP", command=lambda: self._send_proto(PROTO_REQ_IDENT, "IDENT STOP")).pack(side=tk.LEFT, padx=4)
-        ttk.Button(top, text="STATUS", command=lambda: self._send_proto(PROTO_REQ_IDENT, "IDENT?")).pack(side=tk.LEFT, padx=4)
-        ttk.Button(top, text="AIRFRAME", command=self._request_airframe).pack(side=tk.LEFT, padx=4)
-        ttk.Label(top, text="状态").pack(side=tk.LEFT, padx=(18, 4))
-        ttk.Label(top, textvariable=self.ident_status_var).pack(side=tk.LEFT, padx=4)
-        ttk.Label(top, textvariable=self.ident_sample_count_var).pack(side=tk.LEFT, padx=4)
-        ttk.Label(top, textvariable=self.ident_reason_var).pack(side=tk.LEFT, padx=4)
-
-        panes = ttk.Frame(parent)
-        panes.pack(fill=tk.BOTH, expand=True, pady=(10, 0))
-        left = ttk.Frame(panes)
-        right = ttk.Frame(panes)
-        left.pack(fill=tk.X)
-        right.pack(fill=tk.X, pady=(10, 0))
-
-        cfg = ttk.LabelFrame(left, text="Experiment", padding=10)
-        cfg.pack(fill=tk.X)
-        cfg.columnconfigure(1, weight=1)
-        ttk.Label(cfg, text="辨识轴").grid(row=0, column=0, sticky=tk.W, pady=3)
-        ttk.Combobox(cfg, textvariable=self.ident_axis_var, values=("roll", "pitch"), width=12, state="readonly").grid(row=0, column=1, sticky=tk.W, pady=3)
-        ttk.Label(cfg, text="波形").grid(row=1, column=0, sticky=tk.W, pady=3)
-        ttk.Combobox(cfg, textvariable=self.ident_mode_var, values=("STEP", "DOUBLET", "PRBS"), width=12, state="readonly").grid(row=1, column=1, sticky=tk.W, pady=3)
-
-        presets = ttk.Frame(cfg)
-        presets.grid(row=2, column=0, columnspan=3, sticky=tk.EW, pady=(6, 8))
-        ttk.Button(presets, text="小幅首测", command=lambda: self._ident_apply_preset("small")).pack(side=tk.LEFT)
-        ttk.Button(presets, text="标准阶跃", command=lambda: self._ident_apply_preset("step")).pack(side=tk.LEFT, padx=4)
-        ttk.Button(presets, text="标准双脉冲", command=lambda: self._ident_apply_preset("doublet")).pack(side=tk.LEFT)
-
-        field_specs = [
-            ("pulse", "舵机偏置", self.ident_pulse_var, "us，正负都可；越大响应越明显"),
-            ("duration", "阶跃/PRBS 时长", self.ident_duration_var, "ms，最大 10000"),
-            ("hold", "双脉冲保持", self.ident_hold_var, "ms，每段保持时间"),
-            ("repeat", "双脉冲次数", self.ident_repeat_var, "次，默认 2"),
-            ("bit", "PRBS 位宽", self.ident_bit_var, "ms，随机输入切换间隔"),
-            ("seed", "PRBS seed", self.ident_seed_var, "相同 seed 可复现实验"),
-            ("alpha_center", "alpha 中位", self.ident_alpha_center_var, "us，roll/1号左右舵机中心"),
-            ("beta_center", "beta 中位", self.ident_beta_center_var, "us，pitch/2号前后舵机中心"),
-        ]
-        self.ident_field_rows.clear()
-        for index, (key, label, var, hint) in enumerate(field_specs, start=3):
-            label_widget = ttk.Label(cfg, text=label)
-            entry = ttk.Entry(cfg, textvariable=var, width=12)
-            hint_widget = ttk.Label(cfg, text=hint, style="Muted.TLabel")
-            label_widget.grid(row=index, column=0, sticky=tk.W, pady=3)
-            entry.grid(row=index, column=1, sticky=tk.W, pady=3)
-            hint_widget.grid(row=index, column=2, sticky=tk.W, padx=(8, 0), pady=3)
-            self.ident_field_rows[key] = (label_widget, entry, hint_widget)
-
-        ttk.Label(cfg, textvariable=self.ident_mode_hint_var, wraplength=520, style="Muted.TLabel").grid(
-            row=11, column=0, columnspan=3, sticky=tk.EW, pady=(8, 2)
-        )
-        ttk.Label(cfg, textvariable=self.ident_command_preview_var, wraplength=520, font=("Consolas", 9)).grid(
-            row=12, column=0, columnspan=3, sticky=tk.EW, pady=(2, 6)
-        )
-        ttk.Button(cfg, text="Set Center", command=self._ident_send_center).grid(row=13, column=0, sticky=tk.EW, pady=(4, 0))
-        ttk.Button(cfg, text="Run", command=self._ident_run).grid(row=13, column=1, sticky=tk.EW, pady=(4, 0))
-        ttk.Label(cfg, textvariable=self.ident_safety_hint_var, wraplength=520, style="Warn.TLabel").grid(
-            row=14, column=0, columnspan=3, sticky=tk.EW, pady=(8, 0)
-        )
-
-        fit = ttk.LabelFrame(left, text="Fit / PID", padding=10)
-        fit.pack(fill=tk.X, pady=(10, 0))
-        ttk.Label(fit, textvariable=self.ident_fit_var, wraplength=320).pack(fill=tk.X)
-        actions = ttk.Frame(fit)
-        actions.pack(fill=tk.X, pady=(8, 0))
-        ttk.Button(actions, text="Fit", command=self._ident_fit).pack(side=tk.LEFT)
-        ttk.Button(actions, text="四环调参说明", command=self._ident_apply_fit).pack(side=tk.LEFT, padx=4)
-        ttk.Button(actions, text="Save", command=lambda: self._send_proto_once(PROTO_REQ_SAVE, "SAVE")).pack(side=tk.LEFT)
-
-        live = ttk.LabelFrame(left, text="Live", padding=10)
-        live.pack(fill=tk.X, pady=(10, 0))
-        ttk.Label(live, textvariable=self.ident_link_var, wraplength=520).pack(fill=tk.X, pady=(0, 4))
-        ttk.Label(live, textvariable=self.ident_airframe_var, wraplength=320).pack(fill=tk.X, pady=(0, 8))
-        ttk.Label(live, textvariable=self.ident_current_var, wraplength=320).pack(fill=tk.X)
-        ttk.Label(live, textvariable=self.ident_output_dir_var, wraplength=520).pack(fill=tk.X, pady=(8, 0))
-        ttk.Label(live, textvariable=self.ident_last_file_var, wraplength=520).pack(fill=tk.X, pady=(2, 0))
-        actions_live = ttk.Frame(live)
-        actions_live.pack(fill=tk.X, pady=(8, 0))
-        ttk.Button(actions_live, text="Open CSV Folder", command=self._ident_open_folder).pack(side=tk.LEFT)
-        ttk.Button(actions_live, text="Pause VOFA", command=lambda: self._send("Sensor_Data:0")).pack(side=tk.LEFT, padx=4)
-        ttk.Button(actions_live, text="Resume VOFA", command=lambda: self._send("Sensor_Data:1")).pack(side=tk.LEFT)
-
-        plot_box = ttk.LabelFrame(right, text="Input / Response", padding=8)
-        plot_box.pack(fill=tk.BOTH, expand=True)
-        if HAS_MATPLOTLIB and Figure is not None and FigureCanvasTkAgg is not None:
-            self.ident_figure = Figure(figsize=(6, 4), dpi=100)
-            self.ident_axis_plot = self.ident_figure.add_subplot(111)
-            apply_matplotlib_theme(self.ident_figure, self.ui_palette)
-            self.ident_canvas = FigureCanvasTkAgg(self.ident_figure, master=plot_box)
-            self.ident_canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
-        else:
-            ttk.Label(
-                plot_box,
-                text=f"matplotlib unavailable; CSV logging still works.\npython -m pip install matplotlib\n{MATPLOTLIB_ERROR}",
-                wraplength=560,
-            ).pack(fill=tk.X, pady=(12, 0))
-            self.ident_figure = None
-            self.ident_axis_plot = None
-            self.ident_canvas = None
-
     def _build_params_page(self, parent: ttk.Frame) -> None:
         top = ttk.Frame(parent)
         top.pack(fill=tk.X)
@@ -3080,8 +2842,6 @@ class DronePanel(_panel_connection_controls.ConnectionControlsMixin, ValidationV
             self._update_imu_line("IMU " + line)
         elif line.startswith("WIFI "):
             self._update_wifi_line(line)
-        elif line.startswith("IDENT "):
-            self._ident_handle_line(line)
         elif line.startswith("RSP "):
             self._handle_rsp_line(line)
         elif line.startswith("OK servo"):
@@ -3702,7 +3462,7 @@ class DronePanel(_panel_connection_controls.ConnectionControlsMixin, ValidationV
             )
         else:
             imu_tab_visible = outer_selection == str(self.imu_tab)
-        firmware_tab_visible = outer_selection == str(self.firmware_tab)
+        firmware_tab_visible = _panel_viewport.leaf_tab_visible(self, self.firmware_tab, outer_selection)
         calibration_group_tab = getattr(self, "calibration_group_tab", None)
         if calibration_group_tab is not None and hasattr(self, "calibration_notebook"):
             calibration_visible = outer_selection == str(calibration_group_tab)
@@ -3919,257 +3679,6 @@ class DronePanel(_panel_connection_controls.ConnectionControlsMixin, ValidationV
             line=line,
         )
 
-    def _ident_csv_fields(self) -> list[str]:
-        return [
-            "host_time", "id", "seq", "t_ms", "axis", "mode",
-            "alpha_us", "beta_us", "roll", "pitch", "gx", "gy",
-            "rc_arm", "throttle_us", "line",
-        ]
-
-    def _ident_meta_payload(self) -> dict[str, object]:
-        return {
-            "host_time": time.time(),
-            "command": self.ident_current_command,
-            "axis": self.ident_axis_var.get(),
-            "mode": self.ident_mode_var.get(),
-            "pulse_us": int(self.ident_pulse_var.get()),
-            "duration_ms": int(self.ident_duration_var.get()),
-            "hold_ms": int(self.ident_hold_var.get()),
-            "repeat": int(self.ident_repeat_var.get()),
-            "bit_ms": int(self.ident_bit_var.get()),
-            "seed": int(self.ident_seed_var.get()),
-            "center": {
-                "alpha_us": int(self.ident_alpha_center_var.get()),
-                "beta_us": int(self.ident_beta_center_var.get()),
-            },
-            "airframe": self.airframe_info,
-        }
-
-    def _ident_write_meta(self) -> None:
-        if self.ident_current_path is None:
-            return
-        meta_path = self.ident_current_path.with_name(f"{self.ident_current_path.stem}_meta.json")
-        self.ident_current_meta_path = meta_path
-        meta_path.write_text(
-            json.dumps(self._ident_meta_payload(), ensure_ascii=False, indent=2, sort_keys=True),
-            encoding="utf-8",
-        )
-        if hasattr(self, "_ident_update_file_label"):
-            self._ident_update_file_label()
-
-    def _ident_update_file_label(self) -> None:
-        csv_text = str(self.ident_current_path) if self.ident_current_path is not None else "none"
-        meta_text = str(self.ident_current_meta_path) if self.ident_current_meta_path is not None else "none"
-        self.ident_last_file_var.set(f"last csv: {csv_text}\nlast meta: {meta_text}")
-
-    def _ident_begin_recording(self) -> None:
-        self._ident_close_csv()
-        path = self.ident_save_dir
-        path.mkdir(parents=True, exist_ok=True)
-        self.ident_current_path = path / f"ident_{time.strftime('%Y%m%d_%H%M%S')}.csv"
-        self.ident_current_meta_path = self.ident_current_path.with_name(f"{self.ident_current_path.stem}_meta.json")
-        self.ident_csv_file = self.ident_current_path.open("w", newline="", encoding="utf-8")
-        self.ident_csv_writer = csv.DictWriter(self.ident_csv_file, fieldnames=self._ident_csv_fields(), extrasaction="ignore")
-        self.ident_csv_writer.writeheader()
-        self.ident_samples.clear()
-        self.ident_last_fit = None
-        self.ident_sample_count_var.set("samples=0")
-        self.ident_fit_var.set("no fit")
-        self._last_ident_flush_ns = time.monotonic_ns()
-        self._last_ident_plot_ns = 0
-        self.ident_output_dir_var.set(f"save dir: {path}")
-        self._ident_update_file_label()
-        self._ident_write_meta()
-
-    def _ident_close_csv(self) -> None:
-        if self.ident_csv_file is not None:
-            self.ident_csv_file.close()
-        self.ident_csv_file = None
-        self.ident_csv_writer = None
-
-    def _ident_payload(self) -> str:
-        axis = self.ident_axis_var.get()
-        mode = self.ident_mode_var.get().upper()
-        pulse = int(self.ident_pulse_var.get())
-        if mode == "STEP":
-            return f"IDENT STEP {axis} pulse_us={pulse} duration_ms={int(self.ident_duration_var.get())}"
-        if mode == "DOUBLET":
-            return f"IDENT DOUBLET {axis} pulse_us={pulse} hold_ms={int(self.ident_hold_var.get())} repeat={int(self.ident_repeat_var.get())}"
-        return f"IDENT PRBS {axis} pulse_us={pulse} bit_ms={int(self.ident_bit_var.get())} duration_ms={int(self.ident_duration_var.get())} seed={int(self.ident_seed_var.get())}"
-
-    def _on_ident_config_change(self, *_args) -> None:
-        try:
-            payload = self._ident_payload()
-        except Exception:
-            payload = "参数未完整"
-        self.ident_command_preview_var.set(f"将发送: {payload}")
-        self._ident_update_mode_fields()
-
-    def _ident_update_mode_fields(self) -> None:
-        if not self.ident_field_rows:
-            return
-        mode = self.ident_mode_var.get().upper()
-        visible = {
-            "STEP": {"pulse", "duration", "alpha_center", "beta_center"},
-            "DOUBLET": {"pulse", "hold", "repeat", "alpha_center", "beta_center"},
-            "PRBS": {"pulse", "duration", "bit", "seed", "alpha_center", "beta_center"},
-        }.get(mode, set(self.ident_field_rows.keys()))
-        hints = {
-            "STEP": "STEP 用来看最基础的阶跃响应，适合第一次确认方向和估计 K/tau/L。",
-            "DOUBLET": "DOUBLET 正负各打一段，能减少持续偏置，适合绑绳台架。",
-            "PRBS": "PRBS 信息量大，建议等 STEP/DOUBLET 都正常后再用。",
-        }
-        self.ident_mode_hint_var.set(hints.get(mode, ""))
-        for key, widgets in self.ident_field_rows.items():
-            for widget in widgets:
-                if key in visible:
-                    widget.grid()
-                else:
-                    widget.grid_remove()
-
-    def _ident_apply_preset(self, name: str) -> None:
-        if name == "small":
-            self.ident_mode_var.set("STEP")
-            self.ident_pulse_var.set(20)
-            self.ident_duration_var.set(3000)
-        elif name == "step":
-            self.ident_mode_var.set("STEP")
-            self.ident_pulse_var.set(30)
-            self.ident_duration_var.set(4000)
-        elif name == "doublet":
-            self.ident_mode_var.set("DOUBLET")
-            self.ident_pulse_var.set(30)
-            self.ident_hold_var.set(700)
-            self.ident_repeat_var.set(2)
-        self._on_ident_config_change()
-
-    def _ident_run(self) -> None:
-        payload = self._ident_payload()
-        self.ident_current_command = payload
-        self._ident_begin_recording()
-        self._send_proto(PROTO_REQ_IDENT, payload)
-
-    def _ident_send_center(self) -> None:
-        payload = f"IDENT CENTER alpha_us={int(self.ident_alpha_center_var.get())} beta_us={int(self.ident_beta_center_var.get())}"
-        self._send_proto(PROTO_REQ_IDENT, payload)
-
-    def _update_airframe_line(self, line: str) -> None:
-        record = airframe_record_from_line(line)
-        if record is None:
-            return
-        self.airframe_info = record
-        self.ident_link_var.set("AIRFRAME received")
-        self.ident_airframe_var.set(
-            f"AIRFRAME m={record.get('mass_kg', '-')}kg cg_z={record.get('cg_z_m', '-')}m "
-            f"attach_cg={record.get('tether_attach_to_cg_m', '-')}m rope={record.get('rope_m', '-')}m "
-            f"maxF={record.get('max_total_force_n', '-')}N hover={record.get('hover_thrust_pct', '-')}%"
-        )
-
-    def _ident_handle_line(self, line: str) -> None:
-        values = parse_kv(line)
-        if line.startswith("IDENT start "):
-            self.ident_status_var.set("running")
-            self.ident_reason_var.set("running")
-            self.ident_link_var.set(f"IDENT running: {line}")
-            self._ident_write_meta()
-            return
-        if line.startswith("IDENT done "):
-            self.ident_status_var.set("done")
-            self.ident_reason_var.set(values.get("reason", "complete"))
-            self.ident_link_var.set(f"IDENT done: {line}")
-            self._ident_close_csv()
-            return
-        if line.startswith("IDENT abort "):
-            self.ident_status_var.set("aborted")
-            self.ident_reason_var.set(values.get("reason", "abort"))
-            self.ident_link_var.set(f"IDENT aborted: {line}")
-            self._ident_close_csv()
-            return
-        if line.startswith("IDENT state="):
-            self.ident_status_var.set(values.get("state", "-"))
-            self.ident_reason_var.set(values.get("reason", "-"))
-            self.ident_link_var.set(f"IDENT status: {line}")
-            return
-        record = ident_record_from_line(line)
-        if record is None:
-            return
-        record["host_time"] = f"{time.time():.6f}"
-        self.ident_samples.append(record)
-        if len(self.ident_samples) > MAX_IDENT_SAMPLES:
-            del self.ident_samples[: len(self.ident_samples) - MAX_IDENT_SAMPLES]
-        if self.ident_csv_writer is None:
-            self._ident_begin_recording()
-        if self.ident_csv_writer is not None:
-            self.ident_csv_writer.writerow(record)
-            now_ns = time.monotonic_ns()
-            if (
-                self.ident_csv_file is not None
-                and (now_ns - self._last_ident_flush_ns) >= 1_000_000_000
-            ):
-                self.ident_csv_file.flush()
-                self._last_ident_flush_ns = now_ns
-                self._ident_update_file_label()
-        self.ident_sample_count_var.set(f"samples={len(self.ident_samples)}")
-        self.ident_current_var.set(
-            f"seq={record.get('seq', '-')} alpha={record.get('alpha_us', '-')} beta={record.get('beta_us', '-')} "
-            f"roll={record.get('roll', '-')} pitch={record.get('pitch', '-')} gx={record.get('gx', '-')} gy={record.get('gy', '-')}"
-        )
-        now_ns = time.monotonic_ns()
-        if (
-            self.notebook.select() == str(self.ident_tab)
-            and (now_ns - self._last_ident_plot_ns) >= 200_000_000
-        ):
-            self._last_ident_plot_ns = now_ns
-            self._ident_update_plot()
-
-    def _ident_update_plot(self) -> None:
-        if not HAS_MATPLOTLIB or getattr(self, "ident_axis_plot", None) is None or getattr(self, "ident_canvas", None) is None:
-            return
-        if not self.ident_samples:
-            return
-        axis_name = self.ident_axis_var.get()
-        value_key = "roll" if axis_name == "roll" else "pitch"
-        input_key = "alpha_us" if axis_name == "roll" else "beta_us"
-        rows = [row for row in self.ident_samples if isinstance(row.get("t_ms"), int)]
-        if not rows:
-            return
-        t0 = float(rows[0]["t_ms"]) / 1000.0
-        xs = [(float(row["t_ms"]) / 1000.0) - t0 for row in rows]
-        ys = [float(row.get(value_key, 0.0)) for row in rows]
-        us = [float(row.get(input_key, 0.0)) for row in rows]
-        axis = self.ident_axis_plot
-        axis.clear()
-        axis.plot(xs, ys, label=value_key)
-        if us:
-            base = us[0]
-            axis.plot(xs, [(u - base) / 10.0 for u in us], label=f"{input_key} delta/10")
-        axis.set_xlabel("s")
-        axis.legend(loc="best")
-        axis.grid(True, alpha=0.3)
-        self.ident_canvas.draw_idle()
-
-    def _ident_fit(self) -> None:
-        fit = fit_ident_step(self.ident_samples, self.ident_axis_var.get())
-        self.ident_last_fit = fit
-        if fit is None:
-            self.ident_fit_var.set("fit failed: need a clean step/doublet response")
-            return
-        self.ident_fit_var.set(
-            f"K={fit['K']:.5f} tau={fit['tau']:.3f}s L={fit['L']:.3f}s "
-            "仅显示执行器响应拟合，四环参数请在参数页设置"
-        )
-
-    def _ident_apply_fit(self) -> None:
-        self.ident_fit_var.set("旧单环拟合不直接写入四环；请在参数页分别设置角度 P 与角速度 PID")
-
-    def _ident_open_folder(self) -> None:
-        path = self.ident_save_dir
-        path.mkdir(parents=True, exist_ok=True)
-        try:
-            os.startfile(path)  # type: ignore[attr-defined]
-        except Exception:
-            messagebox.showinfo("IDENT", f"CSV folder:\n{path}")
-
     def _update_config_line(self, line: str) -> None:
         values = parse_kv(line)
         if "loaded" in values or "valid" in values:
@@ -4333,7 +3842,6 @@ class DronePanel(_panel_connection_controls.ConnectionControlsMixin, ValidationV
         self.v1_cancel_event.set()
         self._validation_autosave_session(force=True)
         self._stop()
-        self._ident_close_csv()
         self.destroy()
 
 

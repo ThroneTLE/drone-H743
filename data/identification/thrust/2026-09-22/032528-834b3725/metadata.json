@@ -1,0 +1,52 @@
+{
+  "tool": "thrust_bench",
+  "plan_kind": "双桨共增",
+  "two_propellers_installed": true,
+  "motor_model": "AEO CRM2413-KV1300",
+  "prop_installation": "两片桨均安装",
+  "prop_spacing": "",
+  "speed_domain": "electrical_erpm",
+  "speed_source": "dshot_erpm",
+  "current_source": "dshot",
+  "esc_current_calibrated": false,
+  "current_resolution_a": 1.0,
+  "current_resolution_source": "TBENCH v1 whole-amp ESC current fields",
+  "snapshot_hz_requested": 15.0,
+  "fc_link_rate": {
+    "snapshot_hz": 15.0,
+    "estimated_wire_bytes_per_second": 3405,
+    "serial_budget_bytes_per_second": 3456,
+    "identity_status": "allowed",
+    "identity_reason": "STM32 application USB CDC VID:PID=0483:5740",
+    "confirmed_stm32_usb_cdc": true,
+    "device": "COM22",
+    "vid": 1155,
+    "pid": 22336,
+    "rate_policy": "serial_budget"
+  },
+  "channel_mapping_source": "firmware_snapshot",
+  "non_driven_propeller": "unknown_or_windmilling",
+  "scale_calibration_file": "原窗口内存标定快照",
+  "scale_calibration": {
+    "kind": "legacy_single_point_ratio",
+    "points": [
+      {
+        "raw": 207.0,
+        "grams": 214.0
+      }
+    ],
+    "single_point_assumes_zero_origin": true
+  },
+  "notes": "电转速不除极对数；板总电流仅诊断，不用于电流/功耗拟合；双桨保持安装。",
+  "scale_settings_source": "pressure_rs485_gui",
+  "scale_port": "COM29",
+  "scale_baud": 9600,
+  "scale_address": 1,
+  "scale_channel": 1,
+  "scale_register": 0,
+  "scale_timeout_s": 0.25,
+  "schema_version": 2,
+  "created_at": "2026-09-22T03:25:28.558358-07:00",
+  "upper_channel": 2,
+  "lower_channel": 1
+}

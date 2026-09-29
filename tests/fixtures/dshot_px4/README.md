@@ -19,5 +19,5 @@
 比较两路 16-bit 位流。黄金向量独立按协议中的 throttle/telemetry/checksum 字段定义。
 测试不下载网络资源，不依赖 PX4/NuttX 构建。
 
-当前只完成纯协议 Driver；上游的 DMA 启动接口及回调尚未移植到本项目 BSP。
+本快照测试只覆盖纯协议 Driver；BSP 绑定已由 `BSP/Src/bsp_dshot.c` 用本地 HAL 实现（沿用上游交错 CCR burst、DMA UP→DMAR 的做法，不是 PX4/NuttX 的 DMA 分配器）。
 波形数组测试不等于真实定时器预装载/DMA 或实机电调验证。

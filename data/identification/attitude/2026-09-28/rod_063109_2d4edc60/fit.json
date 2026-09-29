@@ -1,0 +1,69 @@
+{
+  "inertia_kg_m2": 0.02883524653348583,
+  "inertia_rod_kg_m2": 0.03320942210548583,
+  "pivot_above_cg_m": 0.0618,
+  "eccentricity_m": 0.0618,
+  "torque_scale": 1.5711645101663587,
+  "damping_n_m_s": 0.041360407227109985,
+  "delay_s": 0.07714417274760395,
+  "fit_percent": 78.21213903437231,
+  "natural_hz": 0.7277426771759138,
+  "damping_eccentricity_correlation": 0.3132426465754192,
+  "separable": true,
+  "samples": 2034,
+  "torque_model_scale": 0.6336606989945787,
+  "tuning_inertia_kg_m2": 0.04550581498779765,
+  "tuning_damping_n_m_s": 0.0,
+  "inertia_uncertainty_pct": 3.0653505708106605,
+  "tuning_inertia_uncertainty_pct": 7.462859654002102,
+  "fit_percent_15hz": 76.6095804338009,
+  "tuning_blockers": [],
+  "notes": [
+    "刚体积分读数：被 6/10 Hz 谱线证伪，不用于整定（整定惯量 0.0858 kg·m²、延迟 66.5 ms、4 Hz 带内拟合 64.8%）。",
+    "绕杆阻尼 c = 0.0414 N·m·s（摆的阻尼比约 0.14）只进拟合：它只在摆频附近看得出来，与舵机滞后、延迟在更高频段不可分，整定阻尼按 0（保守）。",
+    "模型无关频响量到的摆频 1.26 Hz，模型 0.73 Hz（相差 -42%）。",
+    "摆频与模型无关频响相差 42%：扫频轮出现这种差距要怀疑模型结构；双脉冲轮的模型无关估计本身不可靠，可忽略。",
+    "15 Hz 带宽下的拟合优度 76.6% 只作诊断：约 11–14 Hz 的台架/杆弹性次要模态不在模型里。",
+    "推力×舵机模型比例 k = 0.63 略出 0.7–1.4，但在单轮 G 的不确定度（±8%）之内，不拦。"
+  ],
+  "fit_percent_runs": [
+    78.21213903437231
+  ],
+  "structure": "twd",
+  "dead_time_s": 0.023953400080006713,
+  "servo_wn_rad_s": 33.94546955168959,
+  "servo_zeta": 0.905842316640458,
+  "reaction_couple_s2": 0.0025599302559417532,
+  "rig_zero_hz": 3.138667289667529,
+  "flight_zero_hz": 2.50400072922815,
+  "equivalent_delay_1hz_s": 0.07714417274760395,
+  "gain_margin_db": 6.780449679702915,
+  "phase_margin_deg": 45.010417303122296,
+  "crossover_hz": 1.1954168684575874,
+  "rigid_tuning_inertia_kg_m2": 0.08581783651354723,
+  "rigid_delay_s": 0.06652719341802914,
+  "rigid_fit_percent": 64.79140598954561,
+  "measured_zero_hz": NaN,
+  "measured_pendulum_hz": 1.2617575126933334,
+  "torque_model_geometric_scale": 1.0000000000000002,
+  "thrust_servo_model_scale": 0.6336606989945786,
+  "rig_stiffness_n_m_rad": NaN,
+  "effective_pivot_m": NaN,
+  "extra_stiffness_n_m_rad": NaN,
+  "warnings": [
+    "刚体积分读数：被 6/10 Hz 谱线证伪，不用于整定（整定惯量 0.0858 kg·m²、延迟 66.5 ms、4 Hz 带内拟合 64.8%）。",
+    "绕杆阻尼 c = 0.0414 N·m·s（摆的阻尼比约 0.14）只进拟合：它只在摆频附近看得出来，与舵机滞后、延迟在更高频段不可分，整定阻尼按 0（保守）。",
+    "模型无关频响量到的摆频 1.26 Hz，模型 0.73 Hz（相差 -42%）。",
+    "摆频与模型无关频响相差 42%：扫频轮出现这种差距要怀疑模型结构；双脉冲轮的模型无关估计本身不可靠，可忽略。",
+    "15 Hz 带宽下的拟合优度 76.6% 只作诊断：约 11–14 Hz 的台架/杆弹性次要模态不在模型里。",
+    "推力×舵机模型比例 k = 0.63 略出 0.7–1.4，但在单轮 G 的不确定度（±8%）之内，不拦。"
+  ],
+  "geometry": "几何：杆到质心 d = 0.062 m；俯仰倾转轴到质心 -0.108 m；横滚倾转轴到质心 -0.108 m（飞控到质心 +0.022 m 取自那一轮）",
+  "torque_model": {
+    "signature": "geometric",
+    "levers_m": [
+      0.1082,
+      0.1082
+    ]
+  }
+}

@@ -31,6 +31,9 @@ def test_full_gains_are_bound_to_existing_c_parameters_and_visible():
 def test_each_i_and_d_changes_the_real_c_output(parameter,field,index):
     bridge = ControllerBridge(instance_tag='pid_terms')
     bridge.reset_params()
+    # 2026-09-28 俯仰默认增益换成实测机体的辨识值后，这个小推力场景（俯仰力矩上限约 7.6e-4 N·m）
+    # 里 P 项单独就顶到分配器限幅，I/D 项改多少输出都一样；把 P 压到不饱和的量级，只考"I、D 真的进了输出"。
+    assert bridge.set_param('coax.rate_pitch_kp', 0.02)
     def sequence(gain):
         assert bridge.set_param(parameter,gain)
         bridge.reset()

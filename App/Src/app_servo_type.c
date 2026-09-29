@@ -37,7 +37,7 @@ uint8_t APP_ServoType_FromName(const char *name, APP_ServoType *type)
 
 void APP_ServoType_ResetActive(void)
 {
-    app_servo_type_active = (uint8_t)APP_SERVO_TYPE_BUS;
+    app_servo_type_active = (uint8_t)APP_SERVO_TYPE_DEFAULT;
     app_servo_type_generation = 0U;
     app_servo_type_initialized = 0U;
 }
@@ -65,9 +65,9 @@ APP_ServoType APP_ServoType_GetActive(void)
     APP_ServoType type = (APP_ServoType)app_servo_type_active;
 
     if (app_servo_type_initialized == 0U) {
-        return APP_SERVO_TYPE_BUS;
+        return APP_SERVO_TYPE_DEFAULT;
     }
-    return (APP_ServoType_IsValid(type) != 0U) ? type : APP_SERVO_TYPE_BUS;
+    return (APP_ServoType_IsValid(type) != 0U) ? type : APP_SERVO_TYPE_DEFAULT;
 }
 
 uint32_t APP_ServoType_GetGeneration(void)

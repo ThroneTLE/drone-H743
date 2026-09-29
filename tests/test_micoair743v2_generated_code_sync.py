@@ -100,19 +100,98 @@ def test_new_peripherals_are_generated() -> None:
     # 旧板子的 UART5 引脚在本板上是 SDMMC1_CMD，必须让出来。
     assert "void MX_UART5_Init(void)" not in usart, REGENERATE
 
-    # ELRS 搬到板载 RC 口（USART6/PC6/PC7），UART4 随之退场。
-    # 少了 huart6，app_elrs.c 连编都编不过。
+    # ELRS 搬到板载 RC 口（USART6/PC6/PC7）。少了 huart6，app_elrs.c 连编都编不过。
     assert "void MX_USART6_UART_Init(void)" in usart, (
         f"ELRS 的 USART6 未生成，app_elrs.c 会因 huart6 未声明编译失败。{REGENERATE}"
     )
     assert "UART_HandleTypeDef huart6;" in usart, REGENERATE
-    assert "void MX_UART4_Init(void)" not in usart, (
-        f"UART4 已不再使用，仍在生成代码里说明还没重新生成。{REGENERATE}"
+    # UART4 2026-09-10 随 ELRS 退场，2026-09-29 又作为光流口回来（见下一条测试）。
+    assert "void MX_UART4_Init(void)" in usart, (
+        f"光流的 UART4 未生成，bsp_board.c 会因 huart4 未声明编译失败。{REGENERATE}"
     )
 
     spi = read("Core/Src/spi.c")
     assert "void MX_SPI3_Init(void)" in spi, f"BMI270 的 SPI3 未生成。{REGENERATE}"
     assert "void MX_SPI4_Init(void)" not in spi, REGENERATE
+
+
+def test_optical_flow_uart4_generated_code_matches_ioc() -> None:
+    """光流 2026-09-29 从 USART2 迁到 UART4，.ioc 与生成代码必须逐项一致。
+
+    USART2 是 DJI 图传 6 针口，该版板子第 1 脚是 12 V；UART4 是 4 针 5 V 口
+    （GND / 5V / TX4 / RX4，PA0/PA1）。USART2 原有的两路 DMA stream 原样转给 UART4
+    （H7 有 DMAMUX，只换请求名），不新占 stream；USART2 保留为不带 DMA 的普通串口。
+    """
+    ioc = read("drone-H743.ioc")
+    usart = read("Core/Src/usart.c")
+    irq = read("Core/Src/stm32h7xx_it.c")
+    main = read("Core/Src/main.c")
+
+    ips = re.findall(r"^Mcu\.IP\d+=(.+)$", ioc, re.MULTILINE)
+    pins = re.findall(r"^Mcu\.Pin\d+=(.+)$", ioc, re.MULTILINE)
+    assert len(ips) == int(ioc_value("Mcu.IPNb")) and "UART4" in ips
+    assert len(pins) == int(ioc_value("Mcu.PinsNb"))
+    assert "PA0" in pins and "PA1" in pins
+
+    # 引脚与复用：PA0=TX、PA1=RX，均为 AF8。
+    assert ioc_value("PA0.Signal") == "UART4_TX"
+    assert ioc_value("PA1.Signal") == "UART4_RX"
+    msp = usart.split("if(uartHandle->Instance==UART4)", 1)[1].split("else if", 1)[0]
+    assert "PA0     ------> UART4_TX\n    PA1     ------> UART4_RX" in msp, REGENERATE
+    assert "GPIO_InitStruct.Pin = GPIO_PIN_0|GPIO_PIN_1;" in msp
+    assert "GPIO_InitStruct.Alternate = GPIO_AF8_UART4;" in msp
+    assert "HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);" in msp
+    assert f"huart4.Init.BaudRate = {ioc_value('UART4.BaudRate')};" in usart
+    assert "huart4.Init.WordLength = UART_WORDLENGTH_8B;" in usart
+    assert "huart4.Init.HwFlowCtl = UART_HWCONTROL_NONE;" in usart
+    assert "huart4.Init.OverSampling = UART_OVERSAMPLING_16;" in usart
+
+    # DMA：请求、stream、方向、模式、优先级与 .ioc 一致，DMA 中断服务的也是它。
+    for direction, link in (("RX", "hdmarx"), ("TX", "hdmatx")):
+        request = re.search(rf"^Dma\.Request(\d+)=UART4_{direction}$", ioc, re.MULTILINE)
+        assert request is not None, f".ioc 里没有 UART4_{direction} 的 DMA 请求"
+        prefix = f"Dma.UART4_{direction}.{request.group(1)}."
+        stream = ioc_value(prefix + "Instance")
+        handle = f"hdma_uart4_{direction.lower()}"
+        assert f"{handle}.Instance = {stream};" in msp, REGENERATE
+        assert f"{handle}.Init.Request = DMA_REQUEST_UART4_{direction};" in msp
+        assert f"{handle}.Init.Direction = {ioc_value(prefix + 'Direction')};" in msp
+        assert f"{handle}.Init.Mode = {ioc_value(prefix + 'Mode')};" in msp
+        assert f"{handle}.Init.Priority = {ioc_value(prefix + 'Priority')};" in msp
+        assert f"__HAL_LINKDMA(uartHandle,{link},{handle});" in msp
+        body = irq.split(f"void {stream}_IRQHandler(void)", 1)[1].split("\n}", 1)[0]
+        assert f"HAL_DMA_IRQHandler(&{handle});" in body, f"{stream} 的中断没交给 {handle}"
+    # 接的正是 USART2 原来那两路；光流靠循环 DMA + 空闲事件收帧。
+    assert ioc_value("Dma.UART4_RX.4.Instance") == "DMA1_Stream4"
+    assert ioc_value("Dma.UART4_TX.5.Instance") == "DMA1_Stream5"
+    assert ioc_value("Dma.UART4_RX.4.Mode") == "DMA_CIRCULAR"
+
+    # 全局中断：优先级照 USART2。
+    nvic = ioc_value("NVIC.UART4_IRQn")
+    assert nvic == ioc_value("NVIC.USART2_IRQn")
+    priority = nvic.split("\\:")[1]
+    assert f"HAL_NVIC_SetPriority(UART4_IRQn, {priority}, 0);" in msp
+    assert "HAL_NVIC_EnableIRQ(UART4_IRQn);" in msp
+    handler = irq.split("void UART4_IRQHandler(void)", 1)[1].split("\n}", 1)[0]
+    assert "HAL_UART_IRQHandler(&huart4);" in handler
+    assert "void UART4_IRQHandler(void);" in read("Core/Inc/stm32h7xx_it.h")
+    usart_h = read("Core/Inc/usart.h")
+    assert "extern UART_HandleTypeDef huart4;" in usart_h
+    assert "void MX_UART4_Init(void);" in usart_h
+
+    # 初始化在 DMA 之后：DMA 时钟先开，MspInit 里才初始化得了 stream。
+    assert "-MX_UART4_Init-UART4-" in ioc_value("ProjectManager.functionlistsort")
+    assert main.index("MX_DMA_Init();") < main.index("MX_UART4_Init();")
+
+    # USART2：初始化与中断保留，DMA 全部移走。
+    assert "void MX_USART2_UART_Init(void)" in usart and "MX_USART2_UART_Init();" in main
+    assert "HAL_NVIC_EnableIRQ(USART2_IRQn);" in usart
+    assert re.search(r"^Dma\.Request\d+=USART2_", ioc, re.MULTILINE) is None
+    assert "hdma_usart2" not in usart and "hdma_usart2" not in irq
+
+    # 没有新占 stream：每路 stream 只归一个请求，总数仍与请求数一致。
+    streams = re.findall(r"^Dma\.\w+\.\d+\.Instance=(DMA\d_Stream\d)$", ioc, re.MULTILINE)
+    assert len(streams) == len(set(streams)) == int(ioc_value("Dma.RequestsNb"))
 
 
 def test_spi2_mspinit_carries_no_old_board_pins() -> None:

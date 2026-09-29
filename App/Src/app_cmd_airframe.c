@@ -15,6 +15,7 @@
 #include "app_control.h"
 #include "app_control_internal.h"
 
+#include "app_param_trial.h"
 #include "app_proto.h"
 #include "drv_airframe_params.h"
 #include "drv_coax_ctrl.h"
@@ -69,9 +70,15 @@ uint8_t app_control_param_get_any(const char *name, float *value)
     return DRV_Airframe_GetParam(name, value);
 }
 
+/*
+ * 这是 PARAM SET（两种写法）的写入口，调用方随后排 Flash 自动保存——即显式持久写。
+ * 所以写成功就结束该名字的增益试用：之后保存按 RAM 值存（app_param_trial.h 契约 3）。
+ * `SYSID PARAM` 的只写 RAM 试用不走这里。
+ */
 uint8_t app_control_param_set_any(const char *name, float value)
 {
     if (DRV_COAX_CTRL_SetParam(name, value) != 0U) {
+        APP_ParamTrial_Clear(name);
         return 1U;
     }
     return DRV_Airframe_SetParam(name, value);

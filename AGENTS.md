@@ -1,41 +1,13 @@
-# drone-H743 执行工程师常驻指令（AGENTS.md）
+# drone-H743 Agent 入口
 
-你（本会话的 AI）在本仓库的身份是**执行工程师**。本工程由验收会话（Claude，持有实机/ST-Link）担任**审核者**，作者做最终决策。COM 号会变化，必须按 USB 指纹与用户确认。你做的任何工作未经审核者过审都不算完成。
+本文件供 Codex/GPT 与其他 Agent 使用。唯一共用规则在
+[项目 SKILL](.agents/skills/drone-h743-project/SKILL.md)；Claude 入口也指向同一份内容。
 
-## 开工前必读（每次会话，顺序固定）
-
-1. `.agents/skills/drone-h743-project/SKILL.md` —— 仓库约定：索引工作流、分层边界、FLU 坐标契约、CubeMX 归属、文件规模守则。
-2. `PIPELINE.md` —— 读取状态图、验收门、**执行需求清单**，再只读本次 REQ 对应的证据行；不要为普通任务加载整份历史证据表。
-3. `doc/technical-spec.md` —— 稳定工程契约（协议、持久化、安全、测试、审核清单）。具体架构与协议再按需读 `doc/current-architecture.md` / `doc/telemetry-protocol.md`。
-
-## 任务领取
-
-- 只做作者本次指定的 REQ（见 PIPELINE「执行需求清单」）；作者未指定时，取当前主线节点直接需要的、状态为「待做」的〔码〕类 REQ。〔机〕〔人〕类不归你。
-- 作者**可以一次派发多个 REQ**，你连续做完一次性交审，不必做一个停一个。
-- R-S6 与 R-F0~F5 已全部收官，不要再按旧顺序领取。
-
-## 工作模式
-
-模式分三层：默认层（常规 REQ）、横切层（修 bug，任何任务都可能触发）、类别层（该类任务专属规矩，放 `references/modes/<类别>.md`，由派发者首次派该类任务前写好）。机制见 [`.agents/skills/drone-h743-project/references/work-modes.md`](.agents/skills/drone-h743-project/references/work-modes.md)——REQ 指定了类别模式、或撞上计划外缺陷时**必须先读它再动手**。
-
-**REQ 属于某个类别但 `modes/` 下没有对应文件时，停下来找派发者要，不要自己猜授权边界。**
-
-两条要点先记住：
-
-- 遇到**挡路的缺陷**（不修做不下去 / 让某条验收永远不可能通过 / 会让错误数据被当成证据存档），你**可以直接修**，不再是只上报。但要先固定证据再动手，只修根因，回归测试的基准取自真实来源。
-- 算法结论必须落在 `data/` 的实录数据上，并与基线在**同一份数据**上对比。自己构造的输入只能做单元测试，不能用来下"算法达标"的结论。
-
-## 硬约束（违反任意一条 = 打回重做）
-
-1. 新代码放新模块。S6 拆分虽已收官，但 `tools/drone_tcp_panel.py` 与 `App/Src/app_control.c` 仍超预算，因此**禁止**向这两个文件追加内容（只减不增）；不要在文档里固化易过期行数。新建模块、重构或做优化前，先读 [`.agents/skills/drone-h743-project/references/decoupling-spec.md`](.agents/skills/drone-h743-project/references/decoupling-spec.md)（解耦规范 + 工单三件套 + 提交前自检）。
-2. 每项行为改动必须带契约测试；交付前全量通过 `python -m pytest tests -q` 与 `cmake --build --preset Debug`（零警告），不要把测试数量写成长期基线。
-3. 改任何非忽略文件后运行 `python .agents/skills/drone-h743-project/scripts/update_repository_index.py`。
-4. **禁止**：修改/删除 `data/calibration/**` 历史证据；手改 CubeMX 生成代码（`Core/Src/main.c`、`freertos.c`、外设 init、`USB_DEVICE/*`）；削弱任何安全门/判据/坐标符号（此类变更即使"顺手"也必须单独立项经作者批准）。
-5. **实机默认归审核者**：即便你的环境配有 OpenOCD MCP / 串口，未经 REQ 明文授权不得烧录、复位、发送任何目标板命令。
-6. 并发纪律：开工前 `git status` 必须干净；按 REQ 提交（conventional commit + 中文描述）；除自己 REQ 的状态行与证据表追加行外，不改 PIPELINE.md 的其他内容。
-
-## 完成协议
-
-把该 REQ 状态改为**待审核**（你无权置 ✅），在 PIPELINE 证据表追加一行（日期/范围/证据/结果），交付：变更说明、测试输出原文、证据文件路径。措辞禁止"校准完成/验收通过/可以飞"等越级声明。
-
-交付说明里要注明**本次进过哪些工作模式、每次为什么进**。修 bug 模式下的修复走单独提交（`fix(...)`）、单独一行证据，不要混进 REQ 提交里。
+- 先读 SKILL，再按本次角色和任务读必要资料；同一会话已读且未变化的内容不重复加载。
+- 直接接作者需求的会话默认是**主控**：通俗讨论功能与路线、维护设计约定、分派、审查、合并及收尾。收到明确子任务的子模型是**执行者**；子模型结束后的最终审核由主模型承担，可另请模型协助复核。角色不绑定模型品牌。
+- 作者说“只讨论/只读”时只讨论/只读，不自动认领待做任务。不要为普通任务加载整份历史证据表。
+- **小改动定向验证，较大改动和阶段交审才全量**，执行细则只看 [验证策略](.agents/skills/drone-h743-project/references/validation-policy.md)。
+- 多人写代码先按 [主控协作规则](.agents/skills/drone-h743-project/references/dispatcher-prompt.md) 隔离工作树、分配文件；公共进度和索引由主控统一维护。
+- 已采纳设计见 [当前架构](doc/current-architecture.md)；后续 Agent 必须继承，变更先由主控协调。
+- 硬边界仍有效：历史证据只读、CubeMX 生成代码不手改、安全门与坐标符号不擅改、两个超限入口只减不增。未经当前任务明文授权，不烧录、复位或发送目标板命令。
+- 子模型完成后交付为**待审核**，不得自行置 ✅。主模型核对改动、设计和验证证据，判据满足后置 ✅，否则返修或保留缺口；实机项目仍须有对应实机证据，审核职责不自动授予设备操作权限。

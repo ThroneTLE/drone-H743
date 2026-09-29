@@ -23,9 +23,11 @@ Readers search category roots recursively. Files with no trustworthy date token 
 | `captures/vofa/YYYY-MM-DD/` | General VOFA telemetry captures | Offline telemetry analysis |
 | `captures/usb_flight_logs/YYYY-MM-DD/` | Curated USB FlightLog captures | Flight-log parser tests and manual analysis |
 | `captures/saleae_*/YYYY-MM-DD/` | Saleae bus captures grouped by purpose | Saleae capture/decoder tools |
+| `identification/thrust/experiments.sqlite3` | Local run index, selected immutable sample snapshots and train/validation membership; raw session files remain in dated directories | Original pressure/thrust GUI |
+| `identification/thrust/models/YYYY-MM-DD/training-*/` | Reproducible model/report exports with selected source manifest | Thrust experiment library |
 | `identification/attitude/YYYY-MM-DD/` | Attitude excitation runs | Ground-station panel and attitude fitting tools |
 | `identification/motor/YYYY-MM-DD/` | Motor Hammerstein input data and fitted outputs | Motor model fitting tool |
-| `identification/thrust/YYYY-MM-DD/` | Thrust and dual-prop identification data | Pressure GUI and thrust viewer |
+| `identification/thrust/YYYY-MM-DD/<session>/` | H743 coaxial thrust-bench sessions (metadata.json, samples.csv, raw/) | Original pressure/thrust GUI and thrust experiment library |
 | `calibration/pressure/` | Pressure sensor calibration and reference material | Pressure GUI/test tools |
 | `calibration/airframe/YYYY-MM-DD/` | Read-only airframe sensor-validation sessions and reports | Ground-station V0 validation page |
 | `calibration/imu_metrology/YYYY-MM-DD/<session>/` | V1 IMUCAP raw CSV/meta, resumable manifests and evidence-only candidates | Ground-station V1 metrology page |

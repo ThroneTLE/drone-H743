@@ -30,7 +30,7 @@ import re
 import pytest
 
 
-from _airframe_fixture import AIRFRAME_FIXTURE_C, AIRFRAME_SOURCE
+from _airframe_fixture import AIRFRAME_FIXTURE_C, AIRFRAME_SOURCE, PROP_MAP_SOURCE
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -103,7 +103,17 @@ def test_stabilizer_feed_pinned() -> None:
     source = read(STABILIZER)
     # FLU attitude and rates, unconverted at the call site.
     assert "frame->attitude.roll_rad = ctx->roll_control * STABILIZER_DEG_TO_RAD;" in source
-    assert "frame->attitude.gyro_x_rad_s = ctx->last_msg.imu.gyro_x_dps" in source
+    # 角速度走转速陷波之后的控制用副本（陷波关时逐位等于原来的换算）。
+    assert "frame->attitude.gyro_x_rad_s = ctx->gyro_ctrl_rad_s[0];" in source
+    assert "frame->attitude.gyro_y_rad_s = ctx->gyro_ctrl_rad_s[1];" in source
+    assert "frame->attitude.gyro_z_rad_s = ctx->gyro_ctrl_rad_s[2];" in source
+    # 副本只由陷波从同一组 FLU rad/s 算出（线性、单位直流增益），不另换坐标或符号。
+    writers = re.findall(r"[^\n]*gyro_ctrl_rad_s[^\n]*", source)
+    producers = [line for line in writers if "ctx->gyro_ctrl_rad_s," in line]
+    assert [line.strip() for line in producers] == [
+        "APP_RpmNotch_ApplySample(gyro_rad_s, ctx->gyro_ctrl_rad_s, msg->base.timestamp_us);"]
+    assert not re.search(r"ctx->gyro_ctrl_rad_s\[\d\]\s*=", source)
+    assert "gyro_rad_s[0] = msg->imu.gyro_x_dps * STABILIZER_DEG_TO_RAD;" in source
     # Altitude channel is now passed through as up-positive (no negation).
     assert "frame->attitude.z_m = frame->relative_height_m;" in source
     assert "frame->attitude.vz_m_s = frame->range_velocity_m_s;" in source
@@ -267,6 +277,7 @@ def _build_and_run_z_channel(
          f"-I{stub}", f"-I{ROOT / 'Driver' / 'Inc'}",
          str(ctrl),
          str(AIRFRAME_SOURCE),
+         str(PROP_MAP_SOURCE),
          str(ROOT / "Driver" / "Src" / "drv_position_control.c"),
          str(ROOT / "Driver" / "Src" / "drv_attitude_control.c"),
          str(ROOT / "Driver" / "Src" / "drv_rate_control.c"),

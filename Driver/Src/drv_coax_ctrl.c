@@ -2,6 +2,9 @@
 
 #include "bsp_pwm.h"
 #include "drv_airframe_params.h"
+#include "drv_att_reference.h"
+#include "drv_moment_notch.h"
+#include "drv_prop_map.h"
 
 #include <math.h>
 #include <stddef.h>
@@ -9,6 +12,11 @@
 
 #define DRV_COAX_CTRL_TILT_LIMIT_RAD 0.4886922f
 #define DRV_COAX_CTRL_PI 3.141592654f
+/*
+ * 力矩反解允许的最小总推力 [N]。低于它就认为"这架飞机现在产生不了倾转力矩"。
+ * 0.5 N 约合 50 g，远低于任何能起转的工况，只用来挡住零推力那个退化情形。
+ */
+#define COAX_CTRL_MIN_SOLVE_FORCE_N 0.5f
 #define DRV_COAX_CTRL_SERVO_TRAVEL_RAD \
     (DRV_COAX_CTRL_SERVO_TRAVEL_DEG * DRV_COAX_CTRL_PI / 180.0f)
 #define DRV_COAX_CTRL_SERVO_LIMIT_RAD \
@@ -47,9 +55,10 @@
 /*  （见 drv_frame_contract.h），无需额外补偿。                             */
 /*                                                                        */
 /*  出口口径：力矩 → 倾转 → 舵机这一段的符号也不再是常量开关。倾转到力矩的 */
-/*  极性由实测几何推出（coax_ctrl_tilt_moment_polarity），倾转到舵机的  */
-/*  90° 机构映射是固定运动学（coax_ctrl_body_tilt_to_servo_tilts），唯一    */
-/*  可变量是上位机机械标定写进来的 ServoCalibration。                       */
+/*  力臂（含符号）由实测几何推出：重心 z − 舵机转轴 z（见下方"倾转 → 机体  */
+/*  力矩"），倾转到舵机的 90° 机构映射是固定运动学                          */
+/*  （coax_ctrl_body_tilt_to_servo_tilts），唯一可变量是上位机机械标定写进来 */
+/*  的 ServoCalibration。                                                    */
 /* ════════════════════════════════════════════════════════════════════════ */
 
 #define DRV_COAX_CTRL_FORCE_EPS_N          1.0e-4f
@@ -85,45 +94,53 @@
 #define DRV_COAX_CTRL_SINGLE_MAX_THRUST_N 10.2f
 #define DRV_COAX_CTRL_THRUST_TABLE_POINTS  21U
 #define DRV_COAX_CTRL_GRAMS_PER_NEWTON     101.971621f
-#define DRV_COAX_CTRL_ROLL_EFFECTIVENESS   0.581f
-#define DRV_COAX_CTRL_PITCH_EFFECTIVENESS  0.569f
 /*
- * 倾转 → 机体力矩的极性。它不是可调符号：值直接从实测机体几何读出来，
- * 想改它只能重新测量飞机。
+ * 倾转 → 机体力矩。大小和方向都直接从实测机体几何读出来：没有经验系数，
+ * 也没有可调符号，想改它只能重新测量飞机。
  *
  * 规范 FLU，推力大小 T，倾转角的正方向由 coax_ctrl_body_tilt_to_servo_tilts()
  * 钉死（那里写明了机构运动学的实测依据）：
  *     body_y_tilt > 0  →  推力轴倒向 +Y（左）  →  F_y = +T*sin(tilt)
  *     body_x_tilt > 0  →  推力轴倒向 -X（后）  →  F_x = -T*sin(tilt)
- * 取重心到推力作用点的矢量 r = (0, 0, r_z)，由 τ = r × F：
- *     τ_roll  = -r_z * F_y = -r_z * T * sin(body_y_tilt)
- *     τ_pitch =  r_z * F_x = -r_z * T * sin(body_x_tilt)
- * 两轴共用同一个因子 -r_z，所以极性必然同号，不存在"一轴正一轴负"的组合。
- * thrust_point_to_cg_z_m < 0（推力作用点在重心下方），因此极性为 +1：
- * 正倾转产生正的 FLU 力矩。
  *
- * 拿飞机而不是拿代码复核一遍：推力作用点在重心下方，把推力倒向左边等于把
- * 机体下半部往左推，上半部就往右倒——右翼下沉，按 drv_frame_contract.h 正是
+ * 力臂取哪一点？电机轴线穿过舵机转轴，所以推力的**作用线**过转轴。τ = r × F
+ * 只取决于作用线在哪，与力沿线作用在哪一点无关——桨装高一点还是低一点，只是
+ * 沿作用线滑动，力矩一分不变。于是 r 取"重心 → 倾转转轴"，r = (0, 0, r_z)，
+ * r_z = 转轴 z − 重心 z（DRV_Airframe_Roll/PitchTiltAxisToCgZ）：
+ *     τ_roll  = -r_z1 * F_y = -r_z1 * T * sin(body_y_tilt)     （1 号舵机转轴）
+ *     τ_pitch =  r_z2 * F_x = -r_z2 * T * sin(body_x_tilt)     （2 号舵机转轴）
+ * 俯仰保留原有的 cos(body_y_tilt) 耦合项。控制律把 -r_z 存成带符号的力臂
+ * coax_ctrl_params.roll/pitch_tilt_lever_arm_m（= 重心 z − 转轴 z，转轴在
+ * 重心下方为正），见 coax_ctrl_apply_fixed_model_params()。
+ *
+ * 2026-09-27 板上存的几何：两个转轴实测都在 z = −0.13 m（相交），重心取部件
+ * 表算出的 −0.094558 m，r_z = −0.035442 m、力臂 +0.035442 m。这组数**不是**
+ * 已确认的真实力臂：作者随后实测重心约 −0.01 m（力臂约 0.12 m），部件表待
+ * 台架刚度测试后再改。两组都是转轴在重心下方，力臂为正，正倾转产生正的 FLU
+ * 力矩——符号结论不受影响，大小要以改好的机体模型为准。
+ *
+ * 拿飞机而不是拿代码复核一遍：转轴在重心下方，把推力倒向左边等于把机体
+ * 下半部往左推，上半部就往右倒——右翼下沉，按 drv_frame_contract.h 正是
  * +roll。这一步反直觉，但叉乘和实物是一致的。
  *
- * 只有符号来自几何；力臂与 EFFECTIVENESS 的**大小**来自 2026-07-25 的系统
- * 辨识，两者职责不同，不要用调大小的理由去动符号。
+ * 两轴各用自己的 r_z，数学上可以一正一负。能解锁的飞机上不会：闸门要求两个
+ * 转轴都与推力点在重心同侧（DRV_Airframe_FirstInvalidName），转轴为 0（没填）
+ * 或离重心不到 1 cm 也拒绝解锁——转轴留 0 会让 r_z 变成 +0.0946 m，两轴极性
+ * 同时反掉，那是起飞即翻。
  *
- * 2026-09-11：由编译期宏改为运行时取值。上游 r_z 现在来自上位机写进 Flash 的
- * 实测几何（DRV_Airframe_ComputeDerived 用 thrust_point_z_m − cg_z_m 算出），
- * 不再是头文件里的常量。这不改变推导，只是把"重新量过飞机才能改"从口头约定
- * 变成了机制——代码里已经没有第二份可以被随手改掉的副本了。
+ * ── 2026-09-27 之前是怎么算的，为什么改 ──
+ * 力矩写成 极性 × EFFECTIVENESS（横滚 0.581 / 俯仰 0.569）× 0.145 m × T × sin，
+ * 极性取自推力点（thrust_point_to_cg_z_m）。0.145 m 与两个 EFFECTIVENESS 出自
+ * 2026-07-25 的辨识，"力臂是重心到对应舵机转轴的距离"，量的是**旧机体
+ * （1.367 kg）**；机体换成 0.7546 kg 后没人更新，有效力臂一直停在
+ * 0.0842/0.0825 m，而按当晚板上几何只有 0.0354 m（高估约 2.3 倍；按作者随后
+ * 实测的重心则是 0.12 m，反成低估——哪一种都说明那个数早已和机体脱节）。
+ * 光杆辨识（data/identification/attitude/2026-09-27）得到的"推力 × 舵机角"
+ * 标度 k 按当晚板上几何约 0.8~1.0 倍几何力臂（按实测重心重算为 0.45，疑有
+ * 台架刚度或其他链路误差，待查），再乘一个经验系数已没有依据，所以两个
+ * EFFECTIVENESS 宏删掉，而不是改值。推力点也不再决定符号：作用线过转轴，
+ * 真正起作用的是转轴的位置；推力点只留在闸门里做方向交叉核对。
  */
-static float coax_ctrl_tilt_moment_polarity(void)
-{
-    /*
-     * r_z == 0 物理上是"推力正好过重心"：倾转产生不了力矩，极性**没有定义**。
-     * 这里仍返回 -1（与历史宏在 r_z==0 时逐位一致），但那不是在替"还没量"
-     * 的情况编一个方向——DRV_Airframe_FirstInvalidName() 已把 r_z 为零列为
-     * 不合格项，解锁在更前面就被挡住了。
-     */
-    return (DRV_Airframe_Get()->thrust_point_to_cg_z_m < 0.0f) ? 1.0f : -1.0f;
-}
 
 /*
  * 偏航力矩极性。和倾转极性一样，它不是可调符号，而是由桨的旋向推出来的。
@@ -136,14 +153,20 @@ static float coax_ctrl_tilt_moment_polarity(void)
  *     Mz = +(kl*T_lower - ku*T_upper)
  * ——正偏航力矩靠**加大下桨**推力获得。
  *
- * ⚠ 上游的 airframe.lower_rotor_spin_sense 目前是**反推值**（推理链与证实办法
- * 见 Driver/Inc/drv_airframe_params.h 该字段的注释），所以这条链在拆桨看一眼
- * 之前只是自洽，不算实测确认。要改只改那一个字段（上位机机体模型页），
- * 本文件与遥控映射都不该动。
+ * 2026-09-13：s 的来源从 `airframe.lower_rotor_spin_sense` 换成上位机标定的
+ * `drv_prop_map`。那个旧字段是**从调参现象反推的**（偏航 Kp 加大会抖振而不是
+ * 发散 → 闭环是负反馈 → 反推出下桨顺时针）。推理自洽，但它证明的是"整条链的
+ * 符号彼此不矛盾"，不是"桨真的往那边转"：换一套增益、或者把某处符号和它一起
+ * 翻过来，现象一模一样，而飞机的偏航方向已经反了。现在 s 来自人在上位机上
+ * 通电看一眼填进去的事实，与任何增益的正负无关。
+ *
+ * 未标定时返回 0：偏航通道因此没有权限，而不是朝一个猜出来的方向使劲。
+ * 解锁在更前面就被挡住了（`App/Src/app_stabilizer.c` 的解锁链）。
+ * 要改只改标定（上位机「桨叶与电机方向」页），本文件与遥控映射都不该动。
  */
 static float coax_ctrl_yaw_torque_polarity(void)
 {
-    return -DRV_Airframe_Get()->lower_rotor_spin_sense;
+    return DRV_PropMap_YawTorquePolarity();
 }
 #define DRV_COAX_CTRL_HORIZONTAL_ACCEL_LIMIT_M_S2 3.70f
 #define DRV_COAX_CTRL_VEL_D_ACCEL_LIMIT_M_S2 3.70f
@@ -196,11 +219,36 @@ typedef struct {
     float thrust_utilization;
 } DRV_COAX_CTRL_BalanceSolution;
 
+/*
+ * 姿态指令整形与力矩出口陷波的状态（横滚/俯仰）。**不在** coax_ctrl_state 里：
+ * 直接姿态模式下 integrator_reset 每拍都成立，RunScheduled 每拍清一次回路状态；
+ * 参考模型若跟着清，每拍都会对齐到实测角，角度环误差恒为 0——等于没有角度反馈。
+ * 所以它只在公开的 DRV_COAX_CTRL_ResetState()（解锁前低油门、IMU 失效、辨识占用、
+ * 改参数……）与目标来源切换时对齐。参考历史约 1.3 KB，放 AXI SRAM（NOLOAD，由
+ * ResetState 显式初始化，DRV_COAX_CTRL_Init 保证先于第一次 Run），不占 DTCM。
+ */
+typedef struct {
+    DRV_MomentNotch notch;
+    DRV_MomentNotch notch2;   /* 第二级出口陷波，串在 notch 之后 */
+    DRV_AttRefStep ref_pending;
+    uint8_t ref_pending_valid;
+    uint8_t ref_source;   /* 0 = 未知，1 = 力矢量（位置/速度环），2 = 直接姿态目标 */
+} DRV_COAX_CTRL_Shaping;
+
+#if defined(__GNUC__) && defined(__arm__)
+#define COAX_CTRL_AXI_NOINIT __attribute__((section(".ram_d1_noinit"), aligned(32)))
+#else
+#define COAX_CTRL_AXI_NOINIT
+#endif
+
 static uint8_t coax_ctrl_initialized;
 static DRV_COAX_CTRL_Params coax_ctrl_params;
+static const DRV_COAX_CTRL_ThrustMap *volatile coax_ctrl_thrust_map;
 static DRV_COAX_CTRL_ServoCalibration coax_ctrl_servo_calibration;
 static DRV_COAX_CTRL_Debug coax_ctrl_last_debug;
 static DRV_COAX_CTRL_State coax_ctrl_state;
+static DRV_COAX_CTRL_Shaping coax_ctrl_shaping;
+COAX_CTRL_AXI_NOINIT static DRV_AttRef coax_ctrl_att_ref;
 
 #define DRV_COAX_CTRL_PARAM_ENTRY(field) \
     { "coax." #field, (uint16_t)offsetof(DRV_COAX_CTRL_Params, field) }
@@ -255,11 +303,22 @@ static const DRV_COAX_CTRL_ParamEntry coax_ctrl_param_table[] = {
     DRV_COAX_CTRL_NAMED_PARAM_ENTRY("rate_yaw_ff", rate.ff_gain[2]),
     DRV_COAX_CTRL_PARAM_ENTRY(vel_loop_enable),
     DRV_COAX_CTRL_PARAM_ENTRY(tilt_limit_rad),
+    DRV_COAX_CTRL_PARAM_ENTRY(rate_out_notch_hz),
+    DRV_COAX_CTRL_PARAM_ENTRY(rate_out_notch_q),
+    DRV_COAX_CTRL_PARAM_ENTRY(rate_out_notch2_hz),
+    DRV_COAX_CTRL_PARAM_ENTRY(rate_out_notch2_q),
+    DRV_COAX_CTRL_PARAM_ENTRY(att_ref_wr_rad_s),
+    DRV_COAX_CTRL_PARAM_ENTRY(att_ref_delay_ms),
 };
 
 static const uint32_t coax_ctrl_param_count =
     sizeof(coax_ctrl_param_table) / sizeof(coax_ctrl_param_table[0]);
 
+/*
+ * 旧曲线（LEGACY，勿更新）：旧 ESP 台架由 tools/thrust_bench/emit.py 生成，无电压补偿。
+ * 飞控不再默认使用它：启动时 app_thrust_lut.c 注入推力台查补表（drv_thrust_lut，当前版本见
+ * data/identification/thrust/models/lut/current.json）。只在 THRUSTLUT MODE LEGACY 或未注入时生效。
+ */
 static const uint16_t coax_ctrl_dual_pwm_us[DRV_COAX_CTRL_THRUST_TABLE_POINTS] = {
     1100U, 1142U, 1184U, 1226U, 1268U, 1310U, 1352U, 1394U,
     1436U, 1478U, 1520U, 1562U, 1604U, 1646U, 1688U, 1730U,
@@ -326,13 +385,36 @@ static float coax_ctrl_norm3(const float value[3])
                  (value[2] * value[2]));
 }
 
+/*
+ * 倾转力臂此刻能不能拿来换算。
+ *
+ * 机体模型无效时力臂不是"小"，是"没有意义"：转轴没填（存 0）时力臂成了
+ * 重心 − 0 = −0.0946，符号是反的。照样反解的话，未解锁时舵机会朝反方向动，
+ * 手扳机体核对舵机方向就会看起来"反了"，很容易误导人去翻 pulse_sign；力臂
+ * 恰好为 0 时二分还会一路顶到负限位并报成功。所以这两种情形反解一律回中
+ * （零倾角）、公开出口报失败，正向力矩记 0：宁可不动，不可动错。
+ * 模型有效时解锁闸门已保证 |力臂| ≥ 下限，这道判断不改变任何数值。
+ */
+static uint8_t coax_ctrl_tilt_lever_usable(float lever_arm_m)
+{
+    return ((DRV_Airframe_IsValid() != 0U) && isfinite(lever_arm_m) &&
+            (fabsf(lever_arm_m) >= DRV_AIRFRAME_TILT_AXIS_MIN_LEVER_M))
+        ? 1U : 0U;
+}
+
+/*
+ * 倾转 → 力矩的唯一正向模型（推导见文件头"倾转 → 机体力矩"）。反解器、
+ * 力矩上限、实际达成力矩、调试分解与辨识出口全部经由这两个函数，
+ * 不许在别处另写一份力臂乘法。力臂不可用时记 0（见上）。
+ */
 static float coax_ctrl_roll_moment_from_tilt(float total_force_n,
                                              float beta_rad)
 {
-    /* 极性由几何推出（见 coax_ctrl_tilt_moment_polarity），不是经验值。 */
-    return coax_ctrl_tilt_moment_polarity() *
-           DRV_COAX_CTRL_ROLL_EFFECTIVENESS *
-           coax_ctrl_params.roll_tilt_lever_arm_m *
+    if (coax_ctrl_tilt_lever_usable(coax_ctrl_params.roll_tilt_lever_arm_m) == 0U) {
+        return 0.0f;
+    }
+    /* 带符号几何力臂 = 重心 z − 1 号舵机转轴 z，方向与大小都来自实测。 */
+    return coax_ctrl_params.roll_tilt_lever_arm_m *
            total_force_n *
            sinf(beta_rad);
 }
@@ -341,10 +423,11 @@ static float coax_ctrl_pitch_moment_from_tilt(float total_force_n,
                                               float alpha_rad,
                                               float beta_rad)
 {
-    /* 与 roll 共用同一个 -r_z 因子，因此必然同号。 */
-    return coax_ctrl_tilt_moment_polarity() *
-           DRV_COAX_CTRL_PITCH_EFFECTIVENESS *
-           coax_ctrl_params.pitch_tilt_lever_arm_m *
+    if (coax_ctrl_tilt_lever_usable(coax_ctrl_params.pitch_tilt_lever_arm_m) == 0U) {
+        return 0.0f;
+    }
+    /* 带符号几何力臂 = 重心 z − 2 号舵机转轴 z。 */
+    return coax_ctrl_params.pitch_tilt_lever_arm_m *
            total_force_n *
            sinf(alpha_rad) *
            cosf(beta_rad);
@@ -362,6 +445,10 @@ static float coax_ctrl_solve_roll_tilt_from_moment(float moment_n_m,
     const float max_moment = fmaxf(moment_lo, moment_hi);
     float target = moment_n_m;
 
+    /* 力臂不可用：回中，不让二分收敛到限位（见 coax_ctrl_tilt_lever_usable）。 */
+    if (coax_ctrl_tilt_lever_usable(coax_ctrl_params.roll_tilt_lever_arm_m) == 0U) {
+        return 0.0f;
+    }
     if (target < min_moment) {
         target = min_moment;
     } else if (target > max_moment) {
@@ -402,6 +489,9 @@ static float coax_ctrl_solve_pitch_tilt_from_moment(float moment_n_m,
     const float max_moment = fmaxf(moment_lo, moment_hi);
     float target = moment_n_m;
 
+    if (coax_ctrl_tilt_lever_usable(coax_ctrl_params.pitch_tilt_lever_arm_m) == 0U) {
+        return 0.0f;
+    }
     if (target < min_moment) {
         target = min_moment;
     } else if (target > max_moment) {
@@ -604,6 +694,21 @@ static uint8_t coax_ctrl_param_value_valid(const DRV_COAX_CTRL_ParamEntry *entry
                                    attitude.rate_limit_rad_s[2]))) {
         return (value > 0.0f) ? 1U : 0U;
     }
+    /* 整形参数：0 = 关；非 0 时的范围由各自模块定义（drv_moment_notch.h / drv_att_reference.h）。 */
+    if ((entry->offset == offsetof(DRV_COAX_CTRL_Params, rate_out_notch_hz)) ||
+        (entry->offset == offsetof(DRV_COAX_CTRL_Params, rate_out_notch2_hz))) {
+        return DRV_MomentNotch_FrequencyValid(value);
+    }
+    if ((entry->offset == offsetof(DRV_COAX_CTRL_Params, rate_out_notch_q)) ||
+        (entry->offset == offsetof(DRV_COAX_CTRL_Params, rate_out_notch2_q))) {
+        return DRV_MomentNotch_QValid(value);
+    }
+    if (entry->offset == offsetof(DRV_COAX_CTRL_Params, att_ref_wr_rad_s)) {
+        return DRV_AttRef_BandwidthValid(value);
+    }
+    if (entry->offset == offsetof(DRV_COAX_CTRL_Params, att_ref_delay_ms)) {
+        return DRV_AttRef_DelayValid(value);
+    }
     return (value >= 0.0f) ? 1U : 0U;
 }
 
@@ -628,8 +733,9 @@ static uint8_t coax_ctrl_params_valid(const DRV_COAX_CTRL_Params *params)
  * 把机体模型里的物理量复制进 params。它们**不是可调参数**：改它们要拿秤和尺
  * 重新量，然后从上位机机体模型页写进 Flash，而不是在调参页拖滑块。
  *
- * 每次 SetParams/GetDefaultParams/GetParams/Run 都重刷一遍，代价是七个 float
- * 赋值。这样机体模型一改立刻生效，不存在"改了模型但控制律还在用旧质量"
+ * 每次 SetParams/GetDefaultParams/GetParams/Run/反解出口都重刷一遍，代价是
+ * 几个 float 赋值加两次减法。这样机体模型一改（`PARAM SET airframe.*` 当场
+ * 重算重心）下一拍就生效，不存在"改了模型但控制律还在用旧质量/旧力臂"
  * 这种只能靠重启才发现的中间态。
  */
 static void coax_ctrl_apply_fixed_model_params(DRV_COAX_CTRL_Params *params)
@@ -642,8 +748,15 @@ static void coax_ctrl_apply_fixed_model_params(DRV_COAX_CTRL_Params *params)
 
     params->mass_kg = airframe->mass_kg;
     params->gravity_m_s2 = airframe->gravity_m_s2;
-    params->pitch_tilt_lever_arm_m = airframe->pitch_thrust_lever_arm_m;
-    params->roll_tilt_lever_arm_m = airframe->roll_thrust_lever_arm_m;
+    /*
+     * 倾转力臂（2026-09-27 起）：**带符号的几何力臂** = 重心 z − 舵机转轴 z
+     * = −r_z，转轴在重心下方时为正。力矩 = 力臂 × T × sin(倾角)，极性已含在
+     * 符号里（推导见文件头"倾转 → 机体力矩"）。字段名沿用是因为飞行日志 v6~v9
+     * 的参数快照按这两个名字存档；那些旧日志里存的是退役的 0.145 m 输入值，
+     * 不是这个几何量，解读旧日志时别混用。
+     */
+    params->roll_tilt_lever_arm_m = -DRV_Airframe_RollTiltAxisToCgZ(airframe);
+    params->pitch_tilt_lever_arm_m = -DRV_Airframe_PitchTiltAxisToCgZ(airframe);
     params->yaw_inertia = airframe->izz_kgm2;
     params->motor_single_max_thrust_n = DRV_COAX_CTRL_SINGLE_MAX_THRUST_N;
     params->yaw_torque_upper_m_per_n = DRV_COAX_CTRL_PROP9047_YAW_M_PER_N;
@@ -785,6 +898,115 @@ static void coax_ctrl_compute_accel_cmd(
     }
 }
 
+static void coax_ctrl_reset_shaping(void)
+{
+    memset(&coax_ctrl_shaping, 0, sizeof(coax_ctrl_shaping));
+    DRV_AttRef_Reset(&coax_ctrl_att_ref);
+}
+
+/*
+ * 姿态指令整形（参考模型，横滚/俯仰）。关闭（att_ref_wr_rad_s = 0）时目标角原样
+ * 返回、两个前馈为 +0，与加入它之前逐位相同。开启时（drv_att_reference.h）：
+ *   roll/pitch   ← θ_ref(t − Td)：角度环反馈的目标
+ *   rate_ff      ← θ̇_ref(t − Td)：角度环前馈（desired_rate_in_desired_frame）
+ *   accel_ff     ← θ̈_ref(t)：速率环 α_ff，力矩前馈 = ff_gain × I × α_ff
+ * 欧拉角速率/加速度直接当机体量用（小角度），与偏航前馈 yaw_rate_rad_s 的现有口径一致。
+ * 直接姿态目标进来前已按 tilt_limit_rad 夹过，临界阻尼参考不超调，延后参考越不过它；
+ * 目标突变（遥控/位置环）时参考模型本身就是限速器。
+ * 只算不提交：保护缩放同拍重算时再算一遍，拍末由 coax_ctrl_commit_shaping 提交。
+ */
+static void coax_ctrl_shape_attitude_target(
+    const DRV_COAX_CTRL_AttitudeInput *attitude,
+    const DRV_COAX_CTRL_Reference *reference,
+    const DRV_COAX_CTRL_Schedule *schedule,
+    float *roll_rad,
+    float *pitch_rad,
+    float rate_ff[DRV_ATT_REF_AXES],
+    float accel_ff[DRV_ATT_REF_AXES])
+{
+    const uint8_t source = (reference->direct_attitude_target_valid != 0U) ? 2U : 1U;
+    const float command[DRV_ATT_REF_AXES] = { *roll_rad, *pitch_rad };
+    float align[DRV_ATT_REF_AXES] = { attitude->roll_rad, attitude->pitch_rad };
+    DRV_AttRefOutput shaped;
+
+    for (uint32_t axis = 0U; axis < DRV_ATT_REF_AXES; ++axis) {
+        rate_ff[axis] = 0.0f;
+        accel_ff[axis] = 0.0f;
+        if (!isfinite(align[axis])) {
+            align[axis] = command[axis];
+        }
+    }
+    if (!(coax_ctrl_params.att_ref_wr_rad_s > 0.0f)) {
+        return;
+    }
+    if (coax_ctrl_shaping.ref_source != source) {
+        /* 目标来源切换（直接姿态 ↔ 位置/速度环）：从当前姿态重新起步，不带旧速度。 */
+        DRV_AttRef_Reset(&coax_ctrl_att_ref);
+        coax_ctrl_shaping.ref_source = source;
+    }
+    DRV_AttRef_Evaluate(&coax_ctrl_att_ref,
+                        coax_ctrl_params.att_ref_wr_rad_s,
+                        coax_ctrl_params.att_ref_delay_ms * 1.0e-3f,
+                        command,
+                        align,
+                        (schedule->attitude_update != 0U) ? schedule->attitude_dt_s : 0.0f,
+                        &coax_ctrl_shaping.ref_pending,
+                        &shaped);
+    coax_ctrl_shaping.ref_pending_valid = 1U;
+    *roll_rad = shaped.angle[0];
+    *pitch_rad = shaped.angle[1];
+    for (uint32_t axis = 0U; axis < DRV_ATT_REF_AXES; ++axis) {
+        rate_ff[axis] = shaped.rate[axis];
+        accel_ff[axis] = shaped.accel[axis];
+    }
+}
+
+/*
+ * 速率环力矩出口陷波（横滚/俯仰，drv_moment_notch.h）：只滤反馈 P + I − D，两级串联
+ * （第二级 notch2 在第一级之后），前馈原样叠回，再按同一组力矩限重钳位。系数只在 Step 拍
+ * 按本拍真实 dt 刷新；两级都关着时不碰输出，第二级关着时与只有第一级逐位相同。
+ */
+static void coax_ctrl_apply_moment_notch(const DRV_RateControl_Input *rate_input,
+                                         const DRV_COAX_CTRL_Schedule *schedule)
+{
+    if (!(coax_ctrl_params.rate_out_notch_hz > 0.0f) &&
+        (coax_ctrl_shaping.notch.active == 0U) &&
+        !(coax_ctrl_params.rate_out_notch2_hz > 0.0f) &&
+        (coax_ctrl_shaping.notch2.active == 0U)) {
+        return;
+    }
+    if (schedule->rate_update != 0U) {
+        (void)DRV_MomentNotch_Configure(&coax_ctrl_shaping.notch,
+                                        coax_ctrl_params.rate_out_notch_hz,
+                                        coax_ctrl_params.rate_out_notch_q,
+                                        schedule->rate_dt_s);
+        (void)DRV_MomentNotch_Configure(&coax_ctrl_shaping.notch2,
+                                        coax_ctrl_params.rate_out_notch2_hz,
+                                        coax_ctrl_params.rate_out_notch2_q,
+                                        schedule->rate_dt_s);
+    }
+    DRV_MomentNotch_ApplyCascadeToRateOutput(&coax_ctrl_shaping.notch,
+                                             &coax_ctrl_shaping.notch2, rate_input,
+                                             &coax_ctrl_state.rate_output);
+}
+
+/* 拍末提交：参考模型只在姿态拍推进，陷波只在速率 Step 拍推进。 */
+static void coax_ctrl_commit_shaping(const DRV_COAX_CTRL_Schedule *schedule)
+{
+    if ((coax_ctrl_shaping.ref_pending_valid != 0U) &&
+        (schedule->attitude_update != 0U)) {
+        DRV_AttRef_Commit(&coax_ctrl_att_ref, &coax_ctrl_shaping.ref_pending);
+    }
+    coax_ctrl_shaping.ref_pending_valid = 0U;
+    if (schedule->rate_update != 0U) {
+        DRV_MomentNotch_Commit(&coax_ctrl_shaping.notch);
+        DRV_MomentNotch_Commit(&coax_ctrl_shaping.notch2);
+    } else {
+        DRV_MomentNotch_Discard(&coax_ctrl_shaping.notch);
+        DRV_MomentNotch_Discard(&coax_ctrl_shaping.notch2);
+    }
+}
+
 static void coax_ctrl_compute_balance_solution(
     const DRV_COAX_CTRL_AttitudeInput *attitude,
     const DRV_COAX_CTRL_Reference *reference,
@@ -813,6 +1035,9 @@ static void coax_ctrl_compute_balance_solution(
     const float max_total_force_n = DRV_Airframe_Get()->max_total_force_n;
     float target_pitch_rad;
     float target_roll_rad;
+    float command_rp_rad[2];
+    float ref_rate_ff[DRV_ATT_REF_AXES];
+    float ref_accel_ff[DRV_ATT_REF_AXES];
     float roll_limit_moment_n_m;
     float pitch_limit_moment_n_m;
     float yaw_limit_moment_n_m;
@@ -883,6 +1108,12 @@ static void coax_ctrl_compute_balance_solution(
             -atan2f(solution->desired_force_local_n[1] * cosf(target_pitch_rad),
                     solution->desired_force_local_n[2]);
     }
+    /* 指令留作调试；参考模型开启时角度环跟的是整形后的延后参考。 */
+    command_rp_rad[0] = target_roll_rad;
+    command_rp_rad[1] = target_pitch_rad;
+    coax_ctrl_shape_attitude_target(attitude, reference, schedule,
+                                    &target_roll_rad, &target_pitch_rad,
+                                    ref_rate_ff, ref_accel_ff);
     coax_ctrl_attitude_matrix(attitude, actual_r);
     coax_ctrl_rpy_matrix(target_roll_rad,
                          target_pitch_rad,
@@ -897,6 +1128,8 @@ static void coax_ctrl_compute_balance_solution(
     memcpy(attitude_input.actual_rotation, actual_r, sizeof(actual_r));
     memcpy(attitude_input.desired_rotation, solution->desired_body_r,
            sizeof(solution->desired_body_r));
+    attitude_input.desired_rate_in_desired_frame[0] = ref_rate_ff[0];
+    attitude_input.desired_rate_in_desired_frame[1] = ref_rate_ff[1];
     attitude_input.desired_rate_in_desired_frame[2] =
         reference->yaw_rate_rad_s;
     if (schedule->attitude_update != 0U) {
@@ -921,6 +1154,8 @@ static void coax_ctrl_compute_balance_solution(
     memcpy(rate_input.omega, actual_omega, sizeof(actual_omega));
     memcpy(rate_input.omega_sp, coax_ctrl_state.attitude_output.omega_sp,
            sizeof(rate_input.omega_sp));
+    rate_input.alpha_ff[0] = ref_accel_ff[0];
+    rate_input.alpha_ff[1] = ref_accel_ff[1];
     rate_input.alpha_ff[2] = reference->yaw_accel_rad_s2;
     rate_input.inertia[0] = DRV_Airframe_Get()->ixx_kgm2;
     rate_input.inertia[1] = DRV_Airframe_Get()->iyy_kgm2;
@@ -953,6 +1188,7 @@ static void coax_ctrl_compute_balance_solution(
                                        &rate_input,
                                        &coax_ctrl_state.rate_output);
     }
+    coax_ctrl_apply_moment_notch(&rate_input, schedule);
 
     memcpy(solution->attitude_error,
            coax_ctrl_state.attitude_output.attitude_error,
@@ -1036,8 +1272,8 @@ static void coax_ctrl_compute_balance_solution(
     debug->force_cmd_n[1] = solution->desired_force_body_n[1];
     debug->force_cmd_n[2] = solution->desired_force_body_n[2];
 
-    debug->target_attitude_rp_rad[0] = target_roll_rad;
-    debug->target_attitude_rp_rad[1] = target_pitch_rad;
+    debug->target_attitude_rp_rad[0] = command_rp_rad[0];
+    debug->target_attitude_rp_rad[1] = command_rp_rad[1];
 
     debug->tilt_angle_p_rad[0] = coax_ctrl_solve_pitch_tilt_from_moment(
         -coax_ctrl_params.rate.kp[1] *
@@ -1182,6 +1418,7 @@ static void coax_ctrl_compute_balance_command(
                                            &recalc_schedule, debug, solution);
     }
 
+    coax_ctrl_commit_shaping(schedule);
     debug->horizontal_command_scale = horizontal_scale;
     coax_ctrl_state.translation_saturation.horizontal_scale = horizontal_scale;
     coax_ctrl_state.translation_saturation.tilt_saturated =
@@ -1240,10 +1477,17 @@ void DRV_COAX_CTRL_Init(void)
     }
 }
 
-void DRV_COAX_CTRL_ResetState(void)
+/* 回路状态（积分、微分滤波、饱和反馈、平移环）。RunScheduled 的 integrator_reset 只清这些。 */
+static void coax_ctrl_reset_loop_state(void)
 {
     memset(&coax_ctrl_state, 0, sizeof(coax_ctrl_state));
     memset(&coax_ctrl_last_debug, 0, sizeof(coax_ctrl_last_debug));
+}
+
+void DRV_COAX_CTRL_ResetState(void)
+{
+    coax_ctrl_reset_loop_state();
+    coax_ctrl_reset_shaping();
 }
 
 void DRV_COAX_CTRL_GetDefaultParams(DRV_COAX_CTRL_Params *params)
@@ -1270,8 +1514,12 @@ void DRV_COAX_CTRL_GetDefaultParams(DRV_COAX_CTRL_Params *params)
     params->position.z_accel_limit_down_m_s2 = 3.70f;
     params->position.accel_lpf_cutoff_hz = 20.0f;
     params->vel_loop_enable = 1.0f;
-    params->attitude.att_kp[0] = 0.0671f / 0.1104f;
-    params->attitude.att_kp[1] = 0.0660f / 0.1138f;
+    /*
+     * 姿态环 kp 的单位是 1/s（输出期望角速度，不是力矩），与力臂无关。
+     * 横滚/俯仰：2026-09-28 晚的 A1 基线（与速率环同一组设计，出处见下方速率环注释）。
+     */
+    params->attitude.att_kp[0] = 1.8105f;
+    params->attitude.att_kp[1] = 1.7131f;
     params->attitude.att_kp[2] = 1.0f / 0.15f;
     params->attitude.rate_limit_rad_s[0] = 3.49065850f;
     params->attitude.rate_limit_rad_s[1] = 3.49065850f;
@@ -1289,8 +1537,52 @@ void DRV_COAX_CTRL_GetDefaultParams(DRV_COAX_CTRL_Params *params)
      * 拒绝，本次一并修掉）。测完请按结论决定收回还是保留。
      */
     params->attitude.rate_limit_rad_s[2] = 3.49065850f;
-    params->rate.kp[0] = 0.1104f;
-    params->rate.kp[1] = 0.1138f;
+    /*
+     * 横滚/俯仰角速度环里凡是**力矩单位**的量——kp [N·m/(rad/s)]、ki [N·m/rad]、
+     * kd [N·m·s²/rad]、积分限幅 [N·m]、前馈倍率 ff（乘在 J·α 这个力矩项上）——都按
+     * **实测机体**的倾转力臂 L = 重心 z − 舵机转轴 z = −0.0218 − (−0.13) = 0.1082 m 取值
+     * （2026-09-27 称重 1145.3 g、自由摆 + 挂砝码测得重心板下 0.0218 m）。这组数与
+     * 2026-09-28 存进这架飞机 Flash 的配置逐位相同：机体数据只存 Flash（见
+     * drv_airframe_params.c），这里的默认值只在控制配置丢失时顶上，必须与那架机体配套。
+     *
+     * 俯仰：光杆辨识对象与**鲁棒**整定方法（2026-09-28 舵机 50 Hz 时的第一版）。回差补偿开、
+     * 带桨 FF 双脉冲两轮联合（rod_004508 + rod_003912，带内拟合 83%，κ = 0.997，I_cg 0.0359 kg·m²），
+     * 飞行对象 延迟·舵机·(κ + ρs²)/(I_cg·s) 在模型不确定度角点（台架与悬停）上配合 6 Hz 出口陷波仍满足
+     * GM ≥ 6 dB、PM ≥ 45° 的最大 kp，ki = kp·ωc/5。早先的名义整定 kp 0.291/ki 0.375
+     * （台架 100% 验证 rod_005148/rod_005207）名义裕度够、但在角点上最坏只剩 0.3 dB。台架验证 rod_051131/
+     * rod_051206/rod_051758（陷波 + 参考前馈）稳定，模型复现 0.98–0.99。
+     * 数据与推导：data/analysis/sysid-rig-params/2026-09-28/summary.md 第 5、6 节。
+     *
+     * 横滚：台架只能 ±45°。−45° 斜杆 FF 联合（rod_055342 + rod_055508）减去俯仰推出横滚对象
+     * （假设 Ixy = 0；作者决定不测 +45°），舵机比俯仰快（26 rad/s）。summary.md 第 7 节。
+     *
+     * 舵机 333 Hz（2026-09-28 起开机默认，BSP_PWM_SERVO_FRAME_HZ）：−45° 带载纯延迟 30.2 → 22.4 ms，
+     * 两轴按减去的 7.8 ms 重新做同一套角点鲁棒整定（design_333hz.py；横滚对象取 50/333 Hz 两组 −45°
+     * 联合的平均：Ixx 0.0343、κ 0.99、ρ 0.0048）。上一版默认（L0）就是这组：俯仰 .265/.344/1.619、
+     * 横滚 .249/.322/1.619（kp/ki/角度，−45° 台架 rod_065433/rod_065500 验证），需要退回时用它。
+     * 舵机改回 50 Hz 时须换回 50 Hz 那组（俯仰 0.240/0.288/1.524、横滚 0.196/0.215/1.375）。
+     *
+     * 现行默认 A1（作者 2026-09-28 晚存入 Flash 的新基线）：内环压榨版 A 档增益（悬停角点裕度放宽到
+     * 5 dB/40°、ki = kp·ωc/4，inner_extreme.py）配宽陷波 Q1.2 与参考 ωr 12 / Td 45 ms——A 档原配的
+     * 6 Hz Q3 窄陷波在约 15 Hz 少给约 11° 相位，台架上把舵机抖起来；换回 Q1.2 后 10–20 Hz 回到 L0 水平。
+     * 俯仰 kp 0.2748/ki 0.4607/角度 1.7131、横滚 kp 0.2748/ki 0.4862/角度 1.8105；悬停角点最坏
+     * 俯仰 9.9 dB/41°、横滚 8.9 dB/42°。−45° 台架 RATE rod_224114、ANGLE rod_224131 验证（模型复现
+     * 1.00/0.99，ANGLE 跟踪误差较 L0 −13%）。summary.md 第 10 节。
+     *
+     * 力矩只是"控制律的数字"与"舵机角度"之间的齿轮比：倾角 = asin(力矩 / (L·T))，
+     * 每单位误差打出的舵机偏角 ∝ 1/L。所以重心或舵机转轴一改，这几项 N·m 增益就要按
+     * 新力臂重新推导（上位机「临时应用/恢复原参数」按 L当前/L录制 自动换算）。
+     *
+     * 积分限幅 0.05 N·m（作者 2026-09-27 同意，原 0.013）：悬停推力 11.2 N 下约可配平
+     * 重心水平偏 4.5 mm。α_ff 只在姿态参考模型开启时非零（R-ATTFF-1）：俯仰 ff 取 1（κ ≈ 1，力矩单位即真实 N·m，
+     * 前馈 = I·θ̈_ref）；横滚同取 1（Ixx 0.0343 为 −45° 推算，Ixy = 0 假设的误差只让前馈偏同样比例）。
+     *
+     * ⚠ 持久化在 Flash 里的用户增益不会随这里改变——已存的配置优先。
+     */
+    params->rate.kp[0] = 0.2748f;     /* 横滚 A1（舵机 333 Hz） */
+    params->rate.ki[0] = 0.4862f;
+    params->rate.kp[1] = 0.2748f;     /* 俯仰 A1（舵机 333 Hz） */
+    params->rate.ki[1] = 0.4607f;
     /*
      * 系数 0.0105 = 偏航内环带宽 [1/s]，`rate.kp = I_zz * 带宽`。
      *
@@ -1313,8 +1605,8 @@ void DRV_COAX_CTRL_GetDefaultParams(DRV_COAX_CTRL_Params *params)
      * 那是按这架飞机算出来的。
      */
     params->rate.kp[2] = DRV_Airframe_Get()->izz_kgm2 * 0.525f;
-    params->rate.integrator_limit[0] = 0.010f;
-    params->rate.integrator_limit[1] = 0.010f;
+    params->rate.integrator_limit[0] = 0.05f;
+    params->rate.integrator_limit[1] = 0.05f;
     params->rate.integrator_limit[2] = 0.00020f;
     /*
      * 角加速度低通截止：2026-09-07 由 188.495559（30 Hz）改为 18.8495559（3 Hz）。
@@ -1354,9 +1646,26 @@ void DRV_COAX_CTRL_GetDefaultParams(DRV_COAX_CTRL_Params *params)
     for (uint32_t axis = 0U; axis < 3U; ++axis) {
         params->rate.large_error_threshold[axis] = 1.5f;
         params->rate.large_error_scale[axis] = 0.0f;
-        params->rate.ff_gain[axis] = 1.0f;
     }
+    /* 前馈倍率乘在 J·α 力矩项上（力矩单位已是真实 N·m）；偏航不动。 */
+    params->rate.ff_gain[0] = 1.0f;
+    params->rate.ff_gain[1] = 1.0f;
+    params->rate.ff_gain[2] = 1.0f;
     params->tilt_limit_rad = DRV_COAX_CTRL_TILT_LIMIT_RAD;
+    /*
+     * 指令整形与出口陷波**代码默认**全关（三个开关 notch_hz、notch2_hz、wr 为 0），控制律与加入
+     * 它们之前逐位相同。这架飞机的 Flash 里是开的（A1：notch 6 Hz Q1.2、wr 12、Td 45 ms，2026-09-28 晚
+     * 作者存入，快照 data/analysis/sysid-rig-params/2026-09-28/fc_config/fc_params_2026-09-28_best.json）；
+     * 配置丢失时机体参数一起丢、无法解锁，按快照整份恢复。Q 1.2 与 Td 45 ms 按 A1 预置。
+     * 第二级（约 16 Hz、Q≈1 压舵机高阶动态/结构那段约 15 Hz 的回路，hf_filter_study.py）待台架
+     * 试用后再定，Q 预置 1.0。
+     */
+    params->rate_out_notch_hz = 0.0f;
+    params->rate_out_notch_q = 1.2f;
+    params->rate_out_notch2_hz = 0.0f;
+    params->rate_out_notch2_q = 1.0f;
+    params->att_ref_wr_rad_s = 0.0f;
+    params->att_ref_delay_ms = 45.0f;
     coax_ctrl_apply_fixed_model_params(params);
 }
 
@@ -1586,7 +1895,7 @@ static void coax_ctrl_body_tilt_to_servo_tilts(float body_x_tilt_rad,
      *     body_y_tilt > 0  →  推力轴倒向 +Y（左）
      *     body_x_tilt > 0  →  推力轴倒向 -X（后）
      * 一个顺 +Y、一个逆 +X 看着别扭，但这正是让 τ = r × F 的 roll/pitch 两轴
-     * 共用同一个极性因子的定义（推导见 coax_ctrl_tilt_moment_polarity）。
+     * 都写成同一形式 −r_z·T·sin(tilt) 的定义（推导见文件头"倾转 → 机体力矩"）。
      *
      * 分工：本函数与力矩律固定不变；换飞机、换舵机、连杆反装，全部只允许
      * 改上位机标定写进来的 pulse_sign / center_us / min_us / max_us。
@@ -1655,14 +1964,30 @@ static void coax_ctrl_servo_pulses_to_body_tilts(uint16_t servo_alpha_us,
     }
 }
 
+void DRV_COAX_CTRL_SetThrustMap(const DRV_COAX_CTRL_ThrustMap *map)
+{
+    coax_ctrl_thrust_map = map;
+}
+
+const DRV_COAX_CTRL_ThrustMap *DRV_COAX_CTRL_GetThrustMap(void)
+{
+    return coax_ctrl_thrust_map;
+}
+
 uint16_t DRV_COAX_CTRL_ThrustToMotorPulse(float thrust_n)
 {
     float thrust_g;
+    const DRV_COAX_CTRL_ThrustMap *map = coax_ctrl_thrust_map;
 
     DRV_COAX_CTRL_Init();
 
     thrust_n = coax_ctrl_clamp_f32(thrust_n, 0.0f,
                                    coax_ctrl_params.motor_single_max_thrust_n);
+    if ((map != NULL) && (map->pulse_for_motor_thrust != NULL)) {
+        return coax_ctrl_clamp_u16((int32_t)map->pulse_for_motor_thrust(thrust_n),
+                                   BSP_PWM_ESC_MIN_US,
+                                   BSP_PWM_ESC_MAX_US);
+    }
     thrust_g = thrust_n * DRV_COAX_CTRL_GRAMS_PER_NEWTON * 2.0f;
 
     if (thrust_g <= coax_ctrl_dual_thrust_g[0]) {
@@ -1691,8 +2016,15 @@ uint16_t DRV_COAX_CTRL_ThrustToMotorPulse(float thrust_n)
 float DRV_COAX_CTRL_MotorPulseToTotalThrust(uint16_t pulse_us)
 {
     float thrust_g;
+    const DRV_COAX_CTRL_ThrustMap *map = coax_ctrl_thrust_map;
 
     DRV_COAX_CTRL_Init();
+
+    if ((map != NULL) && (map->total_thrust_for_pulse != NULL)) {
+        return coax_ctrl_clamp_f32(map->total_thrust_for_pulse(pulse_us),
+                                   0.0f,
+                                   2.0f * coax_ctrl_params.motor_single_max_thrust_n);
+    }
 
     if (pulse_us <= coax_ctrl_dual_pwm_us[0]) {
         return 0.0f;
@@ -1747,7 +2079,11 @@ void DRV_COAX_CTRL_RunScheduled(const DRV_COAX_CTRL_AttitudeInput *attitude,
      */
     coax_ctrl_apply_fixed_model_params(&coax_ctrl_params);
     if (schedule->integrator_reset != 0U) {
-        DRV_COAX_CTRL_ResetState();
+        /*
+         * 只清回路状态，整形状态（参考模型、出口陷波）保留：直接姿态模式下这里每拍
+         * 都成立，参考若跟着对齐到实测角，角度环就永远没有误差（见 DRV_COAX_CTRL_Shaping）。
+         */
+        coax_ctrl_reset_loop_state();
     }
     memset(&debug, 0, sizeof(debug));
     memset(output, 0, sizeof(*output));
@@ -1767,8 +2103,20 @@ void DRV_COAX_CTRL_RunScheduled(const DRV_COAX_CTRL_AttitudeInput *attitude,
     output->thrust_lower_n = thrust_lower_n;
     requested_alpha_rad = solution.alpha_rad;
     requested_beta_rad = solution.beta_rad;
-    output->motor_upper_us = DRV_COAX_CTRL_ThrustToMotorPulse(thrust_upper_n);
-    output->motor_lower_us = DRV_COAX_CTRL_ThrustToMotorPulse(thrust_lower_n);
+    {
+        const DRV_COAX_CTRL_ThrustMap *map = coax_ctrl_thrust_map;
+        if ((map != NULL) && (map->pulses_for_pair != NULL)) {
+            map->pulses_for_pair(thrust_upper_n, thrust_lower_n,
+                                 &output->motor_upper_us, &output->motor_lower_us);
+            output->motor_upper_us = coax_ctrl_clamp_u16((int32_t)output->motor_upper_us,
+                                                         BSP_PWM_ESC_MIN_US, BSP_PWM_ESC_MAX_US);
+            output->motor_lower_us = coax_ctrl_clamp_u16((int32_t)output->motor_lower_us,
+                                                         BSP_PWM_ESC_MIN_US, BSP_PWM_ESC_MAX_US);
+        } else {
+            output->motor_upper_us = DRV_COAX_CTRL_ThrustToMotorPulse(thrust_upper_n);
+            output->motor_lower_us = DRV_COAX_CTRL_ThrustToMotorPulse(thrust_lower_n);
+        }
+    }
     DRV_COAX_CTRL_BodyTiltRadToServoPulses(requested_alpha_rad,
                                            requested_beta_rad,
                                            &output->servo_alpha_us,
@@ -1889,4 +2237,76 @@ void DRV_COAX_CTRL_GetLastDebug(DRV_COAX_CTRL_Debug *debug)
     }
 
     *debug = coax_ctrl_last_debug;
+}
+
+uint8_t DRV_COAX_CTRL_SolveBodyTiltFromMoment(const float moment_n_m[3],
+                                              float total_force_n,
+                                              float *body_x_tilt_rad,
+                                              float *body_y_tilt_rad)
+{
+    float beta_rad;
+    float alpha_rad;
+
+    DRV_COAX_CTRL_Init();
+
+    if (body_x_tilt_rad != NULL) {
+        *body_x_tilt_rad = 0.0f;
+    }
+    if (body_y_tilt_rad != NULL) {
+        *body_y_tilt_rad = 0.0f;
+    }
+    if ((moment_n_m == NULL) || !isfinite(total_force_n) ||
+        (total_force_n <= COAX_CTRL_MIN_SOLVE_FORCE_N) ||
+        !isfinite(moment_n_m[0]) || !isfinite(moment_n_m[1])) {
+        /*
+         * 推力不足时直接回零倾角。反解器在 force≈0 时可达力矩区间退化成一个点，
+         * 二分会收敛到 -tilt_limit —— 也就是"没有推力反而把舵机打到底"。
+         * 这条判断就是挡住它的。
+         */
+        return 0U;
+    }
+
+    /* 与 coax_ctrl_solve_actuator_setpoints 同序：先 roll 解出 beta，再用 beta 解 pitch。 */
+    coax_ctrl_apply_fixed_model_params(&coax_ctrl_params);
+    if ((coax_ctrl_tilt_lever_usable(coax_ctrl_params.roll_tilt_lever_arm_m) == 0U) ||
+        (coax_ctrl_tilt_lever_usable(coax_ctrl_params.pitch_tilt_lever_arm_m) == 0U)) {
+        /* 机体模型无效或力臂过小：零倾角（舵机回中）并报失败，不给一个方向可能反了的解。 */
+        return 0U;
+    }
+    beta_rad = coax_ctrl_solve_roll_tilt_from_moment(
+        moment_n_m[0], total_force_n, coax_ctrl_params.tilt_limit_rad);
+    alpha_rad = coax_ctrl_solve_pitch_tilt_from_moment(
+        moment_n_m[1], total_force_n, beta_rad, coax_ctrl_params.tilt_limit_rad);
+
+    /* 机体倾转与舵机倾转的换向定义见 coax_ctrl_body_tilt_to_servo_tilts。 */
+    if (body_x_tilt_rad != NULL) {
+        *body_x_tilt_rad = alpha_rad;
+    }
+    if (body_y_tilt_rad != NULL) {
+        *body_y_tilt_rad = beta_rad;
+    }
+    return 1U;
+}
+
+uint8_t DRV_COAX_CTRL_MomentFromServoPulses(float total_force_n,
+    uint16_t alpha_us, uint16_t beta_us, float moment[3])
+{
+    float x, y;
+    if (moment == NULL || !isfinite(total_force_n) || total_force_n <= 0.0f) {
+        return 0U;
+    }
+    DRV_COAX_CTRL_Init();
+    coax_ctrl_servo_pulses_to_body_tilts(alpha_us, beta_us, &x, &y);
+    coax_ctrl_apply_fixed_model_params(&coax_ctrl_params);
+    if ((coax_ctrl_tilt_lever_usable(coax_ctrl_params.roll_tilt_lever_arm_m) == 0U) ||
+        (coax_ctrl_tilt_lever_usable(coax_ctrl_params.pitch_tilt_lever_arm_m) == 0U)) {
+        moment[0] = 0.0f;
+        moment[1] = 0.0f;
+        moment[2] = 0.0f;
+        return 0U;
+    }
+    moment[0] = coax_ctrl_roll_moment_from_tilt(total_force_n, y);
+    moment[1] = coax_ctrl_pitch_moment_from_tilt(total_force_n, x, y);
+    moment[2] = 0.0f;
+    return isfinite(moment[0]) && isfinite(moment[1]);
 }

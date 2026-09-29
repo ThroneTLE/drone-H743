@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "saved_at": "2026-09-27T03:53:47",
+  "note": "「临时应用」之前飞控 RAM 里的原增益；「恢复原参数」从这里读回。",
+  "gains": {
+    "coax.rate_pitch_kp": "0.113800",
+    "coax.rate_pitch_ki": "0.000000",
+    "coax.rate_pitch_kd": "0.000000",
+    "coax.att_pitch_kp": "0.579965"
+  }
+}

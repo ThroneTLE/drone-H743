@@ -18,6 +18,11 @@ def with_tag(header, tag):
 
 @pytest.mark.parametrize("tag,protocol,unit", [
     (b"\xd5\x01\x02\0", "DSHOT300", "pwm_equivalent_us"),
+    # 3 = DSHOT300_BIDIR。它的电机命令**同样**是等效微秒——漏进 else 分支会让
+    # 日志把单位标成 "us"，而一个说谎的单位比没有单位更难查。
+    (b"\xd5\x01\x03\0", "DSHOT300_BIDIR", "pwm_equivalent_us"),
+    # 没定义过的码一律 unknown，不猜、也不落回某一档。
+    (b"\xd5\x01\x04\0", "unknown", "us"),
     (b"\xd5\x01\x01\0", "PWM", "us"),
     (bytes(4), "legacy_unspecified", "us"),
     (b"\xff" * 4, "legacy_unspecified", "us"),
@@ -42,7 +47,12 @@ def test_firmware_marker_location_and_crc_order_are_pinned():
     fill = source.split("static void flight_log_fill_sector_header(")[1].split("\n}")[0]
     assert "header->reserved[0] = 0xD5U" in fill
     assert "header->reserved[1] = 1U" in fill
-    assert "? 2U : 1U" in fill
+    # 三档各占一个码，**不能**把双向档并进 DSHOT300 的 2。
+    # 2026-09-21 之前这里是 `(… == DSHOT300) ? 2U : 1U`，双向档因此被记成 PWM。
+    assert "header->reserved[2] = 1U" in fill
+    assert "header->reserved[2] = 2U" in fill
+    assert "header->reserved[2] = 3U" in fill
+    assert "BSP_ESC_PROTOCOL_DSHOT300_BIDIR" in fill
     assert fill.index("header->reserved[0]") < fill.index("header->header_crc32")
 
 

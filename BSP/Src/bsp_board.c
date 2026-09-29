@@ -10,7 +10,7 @@
  *   BMI270   SPI3  CS: PA15                  DRDY: PB7
  *   SPL06    I2C2  地址 0x77
  *   QMC5883L I2C2  地址 0x0D（板载；外接磁罗盘走 I2C1）
- *   MTF 光流 USART2（MicoLink 协议）
+ *   MTF 光流 UART4（MicoLink 协议；PA0/PA1，板上 4 针 5 V 口）
  *   GPS      USART3
  *   总线舵机 UART7（半双工单线，PE8）
  *   参数     片内 Flash Bank2 尾两个扇区
@@ -40,6 +40,24 @@ static DRV_MAG_Bus mag_bus;
 static DRV_GPS_Bus gps_bus;
 static DRV_OPTICAL_FLOW_Bus optical_flow_bus;
 static DRV_SERVO_Bus servo_bus;
+static volatile uint8_t sd_init_window;
+static volatile uint8_t sd_card_absent;
+static uint32_t sd_init_error;
+
+void BSP_Board_SdInitBegin(void) { sd_init_window = 1U; sd_card_absent = 0U; sd_init_error = 0U; }
+void BSP_Board_SdInitEnd(void) { sd_init_window = 0U; }
+uint8_t BSP_Board_SdCardPresent(void) { return (sd_card_absent == 0U) ? 1U : 0U; }
+uint32_t BSP_Board_SdInitError(void) { return sd_init_error; }
+
+uint8_t BSP_Board_SdInitFailed(void)
+{
+    if (sd_init_window == 0U) {
+        return 0U;
+    }
+    sd_card_absent = 1U;
+    sd_init_error = hsd1.ErrorCode;
+    return 1U;
+}
 
 #define BSP_IMU_SPI_TIMEOUT_MS 5U
 #define BSP_BARO_I2C_ADDRESS   0x77U
@@ -133,7 +151,7 @@ void BSP_Board_Init(void)
      * 飞行日志落 SD 裸块。这里**故意不挂缓存维护回调**：阻塞版 HAL_SD_ReadBlocks
      * 是 CPU 轮询 FIFO 搬运，不是 DMA，做维护反而会丢数据。原委见 drv_sdblock.h。
      */
-    sdblock_bus.hsd              = &hsd1;
+    sdblock_bus.hsd              = (sd_card_absent == 0U) ? &hsd1 : NULL; /* 无卡：日志不可用 */
     sdblock_bus.timeout_ms       = 1000U;
 
     /*
@@ -144,12 +162,17 @@ void BSP_Board_Init(void)
     mag_bus.hi2c       = &hi2c2;
     mag_bus.timeout_ms = 20U;
 
-    /* GPS 从 USART2 分家到 USART3（本板的默认 GPS 口），光流独占 USART2。 */
+    /* GPS 从 USART2 分家到 USART3（本板的默认 GPS 口）。 */
     gps_bus.huart      = &huart3;
     gps_bus.baud_rate  = 38400U;
     gps_bus.delay_ms   = BSP_DelayMs;
 
-    optical_flow_bus.huart = &huart2;
+    /*
+     * 光流在 UART4 的 4 针口（GND / 5V / TX4 / RX4，PA0/PA1），5 V 供电。
+     * 2026-09-29 从 USART2 迁来：USART2 是 DJI 图传 6 针口，该版板子第 1 脚是 12 V，
+     * 不适合给 5 V 的光流模块取电。USART2 现保留为普通串口，不再挂功能。
+     */
+    optical_flow_bus.huart = &huart4;
     optical_flow_bus.baud_rate = DRV_OPTICAL_FLOW_BAUD_RATE;
     optical_flow_bus.timeout_ms = 100U;
     optical_flow_bus.delay_ms = BSP_DelayMs;

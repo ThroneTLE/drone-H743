@@ -3,6 +3,7 @@
 #include "app_elrs.h"
 #include "app_imu_capture.h"
 #include "app_sensor.h"
+#include "app_thrust_lut.h"
 #include "bsp_imu.h"
 
 void APP_Init(void)
@@ -16,6 +17,8 @@ void APP_Init(void)
      */
     BSP_IMU_SetDrdyHandler(APP_IMU_OnDataReady);
 
+    /* 任务开始前装好推力查补表，控制器第一拍就用它（见 app_thrust_lut.c）。 */
+    APP_ThrustLut_Init();
     APP_ELRS_Init();
     APP_IMU_Capture_Init();
 }

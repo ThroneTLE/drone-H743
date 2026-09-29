@@ -142,6 +142,25 @@ uint8_t APP_Stabilizer_IsImuCalibrationCandidateArmLocked(void);
 /* Independent hard lock while servo-mechanical FCAL preview is active. */
 void APP_Stabilizer_SetServoCalibrationCandidateArmLock(uint8_t locked);
 uint8_t APP_Stabilizer_IsServoCalibrationCandidateArmLocked(void);
+
+/*
+ * 磁力计这一拍有没有真的参与姿态融合——诊断要能区分"没装磁力计"
+ * （subsystem_enabled=0）和"装了但被拒了"（subsystem_enabled=1 但
+ * used=0，看 field_rejected/ignored 具体是哪一层拒的）。
+ * 和 ArmStatus 一样不加锁：全是标量，撕裂最坏是混进相邻两拍的值，
+ * 不会拼出一个不存在的状态；为一条低频诊断报文加锁没有必要。
+ */
+typedef struct {
+  uint8_t subsystem_enabled; /* calibrated && axis_verified && fresh，见 C4 */
+  uint8_t field_rejected;    /* 门控第 4 条（场强合理性）拒绝了这一拍 */
+  uint8_t used;              /* 真的喂进了 FusionAhrsUpdate() */
+  uint8_t ignored;           /* Fusion 库自己的内部磁力拒绝（仅在 used 时有意义） */
+  uint8_t recovery;          /* Fusion 库的磁力恢复状态 */
+  float error_deg;
+} APP_Stabilizer_MagFusionStatus;
+
+void APP_Stabilizer_GetMagFusionStatus(APP_Stabilizer_MagFusionStatus *out);
+
 void APP_Stabilizer_Run(osSemaphoreId_t imu_ready_sem,
                         osMessageQueueId_t sensor_sample_q,
                         osMessageQueueId_t vofa_log_q);

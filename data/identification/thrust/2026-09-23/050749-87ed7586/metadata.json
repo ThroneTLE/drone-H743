@@ -1,0 +1,172 @@
+{
+  "tool": "thrust_bench",
+  "plan_kind": "自动补数（换电继续）",
+  "two_propellers_installed": true,
+  "motor_model": "AEO CRM2413-KV1300",
+  "prop_installation": "两片桨均安装",
+  "prop_spacing": "",
+  "speed_domain": "electrical_erpm",
+  "speed_source": "dshot_erpm",
+  "current_source": "dshot",
+  "esc_current_calibrated": false,
+  "current_resolution_a": 1.0,
+  "current_resolution_source": "TBENCH v1 whole-amp ESC current fields",
+  "snapshot_hz_requested": 30.0,
+  "fc_link_rate": {
+    "snapshot_hz": 30.0,
+    "estimated_wire_bytes_per_second": 4860,
+    "serial_budget_bytes_per_second": 3456,
+    "identity_status": "allowed",
+    "identity_reason": "STM32 application USB CDC VID:PID=0483:5740",
+    "confirmed_stm32_usb_cdc": true,
+    "device": "COM22",
+    "vid": 1155,
+    "pid": 22336,
+    "rate_policy": "confirmed_usb_high_rate"
+  },
+  "channel_mapping_source": "firmware_snapshot",
+  "non_driven_propeller": "unknown_or_windmilling",
+  "scale_calibration_file": "原窗口内存标定快照",
+  "scale_calibration": {
+    "kind": "legacy_single_point_ratio",
+    "points": [
+      {
+        "raw": 239.0,
+        "grams": 240.0
+      }
+    ],
+    "single_point_assumes_zero_origin": true
+  },
+  "notes": "电转速不除极对数；板总电流仅诊断，不用于电流/功耗拟合；双桨保持安装。",
+  "scale_settings_source": "pressure_rs485_gui",
+  "scale_port": "COM29",
+  "scale_baud": 9600,
+  "scale_address": 1,
+  "scale_channel": 1,
+  "scale_register": 0,
+  "scale_timeout_s": 0.25,
+  "schema_version": 2,
+  "created_at": "2026-09-23T05:07:49.469961-07:00",
+  "upper_channel": 2,
+  "lower_channel": 1,
+  "scale_tare_raw": 0.0,
+  "runs": [
+    {
+      "run_id": "b75e9cfe7b4e",
+      "plan_name": "model_validation",
+      "mode": "dual",
+      "stop_reason": "stop_voltage",
+      "model_id": "c373e7ca19c8",
+      "model_path": "D:\\stm32hal\\drone-H743\\data\\identification\\thrust\\models\\throttle\\2026-09-23\\050740-c373e7ca19c8\\throttle_model.json",
+      "error_limit_gf": 50.0,
+      "summary": {
+        "targets": 1,
+        "measured": 1,
+        "skipped": 0,
+        "mae_gf": 26.88284518828459,
+        "max_abs_gf": 26.88284518828459,
+        "within_limit": 1
+      },
+      "targets": [
+        {
+          "target_gf": 585,
+          "charge_v_before": 12.302,
+          "command_pct": 46.36410066410414,
+          "measured_gf": 611.8828451882846,
+          "error_gf": 26.88284518828459,
+          "charge_v_measured": 12.35298439698834,
+          "predicted_at_measured_charge_gf": 588.624379866533,
+          "upper_erpm": 41551.0,
+          "lower_erpm": 41095.0
+        }
+      ],
+      "recorded_points": 1,
+      "completed": false,
+      "cancelled": false
+    },
+    {
+      "run_id": "c59bd8089be7",
+      "plan_name": "model_validation",
+      "mode": "dual",
+      "stop_reason": "source_lost",
+      "model_id": "c373e7ca19c8",
+      "model_path": "D:\\stm32hal\\drone-H743\\data\\identification\\thrust\\models\\throttle\\2026-09-23\\050740-c373e7ca19c8\\throttle_model.json",
+      "error_limit_gf": 50.0,
+      "summary": {
+        "targets": 0,
+        "measured": 0,
+        "skipped": 0,
+        "mae_gf": null,
+        "max_abs_gf": null,
+        "within_limit": 0
+      },
+      "targets": [],
+      "recorded_points": 0,
+      "completed": false,
+      "cancelled": false
+    },
+    {
+      "run_id": "0655b9358c3c",
+      "plan_name": "model_validation",
+      "mode": "dual",
+      "stop_reason": "source_lost",
+      "model_id": "c373e7ca19c8",
+      "model_path": "D:\\stm32hal\\drone-H743\\data\\identification\\thrust\\models\\throttle\\2026-09-23\\050740-c373e7ca19c8\\throttle_model.json",
+      "error_limit_gf": 50.0,
+      "summary": {
+        "targets": 0,
+        "measured": 0,
+        "skipped": 0,
+        "mae_gf": null,
+        "max_abs_gf": null,
+        "within_limit": 0
+      },
+      "targets": [],
+      "recorded_points": 0,
+      "completed": false,
+      "cancelled": false
+    },
+    {
+      "run_id": "c6e0caf47f56",
+      "plan_name": "model_validation",
+      "mode": "dual",
+      "stop_reason": "source_lost",
+      "model_id": "036ae8d27c18",
+      "model_path": "D:\\stm32hal\\drone-H743\\data\\identification\\thrust\\models\\throttle\\2026-09-23\\050834-036ae8d27c18\\throttle_model.json",
+      "error_limit_gf": 50.0,
+      "summary": {
+        "targets": 0,
+        "measured": 0,
+        "skipped": 0,
+        "mae_gf": null,
+        "max_abs_gf": null,
+        "within_limit": 0
+      },
+      "targets": [],
+      "recorded_points": 0,
+      "completed": false,
+      "cancelled": false
+    },
+    {
+      "run_id": "fc329d8bc308",
+      "plan_name": "model_validation",
+      "mode": "dual",
+      "stop_reason": "source_lost",
+      "model_id": "036ae8d27c18",
+      "model_path": "D:\\stm32hal\\drone-H743\\data\\identification\\thrust\\models\\throttle\\2026-09-23\\050834-036ae8d27c18\\throttle_model.json",
+      "error_limit_gf": 50.0,
+      "summary": {
+        "targets": 0,
+        "measured": 0,
+        "skipped": 0,
+        "mae_gf": null,
+        "max_abs_gf": null,
+        "within_limit": 0
+      },
+      "targets": [],
+      "recorded_points": 0,
+      "completed": false,
+      "cancelled": false
+    }
+  ]
+}

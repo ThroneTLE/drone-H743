@@ -20,6 +20,10 @@ int main(void){
     assert(!APP_Current_FormatFixed(b.text,NAN,3));assert(!strcmp(b.text,"nan"));
     assert(!APP_Current_FormatFixed(b.text,INFINITY,5));assert(!strcmp(b.text,"nan"));
     assert(!APP_Current_FormatFixed(b.text,1e30f,3));assert(!strcmp(b.text,"nan"));
+    assert(APP_Current_FormatFixed(b.text,-3.14159f,2));assert(!strcmp(b.text,"-3.14"));
+    assert(APP_Current_FormatFixed(b.text,0.98766f,4));assert(!strcmp(b.text,"0.9877"));
+    assert(!APP_Current_FormatFixed(b.text,1.0f,1));assert(!strcmp(b.text,"nan"));
+    assert(!APP_Current_FormatFixed(b.text,1.0f,6));assert(!strcmp(b.text,"nan"));
     assert(b.before=='x' && b.after=='y');return 0;
 }'''
     (tmp_path/'test.c').write_text(source)
@@ -34,3 +38,10 @@ def test_current_report_does_not_require_printf_float():
     assert 'APP_Current_FormatFixed' in source
     assert 'adc_v=%s current_a=%s' in source
     assert '%.5f' not in source and '%.3f' not in source
+
+
+def test_magcal_report_does_not_require_printf_float():
+    # 2026-09-26 on hardware: newlib-nano printed MAGCAL bias/matrix/error_deg as empty fields.
+    source=(ROOT/'App/Src/app_cmd_magcal.c').read_text(encoding='utf-8')
+    assert source.count('APP_Current_FormatFixed') == 3
+    assert '%.2f' not in source and '%.3f' not in source and '%.4f' not in source

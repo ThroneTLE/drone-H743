@@ -111,8 +111,21 @@ VALIDATION_ALLOWED_COMMANDS = frozenset(
         "IMUCAP DUMP",
         "IMUCAP CANCEL",
         "SERVOCAL?",
+        # R-PWR-1（作者明示批准）：遥测流的开关与通道表查询。它们只决定上位机
+        # 想看哪些通道、收不收流，不改飞控任何飞行配置，不发解锁 / 电机 / 标定
+        # 命令，与 V0 只读门的意图不冲突。合并前是「电流计」页的 `STATUS?` 与
+        # 「电池电压」页的 `BATTERY?` 在只读会话里喂数据；轮询删掉之后，同一份
+        # 数据改走遥测流，放行范围也跟着挪到这几条上。
+        "TELEM?",
+        "TELEM STREAM ON",
+        "TELEM STREAM OFF",
     }
 )
+#: 只读会话里额外放行的**带参数**遥测命令前缀（已归一化成大写、单空格）。
+#:
+#: 刻意只列这两条，不写成 `startswith("TELEM")`：`TELEM RATE` / `TELEM SINK` /
+#: `TELEM FORMAT` 确实会改变飞控的发送行为，不在授权范围内。
+VALIDATION_ALLOWED_COMMAND_PREFIXES = ("TELEM MASK ", "TELEM CH FROM=")
 VALIDATION_SNAPSHOT_REQUIRED_FIELDS = (
     "valid", "source", "frame", "units", "contract", "migration", "ts_ms", "seq",
     "bias", "armed", "m1", "m2", "ax_mg", "ay_mg", "az_mg",
@@ -890,6 +903,8 @@ class EvidenceMixin:
         if not self.validation_session_active:
             return True
         if command in getattr(self, "validation_authorized_orientation_commands", set()):
+            return True
+        if command.startswith(VALIDATION_ALLOWED_COMMAND_PREFIXES):
             return True
         return command in VALIDATION_ALLOWED_COMMANDS
 

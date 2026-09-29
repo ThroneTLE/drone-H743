@@ -264,6 +264,8 @@ class TransportBase(ABC):
     def __init__(self, rx_queue: "queue.Queue[str]") -> None:
         self.rx_queue = rx_queue
         self._connection_generation = 0
+        self._frame_error_sink = None
+        self._frame_error_counts: dict[str, int] = {}
 
     @property
     def connection_generation(self) -> int:
@@ -301,7 +303,7 @@ class TransportBase(ABC):
 
         return
 
-    def set_binary_sink(self, sink: Callable[[int, bytes], None] | None) -> None:
+    def set_binary_sink(self, sink: Callable | None, *, with_context: bool = False) -> None:
         """Attach the consumer for binary-payload frames (telemetry stream v2).
 
         走回调而不是走 `rx_queue`（与规划文档 §2.6 的"投递 ("proto_bin", fn,
@@ -315,7 +317,24 @@ class TransportBase(ABC):
         示波器页的统计条会把它显示出来。
         """
 
-        self._binary_sink = sink
+        self._binary_sink_config = (sink, bool(with_context))
+
+    def set_frame_error_sink(self, sink: Callable[[str, object, dict], None] | None) -> None:
+        """Observe bounded parser diagnostics without changing resynchronisation."""
+        self._frame_error_sink = sink
+
+    @property
+    def frame_error_counts(self) -> dict[str, int]:
+        return dict(self._frame_error_counts)
+
+    def _note_frame_error(self, kind: str, context, **details) -> None:
+        count = self._frame_error_counts.get(kind, 0) + 1
+        self._frame_error_counts[kind] = count
+        sink = self._frame_error_sink
+        # First four events aid diagnosis; powers of two retain long-run visibility
+        # without turning line noise into unbounded queue/log traffic.
+        if sink is not None and (count <= 4 or count & (count - 1) == 0):
+            sink(kind, context, {"count": count, **details})
 
     @property
     def binary_unclaimed(self) -> int:
@@ -323,12 +342,15 @@ class TransportBase(ABC):
 
         return getattr(self, "_binary_unclaimed", 0)
 
-    def _deliver_binary(self, function: int, payload: bytes) -> None:
-        sink = getattr(self, "_binary_sink", None)
+    def _deliver_binary(self, function: int, payload: bytes, context=None) -> None:
+        sink, with_context = getattr(self, "_binary_sink_config", (None, False))
         if sink is None:
             self._binary_unclaimed = self.binary_unclaimed + 1
             return
-        sink(function, payload)
+        if with_context:
+            sink(function, payload, context)
+        else:
+            sink(function, payload)
 
     def _consume_buffer(self, buffer: bytearray, *, context=None) -> None:
         if context is None and getattr(self, "_stamp_received", False):
@@ -344,6 +366,8 @@ class TransportBase(ABC):
                     # 必须在这里丢掉一个字节重新找——否则下面的文本分支会算出
                     # frame_index == 0，`if frame_index > 0` 不成立就 break，
                     # 缓冲区永远以这个假帧头开头，整条链路就此静止。
+                    self._note_frame_error("invalid_direction", context,
+                                           direction=int(buffer[2]))
                     del buffer[0]
                     continue
 
@@ -352,6 +376,8 @@ class TransportBase(ABC):
                     # len 被打坏成一个不可能的长度。当成"还没收全"去等的话，
                     # 要等到 65 KB 之后才会发现不对——57600 baud 上就是十几秒
                     # 的黑屏，而且期间到达的每一帧好数据都被吞进这个假帧里。
+                    self._note_frame_error("oversize", context,
+                                           payload_length=payload_length)
                     del buffer[0]
                     continue
 
@@ -367,16 +393,20 @@ class TransportBase(ABC):
                     del buffer[:frame_length]
 
                     if frame[2] == PROTO_DIR_FROM_FC:
-                        from .proto import PROTO_MSG_COMPONENTS, PROTO_MSG_BATTERY
+                        from .proto import (PROTO_MSG_COMPONENTS, PROTO_MSG_BATTERY,
+                                            PROTO_MSG_SYSID_BATCH)
                         if function == PROTO_MSG_COMPONENTS:
                             emit(("component_bin", payload))
                             continue
                         if function == PROTO_MSG_BATTERY:
                             emit(("battery_bin", payload))
                             continue
+                        if function == PROTO_MSG_SYSID_BATCH:
+                            emit(("sysid_bin", payload))
+                            continue
                         if function in PROTO_BINARY_FUNCTIONS:
                             if context is None or context.is_current(self):
-                                self._deliver_binary(function, payload)
+                                self._deliver_binary(function, payload, context)
                             continue
                         text = payload.decode("utf-8", errors="replace").rstrip("\r\n")
                         emit(("proto", function, text))
@@ -385,6 +415,8 @@ class TransportBase(ABC):
                         emit(f"RXRAW fn=0x{function:04X} len={len(payload)} data={shown}")
                     continue
 
+                self._note_frame_error("crc", context,
+                                       frame_length=frame_length)
                 del buffer[0]
                 continue
 

@@ -577,7 +577,19 @@ static void flight_log_fill_sector_header(APP_FlightLogSectorHeader *header,
     /* Tagged extension; legacy reserved bytes stay uninterpreted. */
     header->reserved[0] = 0xD5U;
     header->reserved[1] = 1U;
-    header->reserved[2] = (BSP_ESC_PROTOCOL == BSP_ESC_PROTOCOL_DSHOT300) ? 2U : 1U;
+    /*
+     * 执行器协议档位。1=PWM、2=DSHOT300、**3=DSHOT300_BIDIR**（2026-09-21 新增）。
+     * 双向档不能并进 2：两档在线上是不同的协议，事后拿日志复盘油门与转速时，
+     * 分不清是哪一档就分不清"电调没执行"和"帧格式对不上"。旧值 1/2 的含义一字未动，
+     * 老日志照旧可读。
+     */
+#if BSP_ESC_PROTOCOL == BSP_ESC_PROTOCOL_DSHOT300
+    header->reserved[2] = 2U;
+#elif BSP_ESC_PROTOCOL == BSP_ESC_PROTOCOL_DSHOT300_BIDIR
+    header->reserved[2] = 3U;
+#else
+    header->reserved[2] = 1U;
+#endif
     header->magic = APP_FLIGHT_LOG_SECTOR_MAGIC;
     header->version = APP_FLIGHT_LOG_VERSION;
     header->header_size = APP_FLIGHT_LOG_SECTOR_HEADER_SIZE;

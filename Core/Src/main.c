@@ -434,6 +434,7 @@ int main(void)
   MX_USART3_UART_Init();
   MX_USART6_UART_Init();
   MX_ADC1_Init();
+  MX_UART4_Init();
   /* USER CODE BEGIN 2 */
   SVC_Timestamp_Init();
   Main_DebugUartPrint("BOOT user2_begin\r\n");
@@ -591,6 +592,15 @@ void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
   /* User can add his own implementation to report the HAL error return state */
+  /*
+   * 开机没插 SD 卡：HAL_SD_Init 失败不是整机故障，记为无卡后返回继续开机，
+   * 飞行日志降级为不记录（2026-09-25 实机：拔卡后整机卡死在这里，USB 都起不来）。
+   * 其他任何地方出错仍照旧停机。
+   */
+  if (BSP_Board_SdInitFailed() != 0U)
+  {
+    return;
+  }
   __disable_irq();
   while (1)
   {

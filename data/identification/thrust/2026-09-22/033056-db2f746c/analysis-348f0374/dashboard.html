@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self'; style-src 'unsafe-inline'">
+<title>推力模型拟合与验证</title><style>
+body{font-family:Segoe UI,Microsoft YaHei,sans-serif;margin:0;background:#f4f6f8;color:#17202a}
+main{max-width:1200px;margin:auto;padding:24px}h1,h2{color:#12344d}.notice{background:#fff3cd;padding:14px;border-left:5px solid #d39e00}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}.card{background:white;border-radius:8px;padding:14px;box-shadow:0 1px 4px #ccd}
+.value{font-size:1.5rem;font-weight:700}table{border-collapse:collapse;width:100%;background:white}th,td{border:1px solid #ccd;padding:7px;text-align:right}th{background:#e9f2f8}td:nth-child(-n+4),th:nth-child(-n+4){text-align:left}
+img{max-width:100%;background:white;border:1px solid #ccd}pre{white-space:pre-wrap;background:#17202a;color:#eef;padding:12px}code{word-break:break-word}
+</style></head><body><main>
+<h1>推力模型拟合与独立验证</h1>
+<p class="notice"><strong>验证状态：没有可用的独立留出预测，当前未验证</strong>。默认 5% 满量程 RMSE / 10% 满量程 P95 只是起步参考，不是飞行放行。</p>
+<section><h2>独立验证指标</h2><div class="grid">
+<div class="card"><div>状态</div><div class="value">unvalidated</div></div>
+<div class="card"><div>预测点</div><div class="value">0</div></div>
+<div class="card"><div>RMSE [N]</div><div class="value">--</div></div>
+<div class="card"><div>MAE [N]</div><div class="value">--</div></div>
+<div class="card"><div>P95 |误差| [N]</div><div class="value">--</div></div>
+</div><p>不能预测或不可用的留出组：<code>[{&#x27;group&#x27;: &#x27;run&#x27;, &#x27;value&#x27;: &#x27;072b10edce6c&#x27;, &#x27;reason&#x27;: &#x27;voltage_layer_fit_unavailable&#x27;, &#x27;test_points&#x27;: 11, &#x27;explanation_zh&#x27;: &#x27;该留出组无法由剩余训练组建立并预测。&#x27;}, {&#x27;group&#x27;: &#x27;run&#x27;, &#x27;value&#x27;: &#x27;14309671afe4&#x27;, &#x27;reason&#x27;: &#x27;voltage_layer_fit_unavailable&#x27;, &#x27;test_points&#x27;: 7, &#x27;explanation_zh&#x27;: &#x27;该留出组无法由剩余训练组建立并预测。&#x27;}, {&#x27;group&#x27;: &#x27;run&#x27;, &#x27;value&#x27;: &#x27;3728e71beb6a&#x27;, &#x27;reason&#x27;: &#x27;voltage_layer_fit_unavailable&#x27;, &#x27;test_points&#x27;: 15, &#x27;explanation_zh&#x27;: &#x27;该留出组无法由剩余训练组建立并预测。&#x27;}, {&#x27;group&#x27;: &#x27;run&#x27;, &#x27;value&#x27;: &#x27;b79239e1dcd7&#x27;, &#x27;reason&#x27;: &#x27;voltage_layer_fit_unavailable&#x27;, &#x27;test_points&#x27;: 47, &#x27;explanation_zh&#x27;: &#x27;该留出组无法由剩余训练组建立并预测。&#x27;}, {&#x27;group&#x27;: &#x27;voltage_layer&#x27;, &#x27;value&#x27;: &#x27;layer:10.8&#x27;, &#x27;reason&#x27;: &#x27;voltage_layer_fit_unavailable&#x27;, &#x27;test_points&#x27;: 47, &#x27;explanation_zh&#x27;: &#x27;该留出组无法由剩余训练组建立并预测。&#x27;}, {&#x27;group&#x27;: &#x27;voltage_layer&#x27;, &#x27;value&#x27;: &#x27;layer:11.5&#x27;, &#x27;reason&#x27;: &#x27;voltage_layer_fit_unavailable&#x27;, &#x27;test_points&#x27;: 11, &#x27;explanation_zh&#x27;: &#x27;该留出组无法由剩余训练组建立并预测。&#x27;}, {&#x27;group&#x27;: &#x27;voltage_layer&#x27;, &#x27;value&#x27;: &#x27;layer:12.3&#x27;, &#x27;reason&#x27;: &#x27;voltage_layer_fit_unavailable&#x27;, &#x27;test_points&#x27;: 22, &#x27;explanation_zh&#x27;: &#x27;该留出组无法由剩余训练组建立并预测。&#x27;}]</code></p></section>
+<section><h2>训练拟合（仅诊断）</h2><p>覆盖 0/0 个点，覆盖比例 --。不能预测：<code>{}</code></p>
+<p>训练 RMSE -- N；训练误差不计入独立验证结论。</p></section>
+<section><h2>数据充分性</h2><div class="grid"><div class="card"><div>状态</div><div class="value">insufficient</div></div>
+<div class="card"><div>双驱动聚合稳态点</div><div class="value">80</div></div>
+<div class="card"><div>每电压组最少唯一非零指令组合</div><div class="value">6</div></div>
+<div class="card"><div>独立轮次</div><div class="value">4</div></div></div>
+<p><strong>双驱动聚合稳态点 80，每个电压组最少 6 个唯一非零指令组合，实际电压覆盖组 3；整轮留出可用/拒绝 0/4，中间电压层留出可用 0；仍有 3 项缺口。</strong></p>
+<p>已采模式及聚合稳态点：<code>{&#x27;dual&#x27;: 80}</code></p>
+<p>指令网格统计：<code>{&#x27;status&#x27;: &#x27;available&#x27;, &#x27;meaning&#x27;: &#x27;Exact recorded command grid counts; not unique eRPM operating points.&#x27;, &#x27;groups&#x27;: [{&#x27;mode&#x27;: &#x27;dual&#x27;, &#x27;voltage_group&#x27;: &#x27;layer:10.8&#x27;, &#x27;steady_points&#x27;: 47, &#x27;missing_command_points&#x27;: 0, &#x27;unique_command_combinations&#x27;: 26, &#x27;unique_nonzero_command_combinations&#x27;: 26, &#x27;command_combinations&#x27;: [[2.0238095238095237, 2.0238095238095237], [4.0476190476190474, 4.0476190476190474], [5.9523809523809526, 5.9523809523809526], [7.976190476190476, 7.976190476190476], [7.976190476190477, 7.976190476190477], [10.0, 10.0], [12.023809523809524, 12.023809523809524], [14.047619047619047, 14.047619047619047], [15.952380952380954, 15.952380952380954], [17.976190476190474, 17.976190476190474], [20.0, 20.0], [22.023809523809526, 22.023809523809526], [24.047619047619047, 24.047619047619047], [25.952380952380953, 25.952380952380953], [27.976190476190474, 27.976190476190474], [30.0, 30.0], [32.023809523809526, 32.023809523809526], [34.04761904761905, 34.04761904761905], [35.95238095238095, 35.95238095238095], [37.976190476190474, 37.976190476190474], [40.0, 40.0], [42.023809523809526, 42.023809523809526], [44.04761904761905, 44.04761904761905], [45.95238095238095, 45.95238095238095], [47.976190476190474, 47.976190476190474], [50.0, 50.0]]}, {&#x27;mode&#x27;: &#x27;dual&#x27;, &#x27;voltage_group&#x27;: &#x27;layer:11.5&#x27;, &#x27;steady_points&#x27;: 11, &#x27;missing_command_points&#x27;: 0, &#x27;unique_command_combinations&#x27;: 6, &#x27;unique_nonzero_command_combinations&#x27;: 6, &#x27;command_combinations&#x27;: [[5.0, 5.0], [10.0, 10.0], [15.0, 15.0], [20.0, 20.0], [25.0, 25.0], [30.0, 30.0]]}, {&#x27;mode&#x27;: &#x27;dual&#x27;, &#x27;voltage_group&#x27;: &#x27;layer:12.3&#x27;, &#x27;steady_points&#x27;: 22, &#x27;missing_command_points&#x27;: 0, &#x27;unique_command_combinations&#x27;: 15, &#x27;unique_nonzero_command_combinations&#x27;: 15, &#x27;command_combinations&#x27;: [[5.0, 5.0], [5.0, 10.0], [5.0, 15.0], [5.0, 20.0], [10.0, 5.0], [10.0, 10.0], [10.0, 15.0], [10.0, 20.0], [15.0, 10.0], [15.0, 15.0], [15.0, 20.0], [20.0, 5.0], [20.0, 10.0], [20.0, 15.0], [20.0, 20.0]]}], &#x27;missing_command_points&#x27;: 0}</code>。这是实际记录的指令组合数，不代表唯一 eRPM 工况；实际 eRPM/V 覆盖请看覆盖图。</p>
+<p>起步建议：每个实际电量组约 25 个唯一非零指令组合，并另做独立验证轮。这是采集规划参考，不是硬数量门；零点/不转点另计，raw 行数、聚合稳态点和唯一指令组合互不等同。</p>
+<ul><li>fewer_than_25_unique_nonzero_command_combinations_per_voltage_group_reference</li><li>voltage_layer_fit_unavailable</li><li>no_independent_holdout_validation</li></ul></section>
+<section><h2>电压层留出限制</h2><p>整层留出只允许在剩余电压层之间插值，不允许外推。因此最低和最高电压边界层通常不能通过 leave-one-layer-out 预测；边界层必须用同一电压层的独立重复轮次验证。只有两个电压层时不会执行整层留出；至少三个电压层才可能验证中间层。</p></section>
+<section><h2>eRPM 与实际带载电压覆盖</h2><img src='erpm_voltage_coverage.png' alt='eRPM 与实际带载电压覆盖'></section>
+<section><h2>按实际带载电压分组的独立误差</h2><table><thead><tr><th>V</th><th>点数</th><th>RMSE N</th><th>MAE N</th><th>P95 N</th></tr></thead><tbody><tr><td colspan='5'>无独立留出电压分组误差。</td></tr></tbody></table></section>
+<section><h2>独立留出实测与预测明细</h2><table><thead><tr><th>分组</th><th>组值</th><th>run</th><th>segment</th><th>V</th><th>实测 N</th><th>预测 N</th><th>残差 N</th></tr></thead><tbody><tr><td colspan='8'>没有可用的独立留出预测；训练拟合不能代替验证。</td></tr></tbody></table></section>
+<section><h2>电池放电与采集建议</h2><ul><li>每个点使用实际带载电压；标签不能替代实测 V。</li><li>当前实现要求每个 run/标签内电压跨度受限，且相邻层实际范围分离；它不等于可以直接拟合任意连续放电曲线。</li><li>建议交错或正反扫描、缩短单组时间，并跨电量重复相同有效 eRPM 组合，以降低电压与转速共线。</li></ul></section>
+<details><summary>元数据</summary><pre>{
+  &quot;tool&quot;: &quot;thrust_bench&quot;,
+  &quot;plan_kind&quot;: &quot;双桨共增&quot;,
+  &quot;two_propellers_installed&quot;: true,
+  &quot;motor_model&quot;: &quot;AEO CRM2413-KV1300&quot;,
+  &quot;prop_installation&quot;: &quot;两片桨均安装&quot;,
+  &quot;prop_spacing&quot;: &quot;&quot;,
+  &quot;speed_domain&quot;: &quot;electrical_erpm&quot;,
+  &quot;speed_source&quot;: &quot;dshot_erpm&quot;,
+  &quot;current_source&quot;: &quot;dshot&quot;,
+  &quot;esc_current_calibrated&quot;: false,
+  &quot;current_resolution_a&quot;: 1.0,
+  &quot;current_resolution_source&quot;: &quot;TBENCH v1 whole-amp ESC current fields&quot;,
+  &quot;snapshot_hz_requested&quot;: 15.0,
+  &quot;fc_link_rate&quot;: {
+    &quot;snapshot_hz&quot;: 15.0,
+    &quot;estimated_wire_bytes_per_second&quot;: 3405,
+    &quot;serial_budget_bytes_per_second&quot;: 3456,
+    &quot;identity_status&quot;: &quot;allowed&quot;,
+    &quot;identity_reason&quot;: &quot;STM32 application USB CDC VID:PID=0483:5740&quot;,
+    &quot;confirmed_stm32_usb_cdc&quot;: true,
+    &quot;device&quot;: &quot;COM22&quot;,
+    &quot;vid&quot;: 1155,
+    &quot;pid&quot;: 22336,
+    &quot;rate_policy&quot;: &quot;serial_budget&quot;
+  },
+  &quot;channel_mapping_source&quot;: &quot;firmware_snapshot&quot;,
+  &quot;non_driven_propeller&quot;: &quot;unknown_or_windmilling&quot;,
+  &quot;scale_calibration_file&quot;: &quot;原窗口内存标定快照&quot;,
+  &quot;scale_calibration&quot;: {
+    &quot;kind&quot;: &quot;legacy_single_point_ratio&quot;,
+    &quot;points&quot;: [
+      {
+        &quot;raw&quot;: 239.0,
+        &quot;grams&quot;: 240.0
+      }
+    ],
+    &quot;single_point_assumes_zero_origin&quot;: true
+  },
+  &quot;notes&quot;: &quot;电转速不除极对数；板总电流仅诊断，不用于电流/功耗拟合；双桨保持安装。&quot;,
+  &quot;scale_settings_source&quot;: &quot;pressure_rs485_gui&quot;,
+  &quot;scale_port&quot;: &quot;COM29&quot;,
+  &quot;scale_baud&quot;: 9600,
+  &quot;scale_address&quot;: 1,
+  &quot;scale_channel&quot;: 1,
+  &quot;scale_register&quot;: 0,
+  &quot;scale_timeout_s&quot;: 0.25,
+  &quot;schema_version&quot;: 2,
+  &quot;created_at&quot;: &quot;2026-09-22T03:30:56.420835-07:00&quot;,
+  &quot;upper_channel&quot;: 2,
+  &quot;lower_channel&quot;: 1,
+  &quot;runs&quot;: [
+    {
+      &quot;run_id&quot;: &quot;14309671afe4&quot;,
+      &quot;plan_name&quot;: &quot;dual-common-高&quot;,
+      &quot;mode&quot;: &quot;dual&quot;,
+      &quot;voltage_layer_label&quot;: &quot;高&quot;,
+      &quot;voltage_layer_target_v&quot;: 12.3,
+      &quot;voltage_target_is_measured&quot;: false,
+      &quot;loaded_voltage_min_v&quot;: 12.282,
+      &quot;loaded_voltage_max_v&quot;: 12.479,
+      &quot;loaded_voltage_samples&quot;: 99,
+      &quot;completed&quot;: true,
+      &quot;cancelled&quot;: false
+    },
+    {
+      &quot;run_id&quot;: &quot;072b10edce6c&quot;,
+      &quot;plan_name&quot;: &quot;dual-common-中&quot;,
+      &quot;mode&quot;: &quot;dual&quot;,
+      &quot;voltage_layer_label&quot;: &quot;中&quot;,
+      &quot;voltage_layer_target_v&quot;: 11.5,
+      &quot;voltage_target_is_measured&quot;: false,
+      &quot;loaded_voltage_min_v&quot;: 12.138,
+      &quot;loaded_voltage_max_v&quot;: 12.476,
+      &quot;loaded_voltage_samples&quot;: 141,
+      &quot;completed&quot;: true,
+      &quot;cancelled&quot;: false
+    },
+    {
+      &quot;run_id&quot;: &quot;b79239e1dcd7&quot;,
+      &quot;plan_name&quot;: &quot;dual-common-低&quot;,
+      &quot;mode&quot;: &quot;dual&quot;,
+      &quot;voltage_layer_label&quot;: &quot;低&quot;,
+      &quot;voltage_layer_target_v&quot;: 10.8,
+      &quot;voltage_target_is_measured&quot;: false,
+      &quot;loaded_voltage_min_v&quot;: 11.65,
+      &quot;loaded_voltage_max_v&quot;: 12.471,
+      &quot;loaded_voltage_samples&quot;: 559,
+      &quot;completed&quot;: true,
+      &quot;cancelled&quot;: false
+    },
+    {
+      &quot;run_id&quot;: &quot;3728e71beb6a&quot;,
+      &quot;plan_name&quot;: &quot;dual-grid-高&quot;,
+      &quot;mode&quot;: &quot;dual&quot;,
+      &quot;voltage_layer_label&quot;: &quot;高&quot;,
+      &quot;voltage_layer_target_v&quot;: 12.3,
+      &quot;voltage_target_is_measured&quot;: false,
+      &quot;loaded_voltage_min_v&quot;: 12.173,
+      &quot;loaded_voltage_max_v&quot;: 12.36,
+      &quot;loaded_voltage_samples&quot;: 274,
+      &quot;completed&quot;: true,
+      &quot;cancelled&quot;: false
+    }
+  ]
+}</pre></details>
+</main></body></html>

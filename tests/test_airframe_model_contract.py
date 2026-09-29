@@ -44,10 +44,9 @@ def test_measured_airframe_geometry_has_no_compile_time_copy_left() -> None:
         "board_mass_g", "battery_mass_g", "base_mass_g", "servo_motor_mass_g",
         "board_cg_z_m", "battery_cg_z_m", "base_cg_z_m", "servo_motor_cg_z_m",
         "imu_z_m", "prop_plane_d_m", "roll_axis_to_prop_plane_m",
-        "pitch_axis_to_prop_plane_m", "pitch_thrust_lever_arm_m",
-        "roll_thrust_lever_arm_m", "servo1_axis_z_m", "servo2_axis_z_m",
+        "pitch_axis_to_prop_plane_m", "servo1_axis_z_m", "servo2_axis_z_m",
         "thrust_point_z_m", "tether_attach_z_m", "tether_rope_m",
-        "ixx_kgm2", "iyy_kgm2", "izz_kgm2", "lower_rotor_spin_sense",
+        "ixx_kgm2", "iyy_kgm2", "izz_kgm2",
         "gravity_m_s2", "max_total_thrust_g", "servo_deg_per_us",
     ):
         assert f"float {field};" in fields, field
@@ -60,6 +59,15 @@ def test_measured_airframe_geometry_has_no_compile_time_copy_left() -> None:
     ):
         assert f"float {derived};" in fields, derived
         assert f"AIRFRAME_DERIVED({derived})" in table, derived
+
+    # 2026-09-27：两个"推力力臂"退役——力臂改由 servoN_axis_z_m − cg_z_m 算出。
+    # 字段留在结构体里是 Flash ABI（改名 retired_ 让漏改的旧代码编译失败），
+    # 但不许再出现在参数表里，否则又多一个会和几何打架的来源。
+    for retired in ("pitch_thrust_lever_arm_m", "roll_thrust_lever_arm_m"):
+        assert f"float retired_{retired};" in fields, retired
+        assert f"float {retired};" not in fields.replace(f"retired_{retired}", ""), retired
+        assert f"AIRFRAME_ENTRY({retired})" not in table, retired
+        assert f"AIRFRAME_ENTRY(retired_{retired})" not in table, retired
 
     # 出厂没有机体数据 = 不许解锁。这是整套设计的落脚点，失效朝安全方向倒。
     assert "static DRV_Airframe_Params airframe_params;" in table
@@ -118,14 +126,16 @@ def test_coax_defaults_read_the_runtime_airframe_model() -> None:
     assert "drv_motor_model.h" not in source
     assert "motor_hammerstein" not in source
     assert "params->mass_kg = airframe->mass_kg;" in source
+    # 2026-09-27：倾转力臂是带符号的几何量 重心 z − 舵机转轴 z，不再是输入字段。
     assert (
-        "params->pitch_tilt_lever_arm_m = airframe->pitch_thrust_lever_arm_m;"
+        "params->pitch_tilt_lever_arm_m = -DRV_Airframe_PitchTiltAxisToCgZ(airframe);"
         in source
     )
     assert (
-        "params->roll_tilt_lever_arm_m = airframe->roll_thrust_lever_arm_m;"
+        "params->roll_tilt_lever_arm_m = -DRV_Airframe_RollTiltAxisToCgZ(airframe);"
         in source
     )
+    assert "thrust_lever_arm_m" not in source
     assert "params->yaw_inertia = airframe->izz_kgm2;" in source
     assert "params->mass_kg = 2.2f;" not in source
 
@@ -145,7 +155,14 @@ def test_flash_config_preserves_current_record_and_migrates_v15_coax_tunables() 
 
     # V17 = 加入遥控映射；V16/V15 都必须还能读回来，否则升级会连舵机/PID 一起丢。
     # v20 在记录尾部追加了机体模型块（机体数据的唯一来源改为 Flash）。
-    assert "#define APP_CONTROL_CFG_VERSION     20U" in source
+    # v21 起记录里多了状态灯颜色绑定块（APP_LedConfig）；v20 的读取器
+    # 仍在（config_read_v20），所以旧记录照样读得回来。
+    # 2026-09-20（R-MAG-1）：v23 在记录尾部追加磁力计校准块，当前版本号随之
+    # 推进到 23；v22 → v23 的覆盖见下一条测试。
+    # 2026-09-28：v24 追加指令整形/出口陷波块；同日晚 v25 在该块尾部追加第二级出口陷波。
+    assert "#define APP_CONTROL_CFG_VERSION     25U" in source
+    assert "#define APP_CONTROL_CFG_VERSION_V24 24U" in source
+    assert "#define APP_CONTROL_CFG_VERSION_V23 23U" in source
     assert "#define APP_CONTROL_CFG_VERSION_V19 19U" in source
     assert "#define APP_CONTROL_CFG_VERSION_V18 18U" in source
     assert "#define APP_CONTROL_CFG_VERSION_V16 16U" in source
@@ -180,6 +197,26 @@ def test_flash_config_preserves_current_record_and_migrates_v15_coax_tunables() 
     ):
         assert fixed_model_field not in tunable_struct
         assert fixed_model_field not in apply_tunables
+
+
+def test_the_v22_reader_keeps_the_airframe_block_and_defaults_the_new_mag_block() -> None:
+    """v22 → v23 迁移覆盖：机体模型要保留，新的磁力计块要落回未校准。
+
+    2026-09-20（R-MAG-1）：v23 在记录尾部追加磁力计校准块（当前版本号见上一条
+    测试）。config_read_v22 读一条 v22 记录时，机体模型必须按记录里的真实
+    字段应用（`&record.airframe`）——没有机体模型飞控禁止解锁，这条迁移路径
+    要是漏了它，后果是一架好端端配过的飞机升级后突然飞不起来。磁力计块在
+    v22 记录里不存在，必须显式落回未校准（NULL）。
+    """
+    source = (
+        read("App/Inc/app_control_config_store.h")
+        + read("App/Src/app_control_config_store.c")
+    )
+    reader = source[source.index("APP_CONTROL_DEFINE_LEGACY_READER(config_read_v22"):]
+    reader = reader[:reader.index("APP_CONTROL_DEFINE_LEGACY_READER(config_read_v21")]
+
+    assert "DRV_Airframe_SetParams(&record.airframe);" in reader
+    assert "app_cmd_magcal_apply_config(NULL);" in reader
 
 
 def test_v17_config_compatibility_is_extracted_from_the_oversize_entrypoint() -> None:
@@ -218,7 +255,7 @@ def test_airframe_query_is_text_control_payload() -> None:
     assert "#define APP_PROTO_REQ_IDENT          0x101DU" in proto
 
 
-def test_gui_airframe_parser_and_ident_meta_payload(tmp_path: Path) -> None:
+def test_gui_airframe_parser_reads_the_firmware_line(tmp_path: Path) -> None:
     panel = load_panel_module()
     line = (
         "AIRFRAME mass_kg=1.367000 cg_z_m=-0.094600 imu_z_m=0.000000 "
@@ -234,34 +271,41 @@ def test_gui_airframe_parser_and_ident_meta_payload(tmp_path: Path) -> None:
     assert record["thrust_scope"] == "dual_motor_total"
     assert record["hover_thrust_pct"] == 85.716236
 
-    class Dummy:
-        ident_current_command = "IDENT STEP roll pulse_us=20 duration_ms=3000"
-        airframe_info = record
-        ident_current_path = tmp_path / "ident_20260526_120000.csv"
 
-        class Var:
-            def __init__(self, value):
-                self.value = value
+def test_the_identification_profile_carries_the_airframe_snapshot(tmp_path: Path) -> None:
+    """辨识产出必须带着当时的机体条件。
 
-            def get(self):
-                return self.value
+    旧的做法是每个 CSV 旁边写一个 `*_meta.json`（`_ident_meta_payload`），
+    2026-09-13 随整页迁出（R-SYSID-1）。承接它的是**辨识档案**：同一件事，
+    但它同时是下一轮辨识的输入，所以不会像 sidecar 那样写完就没人再看。
 
-        ident_axis_var = Var("roll")
-        ident_mode_var = Var("STEP")
-        ident_pulse_var = Var(20)
-        ident_duration_var = Var(3000)
-        ident_hold_var = Var(800)
-        ident_repeat_var = Var(2)
-        ident_bit_var = Var(250)
-        ident_seed_var = Var(1)
-        ident_alpha_center_var = Var(1500)
-        ident_beta_center_var = Var(1500)
+    为什么非要存这份快照：辨识结论只在那组几何下成立。半年后回答"这组 PID 是在
+    哪个机体上辨的"，要的就是它。
+    """
+    import sys
 
-    dummy = Dummy()
-    dummy._ident_meta_payload = panel.DronePanel._ident_meta_payload.__get__(dummy, Dummy)
-    panel.DronePanel._ident_write_meta(dummy)
-    meta = json.loads((tmp_path / "ident_20260526_120000_meta.json").read_text(encoding="utf-8"))
+    sys.path.insert(0, str(ROOT / "tools"))
+    try:
+        from sysid.profile import FitResult, Gains, IdentProfile
+        from sysid.rig import Rig
+    finally:
+        sys.path.pop(0)
 
-    assert meta["command"] == "IDENT STEP roll pulse_us=20 duration_ms=3000"
-    assert meta["center"] == {"alpha_us": 1500, "beta_us": 1500}
-    assert meta["airframe"]["max_total_force_n"] == 15.644959
+    profile = IdentProfile(
+        name="光杆架-2026-09-13",
+        rig=Rig(imu_above_cg_m=0.0946),
+        airframe={"mass_kg": 1.367, "cg_z_m": -0.0946,
+                  "max_total_force_n": 15.644959},
+        assumed_inertia_kg_m2=0.019,
+        fit=FitResult(inertia_kg_m2=0.0201, delay_s=0.031),
+        gains=Gains(rate_kp=0.5),
+        firmware_id="deadbee")
+    path = profile.save(tmp_path)
+    again = IdentProfile.load(path)
+
+    assert again.airframe["max_total_force_n"] == 15.644959
+    assert again.rig.imu_above_cg_m == 0.0946
+    assert again.firmware_id == "deadbee"
+    assert again.created_utc, "没有时间戳的档案没法回答「什么时候辨的」"
+    # 候选增益存在档案里，但档案本身不会让任何东西落 Flash。
+    assert "SAVE" not in path.read_text(encoding="utf-8")

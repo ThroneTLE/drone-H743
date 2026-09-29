@@ -9,7 +9,9 @@ from tools import drone_tcp_panel as panel
 
 
 def _page(app):
-    tab = next(tab for tab in app.notebook.tabs() if app.notebook.tab(tab, "text") == "维护 · 舵机调试")
+    # 2026-09-12：三个「维护 · 」页签收进了「维护」分组，这里要往下走一层。
+    tab = next(tab for tab in app.maintenance_notebook.tabs()
+               if app.maintenance_notebook.tab(tab, "text") == "舵机调试")
     return app.nametowidget(tab)
 
 

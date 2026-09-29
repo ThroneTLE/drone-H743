@@ -236,6 +236,10 @@ def test_estimator_nwu_signs(tmp_path: Path) -> None:
             f"-I{ROOT / 'ThirdParty' / 'Fusion'}",
             str(ROOT / "ThirdParty" / "Fusion" / "FusionAhrs.c"),
             str(ROOT / "Driver" / "Src" / "drv_attitude_fusion.c"),
+            # 2026-09-20（R-MAG-1）：drv_attitude_fusion.c 现在调用磁场模长门控
+            # DRV_MAG_FieldMagnitude_InRange，链接清单必须带上它的实现，否则
+            # host gcc 在链接期报 undefined reference。
+            str(ROOT / "Driver" / "Src" / "drv_mag_calibration.c"),
             str(harness),
             "-lm",
             "-o",

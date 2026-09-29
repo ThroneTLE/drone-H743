@@ -12,6 +12,19 @@ typedef struct {
     uint32_t samples;
     uint32_t errors;
     uint8_t adc_status; /* 0=OK, 1=not ready, 2=timeout, 3=error */
+    /*
+     * 块平均结果（drv_current_filter.h）。`reading.current_a` 是单点瞬时值，对
+     * 带 PWM 纹波的电调电流输出**没有定义**；要显示、要和外部电流表对照，用这里。
+     * mean_valid 为 0 表示还没凑满第一个块，此时三个值都没有意义。
+     * min_a/max_a 是该块内的纹波范围，故意暴露出来——不给它，看的人无法区分
+     * "信号干净"和"纹波很大被抹平了"。
+     */
+    float mean_a;
+    float min_a;
+    float max_a;
+    uint8_t mean_valid;
+    uint32_t blocks;    /* 已完成的块数 */
+    uint32_t rejected;  /* 被丢弃的非有限样本数 */
 } APP_CurrentSnapshot;
 
 void APP_Current_Init(void); /* low-rate messageTask startup; sole ADC owner */

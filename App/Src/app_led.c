@@ -1,47 +1,31 @@
 #include "app_led.h"
 #include "app_battery.h"
 
+#include "app_led_config.h"
 #include "app_optical_flow.h"
 #include "bsp_rgb_led.h"
 #include "svc_led.h"
 #include "svc_timestamp.h"
 
+#include <string.h>
+
 /*
- * 状态灯**策略**：什么状态该亮成什么样。
+ * 状态灯**策略**：此刻哪一种状态成立，该往哪个源发布哪条绑定。
  *
- * 这一层不知道灯接在哪根脚上（那在 bsp_rgb_led.c），也不自己算闪烁相位
- * （那在 drv_rgb_led.c），更不排"谁压谁"的 if-else 链（那在 svc_led.c）。
- * 它只做一件事：把飞控状态翻译成"往哪个源发布哪个图案"。
+ * 这一层不知道灯接在哪根脚上（那在 bsp_rgb_led.c），不自己算闪烁相位
+ * （那在 drv_rgb_led.c），不排"谁压谁"的 if-else 链（那在 svc_led.c），
+ * 从 2026-09-12 起也**不再决定颜色**——颜色与节奏都从 `APP_LedConfig` 读，
+ * 用户可以在上位机改并存进 Flash（`app_cmd_ledmap.c`）。
  *
- * ---- 颜色语言 ----
+ * 本文件唯一还硬编码的东西是**解锁被拒的闪烁次数**：它就是原因码本身，
+ * 在这里注入，永远不经过配置。配置里连这个字段都没有——这样"现场数到 N 下"
+ * 和 `ARM? block=N` 结构上不可能对不上，而不是"我们记得别改它"。
  *
- *   红 常亮      已解锁。桨随时可能转——这是整块板上最该一眼看见的事实，
- *                所以它压过除"人工点名"之外的一切。
- *   绿 呼吸      就绪，可以解锁。**这个状态原来在本板上完全没有指示**：
- *                老代码里它是"蓝灯灭 + LED_4 亮"，而 LED_4 映射到 PD10——
- *                MicoAir743v2 上那是根空闲脚，没有灯。结果条件一旦全部满足，
- *                灯就直接黑掉，和"固件死了""板子没电"长得一模一样。
- *   琥珀 数闪 N  解锁被拒，N = APP_LED_ArmBlockReason 的数值（1..7）。
- *                数值与闪烁次数的对应关系照搬原设计，现场记忆不作废。
- *   青 闪        非阻塞告警（目前只有光流），节奏区分 starting/retrying/failed。
- *   蓝 快闪      控制环还没发布过解锁状态，也就是刚上电那几百毫秒。
- *   任意        上位机点名（`LED RGB/BLINK/BREATHE`），颜色由命令给，压过一切。
- *
- * 琥珀而不是黄：满绿加满红在这颗灯珠上偏绿，容易和"就绪"的绿混。
+ * 颜色语言（默认值）见 App/Src/app_led_config.c 的 led_default_binding[]，
+ * 以及 doc/micoair743v2/README.md 的「状态灯」一节。
  */
 
 #define APP_LED_POLICY_PERIOD_MS 20U
-
-/* 数闪的节奏。沿用原实现的 160/160 + 760，现场数灯的手感不变。 */
-#define APP_LED_PULSE_ON_MS  160U
-#define APP_LED_PULSE_OFF_MS 160U
-#define APP_LED_PULSE_GAP_MS 760U
-
-static const DRV_RgbColor app_led_red    = {255U,   0U,   0U};
-static const DRV_RgbColor app_led_green  = {  0U, 255U,   0U};
-static const DRV_RgbColor app_led_blue   = {  0U,   0U, 255U};
-static const DRV_RgbColor app_led_amber  = {255U, 110U,   0U};
-static const DRV_RgbColor app_led_cyan   = {  0U, 200U, 255U};
 
 static volatile uint8_t app_led_armed;
 static volatile uint8_t app_led_arm_published;
@@ -52,86 +36,70 @@ static volatile APP_LED_ServoCalMode app_led_servo_cal_mode =
 static uint32_t app_led_policy_ms;
 static volatile uint32_t app_led_ticks;
 
-static DRV_RgbPattern app_led_solid(DRV_RgbColor color)
+/* 取一条绑定的图案，并注入"闪几下"——那是运行期常量，配置里没有这个字段。 */
+static void app_led_pattern(uint8_t binding_id, DRV_RgbPattern *pattern)
 {
-    DRV_RgbPattern pattern = {0};
-
-    pattern.color = color;
-    pattern.effect = DRV_RGB_EFFECT_SOLID;
-    return pattern;
+    APP_LedConfig_GetPattern(binding_id, pattern);
+    /*
+     * 次数从 APP_LedConfig_PulseCount 取，不在这里重写一遍偏移算式。
+     * 写第二遍的代价刚刚付过：算式只覆盖了 BLOCK 段，`flow_failed` 落在外面
+     * 拿到 count=0，于是光流失败时灯全黑（PULSES 遇 count=0 直接返回黑），
+     * 而且因为 WARNING 压着 STATUS/HEARTBEAT，连心跳都被盖住。
+     */
+    pattern->count = APP_LedConfig_PulseCount(binding_id);
 }
 
-static DRV_RgbPattern app_led_blink(DRV_RgbColor color, uint16_t on_ms, uint16_t off_ms)
+static void app_led_publish(SVC_LedSource source, uint8_t binding_id)
 {
-    DRV_RgbPattern pattern = {0};
+    DRV_RgbPattern pattern;
 
-    pattern.color = color;
-    pattern.effect = DRV_RGB_EFFECT_BLINK;
-    pattern.on_ms = on_ms;
-    pattern.off_ms = off_ms;
-    return pattern;
-}
-
-static DRV_RgbPattern app_led_pulses(DRV_RgbColor color, uint8_t count)
-{
-    DRV_RgbPattern pattern = {0};
-
-    pattern.color = color;
-    pattern.effect = DRV_RGB_EFFECT_PULSES;
-    pattern.on_ms = APP_LED_PULSE_ON_MS;
-    pattern.off_ms = APP_LED_PULSE_OFF_MS;
-    pattern.gap_ms = APP_LED_PULSE_GAP_MS;
-    pattern.count = count;
-    return pattern;
-}
-
-static DRV_RgbPattern app_led_breathe(DRV_RgbColor color, uint16_t period_ms, uint8_t dim)
-{
-    DRV_RgbPattern pattern = {0};
-
-    pattern.color = color;
-    pattern.effect = DRV_RGB_EFFECT_BREATHE;
-    pattern.period_ms = period_ms;
-    pattern.dim = dim;
-    return pattern;
+    app_led_pattern(binding_id, &pattern);
+    SVC_Led_Publish(source, &pattern);
 }
 
 static void app_led_publish_servo_cal(APP_LED_ServoCalMode mode)
 {
-    DRV_RgbPattern pattern;
+    uint8_t binding;
 
     switch (mode) {
-    case APP_LED_SERVO_CAL_RELEASED:
-        /* 扭矩已释放，可以用手掰舵机——急闪提示"现在别通电测试"。 */
-        pattern = app_led_blink(app_led_cyan, 120U, 120U);
-        break;
-    case APP_LED_SERVO_CAL_SAVE_ACK:
-        pattern = app_led_blink(app_led_green, 320U, 320U);
-        break;
-    case APP_LED_SERVO_CAL_ERROR:
-        pattern = app_led_blink(app_led_red, 80U, 80U);
-        break;
+    /* 扭矩已释放，可以用手掰舵机——这一档要提示"现在别通电测试"。 */
+    case APP_LED_SERVO_CAL_RELEASED: binding = APP_LED_BIND_CAL_RELEASED; break;
+    case APP_LED_SERVO_CAL_SAVE_ACK: binding = APP_LED_BIND_CAL_SAVE_ACK; break;
+    case APP_LED_SERVO_CAL_ERROR:    binding = APP_LED_BIND_CAL_ERROR;    break;
     case APP_LED_SERVO_CAL_NONE:
     default:
         SVC_Led_Publish(SVC_LED_SOURCE_CALIBRATION, NULL);
         return;
     }
-    SVC_Led_Publish(SVC_LED_SOURCE_CALIBRATION, &pattern);
+    app_led_publish(SVC_LED_SOURCE_CALIBRATION, binding);
 }
 
 static void app_led_publish_arm(void)
 {
     APP_LED_ArmBlockReason reason = app_led_arm_block_reason;
-    if (reason==APP_LED_ARM_BLOCK_BATTERY) {
-        APP_Battery_PublishLedWarning();return;
-    }
-    DRV_RgbPattern pattern;
+    uint8_t binding;
 
-    if ((app_led_armed != 0U) && (reason != APP_LED_ARM_BLOCK_BATTERY)) {
-        pattern = app_led_solid(app_led_red);
-        SVC_Led_Publish(SVC_LED_SOURCE_ARMED, &pattern);
+    if (app_led_armed != 0U) {
+        /*
+         * 已解锁时这盏灯只说一件事：电机带电。任何拒绝原因（含低压）都不准
+         * 盖掉它——3S 带载掉到 10.5 V 以下是常态，低压告警是个大半时间熄灭的
+         * 8 闪图案，拿它换掉常亮红灯，等于在桨还在转的时候告诉旁边的人"已上锁"。
+         * 飞行中的低压提示走上位机解锁横幅、电池页和 ELRS 回传——那才是飞手
+         * 在看的地方；灯只在**未解锁**时用来解释"为什么解不了锁"。
+         */
+        app_led_publish(SVC_LED_SOURCE_ARMED, APP_LED_BIND_ARMED);
         SVC_Led_Publish(SVC_LED_SOURCE_BLOCKED, NULL);
         SVC_Led_Publish(SVC_LED_SOURCE_STATUS, NULL);
+        /*
+         * 上位机点名（IDENTIFY）在 svc_led 的枚举里排在 ARMED 之前，所以
+         * `LED RGB r g b 0` 这种不带到期的点名会一直盖住解锁红灯——和低压告警
+         * 曾经犯的是同一个错。点名是地面上"哪块板是哪块"的调试用途，解锁之后
+         * 它没有任何理由比"桨随时会转"更该被看见。
+         *
+         * 放在每拍策略里撤销而不是只在命令入口拦：不管是谁、什么时候发布的
+         * 点名，解锁后最多一拍（APP_LED_POLICY_PERIOD_MS）就会被收回。
+         */
+        SVC_Led_Publish(SVC_LED_SOURCE_IDENTIFY, NULL);
         return;
     }
     SVC_Led_Publish(SVC_LED_SOURCE_ARMED, NULL);
@@ -144,44 +112,50 @@ static void app_led_publish_arm(void)
         return;
     }
 
+    if (reason==APP_LED_ARM_BLOCK_BATTERY) {
+        APP_Battery_PublishLedWarning();return;
+    }
+
     if (reason == APP_LED_ARM_BLOCK_NONE) {
-        pattern = app_led_breathe(app_led_green, 2600U, 10U);
+        app_led_publish(SVC_LED_SOURCE_STATUS, APP_LED_BIND_READY);
         SVC_Led_Publish(SVC_LED_SOURCE_BLOCKED, NULL);
-        SVC_Led_Publish(SVC_LED_SOURCE_STATUS, &pattern);
         return;
     }
 
-    pattern = app_led_pulses(app_led_amber, (uint8_t)reason);
-    SVC_Led_Publish(SVC_LED_SOURCE_BLOCKED, &pattern);
+    /*
+     * 原因码 → 绑定 ID 是一一对应的，闪烁次数由 app_led_pattern() 按 ID 反推。
+     * 认不出的原因码（将来追加了枚举却忘了加绑定）落回第一条而不是不显示：
+     * 不显示 = 用户看不到任何被拒提示，比显示错次数更糟。
+     */
+    binding = APP_LedConfig_BindingForBlockReason((uint8_t)reason);
+    if (binding >= (uint8_t)APP_LED_BIND_COUNT) {
+        binding = (uint8_t)APP_LED_BIND_BLOCK_BASE;
+    }
+    app_led_publish(SVC_LED_SOURCE_BLOCKED, binding);
     SVC_Led_Publish(SVC_LED_SOURCE_STATUS, NULL);
 }
 
 static void app_led_publish_warning(void)
 {
     APP_OPTICAL_FLOW_Status flow_status;
-    DRV_RgbPattern pattern;
+    uint8_t binding;
 
     APP_OpticalFlow_GetStatus(&flow_status);
     switch (flow_status.health) {
-    case APP_OPTICAL_FLOW_HEALTH_STARTING:
-        pattern = app_led_blink(app_led_cyan, 500U, 500U);
-        break;
-    case APP_OPTICAL_FLOW_HEALTH_RETRYING:
-        pattern = app_led_blink(app_led_cyan, 160U, 160U);
-        break;
-    case APP_OPTICAL_FLOW_HEALTH_FAILED:
-        pattern = app_led_pulses(app_led_cyan, 3U);
-        break;
+    case APP_OPTICAL_FLOW_HEALTH_STARTING: binding = APP_LED_BIND_FLOW_STARTING; break;
+    case APP_OPTICAL_FLOW_HEALTH_RETRYING: binding = APP_LED_BIND_FLOW_RETRYING; break;
+    case APP_OPTICAL_FLOW_HEALTH_FAILED:   binding = APP_LED_BIND_FLOW_FAILED;   break;
     case APP_OPTICAL_FLOW_HEALTH_OK:
     default:
         SVC_Led_Publish(SVC_LED_SOURCE_WARNING, NULL);
         return;
     }
-    SVC_Led_Publish(SVC_LED_SOURCE_WARNING, &pattern);
+    app_led_publish(SVC_LED_SOURCE_WARNING, binding);
 }
 
 static void app_led_publish_state(void)
 {
+    app_led_publish(SVC_LED_SOURCE_HEARTBEAT, APP_LED_BIND_HEARTBEAT);
     app_led_publish_servo_cal(app_led_servo_cal_mode);
     app_led_publish_arm();
     app_led_publish_warning();
@@ -189,13 +163,15 @@ static void app_led_publish_state(void)
 
 void APP_LED_Task_Init(void)
 {
-    DRV_RgbPattern heartbeat;
-
     BSP_RgbLed_Init();
     SVC_Led_Init(BSP_RgbLed_WriteBits);
-    /* 心跳常驻最低优先级：只要没人有更要紧的话说，它就证明固件还在跑。 */
-    heartbeat = app_led_blink(app_led_blue, 120U, 380U);
-    SVC_Led_Publish(SVC_LED_SOURCE_HEARTBEAT, &heartbeat);
+    /*
+     * 心跳在每拍策略里重发，不是这里发一次就完事。
+     *
+     * svc_led 存的是图案的**副本**（按值），所以改了配置之后不重发就不会生效。
+     * 心跳恰恰是最不容易被发现没生效的一条——它平时被别的源盖着，等到真需要
+     * 它出场（控制环还没发话）时，用户看到的是上一份颜色，而他早就改过了。
+     */
     app_led_policy_ms = 0U;
 }
 
@@ -235,7 +211,9 @@ void APP_LED_Identify(const DRV_RgbColor *color, uint32_t hold_ms)
         SVC_Led_Publish(SVC_LED_SOURCE_IDENTIFY, NULL);
         return;
     }
-    pattern = app_led_solid(*color);
+    memset(&pattern, 0, sizeof(pattern));
+    pattern.color = *color;
+    pattern.effect = DRV_RGB_EFFECT_SOLID;
     SVC_Led_PublishFor(SVC_LED_SOURCE_IDENTIFY, &pattern, hold_ms, SVC_Timestamp_Ms());
 }
 

@@ -92,7 +92,7 @@ int main(int argc,char **argv){
     command=[shutil.which('gcc'),'-std=c11','-O2','-Wall','-Wextra','-Werror']
     for path in (d,ROOT/'App/Inc',ROOT/'Driver/Inc',ROOT/'BSP/Inc',ROOT/'Services/Inc'):command+=['-I',str(path)]
     command+=[str(d/'test.c')]+[str(ROOT/path) for path in ('App/Src/app_current.c','BSP/Src/bsp_current.c',
-        'Driver/Src/drv_current.c','Driver/Src/drv_battery.c','App/Src/app_battery.c','App/Src/app_battery_proto.c',
+        'Driver/Src/drv_current.c','Driver/Src/drv_current_filter.c','Driver/Src/drv_battery.c','App/Src/app_battery.c','App/Src/app_battery_proto.c',
         'App/Src/app_battery_telemetry.c','App/Src/app_proto.c')]
     command+=['-lm','-o',str(d/'test.exe')]
     result=subprocess.run(command,capture_output=True,text=True);assert result.returncode==0,result.stdout+result.stderr
@@ -107,6 +107,10 @@ def test_actual_c_battery_frame(firmware_battery):
     assert snapshot.raw==11283 and abs(snapshot.voltage_mv-12000)<=2
     assert snapshot.arm_state==1 and snapshot.current_ma==47393
     assert firmware_battery[:8]==b'$X>\0\x32\x22\x3c\0'
+    # 同上：把归档的 69B 黄金帧接进断言，让 60B payload 的字段顺序和 CRC 有一份
+    # 已提交的线格式基准，而不是只靠本文件里的几条字段断言。
+    golden=ROOT/'data/analysis/bluetooth-battery/2026-09-13/battery-diagnostic.golden.bin'
+    assert firmware_battery==golden.read_bytes(),'电池诊断线格式与归档黄金帧不符'
 
 
 def test_battery_decoder_rejects_truncation_and_inconsistent_flags(firmware_battery):
@@ -115,3 +119,53 @@ def test_battery_decoder_rejects_truncation_and_inconsistent_flags(firmware_batt
         with pytest.raises(ValueError):decode_battery(payload[:count])
     for flags in (0x80,1|2|4,4,32|64):
         with pytest.raises(ValueError):decode_battery(payload[:1]+bytes([flags])+payload[2:])
+
+
+GATE_HARNESS=r'''
+#include "app_battery.h"
+#include "app_current.h"
+#include "bsp_current.h"
+#include <assert.h>
+#include <stdio.h>
+static uint32_t now=100;
+uint32_t SVC_Timestamp_Ms(void){return now;}
+uint32_t BSP_Critical_Enter(void){return 0;}
+void BSP_Critical_Exit(uint32_t x){(void)x;}
+uint8_t APP_Stabilizer_IsArmed(void){return 0;}
+void BSP_Current_GetVoltageSample(BSP_VoltageSample *o){o->raw=0;o->sequence=0;o->status=BSP_CURRENT_NOT_READY;}
+void APP_Current_GetSnapshot(APP_CurrentSnapshot *o){(void)o;}
+int main(void){
+    APP_BatterySnapshot b;
+    APP_Battery_GetSnapshot(&b);
+    assert(!b.can_arm && !b.state.valid);
+    assert(!APP_Battery_CanArm());
+    puts("pre-init arm refusal survives a healthy-looking static initialiser");
+    return 0;
+}
+'''
+
+
+def test_pre_init_arm_refusal_is_a_gate_not_an_accident(tmp_path):
+    """未初始化时拒绝解锁必须由 initialized 判据兜住，不能只靠静态初值恰好是"坏"的。
+
+    稳定环优先级 24、messageTask 16，而 APP_Battery_Init() 排在 messageTask 里
+    APP_Current_Init() 的阻塞式 ADC 校准之后——所以第一次 APP_Battery_CanArm()
+    必然早于初始化。这里把 app_battery.c 的静态初始化式改成"看起来健康"的样子
+    （低压位清零、已有有效样本），sample_ms 仍是 0，在 now=100ms 时会通过 250ms
+    新鲜度判定。若没有 initialized 兜底，这一改就等于开机瞬间允许解锁。
+    """
+    source=(ROOT/'App/Src/app_battery.c').read_text(encoding='utf-8')
+    original='.low=1U,.adc_status=1U};'
+    assert original in source,'静态初始化式已改写，请同步本测试'
+    mutated=source.replace(original,'.low=0U,.adc_status=0U,.valid=1U,.samples=1U};',1)
+    (tmp_path/'app_battery_mutated.c').write_text(mutated,encoding='utf-8')
+    (tmp_path/'gate.c').write_text(GATE_HARNESS,encoding='utf-8')
+    (tmp_path/'app_stabilizer.h').write_text('#include <stdint.h>\nuint8_t APP_Stabilizer_IsArmed(void);\n')
+    command=[shutil.which('gcc'),'-std=c11','-Wall','-Wextra','-Werror']
+    for path in (tmp_path,ROOT/'App/Inc',ROOT/'Driver/Inc',ROOT/'BSP/Inc',ROOT/'Services/Inc'):command+=['-I',str(path)]
+    command+=[str(tmp_path/'gate.c'),str(tmp_path/'app_battery_mutated.c'),str(ROOT/'Driver/Src/drv_battery.c'),
+              '-o',str(tmp_path/'gate.exe')]
+    result=subprocess.run(command,capture_output=True,text=True)
+    assert result.returncode==0,result.stdout+result.stderr
+    result=subprocess.run([str(tmp_path/'gate.exe')],capture_output=True,text=True)
+    assert result.returncode==0,result.stdout+result.stderr

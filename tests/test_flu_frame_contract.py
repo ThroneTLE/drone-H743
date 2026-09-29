@@ -66,6 +66,51 @@ def test_runtime_migration_validation_override_is_explicit() -> None:
     assert "not flight release" in " ".join(reference.replace("**", "").split())
 
 
+def test_magnetometer_semantics_are_defined_without_a_migration_bit() -> None:
+    """Magnetometer mounting axes are now a normative part of the contract,
+    but the migration mask must stay exactly as it was.
+
+    The mask tracks migration progress of pre-existing legacy runtime seams
+    (decoupling-spec D1-4); a newly introduced, already-compliant adapter
+    (Services/Inc/svc_mag.h) has nothing to migrate and must not get a bit,
+    or DRV_FRAME_RUNTIME_MIGRATION_COMPLETE would flip back to 0 and re-arm
+    the migration lock for every other seam.
+    """
+    header = HEADER.read_text(encoding="utf-8")
+    reference = REFERENCE.read_text(encoding="utf-8")
+    skill = SKILL.read_text(encoding="utf-8")
+
+    # Normative magnetometer semantics live in the header, next to the
+    # accelerometer's specific-force definition, and are machine-readable.
+    assert "Magnetometer values crossing the canonical boundary" in header
+    assert "polar vector" in header
+    assert "milligauss" in header
+    assert macro_uint("DRV_FRAME_MAGNETOMETER_UNIT_IS_MILLIGAUSS") == 1
+    assert macro_uint("DRV_FRAME_MAGNETOMETER_IS_POLAR_VECTOR") == 1
+
+    # The migration mask itself is untouched: still exactly six seam bits,
+    # none of them naming the magnetometer.
+    bit_macros = re.findall(
+        r"^#define\s+(DRV_FRAME_MIGRATION_\w+_BIT)\s+\(1U << \d+\)\s*$",
+        header,
+        re.MULTILINE,
+    )
+    assert len(bit_macros) == 6, bit_macros
+    assert not any("MAG" in name for name in bit_macros), bit_macros
+    assert macro_uint("DRV_FRAME_RUNTIME_MIGRATION_REQUIRED_MASK") == 0x3F
+    assert macro_uint("DRV_FRAME_RUNTIME_MIGRATION_DONE_MASK") == 0x3F
+
+    # Routing text updated in the same task (flu-coordinate-contract.md line
+    # 84 requires this): the reference, and the Skill paragraph that points
+    # to it, both now mention the magnetometer explicitly.
+    assert "magnetometer mounting axes" in reference
+    assert "Services/Inc/svc_mag.h" in reference
+    assert "no `DRV_FRAME_RUNTIME_MIGRATION_*` bit" in reference or (
+        "carries no" in reference and "migration bit" in reference
+    )
+    assert "磁力计" in skill
+
+
 def test_done_mask_bits_have_seam_test_files() -> None:
     """Every set DONE_MASK bit must have executable evidence on disk.
 
@@ -137,6 +182,8 @@ int main(void)
           DRV_FRAME_RUNTIME_MIGRATION_REQUIRED_MASK, 43);
     CHECK(DRV_FRAME_RUNTIME_MIGRATION_DONE_MASK == 0x3FU, 44);
     CHECK(DRV_FRAME_RUNTIME_MIGRATION_COMPLETE == 1U, 45);
+    CHECK(DRV_FRAME_MAGNETOMETER_UNIT_IS_MILLIGAUSS == 1U, 61);
+    CHECK(DRV_FRAME_MAGNETOMETER_IS_POLAR_VECTOR == 1U, 62);
 
     cross_xy = DRV_FRAME_Cross(x_forward, y_left);
     CHECK(near(cross_xy.x, z_up.x), 7);

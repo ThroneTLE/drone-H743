@@ -1,0 +1,54 @@
+{
+  "format": "drone-h743-servo-mechanical-evidence",
+  "schema": 1,
+  "created_at": "2026-09-26T00:16:02.756191-07:00",
+  "body_frame": "FLU",
+  "props_removed_confirmed": true,
+  "motor_safe_confirmed": true,
+  "axes": [
+    {
+      "axis": "alpha",
+      "servo_index": 0,
+      "center_us": 1560,
+      "minimum_us": 1100,
+      "maximum_us": 1900,
+      "positive_pulse_direction": "机构标记正向",
+      "physical_confirmations": {
+        "center": true,
+        "direction": true,
+        "travel": true
+      }
+    },
+    {
+      "axis": "beta",
+      "servo_index": 1,
+      "center_us": 1580,
+      "minimum_us": 1100,
+      "maximum_us": 1900,
+      "positive_pulse_direction": "机构标记反向",
+      "physical_confirmations": {
+        "center": true,
+        "direction": true,
+        "travel": true
+      }
+    }
+  ],
+  "target_parameters_written": true,
+  "target_persisted_readback": {
+    "scope": "persisted",
+    "runtime_gen": "3",
+    "record_gen": "3",
+    "valid": "1",
+    "alpha_center": "1560",
+    "alpha_min": "1100",
+    "alpha_max": "1900",
+    "alpha_sign": "1",
+    "beta_center": "1580",
+    "beta_min": "1100",
+    "beta_max": "1900",
+    "beta_sign": "-1"
+  },
+  "reboot_verification_passed": true,
+  "flight_release": false,
+  "status": "PERSISTED_REBOOT_VERIFIED"
+}

@@ -682,7 +682,7 @@ uint8_t APP_FlightCalibration_BuildServoType(
     if (servo_type == NULL) {
         return 0U;
     }
-    *servo_type = APP_SERVO_TYPE_BUS;
+    *servo_type = APP_SERVO_TYPE_DEFAULT; /* 未显式设定：用默认类型（见 app_servo_type.h） */
     if ((APP_FlightCalibration_Validate(calibration) == 0U) ||
         ((calibration->valid_mask & APP_FLIGHT_CAL_VALID_SERVO_TYPE) == 0U)) {
         return 0U;

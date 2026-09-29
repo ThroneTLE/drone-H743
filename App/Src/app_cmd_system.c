@@ -165,6 +165,15 @@ void app_control_report_modules(void)
     app_control_report_arm();
 }
 
+/* SD 卡诊断行：log_ready=0 时分清卡没认到、读不通、还是运行中坏掉（2026-09-26）。 */
+static void app_control_report_sd(void)
+{
+    char sd_line[232];
+
+    APP_FlashService_FormatSdDiag(sd_line, (uint32_t)sizeof(sd_line));
+    app_control_queue_proto_text(APP_PROTO_MSG_HW_FLASH, "%s\r\n", sd_line);
+}
+
 void app_control_report_status(void)
 {
     APP_Current_Report();
@@ -250,6 +259,7 @@ void app_control_report_status(void)
                                  APP_FlashService_BackendName(
                                      APP_FlashService_BackendFor(0U)),
                                  (unsigned int)APP_FlashService_IsLogStorageReady());
+    app_control_report_sd();
     app_control_queue_proto_text(APP_PROTO_MSG_HW_BARO,
                                  "HW SPL06 ok=%u stage=%s init=%ld split=%ld txrx=%ld id=%02X split_id=%02X txrx_id=%02X exp=10 cs=%u miso=%u\r\n",
                                  (unsigned int)app_control_baro_ok(&baro_status),

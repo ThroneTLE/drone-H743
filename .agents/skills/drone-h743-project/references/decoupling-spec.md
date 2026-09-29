@@ -11,6 +11,9 @@
 分层目录、文件规模上限、FLU 契约的**权威定义**在 [`../SKILL.md`](../SKILL.md)
 和 [flu-coordinate-contract.md](flu-coordinate-contract.md)，本文不重复，只补"为什么"和"怎么判"。
 
+新增/改动前先继承 [已采纳设计](../../../../doc/current-architecture.md)；本规范不授权后续 Agent 按个人偏好推翻职责与接口。
+公共边界变化交主控协调，验证范围统一见 [验证策略](validation-policy.md)，执行者不因本文件另行全量或更新公共索引。
+
 ---
 
 ## 0. 五个维度总览
@@ -199,7 +202,7 @@ I2C 读寄存器、反正切、打印、延时会全部揉进一个文件，无�
 - [ ] 新算法能在 PC 上跑吗？测试加了吗？算法结论有 `data/` 实录支撑吗？
 - [ ] 有没有往 `app_control.c` / `drone_tcp_panel.py` 追加内容？
 - [ ] 文件是否逼近规模上限（C ~1500 行 / Python ~2000 行）？该拆了吗？
-- [ ] 改过非忽略文件 → 跑了 `scripts/update_repository_index.py` 吗？
+- [ ] 交付已列明源码/测试/文档变化，主控合并收尾后统一运行索引生成与检查了吗？
 
 ---
 

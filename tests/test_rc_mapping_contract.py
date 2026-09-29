@@ -133,14 +133,24 @@ def test_arm_switch_gates_motor_output_but_not_controller_reference() -> None:
     assert "} else if ((frame->rc_link_ok != 0U) && (frame->rc_armed != 0U)) {" in freertos
     assert "if ((frame->rc_control_motor_mix_allowed != 0U) &&" in freertos
     assert "(frame->imu_control_valid != 0U))" in freertos
-    assert "BSP_PWM_SetEscPulse(1, frame->ctrl_out.motor_upper_us);" in freertos
-    assert "BSP_PWM_SetEscPulse(2, frame->ctrl_out.motor_lower_us);" in freertos
+    # 2026-09-13：不再按数组下标当接线。上/下桨去哪个 ESC 通道由上位机标定
+    # （drv_prop_map），所以这里钉的是"解锁后下发的是控制器算出的上/下桨推力、
+    # 且经过角色路由"，不是某个固定通道号。
+    assert "stabilizer_commit_rotor_pulses(frame->ctrl_out.motor_upper_us," in freertos
+    assert "frame->ctrl_out.motor_lower_us);" in freertos
+    assert "BSP_PWM_SetEscPulse(upper_channel, upper_us);" in freertos
+    assert "BSP_PWM_SetEscPulse(lower_channel, lower_us);" in freertos
     assert "APP_FLIGHT_LOG_MOTOR_REASON_ATTITUDE_DEBUG" in freertos
     assert "uint16_t motor_upper_us;" in header
     assert "uint16_t motor_lower_us;" in header
     assert "uint16_t DRV_COAX_CTRL_ThrustToMotorPulse(float thrust_n);" in header
-    assert "BSP_PWM_SetEscPulse(1, frame->rc_throttle_motor_us);" in freertos
-    assert "BSP_PWM_SetEscPulse(2, frame->rc_throttle_motor_us);" in freertos
+    # 直通油门默认就是遥控器油门；只有辨识在跑且自动油门给出脉宽时才被替换
+    # （R-SYSID-1 自动油门，作者 2026-09-26 授权），其余一律原样下发遥控器油门。
+    assert "uint16_t direct_us = frame->rc_throttle_motor_us;" in freertos
+    assert ("if ((frame->sysid_running != 0U) && "
+            "(APP_SysId_GetMotorPulse(&sysid_motor_us) != 0U)) {") in freertos
+    assert "BSP_PWM_SetEscPulse(1, direct_us);" in freertos
+    assert "BSP_PWM_SetEscPulse(2, direct_us);" in freertos
     assert "BSP_PWM_SetEscPulse(1, BSP_PWM_ESC_MIN_US);" in freertos
     assert "BSP_PWM_SetEscPulse(2, BSP_PWM_ESC_MIN_US);" in freertos
     assert "BSP_PWM_DisableEsc(1);" in freertos

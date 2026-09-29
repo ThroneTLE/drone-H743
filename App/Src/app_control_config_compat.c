@@ -31,6 +31,12 @@
 #define APP_CONTROL_COMPAT_V18_YAW_INERTIA_KGM2    0.005f
 #define APP_CONTROL_COMPAT_ROLL_PITCH_RATE_RAD_S  3.49065850f
 #define APP_CONTROL_COMPAT_YAW_RATE_RAD_S          1.04719758f
+/*
+ * v24 → v25：整形块里缺的第二级出口陷波。与上面 V18 缺字段同一惯例，落在当前代码
+ * 默认上（drv_coax_ctrl.c：rate_out_notch2_hz = 0 关、rate_out_notch2_q = 1.0）。
+ */
+#define APP_CONTROL_COMPAT_NOTCH2_HZ               0.0f
+#define APP_CONTROL_COMPAT_NOTCH2_Q                1.0f
 
 static float compat_positive(float value)
 {
@@ -60,6 +66,14 @@ static void compat_common_defaults(APP_ControlCoaxTunableParams *current)
     current->roll_rate_limit_rad_s = APP_CONTROL_COMPAT_ROLL_PITCH_RATE_RAD_S;
     current->pitch_rate_limit_rad_s = APP_CONTROL_COMPAT_ROLL_PITCH_RATE_RAD_S;
     current->yaw_rate_limit_rad_s = APP_CONTROL_COMPAT_YAW_RATE_RAD_S;
+    /*
+     * 横滚/俯仰积分限幅与 ff 刻意**不跟** drv_coax_ctrl.c 2026-09-27 缩小后的
+     * 默认值（0.0042/0.0043 N·m、ff 0.42/0.43）。迁移出来的 kp 等增益原样来自
+     * 旧记录，是按旧力矩模型（有效力臂 0.0842/0.0825 m）调的，单位还是旧的；
+     * 补缺字段必须和它们同一个单位，整条记录才自洽。换算到新模型与现役 v23
+     * 记录一样，由主控显式下发（×0.42070 / ×0.42957），迁移不替人做——
+     * 同 APP_CONTROL_COMPAT_V18_YAW_INERTIA_KGM2：迁移是确定的函数。
+     */
     current->rate_roll_i_limit_n_m = 0.010f;
     current->rate_pitch_i_limit_n_m = 0.010f;
     current->rate_yaw_i_limit_n_m = 0.00020f;
@@ -167,5 +181,22 @@ uint8_t APP_ControlConfigCompat_CurrentPassthrough(
         return 0U;
     }
     *current = *legacy;
+    return 1U;
+}
+
+uint8_t APP_ControlConfigCompat_ShapingV24ToCurrent(
+    const APP_ControlCoaxShapingParamsV24 *legacy,
+    APP_ControlCoaxShapingParams *current)
+{
+    if ((legacy == NULL) || (current == NULL)) {
+        return 0U;
+    }
+    current->rate_out_notch_hz = legacy->rate_out_notch_hz;
+    current->rate_out_notch_q = legacy->rate_out_notch_q;
+    current->att_ref_wr_rad_s = legacy->att_ref_wr_rad_s;
+    current->att_ref_delay_ms = legacy->att_ref_delay_ms;
+    /* v24 没有第二级：落回 drv_coax_ctrl.c 的代码默认——关，Q 预置 1.0。 */
+    current->rate_out_notch2_hz = APP_CONTROL_COMPAT_NOTCH2_HZ;
+    current->rate_out_notch2_q = APP_CONTROL_COMPAT_NOTCH2_Q;
     return 1U;
 }

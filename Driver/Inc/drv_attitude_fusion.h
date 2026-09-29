@@ -36,6 +36,32 @@ typedef struct {
     float gyroscope_dps[3];
     float accelerometer_g[3];
     float dt_s;
+
+    /*
+     * Magnetometer, optional. Body FLU per drv_frame_contract.h
+     * (DRV_FRAME_MAGNETOMETER_UNIT_IS_MILLIGAUSS), already mounting-rotated
+     * (Services/Inc/svc_mag.h) and hard-/soft-iron corrected
+     * (Driver/Inc/drv_mag_calibration.h) by the caller. Units are
+     * milligauss.
+     *
+     * magnetometer_valid must be the caller's precomputed AND of the first
+     * three of the four magnetometer fusion-gate conditions: calibrated,
+     * axis-verification usable for fusion (SVC_MAG_AxisUsableForFusion()),
+     * and sample freshness. This driver never contacts persistence or
+     * Services -- it does not know how calibration state or axis provenance
+     * are stored -- and applies only the fourth, physics-based gate:
+     * field-magnitude plausibility, via DRV_MAG_FieldMagnitude_InRange()
+     * (Driver/Inc/drv_mag_calibration.h), the magnetometer analogue of the
+     * accelerometer specific-force norm gate in drv_attitude_fusion.c.
+     *
+     * When magnetometer_valid is 0, or the fourth gate rejects the sample,
+     * this driver takes the exact same FusionAhrsUpdateNoMagnetometer()
+     * path it always has -- the default/uncalibrated/axis-unverified state
+     * must produce attitude output bit-identical to a magnetometer-free
+     * build.
+     */
+    float magnetometer_mgauss[3];
+    uint8_t magnetometer_valid;
 } DRV_AttitudeFusionInput;
 
 /*
@@ -69,6 +95,34 @@ typedef struct {
     uint8_t acceleration_recovery;
     uint8_t angular_rate_recovery;
     uint8_t accel_norm_rejected;
+
+    /*
+     * Magnetometer observability -- distinguishes "no magnetometer this
+     * tick" from "magnetometer present but this sample was rejected"
+     * (diagnostics must be able to tell those apart, see C4 of the
+     * magnetometer-fusion task).
+     *
+     *   magnetometer_subsystem_enabled: mirrors input->magnetometer_valid
+     *     for this update (the caller's calibrated/axis-verified/fresh
+     *     judgement, gate conditions 1-3).
+     *   magnetometer_field_rejected: this driver's own field-magnitude gate
+     *     (condition 4) rejected the sample; only meaningful when
+     *     subsystem_enabled is set.
+     *   magnetometer_used: the sample was actually fed to
+     *     FusionAhrsUpdate() this tick, i.e.
+     *     subsystem_enabled && !field_rejected.
+     *   magnetometer_ignored / magnetic_recovery / magnetic_error_deg /
+     *     magnetic_recovery_trigger: the Fusion library's own internal
+     *     magnetic-rejection state (mirrors the acceleration_* fields
+     *     above); only meaningful when magnetometer_used is set.
+     */
+    uint8_t magnetometer_subsystem_enabled;
+    uint8_t magnetometer_field_rejected;
+    uint8_t magnetometer_used;
+    uint8_t magnetometer_ignored;
+    uint8_t magnetic_recovery;
+    float magnetic_error_deg;
+    float magnetic_recovery_trigger;
 } DRV_AttitudeFusionOutput;
 
 void DRV_AttitudeFusion_Init(void);

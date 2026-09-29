@@ -9,6 +9,7 @@ from __future__ import annotations
 import re
 import tkinter as tk
 
+from .board_line_hooks import dispatch_board_line
 from .proto import (
     PROTO_REQ_PARAM_SET,
     PROTO_REQ_SERVO_ENABLE,
@@ -346,6 +347,12 @@ class ParameterEditorMixin:
 
     def _parameter_handle_result_line(self, line: str) -> None:
         """Consume existing OK/ERR text without inventing request IDs."""
+        # 顺带把整行发给板载行钩子。这里是 `_handle_board_line` 调用的第一个
+        # panel_lib 函数，而 `drone_tcp_panel.py` 只减不增、也没有注册钩子——
+        # 挂在这一行，之后任何页面要看回包都不用再动那个文件。
+        # 必须在下面那个 OK/ERR 早退**之前**：别的命令族的回包（LEDMAP…）
+        # 既不是 OK 也不是 ERR。
+        dispatch_board_line(self, line)
         if not (line.startswith("ERR ") or line.startswith("OK ")):
             return
         tokens = line.split()

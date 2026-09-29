@@ -68,6 +68,7 @@ SVC_ParamStatus SVC_Param_SavePendingToFlash(void);
 int test_adc;ADC_HandleTypeDef hadc1={ADC1,{16,2,0,0,0,0,1,1,1,1}};
 void *backgroundReqQueueHandle=(void*)1,*backgroundRespQueueHandle=(void*)2;
 static uint32_t now,raw,calibrations,adc_calls,max_delay,hold_until;
+static uint32_t delays,battery_inits,battery_steps,battery_telemetry,battery_saw_samples,thrust_lut_steps;
 static int read_error;
 #define UNUSED_TASK(name) void name(void){assert(!"unexpected task call");}
 UNUSED_TASK(APP_LED_Task_Init) UNUSED_TASK(APP_LED_Task_Step)
@@ -83,7 +84,7 @@ uint32_t BSP_Critical_Enter(void){return 0;}
 void BSP_Critical_Exit(uint32_t x){(void)x;}
 uint32_t osKernelGetTickCount(void){return now;}
 uint32_t osKernelGetTickFreq(void){return 1000;}
-int osDelay(uint32_t ticks){assert(ticks&&ticks<1000);if(ticks>max_delay)max_delay=ticks;now+=ticks;return 0;}
+int osDelay(uint32_t ticks){assert(ticks&&ticks<1000);if(ticks>max_delay)max_delay=ticks;now+=ticks;delays++;return 0;}
 int HAL_ADCEx_Calibration_Start(ADC_HandleTypeDef*a,uint32_t b,uint32_t c){(void)a;(void)b;(void)c;calibrations++;return 0;}
 int HAL_ADC_Start(ADC_HandleTypeDef*a){(void)a;adc_calls++;return 0;}
 int HAL_ADC_PollForConversion(ADC_HandleTypeDef*a,uint32_t timeout){(void)a;assert(timeout==1);return read_error;}
@@ -92,9 +93,15 @@ uint32_t HAL_ADC_GetValue(ADC_HandleTypeDef*a){(void)a;return raw;}
 int HAL_ADC_Stop(ADC_HandleTypeDef*a){(void)a;return 0;}
 void APP_Control_QueueText(const char *fmt,...){va_list a;va_start(a,fmt);vprintf(fmt,a);va_end(a);}
 void SVC_Param_Init(void){}
-void APP_Battery_Init(void){}
-void APP_Battery_Step(void){}
-void APP_Battery_TelemetryStep(void){}
+/* 这三个桩不是空的：电池的每个模块各有自己的单元测试，但**没人测装配**——
+ * 把 app_message.c 里那两行调用删掉，整套回归照样全绿，而电压永远不更新、
+ * 遥测一帧都不发。所以在这里数调用次数和顺序，把"接线"本身钉住。 */
+void APP_Battery_Init(void){battery_inits++;}
+void APP_Battery_Step(void){
+    APP_CurrentSnapshot c;APP_Current_GetSnapshot(&c);battery_saw_samples=c.samples;battery_steps++;}
+void APP_Battery_TelemetryStep(void){assert(battery_telemetry<battery_steps);battery_telemetry++;}
+/* 推力查补表的电量电压估计紧跟每次电池采样（app_thrust_lut.c）。 */
+void APP_ThrustLut_Step(void){assert(thrust_lut_steps<battery_steps);thrust_lut_steps++;}
 int SVC_Param_LoadFromFlash(void){return 0;}
 int SVC_Param_SavePendingToFlash(void){return 0;}
 int APP_FlashService_ReadDataFast(uint32_t a,uint8_t*b,uint32_t c){(void)a;(void)b;(void)c;return 0;}
@@ -122,6 +129,10 @@ int main(void){
     now+=251;APP_Current_GetSnapshot(&s);assert(!s.reading.valid && isnan(s.reading.current_a));
     read_error=HAL_TIMEOUT;APP_Task_Message_Step();APP_Current_GetSnapshot(&s);assert(!s.reading.valid&&s.errors==1);
     read_error=0;raw=12000;APP_Task_Message_Step();APP_Current_GetSnapshot(&s);assert(s.reading.valid && s.samples>2500);
+    /* 装配闸门：messageTask 每一拍都必须走电池采样和遥测，Init 恰好一次；
+     * battery_saw_samples 等于本拍采样后的计数，说明电池步跑在电流步之后。 */
+    assert(battery_inits==1 && battery_steps==delays && battery_telemetry==delays && thrust_lut_steps==delays);
+    assert(battery_saw_samples==s.samples);
     calls=adc_calls;APP_Task_Background_Step();assert(adc_calls==calls); /* single ADC owner */
     puts("cadence, real zero, timeout recovery, stale gate, single owner: passed");return 0;
 }
@@ -133,7 +144,7 @@ int main(void){
         command+=['-I',str(path)]
     command+=[str(tmp_path/'test.c')]+[str(ROOT/path) for path in (
         'App/Src/app_tasks.c','App/Src/app_message.c','App/Src/app_background.c',
-        'App/Src/app_current.c','BSP/Src/bsp_current.c','Driver/Src/drv_current.c')]
+        'App/Src/app_current.c','BSP/Src/bsp_current.c','Driver/Src/drv_current.c','Driver/Src/drv_current_filter.c')]
     exe=tmp_path/'cadence.exe';command+=['-lm','-o',str(exe)]
     result=subprocess.run(command,capture_output=True,text=True)
     assert result.returncode==0,result.stdout+result.stderr

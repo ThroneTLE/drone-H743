@@ -145,6 +145,7 @@ UART_HandleTypeDef *BSP_UART_GetHandle(uint8_t bus_index)
     case 1U: return &huart1;
     case 2U: return &huart2;
     case 3U: return &huart3;
+    case 4U: return &huart4;
     case 6U: return &huart6;
     case 7U: return &huart7;
     case 8U: return &huart8;

@@ -33,8 +33,13 @@ def test_runtime_model_uses_pitch_servo_fit_and_physical_thrust_limit():
     assert plant.tilt_actuator.gain==model['tilt_gain']
     assert plant.tilt_actuator.delay==model['tilt_delay_s']
     assert plant.tilt_actuator.tau_decrease==model['tilt_tau_decrease_s']
-    assert plant.pitch_effectiveness==model['pitch_effectiveness']
-    assert 0 < plant.pitch_effectiveness < 1
+    # 2026-09-27: no effectiveness factor any more -- the plant uses the very
+    # lever the C controller uses, the signed geometry cg_z - servo2_axis_z
+    # (-0.0946 - (-0.13) = 0.0354 m for the simulated airframe).
+    assert not hasattr(plant,'pitch_effectiveness')
+    assert 'pitch_effectiveness' not in model
+    assert plant.pitch_lever_arm_m==model['pitch_lever_arm_m']
+    assert model['pitch_lever_arm_m']==pytest.approx(-0.0946-(-0.13),abs=1e-6)
     plant.reset(thrust_n=plant.hover_thrust_n)
     command=ControllerOutput(100,100,0,0,(0,0,0),(0,0,0),(0,0,0),(0,0,0))
     for _ in range(1000): plant.step(command,.001)

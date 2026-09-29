@@ -285,10 +285,12 @@ def test_roll_pitch_physical_moment_gains_are_runtime_params() -> None:
     header = read("Driver/Inc/drv_coax_ctrl.h")
     assert "DRV_AttitudeControl_Params attitude;" in header
     assert "DRV_RateControl_Params rate;" in header
-    assert "params->attitude.att_kp[0] = 0.0671f / 0.1104f;" in wrapper
-    assert "params->attitude.att_kp[1] = 0.0660f / 0.1138f;" in wrapper
-    assert "params->rate.kp[0] = 0.1104f;" in wrapper
-    assert "params->rate.kp[1] = 0.1138f;" in wrapper
+    assert "params->attitude.att_kp[0] = 1.8105f;" in wrapper
+    assert "params->attitude.att_kp[1] = 1.7131f;" in wrapper
+    # 2026-09-28 晚：默认值同步为作者存入 Flash 的 A1 基线（实测机体力臂 0.1082 m、舵机开机 333 Hz；
+    # 俯仰对象来自光杆辨识、横滚来自 −45° 斜杆推算）。出处与数值核对见 test_coax_sign_convention.py。
+    assert "params->rate.kp[0] = 0.2748f;" in wrapper
+    assert "params->rate.kp[1] = 0.2748f;" in wrapper
     # 2026-09-07：I_zz 由 0.00035 改成 0.005 后，系数必须同步下调，否则默认偏航
     # 增益会跟着涨 14.3 倍、越过作者实测的抖振阈值。形式仍是 `I_zz × 带宽`。
     # 2026-09-11：I_zz 改为机体模型运行时取值，默认偏航增益跟着它缩放。
@@ -362,8 +364,12 @@ def test_nonlinear_balance_controller_uses_so3_error_and_realtime_moment_arm_inv
     assert "coax_ctrl_solve_pitch_tilt_from_moment" in solve
     assert "coax_ctrl_apply_attitude_force_feedback" not in wrapper
     assert "debug->force_cmd_n[0] +=" not in wrapper
-    assert "debug->target_attitude_rp_rad[0] = target_roll_rad;" in solve
-    assert "debug->target_attitude_rp_rad[1] = target_pitch_rad;" in solve
+    # 2026-09-28：参考模型开启时角度环跟的是整形后的延后参考，调试里的 target 仍记
+    # 整形前的指令（command_rp_rad 在整形之前从 target_* 取值）。
+    assert "command_rp_rad[0] = target_roll_rad;" in solve
+    assert "command_rp_rad[1] = target_pitch_rad;" in solve
+    assert "debug->target_attitude_rp_rad[0] = command_rp_rad[0];" in solve
+    assert "debug->target_attitude_rp_rad[1] = command_rp_rad[1];" in solve
     # R-F6-2: no undo-multiplication needed any more (nothing was signed
     # going in), so coax_ctrl_rotation_to_rpy's output is used directly.
     assert "coax_ctrl_rotation_to_rpy(solution->desired_body_r,\n" in solve
@@ -414,7 +420,16 @@ def test_vofa_exports_compact_slider_parameter_feedback() -> None:
 
     # 帧长仍由通道表推出来：采样函数拒绝任何与表长不符的 count。
     assert "(values == NULL) || (count != (uint32_t)APP_TELEM_CH_COUNT)" in freertos
-    assert 'vofa_data[APP_TELEM_CH_RESERVED_7] = 0.0f;' in freertos
+    # R-PWR-1：7/8 号退役槽位改成电源通道。原断言钉的是"退役槽位恒 0"，
+    # 现在钉的是"电源通道无效时是 NaN 而不是 0"——同一个防线的另一侧。
+    assert 'vofa_data[APP_TELEM_CH_RESERVED_7]' not in freertos
+    assert 'vofa_data[APP_TELEM_CH_BATT_V] = (battery.state.valid != 0U) ?' in freertos
+    # 电流推的是**块平均**（mean_valid / mean_a），不是瞬时值：单次 ADC 读数在电机
+    # PWM 下能在 0~0.4 A 之间跳，推瞬时值等于把噪声当读数发出去。有效性也必须跟着
+    # 取平均那一侧走——`reading.valid` 说的是"最后一次转换成功"，不是"这个平均数
+    # 里有样本"，用它当门会在整块都被拒之后仍然放行一个陈旧的平均值。
+    assert 'vofa_data[APP_TELEM_CH_BATT_I] = (bus_current.mean_valid != 0U) ?' in freertos
+    assert 'bus_current.mean_a' in freertos
     assert "vofa_data[APP_TELEM_CH_ROLL_RATE_KD] = -vofa_data[APP_TELEM_CH_ROLL_RATE_KD];" not in freertos
     assert "vofa_data[APP_TELEM_CH_PITCH_RATE_KD] = -vofa_data[APP_TELEM_CH_PITCH_RATE_KD];" not in freertos
     # 审核实机复核（2026-09-03）：app_control_ui_sign_for_param 对所有参数返回 +1，

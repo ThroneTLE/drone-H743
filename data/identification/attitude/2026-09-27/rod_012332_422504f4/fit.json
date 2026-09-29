@@ -1,0 +1,29 @@
+{
+  "inertia_kg_m2": 0.0811514589388832,
+  "inertia_rod_kg_m2": 0.0948141373965576,
+  "pivot_above_cg_m": 0.13455799999999998,
+  "eccentricity_m": 0.13455799999999998,
+  "torque_scale": 1.6696360143723064,
+  "damping_n_m_s": 3.703818323430997e-13,
+  "delay_s": 0.05997722479147671,
+  "fit_percent": 67.20876384572635,
+  "natural_hz": 0.5158592808017669,
+  "damping_eccentricity_correlation": -0.28726161689385216,
+  "separable": true,
+  "samples": 958,
+  "torque_model_scale": 1.3340695796860986,
+  "tuning_inertia_kg_m2": 0.06083000480228162,
+  "tuning_damping_n_m_s": 9.959271841017667e-14,
+  "inertia_uncertainty_pct": 20.128018262934027,
+  "tuning_blockers": [
+    "拟合优度 67% 低于 70%",
+    "惯量不确定度 20% 超过 8%"
+  ],
+  "notes": [
+    "绕质心惯量的相对不确定度约 20%，超过 8%：加长激励或加大幅值重测。"
+  ],
+  "warnings": [
+    "绕质心惯量的相对不确定度约 20%，超过 8%：加长激励或加大幅值重测。",
+    "拟合优度只有 67.2%，模型没有描述住这段数据。"
+  ]
+}

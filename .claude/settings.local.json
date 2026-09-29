@@ -4,5 +4,9 @@
       "Bash(find ~/.vscode/extensions/stmicroelectronics.stm32cube-ide-core-* -name \"cube\" -type f)",
       "WebSearch"
     ]
-  }
+  },
+  "enabledMcpjsonServers": [
+    "h743-openocd"
+  ],
+  "enableAllProjectMcpServers": true
 }

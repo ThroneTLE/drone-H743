@@ -28,7 +28,10 @@ def test_ident_control_payload_and_decoupled_servo_takeover() -> None:
 
     assert 'strcmp(line, "IDENT?") == 0' in app_aiwb2
     assert 'aiwb2_starts_with(line, "IDENT ")' in app_aiwb2
-    assert "ident_running = APP_Ident_IsRunning();" in freertos
+    # 舵机接管这个缝现在由两套辨识共用：`ident_running` 表示"有辨识在占用执行器"，
+    # 下游联锁（LED / 点桨 inhibit / ESC 直通）全挂在它上面，具体是哪一套只决定
+    # 舵机目标从谁那儿取。老 ident 必须还在这条缝里。
+    assert "(APP_Ident_IsRunning() != 0U) || (frame->sysid_running != 0U)" in freertos
     assert "APP_Ident_GetServoTargets(&ident_alpha_us, &ident_beta_us);" in freertos
     assert "DRV_COAX_CTRL_RunScheduled(&frame->attitude, &frame->reference," in freertos
     assert "BSP_PWM_SetEscPulse" not in ident
@@ -39,19 +42,26 @@ def test_ident_control_payload_and_decoupled_servo_takeover() -> None:
 
 
 def test_ident_commands_exist_and_are_text_based() -> None:
+    """IDENT 的语法已经从 app_control.c 搬到 app_cmd_sysid.c。
+
+    搬的理由是 app_control.c 只减不增，而这一组子命令只调 `APP_Ident_*` 的公开
+    接口、和那个文件的静态状态没有牵连。`IDENT START`（电机阶梯）没搬——它读写
+    app_control.c 的 ident_* 静态量并由它的服务拍推进。
+    """
     app_control = read("App/Src/app_control.c")
+    cmd_sysid = read("App/Src/app_cmd_sysid.c")
     ident_h = read("App/Inc/app_ident.h")
 
     assert "APP_Ident_StartStep" in ident_h
     assert "APP_Ident_StartDoublet" in ident_h
     assert "APP_Ident_StartPrbs" in ident_h
     assert "APP_IdentAtt_StartPrbs" in ident_h
-    assert "IDENT STEP" in app_control
-    assert "IDENT DOUBLET" in app_control
-    assert "IDENT PRBS" in app_control
-    assert "IDENT ATT PRBS" in app_control
-    assert "IDENT APPLY" in app_control
-    assert "IDENT CENTER" in app_control
+    for usage in ("IDENT STEP", "IDENT DOUBLET", "IDENT PRBS",
+                  "IDENT ATT PRBS", "IDENT APPLY", "IDENT CENTER"):
+        assert usage in cmd_sysid
+        assert usage not in app_control, f"{usage} 应当只留在 app_cmd_sysid.c"
+    assert "IDENT START" in app_control
+    assert "app_cmd_sysid_handle_ident(tokens, count)" in app_control
 
 
 def test_closed_loop_attitude_ident_injects_reference_accel_and_logs_it() -> None:
@@ -102,33 +112,25 @@ def test_attitude_ident_safe_start_accepts_unsettled_controller_quality() -> Non
     assert 'APP_IdentAtt_Stop("control_invalid")' in observe_block
 
 
-def test_ident_sample_parser_and_step_fit() -> None:
-    panel = load_panel_module()
-    line = (
-        "IDENT sample id=3 seq=12 t_ms=3456 axis=roll mode=step "
-        "alpha_us=1540 beta_us=1500 roll=1.230 pitch=-0.120 "
-        "gx=4.50 gy=-0.80 rc_arm=1 throttle_us=1180"
-    )
-    record = panel.ident_record_from_line(line)
-    assert record is not None
-    assert record["seq"] == 12
-    assert record["roll"] == 1.23
-    assert record["gy"] == -0.8
+def test_the_threshold_crossing_fit_is_gone_and_what_replaced_it() -> None:
+    """老那套 `fit_ident_step` 是阈值穿越法：找到响应越过某比例的时刻，然后
+    `kp = 0.35/|K|` 拍一个增益。**没有回归、没有延迟估计、没有置信度**，
+    而且 `_ident_apply_fit` 自己在界面上写着"不写入四环控制器"——整条链在末端
+    是断的。2026-09-13 随整页删除（R-SYSID-1）。
 
-    samples = []
-    for index in range(30):
-        t_ms = index * 40
-        alpha = 1500 if index < 3 else 1540
-        response = 0.0 if index < 3 else 4.0 * (1.0 - pow(2.718281828, -((index - 3) * 0.04) / 0.25))
-        samples.append(
-            panel.ident_record_from_line(
-                f"IDENT sample id=1 seq={index} t_ms={t_ms} axis=roll mode=step "
-                f"alpha_us={alpha} beta_us=1500 roll={response:.3f} "
-                "pitch=0.000 gx=0.00 gy=0.00 rc_arm=1 throttle_us=1180"
-            )
-        )
-    fit = panel.fit_ident_step([sample for sample in samples if sample is not None], "roll")
-    assert fit is not None
-    assert fit["K"] > 0
-    assert fit["tau"] > 0
-    assert fit["kp"] > 0
+    接替它的是 `tools/sysid/fit.py`：延迟是**拟合参数**，先用方程误差粗扫再做
+    输出误差精修，并报出阻尼与偏心的相关系数。行为判据在
+    `tests/test_sysid_host_core.py`，这里只钉住"老的确实没了、新的确实在"。
+    """
+    panel_source = read("tools/drone_tcp_panel.py")
+    assert "fit_ident_step" not in panel_source
+    assert "ident_record_from_line" not in panel_source
+    assert "0.35" not in panel_source or "kp = 0.35" not in panel_source
+
+    fit_source = read("tools/sysid/fit.py")
+    assert "def fit_model(" in fit_source
+    assert "delay_s" in fit_source
+    # 延迟必须是被拟合出来的，不是事后拿阈值猜的。
+    assert "_equation_error_scan(" in fit_source
+    assert "least_squares(" in fit_source
+    assert "damping_eccentricity_correlation" in fit_source

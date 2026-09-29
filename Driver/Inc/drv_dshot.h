@@ -24,6 +24,8 @@ typedef enum {
 #define DRV_DSHOT_SLOTS         (DRV_DSHOT_BITS + DRV_DSHOT_TAIL_SLOTS)
 #define DRV_DSHOT_BURST_WORDS    (DRV_DSHOT_SLOTS * DRV_DSHOT_CHANNELS)
 #define DRV_DSHOT_STOP          0U
+#define DRV_DSHOT_CMD_MIN       1U
+#define DRV_DSHOT_CMD_MAX       47U
 #define DRV_DSHOT_THROTTLE_MIN  48U
 #define DRV_DSHOT_THROTTLE_MAX  2047U
 #define DRV_DSHOT_EQUIV_MIN_US  1100U
@@ -54,6 +56,14 @@ DRV_DShotStatus DRV_DShot_FromPulseUs(uint16_t pulse_us, uint16_t *out);
  */
 DRV_DShotStatus DRV_DShot_Encode(uint16_t throttle, uint16_t *out);
 
+/* 单向 DShot 的特殊命令帧。仅接受 1..47；0 和 48..2047 是油门，一律拒绝
+ * （拒绝它们不是多余的：调用方把油门误传进来时，静默编成一条命令是最坏结果）。
+ * telemetry 位固定为 1——电调（如 AM32）靠这一位把该帧当命令而不是极低油门
+ * 来解释，写 0 会被解成一个几乎堵转的油门值。校验不取反，规则与 DRV_DShot_Encode
+ * 一致；走的是同一个入口下的独立函数，不放宽 DRV_DShot_Encode 本身的校验。
+ */
+DRV_DShotStatus DRV_DShot_EncodeCommand(uint16_t command, uint16_t *out);
+
 /* 两路按 bit0/ch1, bit0/ch2, bit1/ch1, bit1/ch2... 交错。
  * 末尾两组 CCR=0 是低电平收尾，不是两个额外的 DShot 0 bit。
  * STOP 帧依然包含 16 个 bit-0 脉冲，不等同于物理禁用。
@@ -63,6 +73,17 @@ DRV_DShotStatus DRV_DShot_Encode(uint16_t throttle, uint16_t *out);
 DRV_DShotStatus DRV_DShot_BuildBurst(const uint16_t throttle[DRV_DSHOT_CHANNELS],
                                     const DRV_DShotTiming *timing,
                                     uint32_t *out, size_t capacity_words);
+
+/*
+ * 同样的交错，但输入是**已经编好的 16 bit 数字帧**而不是油门。
+ * 双向 DShot 的校验是取反的（见 drv_dshot_telemetry.h），编码规则不同但线上
+ * 交错完全一样；让它走这里，交错这段 PX4 来源的代码就只保留一份。
+ * 不对 packet 内容做任何校验——校验属于生成 packet 的那一层。
+ */
+DRV_DShotStatus DRV_DShot_BuildBurstFromPackets(
+    const uint16_t packet[DRV_DSHOT_CHANNELS],
+    const DRV_DShotTiming *timing,
+    uint32_t *out, size_t capacity_words);
 
 #ifdef __cplusplus
 }

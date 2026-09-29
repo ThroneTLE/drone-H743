@@ -101,10 +101,19 @@ PROTO_MSG_SERVO_TYPE = 0x2226
 PROTO_MSG_TELEM_FRAME = 0x2230
 PROTO_MSG_COMPONENTS = 0x2231
 PROTO_MSG_BATTERY = 0x2232
+# 系统辨识：高速采样通道。布局由固件的字段表（`SYSID SCHEMA`）描述，
+# 主机照表解码，不在这里写死偏移量——抄的那份迟早和固件对不上。
+# 固件侧同名登记在 App/Inc/app_proto.h。
+PROTO_REQ_SYSID = 0x1026
+PROTO_MSG_SYSID_SCHEMA = 0x2233
+PROTO_MSG_SYSID_BATCH = 0x2234
+PROTO_MSG_THRUST_BENCH = 0x2235
 
 # 这些 function 的 payload 是二进制。按 UTF-8 解会把 0x80~0xFF 换成 U+FFFD——
 # 不报错、不崩溃，只是把浮点位悄悄改掉，然后曲线看起来"有点怪"。
-PROTO_BINARY_FUNCTIONS = frozenset({PROTO_MSG_TELEM_FRAME, PROTO_MSG_COMPONENTS, PROTO_MSG_BATTERY})
+PROTO_BINARY_FUNCTIONS = frozenset({PROTO_MSG_TELEM_FRAME, PROTO_MSG_COMPONENTS,
+                                    PROTO_MSG_BATTERY, PROTO_MSG_SYSID_BATCH,
+                                    PROTO_MSG_THRUST_BENCH})
 
 
 def parse_kv(line: str) -> dict[str, str]:

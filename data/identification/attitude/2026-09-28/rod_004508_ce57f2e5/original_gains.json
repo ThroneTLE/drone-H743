@@ -1,0 +1,18 @@
+{
+  "version": 2,
+  "saved_at": "2026-09-28T00:45:25",
+  "note": "「临时应用」之前飞控 RAM 里的原增益；「恢复原参数」从这里读回，并按 torque_model 里的力臂换算到恢复时飞控的力矩单位。",
+  "gains": {
+    "coax.rate_pitch_kp": "0.126048",
+    "coax.rate_pitch_ki": "0.123089",
+    "coax.rate_pitch_kd": "0.000000",
+    "coax.att_pitch_kp": "0.618820"
+  },
+  "torque_model": {
+    "signature": "geometric",
+    "levers_m": [
+      0.1082,
+      0.1082
+    ]
+  }
+}

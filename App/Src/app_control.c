@@ -1,6 +1,7 @@
 #include "app_control.h"
 #include "app_control_config_store.h"
 #include "app_control_internal.h"
+#include "app_param_trial.h"
 
 #include "app_aiwb2.h"
 #include "app_acceptance.h"
@@ -56,7 +57,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define APP_CONTROL_MAX_LINE        128U
+#define APP_CONTROL_MAX_LINE        256U   /* 与 USB 行缓冲一致；超长由 app_control_split_line 回 ERR */
 #define APP_CONTROL_HEARTBEAT_ENABLED 0U
 #define APP_CONTROL_BOOT_READY_ENABLED 0U
 #define APP_CONTROL_ASCII_RX_ECHO_ENABLED 0U
@@ -174,8 +175,6 @@ static void app_control_report_acceptance(void);
 static void app_control_handle_imuframe(char **tokens, uint32_t count);
 static void app_control_imuframe_sync_param(void);
 static void app_control_report_imuframe(const char *event, uint32_t request_id);
-
-
 
 
 
@@ -1178,6 +1177,7 @@ static void app_control_defaults(APP_ControlConfig *config)
     config->servo[1].enabled = 1U;
 
     DRV_COAX_CTRL_ResetParams();
+    APP_ParamTrial_ClearAll();   /* 整表恢复默认 = 显式重写：增益试用全部结束 */
 }
 
 static uint8_t app_control_valid_servo_index(uint32_t index)
@@ -1355,7 +1355,7 @@ static uint8_t app_control_named_value_line(const char *line,
     return (value_len != 0U) ? 1U : 0U;
 }
 
-static uint8_t app_control_parse_f32(const char *text, float *value)
+uint8_t app_control_parse_f32(const char *text, float *value)
 {
     char *end_ptr;
     float parsed;
@@ -2675,200 +2675,19 @@ static void app_control_handle_motor(char **tokens, uint32_t count)
 
 static void app_control_handle_ident(char **tokens, uint32_t count)
 {
+    /*
+     * 姿态/舵机那一组子命令（?/ARM/DISARM/STOP/ATT/CENTER/APPLY/STEP/DOUBLET/
+     * PRBS）整组搬到 App/Src/app_cmd_sysid.c：它们只调 APP_Ident_* 的公开接口，
+     * 和本文件的静态状态没有牵连，而本文件只减不增。
+     *
+     * 留在这里的只有下面的 IDENT START——电机阶梯，读写本文件的 ident_* 静态量
+     * 并由本文件的服务拍推进，搬它要连服务拍一起搬，是另一件事。
+     */
     if (count < 2U) {
-        APP_Control_QueueText("ERR usage IDENT ARM|DISARM|STOP|ATT|STEP|DOUBLET|PRBS|CENTER|APPLY|?\r\n");
+        APP_Control_QueueText("ERR usage IDENT ARM|DISARM|STOP|ATT|STEP|DOUBLET|PRBS|CENTER|APPLY|START|?\r\n");
         return;
     }
-
-    if ((strcmp(tokens[1], "?") == 0) || (strcmp(tokens[1], "STATUS") == 0)) {
-        APP_Ident_ReportStatus();
-        return;
-    }
-
-    if (strcmp(tokens[1], "ARM") == 0) {
-        (void)APP_Ident_Arm();
-        return;
-    }
-
-    if (strcmp(tokens[1], "DISARM") == 0) {
-        APP_Ident_Disarm();
-        return;
-    }
-
-    if (strcmp(tokens[1], "STOP") == 0) {
-        APP_Ident_Stop("command");
-        return;
-    }
-
-    if (strcmp(tokens[1], "ATT") == 0) {
-        if (count < 3U) {
-            APP_Control_QueueText("ERR usage IDENT ATT PRBS roll|pitch amp_mdeg=<v> bit_ms=<v> duration_ms=<v> [seed=<v>]\r\n");
-            return;
-        }
-        if ((strcmp(tokens[2], "?") == 0) ||
-            (strcmp(tokens[2], "STATUS") == 0)) {
-            APP_Ident_ReportStatus();
-            return;
-        }
-        if (strcmp(tokens[2], "STOP") == 0) {
-            APP_IdentAtt_Stop("command");
-            return;
-        }
-        if (strcmp(tokens[2], "PRBS") == 0) {
-            uint32_t bit_ms;
-            uint32_t duration_ms;
-            uint32_t seed = 1U;
-            int32_t amp_mdeg;
-            const char *amp_text;
-            const char *bit_text;
-            const char *duration_text;
-            const char *seed_text;
-
-            if (count < 4U) {
-                APP_Control_QueueText("ERR usage IDENT ATT PRBS roll|pitch amp_mdeg=<v> bit_ms=<v> duration_ms=<v> [seed=<v>]\r\n");
-                return;
-            }
-            amp_text = app_control_token_value(tokens, count, "amp_mdeg");
-            bit_text = app_control_token_value(tokens, count, "bit_ms");
-            duration_text = app_control_token_value(tokens, count, "duration_ms");
-            seed_text = app_control_token_value(tokens, count, "seed");
-            if ((seed_text != NULL) &&
-                (app_control_parse_u32(seed_text, &seed) == 0U)) {
-                APP_Control_QueueText("ERR ident att seed\r\n");
-                return;
-            }
-            if ((amp_text == NULL) || (bit_text == NULL) ||
-                (duration_text == NULL) ||
-                (app_control_parse_i32(amp_text, &amp_mdeg) == 0U) ||
-                (app_control_parse_u32(bit_text, &bit_ms) == 0U) ||
-                (app_control_parse_u32(duration_text, &duration_ms) == 0U)) {
-                APP_Control_QueueText("ERR usage IDENT ATT PRBS roll|pitch amp_mdeg=<v> bit_ms=<v> duration_ms=<v> [seed=<v>]\r\n");
-                return;
-            }
-            (void)APP_IdentAtt_StartPrbs(tokens[3],
-                                         amp_mdeg,
-                                         bit_ms,
-                                         duration_ms,
-                                         seed);
-            return;
-        }
-        APP_Control_QueueText("ERR unknown ident att subcmd %s\r\n", tokens[2]);
-        return;
-    }
-
-    if (strcmp(tokens[1], "CENTER") == 0) {
-        uint32_t alpha_us;
-        uint32_t beta_us;
-        const char *alpha_text = app_control_token_value(tokens, count, "alpha_us");
-        const char *beta_text = app_control_token_value(tokens, count, "beta_us");
-
-        if ((alpha_text == NULL) || (beta_text == NULL) ||
-            (app_control_parse_u32(alpha_text, &alpha_us) == 0U) ||
-            (app_control_parse_u32(beta_text, &beta_us) == 0U) ||
-            (alpha_us > 65535U) || (beta_us > 65535U)) {
-            APP_Control_QueueText("ERR usage IDENT CENTER alpha_us=<v> beta_us=<v>\r\n");
-            return;
-        }
-        (void)APP_Ident_SetCenter((uint16_t)alpha_us, (uint16_t)beta_us);
-        return;
-    }
-
-    if (strcmp(tokens[1], "APPLY") == 0) {
-        const char *kp_text;
-        const char *kd_text;
-
-        if (count < 3U) {
-            APP_Control_QueueText("ERR usage IDENT APPLY roll|pitch rate_kp=<v>\r\n");
-            return;
-        }
-        kp_text = app_control_token_value(tokens, count, "rate_kp");
-        kd_text = app_control_token_value(tokens, count, "kd");
-        if ((count != 4U) || (kp_text == NULL) || (kd_text != NULL)) {
-            APP_Control_QueueText("ERR usage IDENT APPLY roll|pitch rate_kp=<v>\r\n");
-            return;
-        }
-        (void)APP_Ident_ApplyRateKp(tokens[2], kp_text);
-        return;
-    }
-
-    if (strcmp(tokens[1], "STEP") == 0) {
-        uint32_t duration_ms;
-        int32_t pulse_us;
-        const char *pulse_text;
-        const char *duration_text;
-
-        if (count < 3U) {
-            APP_Control_QueueText("ERR usage IDENT STEP roll|pitch pulse_us=<v> duration_ms=<v>\r\n");
-            return;
-        }
-        pulse_text = app_control_token_value(tokens, count, "pulse_us");
-        duration_text = app_control_token_value(tokens, count, "duration_ms");
-        if ((pulse_text == NULL) || (duration_text == NULL) ||
-            (app_control_parse_i32(pulse_text, &pulse_us) == 0U) ||
-            (app_control_parse_u32(duration_text, &duration_ms) == 0U)) {
-            APP_Control_QueueText("ERR usage IDENT STEP roll|pitch pulse_us=<v> duration_ms=<v>\r\n");
-            return;
-        }
-        (void)APP_Ident_StartStep(tokens[2], pulse_us, duration_ms);
-        return;
-    }
-
-    if (strcmp(tokens[1], "DOUBLET") == 0) {
-        uint32_t hold_ms;
-        uint32_t repeat;
-        int32_t pulse_us;
-        const char *pulse_text;
-        const char *hold_text;
-        const char *repeat_text;
-
-        if (count < 3U) {
-            APP_Control_QueueText("ERR usage IDENT DOUBLET roll|pitch pulse_us=<v> hold_ms=<v> repeat=<v>\r\n");
-            return;
-        }
-        pulse_text = app_control_token_value(tokens, count, "pulse_us");
-        hold_text = app_control_token_value(tokens, count, "hold_ms");
-        repeat_text = app_control_token_value(tokens, count, "repeat");
-        if ((pulse_text == NULL) || (hold_text == NULL) || (repeat_text == NULL) ||
-            (app_control_parse_i32(pulse_text, &pulse_us) == 0U) ||
-            (app_control_parse_u32(hold_text, &hold_ms) == 0U) ||
-            (app_control_parse_u32(repeat_text, &repeat) == 0U)) {
-            APP_Control_QueueText("ERR usage IDENT DOUBLET roll|pitch pulse_us=<v> hold_ms=<v> repeat=<v>\r\n");
-            return;
-        }
-        (void)APP_Ident_StartDoublet(tokens[2], pulse_us, hold_ms, repeat);
-        return;
-    }
-
-    if (strcmp(tokens[1], "PRBS") == 0) {
-        uint32_t bit_ms;
-        uint32_t duration_ms;
-        uint32_t seed = 1U;
-        int32_t pulse_us;
-        const char *pulse_text;
-        const char *bit_text;
-        const char *duration_text;
-        const char *seed_text;
-
-        if (count < 3U) {
-            APP_Control_QueueText("ERR usage IDENT PRBS roll|pitch pulse_us=<v> bit_ms=<v> duration_ms=<v> [seed=<v>]\r\n");
-            return;
-        }
-        pulse_text = app_control_token_value(tokens, count, "pulse_us");
-        bit_text = app_control_token_value(tokens, count, "bit_ms");
-        duration_text = app_control_token_value(tokens, count, "duration_ms");
-        seed_text = app_control_token_value(tokens, count, "seed");
-        if ((seed_text != NULL) && (app_control_parse_u32(seed_text, &seed) == 0U)) {
-            APP_Control_QueueText("ERR ident seed\r\n");
-            return;
-        }
-        if ((pulse_text == NULL) || (bit_text == NULL) || (duration_text == NULL) ||
-            (app_control_parse_i32(pulse_text, &pulse_us) == 0U) ||
-            (app_control_parse_u32(bit_text, &bit_ms) == 0U) ||
-            (app_control_parse_u32(duration_text, &duration_ms) == 0U)) {
-            APP_Control_QueueText("ERR usage IDENT PRBS roll|pitch pulse_us=<v> bit_ms=<v> duration_ms=<v> [seed=<v>]\r\n");
-            return;
-        }
-        (void)APP_Ident_StartPrbs(tokens[2], pulse_us, bit_ms, duration_ms, seed);
+    if (app_cmd_sysid_handle_ident(tokens, count) != 0U) {
         return;
     }
 
@@ -3445,7 +3264,7 @@ static void app_control_dispatch_tokens(char **tokens, uint32_t count, uint8_t e
 void APP_Control_ProcessLine(const char *line)
 {
     char buffer[APP_CONTROL_MAX_LINE];
-    char *tokens[10];
+    char *tokens[APP_CONTROL_MAX_TOKENS + 1U];
     uint32_t count;
 
     if ((line == NULL) || (*line == '\0')) {
@@ -3460,8 +3279,8 @@ void APP_Control_ProcessLine(const char *line)
         APP_Control_QueueText("RX %s\r\n", line);
     }
 
-    (void)snprintf(buffer, sizeof(buffer), "%s", line);
-    count = app_control_tokenize(buffer, tokens, (uint32_t)(sizeof(tokens) / sizeof(tokens[0])));
+    count = app_control_split_line(line, buffer, (uint32_t)sizeof(buffer), tokens,
+                                   (uint32_t)(sizeof(tokens) / sizeof(tokens[0])));
 
     if (count == 0U) {
         return;

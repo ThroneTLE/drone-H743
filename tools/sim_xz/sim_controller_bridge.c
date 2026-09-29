@@ -2,6 +2,7 @@
 
 #include "drv_coax_ctrl.h"
 #include "drv_airframe_params.h"
+#include "drv_prop_map.h"
 #include "drv_servo_actuator_model.h"
 #include "app_control_scheduler.h"
 
@@ -23,7 +24,8 @@ static uint64_t sim_navigation_token;
  * 质量加起来是 754.6 g，而整机质量写的是 1.3670 kg。所以这里用手动派生档
  * （derived_auto = 0），把派生值原样钉住。这不是在维护那个矛盾，而是为了让
  * "机体模型改成运行时取值"这次改动在仿真里**逐位不改变行为**——真机的正确
- * 数值要拿秤重新量，从上位机写进去。
+ * 数值要拿秤重新量，从上位机写进去。例外是两个舵机转轴（2026-09-27 起决定
+ * 倾转力矩），理由写在字段旁边。
  */
 static uint8_t sim_airframe_loaded;
 
@@ -51,10 +53,15 @@ static void sim_controller_load_airframe(void)
     airframe.prop_plane_d_m          = 0.2500f;
     airframe.roll_axis_to_prop_plane_m  = 0.1450f;
     airframe.pitch_axis_to_prop_plane_m = 0.1050f;
-    airframe.pitch_thrust_lever_arm_m   = 0.1450f;
-    airframe.roll_thrust_lever_arm_m    = 0.1450f;
-    airframe.servo1_axis_z_m         = -0.161f;
-    airframe.servo2_axis_z_m         = -0.215f;
+    /*
+     * 2026-09-27：倾转力臂改为几何量 重心 z − 舵机转轴 z（控制律与下面的被控
+     * 对象共用这一个数，没有经验系数）。转轴取作者 2026-09-27 实测的 −0.13 m，
+     * 不再用旧头文件的 −0.161/−0.215：那两个是旧机体的量，而控制律的默认增益
+     * 已按 2026-09-27 几何换算，被仿的飞机得是那架飞机。力臂 = −0.0946 − (−0.13)
+     * = 0.0354 m（真机按部件表重心 −0.094558 算是 0.035442 m）。
+     */
+    airframe.servo1_axis_z_m         = -0.13f;
+    airframe.servo2_axis_z_m         = -0.13f;
     airframe.thrust_point_z_m        = -0.2955f;
     airframe.tether_attach_z_m       = 0.1563f;
     airframe.tether_rope_m           = 0.6400f;
@@ -62,7 +69,6 @@ static void sim_controller_load_airframe(void)
     airframe.ixx_kgm2                = 0.051f;
     airframe.iyy_kgm2                = 0.051f;
     airframe.izz_kgm2                = 0.005f;
-    airframe.lower_rotor_spin_sense  = -1.0f;
     airframe.gravity_m_s2            = 9.81f;
     airframe.max_total_thrust_g      = 1595.342f;
     airframe.servo_deg_per_us        = 0.090f;
@@ -80,6 +86,25 @@ static void sim_controller_load_airframe(void)
     airframe.servo_us_per_deg        = 11.111111f;
 
     DRV_Airframe_SetParams(&airframe);
+
+    /*
+     * 被仿真的那架飞机的接线：通道 1 = 上桨（俯视逆时针），通道 2 = 下桨
+     * （俯视顺时针）。2026-09-13 之前这是 airframe.lower_rotor_spin_sense = -1
+     * 加上写死的通道顺序，推出的偏航极性是 +1；这里逐位复刻它，所以仿真轨迹
+     * 一个数都不变。真机的这一组要靠上位机通电标定，仿真器没有 Flash，
+     * 只能自己说出"我在仿谁"。
+     */
+    {
+        DRV_PropMap prop;
+
+        DRV_PropMap_Defaults(&prop);
+        prop.channel[0].role = (uint8_t)DRV_PROP_ROLE_UPPER;
+        prop.channel[0].spin_sense = DRV_PROP_SPIN_CCW;
+        prop.channel[1].role = (uint8_t)DRV_PROP_ROLE_LOWER;
+        prop.channel[1].spin_sense = DRV_PROP_SPIN_CW;
+        prop.calibrated = 1U;
+        (void)DRV_PropMap_PublishActive(&prop);
+    }
 }
 
 void sim_controller_reset(void)
@@ -124,6 +149,11 @@ float sim_controller_pitch_inertia_kgm2(void)
     return DRV_Airframe_Get()->iyy_kgm2;
 }
 
+/*
+ * 被控对象的俯仰力臂：直接取控制律正在用的那个带符号几何力臂
+ * （重心 z − 2 号舵机转轴 z）。被控对象与控制器用同一个数、同一个公式
+ * τ = 力臂 × T × sin(倾角)——没有第二个"有效系数"可以让两边悄悄对不上。
+ */
 float sim_controller_pitch_lever_arm_m(void)
 {
     return sim_controller_params().pitch_tilt_lever_arm_m;
@@ -132,11 +162,6 @@ float sim_controller_pitch_lever_arm_m(void)
 float sim_controller_tilt_tau_s(void)
 {
     return DRV_AIRFRAME_SERVO_BETA_ACTUATOR_TAU_INCREASE_S;
-}
-
-float sim_controller_pitch_effectiveness(void)
-{
-    return SIM_PITCH_EFFECTIVENESS;
 }
 
 float sim_controller_tilt_gain(void)

@@ -28,13 +28,14 @@ class SimulationState:
 
 class XZPlant:
     def __init__(self, mass_kg: float = 1.367, inertia_pitch: float = 0.051,
-                 gravity_m_s2: float = 9.81, pitch_lever_arm_m: float = 0.145,
+                 gravity_m_s2: float = 9.81, pitch_lever_arm_m: float = 0.035442,
                  tilt_tau_s: float = 0.071236) -> None:
         self.mass_kg = mass_kg
         self.inertia_pitch = inertia_pitch
         self.gravity_m_s2 = gravity_m_s2
+        # 带符号几何力臂 = 重心 z − 俯仰舵机转轴 z（转轴在重心下方为正），与 C 控制律
+        # 同一个数；默认值是 2026-09-27 实测几何，from_bridge 会换成 C 侧那份。
         self.pitch_lever_arm_m = pitch_lever_arm_m
-        self.pitch_effectiveness = 1.0
         self.thrust_tau_s = 0.08  # teaching assumption; no thrust actuator fit is in the repo
         self.tilt_tau_s = tilt_tau_s  # sourced from the real airframe model via the C bridge
         self.pitch_damping = 0.0  # deliberately no unmeasured damping hidden in the result
@@ -49,7 +50,6 @@ class XZPlant:
         plant = cls(model["mass_kg"], model["pitch_inertia_kgm2"], model["gravity_m_s2"],
                     model["pitch_lever_arm_m"], model["tilt_tau_s"])
         plant.max_total_thrust_n = model["max_total_thrust_n"]
-        plant.pitch_effectiveness = model["pitch_effectiveness"]
         plant.tilt_actuator = TiltActuator(
             gain=model["tilt_gain"], delay=model["tilt_delay_s"],
             tau_increase=model["tilt_tau_s"], tau_decrease=model["tilt_tau_decrease_s"],
@@ -91,9 +91,12 @@ class XZPlant:
         world_z = -math.sin(pitch_mid) * body_x + math.cos(pitch_mid) * body_z
         ax = world_x / self.mass_kg - self.linear_drag * state.vx_m_s
         az = (world_z / self.mass_kg) - self.gravity_m_s2 - self.linear_drag * state.vz_m_s
-        # r_z is negative in FLU (the thrust point is below CG), so
-        # tau_y = r_z * F_x is positive when the C allocator's alpha is positive.
-        pitch_moment = -self.pitch_effectiveness * self.pitch_lever_arm_m * body_x
+        # The thrust line passes through the pitch servo axis, so tau_y = r_z * F_x
+        # with r_z = axis z - cg z (negative: axis below the CG).  The C side hands
+        # over the signed lever -r_z, hence tau_y = -lever * F_x, positive when the
+        # C allocator's alpha is positive.  Same lever, same formula as the
+        # controller's model -- no separate effectiveness factor (2026-09-27).
+        pitch_moment = -self.pitch_lever_arm_m * body_x
         pitch_accel = pitch_moment / self.inertia_pitch - self.pitch_damping * state.pitch_rate_rad_s
         vx = state.vx_m_s + ax * dt_s
         vz = state.vz_m_s + az * dt_s

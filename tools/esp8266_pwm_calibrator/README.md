@@ -1,6 +1,6 @@
 # ESP8266 PWM Calibrator
 
-This is a replacement for the lost H743 when calibrating ESCs, motors, and propellers on the RS485 thrust stand. It is intentionally a two-output bench tool, not flight-controller firmware. The normal operator entry point is `tools/pressure_rs485_gui.py`; keep manual PWM, identification, saved CSV review, and dual-prop loss analysis there.
+This was a stand-in for the H743 when calibrating ESCs, motors, and propellers on the RS485 thrust stand. It is intentionally a two-output bench tool, not flight-controller firmware. Since 2026-09-21 `tools/pressure_rs485_gui.py` drives the stand through the H743 (TBENCH, bidirectional DShot eRPM) and no longer contains the ESP12E controls, `Thrust Identification` sweep or `History And Loss` section described below. The repository's old `thrust_ident_*.csv` runs were removed on 2026-09-23; externally kept `thrust_ident_auto_*.csv` files can still be reviewed with `tools/thrust_ident_auto_viewer.py`.
 
 ## Wiring
 
@@ -56,7 +56,7 @@ IDENT STOP
 
 During identification, motor `1` drives GPIO4/D2, motor `2` drives GPIO5/D1, and motor `0` drives both outputs with the same pulse. The PC must send `IDENT KEEPALIVE` at least once every 1.5 s. Loss of the serial program, a stop command, or completion disconnects both PWM outputs.
 
-## GUI Workflow
+## GUI Workflow (historical: the ESP controls below were removed from the pressure GUI on 2026-09-21)
 
 Run:
 
@@ -77,7 +77,7 @@ For offline viewing and comparison of saved AUTO files:
 
 ```powershell
 python tools\thrust_ident_auto_viewer.py
-python tools\thrust_ident_auto_viewer.py data\identification\thrust\2026-07-23\thrust_ident_auto_20260723_171830.csv data\identification\thrust\2026-07-23\thrust_ident_auto_20260723_165915.csv
+python tools\thrust_ident_auto_viewer.py <thrust_ident_auto_A.csv> <thrust_ident_auto_B.csv>
 ```
 
 The viewer can import one or more `thrust_ident_auto_*.csv` files, align M1/M2/Dual points, subtract each stage's `0%` baseline by default, show the loss-coefficient table, plot thrust curves, plot dual-prop loss coefficient, and export the aligned table or PNG plot. Clear `0% baseline` in the viewer when you need to inspect raw transmitter offsets.
@@ -118,7 +118,7 @@ loss_coeff = dual_g / (single1_g + single2_g)
 loss_pct = (1 - loss_coeff) * 100
 ```
 
-The GUI `History And Loss` section also adds RPM-style estimates for KV1300, 12.6 V, and a 9050 prop. The RPM, tip-speed, and pitch-speed fields are engineering estimates only. They are not measured motor speed unless a tachometer or ESC telemetry is added.
+The pressure GUI no longer has a `History And Loss` section: H743 control replaced the ESP on 2026-09-21, and the KV1300 / 12.6 V / 9050-prop RPM-style estimate helpers remain only for `tools/thrust_ident_auto_viewer.py`. The RPM, tip-speed, and pitch-speed fields are engineering estimates only. Measured electrical speed (eRPM) now comes from the H743 thrust bench over bidirectional DShot (see `doc/thrust-bench.md`), not from this ESP tool.
 
 ## Bench Gates
 

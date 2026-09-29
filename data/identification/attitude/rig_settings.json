@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "psi_deg": -45.0,
+  "rod_to_fc_m": 0.04,
+  "axis_override_m": null,
+  "roll_pivot_to_fc_m": -0.13,
+  "pitch_pivot_to_fc_m": -0.13,
+  "target_thrust_n": 7.4,
+  "max_throttle_pct": 95.0,
+  "manual_throttle": false,
+  "mode": "ANGLE",
+  "angle_amp_deg": 3.0,
+  "experiment": "doublet",
+  "servo_tilt_deg": 2.3,
+  "stiffness_weight_g": null,
+  "stiffness_distance_m": null,
+  "stiffness_front_deg": null,
+  "stiffness_back_deg": null,
+  "stiffness_level_deg": null
+}

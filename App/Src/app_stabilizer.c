@@ -30,11 +30,20 @@
 #include "app_flight_calibration.h"
 #include "app_flight_log.h"
 #include "app_ident.h"
+#include "app_sysid.h"
+#include "app_sysid_alt.h"
+#include "app_thrust_lut.h"
 #include "app_imu_capture.h"
 #include "app_imu_health.h"
 #include "app_led.h"
+#include "app_mag.h"
 #include "app_nav_estimator.h"
 #include "app_optical_flow.h"
+#include "app_esc_command.h"
+#include "app_prop_spin.h"
+#include "app_rpm_notch.h"
+#include "app_servo_backlash.h"
+#include "app_thrust_bench.h"
 #include "app_rc_config.h"
 #include "app_rc_intent.h"
 #include "app_sensor.h"
@@ -55,6 +64,7 @@
 #include "drv_coax_ctrl.h"
 #include "drv_frame_contract.h"
 #include "drv_imu_calibration.h"
+#include "drv_prop_map.h"
 #include "svc_flow_nav.h"
 #include "svc_timestamp.h"
 #include "drv_servo.h"
@@ -450,6 +460,15 @@
       return 0U;
     }
 
+    /*
+     * 桨叶与电机接线标定（drv_prop_map）**不在这里设门**：作者 2026-09-13 明确
+     * 要求由他自己决定什么时候需要它，不由固件替他拦。
+     *
+     * 因此未标定时的行为是：`coax_ctrl_yaw_torque_polarity()` 返回 0，偏航通道
+     * 没有权限（分配式只按总推力对半分），而不是朝一个猜出来的方向使劲；
+     * 执行器按角色查通道，查不到就物理禁用。缺标定是"没有偏航"，不是"偏航可能反"。
+     */
+
     if (rc_link_ok == 0U) {
       stabilizer_rc_arm_latched = 0U;
       stabilizer_rc_switch_seen_low = 0U;
@@ -499,6 +518,11 @@
    * 采集需要在融合之后就标注解锁状态（此时该分支尚未执行）。
    */
   static volatile uint8_t stabilizer_capture_armed;
+  /*
+   * 磁力计融合诊断的文件级镜像，供 APP_Stabilizer_GetMagFusionStatus() 读取。
+   * 和 stabilizer_capture_armed 同一个理由：跨任务只读快照，全是标量，不加锁。
+   */
+  static volatile APP_Stabilizer_MagFusionStatus stabilizer_mag_fusion_mirror;
   static uint32_t stabilizer_last_servo_send_ms;
   static uint32_t stabilizer_last_servo_command_frame_ms = 0xFFFFFFFFUL;
 
@@ -731,6 +755,7 @@ typedef struct
   uint8_t flight_log_divider;
   uint16_t flight_log_tail_records;
   float last_gyro_rad_s[3];
+  float gyro_ctrl_rad_s[3]; /* notched copy for control loops only; bitwise == gyro_rad_s when bypassed */
   uint8_t last_gyro_ready;
   uint8_t imu_frame_orientation_code;
   DRV_IMU_Calibration imu_calibration;
@@ -769,9 +794,19 @@ typedef struct
   APP_ControlSchedule cascade_schedule;
   DRV_SERVO_MoveCmd moves[2];
   uint8_t imu_control_valid;
+  /*
+   * "有辨识在占用执行器"。两套辨识（老的 app_ident 与光杆台架的 app_sysid）对
+   * 执行器链路的要求完全一样——接管舵机、电机走遥控器直通油门——所以下游全部
+   * 联锁（LED 拦解锁原因、点桨窗口 inhibit、ESC 直通、飞行日志 motor_reason）
+   * 共用这一个标志，新模块一条都不用重新接，也就不会漏接。
+   */
   uint8_t ident_running;
+  /* 具体是哪一套在跑，只用来决定舵机目标从谁那儿取。 */
+  uint8_t sysid_running;
   APP_IdentAttLog ident_att_log;
   uint8_t servo_cal_active;
+  /* 这一拍舵机脉宽是谁算的（APP_ServoBacklashSource），在算出脉宽的那一支里填；0 = 不补回差。 */
+  uint8_t servo_source;
 } StabilizerControlFrame;
 
 /* 任务句柄（由 APP_Stabilizer_Run 参数注入） */
@@ -970,6 +1005,19 @@ uint8_t APP_Stabilizer_IsArmed(void)
   return stabilizer_capture_armed;
 }
 
+void APP_Stabilizer_GetMagFusionStatus(APP_Stabilizer_MagFusionStatus *out)
+{
+  if (out == NULL) {
+    return;
+  }
+  out->subsystem_enabled = stabilizer_mag_fusion_mirror.subsystem_enabled;
+  out->field_rejected = stabilizer_mag_fusion_mirror.field_rejected;
+  out->used = stabilizer_mag_fusion_mirror.used;
+  out->ignored = stabilizer_mag_fusion_mirror.ignored;
+  out->recovery = stabilizer_mag_fusion_mirror.recovery;
+  out->error_deg = stabilizer_mag_fusion_mirror.error_deg;
+}
+
 /*
  * 结构体整体读写，没有 seqlock：全部是 uint8/uint32 标量，撕裂最坏是两个相邻
  * 周期的字段混在一条报文里——而这些条件本来就在各自变化，混一拍不会得出
@@ -1016,6 +1064,8 @@ uint8_t APP_Stabilizer_IsServoCalibrationCandidateArmLocked(void)
 static void stabilizer_init(StabilizerContext *ctx)
 {
   memset(ctx, 0, sizeof(*ctx));
+  APP_RpmNotch_Init();
+  APP_ServoBacklash_Init();
   stabilizer_imu_calibration_candidate_arm_lock = 0U;
   stabilizer_servo_calibration_candidate_arm_lock = 0U;
   stabilizer_flow_comp_seqlock = 0U;
@@ -1069,6 +1119,7 @@ static void stabilizer_reset_for_imu_frame(
   ctx->yaw_ref_ready = 0U;
   memset(ctx->last_gyro_rad_s, 0, sizeof(ctx->last_gyro_rad_s));
   ctx->last_gyro_ready = 0U;
+  APP_RpmNotch_ResetState();
   ctx->last_vertical_velocity_sample_ms = 0U;
   ctx->vertical_accel_ready = 0U;
   ctx->imu_frame_orientation_code = orientation_code;
@@ -1181,6 +1232,8 @@ static void stabilizer_imu_step(StabilizerContext *ctx,
   gyro_rad_s[0] = msg->imu.gyro_x_dps * STABILIZER_DEG_TO_RAD;
   gyro_rad_s[1] = msg->imu.gyro_y_dps * STABILIZER_DEG_TO_RAD;
   gyro_rad_s[2] = msg->imu.gyro_z_dps * STABILIZER_DEG_TO_RAD;
+  /* 转速陷波只给控制环（app_rpm_notch.h）；下面的 alpha/Fusion 仍读原始陀螺。 */
+  APP_RpmNotch_ApplySample(gyro_rad_s, ctx->gyro_ctrl_rad_s, msg->base.timestamp_us);
   if ((ctx->last_gyro_ready != 0U) &&
       (dt_sec > 0.0f) &&
       (dt_sec <= 0.02f)) {
@@ -1222,12 +1275,51 @@ static void stabilizer_imu_step(StabilizerContext *ctx,
       fusion_input.accelerometer_g[2] = -msg->imu.accel_z_g;
     }
 
+    /*
+     * 磁力计喂最新缓存值即可：20Hz 采样、500Hz 控制环，节拍差两个数量级。
+     * APP_MAG_GetSnapshot() 只做临界区拷贝，不做 I/O，不阻塞（decoupling-spec
+     * D2-2）。门控前三条（校准、轴向验证、样本新鲜）在这里判定并折叠成一个
+     * magnetometer_valid 标志；第四条（场强合理性）留给 Driver 层——那边复用
+     * DRV_MAG_FieldMagnitude_InRange()，物理判据不该跨层重复实现。
+     */
+    {
+      APP_MAG_Snapshot mag_snapshot;
+      uint64_t mag_now_us;
+      uint64_t mag_age_us;
+
+      APP_MAG_GetSnapshot(&mag_snapshot);
+      mag_now_us = SVC_Timestamp_Us();
+      mag_age_us = (mag_now_us >= mag_snapshot.timestamp_us) ?
+        (mag_now_us - mag_snapshot.timestamp_us) : 0ULL;
+
+      if ((mag_snapshot.calibrated != 0U) &&
+          (mag_snapshot.axis_verified != 0U) &&
+          (mag_snapshot.timestamp_us != 0ULL) &&
+          (mag_age_us <= APP_MAG_SNAPSHOT_MAX_AGE_US)) {
+        fusion_input.magnetometer_mgauss[0] = mag_snapshot.field_flu_mgauss[0];
+        fusion_input.magnetometer_mgauss[1] = mag_snapshot.field_flu_mgauss[1];
+        fusion_input.magnetometer_mgauss[2] = mag_snapshot.field_flu_mgauss[2];
+        fusion_input.magnetometer_valid = 1U;
+      }
+    }
+
     if (DRV_AttitudeFusion_Update(&fusion_input, &ctx->attitude_fusion) != 0U) {
       ctx->roll = ctx->attitude_fusion.roll_deg;
       ctx->pitch = ctx->attitude_fusion.pitch_deg;
       ctx->yaw = ctx->attitude_fusion.yaw_deg;
       ctx->has_imu_sample = 1U;
     }
+    stabilizer_mag_fusion_mirror.subsystem_enabled =
+      ctx->attitude_fusion.magnetometer_subsystem_enabled;
+    stabilizer_mag_fusion_mirror.field_rejected =
+      ctx->attitude_fusion.magnetometer_field_rejected;
+    stabilizer_mag_fusion_mirror.used = ctx->attitude_fusion.magnetometer_used;
+    stabilizer_mag_fusion_mirror.ignored =
+      ctx->attitude_fusion.magnetometer_ignored;
+    stabilizer_mag_fusion_mirror.recovery =
+      ctx->attitude_fusion.magnetic_recovery;
+    stabilizer_mag_fusion_mirror.error_deg =
+      ctx->attitude_fusion.magnetic_error_deg;
   }
 
   msg->fusion_acceleration_error_deg =
@@ -1561,7 +1653,64 @@ static void stabilizer_control_prepare(StabilizerContext *ctx,
 
   APP_Ident_Update(frame->now_ms);
   APP_IdentAtt_Update(frame->now_ms);
-  frame->ident_running = APP_Ident_IsRunning();
+  {
+    /*
+     * 光杆台架辨识的一拍。`APP_SysId_Update` 里就把激励、力矩反解、舵机脉宽和
+     * 采样全做完了——观测与执行放在同一拍同一处，才谈得上"发出去的"和"量回来
+     * 的"时间戳一致，而这套辨识测的正是两者之间的时移。
+     *
+     * 标志在 Update **之后**才取：本拍触发 abort 时状态已经落到 aborted，
+     * 不会留下"标志说在跑、模块已经停了"的那一拍。
+     *
+     * 高度辨识（ALT）的观测只读：测高/原始测距/电池快照，不动生产路径的任何状态。
+     */
+    SVC_FLOW_NAV_State sysid_nav;
+    APP_BatterySnapshot sysid_battery;
+    float sysid_height_m = 0.0f, sysid_vz_m_s = 0.0f;
+    uint32_t sysid_height_ms = 0U;
+    const uint8_t sysid_height_ok =
+      APP_OpticalFlow_GetHeightSample(&sysid_height_m, &sysid_vz_m_s, &sysid_height_ms);
+
+    SVC_FlowNav_GetState(&sysid_nav);
+    APP_Battery_GetSnapshot(&sysid_battery);
+    APP_SysIdObserve sysid_obs = {
+      .now_ms = frame->now_ms,
+      .now_us = (uint32_t)(frame->now_us & 0xFFFFFFFFULL),
+      .gyro_rad_s = {
+        ctx->last_msg.imu.gyro_x_dps * STABILIZER_DEG_TO_RAD,
+        ctx->last_msg.imu.gyro_y_dps * STABILIZER_DEG_TO_RAD,
+        ctx->last_msg.imu.gyro_z_dps * STABILIZER_DEG_TO_RAD,
+      },
+      .roll_rad = ctx->roll_control * STABILIZER_DEG_TO_RAD,
+      .pitch_rad = ctx->pitch_control * STABILIZER_DEG_TO_RAD,
+      .throttle_us = frame->rc_throttle_motor_us,
+      .rc_link_ok = frame->rc_link_ok,
+      .rc_armed = frame->rc_armed,
+      .imu_valid = frame->imu_control_valid,
+      .actuator_inhibit = (APP_Acceptance_IsActive() || frame->servo_cal_active ||
+                          APP_ServoFeedbackBench_IsActive() || APP_ThrustBench_IsActive() ||
+                          APP_PropSpin_IsActive() || APP_Ident_IsRunning()),
+      .thrust_valid = APP_ThrustLut_IsFresh(),
+      .rc_throttle_low = frame->rc_arm_throttle_low,
+      .gyro_ctrl_rad_s = {
+        ctx->gyro_ctrl_rad_s[0], ctx->gyro_ctrl_rad_s[1], ctx->gyro_ctrl_rad_s[2],
+      },
+      .height_valid = sysid_height_ok,
+      .height_m = sysid_height_m,
+      .height_raw_m = sysid_nav.height_raw_m,
+      .vz_m_s = sysid_vz_m_s,
+      .az_m_s2 = APP_SysIdAlt_VerticalAccel(
+        ctx->last_msg.imu.accel_x_g, ctx->last_msg.imu.accel_y_g, ctx->last_msg.imu.accel_z_g,
+        ctx->roll_control * STABILIZER_DEG_TO_RAD, ctx->pitch_control * STABILIZER_DEG_TO_RAD,
+        DRV_Airframe_Get()->gravity_m_s2),
+      .vbat_v = (sysid_battery.state.valid != 0U) ?
+                ((float)sysid_battery.state.voltage_mv * 0.001f) : 0.0f,
+    };
+    APP_SysId_Update(&sysid_obs);
+  }
+  frame->sysid_running = APP_SysId_IsEngaged();
+  frame->ident_running =
+    ((APP_Ident_IsRunning() != 0U) || (frame->sysid_running != 0U)) ? 1U : 0U;
   {
     APP_IdentAttObserve ident_att_obs = {0};
 
@@ -1660,10 +1809,26 @@ static void stabilizer_control_compute(StabilizerContext *ctx,
     uint16_t ident_beta_us;
 
     DRV_COAX_CTRL_ResetState();
-    APP_ControlScheduler_Reset(&ctx->control_scheduler);
-    APP_Ident_GetServoTargets(&ident_alpha_us, &ident_beta_us);
+    /*
+     * 光杆辨识占用时不清调度器：清零后 last_rate_us=0，下一次循环 rate_due 恒真，
+     * 控制拍就从 500 Hz 变成"每次被 IMU 信号量唤醒都跑"（~1 kHz 且抖动），两次
+     * 唤醒挨得近时间隔 <0.5 ms，辨识的 control_dt 门就中止了这一轮——2026-09-26
+     * 杆上三轮 1/102/4 条样本即中止都是这个。控制器状态照清，节拍保持。
+     */
+    if (frame->sysid_running == 0U) {
+      APP_ControlScheduler_Reset(&ctx->control_scheduler);
+    }
+    if (frame->sysid_running != 0U) {
+      APP_SysId_GetServoTargets(&ident_alpha_us, &ident_beta_us);
+    } else {
+      APP_Ident_GetServoTargets(&ident_alpha_us, &ident_beta_us);
+    }
     frame->moves[0].pulse_us = ident_alpha_us;
     frame->moves[1].pulse_us = ident_beta_us;
+    /* 取完目标再问还在不在跑：STOP 插在两者之间时，这一拍按"不补"处理。 */
+    if ((frame->sysid_running != 0U) && (APP_SysId_IsRunning() != 0U)) {
+      frame->servo_source = (uint8_t)APP_SERVO_BACKLASH_SRC_SYSID;
+    }
   } else if (frame->rc_control_motor_mix_allowed == 0U) {
     DRV_COAX_CTRL_ServoCalibration servo_calibration;
     /*
@@ -1770,9 +1935,9 @@ static void stabilizer_control_compute(StabilizerContext *ctx,
         frame->attitude.z_m = 0.0f;
         frame->attitude.vz_m_s = 0.0f;
       }
-      frame->attitude.gyro_x_rad_s = ctx->last_msg.imu.gyro_x_dps * STABILIZER_DEG_TO_RAD;
-      frame->attitude.gyro_y_rad_s = ctx->last_msg.imu.gyro_y_dps * STABILIZER_DEG_TO_RAD;
-      frame->attitude.gyro_z_rad_s = ctx->last_msg.imu.gyro_z_dps * STABILIZER_DEG_TO_RAD;
+      frame->attitude.gyro_x_rad_s = ctx->gyro_ctrl_rad_s[0];
+      frame->attitude.gyro_y_rad_s = ctx->gyro_ctrl_rad_s[1];
+      frame->attitude.gyro_z_rad_s = ctx->gyro_ctrl_rad_s[2];
       frame->attitude.accel_m_s2[0] = ctx->vofa_debug.acc_nav_m_s2[0];
       frame->attitude.accel_m_s2[1] = ctx->vofa_debug.acc_nav_m_s2[1];
       frame->attitude.accel_m_s2[2] = ctx->vertical_accel_m_s2;
@@ -1988,6 +2153,7 @@ static void stabilizer_control_compute(StabilizerContext *ctx,
 
     frame->moves[0].pulse_us = frame->ctrl_out.servo_alpha_us;
     frame->moves[1].pulse_us = frame->ctrl_out.servo_beta_us;
+    frame->servo_source = (uint8_t)APP_SERVO_BACKLASH_SRC_CONTROLLER;
     ctx->vofa_debug.servo_alpha_us = (float)frame->moves[0].pulse_us;
     ctx->vofa_debug.servo_beta_us = (float)frame->moves[1].pulse_us;
     ctx->vofa_debug.motor_upper_us = (float)frame->ctrl_out.motor_upper_us;
@@ -2014,9 +2180,16 @@ static void stabilizer_control_compute(StabilizerContext *ctx,
      * controller derivative/integrator history before a future recovery. */
     DRV_COAX_CTRL_ResetState();
     APP_ControlScheduler_Reset(&ctx->control_scheduler);
+    /* 保持的是控制器上一拍（补偿前）的目标：回差补偿照旧，方向不变，发出去的脉宽也就不变。 */
+    frame->servo_source = (uint8_t)APP_SERVO_BACKLASH_SRC_CONTROLLER;
   }
 
-  if (frame->ident_running != 0U) {
+  /*
+   * 只喂老的 app_ident：`ident_running` 现在是"两套辨识之一在占用执行器"，
+   * 光杆台架那套的观测已经在 APP_SysId_Update 里做过了，再喂一次会让 app_ident
+   * 以为自己在跑。
+   */
+  if ((frame->ident_running != 0U) && (frame->sysid_running == 0U)) {
     APP_IdentObserve ident_obs = {
       .now_ms = frame->now_ms,
       .roll_deg = ctx->roll_control,
@@ -2030,6 +2203,43 @@ static void stabilizer_control_compute(StabilizerContext *ctx,
     };
     APP_Ident_Observe(&ident_obs);
   }
+}
+
+/*
+ * 把"上桨/下桨推力"发到**它们实际焊在哪个 ESC 通道上**。
+ *
+ * 以前这里是 `SetEscPulse(1, upper); SetEscPulse(2, lower);`——按数组下标当接线。
+ * 接反了之后不是"偏航反了"这么简单：上下桨的偏航力臂 ku/kl 不同，推力分配整体
+ * 错位，倾转力矩也跟着偏，而飞机看起来还能自稳。归属现在由上位机标定
+ * （`drv_prop_map.h`）。
+ *
+ * 查不到通道（未标定）时**物理禁用**，不退回下标顺序：退回去正好是接反时最
+ * 危险的那种行为。正常情况下走不到这里——没有标定就不许解锁——但这段代码是
+ * 执行器的最后一道关，它不该依赖"上游一定拦住了"这个假设。
+ */
+static void stabilizer_commit_rotor_pulses(uint16_t upper_us, uint16_t lower_us)
+{
+  const uint8_t upper_channel =
+    DRV_PropMap_EscChannelForRole((uint8_t)DRV_PROP_ROLE_UPPER);
+  const uint8_t lower_channel =
+    DRV_PropMap_EscChannelForRole((uint8_t)DRV_PROP_ROLE_LOWER);
+
+  if ((upper_channel == 0U) || (lower_channel == 0U)) {
+    BSP_PWM_DisableEsc(1U);
+    BSP_PWM_DisableEsc(2U);
+    return;
+  }
+  BSP_PWM_SetEscPulse(upper_channel, upper_us);
+  BSP_PWM_SetEscPulse(lower_channel, lower_us);
+}
+
+/* 按角色回读刚才发出去的等效微秒命令；未标定时回落到给定通道号。 */
+static uint16_t stabilizer_rotor_pulse_readback(uint8_t role,
+                                                uint8_t fallback_channel)
+{
+  const uint8_t channel = DRV_PropMap_EscChannelForRole(role);
+
+  return BSP_PWM_GetEscPulse((channel != 0U) ? channel : fallback_channel);
 }
 
 static void stabilizer_control_commit(StabilizerContext *ctx,
@@ -2071,6 +2281,17 @@ static void stabilizer_control_commit(StabilizerContext *ctx,
                        &frame->moves[0].pulse_us,
                        &frame->moves[1].pulse_us);
     stabilizer_servo_record_target(frame->moves);
+    /*
+     * 舵机回差补偿（app_servo_backlash.h）：只补在飞控制器（已解锁）与光杆辨识的指令，
+     * 验收/反馈台架/点动接管的这一拍原样。原地改成发往硬件的脉宽；上面记下的保持目标、
+     * 飞行日志 servo_*_us 与辨识记录都是补偿前的，servo_*_sent_us 是补偿后实际发出的。
+     */
+    APP_ServoBacklash_Apply(frame->now_ms, (APP_ServoBacklashSource)frame->servo_source,
+                            frame->rc_armed,
+                            ((acceptance_override != 0U) ||
+                             (APP_ServoFeedbackBench_IsActive() != 0U) ||
+                             (APP_ServoJog_IsActive() != 0U)) ? 1U : 0U,
+                            &frame->moves[0].pulse_us, &frame->moves[1].pulse_us);
 
     /* 仲裁后的最终目标按类型落到硬件；PWM 不进入总线时隙/死区/反馈路径。 */
     if (servo_type == APP_SERVO_TYPE_PWM) {
@@ -2114,10 +2335,73 @@ static void stabilizer_control_commit(StabilizerContext *ctx,
     }
   }
 
+  /*
+   * 点电机窗口的超时判定必须跑在**这里**，不在收命令的文本任务里。文本任务会
+   * 因为 Flash 擦写、大段打印阻塞几十毫秒甚至更久，而"该停了"的判断如果和收
+   * 命令的代码在同一个任务里，它们会一起卡住——电机就一直转着。放在 500 Hz 的
+   * 提交点上，唯一能让它停不下来的情形是控制环本身死了，而那时看门狗会复位。
+   *
+   * inhibit：只要有更高优先级的东西在用执行器，窗口立刻关。它不是"让位"，
+   * 是关窗——重新开窗需要人再确认一次。
+   */
+  APP_PropSpin_Step(frame->now_ms,
+                    ((frame->rc_armed != 0U) ||
+                     (APP_Acceptance_IsActive() != 0U) ||
+                     (frame->servo_cal_active != 0U) ||
+                     (frame->ident_running != 0U) ||
+                     (APP_ThrustBench_IsActive() != 0U)) ? 1U : 0U);
+  APP_ThrustBench_Step(frame->now_ms,
+                      ((frame->rc_armed != 0U) ||
+                       (APP_Acceptance_IsActive() != 0U) ||
+                       (frame->servo_cal_active != 0U) ||
+                       (frame->ident_running != 0U) ||
+                       (APP_PropSpin_IsActive() != 0U)) ? 1U : 0U);
+  /*
+   * 电调特殊命令窗口的抢占判定同样归这里。它比上面两个更严：**点电机和台架
+   * 也算抢占**。理由是命令帧会顶掉这一拍的油门，而那两者正靠连续的油门帧维持
+   * 电调解锁——中间插几帧命令，电机会掉出解锁状态，表现为"转着转着停了"。
+   */
+  APP_EscCommand_Step(((frame->rc_armed != 0U) ||
+                       (APP_Acceptance_IsActive() != 0U) ||
+                       (frame->servo_cal_active != 0U) ||
+                       (frame->ident_running != 0U) ||
+                       (APP_PropSpin_IsActive() != 0U) ||
+                       (APP_ThrustBench_IsActive() != 0U)) ? 1U : 0U);
+
+  uint8_t thrust_bench_commit_guard = 0U;
+
   if (APP_Acceptance_IsActive() != 0U) {
     BSP_PWM_DisableEsc(1U);
     BSP_PWM_DisableEsc(2U);
     frame->motor_output_reason = APP_FLIGHT_LOG_MOTOR_REASON_RC_LOSS_DISABLE;
+  } else if (APP_ThrustBench_IsActive() != 0U) {
+    APP_ThrustBenchOutput bench;
+    BSP_PWM_Status upper_status;
+    BSP_PWM_Status lower_status;
+
+    APP_ThrustBench_GetOutput(&bench);
+    thrust_bench_commit_guard = 1U;
+    upper_status = BSP_PWM_SetEscPulse(1U, bench.pulse_us[0]);
+    lower_status = BSP_PWM_SetEscPulse(2U, bench.pulse_us[1]);
+    if ((upper_status != BSP_PWM_OK) || (lower_status != BSP_PWM_OK)) {
+      APP_ThrustBench_Close(frame->now_ms,
+                            APP_THRUST_BENCH_STOP_OUTPUT_ERROR);
+      (void)BSP_PWM_DisableEsc(1U);
+      (void)BSP_PWM_DisableEsc(2U);
+    }
+    frame->motor_output_reason = APP_FLIGHT_LOG_MOTOR_REASON_PROP_SPIN_TEST;
+  } else if (APP_PropSpin_IsActive() != 0U) {
+    /*
+     * 桨叶旋向标定：一次只给一路油门，另一路发零油门码（不是 Disable）——
+     * 让电调保持"已上电待命"，否则每换一路都要重新等它上电自检，而中途那几秒
+     * 输出是未定义的。窗口关着时 GetOutput 给的就是两路全 0，照发即停。
+     */
+    APP_PropSpinOutput spin;
+
+    APP_PropSpin_GetOutput(&spin);
+    (void)BSP_PWM_SetEscPercent(1U, (uint32_t)spin.percent[0]);
+    (void)BSP_PWM_SetEscPercent(2U, (uint32_t)spin.percent[1]);
+    frame->motor_output_reason = APP_FLIGHT_LOG_MOTOR_REASON_PROP_SPIN_TEST;
   } else if (frame->servo_cal_active != 0U) {
     BSP_PWM_SetEscPulse(1, BSP_PWM_ESC_MIN_US);
     BSP_PWM_SetEscPulse(2, BSP_PWM_ESC_MIN_US);
@@ -2126,14 +2410,21 @@ static void stabilizer_control_commit(StabilizerContext *ctx,
     if ((frame->rc_control_motor_mix_allowed != 0U) &&
         (frame->ident_running == 0U) &&
         (frame->imu_control_valid != 0U)) {
-      BSP_PWM_SetEscPulse(1, frame->ctrl_out.motor_upper_us);
-      BSP_PWM_SetEscPulse(2, frame->ctrl_out.motor_lower_us);
+      stabilizer_commit_rotor_pulses(frame->ctrl_out.motor_upper_us,
+                                     frame->ctrl_out.motor_lower_us);
       frame->motor_output_reason = (frame->rc_attitude_debug_mode != 0U) ?
         APP_FLIGHT_LOG_MOTOR_REASON_ATTITUDE_DEBUG :
         APP_FLIGHT_LOG_MOTOR_REASON_STABILIZED_MIX;
     } else {
-      BSP_PWM_SetEscPulse(1, frame->rc_throttle_motor_us);
-      BSP_PWM_SetEscPulse(2, frame->rc_throttle_motor_us);
+      uint16_t direct_us = frame->rc_throttle_motor_us;
+      uint16_t sysid_motor_us;
+
+      /* 光杆辨识的自动油门只在这一支（已解锁 + 链路正常）生效；上锁/失联走下面的分支。 */
+      if ((frame->sysid_running != 0U) && (APP_SysId_GetMotorPulse(&sysid_motor_us) != 0U)) {
+        direct_us = sysid_motor_us;
+      }
+      BSP_PWM_SetEscPulse(1, direct_us);
+      BSP_PWM_SetEscPulse(2, direct_us);
       if (frame->ident_running != 0U) {
         frame->motor_output_reason = APP_FLIGHT_LOG_MOTOR_REASON_IDENT_DIRECT;
       } else if ((frame->rc_control_motor_mix_allowed != 0U) &&
@@ -2155,7 +2446,37 @@ static void stabilizer_control_commit(StabilizerContext *ctx,
     BSP_PWM_DisableEsc(2);
     frame->motor_output_reason = APP_FLIGHT_LOG_MOTOR_REASON_RC_LOSS_DISABLE;
   }
-  (void)BSP_PWM_CommitEsc(); /* One two-channel frame after the existing arbitration. */
+  {
+    /*
+     * 命令帧顶掉这一拍的油门帧。**只在这一层做选择，不动上面整条仲裁**：
+     * 上面算出来的油门照常写进 BSP 暂存，只是这一拍不提交它——命令发完之后
+     * 下一拍照常提交，电调看到的是"命令 ×N，然后油门回来"，而不是"油门被清零过"。
+     * 清零会让电调掉出解锁状态。
+     *
+     * 抢占已经在 APP_EscCommand_Step() 里判过了：解锁/验收/标定/辨识/点电机/台架
+     * 任何一个在跑，窗口此刻已经是 aborted，Pending 返回 0，这里根本走不到。
+     */
+    uint16_t esc_command = 0U;
+    BSP_PWM_Status commit_status;
+    if (APP_EscCommand_Pending(&esc_command) != 0U) {
+      commit_status = BSP_PWM_CommitEscCommand(esc_command);
+      if (commit_status == BSP_PWM_OK) {
+        APP_EscCommand_Consume();
+      } else if (commit_status != BSP_PWM_BUSY) {
+        /* BUSY 是上一帧还没发完，下一拍重来，序列没断；其余错误就是断了。 */
+        APP_EscCommand_Fail();
+      }
+    } else {
+      commit_status = BSP_PWM_CommitEsc();
+    }
+    if ((thrust_bench_commit_guard != 0U) &&
+        (commit_status != BSP_PWM_OK)) {
+      APP_ThrustBench_Close(frame->now_ms,
+                            APP_THRUST_BENCH_STOP_OUTPUT_ERROR);
+      (void)BSP_PWM_DisableEsc(1U);
+      (void)BSP_PWM_DisableEsc(2U);
+    }
+  } /* One two-channel frame after the existing arbitration. */
   if (APP_Acceptance_IsActive() != 0U) {
     APP_AcceptanceObservation observation;
     APP_ServoFeedbackLogSample feedback;
@@ -2236,8 +2557,9 @@ static void stabilizer_control_commit(StabilizerContext *ctx,
            frame->ch,
            sizeof(flog_snapshot.rc_channels));
     flog_snapshot.throttle_us = frame->rc_throttle_motor_us;
-    flog_snapshot.servo_alpha_us = frame->moves[0].pulse_us;
-    flog_snapshot.servo_beta_us = frame->moves[1].pulse_us;
+    /* 补偿前的目标（与辨识同一口径）；补偿后实际发出的是下面的 *_sent_us。 */
+    flog_snapshot.servo_alpha_us = stabilizer_latest_servo_target_us[0];
+    flog_snapshot.servo_beta_us = stabilizer_latest_servo_target_us[1];
     flog_snapshot.servo_alpha_sent_us =
       stabilizer_last_successful_servo_pulse_us[0];
     flog_snapshot.servo_beta_sent_us =
@@ -2307,8 +2629,16 @@ static void stabilizer_control_commit(StabilizerContext *ctx,
     memcpy(flog_snapshot.flow_corrected_velocity_m_s,
            stabilizer_flow_debug.corrected_velocity_m_s,
            sizeof(flog_snapshot.flow_corrected_velocity_m_s));
-    flog_snapshot.motor_upper_us = BSP_PWM_GetEscPulse(1);
-    flog_snapshot.motor_lower_us = BSP_PWM_GetEscPulse(2);
+    /*
+     * 按角色回读，不按通道号。这两列会进系统辨识：上下桨的偏航力臂不同，
+     * 标反了之后辨识出来的是另一架飞机的参数，而数据本身看起来毫无异常。
+     * 未标定时回落到通道顺序——那种状态下解锁被挡着，两路发的是同一个
+     * 停机值，回落不可能把有意义的东西贴错标签。
+     */
+    flog_snapshot.motor_upper_us = stabilizer_rotor_pulse_readback(
+      (uint8_t)DRV_PROP_ROLE_UPPER, 1U);
+    flog_snapshot.motor_lower_us = stabilizer_rotor_pulse_readback(
+      (uint8_t)DRV_PROP_ROLE_LOWER, 2U);
     flog_snapshot.rc_armed = frame->rc_armed;
     flog_snapshot.rc_link_ok = frame->rc_link_ok;
     flog_snapshot.throttle_over_20 = frame->rc_use_stabilized_motor_mix;
@@ -2395,6 +2725,7 @@ static void stabilizer_control_step(StabilizerContext *ctx)
     stabilizer_control_prepare(ctx, &frame);
     stabilizer_control_compute(ctx, &frame);
     stabilizer_control_commit(ctx, &frame);
+    APP_RpmNotch_Tick();
   }
 }
 

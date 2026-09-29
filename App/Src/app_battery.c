@@ -28,8 +28,17 @@ void APP_Battery_GetSnapshot(APP_BatterySnapshot *out)
     if (!out) { return; }
     uint32_t lock=BSP_Critical_Enter(),now=SVC_Timestamp_Ms();
     out->state=state;out->age_ms=state.samples?(uint32_t)(now-state.sample_ms):UINT32_MAX;
-    out->can_arm=DRV_Battery_CanArm(&state,now);
-    out->state.valid=DRV_Battery_IsFresh(&state,now);
+    /*
+     * 稳定环（优先级 24）在 messageTask（16）跑到 APP_Battery_Init() 之前就会问
+     * "能不能解锁"——messageTask 还卡在 APP_Current_Init() 的 ADC 校准里。
+     *
+     * 现在之所以答"不能"，只是因为上面那条静态初始化式**没写** valid 和 samples，
+     * 两者恰好是 0。这是巧合不是判据：谁给它补一个 .valid=1U，开机瞬间
+     * sample_ms==0 就能通过 250ms 新鲜度判定，变成"没初始化也允许解锁"。
+     * 所以这里用 initialized 显式兜底，别让安全结论挂在初始化式的省略上。
+     */
+    out->can_arm=initialized?DRV_Battery_CanArm(&state,now):0U;
+    out->state.valid=initialized?DRV_Battery_IsFresh(&state,now):0U;
     BSP_Critical_Exit(lock);
 }
 uint8_t APP_Battery_CanArm(void)

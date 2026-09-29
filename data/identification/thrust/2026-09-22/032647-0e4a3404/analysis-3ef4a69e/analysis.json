@@ -1,0 +1,459 @@
+{
+  "schema_version": 2,
+  "static": {
+    "status": "unavailable",
+    "reason": "fewer_than_2_measured_voltage_layers",
+    "primary_model": "dual_measured_voltage_interpolation",
+    "voltage_layer_limits": {
+      "max_span_v": 0.5,
+      "min_adjacent_gap_v": 0.1
+    },
+    "voltage_grouping_policy": {
+      "labeled_samples": "group_by_voltage_layer_v_but_measure_center_and_range_from_loaded_voltage",
+      "unlabeled_samples": "group_by_run_id",
+      "continuous_discharge_auto_binning": false
+    },
+    "voltage_models": {
+      "dual": {
+        "status": "unavailable",
+        "reason": "fewer_than_2_measured_voltage_layers",
+        "mode": "dual",
+        "layers": [],
+        "validation": {
+          "status": "training_only",
+          "strategy": "whole_run_and_voltage_layer_holdout",
+          "reason": "insufficient_replicated_runs_or_interpolating_voltage_layers",
+          "holdouts": [],
+          "component": "dual_voltage_dependent_total_thrust",
+          "diagnostics": {
+            "status": "unvalidated",
+            "points": 0,
+            "metrics": null,
+            "error_by_loaded_voltage": [],
+            "kind": "independent_group_holdout",
+            "predictions": [],
+            "available_groups": 0,
+            "unavailable_groups": [],
+            "groups": {
+              "run": {
+                "attempted": 0,
+                "available": 0,
+                "rejected": 0,
+                "test_points": 0,
+                "predicted_points": 0,
+                "prediction_coverage_fraction": 0.0
+              },
+              "voltage_layer": {
+                "attempted": 0,
+                "available": 0,
+                "rejected": 0,
+                "test_points": 0,
+                "predicted_points": 0,
+                "prediction_coverage_fraction": 0.0
+              }
+            },
+            "attempted_prediction_points": 0,
+            "prediction_coverage_fraction": 0.0,
+            "reason": "no_available_group_holdout_predictions"
+          }
+        }
+      },
+      "upper": {
+        "status": "unavailable",
+        "reason": "fewer_than_2_measured_voltage_layers",
+        "mode": "upper",
+        "layers": [],
+        "validation": {
+          "status": "training_only",
+          "strategy": "whole_run_and_voltage_layer_holdout",
+          "reason": "insufficient_replicated_runs_or_interpolating_voltage_layers",
+          "holdouts": []
+        }
+      },
+      "lower": {
+        "status": "unavailable",
+        "reason": "fewer_than_2_measured_voltage_layers",
+        "mode": "lower",
+        "layers": [],
+        "validation": {
+          "status": "training_only",
+          "strategy": "whole_run_and_voltage_layer_holdout",
+          "reason": "insufficient_replicated_runs_or_interpolating_voltage_layers",
+          "holdouts": []
+        }
+      }
+    },
+    "erpm_only_baseline": {
+      "status": "unavailable",
+      "reason": "fewer_than_6_steady_operating_points",
+      "coverage": {
+        "points": 3,
+        "runs": [
+          "3342c037f96f"
+        ],
+        "voltage_layers_v": [
+          12.3
+        ],
+        "upper_erpm": [
+          12525.625,
+          21557.88888888889
+        ],
+        "lower_erpm": [
+          12314.875,
+          21232.666666666668
+        ],
+        "erpm_correlation": 0.9999786562910103,
+        "independently_varied": false
+      }
+    },
+    "operating_points": [
+      {
+        "run_id": "3342c037f96f",
+        "segment_id": "dual-002",
+        "direction": "up",
+        "mode": "dual",
+        "sample_count": 10,
+        "upper_erpm": 12525.625,
+        "lower_erpm": 12314.875,
+        "thrust_n": 0.42591224686192464,
+        "thrust_std_n": 0.006228220963900968,
+        "voltage_v": 12.387875,
+        "voltage_range_v": [
+          12.359,
+          12.455
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 0.004375,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 12.3,
+        "upper_command_pct": 10.0,
+        "lower_command_pct": 10.0
+      },
+      {
+        "run_id": "3342c037f96f",
+        "segment_id": "dual-003",
+        "direction": "up",
+        "mode": "dual",
+        "sample_count": 10,
+        "upper_erpm": 17251.0,
+        "lower_erpm": 16929.875,
+        "thrust_n": 0.9133725062761506,
+        "thrust_std_n": 0.004756882335331204,
+        "voltage_v": 12.38075,
+        "voltage_range_v": [
+          12.326,
+          12.436
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 0.004750000000000001,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 12.3,
+        "upper_command_pct": 15.0,
+        "lower_command_pct": 15.0
+      },
+      {
+        "run_id": "3342c037f96f",
+        "segment_id": "dual-004",
+        "direction": "up",
+        "mode": "dual",
+        "sample_count": 11,
+        "upper_erpm": 21557.88888888889,
+        "lower_erpm": 21232.666666666668,
+        "thrust_n": 1.5077895341701533,
+        "thrust_std_n": 0.003983583513374226,
+        "voltage_v": 12.332888888888888,
+        "voltage_range_v": [
+          12.283,
+          12.375
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 0.025444444444444447,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 12.3,
+        "upper_command_pct": 20.0,
+        "lower_command_pct": 20.0
+      }
+    ],
+    "coverage": {
+      "points": 3,
+      "runs": [
+        "3342c037f96f"
+      ],
+      "voltage_layers_v": [
+        12.3
+      ],
+      "upper_erpm": [
+        12525.625,
+        21557.88888888889
+      ],
+      "lower_erpm": [
+        12314.875,
+        21232.666666666668
+      ],
+      "erpm_correlation": 0.9999786562910103,
+      "independently_varied": false
+    },
+    "single_drive_installed_baselines": {
+      "status": "unavailable",
+      "points": [],
+      "interpretation": "Installed-assembly baseline only; the other propeller may windmill and is not an isolated-propeller result."
+    },
+    "data_quality": {
+      "input_samples": 53,
+      "accepted_steady_points": 3,
+      "dual_model_points": 3,
+      "excluded_samples_by_reason": {
+        "dual_undriven_zero_erpm_boundary": 11,
+        "unsteady_thrust": 11
+      }
+    },
+    "training_diagnostics": {
+      "status": "unavailable",
+      "reason": "voltage_model_unavailable",
+      "predictions": [],
+      "points": 0,
+      "metrics": null,
+      "error_by_loaded_voltage": []
+    },
+    "sufficiency": {
+      "status": "insufficient",
+      "summary": "双驱动聚合稳态点 3，每个电压组最少 3 个唯一非零指令组合，实际电压覆盖组 0；整轮留出可用/拒绝 0/0，中间电压层留出可用 0；仍有 4 项缺口。",
+      "reference": {
+        "kind": "starting_reference_only",
+        "advisory_only": true,
+        "recommended_unique_nonzero_command_combinations_per_voltage_group": 25,
+        "recommended_actual_voltage_coverage_count": 3,
+        "recommended_independent_validation_rounds": 1,
+        "rmse_full_scale_fraction": 0.05,
+        "p95_full_scale_fraction": 0.1,
+        "does_not_authorize_flight": true
+      },
+      "aggregated_steady_points": 3,
+      "nonzero_steady_points": 3,
+      "command_grid": {
+        "status": "available",
+        "meaning": "Exact recorded command grid counts; not unique eRPM operating points.",
+        "groups": [
+          {
+            "mode": "dual",
+            "voltage_group": "layer:12.3",
+            "steady_points": 3,
+            "missing_command_points": 0,
+            "unique_command_combinations": 3,
+            "unique_nonzero_command_combinations": 3,
+            "command_combinations": [
+              [
+                10.0,
+                10.0
+              ],
+              [
+                15.0,
+                15.0
+              ],
+              [
+                20.0,
+                20.0
+              ]
+            ]
+          }
+        ],
+        "missing_command_points": 0
+      },
+      "minimum_unique_nonzero_command_combinations_per_dual_voltage_group": 3,
+      "independent_runs": 1,
+      "actual_voltage_coverage": [],
+      "input_independently_varied": false,
+      "adjacent_domain_intersections": null,
+      "holdout_available_groups": 0,
+      "full_scale_thrust_n": 1.5077895341701533,
+      "holdout_metrics": null,
+      "gaps": [
+        "fewer_than_25_unique_nonzero_command_combinations_per_voltage_group_reference",
+        "fewer_than_3_actual_voltage_coverage_groups_reference",
+        "fewer_than_2_measured_voltage_layers",
+        "no_independent_holdout_validation"
+      ],
+      "zero_or_not_spinning_points_counted_separately": 0,
+      "mode_point_counts": {
+        "dual": 3
+      },
+      "modes_observed": [
+        "dual"
+      ]
+    }
+  },
+  "power": {
+    "status": "unavailable",
+    "source": "dshot_esc_current",
+    "external_calibration_verified": false,
+    "current_resolution_a": 1.0,
+    "current_resolution_source": "TBENCH v1 whole-amp ESC current fields",
+    "current_models": {
+      "dual": {
+        "upper": {
+          "status": "unavailable",
+          "reason": "fewer_than_2_measured_voltage_layers",
+          "layers": []
+        },
+        "lower": {
+          "status": "unavailable",
+          "reason": "fewer_than_2_measured_voltage_layers",
+          "layers": []
+        },
+        "combined_input_power": {
+          "status": "unavailable",
+          "reason": "fewer_than_2_measured_voltage_layers",
+          "layers": []
+        }
+      },
+      "upper": {
+        "upper": {
+          "status": "unavailable",
+          "reason": "fewer_than_2_measured_voltage_layers",
+          "layers": []
+        },
+        "lower": {
+          "status": "unavailable",
+          "reason": "fewer_than_2_measured_voltage_layers",
+          "layers": []
+        },
+        "combined_input_power": {
+          "status": "unavailable",
+          "reason": "fewer_than_2_measured_voltage_layers",
+          "layers": []
+        }
+      },
+      "lower": {
+        "upper": {
+          "status": "unavailable",
+          "reason": "fewer_than_2_measured_voltage_layers",
+          "layers": []
+        },
+        "lower": {
+          "status": "unavailable",
+          "reason": "fewer_than_2_measured_voltage_layers",
+          "layers": []
+        },
+        "combined_input_power": {
+          "status": "unavailable",
+          "reason": "fewer_than_2_measured_voltage_layers",
+          "layers": []
+        }
+      }
+    },
+    "upper_current_model": {
+      "status": "unavailable",
+      "reason": "fewer_than_2_measured_voltage_layers",
+      "layers": []
+    },
+    "lower_current_model": {
+      "status": "unavailable",
+      "reason": "fewer_than_2_measured_voltage_layers",
+      "layers": []
+    },
+    "combined_input_power_model": {
+      "status": "unavailable",
+      "reason": "fewer_than_2_measured_voltage_layers",
+      "layers": []
+    },
+    "observations": [
+      {
+        "run_id": "3342c037f96f",
+        "segment_id": "dual-002",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 0.004375
+      },
+      {
+        "run_id": "3342c037f96f",
+        "segment_id": "dual-003",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 0.004750000000000001
+      },
+      {
+        "run_id": "3342c037f96f",
+        "segment_id": "dual-004",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 0.025444444444444447
+      }
+    ],
+    "board_current_diagnostic_only": true,
+    "note": "Board ADC current is diagnostic only and is never a fitting fallback."
+  },
+  "dynamics": {
+    "status": "unavailable",
+    "reason": "no_dynamic_segments",
+    "fits": [],
+    "rejected": []
+  },
+  "validation": {
+    "status": "training_only",
+    "strategy": "whole_run_and_voltage_layer_holdout",
+    "reason": "insufficient_replicated_runs_or_interpolating_voltage_layers",
+    "holdouts": [],
+    "component": "dual_voltage_dependent_total_thrust",
+    "diagnostics": {
+      "status": "unvalidated",
+      "points": 0,
+      "metrics": null,
+      "error_by_loaded_voltage": [],
+      "kind": "independent_group_holdout",
+      "predictions": [],
+      "available_groups": 0,
+      "unavailable_groups": [],
+      "groups": {
+        "run": {
+          "attempted": 0,
+          "available": 0,
+          "rejected": 0,
+          "test_points": 0,
+          "predicted_points": 0,
+          "prediction_coverage_fraction": 0.0
+        },
+        "voltage_layer": {
+          "attempted": 0,
+          "available": 0,
+          "rejected": 0,
+          "test_points": 0,
+          "predicted_points": 0,
+          "prediction_coverage_fraction": 0.0
+        }
+      },
+      "attempted_prediction_points": 0,
+      "prediction_coverage_fraction": 0.0,
+      "reason": "no_available_group_holdout_predictions"
+    }
+  },
+  "warnings": [
+    "This is a total-thrust model of the actual two-propeller installed assembly.",
+    "Speed inputs are raw electrical eRPM; no pole-pair or mechanical-RPM conversion is applied.",
+    "DShot ESC current is not externally calibrated and remains a telemetry-scale observation.",
+    "Board ADC current is diagnostic only and is never used as a fitting fallback.",
+    "It cannot uniquely decompose upper/lower thrust or torque; a nominally undriven propeller may windmill.",
+    "Results are valid only inside the reported eRPM and voltage coverage.",
+    "No model is automatically sent to the flight controller, written to Flash, or substituted for a control thrust table.",
+    "Quantitative input-power calibration is unavailable: None",
+    "Independent generalisation evidence is unavailable; training fit alone is not validation.",
+    "The primary voltage-dependent thrust calibration is unavailable: fewer_than_2_measured_voltage_layers"
+  ]
+}

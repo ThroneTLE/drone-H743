@@ -191,9 +191,14 @@ HAL_StatusTypeDef HAL_I2C_Mem_Write(I2C_HandleTypeDef *hi2c, uint16_t addr,
 /* ---- SDMMC：CubeMX 还没生成，这里给出与 ST HAL 一致的最小签名 ---- */
 
 typedef struct { int tag; } SD_TypeDef;
-typedef struct { SD_TypeDef *Instance; } SD_HandleTypeDef;
+typedef struct { uint32_t BusWide; uint32_t HardwareFlowControl; } SD_InitTypeDef;
+typedef struct { SD_TypeDef *Instance; SD_InitTypeDef Init; uint32_t ErrorCode; } SD_HandleTypeDef;
+
+#define SDMMC_BUS_WIDE_1B 0x00000000U
+#define SDMMC_BUS_WIDE_4B 0x00004000U
 
 typedef struct {
+    uint32_t CardType;
     uint32_t BlockNbr;
     uint32_t BlockSize;
     uint32_t LogBlockNbr;
@@ -211,6 +216,9 @@ HAL_StatusTypeDef HAL_SD_ReadBlocks(SD_HandleTypeDef *hsd, uint8_t *data,
 HAL_StatusTypeDef HAL_SD_WriteBlocks(SD_HandleTypeDef *hsd, uint8_t *data,
                                      uint32_t block, uint32_t count,
                                      uint32_t timeout);
+HAL_StatusTypeDef HAL_SD_Abort(SD_HandleTypeDef *hsd);
+HAL_StatusTypeDef HAL_SD_DeInit(SD_HandleTypeDef *hsd);
+HAL_StatusTypeDef HAL_SD_Init(SD_HandleTypeDef *hsd);
 
 #endif
 """
@@ -244,8 +252,10 @@ def build_and_run(
     harness: str,
     sources: list[Path],
     includes: list[Path],
+    *,
+    flags: tuple[str, ...] = (),
 ) -> subprocess.CompletedProcess[str]:
-    """用 host gcc 把 harness 与真实源码编到一起并运行。"""
+    """用 host gcc 把 harness 与真实源码编到一起并运行。flags 追加到编译命令（如 -D 调小容量）。"""
     gcc = shutil.which("gcc")
     if gcc is None:
         pytest.skip("gcc is required for the host harness")
@@ -254,7 +264,7 @@ def build_and_run(
     harness_c.write_text(harness, encoding="utf-8")
     exe = tmp_path / f"{name}.exe"
 
-    compile_cmd = [gcc, "-std=c11", "-Wall", "-Wextra", "-Werror"]
+    compile_cmd = [gcc, "-std=c11", "-Wall", "-Wextra", "-Werror", *flags]
     compile_cmd += [f"-I{path}" for path in includes]
     compile_cmd += [str(path) for path in sources]
     compile_cmd += [str(harness_c), "-o", str(exe)]

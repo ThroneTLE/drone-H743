@@ -65,6 +65,7 @@ MOTOR_REASON_NAMES = {
     6: "ident_direct",
     7: "imu_invalid_direct",
     8: "attitude_debug",
+    9: "prop_spin_test",
 }
 
 LEGACY_PARAM_NAMES = [
@@ -97,6 +98,10 @@ LEGACY_PARAM_NAMES = [
     "yaw_torque_lower_m_per_n",
 ]
 
+# v6~v9 参数快照里的 pitch/roll_tilt_lever_arm_m 存的是当时的**输入力臂**（0.145 m），
+# 固件再乘 0.569/0.581 的经验系数才得到倾转力矩。2026-09-27 起固件同名字段改存带符号
+# 几何力臂 = 重心 z − 舵机转轴 z（实测 +0.035442 m，无系数）；v10 起的快照不含这两项。
+# 解读旧日志时按旧口径，不要拿它和新固件的数直接比。布局不变，只是说明口径。
 V8_PARAM_NAMES = [
     *LEGACY_PARAM_NAMES[:3],
     "pos_z_ki",
@@ -344,7 +349,7 @@ V10_RECORD_STRUCT = struct.Struct(
 )
 V10_RECORD_SIZE = V10_RECORD_STRUCT.size
 DSHOT_NAMES = ("dshot_present", "dshot_enabled_mask", "dshot_busy", "dshot_fault",
-               "dshot_upper_code", "dshot_lower_code", "dshot_submitted", "dshot_completed",
+               "dshot_code_ch1", "dshot_code_ch2", "dshot_submitted", "dshot_completed",
                "dshot_busy_rejected", "dshot_errors", "dshot_cancelled", "dshot_timer_clock_hz")
 RECORD_STRUCT = struct.Struct(V10_RECORD_STRUCT.format[:-1] + "4B2H6II")
 RECORD_SIZE = RECORD_STRUCT.size
@@ -715,11 +720,19 @@ def parse_sector_header(data: bytes, offset: int) -> dict[str, object] | None:
     # Only the tagged V10/V11 extension defines ESC protocol; never infer it from the host.
     esc_protocol = "legacy_unspecified"
     if int(prefix[1]) in (10, 11) and header[252:254] == b"\xd5\x01" and header[255] == 0:
-        esc_protocol = {1: "PWM", 2: "DSHOT300"}.get(header[254], "unknown")
+        # 3 = DSHOT300_BIDIR（2026-09-21 起）。两档 DShot 分开编码：线上是不同的
+        # 协议（极性取反、校验取反），事后复盘油门与转速时分不清档位，就分不清
+        # "电调没执行"和"帧格式对不上"。旧值 1/2 含义一字未动，老日志照旧可读。
+        esc_protocol = {1: "PWM", 2: "DSHOT300",
+                        3: "DSHOT300_BIDIR"}.get(header[254], "unknown")
     return {
         **provenance,
         "esc_protocol": esc_protocol,
-        "motor_command_unit": "pwm_equivalent_us" if esc_protocol == "DSHOT300" else "us",
+        # 两档 DShot 的电机命令都是**等效微秒**，不是真微秒脉宽。双向档漏进 else
+        # 分支会让日志把单位标成 "us"——一个说谎的单位比没有单位更难查。
+        "motor_command_unit": ("pwm_equivalent_us"
+                               if esc_protocol in ("DSHOT300", "DSHOT300_BIDIR")
+                               else "us"),
         "attitude_frame": attitude_frame_from_provenance(provenance),
         "magic": magic,
         "version": prefix[1],
@@ -1204,7 +1217,7 @@ def parse_record(record_bytes: bytes) -> dict[str, object] | None:
         row["dshot_present"] = dshot["dshot_present"]
         if dshot["dshot_present"]:
             if any(code != 0 and not 48 <= code <= 2047 for code in
-                   (dshot["dshot_upper_code"], dshot["dshot_lower_code"])):
+                   (dshot["dshot_code_ch1"], dshot["dshot_code_ch2"])):
                 return None
             row.update(dshot)
     row["record_crc32"] = saved_crc

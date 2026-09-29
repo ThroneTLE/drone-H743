@@ -58,6 +58,11 @@ from ..proto import PROTO_REQ_PARAM_SET, parse_kv
 from ..record_service import LinkIdentity, RecordSchema, TelemetryRecorder
 from ..scope import SCOPE_RENDER_PERIOD_MS
 from ..telem_stream import TelemDecoder, TelemRing, TelemSchema
+from ..telem_subscription import (
+    TELEM_OWNER_DASHBOARD,
+    TelemBinaryFanout,
+    TelemSubscriptionRegistry,
+)
 from ..viewport import VerticalScrolledFrame
 
 
@@ -80,6 +85,13 @@ DASHBOARD_STATE_KEY = "dashboard"
 # 约 600 B）在流占满带宽时最坏也就几百毫秒，2 s 没有任何一行进来就不是慢，
 # 是掉了。太短会在正常的慢链路上重复请求，白占本来就紧张的上行。
 DASHBOARD_SCHEMA_STALL_S = 2.0
+
+# 流"应该开着却一帧都不来"多久算不对劲。40 Hz 下 3 s = 120 帧；最慢的默认档
+# （数传 40 Hz）也远比这密，所以 3 s 静默不是抖动，是固件那头真的不在发了。
+TELEM_STREAM_SILENCE_S = 3.0
+# 两次强制重开之间的最小间隔。链路被日志导出独占、或处在 V0 只读会话时，重开
+# 尝试一定失败；限流是为了不让它按链路速度空转。
+TELEM_STREAM_RECOVER_S = 5.0
 
 
 _ScrollHost = VerticalScrolledFrame
@@ -146,6 +158,11 @@ class DashboardPageMixin:
         self.dashboard_rate_window: deque = deque(maxlen=64)
         self.dashboard_layout = default_layout()
         self.dashboard_param_trackers: dict[str, ParamEchoTracker] = {}
+        # 链路仲裁器是**面板级**的，不属于工作台：电源页也要订阅通道、也要求
+        # 开流。它活得比任何一次链路会话都久，所以不进 `_dashboard_reset_session`。
+        self.telem_registry = TelemSubscriptionRegistry()
+        self.telem_fanout = TelemBinaryFanout()
+        self.telem_fanout.attach(TELEM_OWNER_DASHBOARD, self._dashboard_on_binary_frame)
         self._dashboard_reset_session()
 
     def _dashboard_reset_session(self) -> None:
@@ -157,6 +174,16 @@ class DashboardPageMixin:
         """
         self.dashboard_tab_visible = False
         self.dashboard_stream_requested = False
+        #: 流是在哪一次连接（transport, 代次）上开起来的。None = 没开。
+        self.telem_stream_link = None
+        #: 已**成功**下发的 (掩码, 链路身份)。None = 这条链路上还没发成功过。
+        self.telem_mask_sent = None
+        #: 最近一帧遥测到达的时刻（收线程写）。用来发现"固件自己复位了"。
+        self.telem_last_frame_at = None
+        #: 最近一帧里最新样本的固件时间戳（µs）。判"某一路是不是掉出掩码了"。
+        self.telem_last_frame_t_us = None
+        #: 上一次因为收不到帧而强制重开流的时刻，限流用。
+        self.telem_stream_recovered_at = 0.0
         self.dashboard_schema = TelemSchema()
         self.dashboard_decoder = TelemDecoder(schema_hash=None)
         self.dashboard_ring = TelemRing(capacity=DASHBOARD_RING_CAPACITY)
@@ -574,9 +601,17 @@ class DashboardPageMixin:
     # 链路
     # ------------------------------------------------------------------
 
-    def _dashboard_poll_tick(self, now: float) -> None:
+    def _dashboard_visible(self) -> bool:
         tab = getattr(self, "dashboard_tab", None)
-        visible = tab is not None and self.notebook.select() == str(tab)
+        if tab is None:
+            return False
+        try:
+            return self.notebook.select() == str(tab)
+        except tk.TclError:                     # pragma: no cover - 窗口正在销毁
+            return False
+
+    def _dashboard_poll_tick(self, now: float) -> None:
+        visible = self._dashboard_visible()
         connected = self._transport_connected()
         # 换了一次连接就是另一次飞行/另一台飞控，不能续到同一个文件里。
         self.dashboard_recorder.note_generation(
@@ -585,17 +620,23 @@ class DashboardPageMixin:
         self._dashboard_refresh_record_status()
         if visible != self.dashboard_tab_visible:
             self.dashboard_tab_visible = visible
-            self._dashboard_sync_stream(visible)
-        elif visible and connected and not self._dashboard_stream_attached():
-            # 可见性没变但链路变了：先开页再连线，或者拔插后重连。固件在 USB
-            # 出口下拔线会自己 stream=0，重连后不再发一次 STREAM on 就永远没
-            # 波形；只盯可见性翻转看不见这两种情况（审核者实机复现的缺陷）。
-            self._dashboard_sync_stream(True)
-        if not (visible and connected):
-            if not connected:
-                self.dashboard_stream_requested = False
+            self._telem_register_dashboard()
+        # 每拍都收敛一次。`_telem_apply()` 与 `_dashboard_send_mask()` 都是幂等的，
+        # 状态没变就一个字节都不发；可见性没变但链路变了也能自己接上：先开页再
+        # 连线、或者拔插后重连时，固件在 USB 出口下会自己 stream=0，不再发一次
+        # STREAM on 就永远没波形（审核者实机复现的缺陷）。
+        self._telem_stream_watchdog(now)
+        self._telem_apply()
+        if not connected:
+            return
+        # 通道表不只服务工作台：电源页可见而工作台不可见时也得有表，否则按名
+        # 算掩码永远算不出 batt_v 的位，订阅了也收不到。
+        if not (visible or self.telem_registry.demand().stream):
             return
         self._dashboard_drive_schema(now)
+        # 掩码的收敛回路。一次性边沿触发挡不住被拒的那一次：命令被吞之后并集
+        # 不会再变，于是永远不会重发，而页面上看起来只是"那两路通道没数据"。
+        self._dashboard_send_mask()
 
     def _dashboard_drive_schema(self, now: float) -> None:
         """通道表握手的推进器。
@@ -633,37 +674,165 @@ class DashboardPageMixin:
         else:
             self._dashboard_resume_schema(now, resume)
 
+    def _telem_link_identity(self):
+        transport = getattr(self, "transport", None)
+        return (transport, getattr(transport, "connection_generation", None))
+
     def _dashboard_stream_attached(self) -> bool:
-        """本页是否已在**当前** transport 上开了流并挂上二进制 sink。"""
+        """流是否已在**当前这一次连接**上开着并挂上了二进制 sink。
+
+        身份要连代次一起比，不能只比 transport 对象：串口重连是在同一个对象上
+        把代次加一，只比对象的话，重连之后这边会以为流还开着——而固件那头已经
+        `stream=0` 了，于是永远没有波形，也永远不会重挂 sink。
+        """
         if not self.dashboard_stream_requested:
             return False
         transport = getattr(self, "transport", None)
-        return getattr(transport, "_binary_sink", None) is not None or (
+        attached = getattr(transport, "_binary_sink", None) is not None or (
             getattr(transport, "binary_sink", None) is not None
         )
+        return attached and self.telem_stream_link == self._telem_link_identity()
 
-    def _dashboard_sync_stream(self, active: bool) -> None:
+    # ------------------------------------------------------------------
+    # 链路仲裁（掩码 / 流开关 / sink 三者都只有一份，见 telem_subscription.py）
+    # ------------------------------------------------------------------
+
+    def _telem_register_dashboard(self) -> bool:
+        """把工作台自己那份需求登记进仲裁器，按**带宽行为**分成两类。
+
+        * 实时通道（当前工作区的绑定通道）随可见性进出掩码：工作台不可见时，
+          它摆的那些波形通道没有理由继续占数传带宽——用户此刻在看的是别的页。
+        * 参数通道恒在：固件按脏位回显，稳态帧里不置位、几乎不占带宽，但每秒
+          一次的全量刷新帧要靠它们把滑块喂回来；撤掉滑块会永远停在初值。
+        """
+        # 现查而不是读 `dashboard_tab_visible`：那个标志由轮询节拍更新，比页签切换
+        # 慢一拍。掩码在慢的那一拍里会把工作台的波形通道整批甩掉再加回来，白白
+        # 多发两条 `TELEM MASK`。
+        visible = self._dashboard_visible()
+        return self.telem_registry.register(
+            TELEM_OWNER_DASHBOARD,
+            self.dashboard_layout.active_workspace().bound_channels(),
+            params=[channel.name for channel in self.dashboard_schema.ordered()
+                    if channel.is_parameter],
+            stream=visible,
+            visible=visible,
+        )
+
+    def _telem_subscribe(self, owner: str, channels=(), *, params=(),
+                         stream: bool = True, consumer=None) -> bool:
+        """别的页面登记订阅。返回本次是否改变了仲裁结果。"""
+        changed = self.telem_registry.register(
+            owner, channels, params=params, stream=stream)
+        if consumer is not None:
+            changed = self.telem_fanout.attach(owner, consumer) or changed
+        if changed:
+            self._telem_apply()
+            # 掩码走工作台原来那条发送路径，不另起一套：并集变了就得重发，
+            # 而 `TELEM MASK` 是整条覆盖的，漏发一次订阅者就永远收不到自己的通道。
+            self._dashboard_send_mask()
+        return changed
+
+    def _telem_unsubscribe(self, owner: str) -> bool:
+        changed = self.telem_registry.unregister(owner)
+        changed = self.telem_fanout.detach(owner) or changed
+        if changed:
+            self._telem_apply()
+            self._dashboard_send_mask()
+        return changed
+
+    def _telem_suppress(self, owner: str, reason: str = "") -> bool:
+        """独占抑制：链路归 `owner`，谁在订阅都不算数。"""
+        changed = self.telem_registry.suppress(owner, reason)
+        if changed:
+            self._telem_apply()
+        return changed
+
+    def _telem_release_exclusive(self, owner: str) -> bool:
+        changed = self.telem_registry.release(owner)
+        if changed:
+            self._telem_apply()
+        return changed
+
+    def _telem_stream_watchdog(self, now: float) -> None:
+        """流"应该开着却一帧都不来"——多半是飞控自己复位了。
+
+        数传 / 蓝牙口上，飞控按复位键、看门狗咬、掉电重插电池时，**地面端的串口
+        从头到尾没有掉线**：`serial_session` 的 `is_connected` 只看端口对象在不在，
+        连接代次只在开关口时才加。于是主机这边 `dashboard_stream_requested` 还是
+        True、sink 还挂着、代次也相等，`_telem_apply()` 一看"状态没变"就一个字节
+        都不发。而固件那边 `APP_TelemStream_Init()` 已经把 `vofaStreamActive` 清零、
+        掩码还原成默认（不含 `batt_v` / `batt_i`）。
+
+        合并之前这条是被两个页面的 2 秒轮询顺手兜住的：`STATUS?` 与
+        `BATTERY? <nonce>` 跟固件的流状态无关，复位后照样有回包。轮询删掉了，
+        这条自愈路径就得显式写出来。
+
+        处置是把链路身份作废，让下一拍的 `_telem_apply()` 重新走一遍"开流 + 重发
+        掩码"。限流到 `TELEM_STREAM_RECOVER_S`，免得链路被独占或处于只读会话时
+        空转。
+        """
+        if not self.dashboard_stream_requested or not self._dashboard_stream_attached():
+            return
+        if not self.telem_registry.demand().stream:
+            return
+        last = self.telem_last_frame_at
+        if last is None or (now - last) < TELEM_STREAM_SILENCE_S:
+            return
+        if (now - self.telem_stream_recovered_at) < TELEM_STREAM_RECOVER_S:
+            return
+        self.telem_stream_recovered_at = now
+        # 掩码也要重记账：固件复位后它已经回到默认值，不重发就永远少那两路。
+        self.telem_stream_link = None
+        self.telem_mask_sent = None
+
+    def _telem_apply(self) -> None:
+        """把仲裁结论落到链路上。幂等：状态没变就一个字节都不发。"""
         if not self._transport_connected():
+            # 线断了就不可能"还开着"。留着 True 会让重连后那一拍以为不用重开。
             self.dashboard_stream_requested = False
             return
-        command = "TELEM STREAM on" if active else "TELEM STREAM off"
+        want = bool(self.telem_registry.demand().stream)
+        if want == self._dashboard_stream_attached():
+            return
+        command = "TELEM STREAM on" if want else "TELEM STREAM off"
         if not self._validation_command_allowed(command):
             return
-        self.dashboard_stream_requested = active
-        if active:
-            # sink 里钉死**是哪条 transport 挂上来的**。回调签名不带 transport，只读
-            # `self.transport` 会把重连前后的帧记到同一条链路上——那正是新连接第一帧
-            # 混进旧录制文件的路径（审核 R2）。
-            self.transport.set_binary_sink(self._dashboard_binary_sink(self.transport))
-        self.transport.send_line(command)
-        if not active:
-            self.transport.set_binary_sink(None)
+        transport = self.transport
+        if want:
+            transport.set_binary_sink(self._dashboard_binary_sink(transport))
+            self.dashboard_stream_requested = True
+            self.telem_stream_link = self._telem_link_identity()
+            if not transport.send_line(command):
+                # 发不出去就别声称流开着——日志导出占着串口时 `send_line` 会
+                # 直接被拒。留着 True 的话下一拍看见"已挂载"就不会再试了。
+                transport.set_binary_sink(None)
+                self.dashboard_stream_requested = False
+                self.telem_stream_link = None
+                return
+            # 刚开起来的流必须带着正确的掩码。固件复位后掩码回到默认（不含
+            # `batt_v` / `batt_i`），只发 `STREAM on` 会得到一条"有帧但没有我要的
+            # 通道"的链路——最难判的一种故障。
+            #
+            # 看门狗的计时窗口从**开流这一刻**起算，不是"还没收到过帧就等于超时"：
+            # 后者会让开流之后的第一拍立刻判定静默，于是每拍重开一次。
+            self.telem_last_frame_at = time.monotonic()
+            self._dashboard_send_mask()
+            return
+        # 关流：先摘 sink 再发命令。命令发不出去（链路被独占 / 只读会话）也必须
+        # 认账——这边已经不再消费帧了，状态得说实话。
+        self.dashboard_stream_requested = False
+        self.telem_stream_link = None
+        transport.set_binary_sink(None)
+        transport.send_line(command)
 
     def _dashboard_binary_sink(self, transport):
-        def sink(function: int, payload: bytes) -> None:
-            self._dashboard_on_binary_frame(function, payload, transport=transport)
+        """挂进 transport 唯一那个 sink 槽的闭包。
 
-        return sink
+        transport 钉死在闭包里：回调签名不带 transport，消费者只读 `self.transport`
+        会把重连前后的帧记到同一条链路上——那正是新连接第一帧混进旧录制文件的
+        路径（审核 R2）。分发器把这条身份原样传给每一个消费者。
+        """
+        return self.telem_fanout.bind(transport)
 
     def _dashboard_request_schema(self, now: float | None = None) -> None:
         """整轮重拉：丢掉半张表，从表头开始。"""
@@ -769,54 +938,76 @@ class DashboardPageMixin:
         self._dashboard_send_mask()
 
     def _dashboard_mask(self) -> int:
-        """当前工作区绑定通道并集 + 全部参数通道。
+        """全部订阅者通道名的并集，按当前通道表映射成掩码。
 
-        参数通道恒在掩码里：它们平时不置位（固件按变化回显），但 1 Hz 的全量
-        刷新帧要靠它们把滑块喂回来；剔出去滑块会永远停在初值。
+        工作台自己那份仍是"当前工作区绑定通道 + 全部参数通道"。参数通道恒在掩码
+        里：它们平时不置位（固件按变化回显），但 1 Hz 的全量刷新帧要靠它们把滑块
+        喂回来；剔出去滑块会永远停在初值。
+
+        并集由 `telem_registry` 算：`TELEM MASK` 是整条覆盖的，两个页面各发各的
+        就会互相把对方的位擦掉。
         """
-        mask = 0
-        for name in self.dashboard_layout.active_workspace().bound_channels():
-            index = self.dashboard_index_by_name.get(name)
-            if index is not None:
-                mask |= 1 << index
-        for channel in self.dashboard_schema.ordered():
-            if channel.is_parameter:
-                mask |= 1 << channel.index
-        return mask
+        self._telem_register_dashboard()
+        return self.telem_registry.mask(self.dashboard_index_by_name)
 
     def _dashboard_send_mask(self) -> None:
+        """把并集掩码下发，并且**只在真的发出去之后**才记账。
+
+        掩码原来是一次性边沿触发的：并集变了就发一次，发不出去也照样当成发过了。
+        而 `send_line()` 真的会返回 False —— 日志导出持有串口租约时，
+        `serial_session._enqueue()` 对非租约、非停止命令一律拒绝；V0 只读会话则
+        在上面那道门就被拦。此时的表现极具误导性：别的通道还在喂帧，页面看起来
+        "有数据"，唯独自己订阅的那两路永远不在任何一帧里，于是被诊断成 ADC 故障。
+
+        所以这里改成幂等收敛：已成功下发的 `(掩码, 链路身份)` 记账，相同就不发，
+        不同就发；由 `_dashboard_poll_tick` 每拍调一次，被拒的下一拍自动重试，
+        重连（代次变）也会自动重发。
+        """
         if not self.dashboard_schema.complete or not self._transport_connected():
             return
         mask = self._dashboard_mask()
         if mask == 0:
             return
+        identity = self._telem_link_identity()
+        if self.telem_mask_sent == (mask, identity):
+            return
         command = f"TELEM MASK {mask:X}"
-        if self._validation_command_allowed(command):
-            self.transport.send_line(command)
+        if not self._validation_command_allowed(command):
+            return
+        if self.transport.send_line(command):
+            self.telem_mask_sent = (mask, identity)
 
     # ------------------------------------------------------------------
     # 数据（收线程）
     # ------------------------------------------------------------------
 
     def _dashboard_on_binary_frame(self, function: int, payload: bytes,
-                                   *, transport=None) -> None:
+                                   *, transport=None, generation=None) -> None:
         """transport 收线程直接调用：解码、入环、记 CSV 行。
 
         不经过 `rx_queue`：那条队列由 Tk 主循环按批抽干，40 Hz~1 kHz 的帧走
         那里会让波形跟着界面卡顿走样。这里只碰自己的环形缓冲和录制服务的队列。
 
-        `transport` 由 `_dashboard_binary_sink()` 钉在 sink 上，是这一帧的**来源
-        身份**；录制服务据此判断这一帧属不属于当前录制的那条链路。
+        `transport` / `generation` 由 `_dashboard_binary_sink()` 钉在 sink 上，是
+        这一帧的**来源身份**；录制服务据此判断这一帧属不属于当前录制的那条链路。
+        直接调用（仿真、离线回放）可以不给，此时按来源当前的代次算。
         """
         del function
         samples = self.dashboard_decoder.feed(payload)
         if not samples:
             return
         source = self.transport if transport is None else transport
-        generation = getattr(source, "connection_generation", None)
+        if generation is None:
+            generation = getattr(source, "connection_generation", None)
         self.dashboard_ring.push_many(samples)
         self.dashboard_frames_seen += 1
-        self.dashboard_rate_window.append(time.monotonic())
+        arrived = time.monotonic()
+        # 收线程只写这两个标量，看门狗的计时归 Tk 线程；两边各碰自己那一半。
+        self.telem_last_frame_at = arrived
+        # 本帧最新样本的**固件**时间戳。消费者据此判某一路通道是不是已经不在
+        # 掩码里了——用主机时钟判不出来，因为别的通道还在喂帧。
+        self.telem_last_frame_t_us = samples[-1].t_us
+        self.dashboard_rate_window.append(arrived)
         # 提交是非阻塞的：收线程绝不能因为磁盘慢而停下来，那会直接让波形跟着卡。
         for sample in samples:
             self.dashboard_recorder.submit(
@@ -834,11 +1025,28 @@ class DashboardPageMixin:
         return self.dashboard_schema.channels.get(index)
 
     def _dashboard_latest(self, name: str) -> float | None:
+        """组件侧的"现在是多少"。**非有限值一律当没有数据**。
+
+        固件在某个量无效或过期时发 `NaN`，不发 0（`batt_v` / `batt_i` 就是这么
+        约定的）。把 NaN 当成一个数往下传，数值卡会显示 `+nan`、波形会在自动量程
+        里把整张画布拽废、阈值着色会静默判成"正常"。组件已经全都处理 `None`，
+        所以在这一处收口最省事，也最难漏。
+
+        需要区分"没有样本"和"收到 NaN"的页面（电源页要按 adc_status 给出原因）
+        走 `_telem_latest_raw()`，不走这里。
+        """
+        entry = self._telem_latest_raw(name)
+        if entry is None:
+            return None
+        value = entry[1]
+        return None if value != value or value in (float("inf"), float("-inf")) else value
+
+    def _telem_latest_raw(self, name: str) -> tuple[float, float] | None:
+        """环形缓冲里该通道的最新 `(t_seconds, value)`，**不过滤 NaN**。"""
         index = self.dashboard_index_by_name.get(name)
         if index is None:
             return None
-        entry = self.dashboard_ring.latest(index)
-        return None if entry is None else entry[1]
+        return self.dashboard_ring.latest(index)
 
     def _dashboard_series(self, name: str):
         index = self.dashboard_index_by_name.get(name)

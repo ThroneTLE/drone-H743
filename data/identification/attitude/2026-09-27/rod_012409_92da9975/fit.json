@@ -1,0 +1,25 @@
+{
+  "inertia_kg_m2": 0.037828075711411294,
+  "inertia_rod_kg_m2": 0.05149075416908569,
+  "pivot_above_cg_m": 0.13455799999999998,
+  "eccentricity_m": 0.13455799999999998,
+  "torque_scale": 1.6696360143723064,
+  "damping_n_m_s": 2.2676849609133997e-17,
+  "delay_s": 0.06178959608410457,
+  "fit_percent": 61.74098782248612,
+  "natural_hz": 0.7000082702637834,
+  "damping_eccentricity_correlation": 0.0010777476888820844,
+  "separable": true,
+  "samples": 949,
+  "torque_model_scale": 0.6692840072216012,
+  "tuning_inertia_kg_m2": 0.05652021459237759,
+  "tuning_damping_n_m_s": 1.2154263974437492e-17,
+  "inertia_uncertainty_pct": 6.575189400349614,
+  "tuning_blockers": [
+    "拟合优度 62% 低于 70%"
+  ],
+  "notes": [],
+  "warnings": [
+    "拟合优度只有 61.7%，模型没有描述住这段数据。"
+  ]
+}

@@ -1,0 +1,63 @@
+{
+  "inertia_kg_m2": 0.035989669710163985,
+  "inertia_rod_kg_m2": 0.04036384528216398,
+  "pivot_above_cg_m": 0.0618,
+  "eccentricity_m": 0.0618,
+  "torque_scale": 1.5711645101663585,
+  "damping_n_m_s": 0.008402189781044856,
+  "delay_s": 0.050436256215934186,
+  "fit_percent": 84.69399720581914,
+  "natural_hz": 0.6601038060448136,
+  "damping_eccentricity_correlation": 0.35998327242137457,
+  "separable": true,
+  "samples": 2011,
+  "torque_model_scale": 0.9562418736348506,
+  "tuning_inertia_kg_m2": 0.037636575747682595,
+  "tuning_damping_n_m_s": 0.0,
+  "inertia_uncertainty_pct": 0.3971806042330095,
+  "tuning_inertia_uncertainty_pct": 6.014526860558605,
+  "fit_percent_15hz": 83.01220199759875,
+  "tuning_blockers": [],
+  "notes": [
+    "刚体积分读数：被 6/10 Hz 谱线证伪，不用于整定（整定惯量 0.0715 kg·m²、延迟 54.3 ms、4 Hz 带内拟合 75.3%）。",
+    "绕杆阻尼 c = 0.0084 N·m·s（摆的阻尼比约 0.03）只进拟合：它只在摆频附近看得出来，与舵机滞后、延迟在更高频段不可分，整定阻尼按 0（保守）。",
+    "15 Hz 带宽下的拟合优度 83.0% 只作诊断：约 11–14 Hz 的台架/杆弹性次要模态不在模型里。"
+  ],
+  "fit_percent_runs": [
+    84.69399720581914
+  ],
+  "structure": "twd",
+  "dead_time_s": 0.02817037494236541,
+  "servo_wn_rad_s": 22.149210107909145,
+  "servo_zeta": 0.2282336133909126,
+  "reaction_couple_s2": 0.005982502305082953,
+  "rig_zero_hz": 2.522164469489586,
+  "flight_zero_hz": 2.0121602858722367,
+  "equivalent_delay_1hz_s": 0.050436256215934186,
+  "gain_margin_db": 7.565687851589753,
+  "phase_margin_deg": 60.57868301874534,
+  "crossover_hz": 0.9783576031469259,
+  "rigid_tuning_inertia_kg_m2": 0.07147362432329418,
+  "rigid_delay_s": 0.05429084107633949,
+  "rigid_fit_percent": 75.26386900017654,
+  "measured_zero_hz": NaN,
+  "measured_pendulum_hz": NaN,
+  "torque_model_geometric_scale": 1.0000000000000002,
+  "thrust_servo_model_scale": 0.9562418736348504,
+  "rig_stiffness_n_m_rad": NaN,
+  "effective_pivot_m": NaN,
+  "extra_stiffness_n_m_rad": NaN,
+  "warnings": [
+    "刚体积分读数：被 6/10 Hz 谱线证伪，不用于整定（整定惯量 0.0715 kg·m²、延迟 54.3 ms、4 Hz 带内拟合 75.3%）。",
+    "绕杆阻尼 c = 0.0084 N·m·s（摆的阻尼比约 0.03）只进拟合：它只在摆频附近看得出来，与舵机滞后、延迟在更高频段不可分，整定阻尼按 0（保守）。",
+    "15 Hz 带宽下的拟合优度 83.0% 只作诊断：约 11–14 Hz 的台架/杆弹性次要模态不在模型里。"
+  ],
+  "geometry": "几何：杆到质心 d = 0.062 m；俯仰倾转轴到质心 -0.108 m；横滚倾转轴到质心 -0.108 m（飞控到质心 +0.022 m 取自那一轮）",
+  "torque_model": {
+    "signature": "geometric",
+    "levers_m": [
+      0.1082,
+      0.1082
+    ]
+  }
+}

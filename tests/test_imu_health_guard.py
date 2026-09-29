@@ -110,7 +110,10 @@ def test_arm_block_reason_reports_imu_before_the_arm_switch_branch() -> None:
     """失效会把 rc_armed 清零；若顺序错了会误报成"拨杆没打"，把真因藏起来。"""
     stabilizer = read("App/Src/app_stabilizer.c")
     start = stabilizer.index("if (frame->rc_link_seen == 0U) {")
-    chain = stabilizer[start:start + 1400]
+    # 切到原因链自己的终点，不要数字符数：每加一道解锁硬门（2026-09-13 加了
+    # 桨叶接线标定这一道）都会把后面的分支推出固定窗口，于是这条断言不是变红
+    # 而是**报"找不到子串"**——看起来像测试写坏了，实际是覆盖面悄悄缩了。
+    chain = stabilizer[start:stabilizer.index("APP_LED_SetArmStatus(", start)]
 
     health = chain.index("APP_ImuHealth_IsArmBlocked() != 0U")
     arm_switch = chain.index("frame->rc_armed == 0U")

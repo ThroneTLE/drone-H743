@@ -13,13 +13,18 @@
 
 #include "app_telem_stream.h"
 
+#include "app_battery.h"
 #include "app_control.h"
+#include "app_current.h"
 #include "app_flight_log.h"
 #include "app_imu_capture.h"
 #include "app_maint_uart.h"
 #include "app_messages.h"
 #include "app_optical_flow.h"
 #include "app_stabilizer.h"
+#include "app_sysid.h"
+#include "app_thrust_lut.h"
+#include "app_proto.h"
 #include "app_telemetry.h"
 #include "app_usb_cdc.h"
 #include "app_vofa.h"
@@ -31,6 +36,7 @@
 #include "cmsis_os2.h"
 #include "rtos_objects.h"
 
+#include <math.h>
 #include <stddef.h>
 
 /*
@@ -49,11 +55,49 @@ uint32_t APP_TelemStream_PortNowUs(void)
 
 void APP_TelemStream_PortDelayMs(uint32_t ms)
 {
+    while (ms > 25U && APP_SysId_NeedsService()) {
+        osDelay(25U);
+        ms -= 25U;
+        APP_SysId_StreamTick();
+    }
     osDelay(ms);
+}
+
+static APP_TelemSink sysid_sink;
+uint8_t APP_SysId_PortBegin(uint32_t rate_hz)
+{
+    sysid_sink = APP_TelemStream_CommandSink();
+    /* 舵机单独（SERVO）电机不转、记录里推力恒 0：不要求推力查补表新鲜，否则电池电压不在表内时
+     * 会以一条与本模式无关的推力理由拒绝开跑。 */
+    return ((APP_SysId_GetMode() == APP_SYSID_SERVO) || APP_ThrustLut_IsFresh()) &&
+           !APP_IMU_Capture_IsExportActive() && !APP_FlightLog_IsExportActive() &&
+           (sysid_sink == APP_TELEM_SINK_USB ? APP_TelemStream_PortUsbReady() : rate_hz <= 100U);
+}
+uint8_t APP_SysId_PortSend(const uint8_t *payload, uint16_t length)
+{
+    uint8_t frame[256]; uint16_t size;
+    if (!APP_Proto_BuildFrame(APP_PROTO_DIR_FROM_FC, APP_PROTO_MSG_SYSID_BATCH,
+                             payload, length, frame, sizeof(frame), &size)) { return 0U; }
+    if (sysid_sink == APP_TELEM_SINK_USB) { return APP_TelemStream_PortSendUsb(frame, size); }
+    if (sysid_sink == APP_TELEM_SINK_BT) { return APP_TelemStream_PortSendBt(frame, size); }
+    return APP_TelemStream_PortSendUart(frame, size);
 }
 
 uint8_t APP_TelemStream_PortServiceExports(void)
 {
+    /*
+     * 系统辨识的批量采样在这里排空。
+     *
+     * 放这儿而不是新开一个 RTOS 任务：任务由 CubeMX 拥有，加一个要改生成代码；
+     * 而这条流本来就只需要"有个不在控制拍上的地方去发字节"——采样时刻已经由
+     * 样本自带的固件微秒时间戳定死了，发送拍多快只影响延迟，不影响数据。
+     *
+     * 放在最前面、且不参与下面的 return：辨识帧和遥测帧不互斥（辨识跑的时候
+     * 遥测流通常也开着，两边看的是不同的东西），IMUCAP/FLOG 导出期间也照发——
+     * 那两个是大块搬运，正好是最需要知道辨识还在不在跑的时候。
+     */
+    APP_SysId_StreamTick();
+
     /*
      * 原始 IMU 采集导出：放在这个低优先级任务里搬运，采样钩子只写 RAM，
      * 因此 USB 阻塞不会影响 1 kHz 采样或稳定环。导出期间不发遥测帧，
@@ -89,6 +133,8 @@ uint8_t APP_TelemStream_PortSample(float *values, uint32_t count)
     StabilizerVofaDebug      vofa_debug;
     APP_OPTICAL_FLOW_Status  flow_status;
     DRV_COAX_CTRL_Debug      ctrl_debug;
+    APP_BatterySnapshot      battery;
+    APP_CurrentSnapshot      bus_current;
     float                   *vofa_data = values;
 
     if ((values == NULL) || (count != (uint32_t)APP_TELEM_CH_COUNT)) {
@@ -109,6 +155,14 @@ uint8_t APP_TelemStream_PortSample(float *values, uint32_t count)
     DRV_COAX_CTRL_GetLastDebug(&ctrl_debug);
 
     /*
+     * 电源快照。两个 Get 都是临界区里的一次结构体拷贝，不碰 ADC、不等锁，
+     * 所以可以在遥测节拍上直接调；采样本身由 messageTask 以 50 Hz 推进
+     * （ADC1 rank1=电流 / rank2=电压 是同一对转换），这里只是读缓存。
+     */
+    APP_Battery_GetSnapshot(&battery);
+    APP_Current_GetSnapshot(&bus_current);
+
+    /*
      * 下标一律用 APP_TELEM_CH_* 枚举名，不写裸数字：通道含义的唯一事实源是
      * App/Inc/app_telemetry.h 的枚举与 app_telemetry.c 的元数据表，上位机
      * 通过 TELEM? 拉取同一张表自动建图。改动通道请同时改枚举与表。
@@ -124,8 +178,31 @@ uint8_t APP_TelemStream_PortSample(float *values, uint32_t count)
     vofa_data[APP_TELEM_CH_TIME] = (float)(SVC_Timestamp_Us() / 1000ULL) * 0.001f;
     vofa_data[APP_TELEM_CH_VEL_EST_X] = vofa_debug.vel_est_m_s[0];
     vofa_data[APP_TELEM_CH_VEL_EST_Y] = vofa_debug.vel_est_m_s[1];
-    vofa_data[APP_TELEM_CH_RESERVED_7] = 0.0f;
-    vofa_data[APP_TELEM_CH_RESERVED_8] = 0.0f;
+    /*
+     * 电源通道 [V] / [A]。**无效一律 NaN，不填 0**：0 V / 0 A 本身是合法读数，
+     * 拿 0 当"没数据"会让上位机永远分不清"此刻不耗电"和"根本没采到"。
+     *
+     * 新鲜度门限不在这里重写一遍——再写一个 250 就是第二个会分叉的常量。
+     * APP_Battery_GetSnapshot 已经把 DRV_BATTERY_STALE_MS 与"未初始化"折进
+     * state.valid；APP_Current_GetSnapshot 已经把 CURRENT_STALE_MS、adc_status
+     * 与"一个样本都还没有"折进 reading.valid（并顺带把 current_a 置成 NaN）。
+     * 所以这里判的就是那两个 valid，判据和 `BATTERY?` / `CURRENT?` 同口径。
+     */
+    vofa_data[APP_TELEM_CH_BATT_V] = (battery.state.valid != 0U) ?
+                                     ((float)battery.state.voltage_mv * 0.001f) : NAN;
+    /*
+     * 送**块平均**而不是单点瞬时值（drv_current_filter.h）。
+     *
+     * AM32 的电流输出是未滤波的分流器运放输出，带电机 PWM 的大纹波；采样是
+     * 50 Hz 异步单点，每拍采到的是纹波上的一个随机点。2026-09-21 实测：外部
+     * 电流表 0.15 A 时这一路在 0~0.4 A 之间乱跳。瞬时值对这个信号**没有定义**，
+     * 送上去只是把噪声原样转发给显示。
+     *
+     * 代价是这一路的时间分辨率变成 0.5 s（通道元数据里写明了）。要看纹波幅度
+     * 用 `CURRENT AVG` 诊断行的 min/max，不要指望从这一路的波形上看出来。
+     */
+    vofa_data[APP_TELEM_CH_BATT_I] = (bus_current.mean_valid != 0U) ?
+                                     bus_current.mean_a : NAN;
     vofa_data[APP_TELEM_CH_RESERVED_9] = 0.0f;
     vofa_data[APP_TELEM_CH_RESERVED_10] = 0.0f;
     (void)DRV_COAX_CTRL_GetParam("coax.pos_x_kp", &vofa_data[APP_TELEM_CH_POS_X_KP]);

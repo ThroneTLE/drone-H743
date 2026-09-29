@@ -41,6 +41,17 @@ UI_MONO = "Consolas"
 UI_SIZE = 10
 UI_SIZE_SM = 9
 UI_SIZE_TITLE = 16
+#: matplotlib 默认字体没有中文字形，图里的中文标签会画成方框；按顺序取第一个装了的。
+MATPLOTLIB_CJK_FONTS = ("Microsoft YaHei", "SimHei", "Noto Sans CJK SC", "DejaVu Sans")
+
+
+def use_matplotlib_cjk_fonts() -> None:
+    """让 matplotlib 的无衬线字体优先用中文字体（全局 rcParams，重复调用无副作用）。"""
+    from matplotlib import rcParams
+
+    rest = [name for name in rcParams["font.sans-serif"] if name not in MATPLOTLIB_CJK_FONTS]
+    rcParams["font.sans-serif"] = [*MATPLOTLIB_CJK_FONTS, *rest]
+    rcParams["axes.unicode_minus"] = False
 
 
 def apply_matplotlib_theme(figure, palette: dict[str, str] = UI_PALETTE) -> None:
@@ -49,6 +60,7 @@ def apply_matplotlib_theme(figure, palette: dict[str, str] = UI_PALETTE) -> None
     Page modules keep ownership of samples, axes, and redraw policy. This helper
     owns no state and deliberately does not call ``clear`` or alter any data.
     """
+    use_matplotlib_cjk_fonts()
     figure.patch.set_facecolor(palette["panel"])
     for axis in figure.axes:
         axis.set_facecolor(palette["panel"])

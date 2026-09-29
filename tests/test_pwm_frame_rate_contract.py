@@ -44,7 +44,8 @@ def esc_and_servo_handles() -> tuple[str, str]:
 def test_actuator_pins_match_the_board() -> None:
     """引脚是硬件约束，必须与板级定义一致。
 
-    MicoAir743v2 上 PA0/PA1 是 UART4、PA2/PA3 是 USART2，所以四路 PWM 落在电机焊盘：
+    MicoAir743v2 上 PA0/PA1 是 UART4（光流）、PA2/PA3 是 USART2（图传口），
+    所以四路 PWM 落在电机焊盘：
         ESC   TIM1_CH1/CH2 → PE9 / PE11   (MOTOR4 / MOTOR3)
         舵机  TIM4_CH1/CH2 → PD12 / PD13  (MOTOR7 / MOTOR8)
     依据见 doc/micoair743v2/vendor/ardupilot-hwdef.dat。
@@ -56,13 +57,12 @@ def test_actuator_pins_match_the_board() -> None:
     assert "PD12.Signal=S_TIM4_CH1" in ioc
     assert "PD13.Signal=S_TIM4_CH2" in ioc
 
-    # PA2/PA3 归光流串口，绝不能再被定时器占回去。
-    for pin, owner in (("PA2", "USART2_TX"), ("PA3", "USART2_RX")):
+    # PA0/PA1 是 UART4 的 4 针 5 V 口，2026-09-29 起接光流；
+    # PA2/PA3 是 USART2（DJI 图传口，第 1 脚 12 V），保留为普通串口。
+    # 四个脚都是串口焊盘，绝不能再被定时器占回去当 PWM。
+    for pin, owner in (("PA0", "UART4_TX"), ("PA1", "UART4_RX"),
+                       ("PA2", "USART2_TX"), ("PA3", "USART2_RX")):
         assert f"{pin}.Signal={owner}" in ioc
-
-    # PA0/PA1 是板子的 UART4 焊盘（hwdef 有，PX4 当 TEL2 用）。ELRS 2026-09-10 搬到
-    # 板载 RC 口 USART6 之后本工程不再启用 UART4，这两个脚在 .ioc 里没有分配——
-    # 但它们仍然是串口焊盘，不许让定时器把它们抢去当 PWM。
     for pin in ("PA0", "PA1", "PA2", "PA3"):
         assert f"{pin}.Signal=S_TIM" not in ioc
 
@@ -108,7 +108,9 @@ def test_frame_rates_are_owned_by_bsp_and_fit_the_pulses() -> None:
 
     assert tick_hz == 1_000_000, "脉宽按 us 直接写 CCR，时基必须是 1 MHz"
     assert esc_hz == 400
-    assert servo_hz == 50
+    # 2026-09-28 作者定为上电 333 Hz（YM-3245 数字舵机）：杆上 A/B −45° 带载纯延迟 30.2 → 22.4 ms、
+    # 闭环滞后 46 → 38 ms，2–10 Hz 抖动不变。换模拟舵机时经 SERVOHZ 切回 50（test_servo_frame_rate.py）。
+    assert servo_hz == 333
 
     esc_frame_us = tick_hz // esc_hz
     servo_frame_us = tick_hz // servo_hz

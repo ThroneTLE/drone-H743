@@ -43,7 +43,6 @@ float sim_controller_pitch_inertia_kgm2(void);
 float sim_controller_pitch_lever_arm_m(void);
 float sim_controller_tilt_tau_s(void);
 float sim_controller_tilt_gain(void);
-float sim_controller_pitch_effectiveness(void);
 float sim_controller_tilt_delay_s(void);
 float sim_controller_tilt_tau_decrease_s(void);
 float sim_controller_max_total_thrust_n(void);

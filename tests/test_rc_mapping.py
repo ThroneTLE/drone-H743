@@ -493,13 +493,34 @@ def test_flash_record_migrates_instead_of_discarding_old_config() -> None:
     """V16 记录里没有遥控映射；直接判无效会连舵机/PID 配置一起丢掉。"""
     control = read("App/Inc/app_control_config_store.h") + read("App/Src/app_control_config_store.c")
     # v20 追加机体模型块；v19 的 RC 配置必须照旧迁移过来，不能丢。
-    assert "#define APP_CONTROL_CFG_VERSION     20U" in control
+    # v21 起记录里多了状态灯颜色绑定块；v20 的读取器仍在，见 config_read_v20。
+    # 2026-09-20（R-MAG-1）：v23 在记录尾部追加磁力计校准块，当前版本号随之
+    # 推进到 23；v22 → v23 的覆盖见下一条测试。
+    # 2026-09-28：v24 追加指令整形/出口陷波块；同日晚 v25 在该块尾部追加第二级出口陷波。
+    assert "#define APP_CONTROL_CFG_VERSION     25U" in control
     assert "#define APP_CONTROL_CFG_VERSION_V19 19U" in control
     assert "#define APP_CONTROL_CFG_VERSION_V16 16U" in control
     assert "APP_ControlFlashRecordV16" in control
     assert "config_read_v16" in control
     assert "*config = record.config" in control
     assert "app_cmd_rcmap_apply_config(NULL)" in control
+
+
+def test_the_v22_reader_keeps_the_rc_map_and_defaults_the_new_mag_block() -> None:
+    """v22 → v23 迁移覆盖：遥控映射要保留，新的磁力计块要落回未校准。
+
+    2026-09-20（R-MAG-1）：v23 在记录尾部追加磁力计校准块（当前版本号见上一条
+    测试）。config_read_v22 读一条 v22 记录时，遥控映射必须按记录里的真实
+    字段应用（`&record.rc_config`），不能因为加了新块就退化成像它自己没有
+    这一块的版本（v18 及更早）那样落回默认映射。磁力计块在 v22 记录里不
+    存在，必须显式落回未校准（NULL）。
+    """
+    control = read("App/Inc/app_control_config_store.h") + read("App/Src/app_control_config_store.c")
+    reader = control[control.index("APP_CONTROL_DEFINE_LEGACY_READER(config_read_v22"):]
+    reader = reader[:reader.index("APP_CONTROL_DEFINE_LEGACY_READER(config_read_v21")]
+
+    assert "app_cmd_rcmap_apply_config(&record.rc_config);" in reader
+    assert "app_cmd_magcal_apply_config(NULL);" in reader
 
 
 def test_invalid_config_falls_back_to_defaults_not_to_zero() -> None:

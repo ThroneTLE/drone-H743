@@ -39,6 +39,15 @@ static const char *arm_block_name(uint8_t reason)
     }
 }
 
+/*
+ * 布尔项一律归一成 0/1 再打印：每项恰好 1 个字符，整行的最坏长度才算得死
+ * （行预算见 app_control_report_arm）。
+ */
+static unsigned int arm_flag(uint8_t value)
+{
+    return (value != 0U) ? 1U : 0U;
+}
+
 void app_control_report_arm(void)
 {
     APP_Stabilizer_ArmStatus status;
@@ -52,28 +61,37 @@ void app_control_report_arm(void)
      */
     missing = DRV_Airframe_FirstInvalidName();
 
+    /*
+     * 行预算：整行连同 \r\n 必须 ≤ APP_UART_TX_TEXT_SIZE − 1（255）个字符。超了
+     * vsnprintf 截掉的正是行尾的 battery_ok 和 \r\n，上位机收不到完整的一行。
+     * 最坏情形 = block=frame_migration + 最长的 airframe_missing
+     * （airframe.thrust_point_to_cg_z_m，31 字符）+ 三位数 blinks + 其余各项 1 位，
+     * 250 字符。为此布尔项一律经 arm_flag 归一，并且不再附带 t_ms=<控制环快照
+     * 时刻>：它十位数宽、上位机从不读取（过期判断用的是上位机自己的收包时刻），
+     * 留着它这一行就装不下。加字段或改原因名之前先跑
+     * tests/test_arm_status_line_budget.py。
+     */
     APP_Control_QueueText(
         "RSP id=0 mod=ARM op=STATUS armed=%u block=%s blinks=%u known=%u "
         "rc_seen=%u rc_ok=%u switch=%u throttle_low=%u imu=%u imu_health=%u "
         "frame=%u airframe=%u servo_cal_idle=%u accept_idle=%u "
-        "airframe_missing=%s t_ms=%lu battery_ok=%u\r\n",
-        (unsigned int)status.armed,
+        "airframe_missing=%s battery_ok=%u\r\n",
+        arm_flag(status.armed),
         (status.published != 0U) ? arm_block_name(status.block_reason) : "unknown",
         (unsigned int)status.block_reason,
-        (unsigned int)status.published,
-        (unsigned int)status.rc_link_seen,
-        (unsigned int)status.rc_link_ok,
-        (unsigned int)status.arm_switch_high,
-        (unsigned int)status.throttle_low,
-        (unsigned int)status.imu_control_valid,
-        (unsigned int)status.imu_health_ok,
-        (unsigned int)status.frame_migration_ok,
-        (unsigned int)status.airframe_valid,
-        (unsigned int)status.servo_cal_idle,
-        (unsigned int)status.acceptance_idle,
+        arm_flag(status.published),
+        arm_flag(status.rc_link_seen),
+        arm_flag(status.rc_link_ok),
+        arm_flag(status.arm_switch_high),
+        arm_flag(status.throttle_low),
+        arm_flag(status.imu_control_valid),
+        arm_flag(status.imu_health_ok),
+        arm_flag(status.frame_migration_ok),
+        arm_flag(status.airframe_valid),
+        arm_flag(status.servo_cal_idle),
+        arm_flag(status.acceptance_idle),
         (missing != NULL) ? missing : "-",
-        (unsigned long)status.now_ms,
-        (unsigned int)status.battery_ok);
+        arm_flag(status.battery_ok));
 }
 
 uint8_t app_control_req_arm(uint32_t id, const char *mod, const char *op)

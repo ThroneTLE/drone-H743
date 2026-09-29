@@ -1,5 +1,6 @@
 """Execute the actual arming state machine with the real battery voltage policy."""
 from pathlib import Path
+import re
 import subprocess
 import shutil
 
@@ -61,3 +62,27 @@ int main(void){
     assert compiled.returncode==0,compiled.stdout+compiled.stderr
     ran=subprocess.run([str(tmp_path/'test.exe')],capture_output=True,text=True)
     assert ran.returncode==0,ran.stdout+ran.stderr
+
+
+def test_the_rotor_calibration_is_not_an_arming_gate():
+    """桨叶接线标定**不**参与解锁判定。
+
+    作者 2026-09-13 明确要求这一条：什么时候需要标定由他决定，固件不替他拦。
+    这条断言的作用是防止它被"顺手"加回来——加回来不会让任何测试变红，
+    而现场的症状是一块升级后的板子突然解不了锁，且闪灯报的是别的原因。
+
+    未标定时的真实行为写在 drv_prop_map.h：偏航极性为 0（没有方向），
+    分配式给不出偏航力矩；那是"没有偏航"，不是"偏航可能反"。
+    """
+    source=(ROOT/'App/Src/app_stabilizer.c').read_text(encoding='utf-8')
+    start=source.index('  static uint8_t stabilizer_rc_update_armed(')
+    end=source.index('\n  }',start)+4
+    body=re.sub(r'/\*.*?\*/',' ',source[start:end],flags=re.S)
+    assert 'DRV_PropMap' not in body, '解锁函数里不该出现桨叶标定判定'
+
+    chain_start=source.index('if (frame->rc_link_seen == 0U) {')
+    chain=re.sub(r'/\*.*?\*/',' ',
+                 source[chain_start:source.index('APP_LED_SetArmStatus(',chain_start)],
+                 flags=re.S)
+    assert 'DRV_PropMap' not in chain, 'LED 原因链里也不该有它'
+    assert 'APP_LED_ARM_BLOCK_PROPCAL' not in (ROOT/'App/Inc/app_led.h').read_text(encoding='utf-8')

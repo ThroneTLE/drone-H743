@@ -322,6 +322,7 @@ typedef int APP_FlashService_Backend;
 APP_FlashService_Backend APP_FlashService_BackendFor(uint32_t address);
 const char *APP_FlashService_BackendName(APP_FlashService_Backend backend);
 uint8_t APP_FlashService_IsLogStorageReady(void);
+void APP_FlashService_FormatSdDiag(char *out, uint32_t size);
 
 typedef struct { int32_t probe_status; int32_t status1_status; int32_t read_status; uint8_t manufacturer_id; uint8_t memory_type; uint8_t capacity_id; uint8_t status1; } APP_Flash_Status;
 typedef struct { int32_t init_status; int32_t split_status; int32_t txrx_status; uint8_t product_id; uint8_t split_id; uint8_t txrx_id; uint8_t bmp280_id; uint8_t cs_level; uint8_t miso_level; } APP_Baro_Status;
@@ -525,6 +526,8 @@ void APP_MaintUART_Write(const char *text, uint16_t length)
     maint_count++;
 }
 uint8_t app_control_internal_maint_output_active(void) { return maint_active; }
+static uint32_t err_count;
+void APP_Control_QueueText(const char *format, ...) { (void)format; err_count++; }
 
 int main(void)
 {
@@ -553,6 +556,18 @@ int main(void)
     maint_active = 1U;
     app_control_queue_proto_text(0x2223U, "MAINT\r\n");
     CHECK(put_count == 1U && maint_count == 1U, 14);
+
+    /* 2026-09-27: overlong lines / too many tokens are rejected loudly, never truncated. */
+    {
+        char buffer[16];
+        char *split[4] = {0};
+        CHECK(app_control_split_line("A B C", buffer, 16U, split, 4U) == 3U, 15);
+        CHECK(strcmp(split[2], "C") == 0 && err_count == 0U, 16);
+        CHECK(app_control_split_line("A B C D", buffer, 16U, split, 4U) == 0U, 17);
+        CHECK(err_count == 1U, 18);
+        CHECK(app_control_split_line("0123456789ABCDEF", buffer, 16U, split, 4U) == 0U, 19);
+        CHECK(err_count == 2U, 20);
+    }
     return 0;
 }
 """
@@ -986,7 +1001,15 @@ def _check_app_control_step_d2(tmp_path: Path) -> None:
     # 6 → 7：v20 在记录尾部追加了机体模型块，于是多了一个 v19 迁移读取器，
     # 它同样要把旧记录里的 RC 配置应用过来。每加一条迁移链就多一次调用，
     # 这个数会随版本增长——它守的是"应用点数量可数、不会散落"，不是某个定值。
-    assert (legacy + config_store).count("app_cmd_rcmap_apply_config(") == 7
+    # 8 = 原来的 7 处 + v21 新增的 config_read_v20 读取器里那一处。
+    # 9 = v22（桨叶接线块）新增的 config_read_v21 读取器里那一处。
+    # 10 = v23（磁力计校准块，2026-09-20，R-MAG-1）新增的 config_read_v22
+    # 读取器里那一处。
+    # 11 = v24（指令整形/出口陷波块，2026-09-28）新增的 config_read_v23 读取器里那一处。
+    # 12 = v25（整形块追加第二级出口陷波，2026-09-28 晚）新增的 config_read_v24 读取器里那一处。
+    # 这个计数的意义是"每条迁移路径都显式处理了遥控映射"，加一条迁移路径
+    # 就该加一处调用——数字不动反而说明新路径漏了。
+    assert (legacy + config_store).count("app_cmd_rcmap_apply_config(") == 12
     assert (legacy + config_store).count("app_cmd_rcmap_config()") == 1
     assert "app_control_report_rc_live();" in legacy
     assert "app_control_handle_rc_map(tokens, count);" in legacy
@@ -1183,6 +1206,9 @@ def _check_app_control_step_d4(tmp_path: Path) -> None:
                 # Freeze every pre-existing statement rather than changing the old hash.
                 assert body.count("APP_Current_Report();") == 1
                 body = body.replace("\n    APP_Current_Report();", "", 1)
+                # 2026-09-26 adds one SD diagnostic delegation after HW PARAMSTORE.
+                assert body.count("app_control_report_sd();") == 1
+                body = body.replace("\n    app_control_report_sd();", "", 1)
             assert hashlib.sha256(body.encode()).hexdigest() == expected_hash, (
                 f"{name} diverged from D4 parent {STEP_D4_PARENT_COMMIT}"
             )

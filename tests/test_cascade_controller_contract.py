@@ -124,6 +124,8 @@ def test_scheduled_cascade_and_allocator_feedback_on_host(tmp_path: Path) -> Non
     sources = [
         # 机体模型没有编译期默认值，控制律要靠它取质量/惯量/力臂。
         "drv_airframe_params.c",
+        # 偏航极性的唯一来源；不编它偏航极性恒为 0。
+        "drv_prop_map.c",
         "drv_coax_ctrl.c",
         "drv_position_control.c",
         "drv_attitude_control.c",

@@ -53,6 +53,34 @@ typedef struct {
     float vel_loop_enable;
 } APP_ControlCoaxTunableParams;
 
+/*
+ * CFG V24：横滚/俯仰的指令整形与力矩出口陷波（coax.rate_out_notch_* / coax.att_ref_*），
+ * 在记录里单独成块、排在磁力计块之后。**不并进上面的增益块**：增益块同时是飞行日志
+ * 扇区头的参数快照（app_flight_log.c），改它的布局等于改日志格式。
+ * 布局冻结：以后加字段另起一块或升版本，不改这四个的顺序。
+ * v23 及更早的记录里没有这一块，读取器显式落回默认（两个开关为 0 = 关）。
+ *
+ * CFG V25：块尾追加第二级出口陷波（coax.rate_out_notch2_*），前四个字段原位不动。
+ * v24 的块按下面冻结的 V24 类型读，第二级落回默认（关、Q 1.0），见
+ * APP_ControlConfigCompat_ShapingV24ToCurrent。
+ */
+typedef struct {
+    float rate_out_notch_hz;
+    float rate_out_notch_q;
+    float att_ref_wr_rad_s;
+    float att_ref_delay_ms;
+    float rate_out_notch2_hz;
+    float rate_out_notch2_q;
+} APP_ControlCoaxShapingParams;
+
+/* V24 = 当前整形块减掉第二级陷波。冻结它是为了让 v24 记录按原字节布局校验。 */
+typedef struct {
+    float rate_out_notch_hz;
+    float rate_out_notch_q;
+    float att_ref_wr_rad_s;
+    float att_ref_delay_ms;
+} APP_ControlCoaxShapingParamsV24;
+
 /* V18 = pre-cascade layout. Frozen for backward-compatible reads only. */
 typedef struct {
     float pos_x_kp;
@@ -139,5 +167,13 @@ uint8_t APP_ControlConfigCompat_V17ToCurrent(
 uint8_t APP_ControlConfigCompat_V15ToCurrent(
     const APP_ControlCoaxTunableParamsV15 *legacy,
     APP_ControlCoaxTunableParams *current);
+
+/*
+ * v24 整形块 → 当前：前四个字段原样拷贝，第二级陷波落回代码默认（notch2_hz = 0 关、
+ * notch2_q = 1.0）。与增益块迁移一样是确定的函数，不读运行时的值。
+ */
+uint8_t APP_ControlConfigCompat_ShapingV24ToCurrent(
+    const APP_ControlCoaxShapingParamsV24 *legacy,
+    APP_ControlCoaxShapingParams *current);
 
 #endif /* APP_CONTROL_CONFIG_COMPAT_H */

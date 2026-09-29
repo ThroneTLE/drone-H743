@@ -1,0 +1,7 @@
+{
+  "model_id": "1281c31206bf",
+  "path": "data/identification/thrust/models/lut/2026-09-24/223340-1281c31206bf/thrust_lut.json",
+  "firmware_table": "Driver/Src/drv_thrust_lut_table.inc",
+  "exported_at": "2026-09-24T22:40:18.168613-07:00",
+  "meaning": "飞控当前使用的推力查补表；models/lut 下其他目录是历史或候选。换表：验证通过后运行 python -m tools.thrust_bench.thrust_lut_export <thrust_lut.json>，再编译烧录。"
+}

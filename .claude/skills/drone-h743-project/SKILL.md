@@ -1,19 +1,11 @@
 ---
 name: drone-h743-project
-description: Apply project-specific guardrails and PIPELINE.md mainline governance when modifying or reviewing the STM32H743 FreeRTOS flight-control firmware in this repository, including CubeMX ownership, App/Services/Driver/BSP boundaries, decoupling rules for new modules, H7 DMA/cache, RTOS tasks, and board bring-up. Do not use outside this repository.
+description: Use the shared drone-H743 project rules for firmware, host tools, reviews, and coordinated agent work in this repository and its worktrees.
 ---
 
 # drone-H743 Project Skill (route)
 
-This file is a route, not the rules. The canonical skill — shared verbatim with the
-Codex/GPT side, which reaches it through `AGENTS.md` — lives at
-[`.agents/skills/drone-h743-project/SKILL.md`](../../../.agents/skills/drone-h743-project/SKILL.md).
-
-Read that file now, then follow its reference routing table and read only the
-references the current request needs. Do not duplicate its rules here: a copy would
-drift out of sync with what the other agent reads.
-
-Related entry points: [`AGENTS.md`](../../../AGENTS.md) (executor/reviewer protocol,
-hard constraints), [`PIPELINE.md`](../../../PIPELINE.md) (mainline status and gates),
-and [`references/decoupling-spec.md`](../../../.agents/skills/drone-h743-project/references/decoupling-spec.md)
-before creating a module, refactoring, or optimizing code.
+Read the canonical [project SKILL](../../../.agents/skills/drone-h743-project/SKILL.md).
+It is shared with Codex/GPT through [AGENTS.md](../../../AGENTS.md).
+Follow its role-based reading routes, validation policy, architecture decisions, and hardware boundaries.
+Do not copy rules into this entry or assign a permanent role based on the model brand.

@@ -4,90 +4,114 @@
 
 Read this shard only when the task touches application behavior, RTOS task bodies, control flow, diagnostics, commands, or synchronous services.
 
-Source snapshot: `54662a3e02be`. Indexed files: 138.
+Source snapshot: `b8db7f90a9cc`. Indexed files: 173.
 
 | File/module | Content outline | Key entry points |
 |---|---|---|
-| `App/Inc/app.h`<br>`App/Src/app.c` | Application behavior and task-facing logic for app | `APP_Init` |
-| `App/Inc/app_acceptance.h`<br>`App/Src/app_acceptance.c` | Application behavior and task-facing logic for acceptance | `APP_Acceptance_Init`, `APP_Acceptance_Start`, `APP_Acceptance_Keepalive`, `APP_Acceptance_Stop` (+9) |
-| `App/Inc/app_action.h`<br>`App/Src/app_action.c` | Application behavior and task-facing logic for action | `APP_Action_Init`, `APP_Action_Start`, `APP_Action_Heartbeat`, `APP_Action_Cancel` (+7) |
-| `App/Inc/app_aiwb2.h`<br>`App/Src/app_aiwb2.c` | Application behavior and task-facing logic for aiwb2 | `APP_AiWB2_Init`, `APP_AiWB2_Tick`, `APP_AiWB2_ProcessLine`, `APP_AiWB2_IsTransparent` (+23) |
-| `App/Inc/app_background.h`<br>`App/Src/app_background.c` | Application behavior and task-facing logic for background | `APP_Background_Init`, `APP_Background_Step`, `APP_Background_RequestReadBlock`, `APP_Background_RequestWriteBlock` (+3) |
-| `App/Inc/app_baro.h`<br>`App/Src/app_baro.c` | Application behavior and task-facing logic for baro | `APP_Baro_ReportStartup`, `APP_Baro_GetStatus`, `APP_Baro_GetCachedStatus`, `APP_Baro_ReadSnapshot` |
-| `App/Inc/app_battery.h`<br>`App/Src/app_battery.c` | Application behavior and task-facing logic for battery | `APP_Battery_Init`, `APP_Battery_Step`, `APP_Battery_GetSnapshot`, `APP_Battery_CanArm` (+6) |
-| `App/Src/app_battery_led.c` | Application behavior and task-facing logic for battery led | `APP_Battery_PublishLedWarning` |
-| `App/Src/app_battery_proto.c` | Application behavior and task-facing logic for battery proto | `APP_Battery_SendReport`, `APP_Battery_Command`, `APP_Battery_Configure` |
-| `App/Src/app_battery_telemetry.c` | Application behavior and task-facing logic for battery telemetry | `APP_Battery_GetTxStats`, `APP_Battery_TelemetryStep`, `APP_ELRS_SendTelemetryBattery` |
-| `App/Inc/app_boot.h`<br>`App/Src/app_boot.c` | Application behavior and task-facing logic for boot | `APP_Boot_Init`, `APP_Boot_TryRomDfu`, `APP_Boot_EvaluateSafety`, `APP_Boot_IsVectorReasonable` (+7) |
-| `App/Src/app_cmd_airframe.c` | Application behavior and task-facing logic for cmd airframe | `DRV_COAX_CTRL_GetParam`, `DRV_COAX_CTRL_SetParam` |
-| `App/Src/app_cmd_arm.c` | Application behavior and task-facing logic for cmd arm | — |
-| `App/Src/app_cmd_diag.c` | Application behavior and task-facing logic for cmd diag | — |
-| `App/Src/app_cmd_fallback.c` | Application behavior and task-facing logic for cmd fallback | `APP_Components_Command`, `APP_Battery_Command` |
-| `App/Src/app_cmd_flow.c` | Application behavior and task-facing logic for cmd flow | `APP_Stabilizer_ReadFlowCompensationSnapshot` |
-| `App/Src/app_cmd_imucal.c` | Application behavior and task-facing logic for cmd imucal | `APP_FlightCalibration_ReadActive`, `SVC_Param_IsDirty`, `APP_Sensor_GetFluOrientation`, `APP_FlightCalibration_MergeV1Candidate` (+2) |
-| `App/Src/app_cmd_imusel.c` | Application behavior and task-facing logic for cmd imusel | `BSP_IMU_Init` |
-| `App/Src/app_cmd_led.c` | Application behavior and task-facing logic for cmd led | — |
-| `App/Src/app_cmd_probe.c` | Application behavior and task-facing logic for cmd probe | `APP_Stabilizer_IsArmed`, `BSP_IMU_DebugSpiBusIndex`, `BSP_I2C_GetHandle`, `BSP_UART_GetHandle` (+1) |
-| `App/Src/app_cmd_rcmap.c` | Application behavior and task-facing logic for cmd rcmap | `APP_RcConfig_Validate` |
-| `App/Src/app_cmd_servocal.c` | Application behavior and task-facing logic for cmd servocal | `APP_Sensor_GetFluOrientation`, `SVC_Param_IsDirty`, `APP_FlightCalibration_UpdateServoMechanical`, `APP_FlightCalibration_PublishPreview` |
-| `App/Src/app_cmd_servotype.c` | Application behavior and task-facing logic for cmd servotype | `APP_Stabilizer_IsArmed`, `APP_ServoType_FromName`, `APP_FlightCalibration_UpdateServoType`, `SVC_Param_IsDirty` |
-| `App/Src/app_cmd_system.c` | Application behavior and task-facing logic for cmd system | `APP_Control_ReportUartStats` |
-| `App/Src/app_cmd_telem.c` | Application behavior and task-facing logic for cmd telem | — |
-| `App/Inc/app_components.h`<br>`App/Src/app_components.c` | Application behavior and task-facing logic for components | `APP_Components_Register`, `APP_Components_Init`, `APP_Components_Command`, `APP_Components_Report` (+5) |
-| `App/Src/app_components_board.c` | Application behavior and task-facing logic for components board | `APP_Components_RegisterBoard`, `APP_Components_RegisterGps` |
-| `App/Src/app_components_transport.c` | Application behavior and task-facing logic for components transport | `APP_Components_NowMs`, `APP_Components_ExportBusy`, `APP_Components_Send` |
-| `App/Inc/app_control.h`<br>`App/Src/app_control.c` | Application behavior and task-facing logic for control | `APP_Control_Init`, `APP_Control_Tick`, `APP_Control_QueueText`, `APP_Control_ProcessLine` (+4) |
-| `App/Inc/app_control_config_compat.h`<br>`App/Src/app_control_config_compat.c` | Application behavior and task-facing logic for control config compat | `APP_ControlConfigCompat_CurrentPassthrough`, `APP_ControlConfigCompat_V18ToCurrent`, `APP_ControlConfigCompat_V17ToCurrent`, `APP_ControlConfigCompat_V15ToCurrent` |
-| `App/Inc/app_control_config_store.h`<br>`App/Src/app_control_config_store.c` | Application behavior and task-facing logic for control config store | `APP_ControlConfigStore_Load`, `APP_ControlConfigStore_Save`, `APP_ControlConfigStore_CaptureTunables` |
-| `App/Src/app_control_core.c` | Application behavior and task-facing logic for control core | `APP_IMU_Capture_IsExportActive`, `APP_MaintUART_IsLinkActive` |
-| `App/Inc/app_control_internal.h` | Application behavior and task-facing logic for control internal | — |
-| `App/Inc/app_control_scheduler.h`<br>`App/Src/app_control_scheduler.c` | Application behavior and task-facing logic for control scheduler | `APP_ControlScheduler_Reset`, `APP_ControlScheduler_Step`, `APP_ControlScheduler_Commit` |
-| `App/Inc/app_current.h`<br>`App/Src/app_current.c` | Application behavior and task-facing logic for current | `APP_Current_Init`, `APP_Current_Step`, `APP_Current_GetSnapshot`, `APP_Current_Report` |
-| `App/Inc/app_current_format.h` | Application behavior and task-facing logic for current format | — |
-| `App/Inc/app_diag.h`<br>`App/Src/app_diag.c` | Application behavior and task-facing logic for diag | `APP_Diag_RecordStackOverflow`, `APP_Diag_RecordMallocFailed`, `APP_Diag_GetFaultInfo` |
-| `App/Inc/app_diag_binary.h`<br>`App/Src/app_diag_binary.c` | Application behavior and task-facing logic for diag binary | `APP_Diag_SendBinary` |
-| `App/Inc/app_elrs.h`<br>`App/Src/app_elrs.c` | Application behavior and task-facing logic for elrs | `APP_ELRS_Init`, `APP_ELRS_Step`, `APP_ELRS_GetChannels`, `APP_ELRS_GetLastRcMs` (+12) |
-| `App/Inc/app_esc_diag.h`<br>`App/Src/app_esc_diag.c` | Application behavior and task-facing logic for esc diag | `APP_EscDiag_Report` |
-| `App/Inc/app_esc_log.h`<br>`App/Src/app_esc_log.c` | Application behavior and task-facing logic for esc log | `APP_EscLog_Capture` |
-| `App/Inc/app_firmware_identity.h`<br>`App/Src/app_firmware_identity.c` | Application behavior and task-facing logic for firmware identity | `APP_FirmwareIdentity_IsRangeValid`, `APP_FirmwareIdentity_ComputeCrc32`, `APP_FirmwareIdentity_Get`, `APP_FirmwareIdentity_GetCrc32` |
-| `App/Inc/app_flash.h`<br>`App/Src/app_flash.c` | Application behavior and task-facing logic for flash | `APP_Flash_ReportStartup`, `APP_Flash_RefreshStatus`, `APP_Flash_GetStatus` |
-| `App/Inc/app_flash_service.h`<br>`App/Src/app_flash_service.c` | Application behavior and task-facing logic for flash service | `APP_FlashService_BackendFor`, `APP_FlashService_BackendName`, `APP_FlashService_IsLogStorageReady`, `APP_FlashService_Init` (+14) |
-| `App/Inc/app_flight_calibration.h`<br>`App/Src/app_flight_calibration.c` | Application behavior and task-facing logic for flight calibration | `APP_FlightCalibration_Defaults`, `APP_FlightCalibration_Validate`, `APP_FlightCalibration_Encode`, `APP_FlightCalibration_Decode` (+22) |
-| `App/Inc/app_flight_log.h`<br>`App/Src/app_flight_log.c` | Application behavior and task-facing logic for flight log | `APP_FlightLog_Init`, `APP_FlightLog_BackgroundStep`, `APP_FlightLog_Observe`, `APP_FlightLog_GetStatus` (+5) |
-| `App/Inc/app_gps.h`<br>`App/Src/app_gps.c` | Application behavior and task-facing logic for gps | `APP_GPS_Init`, `APP_GPS_Step`, `APP_GPS_GetStatus`, `APP_GPS_Report` |
-| `App/Inc/app_ident.h`<br>`App/Src/app_ident.c` | Application behavior and task-facing logic for ident | `APP_Ident_Init`, `APP_Ident_GetState`, `APP_Ident_IsRunning`, `APP_Ident_ReportStatus` (+17) |
-| `App/Inc/app_imu_capture.h`<br>`App/Src/app_imu_capture.c` | Application behavior and task-facing logic for imu capture | `APP_IMU_Capture_Init`, `APP_IMU_Capture_Push`, `APP_IMU_Capture_AnnotateFiltered`, `APP_IMU_Capture_AnnotateControl` (+9) |
-| `App/Inc/app_imu_health.h`<br>`App/Src/app_imu_health.c` | Application behavior and task-facing logic for imu health | `APP_ImuHealth_Init`, `APP_ImuHealth_NoteSample`, `APP_ImuHealth_Update`, `APP_ImuHealth_GetLevel` (+2) |
-| `App/Inc/app_led.h`<br>`App/Src/app_led.c` | Application behavior and task-facing logic for led | `APP_LED_Task_Init`, `APP_LED_Task_Step`, `APP_LED_SetArmStatus`, `APP_LED_SetServoCalMode` (+3) |
-| `App/Inc/app_mag.h`<br>`App/Src/app_mag.c` | Application behavior and task-facing logic for mag | `APP_MAG_Init`, `APP_MAG_Step`, `APP_MAG_GetStatus`, `APP_MAG_Report` (+1) |
-| `App/Inc/app_maint_uart.h`<br>`App/Src/app_maint_uart.c` | Application behavior and task-facing logic for maint uart | `APP_MaintUART_Init`, `APP_MaintUART_Step`, `APP_MaintUART_Write`, `APP_MaintUART_WritePacket` (+7) |
-| `App/Inc/app_message.h`<br>`App/Src/app_message.c` | Application behavior and task-facing logic for message | `APP_Message_Task_Init`, `APP_Message_Task_Step` |
-| `App/Inc/app_messages.h` | Application behavior and task-facing logic for messages | — |
-| `App/Inc/app_nav_estimator.h`<br>`App/Src/app_nav_estimator.c` | Application behavior and task-facing logic for nav estimator | `APP_NavEstimator_PublishVelocityEKF`, `APP_NavEstimator_GetVelocityEKF` |
-| `App/Inc/app_optical_flow.h`<br>`App/Src/app_optical_flow.c` | Application behavior and task-facing logic for optical flow | `APP_OpticalFlow_Init`, `APP_OpticalFlow_Step`, `APP_OpticalFlow_ServiceRecovery`, `APP_OpticalFlow_GetVelocity` (+6) |
-| `App/Inc/app_proto.h`<br>`App/Src/app_proto.c` | Application behavior and task-facing logic for proto | `APP_Proto_BuildFrame`, `APP_Proto_Init`, `APP_Proto_IsReceiving`, `APP_Proto_ConsumeByte` |
-| `App/Inc/app_rc_config.h`<br>`App/Src/app_rc_config.c` | Application behavior and task-facing logic for rc config | `APP_RcConfig_Defaults`, `APP_RcConfig_Validate`, `APP_RcConfig_FunctionName`, `APP_RcConfig_FunctionFromName` (+7) |
-| `App/Inc/app_rc_intent.h`<br>`App/Src/app_rc_intent.c` | Application behavior and task-facing logic for rc intent | `APP_RcIntent_ForwardVelocity`, `APP_RcIntent_LeftVelocity`, `APP_RcIntent_TargetPitch`, `APP_RcIntent_TargetRoll` (+1) |
-| `App/Inc/app_sensor.h`<br>`App/Src/app_sensor.c` | Application behavior and task-facing logic for sensor | `APP_IMU_RawToScaled`, `APP_IMU_ConvertBaro`, `APP_Sensor_LpfInit`, `APP_Sensor_LpfApply` (+16) |
-| `App/Inc/app_servo_bus_guard.h`<br>`App/Src/app_servo_bus_guard.c` | Application behavior and task-facing logic for servo bus guard | `APP_ServoBusGuard_IsPwmMode`, `APP_ServoBusGuard_IsBusOnlyCommand` |
-| `App/Inc/app_servo_cal.h`<br>`App/Src/app_servo_cal.c` | Application behavior and task-facing logic for servo cal | `APP_ServoCal_Init`, `APP_ServoCal_Step`, `APP_ServoCal_IsActive`, `APP_ServoCal_GetState` (+1) |
-| `App/Inc/app_servo_feedback.h`<br>`App/Src/app_servo_feedback.c` | Application behavior and task-facing logic for servo feedback | `APP_ServoFeedback_Init`, `APP_ServoFeedback_Service`, `APP_ServoFeedback_GetLogSample` |
-| `App/Inc/app_servo_feedback_bench.h`<br>`App/Src/app_servo_feedback_bench.c` | Application behavior and task-facing logic for servo feedback bench | `APP_ServoFeedbackBench_Init`, `APP_ServoFeedbackBench_Start`, `APP_ServoFeedbackBench_StartSweep`, `APP_ServoFeedbackBench_StartStep` (+7) |
-| `App/Inc/app_servo_jog.h`<br>`App/Src/app_servo_jog.c` | Application behavior and task-facing logic for servo jog | `APP_ServoJog_Init`, `APP_ServoJog_HandleCommand`, `APP_ServoJog_Request`, `APP_ServoJog_RequestImmediate` (+5) |
-| `App/Inc/app_servo_type.h`<br>`App/Src/app_servo_type.c` | Application behavior and task-facing logic for servo type | `APP_ServoType_IsValid`, `APP_ServoType_Name`, `APP_ServoType_FromName`, `APP_ServoType_ResetActive` (+3) |
-| `App/Inc/app_stabilizer.h`<br>`App/Src/app_stabilizer.c` | Application behavior and task-facing logic for stabilizer | `APP_Stabilizer_LatchImuFault`, `APP_Stabilizer_ClearImuFault`, `APP_Stabilizer_MarkImuSample`, `APP_Stabilizer_ReadVofaDebug` (+10) |
-| `App/Inc/app_tasks.h`<br>`App/Src/app_tasks.c` | Application behavior and task-facing logic for tasks | `APP_Task_LED_Init`, `APP_Task_LED_Step`, `APP_Task_LED_Start`, `APP_Task_GPS_Init` (+13) |
-| `App/Inc/app_telem_frame.h`<br>`App/Src/app_telem_frame.c` | Application behavior and task-facing logic for telem frame | `APP_TelemFrame_PopCount`, `APP_TelemFrame_HeaderBytes`, `APP_TelemFrame_PayloadLength`, `APP_TelemFrame_Encode` |
-| `App/Src/app_telem_port.c` | Application behavior and task-facing logic for telem port | `APP_TelemStream_PortNowUs`, `APP_TelemStream_PortDelayMs`, `APP_TelemStream_PortServiceExports`, `APP_IMU_Capture_IsExportActive` (+9) |
-| `App/Inc/app_telem_stream.h`<br>`App/Src/app_telem_stream.c` | Application behavior and task-facing logic for telem stream | `APP_TelemStream_Init`, `APP_TelemStream_Reset`, `APP_TelemStream_NoteCommandSource`, `APP_TelemStream_SetActive` (+22) |
-| `App/Inc/app_telemetry.h`<br>`App/Src/app_telemetry.c` | Application behavior and task-facing logic for telemetry | `APP_Telemetry_ChannelHasParam`, `APP_Telemetry_ChannelCount`, `APP_Telemetry_GetChannel`, `APP_Telemetry_SchemaHash` (+2) |
-| `App/Inc/app_uart.h`<br>`App/Src/app_uart.c` | Application behavior and task-facing logic for uart | `APP_UART_GetStats`, `APP_UART_GetRxEventStats`, `APP_UART_Task_Init`, `APP_UART_Task_Step` (+4) |
-| `App/Inc/app_usb_cdc.h`<br>`App/Src/app_usb_cdc.c` | Application behavior and task-facing logic for usb cdc | `APP_USB_CDC_Write`, `APP_USB_CDC_Task_Step`, `APP_USB_CDC_SetConfigured`, `APP_USB_CDC_IsReady` (+3) |
-| `App/Inc/app_vofa.h`<br>`App/Src/app_vofa.c` | Application behavior and task-facing logic for vofa | `APP_VOFA_SendFloats`, `APP_VOFA_SendRaw` |
-| `Services/Inc/svc_flow_nav.h`<br>`Services/Src/svc_flow_nav.c` | Synchronous domain/data service for flow nav | `SVC_FlowNav_Init`, `SVC_FlowNav_Reset`, `SVC_FlowNav_PushSample`, `SVC_FlowNav_Age` (+13) |
-| `Services/Inc/svc_imu.h`<br>`Services/Src/svc_imu.c` | Synchronous domain/data service for imu | `SVC_IMU_RotateToFlu`, `SVC_IMU_ApplyMounting`, `SVC_IMU_DefaultRotation`, `APP_Sensor_AlignToAirframe` (+6) |
-| `Services/Inc/svc_led.h`<br>`Services/Src/svc_led.c` | Synchronous domain/data service for led | `SVC_Led_Init`, `SVC_Led_Publish`, `SVC_Led_PublishFor`, `SVC_Led_Tick` (+2) |
-| `Services/Inc/svc_param.h`<br>`Services/Src/svc_param.c` | Synchronous domain/data service for param | `SVC_Param_Init`, `SVC_Param_IsReady`, `SVC_Param_IsDirty`, `SVC_Param_GetGeneration` (+5) |
-| `Services/Inc/svc_timestamp.h`<br>`Services/Src/svc_timestamp.c` | Synchronous domain/data service for timestamp | `SVC_Timestamp_Us`, `SVC_Timestamp_Init`, `SVC_Timestamp_Tick`, `SVC_Timestamp_Ms` (+2) |
+| `App/Inc/app.h`<br>`App/Src/app.c` | Application behavior and task-facing… | `APP_Init` |
+| `App/Inc/app_acceptance.h`<br>`App/Src/app_acceptance.c` | Application behavior and task-facing… | `APP_Acceptance_Init`, `APP_Acceptance_Start` (+11) |
+| `App/Inc/app_action.h`<br>`App/Src/app_action.c` | Application behavior and task-facing… | `APP_Action_Init`, `APP_Action_Start` (+9) |
+| `App/Inc/app_aiwb2.h`<br>`App/Src/app_aiwb2.c` | Application behavior and task-facing… | `APP_AiWB2_Init`, `APP_AiWB2_Tick` (+25) |
+| `App/Inc/app_background.h`<br>`App/Src/app_background.c` | Application behavior and task-facing… | `APP_Background_Init`, `APP_Background_Step` (+5) |
+| `App/Inc/app_baro.h`<br>`App/Src/app_baro.c` | Application behavior and task-facing… | `APP_Baro_ReportStartup`, `APP_Baro_GetStatus` (+2) |
+| `App/Inc/app_battery.h`<br>`App/Src/app_battery.c` | Application behavior and task-facing… | `APP_Battery_Init`, `APP_Battery_Step` (+8) |
+| `App/Src/app_battery_led.c` | Application behavior and task-facing… | `APP_Battery_PublishLedWarning` |
+| `App/Src/app_battery_proto.c` | Application behavior and task-facing… | `APP_Battery_SendReport`, `APP_Battery_Command` (+1) |
+| `App/Src/app_battery_telemetry.c` | Application behavior and task-facing… | `APP_Battery_GetTxStats`, `APP_Battery_TelemetryStep` (+1) |
+| `App/Inc/app_boot.h`<br>`App/Src/app_boot.c` | Application behavior and task-facing… | `APP_Boot_Init`, `APP_Boot_TryRomDfu` (+9) |
+| `App/Src/app_cmd_airframe.c` | Application behavior and task-facing… | `DRV_COAX_CTRL_GetParam`, `DRV_COAX_CTRL_SetParam` |
+| `App/Src/app_cmd_arm.c` | Application behavior and task-facing… | — |
+| `App/Src/app_cmd_backlash.c` | Application behavior and task-facing… | `APP_ServoBacklash_Command`, `APP_Stabilizer_IsArmed` (+3) |
+| `App/Src/app_cmd_currprobe.c` | Application behavior and task-facing… | `APP_Stabilizer_IsArmed`, `BSP_Current_SetPinProbeMode` |
+| `App/Src/app_cmd_diag.c` | Application behavior and task-facing… | — |
+| `App/Src/app_cmd_esc_edt.c` | Application behavior and task-facing… | `APP_EscCommand_Step`, `APP_EscCommand_Request` |
+| `App/Src/app_cmd_esc_kv.c` | Application behavior and task-facing… | `APP_EscCommand_MotorKvByte`, `APP_Stabilizer_IsArmed` (+1) |
+| `App/Src/app_cmd_fallback.c` | Application behavior and task-facing… | `APP_Components_Command`, `APP_Battery_Command` (+3) |
+| `App/Src/app_cmd_flow.c` | Application behavior and task-facing… | `APP_Stabilizer_ReadFlowCompensationSnapshot` |
+| `App/Src/app_cmd_imucal.c` | Application behavior and task-facing… | `APP_FlightCalibration_ReadActive`, `SVC_Param_IsDirty` (+4) |
+| `App/Src/app_cmd_imusel.c` | Application behavior and task-facing… | `BSP_IMU_Init` |
+| `App/Src/app_cmd_led.c` | Application behavior and task-facing… | — |
+| `App/Src/app_cmd_ledmap.c` | Application behavior and task-facing… | `APP_LedConfig_Validate`, `APP_LedConfig_PulseCount` (+1) |
+| `App/Src/app_cmd_magcal.c` | Application behavior and task-facing… | `DRV_MAG_Calibration_Validate`, `APP_MagCal_GetEffective` |
+| `App/Src/app_cmd_probe.c` | Application behavior and task-facing… | `APP_Stabilizer_IsArmed`, `BSP_IMU_DebugSpiBusIndex` (+3) |
+| `App/Src/app_cmd_propcal.c` | Application behavior and task-facing… | `DRV_PropMap_Validate`, `SVC_Timestamp_Ms` (+10) |
+| `App/Src/app_cmd_rcmap.c` | Application behavior and task-facing… | `APP_RcConfig_Validate` |
+| `App/Src/app_cmd_rpmnotch.c` | Application behavior and task-facing… | `APP_RpmNotch_Command`, `APP_Stabilizer_IsArmed` (+3) |
+| `App/Src/app_cmd_servocal.c` | Application behavior and task-facing… | `APP_Sensor_GetFluOrientation`, `SVC_Param_IsDirty` (+2) |
+| `App/Src/app_cmd_servohz.c` | Application behavior and task-facing… | `APP_ServoHz_Command`, `APP_Stabilizer_IsArmed` (+2) |
+| `App/Src/app_cmd_servotype.c` | Application behavior and task-facing… | `APP_Stabilizer_IsArmed`, `APP_ServoType_FromName` (+2) |
+| `App/Src/app_cmd_sysid.c` | Application behavior and task-facing… | `APP_SysId_SetRig`, `APP_SysId_SetExcitation` (+10) |
+| `App/Src/app_cmd_system.c` | Application behavior and task-facing… | `APP_Control_ReportUartStats` |
+| `App/Src/app_cmd_telem.c` | Application behavior and task-facing… | — |
+| `App/Src/app_cmd_thrust_bench.c` | Application behavior and task-facing… | `APP_Stabilizer_IsArmed`, `DRV_PropMap_IsCalibrated` (+9) |
+| `App/Inc/app_components.h`<br>`App/Src/app_components.c` | Application behavior and task-facing… | `APP_Components_Register`, `APP_Components_Init` (+7) |
+| `App/Src/app_components_board.c` | Application behavior and task-facing… | `APP_Components_RegisterBoard`, `APP_Components_RegisterGps` |
+| `App/Src/app_components_transport.c` | Application behavior and task-facing… | `APP_Components_NowMs`, `APP_Components_ExportBusy` (+1) |
+| `App/Inc/app_control.h`<br>`App/Src/app_control.c` | Application behavior and task-facing… | `APP_Control_Init`, `APP_Control_Tick` (+6) |
+| `App/Inc/app_control_config_compat.h`<br>`App/Src/app_control_config_compat.c` | Application behavior and task-facing… | `APP_ControlConfigCompat_CurrentPassthrough`, `APP_ControlConfigCompat_V18ToCurrent` (+3) |
+| `App/Inc/app_control_config_store.h`<br>`App/Src/app_control_config_store.c` | Application behavior and task-facing… | `APP_ControlConfigStore_Load`, `APP_ControlConfigStore_Save` (+1) |
+| `App/Src/app_control_core.c` | Application behavior and task-facing… | `APP_IMU_Capture_IsExportActive`, `APP_MaintUART_IsLinkActive` |
+| `App/Inc/app_control_internal.h` | Application behavior and task-facing… | `APP_Control_QueueText` |
+| `App/Inc/app_control_scheduler.h`<br>`App/Src/app_control_scheduler.c` | Application behavior and task-facing… | `APP_ControlScheduler_Reset`, `APP_ControlScheduler_Step` (+1) |
+| `App/Inc/app_current.h`<br>`App/Src/app_current.c` | Application behavior and task-facing… | `APP_Current_Init`, `APP_Current_Step` (+2) |
+| `App/Inc/app_current_format.h` | Application behavior and task-facing… | — |
+| `App/Inc/app_diag.h`<br>`App/Src/app_diag.c` | Application behavior and task-facing… | `APP_Diag_RecordStackOverflow`, `APP_Diag_RecordMallocFailed` (+1) |
+| `App/Inc/app_diag_binary.h`<br>`App/Src/app_diag_binary.c` | Application behavior and task-facing… | `APP_Diag_SendBinary` |
+| `App/Inc/app_elrs.h`<br>`App/Src/app_elrs.c` | Application behavior and task-facing… | `APP_ELRS_Init`, `APP_ELRS_Step` (+14) |
+| `App/Inc/app_esc_command.h`<br>`App/Src/app_esc_command.c` | Application behavior and task-facing… | `APP_EscCommand_Reset`, `APP_EscCommand_Request` (+14) |
+| `App/Inc/app_esc_diag.h`<br>`App/Src/app_esc_diag.c` | Application behavior and task-facing… | `APP_EscDiag_Report` |
+| `App/Inc/app_esc_log.h`<br>`App/Src/app_esc_log.c` | Application behavior and task-facing… | `APP_EscLog_Capture` |
+| `App/Inc/app_firmware_identity.h`<br>`App/Src/app_firmware_identity.c` | Application behavior and task-facing… | `APP_FirmwareIdentity_IsRangeValid`, `APP_FirmwareIdentity_ComputeCrc32` (+2) |
+| `App/Inc/app_flash.h`<br>`App/Src/app_flash.c` | Application behavior and task-facing… | `APP_Flash_ReportStartup`, `APP_Flash_RefreshStatus` (+1) |
+| `App/Inc/app_flash_service.h`<br>`App/Src/app_flash_service.c` | Application behavior and task-facing… | `APP_FlashService_BackendFor`, `APP_FlashService_BackendName` (+17) |
+| `App/Inc/app_flight_calibration.h`<br>`App/Src/app_flight_calibration.c` | Application behavior and task-facing… | `APP_FlightCalibration_Defaults`, `APP_FlightCalibration_Validate` (+24) |
+| `App/Inc/app_flight_log.h`<br>`App/Src/app_flight_log.c` | Application behavior and task-facing… | `APP_FlightLog_Init`, `APP_FlightLog_BackgroundStep` (+7) |
+| `App/Inc/app_gps.h`<br>`App/Src/app_gps.c` | Application behavior and task-facing… | `APP_GPS_Init`, `APP_GPS_Step` (+2) |
+| `App/Inc/app_ident.h`<br>`App/Src/app_ident.c` | Application behavior and task-facing… | `APP_Ident_Init`, `APP_Ident_GetState` (+19) |
+| `App/Inc/app_imu_capture.h`<br>`App/Src/app_imu_capture.c` | Application behavior and task-facing… | `APP_IMU_Capture_Init`, `APP_IMU_Capture_Push` (+11) |
+| `App/Inc/app_imu_health.h`<br>`App/Src/app_imu_health.c` | Application behavior and task-facing… | `APP_ImuHealth_Init`, `APP_ImuHealth_NoteSample` (+4) |
+| `App/Inc/app_led.h`<br>`App/Src/app_led.c` | Application behavior and task-facing… | `APP_LED_Task_Init`, `APP_LED_Task_Step` (+5) |
+| `App/Inc/app_led_config.h`<br>`App/Src/app_led_config.c` | Application behavior and task-facing… | `APP_LedConfig_Defaults`, `APP_LedConfig_Validate` (+12) |
+| `App/Inc/app_mag.h`<br>`App/Src/app_mag.c` | Application behavior and task-facing… | `APP_MAG_Init`, `APP_MAG_Step` (+4) |
+| `App/Inc/app_magcal.h` | Application behavior and task-facing… | `APP_MagCal_GetEffective` |
+| `App/Inc/app_maint_uart.h`<br>`App/Src/app_maint_uart.c` | Application behavior and task-facing… | `APP_MaintUART_Init`, `APP_MaintUART_Step` (+9) |
+| `App/Inc/app_message.h`<br>`App/Src/app_message.c` | Application behavior and task-facing… | `APP_Message_Task_Init`, `APP_Message_Task_Step` |
+| `App/Inc/app_messages.h` | Application behavior and task-facing… | — |
+| `App/Inc/app_nav_estimator.h`<br>`App/Src/app_nav_estimator.c` | Application behavior and task-facing… | `APP_NavEstimator_PublishVelocityEKF`, `APP_NavEstimator_GetVelocityEKF` |
+| `App/Inc/app_optical_flow.h`<br>`App/Src/app_optical_flow.c` | Application behavior and task-facing… | `APP_OpticalFlow_Init`, `APP_OpticalFlow_Step` (+8) |
+| `App/Inc/app_param_trial.h`<br>`App/Src/app_param_trial.c` | Application behavior and task-facing… | `APP_ParamTrial_Apply`, `APP_ParamTrial_Clear` (+4) |
+| `App/Inc/app_prop_spin.h`<br>`App/Src/app_prop_spin.c` | Application behavior and task-facing… | `APP_PropSpin_Reset`, `APP_PropSpin_Open` (+8) |
+| `App/Inc/app_proto.h`<br>`App/Src/app_proto.c` | Application behavior and task-facing… | `APP_Proto_BuildFrame`, `APP_Proto_Init` (+2) |
+| `App/Inc/app_rc_config.h`<br>`App/Src/app_rc_config.c` | Application behavior and task-facing… | `APP_RcConfig_Defaults`, `APP_RcConfig_Validate` (+9) |
+| `App/Inc/app_rc_intent.h`<br>`App/Src/app_rc_intent.c` | Application behavior and task-facing… | `APP_RcIntent_ForwardVelocity`, `APP_RcIntent_LeftVelocity` (+3) |
+| `App/Inc/app_rpm_notch.h`<br>`App/Src/app_rpm_notch.c` | Application behavior and task-facing… | `APP_RpmNotch_Init`, `APP_RpmNotch_ApplySample` (+12) |
+| `App/Inc/app_sensor.h`<br>`App/Src/app_sensor.c` | Application behavior and task-facing… | `APP_IMU_RawToScaled`, `APP_IMU_ConvertBaro` (+18) |
+| `App/Inc/app_servo_backlash.h`<br>`App/Src/app_servo_backlash.c` | Application behavior and task-facing… | `APP_ServoBacklash_Init`, `APP_ServoBacklash_DefaultConfig` (+9) |
+| `App/Inc/app_servo_bus_guard.h`<br>`App/Src/app_servo_bus_guard.c` | Application behavior and task-facing… | `APP_ServoBusGuard_IsPwmMode`, `APP_ServoBusGuard_IsBusOnlyCommand` |
+| `App/Inc/app_servo_cal.h`<br>`App/Src/app_servo_cal.c` | Application behavior and task-facing… | `APP_ServoCal_Init`, `APP_ServoCal_Step` (+3) |
+| `App/Inc/app_servo_feedback.h`<br>`App/Src/app_servo_feedback.c` | Application behavior and task-facing… | `APP_ServoFeedback_Init`, `APP_ServoFeedback_Service` (+1) |
+| `App/Inc/app_servo_feedback_bench.h`<br>`App/Src/app_servo_feedback_bench.c` | Application behavior and task-facing… | `APP_ServoFeedbackBench_Init`, `APP_ServoFeedbackBench_Start` (+9) |
+| `App/Inc/app_servo_hz.h` | Application behavior and task-facing… | `APP_ServoHz_Command` |
+| `App/Inc/app_servo_jog.h`<br>`App/Src/app_servo_jog.c` | Application behavior and task-facing… | `APP_ServoJog_Init`, `APP_ServoJog_HandleCommand` (+7) |
+| `App/Inc/app_servo_type.h`<br>`App/Src/app_servo_type.c` | Application behavior and task-facing… | `APP_ServoType_IsValid`, `APP_ServoType_Name` (+5) |
+| `App/Inc/app_stabilizer.h`<br>`App/Src/app_stabilizer.c` | Application behavior and task-facing… | `APP_Stabilizer_LatchImuFault`, `APP_Stabilizer_ClearImuFault` (+13) |
+| `App/Inc/app_sysid.h`<br>`App/Src/app_sysid.c` | Application behavior and task-facing… | `APP_SysId_SetMode`, `APP_SysId_SetServoTilt` (+39) |
+| `App/Inc/app_sysid_alt.h`<br>`App/Src/app_sysid_alt.c` | Application behavior and task-facing… | `APP_SysIdAlt_GetConfig`, `APP_SysIdAlt_SetConfig` (+11) |
+| `App/Inc/app_tasks.h`<br>`App/Src/app_tasks.c` | Application behavior and task-facing… | `APP_Task_LED_Init`, `APP_Task_LED_Step` (+15) |
+| `App/Inc/app_telem_frame.h`<br>`App/Src/app_telem_frame.c` | Application behavior and task-facing… | `APP_TelemFrame_PopCount`, `APP_TelemFrame_HeaderBytes` (+2) |
+| `App/Src/app_telem_port.c` | Application behavior and task-facing… | `APP_TelemStream_PortNowUs`, `APP_TelemStream_PortDelayMs` (+15) |
+| `App/Inc/app_telem_stream.h`<br>`App/Src/app_telem_stream.c` | Application behavior and task-facing… | `APP_TelemStream_Init`, `APP_TelemStream_Reset` (+25) |
+| `App/Inc/app_telemetry.h`<br>`App/Src/app_telemetry.c` | Application behavior and task-facing… | `APP_Telemetry_ChannelHasParam`, `APP_Telemetry_ChannelCount` (+4) |
+| `App/Inc/app_thrust_bench.h`<br>`App/Src/app_thrust_bench.c` | Application behavior and task-facing… | `APP_ThrustBench_Reset`, `APP_ThrustBench_Open` (+10) |
+| `App/Inc/app_thrust_lut.h`<br>`App/Src/app_thrust_lut.c` | Application behavior and task-facing… | `APP_ThrustLut_Init`, `APP_ThrustLut_Step` (+5) |
+| `App/Inc/app_uart.h`<br>`App/Src/app_uart.c` | Application behavior and task-facing… | `APP_UART_GetStats`, `APP_UART_GetRxEventStats` (+6) |
+| `App/Inc/app_usb_cdc.h`<br>`App/Src/app_usb_cdc.c` | Application behavior and task-facing… | `APP_USB_CDC_Write`, `APP_USB_CDC_Task_Step` (+5) |
+| `App/Inc/app_vofa.h`<br>`App/Src/app_vofa.c` | Application behavior and task-facing… | `APP_VOFA_SendFloats`, `APP_VOFA_SendRaw` |
+| `Services/Inc/svc_flow_nav.h`<br>`Services/Src/svc_flow_nav.c` | Synchronous domain/data service for f… | `SVC_FlowNav_Init`, `SVC_FlowNav_Reset` (+15) |
+| `Services/Inc/svc_imu.h`<br>`Services/Src/svc_imu.c` | Synchronous domain/data service for i… | `SVC_IMU_RotateToFlu`, `SVC_IMU_ApplyMounting` (+8) |
+| `Services/Inc/svc_led.h`<br>`Services/Src/svc_led.c` | Synchronous domain/data service for l… | `SVC_Led_Init`, `SVC_Led_Publish` (+4) |
+| `Services/Inc/svc_mag.h`<br>`Services/Src/svc_mag.c` | Synchronous domain/data service for m… | `SVC_MAG_RotateToFlu`, `SVC_MAG_DefaultRotation` |
+| `Services/Inc/svc_param.h`<br>`Services/Src/svc_param.c` | Synchronous domain/data service for p… | `SVC_Param_Init`, `SVC_Param_IsReady` (+7) |
+| `Services/Inc/svc_timestamp.h`<br>`Services/Src/svc_timestamp.c` | Synchronous domain/data service for t… | `SVC_Timestamp_Us`, `SVC_Timestamp_Init` (+4) |
 
 Open the smallest listed interface first (normally a header or test), then its implementation only if needed.

@@ -77,6 +77,12 @@ APP_FlashService_Backend APP_FlashService_BackendFor(uint32_t address);
 const char *APP_FlashService_BackendName(APP_FlashService_Backend backend);
 uint8_t APP_FlashService_IsLogStorageReady(void);
 
+/*
+ * SD 诊断一行（不含换行），给 STATUS? 用：分清卡没认到、按配置线宽读不通（已退到 1 线）、
+ * 还是运行中坏掉。字段含义见 drv_sdblock.h 的 DRV_SDBLOCK_Diag。
+ */
+void APP_FlashService_FormatSdDiag(char *out, uint32_t size);
+
 typedef DRV_GD25Q32_Status  APP_FlashService_Status;
 typedef DRV_GD25Q32_JedecId APP_FlashService_JedecId;
 

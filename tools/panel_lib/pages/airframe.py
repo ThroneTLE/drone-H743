@@ -11,8 +11,16 @@
       双桨最大推力。直接可改。
   派生（算出来的）—— 整机质量、重心、重量、悬停油门……自动档下置灰，
       手动档下可改并且并排显示"若自动会是多少"。
-  高级（估算/辨识/反推）—— 惯量、下桨旋向、有效力臂、重力、舵机标度。
+  高级（估算/辨识/反推）—— 惯量、重力、舵机标度。
       默认折叠，改之前要二次确认。
+
+倾转力臂不是输入项（2026-09-27 起）：它是"舵机转轴 z − 整机重心 z"，派生区下方
+单独列出上位机按飞控派生的重心算出的预览值——飞控在控制律里现算同一个减法，
+但不把它存成参数。改部件质量/重心或舵机转轴会让力臂变：速率环增益是 N·m 单位，
+固件按力臂把它换成倾角，所以同一组增益的实际软硬会变成 L_旧/L_新 倍。写入前
+预览里就标出"旧力臂 → 新力臂"，点「写入飞控」时再弹窗确认，并提醒改完要重新辨识。
+派生档从手动切回自动也算：飞控在那一刻按部件表重算重心（手动填的实测重心被盖掉），
+所以「切换自动/手动」与高级区里改 derived_auto 走同一套提醒，写完再重读一遍参数。
 
 高级层单独关起来不是为了少占地方：惯量是**估计值**、下桨旋向是**反推值**，
 它们和"电池多重"摆在一起会让人以为同样可信，随手就改了。而下桨旋向单独决定
@@ -31,15 +39,29 @@ from tkinter import messagebox, ttk
 from ..airframe_model import (
     AIRFRAME_FIELDS,
     DERIVED_AUTO_FIELD,
+    TILT_AXES,
     AirframeField,
     compute_derived,
+    describe_invalid,
     first_missing,
+    tilt_axis_to_cg_z,
 )
 from ..parameter_model import validate_parameter_text
 from ..proto import PROTO_REQ_PARAMS, PROTO_REQ_PARAM_SET, PROTO_REQ_SAVE
 
 
 REFRESH_MS = 400
+
+#: 改了会让倾转力臂 L = cg_z_m − servoN_axis_z_m 变的输入：部件质量与重心（自动派生档下
+#: 重心由它们算）、手动档的整机重心、两个舵机转轴。
+_LEVER_INPUTS = ("board_mass_g", "battery_mass_g", "base_mass_g", "servo_motor_mass_g",
+                 "board_cg_z_m", "battery_cg_z_m", "base_cg_z_m", "servo_motor_cg_z_m",
+                 "servo1_axis_z_m", "servo2_axis_z_m", "cg_z_m")
+#: 部件表推算重心要用的八项：自动档下缺任何一项就不预测新重心（不拿 0 冒充）。
+_CG_INPUTS = _LEVER_INPUTS[:8]
+#: 力臂变化小于它不提醒 [m]（参数 6 位小数、部件表的量化）。
+LEVER_CHANGE_MIN_M = 0.0005
+_AXIS_TEXT = {"roll": "横滚（舵机 1）", "pitch": "俯仰（舵机 2）"}
 
 _FIELD_BY_NAME = {field.name: field for field in AIRFRAME_FIELDS}
 _FIELD_BY_NAME[DERIVED_AUTO_FIELD.name] = DERIVED_AUTO_FIELD
@@ -59,6 +81,9 @@ class AirframePage(ttk.Frame):
         self.vars: dict[str, tk.StringVar] = {}
         self.derived_labels: dict[str, ttk.Label] = {}
         self.preview_labels: dict[str, ttk.Label] = {}
+        self.tilt_lever_labels: dict[str, ttk.Label] = {}
+        self.tilt_lever_source_var = tk.StringVar(value="")
+        self.tilt_lever_change_var = tk.StringVar(value="")
         self.advanced_unlocked = False
         self._save_pending = False
         self.status_var = tk.StringVar(value="尚未读取飞控机体模型")
@@ -115,6 +140,7 @@ class AirframePage(ttk.Frame):
 
         self._build_input_groups(body, basic, "基础 · 拿秤和尺量得到")
         self._build_derived_group(body, derived)
+        self._build_tilt_lever_preview(body)
 
         self.advanced_frame = ttk.LabelFrame(
             body, text="高级 · 估算 / 辨识 / 反推得来（改前请确认）", padding=10)
@@ -185,6 +211,41 @@ class AirframePage(ttk.Frame):
             self.preview_labels[field.name] = preview
         outer.columnconfigure(4, weight=1)
 
+    def _build_tilt_lever_preview(self, parent) -> None:
+        """每轴倾转力臂 r_z 的**上位机预览**。
+
+        不放进派生表：那张表的每一行都是飞控参数（可读、手动档可写），而 r_z 不是
+        ——飞控在控制律里现算，不存成参数。混在一起会让人以为它能 PARAM GET/SET。
+        """
+        outer = ttk.LabelFrame(
+            parent, text="倾转力臂 r_z · 上位机计算（非飞控参数）", padding=10)
+        outer.pack(fill=tk.X, pady=(12, 0))
+        ttk.Label(
+            outer, style="Muted.TLabel", wraplength=1080,
+            text=(
+                "r_z = 舵机转轴 z − 整机重心 z。推力作用线穿过舵机转轴，所以倾转力矩 = "
+                "−r_z × 推力 × sin(倾角)：r_z 的大小就是力臂，正负就是力矩方向（负 = 转轴在"
+                "重心下方）。飞控在控制律里现算同一个减法，但不存成参数；这里用飞控派生出来"
+                "的重心算给你看。为 0、|r_z| < 1 cm 或与推力点不在重心同侧时飞控禁止解锁。"
+            ),
+        ).grid(row=0, column=0, columnspan=3, sticky=tk.W, pady=(0, 8))
+        labels = {"roll": "横滚 r_z（舵机 1 转轴 − 重心）",
+                  "pitch": "俯仰 r_z（舵机 2 转轴 − 重心）"}
+        for row, (axis, _key) in enumerate(TILT_AXES, start=1):
+            ttk.Label(outer, text=labels[axis]).grid(row=row, column=0, sticky=tk.W, pady=2)
+            value = ttk.Label(outer, text="—")
+            value.grid(row=row, column=1, sticky=tk.W, padx=(10, 4))
+            ttk.Label(outer, text="m", style="Muted.TLabel").grid(
+                row=row, column=2, sticky=tk.W)
+            self.tilt_lever_labels[axis] = value
+        ttk.Label(outer, textvariable=self.tilt_lever_source_var,
+                  style="Muted.TLabel").grid(
+            row=len(TILT_AXES) + 1, column=0, columnspan=3, sticky=tk.W, pady=(4, 0))
+        # 输入框里改了、还没写入时：旧力臂 → 新力臂，以及增益软硬的变化。
+        ttk.Label(outer, textvariable=self.tilt_lever_change_var, style="Warn.TLabel",
+                  wraplength=1080, justify=tk.LEFT).grid(
+            row=len(TILT_AXES) + 2, column=0, columnspan=3, sticky=tk.W, pady=(4, 0))
+
     # ── 高级层二次确认 ────────────────────────────────────────────────
     def _unlock_advanced(self) -> None:
         ok = messagebox.askokcancel(
@@ -192,8 +253,7 @@ class AirframePage(ttk.Frame):
             "下面这些不是量出来的：\n\n"
             "· 转动惯量 I_xx/I_yy/I_zz —— 估计值，没有实测\n"
             "· 下桨旋向 —— 反推值，由「偏航高增益抖振而非发散」推出；"
-            "它单独决定偏航力矩极性，翻错了是正反馈\n"
-            "· 有效力臂 —— 2026-07-25 系统辨识结果，不是卷尺量的距离\n\n"
+            "它单独决定偏航力矩极性，翻错了是正反馈\n\n"
             "改它们会直接改变控制律的行为，而且症状要等飞起来才出现。\n"
             "确定要打开吗？",
             icon=messagebox.WARNING, parent=self,
@@ -208,9 +268,23 @@ class AirframePage(ttk.Frame):
         self._refresh_from_panel(force_entries=True)
 
     def _toggle_derived_auto(self) -> None:
-        current = self._target("airframe.derived_auto")
+        """切到自动档时飞控当场按部件表重算重心：力臂会变就先弹窗，写完重读派生值。"""
+        current = self._target(DERIVED_AUTO_FIELD.name)
         new = 0.0 if (current is not None and abs(current) > 0.5) else 1.0
-        self._send_param("airframe.derived_auto", f"{new:.0f}")
+        edit = [(DERIVED_AUTO_FIELD.name, f"{new:.0f}")]
+        warning = self.lever_change_text(edit)
+        if warning and not self._confirm_lever_change(warning):
+            self.detail_var.set("已取消切换：" + warning.splitlines()[0])
+            return
+        if self._send_param(*edit[0]):
+            self._reread_after_mode_change()
+            if warning:
+                self.detail_var.set("已切换派生档。" + warning.splitlines()[-1])
+
+    def _reread_after_mode_change(self) -> None:
+        """写 derived_auto 后飞控只回显这一项；重算出来的重心等派生值要 PARAM? 才读得回来，
+        不重读的话页面上的力臂预览还停在旧重心。"""
+        self._read_all()
 
     # ── 与飞控通信 ────────────────────────────────────────────────────
     def _read_all(self) -> None:
@@ -231,14 +305,9 @@ class AirframePage(ttk.Frame):
         self.panel._send_proto(PROTO_REQ_PARAM_SET, f"PARAM SET {name} {text}")
         return True
 
-    def _write_all(self) -> None:
-        """只发改过的字段。
-
-        全量重发看着更简单，但它会把派生值也一起送出去——自动档下飞控逐条拒绝，
-        界面上就是一串没头没脑的 ERR，真正改错的那条反而淹了。
-        """
-        sent = 0
-        skipped: list[str] = []
+    def _pending_edits(self) -> list[tuple[str, str]]:
+        """输入框里与飞控当前值不同、这次要写的 (参数名, 文本)。"""
+        pending = []
         auto_on = self._derived_auto_on()
         for name, var in self.vars.items():
             text = var.get().strip()
@@ -250,16 +319,100 @@ class AirframePage(ttk.Frame):
             target = self._target(name)
             if target is not None and _fmt(target) == _fmt(_safe_float(text)):
                 continue
+            pending.append((name, text))
+        # 派生档放最后发：飞控写 derived_auto = 1 的那一刻按部件表重算，部件先改完，重算才用上
+        # 新值（lever_change_text 按这个顺序预测新重心）。
+        pending.sort(key=lambda item: item[0] == DERIVED_AUTO_FIELD.name)
+        return pending
+
+    def lever_change_text(self, pending: list[tuple[str, str]]) -> str:
+        """这批改动会让飞控的倾转力臂怎么变；不涉及力臂或算不出来时返回空串。
+
+        旧力臂按飞控回报的重心与转轴；新力臂按"飞控当前值 + 这批改动"。新重心照飞控的
+        写入顺序推（派生档最后发）：写入时处在自动档的部件改动、以及切回自动档那一下，都会
+        让飞控按部件表重算重心（与飞控同一公式）；一直是手动档就是整机重心那一项。
+        """
+        edits = {}
+        for name, text in pending:
+            value = _safe_float(text)
+            if name.startswith("airframe.") and value is not None:
+                edits[name.split(".", 1)[1]] = value
+        auto_before = self._derived_auto_on()
+        auto_after = (abs(edits[DERIVED_AUTO_FIELD.key]) > 0.5
+                      if DERIVED_AUTO_FIELD.key in edits else auto_before)
+        turning_auto_on = auto_after and not auto_before
+        if not (set(edits) & set(_LEVER_INPUTS) or turning_auto_on):
+            return ""
+        known = {field.key: self._target(field.name) for field in AIRFRAME_FIELDS}
+        known = {key: value for key, value in known.items() if value is not None}
+        merged = {**known, **edits}
+        old_cg = known.get("cg_z_m")
+        if auto_after or (auto_before and set(edits) & set(_CG_INPUTS)):
+            new_cg = (compute_derived(merged)["cg_z_m"]
+                      if all(key in merged for key in _CG_INPUTS) else None)
+        else:
+            new_cg = merged.get("cg_z_m")
+        if turning_auto_on and new_cg is None:
+            return ("切回自动派生后，飞控会按部件表重算整机重心（盖掉手动填的重心），但页面还没读全"
+                    "部件表，算不出新的倾转力臂：速率环增益（N·m 单位）的等效软硬可能变化。\n"
+                    "改完需重新辨识（杆上「FF 测模型」），再按新结果调速率环增益。")
+        lines = []
+        for axis, key in TILT_AXES:
+            old_axis, new_axis = known.get(key), merged.get(key)
+            # 转轴 0 在固件里是"没填"（解锁闸门拒绝），没有可比的力臂。
+            if None in (old_cg, new_cg, old_axis, new_axis) or 0.0 in (old_axis, new_axis):
+                continue
+            old, new = old_cg - old_axis, new_cg - new_axis
+            if abs(new - old) < LEVER_CHANGE_MIN_M:
+                continue
+            line = f"{_AXIS_TEXT[axis]}倾转力臂 L = 重心 − 转轴：{old:.4f} m → {new:.4f} m"
+            if old * new <= 0.0:
+                line += "（方向反了：飞控会拒绝解锁，多半是某个符号填反了）"
+            else:
+                ratio = old / new
+                feel = "变软" if ratio < 1.0 else "变硬"
+                line += (f"：速率环增益（N·m 单位）的等效软硬会变为 L_旧/L_新 = {ratio:.2f} 倍"
+                         f"（{feel}）")
+            lines.append(line)
+        if not lines:
+            return ""
+        if turning_auto_on:
+            lines.insert(0, f"切回自动派生：飞控按部件表把整机重心从 {old_cg:.4f} m 重算成 "
+                            f"{new_cg:.4f} m（手动填的重心被盖掉）")
+        return "\n".join(lines + ["改完需重新辨识（杆上「FF 测模型」），再按新结果调速率环增益。"])
+
+    def _confirm_lever_change(self, text: str) -> bool:
+        return messagebox.askokcancel(
+            "倾转力臂会变", text + "\n\n确定写入飞控吗？", icon=messagebox.WARNING, parent=self)
+
+    def _write_all(self) -> None:
+        """只发改过的字段。
+
+        全量重发看着更简单，但它会把派生值也一起送出去——自动档下飞控逐条拒绝，
+        界面上就是一串没头没脑的 ERR，真正改错的那条反而淹了。
+        改动会让倾转力臂变时，发之前先弹窗说清楚旧 → 新和增益软硬的变化。
+        """
+        sent = 0
+        skipped: list[str] = []
+        pending = self._pending_edits()
+        warning = self.lever_change_text(pending)
+        if warning and not self._confirm_lever_change(warning):
+            self.detail_var.set("已取消写入：" + warning.splitlines()[0])
+            return
+        for name, text in pending:
             if self._send_param(name, text):
                 sent += 1
             else:
                 skipped.append(name)
+        if DERIVED_AUTO_FIELD.name in dict(pending) and DERIVED_AUTO_FIELD.name not in skipped:
+            self._reread_after_mode_change()
         if sent == 0 and not skipped:
             self.detail_var.set("没有改动需要写入")
         elif skipped:
             self.detail_var.set(f"已写入 {sent} 项；{len(skipped)} 项被拒：{skipped[0]}")
         else:
-            self.detail_var.set(f"已写入 {sent} 项到飞控 RAM，确认无误后请保存到 Flash")
+            self.detail_var.set(f"已写入 {sent} 项到飞控 RAM，确认无误后请保存到 Flash"
+                                + (f"。{warning.splitlines()[-1]}" if warning else ""))
 
     def _save(self) -> None:
         if not self.panel._transport_connected():
@@ -353,7 +506,24 @@ class AirframePage(ttk.Frame):
             if entry is not None:
                 entry.configure(state="disabled" if auto_on else "normal")
 
+        self._refresh_tilt_levers(known, preview)
         self._refresh_status(values, preview, auto_on)
+
+    def _refresh_tilt_levers(self, known: dict[str, float], preview: dict[str, float]) -> None:
+        """重心优先用飞控回报的派生值；飞控还没回报时退回部件表推算，并如实标注。"""
+        firmware_cg = known.get("cg_z_m")
+        cg = firmware_cg if firmware_cg is not None else preview.get("cg_z_m")
+        levers = tilt_axis_to_cg_z({**known, "cg_z_m": cg})
+        for axis, label in self.tilt_lever_labels.items():
+            label.configure(text=_fmt(levers.get(axis)))
+        change = self.lever_change_text(self._pending_edits())
+        self.tilt_lever_change_var.set(("还没写入的改动：\n" + change) if change else "")
+        if firmware_cg is not None:
+            self.tilt_lever_source_var.set(f"重心取飞控派生值 {_fmt(firmware_cg)} m")
+        elif any(v is not None for v in levers.values()):
+            self.tilt_lever_source_var.set("飞控尚未回报重心，暂按部件表推算")
+        else:
+            self.tilt_lever_source_var.set("")
 
     def _refresh_status(self, values, preview, auto_on: bool) -> None:
         """状态以**飞控的 ARM 报文**为准，本地判断只在还没连上时兜底。
@@ -369,7 +539,7 @@ class AirframePage(ttk.Frame):
                 self.status_var.set("模型有效 · 飞控已接受")
                 self.detail_var.set("")
                 return
-            self.status_var.set(f"模型无效 · 解锁被挡住：缺 {missing}")
+            self.status_var.set(f"模型无效 · 解锁被挡住：{describe_invalid(missing)}")
             self.detail_var.set("飞控口径。填好后点「写入飞控」，再「保存到 Flash」。")
             return
 
@@ -380,9 +550,9 @@ class AirframePage(ttk.Frame):
             self.status_var.set("本地看起来完整 · 等待飞控确认")
             self.detail_var.set("尚未收到飞控的 ARM 状态，以飞控回报为准。")
         else:
-            self.status_var.set(f"模型不完整：缺 airframe.{missing}")
+            self.status_var.set(f"模型不完整：{describe_invalid('airframe.' + missing)}")
             self.detail_var.set(
-                "本地判断（尚未连上飞控）。这些是零值会让控制律失去物理含义的项。")
+                "本地判断（尚未连上飞控）。这些是零值或方向矛盾会让控制律失去物理含义的项。")
 
     def _on_destroy(self, event) -> None:
         if event.widget is self.panel:

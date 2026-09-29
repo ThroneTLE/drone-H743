@@ -146,7 +146,11 @@ def test_vofa_stream_sends_compact_dashboard_channels() -> None:
     assert "vofa_data[APP_TELEM_CH_VEL_EST_X] = vofa_debug.vel_est_m_s[0];" in freertos
     assert "vofa_data[APP_TELEM_CH_VEL_EST_Y] = vofa_debug.vel_est_m_s[1];" in freertos
     assert "DRV_FRAME_FrdToFlu" not in read("App/Src/app_telem_port.c")
-    assert 'vofa_data[APP_TELEM_CH_RESERVED_7] = 0.0f;' in freertos
+    # R-PWR-1：7/8 号退役槽位改成电源通道，填的是快照值或 NaN，不再是常数 0。
+    assert 'vofa_data[APP_TELEM_CH_RESERVED_7]' not in freertos
+    assert 'vofa_data[APP_TELEM_CH_BATT_V]' in freertos
+    assert 'vofa_data[APP_TELEM_CH_BATT_I]' in freertos
+    assert ': NAN;' in freertos
     assert '(void)DRV_COAX_CTRL_GetParam("coax.vel_loop_enable", &vofa_data[APP_TELEM_CH_VEL_LOOP_ENABLE]);' in freertos
     assert 'vofa_data[APP_TELEM_CH_RESERVED_18] = 0.0f;' in freertos
     assert 'vofa_data[APP_TELEM_CH_RESERVED_19] = 0.0f;' in freertos

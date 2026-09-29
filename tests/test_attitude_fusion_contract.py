@@ -221,6 +221,7 @@ def test_attitude_fusion_runtime(tmp_path: Path) -> None:
             f"-I{ROOT / 'ThirdParty' / 'Fusion'}",
             str(ROOT / "ThirdParty" / "Fusion" / "FusionAhrs.c"),
             str(ROOT / "Driver" / "Src" / "drv_attitude_fusion.c"),
+            str(ROOT / "Driver" / "Src" / "drv_mag_calibration.c"),
             str(harness),
             "-lm",
             "-o",

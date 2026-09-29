@@ -13,6 +13,7 @@
  */
 
 #include "bsp_imu.h"
+#include "bsp_imu_rate.h"
 #include "bsp_board.h"
 
 #include "drv_bmi088.h"
@@ -396,6 +397,28 @@ void BSP_IMU_GetInfo(BSP_IMU_Info *info)
         info->last_error = DRV_IMU_BAD_ID;
         break;
     }
+}
+
+uint16_t BSP_IMU_GetGyroOdrHz(void)
+{
+    uint16_t hz = 0U;
+
+    if (imu_initialized == 0U) { return 0U; }
+    /* 与芯片驱动配置陀螺时同一个换算（同一份 imu_config），所以报的就是真写进寄存器的档位。 */
+    switch (BSP_IMU_GetChipKind()) {
+    case DRV_IMU_CHIP_BMI088:
+        (void)DRV_BMI088_GyroBandwidthCode(imu_config.gyro_odr, imu_config.gyro_aaf_hz, &hz, NULL);
+        break;
+    case DRV_IMU_CHIP_BMI270:
+        (void)DRV_BMI270_OdrCode(imu_config.gyro_odr, 1U, &hz);
+        break;
+    case DRV_IMU_CHIP_ICM42688:   /* 本板未装；报 0，转速陷波直通 */
+    case DRV_IMU_CHIP_NONE:
+    default:
+        hz = 0U;
+        break;
+    }
+    return hz;
 }
 
 void BSP_IMU_GetSelection(SVC_IMU_Selection *selection)

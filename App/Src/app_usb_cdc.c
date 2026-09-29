@@ -11,7 +11,12 @@
 #include <string.h>
 
 #define APP_USB_CDC_RX_RING_SIZE 1024U
-#define APP_USB_CDC_LINE_SIZE    128U
+/*
+ * 一行命令的上限（含结尾 0）。原为 128：舵机单独模式的 SYSID EXC 正好 128 个字符，被悄悄丢掉，
+ * 上位机只看到"等待回显超时"（2026-09-27 实机复现）。放大到 256，并且超长整行丢弃后回
+ * ERR line too long，不再静默——超出部分也不会被当成下一条命令执行。
+ */
+#define APP_USB_CDC_LINE_SIZE    256U
 /* APP_USB_CDC_TX_SIZE now lives in app_usb_cdc.h so callers can size-check. */
 
 static volatile uint8_t app_usb_cdc_configured;
@@ -28,6 +33,7 @@ __attribute__((section(".dma_buffer"), aligned(32)))
 static uint8_t app_usb_cdc_rx_ring[APP_USB_CDC_RX_RING_SIZE];
 static char app_usb_cdc_line[APP_USB_CDC_LINE_SIZE];
 static uint16_t app_usb_cdc_line_used;
+static uint8_t app_usb_cdc_line_overflow;   /* 本行已超长：丢到行尾为止，再报错 */
 __attribute__((section(".dma_buffer"), aligned(32)))
 static uint8_t app_usb_cdc_tx_buffer[APP_USB_CDC_TX_SIZE];
 
@@ -124,6 +130,7 @@ void APP_USB_CDC_Init(void)
     app_usb_cdc_rx_head = 0U;
     app_usb_cdc_rx_tail = 0U;
     app_usb_cdc_line_used = 0U;
+    app_usb_cdc_line_overflow = 0U;
     app_usb_cdc_rx_bytes = 0U;
     app_usb_cdc_rx_lines = 0U;
     app_usb_cdc_rx_dropped = 0U;
@@ -152,6 +159,13 @@ void APP_USB_CDC_Task_Step(void)
         processed++;
 
         if ((byte == (uint8_t)'\r') || (byte == (uint8_t)'\n')) {
+            if (app_usb_cdc_line_overflow != 0U) {
+                app_usb_cdc_line_overflow = 0U;
+                app_usb_cdc_line_used = 0U;
+                APP_Control_QueueText("ERR line too long max=%u\r\n",
+                                      (unsigned int)(APP_USB_CDC_LINE_SIZE - 1U));
+                continue;
+            }
             app_usb_cdc_process_line();
             continue;
         }
@@ -160,10 +174,14 @@ void APP_USB_CDC_Task_Step(void)
             continue;
         }
 
+        if (app_usb_cdc_line_overflow != 0U) {
+            continue;   /* 超长行剩下的部分一并丢掉，不能当成下一条命令 */
+        }
         if (app_usb_cdc_line_used < (APP_USB_CDC_LINE_SIZE - 1U)) {
             app_usb_cdc_line[app_usb_cdc_line_used++] = (char)byte;
         } else {
             app_usb_cdc_line_used = 0U;
+            app_usb_cdc_line_overflow = 1U;
             app_usb_cdc_rx_dropped++;
         }
     }

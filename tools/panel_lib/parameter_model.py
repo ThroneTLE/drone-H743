@@ -131,6 +131,12 @@ _CAPABILITY_ROWS = (
     ("rate_yaw_ff", "gain"),
     ("vel_loop_enable", "bool", "bool"),
     ("tilt_limit_rad", "rad"),
+    ("rate_out_notch_hz", "Hz"),
+    ("rate_out_notch_q", "Q"),
+    ("rate_out_notch2_hz", "Hz"),
+    ("rate_out_notch2_q", "Q"),
+    ("att_ref_wr_rad_s", "rad/s"),
+    ("att_ref_delay_ms", "ms"),
 )
 
 
@@ -152,6 +158,19 @@ _POSITIVE_ONLY = frozenset(
     }
 )
 
+# 横滚/俯仰指令整形与力矩出口陷波（固件范围在 drv_moment_notch.h / drv_att_reference.h，
+# tests/test_attitude_shaping.py 对照源码核对；第二级 notch2 与第一级同一范围）。
+# notch_hz、notch2_hz 与 wr 是"0 = 关，否则 [下限, 上限]"，
+# 主机只能表达 [0, 上限]：(0, 下限) 之间仍会被固件拒收，固件是权威。
+COAX_SHAPING_RANGES: dict[str, tuple[float, float]] = {
+    "rate_out_notch_hz": (0.0, 100.0),
+    "rate_out_notch_q": (0.3, 10.0),
+    "rate_out_notch2_hz": (0.0, 100.0),
+    "rate_out_notch2_q": (0.3, 10.0),
+    "att_ref_wr_rad_s": (0.0, 30.0),
+    "att_ref_delay_ms": (0.0, 80.0),
+}
+
 PARAMETER_CAPABILITIES: dict[str, ParameterCapability] = {}
 for _row in _CAPABILITY_ROWS:
     _name, _unit = _row[:2]
@@ -160,6 +179,8 @@ for _row in _CAPABILITY_ROWS:
         _minimum, _maximum, _exclusive = 0.0, 1.0, False
     elif _name == "tilt_limit_rad":
         _minimum, _maximum, _exclusive = 0.0, COAX_TILT_LIMIT_RAD, True
+    elif _name in COAX_SHAPING_RANGES:
+        (_minimum, _maximum), _exclusive = COAX_SHAPING_RANGES[_name], False
     else:
         _minimum = 0.0
         _maximum = COAX_PARAM_ABS_LIMIT
@@ -248,6 +269,7 @@ def validate_parameter_text(
 
 __all__ = [
     "COAX_PARAM_ABS_LIMIT",
+    "COAX_SHAPING_RANGES",
     "COAX_TILT_LIMIT_RAD",
     "PARAMETER_CAPABILITIES",
     "ParameterCapability",

@@ -4,65 +4,70 @@
 
 Read this shard only when the task needs architecture rationale, controller math, historical evidence, captures, datasets, or agent-support documentation.
 
-Document snapshot: `b89f72a170c9`; aggregate snapshot: `f7f519461384`. Covered files: 579.
+Document snapshot: `e6d9579d7d9a`; aggregate snapshot: `444b93eab1d0`. Covered files: 1073.
 
 ## Documents and agent support
 
 | File | Content outline | Headings / entry points |
 |---|---|---|
 | `.agents/skills/drone-h743-project/agents/openai.yaml` | Project documentation for openai | — |
-| `.agents/skills/drone-h743-project/references/decoupling-spec.md` | 解耦开发规范（新增模块 / 重构 / 优化前必读） | `0. 五个维度总览`, `1. 维度一：硬件与生命周期`, `2. 维度二：时间与节拍`, `3. 维度三：数据与控制流` (+5) |
-| `.agents/skills/drone-h743-project/references/dispatcher-prompt.md` | 派发者提示词 | `第一步：先判断这件事该不该派`, `第二步：认类别；新类别先写模式，再派单`, `第三步：写工单`, `第四步：批量与并发` (+1) |
+| `.agents/skills/drone-h743-project/references/decoupling-spec.md` | 解耦开发规范（新增模块 / 重构 / 优化前必读） | `0. 五个维度总览`, `1. 维度一：硬件与生命周期` (+7) |
+| `.agents/skills/drone-h743-project/references/dispatcher-prompt.md` | 主控协作规则 | `与作者确定结果和路线`, `先定边界，再并行` (+3) |
 | `.agents/skills/drone-h743-project/references/flash-architecture.md` | FLASH / GD25Q32 Architecture | `Required Layering`, `Focused Validation` |
-| `.agents/skills/drone-h743-project/references/flu-coordinate-contract.md` | FLU Coordinate Contract | `Authority`, `Adapter Rules`, `Current Migration Status`, `Required Validation` (+1) |
-| `.agents/skills/drone-h743-project/references/h7-memory-domains.md` | STM32H743 Memory And Domain Notes For This Project | `先记住的结论`, `当前工程 `.ioc` 已暴露的主要内存区`, `项目内推荐的四区分工`, `1. ITCM` (+7) |
-| `.agents/skills/drone-h743-project/references/modes/algorithm-validation.md` | 类别模式：算法验证 | `授权`, `判据（验收看这几条，不看"测试绿不绿"）`, `禁止（未经作者单独批准）`, `交付物` |
-| `.agents/skills/drone-h743-project/references/modes/dshot-esc.md` | 类别模式：DShot 电调输出 | `授权与边界`, `Contract / Boundary / Test Seam`, `验证与交付` |
-| `.agents/skills/drone-h743-project/references/modes/frame-migration.md` | 类别模式：frame-migration（坐标系运行时迁移） | `为什么单独立一类`, `硬规矩`, `交付要求（在通用完成协议之上追加）`, `必跑` |
-| `.agents/skills/drone-h743-project/references/modes/protocol-telemetry.md` | 类别模式：协议 / 遥测改动 | `授权`, `判据`, `禁止（未经作者单独批准）`, `交付物` |
-| `.agents/skills/drone-h743-project/references/modes/simulation.md` | 类别模式：教学仿真（R-SIM-1） | `授权来源与适用范围`, `授权与边界`, `架构三件套`, `完成判据` (+2) |
-| `.agents/skills/drone-h743-project/references/modes/tk-ui.md` | 类别模式：tk-ui | `适用`, `授权范围`, `必须保持`, `测试与判据` (+3) |
+| `.agents/skills/drone-h743-project/references/flu-coordinate-contract.md` | FLU Coordinate Contract | `Authority`, `Adapter Rules` (+3) |
+| `.agents/skills/drone-h743-project/references/h7-memory-domains.md` | STM32H743 Memory And Domain Notes For… | `先记住的结论`, `当前工程 `.ioc` 已暴露的主要内存区` (+9) |
+| `.agents/skills/drone-h743-project/references/modes/algorithm-validation.md` | 类别模式：算法验证 | `授权`, `判据（验收看这几条，不看"测试绿不绿"）` (+2) |
+| `.agents/skills/drone-h743-project/references/modes/dshot-esc.md` | 类别模式：DShot 电调输出 | `授权与边界`, `Contract / Boundary / Test Seam` (+1) |
+| `.agents/skills/drone-h743-project/references/modes/frame-migration.md` | 类别模式：frame-migration（坐标系运行时迁移） | `为什么单独立一类`, `硬规矩` (+2) |
+| `.agents/skills/drone-h743-project/references/modes/protocol-telemetry.md` | 类别模式：协议 / 遥测改动 | `授权`, `判据` (+2) |
+| `.agents/skills/drone-h743-project/references/modes/simulation.md` | 类别模式：教学仿真（R-SIM-1） | `授权来源与适用范围`, `授权与边界` (+4) |
+| `.agents/skills/drone-h743-project/references/modes/tk-ui.md` | 类别模式：tk-ui | `适用`, `授权范围` (+4) |
 | `.agents/skills/drone-h743-project/references/runtime-services.md` | Runtime Services And Background Work | `Ownership`, `Focused Validation` |
-| `.agents/skills/drone-h743-project/references/work-modes.md` | 执行者工作模式 | `三层结构`, `默认层：常规 REQ 执行`, `横切层：修 bug 模式`, `进入条件（满足任一）` (+4) |
-| `.agents/skills/drone-h743-project/scripts/update_repository_index.py` | Build the compact, task-routed repository index used by the project skill | `git_working_files`, `read_bytes`, `read_text`, `compact` (+23) |
-| `.agents/skills/drone-h743-project/SKILL.md` | drone-H743 Project Skill | `Repository Index Workflow`, `Pipeline Governance`, `Project Data Paths`, `Canonical FLU Body Frame` (+6) |
-| `.claude/settings.local.json` | Project documentation for settings.local | — |
+| `.agents/skills/drone-h743-project/references/validation-policy.md` | 验证策略：按影响选择，整批集中收尾 | `选择范围`, `开发与合并` (+2) |
+| `.agents/skills/drone-h743-project/references/work-modes.md` | 工作模式：默认执行、修 bug 与按需类别 | `默认模式`, `修 bug 模式` (+1) |
+| `.agents/skills/drone-h743-project/scripts/update_repository_index.py` | Build the compact, task-routed reposi… | `git_working_files`, `read_bytes` (+25) |
+| `.agents/skills/drone-h743-project/SKILL.md` | drone-H743 Project Skill | `开始与按需阅读`, `与作者沟通` (+5) |
+| `.claude/settings.local.json` | Project documentation for settings.lo… | — |
 | `.claude/skills/drone-h743-project/SKILL.md` | drone-H743 Project Skill (route) | — |
 | `.codex/config.toml` | Repository-local Codex configuration | — |
 | `data/README.md` | Project Data Directory | — |
 | `doc/battery-cubemx-checklist.md` | R-BATT-1：ADC双通道生成交接 | — |
-| `doc/bluetooth-battery.md` | 蓝牙通道与电池电压（R-BT-1 / R-BATT-1） | `蓝牙`, `电压采样与保护`, `电池诊断协议v1`, `ELRS电池回传` |
-| `doc/component-registry.md` | 飞控元件注册与总览（R-MODULES-1） | `字节契约 v1`, `注册、传输与预算`, `可复核验证` |
-| `doc/current-architecture.md` | drone-H743 当前软件架构 | `分层`, `主要运行链`, `IMU 与姿态`, `光流与水平导航` (+5) |
-| `doc/current-sensor.md` | R-CURRENT-1：AM32 55A 电流采样 | `硬件与标称换算`, `软件边界`, `上位机回读（R-CURRENT-2）`, `CubeMX 交接` (+1) |
-| `doc/drone-h743-architecture.html` | Project documentation for drone h743 architecture | — |
-| `doc/dshot-cubemx-checklist.md` | R-DSHOT-1：CubeMX 生成交接清单 | `当前阶段`, `在本工作树的 drone-H743.ioc 中修改`, `生成结果应包含`, `后续由执行者接入（不是 CubeMX 操作）` |
-| `doc/esc-output.md` | MicoAir743v2 电调输出 | `构建与回退`, `接口与时序`, `诊断与日志`, `审核者验证` (+1) |
-| `doc/hardware-reference.md` | drone-H743 硬件参考 | `权威边界`, `已登记器件`, `主机连接` |
-| `doc/history/2024050116133964(1)(1).pdf` | Project documentation for 2024050116133964(1)(1) | — |
-| `doc/history/coaxial_drone_controller_comparison.pdf` | Project documentation for coaxial drone controller comparison | — |
-| `doc/history/identification-and-tether-geometry-2026-07-25.md` | 系统辨识参数与结果记录 | `用户原话记录`, `坐标系与对称假设`, `质量与重心`, `舵机与推力矢量几何` (+44) |
-| `doc/history/nonlinear-balance-controller-2026-07-25.md` | 非线性平衡式同轴倾转控制器 | `1. 控制目标`, `2. 坐标与已知物理量`, `3. 速度参考模型`, `4. 期望推力方向` (+6) |
+| `doc/bluetooth-battery.md` | 蓝牙通道与电池电压（R-BT-1 / R-BATT-1） | `蓝牙`, `电压采样与保护` (+2) |
+| `doc/component-registry.md` | 飞控元件注册与总览（R-MODULES-1） | `字节契约 v1`, `注册、传输与预算` (+1) |
+| `doc/current-architecture.md` | drone-H743 当前软件架构 | `已采纳设计与延续`, `分层` (+8) |
+| `doc/current-sensor.md` | R-CURRENT-1：AM32 55A 电流采样 | `硬件与标称换算`, `软件边界` (+4) |
+| `doc/drone-h743-architecture.html` | Project documentation for drone h743… | — |
+| `doc/dshot-cubemx-checklist.md` | R-DSHOT-1：CubeMX 生成交接清单 | `当前阶段`, `在本工作树的 drone-H743.ioc 中修改` (+2) |
+| `doc/esc-output.md` | MicoAir743v2 电调输出 | `油门上限分两层（2026-09-21）`, `心跳回包捎带电调回传` (+19) |
+| `doc/hardware-reference.md` | drone-H743 硬件参考 | `权威边界`, `已登记器件` (+1) |
+| `doc/history/2024050116133964(1)(1).pdf` | Project documentation for 20240501161… | — |
+| `doc/history/coaxial_drone_controller_comparison.pdf` | Project documentation for coaxial dro… | — |
+| `doc/history/identification-and-tether-geometry-2026-07-25.md` | 系统辨识参数与结果记录 | `用户原话记录`, `坐标系与对称假设` (+46) |
+| `doc/history/nonlinear-balance-controller-2026-07-25.md` | 非线性平衡式同轴倾转控制器 | `1. 控制目标`, `2. 坐标与已知物理量` (+8) |
 | `doc/history/README.md` | 历史资料使用规则 | `保留内容` |
-| `doc/micoair743v2/baseline/MicoAir743v2-PX4-1.15.4-Bootloader+Firmware.bin` | Project documentation for MicoAir743v2 PX4 1.15.4 Bootloader+Firmware | — |
-| `doc/micoair743v2/baseline/MicoAir743v2_PX4-1.15.x_bootloader.bin` | Project documentation for MicoAir743v2 PX4 1.15.x bootloader | — |
-| `doc/micoair743v2/README.md` | MicoAir743v2 板级参考（备选硬件方案） | `权威边界`, `板级事实`, `UART 与 PWM 引脚`, `移植进度（2026-09-10）` (+35) |
-| `doc/micoair743v2/vendor/ardupilot-hwdef.dat` | Project documentation for ardupilot hwdef | — |
-| `doc/micoair743v2/vendor/ardupilot-README.md` | MicoAir743v2 Flight Controller | `Features`, `Physical`, `UART Mapping`, `RC Input` (+9) |
-| `doc/micoair743v2/vendor/betaflight-MICOAIR743V2_EXTMAG-config.h` | Project documentation for betaflight MICOAIR743V2 EXTMAG config | — |
-| `doc/micoair743v2/vendor/betaflight-MICOAIR743V2_INTMAG-config.h` | Project documentation for betaflight MICOAIR743V2 INTMAG config | — |
-| `doc/micoair743v2/vendor/inav-MICOAIR743-target.h` | Project documentation for inav MICOAIR743 target | — |
+| `doc/micoair743v2/baseline/MicoAir743v2-PX4-1.15.4-Bootloader+Firmware.bin` | Project documentation for MicoAir743v… | — |
+| `doc/micoair743v2/baseline/MicoAir743v2_PX4-1.15.x_bootloader.bin` | Project documentation for MicoAir743v… | — |
+| `doc/micoair743v2/README.md` | MicoAir743v2 板级参考（备选硬件方案） | `权威边界`, `板级事实` (+38) |
+| `doc/micoair743v2/vendor/ardupilot-hwdef.dat` | Project documentation for ardupilot h… | — |
+| `doc/micoair743v2/vendor/ardupilot-README.md` | MicoAir743v2 Flight Controller | `Features`, `Physical` (+11) |
+| `doc/micoair743v2/vendor/betaflight-MICOAIR743V2_EXTMAG-config.h` | Project documentation for betaflight… | — |
+| `doc/micoair743v2/vendor/betaflight-MICOAIR743V2_INTMAG-config.h` | Project documentation for betaflight… | — |
+| `doc/micoair743v2/vendor/inav-MICOAIR743-target.h` | Project documentation for inav MICOAI… | — |
 | `doc/micoair743v2/vendor/px4-default.px4board` | Project documentation for px4 default | — |
-| `doc/req-rf6-2-controller-flu-migration.md` | R-F6-2〔重发〕seam 3 控制器内部表述迁移到 FLU | `0. 为什么重发这张`, `1. 新判据：同一**物理**姿态下舵机指令一致`, `换标表`, `2. 已经替你做完的部分，别重做` (+11) |
-| `doc/req-rf6-flu-runtime-migration.md` | R-F6 工单：FLU 运行时迁移（六 seam 收口） | `0. 这张工单要解决什么`, `1. 现状盘点`, `2. 子工单`, `R-F6-0 收口 seam 0 / seam 1 掩码位` (+7) |
-| `doc/technical-spec.md` | drone-H743 技术规范与代码落地方案 | `1. 最终目的与范围`, `2. 角色与工作流`, `3. 架构与代码规范`, `4. 坐标与单位契约` (+9) |
-| `doc/telemetry-protocol.md` | drone-H743 遥测协议 | `事实源`, `Schema v4`, ``$X` 遥测帧`, `坐标与单位` (+5) |
+| `doc/req-rf6-2-controller-flu-migration.md` | R-F6-2〔重发〕seam 3 控制器内部表述迁移到 FLU | `0. 为什么重发这张`, `1. 新判据：同一**物理**姿态下舵机指令一致` (+13) |
+| `doc/req-rf6-flu-runtime-migration.md` | R-F6 工单：FLU 运行时迁移（六 seam 收口） | `0. 这张工单要解决什么`, `1. 现状盘点` (+9) |
+| `doc/rpm-notch.md` | 转速陷波（RPM notch）：桨叶振动从控制用陀螺里挖掉 | `解决什么问题`, `怎么用` (+3) |
+| `doc/system-identification.md` | 光杆台架姿态辨识 | `一次辨识怎么做`, `油门归谁（作者 2026-09-26 授权）` (+6) |
+| `doc/technical-spec.md` | drone-H743 技术规范与代码落地方案 | `1. 最终目的与范围`, `2. 角色与工作流` (+11) |
+| `doc/telemetry-protocol.md` | drone-H743 遥测协议 | `事实源`, `Schema v4` (+8) |
+| `doc/thrust-bench-contract.md` | 共轴推力台本批接口约定（R-THRUST-2） | `在用推力模型`, `文件归属` (+13) |
+| `doc/thrust-bench.md` | 共轴桨推力与功耗辨识 | `日常工作流程（2026-09-22 已采纳）`, `使用入口` (+7) |
 
 ## Aggregated datasets and captures
 
 | Scope | Content outline | Inventory |
 |---|---|---|
-| `.tmp/` | Temporary analysis results; inspect only a specifically named run | 105 files / 10.6 MiB / .json×25, .csv×19, .png×14, .md×11, .txt×11 |
-| `data/` | Canonical captures, flight logs, identification, calibration, telemetry, and an… | 427 files / 21.4 MiB / .txt×174, .csv×86, .json×75, .png×33, .md×30 |
+| `.tmp/` | Temporary analysis results; inspect o… | 105 files / 10.6 MiB / .json×25, .csv×19, .png×14, .md×11, .txt×11 |
+| `data/` | Canonical captures, flight logs, iden… | 916 files / 588.3 MiB / .json×266, .txt×174, .csv×163, .md×96, .jsonl×93 |
 
 Do not load a whole dataset directory. Select one named run after code or test evidence points to it.

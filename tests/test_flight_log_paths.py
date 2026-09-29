@@ -85,17 +85,21 @@ def test_pressure_gui_paths_aligned_to_data_dirs() -> None:
     assert "pressure_calibration.json" in source
     assert "PRESSURE_CALIBRATION_DIR" in source
     assert "THRUST_IDENT_DIR" in source
-    assert "dated_directory(THRUST_IDENT_DIR)" in source
+    assert "root = project_paths.THRUST_IDENT_DIR" in read("tools/thrust_bench/session.py")
 
 
 def test_tcp_panel_uses_data_root_for_exports() -> None:
     source = read("tools/drone_tcp_panel.py")
 
-    assert "ATTITUDE_IDENT_DIR" in source
     assert "TELEMETRY_DIR" in source
-    assert "dated_directory(ATTITUDE_IDENT_DIR)" in source
     assert "dated_directory(TELEMETRY_DIR)" in source
     assert "initialdir=str(initial.parent)" in source
+
+    # 姿态辨识的产出 2026-09-13 随整页迁出（R-SYSID-1）：目录规范没变，
+    # 只是换了一个模块在写。判据跟着搬，别让"没人在往那儿写了"变成静默通过。
+    report = read("tools/sysid/report.py")
+    assert 'ROOT / "data" / "identification" / "attitude"' in report
+    assert "(when or date.today()).isoformat()" in report
 
 
 def test_saleae_and_vofa_default_out_dirs() -> None:

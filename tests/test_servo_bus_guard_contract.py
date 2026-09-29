@@ -156,6 +156,8 @@ def test_guard_runtime_selection_and_command_table_with_host_c(tmp_path: Path) -
 
 int main(void) {
     APP_ServoType_ResetActive();
+    assert(APP_ServoBusGuard_IsPwmMode() == 1U);  /* default PWM servos (2026-09-25) */
+    assert(APP_ServoType_PublishActive(APP_SERVO_TYPE_BUS) == 1U);
     assert(APP_ServoBusGuard_IsPwmMode() == 0U);
     assert(APP_ServoBusGuard_IsBusOnlyCommand("MOVE") == 1U);
     assert(APP_ServoBusGuard_IsBusOnlyCommand("MOVEALL") == 1U);

@@ -37,14 +37,17 @@ enable_language(C CXX ASM)
 # Create an executable object type
 add_executable(${CMAKE_PROJECT_NAME})
 
-set(ESC_PROTOCOL "DSHOT300" CACHE STRING "ESC output protocol: DSHOT300 or PWM")
-set_property(CACHE ESC_PROTOCOL PROPERTY STRINGS DSHOT300 PWM)
+set(ESC_PROTOCOL "DSHOT300" CACHE STRING
+    "ESC output protocol: DSHOT300, DSHOT300_BIDIR or PWM")
+set_property(CACHE ESC_PROTOCOL PROPERTY STRINGS DSHOT300 DSHOT300_BIDIR PWM)
 if(ESC_PROTOCOL STREQUAL "DSHOT300")
     target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE BSP_ESC_PROTOCOL=1)
+elseif(ESC_PROTOCOL STREQUAL "DSHOT300_BIDIR")
+    target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE BSP_ESC_PROTOCOL=2)
 elseif(ESC_PROTOCOL STREQUAL "PWM")
     target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE BSP_ESC_PROTOCOL=0)
 else()
-    message(FATAL_ERROR "ESC_PROTOCOL must be DSHOT300 or PWM")
+    message(FATAL_ERROR "ESC_PROTOCOL must be DSHOT300, DSHOT300_BIDIR or PWM")
 endif()
 
 # Add STM32CubeMX generated sources
@@ -59,7 +62,13 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     # Driver layer
     Driver/Src/drv_dshot.c
+    Driver/Src/drv_sysid_rig.c
+    Driver/Src/drv_sysid_record.c
+    Driver/Src/drv_sysid_excitation.c
+    Driver/Src/drv_dshot_telemetry.c
+    Driver/Src/drv_dshot_bitbang.c
     Driver/Src/drv_current.c
+    Driver/Src/drv_current_filter.c
     Driver/Src/drv_battery.c
     BSP/Src/bsp_current.c
     App/Src/app_current.c
@@ -74,6 +83,8 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     App/Src/app_components_board.c
     App/Src/app_components_transport.c
     BSP/Src/bsp_dshot.c
+    BSP/Src/bsp_dshot_bitbang.c
+    BSP/Src/bsp_dshot_rx.c
     App/Src/app_esc_diag.c
     App/Src/app_esc_log.c
     Driver/Src/drv_imu.c
@@ -89,6 +100,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Driver/Src/drv_intflash.c
     Driver/Src/drv_sdblock.c
     Driver/Src/drv_mag.c
+    Driver/Src/drv_mag_calibration.c
     Driver/Src/drv_gps.c
     Driver/Src/drv_tx_ring.c
     Driver/Src/drv_servo.c
@@ -97,10 +109,14 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Driver/Src/drv_elrs.c
     Driver/Src/drv_optical_flow.c
     Driver/Src/drv_airframe_params.c
+    Driver/Src/drv_prop_map.c
     Driver/Src/drv_coax_ctrl.c
+    Driver/Src/drv_thrust_lut.c
     Driver/Src/drv_position_control.c
     Driver/Src/drv_attitude_control.c
     Driver/Src/drv_rate_control.c
+    Driver/Src/drv_rpm_notch.c
+    Driver/Src/drv_servo_backlash.c
     Driver/Src/drv_nav_ekf.c
     Driver/Src/drv_attitude_fusion.c
     ThirdParty/Fusion/FusionAhrs.c
@@ -108,6 +124,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Services/Src/svc_flow_nav.c
     Services/Src/svc_led.c
     Services/Src/svc_imu.c
+    Services/Src/svc_mag.c
     Services/Src/svc_param.c
     Services/Src/svc_timestamp.c
     # BSP layer
@@ -159,8 +176,29 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     App/Src/app_cmd_imusel.c
     App/Src/app_cmd_probe.c
     App/Src/app_cmd_airframe.c
+    App/Src/app_param_trial.c
     App/Src/app_cmd_arm.c
     App/Src/app_cmd_led.c
+    App/Src/app_cmd_ledmap.c
+    App/Src/app_led_config.c
+    App/Src/app_cmd_propcal.c
+    App/Src/app_cmd_thrust_bench.c
+    App/Src/app_cmd_magcal.c
+    App/Src/app_cmd_currprobe.c
+    App/Src/app_cmd_esc_edt.c
+    App/Src/app_cmd_esc_kv.c
+    App/Src/app_esc_command.c
+    App/Src/app_cmd_sysid.c
+    App/Src/app_sysid.c
+    App/Src/app_sysid_alt.c
+    App/Src/app_prop_spin.c
+    App/Src/app_thrust_bench.c
+    App/Src/app_thrust_lut.c
+    App/Src/app_rpm_notch.c
+    App/Src/app_cmd_rpmnotch.c
+    App/Src/app_servo_backlash.c
+    App/Src/app_cmd_backlash.c
+    App/Src/app_cmd_servohz.c
     App/Src/app_cmd_fallback.c
     App/Src/app_diag.c
     App/Src/app_flash.c

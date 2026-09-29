@@ -12,7 +12,8 @@
     3. 存储路由重构时丢了互斥锁，SD 后端的全局块缓冲会在任务间串数据。
     4. 主 IMU 初始化失败后不再尝试备用 IMU，外层重试又选回同一颗，无限循环。
     5. ELRS 的 RX 上拉还配在老板子的 PD0 上，新板 UART4_RX 是 PA1。
-    6. GPS 回调写死 USART2，而新板 GPS 在 USART3、USART2 成了光流口。
+    6. GPS 回调写死 USART2，而新板 GPS 在 USART3、USART2 成了光流口
+       （2026-09-29 光流又迁到 UART4，USART2 回归 DJI 图传口）。
 """
 
 from __future__ import annotations
@@ -377,6 +378,10 @@ HAL_StatusTypeDef HAL_SD_WriteBlocks(SD_HandleTypeDef *hsd, uint8_t *data,
     return HAL_OK;
 }
 
+HAL_StatusTypeDef HAL_SD_Abort(SD_HandleTypeDef *hsd) { (void)hsd; return HAL_OK; }
+HAL_StatusTypeDef HAL_SD_DeInit(SD_HandleTypeDef *hsd) { (void)hsd; return HAL_OK; }
+HAL_StatusTypeDef HAL_SD_Init(SD_HandleTypeDef *hsd) { (void)hsd; return HAL_OK; }
+
 int main(void)
 {
     DRV_SDBLOCK_Bus bus;
@@ -458,6 +463,127 @@ def test_sd_polling_reads_return_what_was_written(tmp_path: Path) -> None:
         tmp_path,
         "sdblock",
         SDBLOCK_HARNESS,
+        sources=[ROOT / "Driver" / "Src" / "drv_sdblock.c"],
+        includes=[fakes, DRIVER_INC],
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+SDBLOCK_FAILURE_HARNESS = (
+    CHECK_MACRO
+    + r"""
+#include "drv_sdblock.h"
+
+#define CARD_BLOCKS 4096U
+
+static SD_HandleTypeDef fake_sd;
+static uint32_t now_ms, reads, writes, state_polls, aborts;
+static uint8_t card_answers = 1U;
+static uint8_t reads_fail;
+
+void HAL_Delay(uint32_t ms) { (void)ms; }
+uint32_t HAL_GetTick(void) { return now_ms; }
+
+/* A card that stops answering: every status poll costs 5 ms of bus timeout. */
+uint32_t HAL_SD_GetCardState(SD_HandleTypeDef *hsd)
+{
+    (void)hsd;
+    state_polls++;
+    if (card_answers != 0U) { return HAL_SD_CARD_TRANSFER; }
+    now_ms += 5U;
+    return HAL_SD_CARD_TRANSFER + 1U;  /* anything but TRANSFER */
+}
+
+HAL_StatusTypeDef HAL_SD_GetCardInfo(SD_HandleTypeDef *hsd,
+                                     HAL_SD_CardInfoTypeDef *info)
+{
+    (void)hsd;
+    info->LogBlockNbr = CARD_BLOCKS;
+    info->LogBlockSize = DRV_SDBLOCK_BLOCK_SIZE;
+    return HAL_OK;
+}
+
+HAL_StatusTypeDef HAL_SD_ReadBlocks(SD_HandleTypeDef *hsd, uint8_t *data,
+                                    uint32_t block, uint32_t count,
+                                    uint32_t timeout)
+{
+    (void)data; (void)block; (void)count;
+    reads++;
+    if (reads_fail == 0U) { return HAL_OK; }
+    now_ms += timeout;  /* data never arrives: the whole timeout is spent */
+    hsd->ErrorCode = 0x80000000U;  /* HAL_SD_ERROR_TIMEOUT */
+    return HAL_ERROR;
+}
+
+HAL_StatusTypeDef HAL_SD_WriteBlocks(SD_HandleTypeDef *hsd, uint8_t *data,
+                                     uint32_t block, uint32_t count,
+                                     uint32_t timeout)
+{
+    (void)hsd; (void)data; (void)block; (void)count; (void)timeout;
+    writes++;
+    return HAL_OK;
+}
+
+HAL_StatusTypeDef HAL_SD_Abort(SD_HandleTypeDef *hsd) { (void)hsd; aborts++; return HAL_OK; }
+HAL_StatusTypeDef HAL_SD_DeInit(SD_HandleTypeDef *hsd) { (void)hsd; return HAL_OK; }
+HAL_StatusTypeDef HAL_SD_Init(SD_HandleTypeDef *hsd) { (void)hsd; return HAL_OK; }
+
+int main(void)
+{
+    DRV_SDBLOCK_Bus bus;
+    DRV_SDBLOCK_Diag diag;
+    uint8_t out[16];
+    uint32_t sector;
+
+    memset(&bus, 0, sizeof(bus));
+    bus.hsd = &fake_sd;
+    bus.timeout_ms = 1000U;
+    fake_sd.Init.BusWide = SDMMC_BUS_WIDE_4B;
+    CHECK(DRV_SDBLOCK_Init(&bus) == DRV_SDBLOCK_OK, 1);
+    reads_fail = 1U;
+    reads = 0U;
+
+    /* The flight-log boot scan reads ~1000 sector headers: only the first may wait. */
+    for (sector = 0U; sector < 1017U; sector++) {
+        (void)DRV_SDBLOCK_Read(sector * 4096U, out, sizeof(out));
+    }
+    CHECK(reads == 1U, 2);
+    CHECK(now_ms <= 1000U, 3);
+    CHECK(DRV_SDBLOCK_IsReady() == 0U, 4);
+    CHECK(DRV_SDBLOCK_Read(0U, out, sizeof(out)) == DRV_SDBLOCK_NOT_READY, 5);
+    CHECK(DRV_SDBLOCK_Write(0U, out, sizeof(out)) == DRV_SDBLOCK_NOT_READY, 6);
+    CHECK(writes == 0U, 7);
+    /* The first failure is kept for STATUS? and the stalled data path is aborted once. */
+    DRV_SDBLOCK_GetDiag(&diag);
+    CHECK(diag.fail_op == DRV_SDBLOCK_OP_READ && diag.fail_error == 0x80000000U, 12);
+    CHECK(aborts == 1U, 13);
+
+    /* A card that stops answering status polls is bounded by time, not 1000 polls. */
+    reads_fail = 0U;
+    CHECK(DRV_SDBLOCK_Init(&bus) == DRV_SDBLOCK_OK, 8);
+    card_answers = 0U;
+    now_ms = 0U; state_polls = 0U;
+    CHECK(DRV_SDBLOCK_Read(0U, out, sizeof(out)) == DRV_SDBLOCK_TIMEOUT, 9);
+    CHECK(now_ms <= 1005U && state_polls < 1000U, 10);
+    CHECK(DRV_SDBLOCK_IsReady() == 0U, 11);
+
+    REPORT();
+}
+"""
+)
+
+
+def test_failing_sd_card_is_dropped_after_the_first_failed_transfer(tmp_path: Path) -> None:
+    """One failed transfer marks the card unusable, so a dead card cannot block the background task.
+
+    2026-09-25 on the bench: every read of the inserted card waited its full timeout; the flight-log
+    boot scan (~1000 sector headers) held the background task ~17 min and no parameter could be saved.
+    """
+    fakes = write_fakes(tmp_path)
+    result = build_and_run(
+        tmp_path,
+        "sdblock_failure",
+        SDBLOCK_FAILURE_HARNESS,
         sources=[ROOT / "Driver" / "Src" / "drv_sdblock.c"],
         includes=[fakes, DRIVER_INC],
     )
@@ -555,6 +681,9 @@ DRV_SDBLOCK_Status DRV_SDBLOCK_Init(const DRV_SDBLOCK_Bus *bus)
 
 uint8_t DRV_SDBLOCK_IsReady(void) { return 1U; }
 uint64_t DRV_SDBLOCK_GetUsableBytes(void) { return 0U; }
+void DRV_SDBLOCK_GetDiag(DRV_SDBLOCK_Diag *out) { memset(out, 0, sizeof(*out)); }
+uint8_t BSP_Board_SdCardPresent(void) { return 1U; }
+uint32_t BSP_Board_SdInitError(void) { return 0U; }
 
 DRV_SDBLOCK_Status DRV_SDBLOCK_Read(uint32_t offset, uint8_t *data, uint32_t length)
 {
@@ -705,6 +834,7 @@ IMU_FALLBACK_HARNESS = (
     CHECK_MACRO
     + r"""
 #include "bsp_imu.h"
+#include "bsp_imu_rate.h"
 #include "drv_bmi088.h"
 #include "drv_bmi270.h"
 #include "drv_imu_iface.h"
@@ -817,6 +947,11 @@ void DRV_BMI088_ConvertRaw(DRV_IMU_AccelRange a, DRV_IMU_GyroRange g,
 void DRV_BMI270_ConvertRaw(DRV_IMU_AccelRange a, DRV_IMU_GyroRange g,
                            const DRV_IMU_RawData *r, DRV_IMU_ScaledData *s)
 { (void)a; (void)g; (void)r; memset(s, 0, sizeof(*s)); }
+/* BSP_IMU_GetGyroOdrHz（转速陷波的名义 ODR）引用的查表，本用例不链真表。 */
+uint8_t DRV_BMI088_GyroBandwidthCode(DRV_IMU_Odr odr, uint16_t bw, uint16_t *odr_hz, uint16_t *bw_hz)
+{ (void)odr; (void)bw; if (odr_hz) { *odr_hz = 1000U; } if (bw_hz) { *bw_hz = 116U; } return 0U; }
+uint8_t DRV_BMI270_OdrCode(DRV_IMU_Odr odr, uint8_t is_gyro, uint16_t *odr_hz)
+{ (void)odr; (void)is_gyro; if (odr_hz) { *odr_hz = 800U; } return 0U; }
 
 static void reset_counters(void)
 {
@@ -839,6 +974,7 @@ int main(void)
     CHECK(BSP_IMU_GetChipKind() == DRV_IMU_CHIP_BMI088, 2);
     CHECK(bmi088.init_calls == 1, 3);
     CHECK(bmi270.init_calls == 0, 4);
+    CHECK(BSP_IMU_GetGyroOdrHz() == 1000U, 8);   /* 名义 ODR 跟着上岗的芯片走 */
 
     /*
      * DRDY 只放行上岗那颗。修之前回调用一个静态掩码同时收两颗的引脚，理由写的是
@@ -866,6 +1002,7 @@ int main(void)
     /* 诊断必须和实际跑的芯片一致，不能还指着那颗失败的。 */
     BSP_IMU_GetInfo(&info);
     CHECK(info.kind == DRV_IMU_CHIP_BMI270, 14);
+    CHECK(BSP_IMU_GetGyroOdrHz() == 800U, 21);
 
     /* 回退之后 DRDY 也必须跟着换过去，否则节拍源和数据源不是同一颗芯片。 */
     CHECK(BSP_IMU_GetDrdyPin() == BMI270_DRDY_Pin, 15);
@@ -890,6 +1027,7 @@ int main(void)
     CHECK(bmi270.init_calls == 1, 32);
     CHECK(BSP_IMU_GetChipKind() == DRV_IMU_CHIP_NONE, 33);
     CHECK(BSP_IMU_ReadRaw(NULL) == DRV_IMU_ERROR, 34);
+    CHECK(BSP_IMU_GetGyroOdrHz() == 0U, 35);     /* 没有芯片：陷波按采样率未知直通 */
 
     /* --- 一颗都探不到：返回 BAD_ID，一次 init 都不该发生 --- */
     reset_counters();
@@ -1033,8 +1171,9 @@ def test_factory_rollback_images_are_present_and_intact() -> None:
 def test_gps_callbacks_follow_the_board_binding() -> None:
     """GPS 回调认哪个串口，必须从板级绑定里取，不能写死实例名。
 
-    新板 GPS 挪到 USART3，而 USART2 成了光流口。回调里写死 USART2 的话，
-    GPS 会去认光流的串口——这种"绑定改了、回调没跟着改"的错位编译期看不出来。
+    新板 GPS 挪到 USART3，而 USART2 当时成了光流口（2026-09-29 光流又迁到 UART4）。
+    回调里写死 USART2 的话，GPS 会去认别人的串口——这种"绑定改了、回调没跟着改"
+    的错位编译期看不出来。
     """
     gps = strip_c_comments(read("BSP/Src/bsp_gps.c"))
 
@@ -1049,3 +1188,231 @@ def test_gps_callbacks_follow_the_board_binding() -> None:
     flow_uart = re.search(r"optical_flow_bus\.huart\s*=\s*&(\w+);", board)
     assert gps_uart is not None and flow_uart is not None
     assert gps_uart.group(1) != flow_uart.group(1)
+
+
+def test_sd_lines_pulled_up_and_missing_card_does_not_halt_boot() -> None:
+    """SD D0-D3/CMD need pull-ups (4-bit reads timed out without them); no card must not stop boot.
+
+    2026-09-25: the card identified at 400 kHz on CMD/D0 but every 4-bit block read waited
+    its full timeout with D1-D3 floating; and with the card removed MX_SDMMC1_SD_Init() hit
+    Error_Handler() before USB, so the board vanished from the PC.
+    """
+    ioc = read("drone-H743.ioc")
+    for pin in ("PC8", "PC9", "PC10", "PC11", "PD2"):
+        assert f"{pin}.GPIO_PuPd=GPIO_PULLUP" in ioc, pin
+    assert "PC12.GPIO_PuPd" not in ioc  # the clock line stays without pull
+    sdmmc = read("Core/Src/sdmmc.c")
+    assert "GPIO_InitStruct.Pin = GPIO_PIN_8|GPIO_PIN_9|GPIO_PIN_10|GPIO_PIN_11;\n    GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;\n    GPIO_InitStruct.Pull = GPIO_PULLUP;" in sdmmc.replace("\r\n", "\n")
+    assert "GPIO_InitStruct.Pin = GPIO_PIN_12;\n    GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;\n    GPIO_InitStruct.Pull = GPIO_NOPULL;" in sdmmc.replace("\r\n", "\n")
+    begin, end = sdmmc.find("BSP_Board_SdInitBegin();"), sdmmc.find("BSP_Board_SdInitEnd();")
+    assert 0 < begin < sdmmc.find("HAL_SD_Init(&hsd1)") < end  # the whole HAL init sits in the window
+    main = read("Core/Src/main.c")
+    handler = main[main.find("void Error_Handler(void)"):]
+    assert handler.find("BSP_Board_SdInitFailed()") < handler.find("__disable_irq();")  # checked before halting
+    board = read("BSP/Src/bsp_board.c")
+    assert "sdblock_bus.hsd              = (sd_card_absent == 0U) ? &hsd1 : NULL;" in board
+    assert "if (sd_init_window == 0U) {\n        return 0U;\n    }" in board.replace("\r\n", "\n")  # other errors still halt
+
+
+QMC_SCALE_HARNESS = (
+    CHECK_MACRO
+    + r"""
+#include "drv_mag.h"
+
+#define QMC_ADDR8 (0x0DU << 1U)
+
+static uint8_t qmc_regs[256];
+static int qmc_writes[256];
+
+void HAL_Delay(uint32_t ms) { (void)ms; }
+
+HAL_StatusTypeDef HAL_I2C_Mem_Read(I2C_HandleTypeDef *hi2c, uint16_t addr,
+                                   uint16_t reg, uint16_t reg_size,
+                                   uint8_t *data, uint16_t len, uint32_t timeout)
+{
+    uint16_t i;
+
+    (void)hi2c; (void)reg_size; (void)timeout;
+    if (addr != QMC_ADDR8) { return HAL_ERROR; }   /* 板上只有 QMC5883L */
+    for (i = 0U; i < len; i++) { data[i] = qmc_regs[(uint8_t)(reg + i)]; }
+    return HAL_OK;
+}
+
+HAL_StatusTypeDef HAL_I2C_Mem_Write(I2C_HandleTypeDef *hi2c, uint16_t addr,
+                                    uint16_t reg, uint16_t reg_size,
+                                    uint8_t *data, uint16_t len, uint32_t timeout)
+{
+    (void)hi2c; (void)reg_size; (void)len; (void)timeout;
+    if (addr != QMC_ADDR8) { return HAL_ERROR; }
+    qmc_regs[(uint8_t)reg] = data[0];
+    qmc_writes[(uint8_t)reg]++;
+    return HAL_OK;
+}
+
+static void put_axis(uint8_t reg, int16_t value)
+{
+    qmc_regs[reg] = (uint8_t)((uint16_t)value & 0xFFU);
+    qmc_regs[reg + 1U] = (uint8_t)((uint16_t)value >> 8U);
+}
+
+int main(void)
+{
+    static I2C_HandleTypeDef hi2c;
+    DRV_MAG_Bus bus = { &hi2c, 0U };
+    DRV_MAG_Device dev;
+    DRV_MAG_ScaledData scaled;
+    int32_t lsb_per_gauss;
+    uint8_t rng;
+
+    qmc_regs[0x0DU] = 0xFFU;                        /* QMC5883L chip id */
+    CHECK(DRV_MAG_Init(&dev, &bus) == DRV_MAG_OK, 1);
+    CHECK(dev.info.type == DRV_MAG_TYPE_QMC5883L, 2);
+    CHECK((qmc_regs[0x09U] & 0x03U) == 0x01U, 3);   /* 连续测量 */
+    CHECK(qmc_writes[0x0BU] == 1 && qmc_regs[0x0BU] == 0x01U, 4);
+
+    /* 数据手册：RNG=00 为 ±2 G / 12000 LSB/G，RNG=01 为 ±8 G / 3000 LSB/G。 */
+    rng = (uint8_t)((qmc_regs[0x09U] >> 4U) & 0x03U);
+    CHECK(rng <= 1U, 5);
+    lsb_per_gauss = (rng == 0U) ? 12000 : 3000;
+
+    /* 半高斯（地磁量级）放在三个轴上，正负都看。 */
+    put_axis(0x00U, (int16_t)(lsb_per_gauss / 2));
+    put_axis(0x02U, (int16_t)(-lsb_per_gauss / 2));
+    put_axis(0x04U, (int16_t)(lsb_per_gauss / 4));
+    CHECK(DRV_MAG_Read(&dev, NULL, &scaled) == DRV_MAG_OK, 6);
+    CHECK(scaled.x_mgauss == 500, 7);
+    CHECK(scaled.y_mgauss == -500, 8);
+    CHECK(scaled.z_mgauss == 250, 9);
+
+    REPORT();
+}
+"""
+)
+
+
+def test_qmc5883_scale_follows_configured_range(tmp_path: Path) -> None:
+    """QMC5883L mgauss scale must match the range written to CTRL1.
+
+    2026-09-26: CTRL1=0x1D selects +/-8 G (3000 LSB/G) but the driver divided by 12000 (the
+    +/-2 G figure), so every reading was a quarter of the true field and the ~500 mG earth
+    field fell under the 200 mG fusion gate.
+    """
+    fakes = write_fakes(tmp_path)
+    result = build_and_run(
+        tmp_path,
+        "qmc_scale",
+        QMC_SCALE_HARNESS,
+        sources=[ROOT / "Driver" / "Src" / "drv_mag.c"],
+        includes=[fakes, DRIVER_INC],
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+SDBLOCK_FALLBACK_HARNESS = (
+    CHECK_MACRO
+    + r"""
+#include "drv_sdblock.h"
+
+static SD_HandleTypeDef fake_sd;
+static uint32_t now_ms, deinits, inits, aborts;
+static uint8_t one_bit_works = 1U;
+
+void HAL_Delay(uint32_t ms) { (void)ms; }
+uint32_t HAL_GetTick(void) { return now_ms; }
+uint32_t HAL_SD_GetCardState(SD_HandleTypeDef *hsd) { (void)hsd; return HAL_SD_CARD_TRANSFER; }
+
+HAL_StatusTypeDef HAL_SD_GetCardInfo(SD_HandleTypeDef *hsd, HAL_SD_CardInfoTypeDef *info)
+{
+    (void)hsd;
+    info->CardType = 1U;
+    info->LogBlockNbr = 4096U;
+    info->LogBlockSize = DRV_SDBLOCK_BLOCK_SIZE;
+    return HAL_OK;
+}
+
+/* D1-D3 dead: a 4-bit read never sees its start bit and burns the whole timeout. */
+HAL_StatusTypeDef HAL_SD_ReadBlocks(SD_HandleTypeDef *hsd, uint8_t *data,
+                                    uint32_t block, uint32_t count, uint32_t timeout)
+{
+    (void)data; (void)block; (void)count;
+    if ((hsd->Init.BusWide == SDMMC_BUS_WIDE_1B) && (one_bit_works != 0U)) { return HAL_OK; }
+    now_ms += timeout;
+    hsd->ErrorCode = 0x80000000U;
+    return HAL_TIMEOUT;
+}
+
+HAL_StatusTypeDef HAL_SD_WriteBlocks(SD_HandleTypeDef *hsd, uint8_t *data,
+                                     uint32_t block, uint32_t count, uint32_t timeout)
+{
+    (void)hsd; (void)data; (void)block; (void)count; (void)timeout;
+    return HAL_OK;
+}
+
+HAL_StatusTypeDef HAL_SD_Abort(SD_HandleTypeDef *hsd) { (void)hsd; aborts++; return HAL_OK; }
+HAL_StatusTypeDef HAL_SD_DeInit(SD_HandleTypeDef *hsd) { (void)hsd; deinits++; return HAL_OK; }
+HAL_StatusTypeDef HAL_SD_Init(SD_HandleTypeDef *hsd)
+{
+    inits++;
+    hsd->ErrorCode = 0U;
+    return HAL_OK;
+}
+
+int main(void)
+{
+    DRV_SDBLOCK_Bus bus = { &fake_sd, 1000U };
+    DRV_SDBLOCK_Diag d;
+
+    /* 4-bit fails, a full 1-bit re-init reads: usable, and STATUS? can tell why. */
+    fake_sd.Init.BusWide = SDMMC_BUS_WIDE_4B;
+    CHECK(DRV_SDBLOCK_Init(&bus) == DRV_SDBLOCK_OK, 1);
+    CHECK(DRV_SDBLOCK_IsReady() == 1U, 2);
+    CHECK(fake_sd.Init.BusWide == SDMMC_BUS_WIDE_1B && deinits == 1U && inits == 1U, 3);
+    DRV_SDBLOCK_GetDiag(&d);
+    CHECK(d.bus_bits == 1U && d.card_type == 1U && d.card_blocks == 4096U, 4);
+    CHECK(d.probe_first == DRV_SDBLOCK_PROBE_FAIL && d.first_error == 0x80000000U, 5);
+    CHECK(d.first_ms == 1000U && aborts == 1U, 6);
+    CHECK(d.probe_1bit == DRV_SDBLOCK_PROBE_OK && d.retry_error == 0U, 7);
+    CHECK(d.init_status == DRV_SDBLOCK_OK, 8);
+
+    /* Both widths fail: not ready, and the log never starts on a card that cannot read. */
+    fake_sd.Init.BusWide = SDMMC_BUS_WIDE_4B;
+    one_bit_works = 0U;
+    CHECK(DRV_SDBLOCK_Init(&bus) == DRV_SDBLOCK_ERROR, 9);
+    CHECK(DRV_SDBLOCK_IsReady() == 0U, 10);
+    DRV_SDBLOCK_GetDiag(&d);
+    CHECK(d.probe_first == DRV_SDBLOCK_PROBE_FAIL && d.probe_1bit == DRV_SDBLOCK_PROBE_FAIL, 11);
+
+    /* Already 1-bit: nothing narrower to fall back to, no re-init. */
+    deinits = 0U;
+    CHECK(DRV_SDBLOCK_Init(&bus) == DRV_SDBLOCK_ERROR, 12);
+    CHECK(deinits == 0U, 13);
+    DRV_SDBLOCK_GetDiag(&d);
+    CHECK(d.bus_bits == 1U && d.probe_1bit == DRV_SDBLOCK_PROBE_NONE, 14);
+
+    REPORT();
+}
+"""
+)
+
+
+def test_sd_probe_falls_back_to_1bit_and_reports_why(tmp_path: Path) -> None:
+    """Init test-reads a block; a 4-bit failure re-inits the card in 1-bit and says so in STATUS?.
+
+    2026-09-26: with pull-ups the inserted card still gave log_ready=0 and nothing told whether
+    the card was missing, 4-bit reads failed, or it broke later. HAL's own 4->1-bit switch reads
+    the SCR over 4 bits first, so only a full re-init (CMD0) can get back to 1-bit.
+    """
+    fakes = write_fakes(tmp_path)
+    result = build_and_run(
+        tmp_path,
+        "sdblock_fallback",
+        SDBLOCK_FALLBACK_HARNESS,
+        sources=[ROOT / "Driver" / "Src" / "drv_sdblock.c"],
+        includes=[fakes, DRIVER_INC],
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    # Polled FIFO reads from a preemptible task need flow control, or a busy tick overruns the FIFO.
+    assert "SDMMC1.HardwareFlowControl=SDMMC_HARDWARE_FLOW_CONTROL_ENABLE" in read("drone-H743.ioc")
+    assert "hsd1.Init.HardwareFlowControl = SDMMC_HARDWARE_FLOW_CONTROL_ENABLE;" in read("Core/Src/sdmmc.c")
+    status = read("App/Src/app_flash_service.c")
+    assert "HW SD present=%u init_err=0x%08lX ready=%u" in status

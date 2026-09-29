@@ -103,9 +103,12 @@ CATEGORY_RULES = (
     CategoryRule(SALEAE_SPI_CAPTURE_DIR),
     CategoryRule(SALEAE_PIN_ID_CAPTURE_DIR),
     CategoryRule(SALEAE_TEST_CAPTURE_DIR),
-    CategoryRule(ATTITUDE_IDENT_DIR),
+    # Rod-rig sysid page state: rig geometry / throttle settings persisted across sessions.
+    CategoryRule(ATTITUDE_IDENT_DIR, static_names=frozenset({"rig_settings.json"})),
     CategoryRule(MOTOR_IDENT_DIR),
-    CategoryRule(THRUST_IDENT_DIR),
+    # Thrust-bench tool files: experiment library, ESC KV record (post-KV data cut-off), fitted models.
+    CategoryRule(THRUST_IDENT_DIR, frozenset({"models"}),
+                 frozenset({"experiments.sqlite3", "esc_config.json"})),
     CategoryRule(AIRFRAME_CALIBRATION_DIR, static_names=frozenset({"README.md"})),
     CategoryRule(IMU_METROLOGY_CALIBRATION_DIR, static_names=frozenset({"README.md"})),
     CategoryRule(FLIGHT_ACCEPTANCE_CALIBRATION_DIR, static_names=frozenset({"README.md"})),

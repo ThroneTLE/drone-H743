@@ -54,3 +54,7 @@ int main(int argc,char **argv){
         crc^=byte
         for _ in range(8):crc=((crc<<1)^0xd5)&255 if crc&128 else (crc<<1)&255
     assert wire==bytes([0xc8,10])+payload+bytes([crc])
+    # 归档的黄金帧在此之前没有任何测试加载过，等于一份装饰品。接上之后它才真正
+    # 锁住线上字节：以后谁改了 CRSF 打包/CRC，都要正面推翻这份已提交的记录。
+    golden=ROOT/'data/analysis/bluetooth-battery/2026-09-13/battery-crsf.golden.bin'
+    assert wire==golden.read_bytes(),'CRSF 线格式与归档黄金帧不符'

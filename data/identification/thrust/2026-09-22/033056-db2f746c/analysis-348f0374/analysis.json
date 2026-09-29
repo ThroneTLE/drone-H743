@@ -1,0 +1,3918 @@
+{
+  "schema_version": 2,
+  "static": {
+    "status": "unavailable",
+    "reason": "voltage_layer_fit_unavailable",
+    "primary_model": "dual_measured_voltage_interpolation",
+    "voltage_layer_limits": {
+      "max_span_v": 0.5,
+      "min_adjacent_gap_v": 0.1
+    },
+    "voltage_grouping_policy": {
+      "labeled_samples": "group_by_voltage_layer_v_but_measure_center_and_range_from_loaded_voltage",
+      "unlabeled_samples": "group_by_run_id",
+      "continuous_discharge_auto_binning": false
+    },
+    "voltage_models": {
+      "dual": {
+        "status": "unavailable",
+        "reason": "voltage_layer_fit_unavailable",
+        "mode": "dual",
+        "layers": [
+          {
+            "status": "unavailable",
+            "reason": "inputs_not_independently_varied",
+            "voltage_center_v": 12.079292553191488,
+            "voltage_range_v": [
+              11.65,
+              12.471
+            ],
+            "erpm_hull": [
+              [
+                4545.777777777777,
+                4426.555555555556
+              ],
+              [
+                44146.22222222222,
+                40748.555555555555
+              ],
+              [
+                42680.88888888889,
+                40773.0
+              ],
+              [
+                41423.88888888889,
+                40687.0
+              ],
+              [
+                40070.666666666664,
+                39450.666666666664
+              ],
+              [
+                31358.444444444445,
+                31033.88888888889
+              ],
+              [
+                21468.777777777777,
+                21279.444444444445
+              ],
+              [
+                12362.444444444445,
+                12240.888888888889
+              ],
+              [
+                8445.222222222223,
+                8339.111111111111
+              ],
+              [
+                6550.444444444444,
+                6440.555555555556
+              ]
+            ],
+            "fit": {
+              "status": "unavailable",
+              "reason": "inputs_not_independently_varied",
+              "coverage": {
+                "points": 47,
+                "runs": [
+                  "b79239e1dcd7"
+                ],
+                "voltage_layers_v": [
+                  10.8
+                ],
+                "upper_erpm": [
+                  4545.777777777777,
+                  44146.22222222222
+                ],
+                "lower_erpm": [
+                  4426.555555555556,
+                  40773.0
+                ],
+                "erpm_correlation": 0.9992207250467038,
+                "independently_varied": false
+              },
+              "rank": 4,
+              "condition_number": 19371.3519154683
+            },
+            "label": "layer:10.8"
+          },
+          {
+            "status": "available",
+            "reason": null,
+            "voltage_center_v": 12.302164141414142,
+            "voltage_range_v": [
+              12.173,
+              12.462
+            ],
+            "erpm_hull": [
+              [
+                7425.555555555556,
+                12245.333333333334
+              ],
+              [
+                7430.555555555556,
+                7304.666666666667
+              ],
+              [
+                12389.666666666666,
+                7338.222222222223
+              ],
+              [
+                21428.0,
+                7448.444444444444
+              ],
+              [
+                21535.5,
+                21313.875
+              ],
+              [
+                7500.0,
+                21239.333333333332
+              ],
+              [
+                7451.888888888889,
+                16794.88888888889
+              ]
+            ],
+            "fit": {
+              "status": "available",
+              "model": {
+                "kind": "installed_coax_total_thrust_erpm2",
+                "equation": "F_N=c0+c_upper*(upper_erpm/erpm_scale)^2+c_lower*(lower_erpm/erpm_scale)^2+c_cross*(upper_erpm*lower_erpm/erpm_scale^2)",
+                "erpm_scale": 21535.5,
+                "coefficients_n": {
+                  "intercept": -0.25751644596610723,
+                  "upper_squared": 0.03889640164545294,
+                  "lower_squared": 0.10636117846960941,
+                  "cross": 1.366427206091504
+                }
+              },
+              "coverage": {
+                "points": 22,
+                "runs": [
+                  "14309671afe4",
+                  "3728e71beb6a"
+                ],
+                "voltage_layers_v": [
+                  12.3
+                ],
+                "upper_erpm": [
+                  7425.555555555556,
+                  21535.5
+                ],
+                "lower_erpm": [
+                  7304.666666666667,
+                  21313.875
+                ],
+                "erpm_correlation": 0.33586289260876506,
+                "independently_varied": true
+              },
+              "rank": 4,
+              "condition_number": 26.891527890636233,
+              "training_metrics": {
+                "rmse_n": 0.20953663213816665,
+                "mae_n": 0.19620073822990863,
+                "relative_mae": 0.38970259683239633,
+                "reference_thrust_n": 0.5034627426778242,
+                "max_abs_error_n": 0.3180054131782757,
+                "p95_abs_error_n": 0.29130005267281117
+              },
+              "residuals_by_voltage_layer": {
+                "12.3": {
+                  "points": 22,
+                  "rmse_n": 0.20953663213816665,
+                  "mae_n": 0.19620073822990863,
+                  "relative_mae": 0.38970259683239633,
+                  "reference_thrust_n": 0.5034627426778242,
+                  "max_abs_error_n": 0.3180054131782757,
+                  "p95_abs_error_n": 0.29130005267281117
+                }
+              }
+            },
+            "label": "layer:12.3"
+          },
+          {
+            "status": "unavailable",
+            "reason": "inputs_not_independently_varied",
+            "voltage_center_v": 12.327867424242426,
+            "voltage_range_v": [
+              12.138,
+              12.473
+            ],
+            "erpm_hull": [
+              [
+                7455.111111111111,
+                7333.222222222223
+              ],
+              [
+                7471.777777777777,
+                7335.0
+              ],
+              [
+                17227.88888888889,
+                16904.666666666668
+              ],
+              [
+                26029.75,
+                25575.25
+              ],
+              [
+                29820.666666666668,
+                29481.88888888889
+              ],
+              [
+                21443.25,
+                21268.5
+              ]
+            ],
+            "fit": {
+              "status": "unavailable",
+              "reason": "inputs_not_independently_varied",
+              "coverage": {
+                "points": 11,
+                "runs": [
+                  "072b10edce6c"
+                ],
+                "voltage_layers_v": [
+                  11.5
+                ],
+                "upper_erpm": [
+                  7455.111111111111,
+                  29820.666666666668
+                ],
+                "lower_erpm": [
+                  7333.222222222223,
+                  29481.88888888889
+                ],
+                "erpm_correlation": 0.9999622144869705,
+                "independently_varied": false
+              },
+              "rank": 4,
+              "condition_number": 693259.7750850316
+            },
+            "label": "layer:11.5"
+          }
+        ],
+        "validation": {
+          "status": "training_only",
+          "strategy": "whole_run_and_voltage_layer_holdout",
+          "reason": "insufficient_replicated_runs_or_interpolating_voltage_layers",
+          "holdouts": [
+            {
+              "group": "run",
+              "value": "072b10edce6c",
+              "status": "unavailable",
+              "reason": "voltage_layer_fit_unavailable",
+              "test_points": 11
+            },
+            {
+              "group": "run",
+              "value": "14309671afe4",
+              "status": "unavailable",
+              "reason": "voltage_layer_fit_unavailable",
+              "test_points": 7
+            },
+            {
+              "group": "run",
+              "value": "3728e71beb6a",
+              "status": "unavailable",
+              "reason": "voltage_layer_fit_unavailable",
+              "test_points": 15
+            },
+            {
+              "group": "run",
+              "value": "b79239e1dcd7",
+              "status": "unavailable",
+              "reason": "voltage_layer_fit_unavailable",
+              "test_points": 47
+            },
+            {
+              "group": "voltage_layer",
+              "value": "layer:10.8",
+              "status": "unavailable",
+              "reason": "voltage_layer_fit_unavailable",
+              "test_points": 47
+            },
+            {
+              "group": "voltage_layer",
+              "value": "layer:11.5",
+              "status": "unavailable",
+              "reason": "voltage_layer_fit_unavailable",
+              "test_points": 11
+            },
+            {
+              "group": "voltage_layer",
+              "value": "layer:12.3",
+              "status": "unavailable",
+              "reason": "voltage_layer_fit_unavailable",
+              "test_points": 22
+            }
+          ],
+          "component": "dual_voltage_dependent_total_thrust",
+          "diagnostics": {
+            "status": "unvalidated",
+            "points": 0,
+            "metrics": null,
+            "error_by_loaded_voltage": [],
+            "kind": "independent_group_holdout",
+            "predictions": [],
+            "available_groups": 0,
+            "unavailable_groups": [
+              {
+                "group": "run",
+                "value": "072b10edce6c",
+                "reason": "voltage_layer_fit_unavailable",
+                "test_points": 11,
+                "explanation_zh": "该留出组无法由剩余训练组建立并预测。"
+              },
+              {
+                "group": "run",
+                "value": "14309671afe4",
+                "reason": "voltage_layer_fit_unavailable",
+                "test_points": 7,
+                "explanation_zh": "该留出组无法由剩余训练组建立并预测。"
+              },
+              {
+                "group": "run",
+                "value": "3728e71beb6a",
+                "reason": "voltage_layer_fit_unavailable",
+                "test_points": 15,
+                "explanation_zh": "该留出组无法由剩余训练组建立并预测。"
+              },
+              {
+                "group": "run",
+                "value": "b79239e1dcd7",
+                "reason": "voltage_layer_fit_unavailable",
+                "test_points": 47,
+                "explanation_zh": "该留出组无法由剩余训练组建立并预测。"
+              },
+              {
+                "group": "voltage_layer",
+                "value": "layer:10.8",
+                "reason": "voltage_layer_fit_unavailable",
+                "test_points": 47,
+                "explanation_zh": "该留出组无法由剩余训练组建立并预测。"
+              },
+              {
+                "group": "voltage_layer",
+                "value": "layer:11.5",
+                "reason": "voltage_layer_fit_unavailable",
+                "test_points": 11,
+                "explanation_zh": "该留出组无法由剩余训练组建立并预测。"
+              },
+              {
+                "group": "voltage_layer",
+                "value": "layer:12.3",
+                "reason": "voltage_layer_fit_unavailable",
+                "test_points": 22,
+                "explanation_zh": "该留出组无法由剩余训练组建立并预测。"
+              }
+            ],
+            "groups": {
+              "run": {
+                "attempted": 4,
+                "available": 0,
+                "rejected": 4,
+                "test_points": 80,
+                "predicted_points": 0,
+                "prediction_coverage_fraction": 0.0
+              },
+              "voltage_layer": {
+                "attempted": 3,
+                "available": 0,
+                "rejected": 3,
+                "test_points": 80,
+                "predicted_points": 0,
+                "prediction_coverage_fraction": 0.0
+              }
+            },
+            "attempted_prediction_points": 160,
+            "prediction_coverage_fraction": 0.0,
+            "reason": "no_available_group_holdout_predictions"
+          }
+        }
+      },
+      "upper": {
+        "status": "unavailable",
+        "reason": "fewer_than_2_measured_voltage_layers",
+        "mode": "upper",
+        "layers": [],
+        "validation": {
+          "status": "training_only",
+          "strategy": "whole_run_and_voltage_layer_holdout",
+          "reason": "insufficient_replicated_runs_or_interpolating_voltage_layers",
+          "holdouts": []
+        }
+      },
+      "lower": {
+        "status": "unavailable",
+        "reason": "fewer_than_2_measured_voltage_layers",
+        "mode": "lower",
+        "layers": [],
+        "validation": {
+          "status": "training_only",
+          "strategy": "whole_run_and_voltage_layer_holdout",
+          "reason": "insufficient_replicated_runs_or_interpolating_voltage_layers",
+          "holdouts": []
+        }
+      }
+    },
+    "erpm_only_baseline": {
+      "status": "available",
+      "model": {
+        "kind": "installed_coax_total_thrust_erpm2",
+        "equation": "F_N=c0+c_upper*(upper_erpm/erpm_scale)^2+c_lower*(lower_erpm/erpm_scale)^2+c_cross*(upper_erpm*lower_erpm/erpm_scale^2)",
+        "erpm_scale": 44146.22222222222,
+        "coefficients_n": {
+          "intercept": -0.15705248262044644,
+          "upper_squared": -2.3683233849770646,
+          "lower_squared": -1.969034859815225,
+          "cross": 11.311616764340219
+        }
+      },
+      "coverage": {
+        "points": 80,
+        "runs": [
+          "072b10edce6c",
+          "14309671afe4",
+          "3728e71beb6a",
+          "b79239e1dcd7"
+        ],
+        "voltage_layers_v": [
+          10.8,
+          11.5,
+          12.3
+        ],
+        "upper_erpm": [
+          4545.777777777777,
+          44146.22222222222
+        ],
+        "lower_erpm": [
+          4426.555555555556,
+          40773.0
+        ],
+        "erpm_correlation": 0.9574836552708631,
+        "independently_varied": true
+      },
+      "rank": 4,
+      "condition_number": 166.5271216200253,
+      "training_metrics": {
+        "rmse_n": 0.14703032341341418,
+        "mae_n": 0.10429588360696444,
+        "relative_mae": 0.054576088777640794,
+        "reference_thrust_n": 1.911017919072524,
+        "max_abs_error_n": 0.4126478292533642,
+        "p95_abs_error_n": 0.3554985656800506
+      },
+      "residuals_by_voltage_layer": {
+        "10.8": {
+          "points": 47,
+          "rmse_n": 0.06194260315747468,
+          "mae_n": 0.05056405376466896,
+          "relative_mae": 0.01857523671435072,
+          "reference_thrust_n": 2.7221216365767527,
+          "max_abs_error_n": 0.13316283521147412,
+          "p95_abs_error_n": 0.11804450014245609
+        },
+        "11.5": {
+          "points": 11,
+          "rmse_n": 0.08374582906789488,
+          "mae_n": 0.07870169701743684,
+          "relative_mae": 0.06243672444197959,
+          "reference_thrust_n": 1.2605032970711294,
+          "max_abs_error_n": 0.13513055138339813,
+          "p95_abs_error_n": 0.1230472467701782
+        },
+        "12.3": {
+          "points": 22,
+          "rmse_n": 0.2586637543095149,
+          "mae_n": 0.2318837042920868,
+          "relative_mae": 0.4605776845745143,
+          "reference_thrust_n": 0.5034627426778242,
+          "max_abs_error_n": 0.4126478292533642,
+          "p95_abs_error_n": 0.3921017919334933
+        }
+      }
+    },
+    "operating_points": [
+      {
+        "run_id": "072b10edce6c",
+        "segment_id": "dual-001",
+        "direction": "up",
+        "mode": "dual",
+        "sample_count": 11,
+        "upper_erpm": 7471.777777777777,
+        "lower_erpm": 7335.0,
+        "thrust_n": 0.17397571548117152,
+        "thrust_std_n": 0.004968401559549103,
+        "voltage_v": 12.41777777777778,
+        "voltage_range_v": [
+          12.364,
+          12.467
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 0.8638888888888889,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 11.5,
+        "upper_command_pct": 5.0,
+        "lower_command_pct": 5.0
+      },
+      {
+        "run_id": "072b10edce6c",
+        "segment_id": "dual-002",
+        "direction": "up",
+        "mode": "dual",
+        "sample_count": 11,
+        "upper_erpm": 12499.666666666666,
+        "lower_erpm": 12272.333333333334,
+        "thrust_n": 0.5022317824267781,
+        "thrust_std_n": 0.008808034556605171,
+        "voltage_v": 12.399111111111111,
+        "voltage_range_v": [
+          12.338,
+          12.473
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 0.20666666666666667,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 11.5,
+        "upper_command_pct": 10.0,
+        "lower_command_pct": 10.0
+      },
+      {
+        "run_id": "072b10edce6c",
+        "segment_id": "dual-003",
+        "direction": "up",
+        "mode": "dual",
+        "sample_count": 9,
+        "upper_erpm": 17227.88888888889,
+        "lower_erpm": 16904.666666666668,
+        "thrust_n": 0.9694495843793585,
+        "thrust_std_n": 0.005190184136584062,
+        "voltage_v": 12.358333333333333,
+        "voltage_range_v": [
+          12.323,
+          12.388
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 1.0874444444444444,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 11.5,
+        "upper_command_pct": 15.0,
+        "lower_command_pct": 15.0
+      },
+      {
+        "run_id": "072b10edce6c",
+        "segment_id": "dual-004",
+        "direction": "up",
+        "mode": "dual",
+        "sample_count": 11,
+        "upper_erpm": 21495.88888888889,
+        "lower_erpm": 21272.666666666668,
+        "thrust_n": 1.5559337573221756,
+        "thrust_std_n": 2.3288234633381846e-16,
+        "voltage_v": 12.324222222222224,
+        "voltage_range_v": [
+          12.282,
+          12.356
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 0.22666666666666668,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 11.5,
+        "upper_command_pct": 20.0,
+        "lower_command_pct": 20.0
+      },
+      {
+        "run_id": "072b10edce6c",
+        "segment_id": "dual-005",
+        "direction": "up",
+        "mode": "dual",
+        "sample_count": 10,
+        "upper_erpm": 26029.75,
+        "lower_erpm": 25575.25,
+        "thrust_n": 2.268659742677824,
+        "thrust_std_n": 0.005085321122287508,
+        "voltage_v": 12.283,
+        "voltage_range_v": [
+          12.223,
+          12.332
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 0.539625,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 11.5,
+        "upper_command_pct": 25.0,
+        "lower_command_pct": 25.0
+      },
+      {
+        "run_id": "072b10edce6c",
+        "segment_id": "dual-006",
+        "direction": "up",
+        "mode": "dual",
+        "sample_count": 11,
+        "upper_erpm": 29820.666666666668,
+        "lower_erpm": 29481.88888888889,
+        "thrust_n": 3.0265209372384936,
+        "thrust_std_n": 0.0049684015595490745,
+        "voltage_v": 12.19811111111111,
+        "voltage_range_v": [
+          12.138,
+          12.249
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 0.9650000000000001,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 11.5,
+        "upper_command_pct": 30.0,
+        "lower_command_pct": 30.0
+      },
+      {
+        "run_id": "072b10edce6c",
+        "segment_id": "dual-007",
+        "direction": "down",
+        "mode": "dual",
+        "sample_count": 11,
+        "upper_erpm": 25961.333333333332,
+        "lower_erpm": 25577.666666666668,
+        "thrust_n": 2.2616843012552303,
+        "thrust_std_n": 0.004968401559549075,
+        "voltage_v": 12.231222222222222,
+        "voltage_range_v": [
+          12.191,
+          12.299
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 1.3912222222222221,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 11.5,
+        "upper_command_pct": 25.0,
+        "lower_command_pct": 25.0
+      },
+      {
+        "run_id": "072b10edce6c",
+        "segment_id": "dual-008",
+        "direction": "down",
+        "mode": "dual",
+        "sample_count": 8,
+        "upper_erpm": 21443.25,
+        "lower_erpm": 21268.5,
+        "thrust_n": 1.536238393305439,
+        "thrust_std_n": 0.007444147881310727,
+        "voltage_v": 12.292125,
+        "voltage_range_v": [
+          12.248,
+          12.339
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 0.32275,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 11.5,
+        "upper_command_pct": 20.0,
+        "lower_command_pct": 20.0
+      },
+      {
+        "run_id": "072b10edce6c",
+        "segment_id": "dual-009",
+        "direction": "down",
+        "mode": "dual",
+        "sample_count": 9,
+        "upper_erpm": 17149.0,
+        "lower_erpm": 16908.444444444445,
+        "thrust_n": 0.9519425941422592,
+        "thrust_std_n": 0.004923841004184082,
+        "voltage_v": 12.343333333333334,
+        "voltage_range_v": [
+          12.297,
+          12.381
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 0.8694444444444445,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 11.5,
+        "upper_command_pct": 15.0,
+        "lower_command_pct": 15.0
+      },
+      {
+        "run_id": "072b10edce6c",
+        "segment_id": "dual-010",
+        "direction": "down",
+        "mode": "dual",
+        "sample_count": 8,
+        "upper_erpm": 12442.875,
+        "lower_erpm": 12264.375,
+        "thrust_n": 0.4788435376569038,
+        "thrust_std_n": 0.00732690987909357,
+        "voltage_v": 12.371749999999999,
+        "voltage_range_v": [
+          12.333,
+          12.405
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 0.8069999999999999,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 11.5,
+        "upper_command_pct": 10.0,
+        "lower_command_pct": 10.0
+      },
+      {
+        "run_id": "072b10edce6c",
+        "segment_id": "dual-011",
+        "direction": "down",
+        "mode": "dual",
+        "sample_count": 11,
+        "upper_erpm": 7455.111111111111,
+        "lower_erpm": 7333.222222222223,
+        "thrust_n": 0.1400559218967922,
+        "thrust_std_n": 0.0045998460275718375,
+        "voltage_v": 12.387555555555556,
+        "voltage_range_v": [
+          12.315,
+          12.449
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 0.5907777777777778,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 11.5,
+        "upper_command_pct": 5.0,
+        "lower_command_pct": 5.0
+      },
+      {
+        "run_id": "14309671afe4",
+        "segment_id": "dual-001",
+        "direction": "up",
+        "mode": "dual",
+        "sample_count": 11,
+        "upper_erpm": 7493.333333333333,
+        "lower_erpm": 7330.333333333333,
+        "thrust_n": 0.1674105941422594,
+        "thrust_std_n": 2.911029329172731e-17,
+        "voltage_v": 12.428,
+        "voltage_range_v": [
+          12.362,
+          12.462
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 0.9332222222222223,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 12.3,
+        "upper_command_pct": 5.0,
+        "lower_command_pct": 5.0
+      },
+      {
+        "run_id": "14309671afe4",
+        "segment_id": "dual-002",
+        "direction": "up",
+        "mode": "dual",
+        "sample_count": 11,
+        "upper_erpm": 12504.333333333334,
+        "lower_erpm": 12290.222222222223,
+        "thrust_n": 0.5120794644351464,
+        "thrust_std_n": 0.002969187843317337,
+        "voltage_v": 12.399000000000001,
+        "voltage_range_v": [
+          12.338,
+          12.441
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 0.47688888888888886,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 12.3,
+        "upper_command_pct": 10.0,
+        "lower_command_pct": 10.0
+      },
+      {
+        "run_id": "14309671afe4",
+        "segment_id": "dual-003",
+        "direction": "up",
+        "mode": "dual",
+        "sample_count": 11,
+        "upper_erpm": 17219.0,
+        "lower_erpm": 16955.333333333332,
+        "thrust_n": 0.9727321450488144,
+        "thrust_std_n": 0.00593837568663465,
+        "voltage_v": 12.377333333333333,
+        "voltage_range_v": [
+          12.335,
+          12.412
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 0.3764444444444444,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 12.3,
+        "upper_command_pct": 15.0,
+        "lower_command_pct": 15.0
+      },
+      {
+        "run_id": "14309671afe4",
+        "segment_id": "dual-004",
+        "direction": "up",
+        "mode": "dual",
+        "sample_count": 10,
+        "upper_erpm": 21535.5,
+        "lower_erpm": 21313.875,
+        "thrust_n": 1.5559337573221756,
+        "thrust_std_n": 0.0,
+        "voltage_v": 12.323375,
+        "voltage_range_v": [
+          12.282,
+          12.427
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 0.19724999999999998,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 12.3,
+        "upper_command_pct": 20.0,
+        "lower_command_pct": 20.0
+      },
+      {
+        "run_id": "14309671afe4",
+        "segment_id": "dual-005",
+        "direction": "down",
+        "mode": "dual",
+        "sample_count": 10,
+        "upper_erpm": 17241.0,
+        "lower_erpm": 16924.75,
+        "thrust_n": 0.98476820083682,
+        "thrust_std_n": 0.0031141104819505075,
+        "voltage_v": 12.3615,
+        "voltage_range_v": [
+          12.324,
+          12.409
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 0.988375,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 12.3,
+        "upper_command_pct": 15.0,
+        "lower_command_pct": 15.0
+      },
+      {
+        "run_id": "14309671afe4",
+        "segment_id": "dual-006",
+        "direction": "down",
+        "mode": "dual",
+        "sample_count": 11,
+        "upper_erpm": 12471.888888888889,
+        "lower_erpm": 12295.0,
+        "thrust_n": 0.5186445857740586,
+        "thrust_std_n": 0.004968401559549131,
+        "voltage_v": 12.401222222222223,
+        "voltage_range_v": [
+          12.354,
+          12.433
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 0.05255555555555555,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 12.3,
+        "upper_command_pct": 10.0,
+        "lower_command_pct": 10.0
+      },
+      {
+        "run_id": "14309671afe4",
+        "segment_id": "dual-007",
+        "direction": "down",
+        "mode": "dual",
+        "sample_count": 11,
+        "upper_erpm": 7463.333333333333,
+        "lower_erpm": 7316.0,
+        "thrust_n": 0.179446649930265,
+        "thrust_std_n": 0.0045998460275718375,
+        "voltage_v": 12.408444444444445,
+        "voltage_range_v": [
+          12.375,
+          12.452
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 1.0761111111111112,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 12.3,
+        "upper_command_pct": 5.0,
+        "lower_command_pct": 5.0
+      },
+      {
+        "run_id": "3728e71beb6a",
+        "segment_id": "grid-006",
+        "direction": "steady",
+        "mode": "dual",
+        "sample_count": 11,
+        "upper_erpm": 7430.555555555556,
+        "lower_erpm": 7304.666666666667,
+        "thrust_n": -0.3238793193863319,
+        "thrust_std_n": 0.006899769041357758,
+        "voltage_v": 12.302222222222222,
+        "voltage_range_v": [
+          12.251,
+          12.344
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 1.3244444444444445,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 12.3,
+        "upper_command_pct": 5.0,
+        "lower_command_pct": 5.0
+      },
+      {
+        "run_id": "3728e71beb6a",
+        "segment_id": "grid-007",
+        "direction": "steady",
+        "mode": "dual",
+        "sample_count": 11,
+        "upper_erpm": 7425.555555555556,
+        "lower_erpm": 12245.333333333334,
+        "thrust_n": -0.147715230125523,
+        "thrust_std_n": 0.002969187843317345,
+        "voltage_v": 12.264111111111111,
+        "voltage_range_v": [
+          12.238,
+          12.312
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 0.49744444444444436,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 12.3,
+        "upper_command_pct": 5.0,
+        "lower_command_pct": 10.0
+      },
+      {
+        "run_id": "3728e71beb6a",
+        "segment_id": "grid-008",
+        "direction": "steady",
+        "mode": "dual",
+        "sample_count": 11,
+        "upper_erpm": 7451.888888888889,
+        "lower_erpm": 16794.88888888889,
+        "thrust_n": 0.10613612831241283,
+        "thrust_std_n": 0.004599846027571844,
+        "voltage_v": 12.262888888888888,
+        "voltage_range_v": [
+          12.18,
+          12.32
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 0.0,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 12.3,
+        "upper_command_pct": 5.0,
+        "lower_command_pct": 15.0
+      },
+      {
+        "run_id": "3728e71beb6a",
+        "segment_id": "grid-009",
+        "direction": "steady",
+        "mode": "dual",
+        "sample_count": 11,
+        "upper_erpm": 7500.0,
+        "lower_erpm": 21239.333333333332,
+        "thrust_n": 0.42782707391910735,
+        "thrust_std_n": 0.005142784201841515,
+        "voltage_v": 12.211444444444446,
+        "voltage_range_v": [
+          12.173,
+          12.247
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 0.19677777777777777,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 12.3,
+        "upper_command_pct": 5.0,
+        "lower_command_pct": 20.0
+      },
+      {
+        "run_id": "3728e71beb6a",
+        "segment_id": "grid-011",
+        "direction": "steady",
+        "mode": "dual",
+        "sample_count": 11,
+        "upper_erpm": 12389.666666666666,
+        "lower_erpm": 7338.222222222223,
+        "thrust_n": -0.1706931548117155,
+        "thrust_std_n": 0.004968401559549104,
+        "voltage_v": 12.297777777777778,
+        "voltage_range_v": [
+          12.263,
+          12.325
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 0.36666666666666664,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 12.3,
+        "upper_command_pct": 10.0,
+        "lower_command_pct": 5.0
+      },
+      {
+        "run_id": "3728e71beb6a",
+        "segment_id": "grid-012",
+        "direction": "steady",
+        "mode": "dual",
+        "sample_count": 11,
+        "upper_erpm": 12398.777777777777,
+        "lower_erpm": 12236.222222222223,
+        "thrust_n": -0.0021883737796373776,
+        "thrust_std_n": 0.005938375686634695,
+        "voltage_v": 12.296666666666667,
+        "voltage_range_v": [
+          12.25,
+          12.337
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 0.5368888888888889,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 12.3,
+        "upper_command_pct": 10.0,
+        "lower_command_pct": 10.0
+      },
+      {
+        "run_id": "3728e71beb6a",
+        "segment_id": "grid-013",
+        "direction": "steady",
+        "mode": "dual",
+        "sample_count": 11,
+        "upper_erpm": 12412.444444444445,
+        "lower_erpm": 16819.88888888889,
+        "thrust_n": 0.25275717154811717,
+        "thrust_std_n": 0.008077064177155332,
+        "voltage_v": 12.28,
+        "voltage_range_v": [
+          12.226,
+          12.323
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 0.0,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 12.3,
+        "upper_command_pct": 10.0,
+        "lower_command_pct": 15.0
+      },
+      {
+        "run_id": "3728e71beb6a",
+        "segment_id": "grid-014",
+        "direction": "steady",
+        "mode": "dual",
+        "sample_count": 10,
+        "upper_erpm": 12422.125,
+        "lower_erpm": 21156.0,
+        "thrust_n": 0.5810132384937238,
+        "thrust_std_n": 0.0031141104819504724,
+        "voltage_v": 12.261875,
+        "voltage_range_v": [
+          12.207,
+          12.339
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 0.14575,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 12.3,
+        "upper_command_pct": 10.0,
+        "lower_command_pct": 20.0
+      },
+      {
+        "run_id": "3728e71beb6a",
+        "segment_id": "grid-017",
+        "direction": "steady",
+        "mode": "dual",
+        "sample_count": 10,
+        "upper_erpm": 17113.25,
+        "lower_erpm": 12274.5,
+        "thrust_n": 0.23388244769874478,
+        "thrust_std_n": 0.004756882335331177,
+        "voltage_v": 12.27275,
+        "voltage_range_v": [
+          12.214,
+          12.3
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 0.12237500000000001,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 12.3,
+        "upper_command_pct": 15.0,
+        "lower_command_pct": 10.0
+      },
+      {
+        "run_id": "3728e71beb6a",
+        "segment_id": "grid-018",
+        "direction": "steady",
+        "mode": "dual",
+        "sample_count": 11,
+        "upper_erpm": 17088.333333333332,
+        "lower_erpm": 16819.777777777777,
+        "thrust_n": 0.4781596708507671,
+        "thrust_std_n": 0.005142784201841516,
+        "voltage_v": 12.270000000000001,
+        "voltage_range_v": [
+          12.227,
+          12.313
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 0.0074444444444444445,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 12.3,
+        "upper_command_pct": 15.0,
+        "lower_command_pct": 15.0
+      },
+      {
+        "run_id": "3728e71beb6a",
+        "segment_id": "grid-019",
+        "direction": "steady",
+        "mode": "dual",
+        "sample_count": 11,
+        "upper_erpm": 17066.666666666668,
+        "lower_erpm": 21179.333333333332,
+        "thrust_n": 0.7910971213389121,
+        "thrust_std_n": 0.004968401559549131,
+        "voltage_v": 12.241555555555557,
+        "voltage_range_v": [
+          12.206,
+          12.277
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 0.02622222222222222,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 12.3,
+        "upper_command_pct": 15.0,
+        "lower_command_pct": 20.0
+      },
+      {
+        "run_id": "3728e71beb6a",
+        "segment_id": "grid-021",
+        "direction": "steady",
+        "mode": "dual",
+        "sample_count": 11,
+        "upper_erpm": 21428.0,
+        "lower_erpm": 7448.444444444444,
+        "thrust_n": 0.3742119163179916,
+        "thrust_std_n": 0.0,
+        "voltage_v": 12.252888888888888,
+        "voltage_range_v": [
+          12.21,
+          12.327
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 0.14500000000000002,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 12.3,
+        "upper_command_pct": 20.0,
+        "lower_command_pct": 5.0
+      },
+      {
+        "run_id": "3728e71beb6a",
+        "segment_id": "grid-022",
+        "direction": "steady",
+        "mode": "dual",
+        "sample_count": 11,
+        "upper_erpm": 21441.555555555555,
+        "lower_erpm": 12362.333333333334,
+        "thrust_n": 0.5022317824267782,
+        "thrust_std_n": 0.002969187843317337,
+        "voltage_v": 12.263444444444444,
+        "voltage_range_v": [
+          12.2,
+          12.304
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 0.0,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 12.3,
+        "upper_command_pct": 20.0,
+        "lower_command_pct": 10.0
+      },
+      {
+        "run_id": "3728e71beb6a",
+        "segment_id": "grid-023",
+        "direction": "steady",
+        "mode": "dual",
+        "sample_count": 11,
+        "upper_erpm": 21428.0,
+        "lower_erpm": 16874.555555555555,
+        "thrust_n": 0.7407645244072524,
+        "thrust_std_n": 0.0045998460275718765,
+        "voltage_v": 12.244666666666667,
+        "voltage_range_v": [
+          12.2,
+          12.292
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 0.03188888888888889,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 12.3,
+        "upper_command_pct": 20.0,
+        "lower_command_pct": 15.0
+      },
+      {
+        "run_id": "3728e71beb6a",
+        "segment_id": "grid-024",
+        "direction": "steady",
+        "mode": "dual",
+        "sample_count": 11,
+        "upper_erpm": 21434.777777777777,
+        "lower_erpm": 21166.0,
+        "thrust_n": 1.0526077880055789,
+        "thrust_std_n": 0.0039835835133741355,
+        "voltage_v": 12.226444444444445,
+        "voltage_range_v": [
+          12.177,
+          12.274
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 0.106,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 12.3,
+        "upper_command_pct": 20.0,
+        "lower_command_pct": 20.0
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-002",
+        "direction": "up",
+        "mode": "dual",
+        "sample_count": 11,
+        "upper_erpm": 6550.444444444444,
+        "lower_erpm": 6440.555555555556,
+        "thrust_n": 0.1269256792189679,
+        "thrust_std_n": 0.003983583513374147,
+        "voltage_v": 12.40988888888889,
+        "voltage_range_v": [
+          12.354,
+          12.436
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 0.2807777777777778,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 10.8,
+        "upper_command_pct": 4.0476190476190474,
+        "lower_command_pct": 4.0476190476190474
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-003",
+        "direction": "up",
+        "mode": "dual",
+        "sample_count": 11,
+        "upper_erpm": 8339.0,
+        "lower_erpm": 8207.444444444445,
+        "thrust_n": 0.2166490041841004,
+        "thrust_std_n": 0.0044040172783025855,
+        "voltage_v": 12.407444444444444,
+        "voltage_range_v": [
+          12.364,
+          12.471
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 1.1288888888888888,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 10.8,
+        "upper_command_pct": 5.9523809523809526,
+        "lower_command_pct": 5.9523809523809526
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-004",
+        "direction": "up",
+        "mode": "dual",
+        "sample_count": 11,
+        "upper_erpm": 10543.222222222223,
+        "lower_erpm": 10390.666666666666,
+        "thrust_n": 0.3556107391910739,
+        "thrust_std_n": 0.003983583513374158,
+        "voltage_v": 12.386777777777777,
+        "voltage_range_v": [
+          12.355,
+          12.425
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 0.36233333333333334,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 10.8,
+        "upper_command_pct": 7.976190476190477,
+        "lower_command_pct": 7.976190476190477
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-005",
+        "direction": "up",
+        "mode": "dual",
+        "sample_count": 11,
+        "upper_erpm": 12435.333333333334,
+        "lower_erpm": 12276.777777777777,
+        "thrust_n": 0.5000434086471408,
+        "thrust_std_n": 0.007393218107373932,
+        "voltage_v": 12.384444444444444,
+        "voltage_range_v": [
+          12.333,
+          12.417
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 0.2891111111111111,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 10.8,
+        "upper_command_pct": 10.0,
+        "lower_command_pct": 10.0
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-006",
+        "direction": "up",
+        "mode": "dual",
+        "sample_count": 10,
+        "upper_erpm": 14429.875,
+        "lower_erpm": 14210.75,
+        "thrust_n": 0.6831829393305439,
+        "thrust_std_n": 0.008107326794130437,
+        "voltage_v": 12.357375,
+        "voltage_range_v": [
+          12.31,
+          12.387
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 0.0,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 10.8,
+        "upper_command_pct": 12.023809523809524,
+        "lower_command_pct": 12.023809523809524
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-007",
+        "direction": "up",
+        "mode": "dual",
+        "sample_count": 11,
+        "upper_erpm": 16182.444444444445,
+        "lower_erpm": 15979.666666666666,
+        "thrust_n": 0.8600308953974894,
+        "thrust_std_n": 0.004968401559549131,
+        "voltage_v": 12.371777777777778,
+        "voltage_range_v": [
+          12.314,
+          12.394
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 0.5666666666666667,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 10.8,
+        "upper_command_pct": 14.047619047619047,
+        "lower_command_pct": 14.047619047619047
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-008",
+        "direction": "up",
+        "mode": "dual",
+        "sample_count": 9,
+        "upper_erpm": 18042.88888888889,
+        "lower_erpm": 17790.666666666668,
+        "thrust_n": 1.0712089651324963,
+        "thrust_std_n": 0.008206401673640137,
+        "voltage_v": 12.306222222222223,
+        "voltage_range_v": [
+          12.257,
+          12.352
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 0.5758888888888889,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 10.8,
+        "upper_command_pct": 15.952380952380954,
+        "lower_command_pct": 15.952380952380954
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-009",
+        "direction": "up",
+        "mode": "dual",
+        "sample_count": 11,
+        "upper_erpm": 19794.11111111111,
+        "lower_erpm": 19553.666666666668,
+        "thrust_n": 1.3163068284518828,
+        "thrust_std_n": 0.008907563529952105,
+        "voltage_v": 12.311333333333332,
+        "voltage_range_v": [
+          12.276,
+          12.34
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 1.8392222222222223,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 10.8,
+        "upper_command_pct": 17.976190476190474,
+        "lower_command_pct": 17.976190476190474
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-010",
+        "direction": "up",
+        "mode": "dual",
+        "sample_count": 11,
+        "upper_erpm": 21468.777777777777,
+        "lower_erpm": 21279.444444444445,
+        "thrust_n": 1.5482744490934448,
+        "thrust_std_n": 0.004599846027571825,
+        "voltage_v": 12.30488888888889,
+        "voltage_range_v": [
+          12.261,
+          12.354
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 0.44377777777777777,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 10.8,
+        "upper_command_pct": 20.0,
+        "lower_command_pct": 20.0
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-011",
+        "direction": "up",
+        "mode": "dual",
+        "sample_count": 10,
+        "upper_erpm": 23482.625,
+        "lower_erpm": 23103.25,
+        "thrust_n": 1.8550570983263597,
+        "thrust_std_n": 0.006646678768340308,
+        "voltage_v": 12.257625,
+        "voltage_range_v": [
+          12.241,
+          12.299
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 1.2962500000000001,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 10.8,
+        "upper_command_pct": 22.023809523809526,
+        "lower_command_pct": 22.023809523809526
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-012",
+        "direction": "up",
+        "mode": "dual",
+        "sample_count": 9,
+        "upper_erpm": 25176.777777777777,
+        "lower_erpm": 24815.88888888889,
+        "thrust_n": 2.1424179302649926,
+        "thrust_std_n": 0.00519018413658412,
+        "voltage_v": 12.235333333333333,
+        "voltage_range_v": [
+          12.189,
+          12.3
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 1.1995555555555555,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 10.8,
+        "upper_command_pct": 24.047619047619047,
+        "lower_command_pct": 24.047619047619047
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-013",
+        "direction": "up",
+        "mode": "dual",
+        "sample_count": 11,
+        "upper_erpm": 26742.88888888889,
+        "lower_erpm": 26346.0,
+        "thrust_n": 2.4214355871687587,
+        "thrust_std_n": 0.008185485997280134,
+        "voltage_v": 12.22788888888889,
+        "voltage_range_v": [
+          12.172,
+          12.266
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 1.1515555555555557,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 10.8,
+        "upper_command_pct": 25.952380952380953,
+        "lower_command_pct": 25.952380952380953
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-014",
+        "direction": "up",
+        "mode": "dual",
+        "sample_count": 9,
+        "upper_erpm": 28313.222222222223,
+        "lower_erpm": 27938.777777777777,
+        "thrust_n": 2.723431168758717,
+        "thrust_std_n": 0.00519018413658412,
+        "voltage_v": 12.196666666666665,
+        "voltage_range_v": [
+          12.153,
+          12.249
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 1.6733333333333333,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 10.8,
+        "upper_command_pct": 27.976190476190474,
+        "lower_command_pct": 27.976190476190474
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-015",
+        "direction": "up",
+        "mode": "dual",
+        "sample_count": 10,
+        "upper_erpm": 29761.5,
+        "lower_erpm": 29440.0,
+        "thrust_n": 3.030624138075314,
+        "thrust_std_n": 0.00475688233533115,
+        "voltage_v": 12.161,
+        "voltage_range_v": [
+          12.125,
+          12.194
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 2.125875,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 10.8,
+        "upper_command_pct": 30.0,
+        "lower_command_pct": 30.0
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-016",
+        "direction": "up",
+        "mode": "dual",
+        "sample_count": 11,
+        "upper_erpm": 31358.444444444445,
+        "lower_erpm": 31033.88888888889,
+        "thrust_n": 3.3679072468619244,
+        "thrust_std_n": 4.657646926676369e-16,
+        "voltage_v": 12.10988888888889,
+        "voltage_range_v": [
+          12.083,
+          12.177
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 1.425888888888889,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 10.8,
+        "upper_command_pct": 32.023809523809526,
+        "lower_command_pct": 32.023809523809526
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-017",
+        "direction": "up",
+        "mode": "dual",
+        "sample_count": 11,
+        "upper_erpm": 32862.11111111111,
+        "lower_erpm": 32358.222222222223,
+        "thrust_n": 3.6874098186889817,
+        "thrust_std_n": 0.005142784201841486,
+        "voltage_v": 12.091555555555555,
+        "voltage_range_v": [
+          12.039,
+          12.143
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 1.7614444444444444,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 10.8,
+        "upper_command_pct": 34.04761904761905,
+        "lower_command_pct": 34.04761904761905
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-018",
+        "direction": "up",
+        "mode": "dual",
+        "sample_count": 11,
+        "upper_erpm": 34324.22222222222,
+        "lower_erpm": 33817.0,
+        "thrust_n": 4.036455436541143,
+        "thrust_std_n": 0.003983583513373956,
+        "voltage_v": 12.060666666666668,
+        "voltage_range_v": [
+          12.027,
+          12.106
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 3.1742222222222223,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 10.8,
+        "upper_command_pct": 35.95238095238095,
+        "lower_command_pct": 35.95238095238095
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-019",
+        "direction": "up",
+        "mode": "dual",
+        "sample_count": 11,
+        "upper_erpm": 35980.555555555555,
+        "lower_erpm": 35377.0,
+        "thrust_n": 4.420515034867503,
+        "thrust_std_n": 0.006899769041357427,
+        "voltage_v": 12.020000000000001,
+        "voltage_range_v": [
+          11.949,
+          12.089
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 3.7536666666666667,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 10.8,
+        "upper_command_pct": 37.976190476190474,
+        "lower_command_pct": 37.976190476190474
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-020",
+        "direction": "up",
+        "mode": "dual",
+        "sample_count": 10,
+        "upper_erpm": 37418.125,
+        "lower_erpm": 36719.5,
+        "thrust_n": 4.774894813807531,
+        "thrust_std_n": 0.004152147309267483,
+        "voltage_v": 11.970875,
+        "voltage_range_v": [
+          11.925,
+          12.031
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 2.1426250000000002,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 10.8,
+        "upper_command_pct": 40.0,
+        "lower_command_pct": 40.0
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-021",
+        "direction": "up",
+        "mode": "dual",
+        "sample_count": 11,
+        "upper_erpm": 38815.11111111111,
+        "lower_erpm": 38102.88888888889,
+        "thrust_n": 5.129548139470014,
+        "thrust_std_n": 0.003983583513373957,
+        "voltage_v": 11.927222222222222,
+        "voltage_range_v": [
+          11.888,
+          11.974
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 2.7106666666666666,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 10.8,
+        "upper_command_pct": 42.023809523809526,
+        "lower_command_pct": 42.023809523809526
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-022",
+        "direction": "up",
+        "mode": "dual",
+        "sample_count": 11,
+        "upper_erpm": 40070.666666666664,
+        "lower_erpm": 39450.666666666664,
+        "thrust_n": 5.500477495118549,
+        "thrust_std_n": 0.005142784201841718,
+        "voltage_v": 11.879666666666667,
+        "voltage_range_v": [
+          11.793,
+          11.958
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 4.2459999999999996,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 10.8,
+        "upper_command_pct": 44.04761904761905,
+        "lower_command_pct": 44.04761904761905
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-023",
+        "direction": "up",
+        "mode": "dual",
+        "sample_count": 11,
+        "upper_erpm": 41423.88888888889,
+        "lower_erpm": 40687.0,
+        "thrust_n": 5.865935916317992,
+        "thrust_std_n": 0.004968401559549299,
+        "voltage_v": 11.813333333333333,
+        "voltage_range_v": [
+          11.758,
+          11.865
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 5.418222222222223,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 10.8,
+        "upper_command_pct": 45.95238095238095,
+        "lower_command_pct": 45.95238095238095
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-024",
+        "direction": "up",
+        "mode": "dual",
+        "sample_count": 11,
+        "upper_erpm": 42802.77777777778,
+        "lower_erpm": 40674.444444444445,
+        "thrust_n": 6.0191220808926085,
+        "thrust_std_n": 0.004599846027571618,
+        "voltage_v": 11.783333333333333,
+        "voltage_range_v": [
+          11.71,
+          11.835
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 6.853111111111111,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 10.8,
+        "upper_command_pct": 47.976190476190474,
+        "lower_command_pct": 47.976190476190474
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-025",
+        "direction": "up",
+        "mode": "dual",
+        "sample_count": 11,
+        "upper_erpm": 44146.22222222222,
+        "lower_erpm": 40748.555555555555,
+        "thrust_n": 6.143859386331938,
+        "thrust_std_n": 0.005311444684498788,
+        "voltage_v": 11.728555555555555,
+        "voltage_range_v": [
+          11.676,
+          11.776
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 5.0873333333333335,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 10.8,
+        "upper_command_pct": 50.0,
+        "lower_command_pct": 50.0
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-026",
+        "direction": "down",
+        "mode": "dual",
+        "sample_count": 9,
+        "upper_erpm": 42680.88888888889,
+        "lower_erpm": 40773.0,
+        "thrust_n": 5.976448792189679,
+        "thrust_std_n": 0.003282560669455907,
+        "voltage_v": 11.719333333333333,
+        "voltage_range_v": [
+          11.653,
+          11.818
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 8.856333333333332,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 10.8,
+        "upper_command_pct": 47.976190476190474,
+        "lower_command_pct": 47.976190476190474
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-027",
+        "direction": "down",
+        "mode": "dual",
+        "sample_count": 10,
+        "upper_erpm": 41364.75,
+        "lower_erpm": 40608.875,
+        "thrust_n": 5.810132384937238,
+        "thrust_std_n": 0.003114110481950613,
+        "voltage_v": 11.750375,
+        "voltage_range_v": [
+          11.68,
+          11.828
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 6.928375,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 10.8,
+        "upper_command_pct": 45.95238095238095,
+        "lower_command_pct": 45.95238095238095
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-028",
+        "direction": "down",
+        "mode": "dual",
+        "sample_count": 11,
+        "upper_erpm": 40118.22222222222,
+        "lower_erpm": 39324.333333333336,
+        "thrust_n": 5.4742170097629,
+        "thrust_std_n": 0.003983583513373956,
+        "voltage_v": 11.740666666666666,
+        "voltage_range_v": [
+          11.65,
+          11.793
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 3.7778888888888886,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 10.8,
+        "upper_command_pct": 44.04761904761905,
+        "lower_command_pct": 44.04761904761905
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-029",
+        "direction": "down",
+        "mode": "dual",
+        "sample_count": 8,
+        "upper_erpm": 38622.375,
+        "lower_erpm": 37866.375,
+        "thrust_n": 5.067863353556485,
+        "thrust_std_n": 0.005096659644997891,
+        "voltage_v": 11.766875,
+        "voltage_range_v": [
+          11.72,
+          11.802
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 4.19225,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 10.8,
+        "upper_command_pct": 42.023809523809526,
+        "lower_command_pct": 42.023809523809526
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-030",
+        "direction": "down",
+        "mode": "dual",
+        "sample_count": 11,
+        "upper_erpm": 37220.22222222222,
+        "lower_erpm": 36456.444444444445,
+        "thrust_n": 4.699532691771269,
+        "thrust_std_n": 0.004599846027572033,
+        "voltage_v": 11.803,
+        "voltage_range_v": [
+          11.754,
+          11.871
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 2.599555555555556,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 10.8,
+        "upper_command_pct": 40.0,
+        "lower_command_pct": 40.0
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-031",
+        "direction": "down",
+        "mode": "dual",
+        "sample_count": 9,
+        "upper_erpm": 35837.666666666664,
+        "lower_erpm": 35064.444444444445,
+        "thrust_n": 4.367994064156206,
+        "thrust_std_n": 0.005190184136583886,
+        "voltage_v": 11.849,
+        "voltage_range_v": [
+          11.804,
+          11.889
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 2.732222222222222,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 10.8,
+        "upper_command_pct": 37.976190476190474,
+        "lower_command_pct": 37.976190476190474
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-032",
+        "direction": "down",
+        "mode": "dual",
+        "sample_count": 11,
+        "upper_erpm": 34211.333333333336,
+        "lower_erpm": 33515.333333333336,
+        "thrust_n": 3.9806519051603906,
+        "thrust_std_n": 0.0045998460275718245,
+        "voltage_v": 11.902111111111111,
+        "voltage_range_v": [
+          11.839,
+          11.932
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 1.0453333333333332,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 10.8,
+        "upper_command_pct": 35.95238095238095,
+        "lower_command_pct": 35.95238095238095
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-033",
+        "direction": "down",
+        "mode": "dual",
+        "sample_count": 11,
+        "upper_erpm": 32727.0,
+        "lower_erpm": 32088.777777777777,
+        "thrust_n": 3.620664418410042,
+        "thrust_std_n": 0.004968401559548852,
+        "voltage_v": 11.92988888888889,
+        "voltage_range_v": [
+          11.886,
+          11.96
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 2.3824444444444444,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 10.8,
+        "upper_command_pct": 34.04761904761905,
+        "lower_command_pct": 34.04761904761905
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-034",
+        "direction": "down",
+        "mode": "dual",
+        "sample_count": 8,
+        "upper_erpm": 31185.125,
+        "lower_erpm": 30705.625,
+        "thrust_n": 3.292818671548117,
+        "thrust_std_n": 0.005096659644997661,
+        "voltage_v": 11.9315,
+        "voltage_range_v": [
+          11.881,
+          11.991
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 1.23475,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 10.8,
+        "upper_command_pct": 32.023809523809526,
+        "lower_command_pct": 32.023809523809526
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-035",
+        "direction": "down",
+        "mode": "dual",
+        "sample_count": 10,
+        "upper_erpm": 29651.125,
+        "lower_erpm": 29253.25,
+        "thrust_n": 2.9653832447698742,
+        "thrust_std_n": 0.010380368273168334,
+        "voltage_v": 11.969999999999999,
+        "voltage_range_v": [
+          11.921,
+          12.012
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 1.8335,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 10.8,
+        "upper_command_pct": 30.0,
+        "lower_command_pct": 30.0
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-036",
+        "direction": "down",
+        "mode": "dual",
+        "sample_count": 11,
+        "upper_erpm": 28089.444444444445,
+        "lower_erpm": 27720.333333333332,
+        "thrust_n": 2.6479322733612274,
+        "thrust_std_n": 0.009295028197873189,
+        "voltage_v": 11.997444444444445,
+        "voltage_range_v": [
+          11.945,
+          12.037
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 1.8880000000000001,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 10.8,
+        "upper_command_pct": 27.976190476190474,
+        "lower_command_pct": 27.976190476190474
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-037",
+        "direction": "down",
+        "mode": "dual",
+        "sample_count": 11,
+        "upper_erpm": 26542.777777777777,
+        "lower_erpm": 26212.88888888889,
+        "thrust_n": 2.343748317991632,
+        "thrust_std_n": 0.010285568403682973,
+        "voltage_v": 12.011000000000001,
+        "voltage_range_v": [
+          11.961,
+          12.07
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 0.48644444444444446,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 10.8,
+        "upper_command_pct": 25.952380952380953,
+        "lower_command_pct": 25.952380952380953
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-038",
+        "direction": "down",
+        "mode": "dual",
+        "sample_count": 10,
+        "upper_erpm": 25020.75,
+        "lower_erpm": 24681.125,
+        "thrust_n": 2.063089380753138,
+        "thrust_std_n": 0.0051901841365843545,
+        "voltage_v": 12.060875,
+        "voltage_range_v": [
+          12.019,
+          12.11
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 0.287,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 10.8,
+        "upper_command_pct": 24.047619047619047,
+        "lower_command_pct": 24.047619047619047
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-039",
+        "direction": "down",
+        "mode": "dual",
+        "sample_count": 10,
+        "upper_erpm": 23273.0,
+        "lower_erpm": 22935.0,
+        "thrust_n": 1.7725827615062761,
+        "thrust_std_n": 0.0031141104819505426,
+        "voltage_v": 12.089625,
+        "voltage_range_v": [
+          12.027,
+          12.11
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 0.0,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 10.8,
+        "upper_command_pct": 22.023809523809526,
+        "lower_command_pct": 22.023809523809526
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-040",
+        "direction": "down",
+        "mode": "dual",
+        "sample_count": 11,
+        "upper_erpm": 21319.777777777777,
+        "lower_erpm": 21112.88888888889,
+        "thrust_n": 1.4859057963737794,
+        "thrust_std_n": 0.006899769041357824,
+        "voltage_v": 12.117111111111111,
+        "voltage_range_v": [
+          12.052,
+          12.146
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 0.529,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 10.8,
+        "upper_command_pct": 20.0,
+        "lower_command_pct": 20.0
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-041",
+        "direction": "down",
+        "mode": "dual",
+        "sample_count": 11,
+        "upper_erpm": 19627.666666666668,
+        "lower_erpm": 19407.333333333332,
+        "thrust_n": 1.2265835034867503,
+        "thrust_std_n": 0.005142784201841486,
+        "voltage_v": 12.125777777777778,
+        "voltage_range_v": [
+          12.057,
+          12.158
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 0.8826666666666667,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 10.8,
+        "upper_command_pct": 17.976190476190474,
+        "lower_command_pct": 17.976190476190474
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-042",
+        "direction": "down",
+        "mode": "dual",
+        "sample_count": 9,
+        "upper_erpm": 17880.555555555555,
+        "lower_erpm": 17637.555555555555,
+        "thrust_n": 0.9989926304044631,
+        "thrust_std_n": 0.008684839194862463,
+        "voltage_v": 12.141666666666667,
+        "voltage_range_v": [
+          12.079,
+          12.211
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 0.6316666666666667,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 10.8,
+        "upper_command_pct": 15.952380952380954,
+        "lower_command_pct": 15.952380952380954
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-043",
+        "direction": "down",
+        "mode": "dual",
+        "sample_count": 11,
+        "upper_erpm": 16063.333333333334,
+        "lower_erpm": 15908.111111111111,
+        "thrust_n": 0.7976622426778243,
+        "thrust_std_n": 0.00296918784331737,
+        "voltage_v": 12.158,
+        "voltage_range_v": [
+          12.089,
+          12.19
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 0.17722222222222223,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 10.8,
+        "upper_command_pct": 14.047619047619047,
+        "lower_command_pct": 14.047619047619047
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-044",
+        "direction": "down",
+        "mode": "dual",
+        "sample_count": 11,
+        "upper_erpm": 14300.0,
+        "lower_erpm": 14144.222222222223,
+        "thrust_n": 0.6149330320781032,
+        "thrust_std_n": 0.006770790022907074,
+        "voltage_v": 12.187333333333335,
+        "voltage_range_v": [
+          12.138,
+          12.228
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 0.17499999999999996,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 10.8,
+        "upper_command_pct": 12.023809523809524,
+        "lower_command_pct": 12.023809523809524
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-045",
+        "direction": "down",
+        "mode": "dual",
+        "sample_count": 11,
+        "upper_erpm": 12362.444444444445,
+        "lower_erpm": 12240.888888888889,
+        "thrust_n": 0.4497108117154811,
+        "thrust_std_n": 0.004968401559549075,
+        "voltage_v": 12.177333333333333,
+        "voltage_range_v": [
+          12.145,
+          12.227
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 0.702,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 10.8,
+        "upper_command_pct": 10.0,
+        "lower_command_pct": 10.0
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-046",
+        "direction": "down",
+        "mode": "dual",
+        "sample_count": 10,
+        "upper_erpm": 10441.375,
+        "lower_erpm": 10323.125,
+        "thrust_n": 0.3028162217573222,
+        "thrust_std_n": 0.004756882335331177,
+        "voltage_v": 12.184625,
+        "voltage_range_v": [
+          12.158,
+          12.22
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 0.301375,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 10.8,
+        "upper_command_pct": 7.976190476190476,
+        "lower_command_pct": 7.976190476190476
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-047",
+        "direction": "down",
+        "mode": "dual",
+        "sample_count": 11,
+        "upper_erpm": 8445.222222222223,
+        "lower_erpm": 8339.111111111111,
+        "thrust_n": 0.17616408926080893,
+        "thrust_std_n": 0.003983583513374158,
+        "voltage_v": 12.195555555555556,
+        "voltage_range_v": [
+          12.142,
+          12.234
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 0.04822222222222222,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 10.8,
+        "upper_command_pct": 5.9523809523809526,
+        "lower_command_pct": 5.9523809523809526
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-049",
+        "direction": "down",
+        "mode": "dual",
+        "sample_count": 11,
+        "upper_erpm": 4545.777777777777,
+        "lower_erpm": 4426.555555555556,
+        "thrust_n": 0.006565121338912134,
+        "thrust_std_n": 0.011030043290706915,
+        "voltage_v": 12.213888888888889,
+        "voltage_range_v": [
+          12.163,
+          12.254
+        ],
+        "response_points": {
+          "upper_esc_current_a": null,
+          "lower_esc_current_a": null,
+          "input_power_w": null
+        },
+        "esc_current_calibrated": false,
+        "board_current_a_diagnostic": 0.27011111111111114,
+        "board_current_calibrated": false,
+        "voltage_layer_v": 10.8,
+        "upper_command_pct": 2.0238095238095237,
+        "lower_command_pct": 2.0238095238095237
+      }
+    ],
+    "model": {
+      "kind": "installed_coax_total_thrust_erpm2",
+      "equation": "F_N=c0+c_upper*(upper_erpm/erpm_scale)^2+c_lower*(lower_erpm/erpm_scale)^2+c_cross*(upper_erpm*lower_erpm/erpm_scale^2)",
+      "erpm_scale": 44146.22222222222,
+      "coefficients_n": {
+        "intercept": -0.15705248262044644,
+        "upper_squared": -2.3683233849770646,
+        "lower_squared": -1.969034859815225,
+        "cross": 11.311616764340219
+      }
+    },
+    "coverage": {
+      "points": 80,
+      "runs": [
+        "072b10edce6c",
+        "14309671afe4",
+        "3728e71beb6a",
+        "b79239e1dcd7"
+      ],
+      "voltage_layers_v": [
+        10.8,
+        11.5,
+        12.3
+      ],
+      "upper_erpm": [
+        4545.777777777777,
+        44146.22222222222
+      ],
+      "lower_erpm": [
+        4426.555555555556,
+        40773.0
+      ],
+      "erpm_correlation": 0.9574836552708631,
+      "independently_varied": true
+    },
+    "rank": 4,
+    "condition_number": 166.5271216200253,
+    "training_metrics": {
+      "rmse_n": 0.14703032341341418,
+      "mae_n": 0.10429588360696444,
+      "relative_mae": 0.054576088777640794,
+      "reference_thrust_n": 1.911017919072524,
+      "max_abs_error_n": 0.4126478292533642,
+      "p95_abs_error_n": 0.3554985656800506
+    },
+    "residuals_by_voltage_layer": {
+      "10.8": {
+        "points": 47,
+        "rmse_n": 0.06194260315747468,
+        "mae_n": 0.05056405376466896,
+        "relative_mae": 0.01857523671435072,
+        "reference_thrust_n": 2.7221216365767527,
+        "max_abs_error_n": 0.13316283521147412,
+        "p95_abs_error_n": 0.11804450014245609
+      },
+      "11.5": {
+        "points": 11,
+        "rmse_n": 0.08374582906789488,
+        "mae_n": 0.07870169701743684,
+        "relative_mae": 0.06243672444197959,
+        "reference_thrust_n": 1.2605032970711294,
+        "max_abs_error_n": 0.13513055138339813,
+        "p95_abs_error_n": 0.1230472467701782
+      },
+      "12.3": {
+        "points": 22,
+        "rmse_n": 0.2586637543095149,
+        "mae_n": 0.2318837042920868,
+        "relative_mae": 0.4605776845745143,
+        "reference_thrust_n": 0.5034627426778242,
+        "max_abs_error_n": 0.4126478292533642,
+        "p95_abs_error_n": 0.3921017919334933
+      }
+    },
+    "single_drive_installed_baselines": {
+      "status": "unavailable",
+      "points": [],
+      "interpretation": "Installed-assembly baseline only; the other propeller may windmill and is not an isolated-propeller result."
+    },
+    "data_quality": {
+      "input_samples": 1033,
+      "accepted_steady_points": 80,
+      "dual_model_points": 80,
+      "excluded_samples_by_reason": {
+        "dual_undriven_zero_erpm_boundary": 137,
+        "scale_not_synchronised": 4,
+        "unsteady_thrust": 54
+      }
+    },
+    "training_diagnostics": {
+      "status": "unavailable",
+      "reason": "voltage_model_unavailable",
+      "predictions": [],
+      "points": 0,
+      "metrics": null,
+      "error_by_loaded_voltage": []
+    },
+    "sufficiency": {
+      "status": "insufficient",
+      "summary": "双驱动聚合稳态点 80，每个电压组最少 6 个唯一非零指令组合，实际电压覆盖组 3；整轮留出可用/拒绝 0/4，中间电压层留出可用 0；仍有 3 项缺口。",
+      "reference": {
+        "kind": "starting_reference_only",
+        "advisory_only": true,
+        "recommended_unique_nonzero_command_combinations_per_voltage_group": 25,
+        "recommended_actual_voltage_coverage_count": 3,
+        "recommended_independent_validation_rounds": 1,
+        "rmse_full_scale_fraction": 0.05,
+        "p95_full_scale_fraction": 0.1,
+        "does_not_authorize_flight": true
+      },
+      "aggregated_steady_points": 80,
+      "nonzero_steady_points": 80,
+      "command_grid": {
+        "status": "available",
+        "meaning": "Exact recorded command grid counts; not unique eRPM operating points.",
+        "groups": [
+          {
+            "mode": "dual",
+            "voltage_group": "layer:10.8",
+            "steady_points": 47,
+            "missing_command_points": 0,
+            "unique_command_combinations": 26,
+            "unique_nonzero_command_combinations": 26,
+            "command_combinations": [
+              [
+                2.0238095238095237,
+                2.0238095238095237
+              ],
+              [
+                4.0476190476190474,
+                4.0476190476190474
+              ],
+              [
+                5.9523809523809526,
+                5.9523809523809526
+              ],
+              [
+                7.976190476190476,
+                7.976190476190476
+              ],
+              [
+                7.976190476190477,
+                7.976190476190477
+              ],
+              [
+                10.0,
+                10.0
+              ],
+              [
+                12.023809523809524,
+                12.023809523809524
+              ],
+              [
+                14.047619047619047,
+                14.047619047619047
+              ],
+              [
+                15.952380952380954,
+                15.952380952380954
+              ],
+              [
+                17.976190476190474,
+                17.976190476190474
+              ],
+              [
+                20.0,
+                20.0
+              ],
+              [
+                22.023809523809526,
+                22.023809523809526
+              ],
+              [
+                24.047619047619047,
+                24.047619047619047
+              ],
+              [
+                25.952380952380953,
+                25.952380952380953
+              ],
+              [
+                27.976190476190474,
+                27.976190476190474
+              ],
+              [
+                30.0,
+                30.0
+              ],
+              [
+                32.023809523809526,
+                32.023809523809526
+              ],
+              [
+                34.04761904761905,
+                34.04761904761905
+              ],
+              [
+                35.95238095238095,
+                35.95238095238095
+              ],
+              [
+                37.976190476190474,
+                37.976190476190474
+              ],
+              [
+                40.0,
+                40.0
+              ],
+              [
+                42.023809523809526,
+                42.023809523809526
+              ],
+              [
+                44.04761904761905,
+                44.04761904761905
+              ],
+              [
+                45.95238095238095,
+                45.95238095238095
+              ],
+              [
+                47.976190476190474,
+                47.976190476190474
+              ],
+              [
+                50.0,
+                50.0
+              ]
+            ]
+          },
+          {
+            "mode": "dual",
+            "voltage_group": "layer:11.5",
+            "steady_points": 11,
+            "missing_command_points": 0,
+            "unique_command_combinations": 6,
+            "unique_nonzero_command_combinations": 6,
+            "command_combinations": [
+              [
+                5.0,
+                5.0
+              ],
+              [
+                10.0,
+                10.0
+              ],
+              [
+                15.0,
+                15.0
+              ],
+              [
+                20.0,
+                20.0
+              ],
+              [
+                25.0,
+                25.0
+              ],
+              [
+                30.0,
+                30.0
+              ]
+            ]
+          },
+          {
+            "mode": "dual",
+            "voltage_group": "layer:12.3",
+            "steady_points": 22,
+            "missing_command_points": 0,
+            "unique_command_combinations": 15,
+            "unique_nonzero_command_combinations": 15,
+            "command_combinations": [
+              [
+                5.0,
+                5.0
+              ],
+              [
+                5.0,
+                10.0
+              ],
+              [
+                5.0,
+                15.0
+              ],
+              [
+                5.0,
+                20.0
+              ],
+              [
+                10.0,
+                5.0
+              ],
+              [
+                10.0,
+                10.0
+              ],
+              [
+                10.0,
+                15.0
+              ],
+              [
+                10.0,
+                20.0
+              ],
+              [
+                15.0,
+                10.0
+              ],
+              [
+                15.0,
+                15.0
+              ],
+              [
+                15.0,
+                20.0
+              ],
+              [
+                20.0,
+                5.0
+              ],
+              [
+                20.0,
+                10.0
+              ],
+              [
+                20.0,
+                15.0
+              ],
+              [
+                20.0,
+                20.0
+              ]
+            ]
+          }
+        ],
+        "missing_command_points": 0
+      },
+      "minimum_unique_nonzero_command_combinations_per_dual_voltage_group": 6,
+      "independent_runs": 4,
+      "actual_voltage_coverage": [
+        {
+          "label": "layer:10.8",
+          "center_v": 12.079292553191488,
+          "range_v": [
+            11.65,
+            12.471
+          ]
+        },
+        {
+          "label": "layer:12.3",
+          "center_v": 12.302164141414142,
+          "range_v": [
+            12.173,
+            12.462
+          ]
+        },
+        {
+          "label": "layer:11.5",
+          "center_v": 12.327867424242426,
+          "range_v": [
+            12.138,
+            12.473
+          ]
+        }
+      ],
+      "input_independently_varied": false,
+      "adjacent_domain_intersections": null,
+      "holdout_available_groups": 0,
+      "full_scale_thrust_n": 6.143859386331938,
+      "holdout_metrics": null,
+      "gaps": [
+        "fewer_than_25_unique_nonzero_command_combinations_per_voltage_group_reference",
+        "voltage_layer_fit_unavailable",
+        "no_independent_holdout_validation"
+      ],
+      "zero_or_not_spinning_points_counted_separately": 0,
+      "mode_point_counts": {
+        "dual": 80
+      },
+      "modes_observed": [
+        "dual"
+      ]
+    }
+  },
+  "power": {
+    "status": "unavailable",
+    "source": "dshot_esc_current",
+    "external_calibration_verified": false,
+    "current_resolution_a": 1.0,
+    "current_resolution_source": "TBENCH v1 whole-amp ESC current fields",
+    "current_models": {
+      "dual": {
+        "upper": {
+          "status": "unavailable",
+          "reason": "fewer_than_2_measured_voltage_layers",
+          "layers": []
+        },
+        "lower": {
+          "status": "unavailable",
+          "reason": "fewer_than_2_measured_voltage_layers",
+          "layers": []
+        },
+        "combined_input_power": {
+          "status": "unavailable",
+          "reason": "fewer_than_2_measured_voltage_layers",
+          "layers": []
+        }
+      },
+      "upper": {
+        "upper": {
+          "status": "unavailable",
+          "reason": "fewer_than_2_measured_voltage_layers",
+          "layers": []
+        },
+        "lower": {
+          "status": "unavailable",
+          "reason": "fewer_than_2_measured_voltage_layers",
+          "layers": []
+        },
+        "combined_input_power": {
+          "status": "unavailable",
+          "reason": "fewer_than_2_measured_voltage_layers",
+          "layers": []
+        }
+      },
+      "lower": {
+        "upper": {
+          "status": "unavailable",
+          "reason": "fewer_than_2_measured_voltage_layers",
+          "layers": []
+        },
+        "lower": {
+          "status": "unavailable",
+          "reason": "fewer_than_2_measured_voltage_layers",
+          "layers": []
+        },
+        "combined_input_power": {
+          "status": "unavailable",
+          "reason": "fewer_than_2_measured_voltage_layers",
+          "layers": []
+        }
+      }
+    },
+    "upper_current_model": {
+      "status": "unavailable",
+      "reason": "fewer_than_2_measured_voltage_layers",
+      "layers": []
+    },
+    "lower_current_model": {
+      "status": "unavailable",
+      "reason": "fewer_than_2_measured_voltage_layers",
+      "layers": []
+    },
+    "combined_input_power_model": {
+      "status": "unavailable",
+      "reason": "fewer_than_2_measured_voltage_layers",
+      "layers": []
+    },
+    "observations": [
+      {
+        "run_id": "072b10edce6c",
+        "segment_id": "dual-001",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 0.8638888888888889
+      },
+      {
+        "run_id": "072b10edce6c",
+        "segment_id": "dual-002",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 0.20666666666666667
+      },
+      {
+        "run_id": "072b10edce6c",
+        "segment_id": "dual-003",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 1.0874444444444444
+      },
+      {
+        "run_id": "072b10edce6c",
+        "segment_id": "dual-004",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 0.22666666666666668
+      },
+      {
+        "run_id": "072b10edce6c",
+        "segment_id": "dual-005",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 0.539625
+      },
+      {
+        "run_id": "072b10edce6c",
+        "segment_id": "dual-006",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 0.9650000000000001
+      },
+      {
+        "run_id": "072b10edce6c",
+        "segment_id": "dual-007",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 1.3912222222222221
+      },
+      {
+        "run_id": "072b10edce6c",
+        "segment_id": "dual-008",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 0.32275
+      },
+      {
+        "run_id": "072b10edce6c",
+        "segment_id": "dual-009",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 0.8694444444444445
+      },
+      {
+        "run_id": "072b10edce6c",
+        "segment_id": "dual-010",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 0.8069999999999999
+      },
+      {
+        "run_id": "072b10edce6c",
+        "segment_id": "dual-011",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 0.5907777777777778
+      },
+      {
+        "run_id": "14309671afe4",
+        "segment_id": "dual-001",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 0.9332222222222223
+      },
+      {
+        "run_id": "14309671afe4",
+        "segment_id": "dual-002",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 0.47688888888888886
+      },
+      {
+        "run_id": "14309671afe4",
+        "segment_id": "dual-003",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 0.3764444444444444
+      },
+      {
+        "run_id": "14309671afe4",
+        "segment_id": "dual-004",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 0.19724999999999998
+      },
+      {
+        "run_id": "14309671afe4",
+        "segment_id": "dual-005",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 0.988375
+      },
+      {
+        "run_id": "14309671afe4",
+        "segment_id": "dual-006",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 0.05255555555555555
+      },
+      {
+        "run_id": "14309671afe4",
+        "segment_id": "dual-007",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 1.0761111111111112
+      },
+      {
+        "run_id": "3728e71beb6a",
+        "segment_id": "grid-006",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 1.3244444444444445
+      },
+      {
+        "run_id": "3728e71beb6a",
+        "segment_id": "grid-007",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 0.49744444444444436
+      },
+      {
+        "run_id": "3728e71beb6a",
+        "segment_id": "grid-008",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 0.0
+      },
+      {
+        "run_id": "3728e71beb6a",
+        "segment_id": "grid-009",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 0.19677777777777777
+      },
+      {
+        "run_id": "3728e71beb6a",
+        "segment_id": "grid-011",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 0.36666666666666664
+      },
+      {
+        "run_id": "3728e71beb6a",
+        "segment_id": "grid-012",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 0.5368888888888889
+      },
+      {
+        "run_id": "3728e71beb6a",
+        "segment_id": "grid-013",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 0.0
+      },
+      {
+        "run_id": "3728e71beb6a",
+        "segment_id": "grid-014",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 0.14575
+      },
+      {
+        "run_id": "3728e71beb6a",
+        "segment_id": "grid-017",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 0.12237500000000001
+      },
+      {
+        "run_id": "3728e71beb6a",
+        "segment_id": "grid-018",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 0.0074444444444444445
+      },
+      {
+        "run_id": "3728e71beb6a",
+        "segment_id": "grid-019",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 0.02622222222222222
+      },
+      {
+        "run_id": "3728e71beb6a",
+        "segment_id": "grid-021",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 0.14500000000000002
+      },
+      {
+        "run_id": "3728e71beb6a",
+        "segment_id": "grid-022",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 0.0
+      },
+      {
+        "run_id": "3728e71beb6a",
+        "segment_id": "grid-023",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 0.03188888888888889
+      },
+      {
+        "run_id": "3728e71beb6a",
+        "segment_id": "grid-024",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 0.106
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-002",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 0.2807777777777778
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-003",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 1.1288888888888888
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-004",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 0.36233333333333334
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-005",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 0.2891111111111111
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-006",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 0.0
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-007",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 0.5666666666666667
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-008",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 0.5758888888888889
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-009",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 1.8392222222222223
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-010",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 0.44377777777777777
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-011",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 1.2962500000000001
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-012",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 1.1995555555555555
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-013",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 1.1515555555555557
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-014",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 1.6733333333333333
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-015",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 2.125875
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-016",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 1.425888888888889
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-017",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 1.7614444444444444
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-018",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 3.1742222222222223
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-019",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 3.7536666666666667
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-020",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 2.1426250000000002
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-021",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 2.7106666666666666
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-022",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 4.2459999999999996
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-023",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 5.418222222222223
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-024",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 6.853111111111111
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-025",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 5.0873333333333335
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-026",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 8.856333333333332
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-027",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 6.928375
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-028",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 3.7778888888888886
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-029",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 4.19225
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-030",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 2.599555555555556
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-031",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 2.732222222222222
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-032",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 1.0453333333333332
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-033",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 2.3824444444444444
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-034",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 1.23475
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-035",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 1.8335
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-036",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 1.8880000000000001
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-037",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 0.48644444444444446
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-038",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 0.287
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-039",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 0.0
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-040",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 0.529
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-041",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 0.8826666666666667
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-042",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 0.6316666666666667
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-043",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 0.17722222222222223
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-044",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 0.17499999999999996
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-045",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 0.702
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-046",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 0.301375
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-047",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 0.04822222222222222
+      },
+      {
+        "run_id": "b79239e1dcd7",
+        "segment_id": "dual-049",
+        "upper_esc_current_a": null,
+        "lower_esc_current_a": null,
+        "input_power_w": null,
+        "board_current_a_diagnostic": 0.27011111111111114
+      }
+    ],
+    "board_current_diagnostic_only": true,
+    "note": "Board ADC current is diagnostic only and is never a fitting fallback."
+  },
+  "dynamics": {
+    "status": "unavailable",
+    "reason": "no_dynamic_segments",
+    "fits": [],
+    "rejected": []
+  },
+  "validation": {
+    "status": "training_only",
+    "strategy": "whole_run_and_voltage_layer_holdout",
+    "reason": "insufficient_replicated_runs_or_interpolating_voltage_layers",
+    "holdouts": [
+      {
+        "group": "run",
+        "value": "072b10edce6c",
+        "status": "unavailable",
+        "reason": "voltage_layer_fit_unavailable",
+        "test_points": 11
+      },
+      {
+        "group": "run",
+        "value": "14309671afe4",
+        "status": "unavailable",
+        "reason": "voltage_layer_fit_unavailable",
+        "test_points": 7
+      },
+      {
+        "group": "run",
+        "value": "3728e71beb6a",
+        "status": "unavailable",
+        "reason": "voltage_layer_fit_unavailable",
+        "test_points": 15
+      },
+      {
+        "group": "run",
+        "value": "b79239e1dcd7",
+        "status": "unavailable",
+        "reason": "voltage_layer_fit_unavailable",
+        "test_points": 47
+      },
+      {
+        "group": "voltage_layer",
+        "value": "layer:10.8",
+        "status": "unavailable",
+        "reason": "voltage_layer_fit_unavailable",
+        "test_points": 47
+      },
+      {
+        "group": "voltage_layer",
+        "value": "layer:11.5",
+        "status": "unavailable",
+        "reason": "voltage_layer_fit_unavailable",
+        "test_points": 11
+      },
+      {
+        "group": "voltage_layer",
+        "value": "layer:12.3",
+        "status": "unavailable",
+        "reason": "voltage_layer_fit_unavailable",
+        "test_points": 22
+      }
+    ],
+    "component": "dual_voltage_dependent_total_thrust",
+    "diagnostics": {
+      "status": "unvalidated",
+      "points": 0,
+      "metrics": null,
+      "error_by_loaded_voltage": [],
+      "kind": "independent_group_holdout",
+      "predictions": [],
+      "available_groups": 0,
+      "unavailable_groups": [
+        {
+          "group": "run",
+          "value": "072b10edce6c",
+          "reason": "voltage_layer_fit_unavailable",
+          "test_points": 11,
+          "explanation_zh": "该留出组无法由剩余训练组建立并预测。"
+        },
+        {
+          "group": "run",
+          "value": "14309671afe4",
+          "reason": "voltage_layer_fit_unavailable",
+          "test_points": 7,
+          "explanation_zh": "该留出组无法由剩余训练组建立并预测。"
+        },
+        {
+          "group": "run",
+          "value": "3728e71beb6a",
+          "reason": "voltage_layer_fit_unavailable",
+          "test_points": 15,
+          "explanation_zh": "该留出组无法由剩余训练组建立并预测。"
+        },
+        {
+          "group": "run",
+          "value": "b79239e1dcd7",
+          "reason": "voltage_layer_fit_unavailable",
+          "test_points": 47,
+          "explanation_zh": "该留出组无法由剩余训练组建立并预测。"
+        },
+        {
+          "group": "voltage_layer",
+          "value": "layer:10.8",
+          "reason": "voltage_layer_fit_unavailable",
+          "test_points": 47,
+          "explanation_zh": "该留出组无法由剩余训练组建立并预测。"
+        },
+        {
+          "group": "voltage_layer",
+          "value": "layer:11.5",
+          "reason": "voltage_layer_fit_unavailable",
+          "test_points": 11,
+          "explanation_zh": "该留出组无法由剩余训练组建立并预测。"
+        },
+        {
+          "group": "voltage_layer",
+          "value": "layer:12.3",
+          "reason": "voltage_layer_fit_unavailable",
+          "test_points": 22,
+          "explanation_zh": "该留出组无法由剩余训练组建立并预测。"
+        }
+      ],
+      "groups": {
+        "run": {
+          "attempted": 4,
+          "available": 0,
+          "rejected": 4,
+          "test_points": 80,
+          "predicted_points": 0,
+          "prediction_coverage_fraction": 0.0
+        },
+        "voltage_layer": {
+          "attempted": 3,
+          "available": 0,
+          "rejected": 3,
+          "test_points": 80,
+          "predicted_points": 0,
+          "prediction_coverage_fraction": 0.0
+        }
+      },
+      "attempted_prediction_points": 160,
+      "prediction_coverage_fraction": 0.0,
+      "reason": "no_available_group_holdout_predictions"
+    }
+  },
+  "warnings": [
+    "This is a total-thrust model of the actual two-propeller installed assembly.",
+    "Speed inputs are raw electrical eRPM; no pole-pair or mechanical-RPM conversion is applied.",
+    "DShot ESC current is not externally calibrated and remains a telemetry-scale observation.",
+    "Board ADC current is diagnostic only and is never used as a fitting fallback.",
+    "It cannot uniquely decompose upper/lower thrust or torque; a nominally undriven propeller may windmill.",
+    "Results are valid only inside the reported eRPM and voltage coverage.",
+    "No model is automatically sent to the flight controller, written to Flash, or substituted for a control thrust table.",
+    "Quantitative input-power calibration is unavailable: None",
+    "Independent generalisation evidence is unavailable; training fit alone is not validation.",
+    "The primary voltage-dependent thrust calibration is unavailable: voltage_layer_fit_unavailable"
+  ]
+}

@@ -97,7 +97,14 @@ EVIDENCE_AST_SHA256 = {
     "_validation_resume_session": "525acd5122abeec18606841af40965a2eb0c81065444e1710c40bed09783eb82",
     "_validation_write_report": "b9a75d336ef454d416ee549de1962a1dac7662cdb7faaec7b02eb9f3004d59e2",
     "_validation_open_report_dir": "ffd6c85d1c7be4a949c9a40c1bb32d07440c2c38519fd3e1db551ff9c5e76407",
-    "_validation_command_allowed": "c71523aba05690a98dfc304ed95baff0a5389d58815b4a6ad3c65a959a8b3fc7",
+    # 2026-09-20 / R-PWR-1：作者明示批准在只读会话里放行遥测流的开关与通道表
+    # 查询（`TELEM?` / `TELEM STREAM on|off` / `TELEM MASK <hex>` /
+    # `TELEM CH from=<n>`）。带参数的两条要在函数里加前缀分支，所以这个哈希跟着
+    # 变。它是刻意设的减速带：改它必须留下"谁批准的、为什么"。理由是这几条只
+    # 决定上位机想看哪些通道、收不收流，不改飞控任何飞行配置。`TELEM RATE` /
+    # `SINK` / `FORMAT` **不在**授权内，边界由
+    # `test_the_readonly_gate_releases_only_the_telemetry_view_commands` 钉住。
+    "_validation_command_allowed": "d0f0d4e77042f9edaec0cb2f2f5ad4fe2ebb888d7cc62684a91a552c73181587",
     "_validation_guard_command": "407b2b565c631dec84635c988d0e3b1ad7d4a7d4683ba4ce35bb8d41ef8648bd",
 }
 VALIDATION_HELPER_AST_SHA256 = {
@@ -290,6 +297,32 @@ def test_v0_session_command_gate_only_grants_exact_orientation_actions() -> None
     assert "_validation_command_allowed(legacy_line)" in fallback
 
 
+def test_the_readonly_gate_releases_only_the_telemetry_view_commands() -> None:
+    """R-PWR-1（作者明示批准）：只读会话里放行"我想看哪些通道"，不放行"你怎么发"。
+
+    合并「电流计」「电池电压」两页之前，只读会话里的数据是靠它们每 2 秒各发一条
+    `STATUS?` / `BATTERY?` 喂进来的，这两条本来就在白名单里。实时值改走遥测流
+    之后，同一份数据的入口变成了 `TELEM STREAM on` + `TELEM MASK <hex>`，白名单
+    也跟着挪到这几条上——它们只决定上位机想看哪些通道、收不收流，不改飞控任何
+    飞行配置，不发解锁 / 电机 / 标定命令。
+
+    边界必须钉死：`TELEM RATE` / `SINK` / `FORMAT` 确实改变飞控的发送行为，不在
+    授权范围内。没有这条断言，下一个人很容易把前缀规则放宽成整个 TELEM 族。
+    """
+    active = SimpleNamespace(
+        validation_session_active=True,
+        validation_authorized_orientation_commands=set(),
+        firmware_authorized_commands=set(),
+    )
+    for command in ("TELEM?", "TELEM STREAM on", "TELEM STREAM off",
+                    "telem  stream   ON", "TELEM MASK 1F3", "TELEM CH from=12"):
+        assert panel.DronePanel._validation_command_allowed(active, command), command
+    for command in ("TELEM RATE 200", "TELEM SINK usb", "TELEM FORMAT jf",
+                    "TELEM REFRESH 1", "TELEM PROF reset", "TELEM TX reset",
+                    "TELEM STREAM", "TELEM MASK", "TELEM CH", "TELEMETRY?"):
+        assert not panel.DronePanel._validation_command_allowed(active, command), command
+
+
 def test_v0_session_invalidates_transport_write_queues_at_the_send_boundary() -> None:
     rx: "queue.Queue[str]" = queue.Queue()
     tcp = panel.TcpTransport(rx)
@@ -366,7 +399,6 @@ def test_ui_hot_paths_are_bounded_and_render_is_throttled() -> None:
     append = function_body(SOURCE, "    def _append(")
     flush = function_body(SOURCE, "    def _flush_log(")
     imu_tick = function_body(SOURCE, "    def _imu_poll_tick(")
-    ident = function_body(SOURCE, "    def _ident_handle_line(")
 
     assert "RX_DRAIN_BATCH_SIZE" in drain
     dispatcher = (ROOT / "tools/panel_lib/rx_dispatch.py").read_text(encoding="utf-8")
@@ -376,9 +408,16 @@ def test_ui_hot_paths_are_bounded_and_render_is_throttled() -> None:
     assert 'batch = "".join(self._pending_log_lines)' in flush
     assert "IMU_RENDER_PERIOD_MS" in imu_tick
     assert "imu_tab_visible" in imu_tick
-    assert "1_000_000_000" in ident
-    assert "200_000_000" in ident
-    assert "self.notebook.select() == str(self.ident_tab)" in ident
+
+    # 辨识那条热路径 2026-09-13 随整页迁出（R-SYSID-1），限幅判据跟着搬。
+    # 新页收的是二进制批量帧而不是逐行文本，所以"有界"的形态也变了：
+    # 环形裁剪按样本数，不按纳秒节流。
+    sysid = (ROOT / "tools/panel_lib/pages/sysid/inner_loop.py").read_text(
+        encoding="utf-8")
+    assert "MAX_SAMPLES" in sysid
+    # A full run is evidence: v2 refuses overflow rather than dropping its head.
+    assert "len(self.samples) + len(batch.samples) > MAX_SAMPLES" in sysid
+    assert 'self.send("SYSID STOP")' in sysid
 
 
 def test_firmware_update_only_hard_blocks_on_the_link() -> None:
@@ -941,22 +980,27 @@ def test_panel_builds_the_reordered_v0_layout_without_connecting(
         labels = [app.notebook.tab(tab_id, "text") for tab_id in app.notebook.tabs()]
         # R-T1-5：状态监视工作台成为默认首页（作者裁决），排在“总览”之前。
         assert labels[:5] == [
-            "状态监视", "总览", "校准", "维护 · 固件升级", "传感器",
+            "状态监视", "总览", "校准", "维护", "传感器",
         ]
         calibration_labels = [
             app.calibration_notebook.tab(tab_id, "text")
             for tab_id in app.calibration_notebook.tabs()
         ]
+        # 2026-09-20：新增「校准 / 磁力计校准」页签，排在校准组末尾（8 → 9，
+        # R-MAG-1），与 test_panel_qa_harness.py / test_tk_v_revamp.py 同批更新的
+        # 计数一致。
         assert calibration_labels == [
             "坐标系与极性", "IMU 零偏与比例", "遥控器", "舵机机械中心与行程",
-            "光流与测距", "无桨控制链验收", "振动检测与滤波",
+            "桨叶与电机方向", "光流与测距", "无桨控制链验收", "振动检测与滤波",
+            "磁力计校准",
         ]
         # R-S1-1：四个传感器页收进“传感器”分组，顶层不再平铺它们。
         sensor_labels = [
             app.sensor_notebook.tab(tab_id, "text")
             for tab_id in app.sensor_notebook.tabs()
         ]
-        assert sensor_labels == ["气压计", "IMU 监视（旧链）", "GPS / 磁力计", "光流", "电流计", "电池电压"]
+        # R-PWR-1：「电流计」与「电池电压」合并成一个「电源」页。
+        assert sensor_labels == ["气压计", "IMU 监视（旧链）", "GPS / 磁力计", "光流", "电源"]
         assert "气压计" not in labels
         assert "IMU 监视（旧链）" not in labels
         assert "GPS / 磁力计" not in labels
@@ -964,7 +1008,7 @@ def test_panel_builds_the_reordered_v0_layout_without_connecting(
         assert str(app.imu_tab.master) == str(app.sensor_notebook)
         assert str(app.gps_tab.master) == str(app.sensor_notebook)
         assert str(app.flow_sensor_tab.master) == str(app.sensor_notebook)
-        assert str(app.current_tab.master) == str(app.sensor_notebook)
+        assert str(app.power_tab.master) == str(app.sensor_notebook)
         # 总览的“打开气压计页/姿态页/GPS 页”跨两层跳转，直接 select 子页会抛 TclError。
         app._open_gps_tab()
         assert app.notebook.select() == str(app.sensor_group_tab)

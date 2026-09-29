@@ -6,7 +6,7 @@
 
 void APP_EscDiag_Report(void)
 {
-#if BSP_ESC_PROTOCOL == BSP_ESC_PROTOCOL_DSHOT300
+#if BSP_ESC_PROTOCOL_IS_DSHOT
     BSP_DShotSnapshot s = {0};
     BSP_DShot_GetSnapshot(&s);
     APP_Control_QueueText(

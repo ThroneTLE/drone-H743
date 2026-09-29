@@ -1,0 +1,7 @@
+{
+  "am32_motor_kv": 1300,
+  "written_in_session": "2026-09-23/041404-20609784",
+  "valid_sessions": "strictly after written_in_session (ESC power cycle required)",
+  "written_at": "2026-09-23 (host_time_s 22705.015 in 041404-20609784 events: ESC KV state=done sent=15/15)",
+  "evidence": "first session after battery power cycle 041517-1bf624ca reaches 74.6k eRPM at 100% (041404: 50.7k)"
+}

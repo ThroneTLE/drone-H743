@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 
@@ -267,8 +268,9 @@ def test_optical_flow_sources_are_wired_into_firmware_and_cubemx() -> None:
     assert "BSP_OPTICAL_FLOW_OnUartError(huart);" in uart
     assert "BSP_GPS_OnUartRxCplt" not in uart
     assert "BSP_GPS_OnUartError" not in uart
-    assert "huart2.Init.BaudRate = 115200;" in usart
-    assert "USART2.BaudRate=115200" in ioc
+    # 2026-09-29 光流从 USART2（DJI 图传口）迁到 UART4（4 针 5 V 口）。
+    assert "huart4.Init.BaudRate = 115200;" in usart
+    assert "UART4.BaudRate=115200" in ioc
     assert "#define DRV_OPTICAL_FLOW_BAUD_RATE 115200U" in driver_header
     assert "FLOW?" in control
     assert "APP_OpticalFlow_Report();" in flow_cmd
@@ -482,13 +484,36 @@ def test_micolink_initialization_has_no_lc307_configuration_phase() -> None:
     assert "return (dev->rx_active != 0U) ? DRV_OPTICAL_FLOW_OK : DRV_OPTICAL_FLOW_ERROR;" in driver
 
 
-def test_optical_flow_bus_stays_on_existing_usart2_dma_binding() -> None:
+def test_optical_flow_bus_binds_uart4_dma() -> None:
+    """光流 2026-09-29 从 USART2 迁到 UART4（4 针 5 V 口，PA0/PA1）。
+
+    USART2 是 DJI 图传口，该版板子第 1 脚是 12 V。板级绑定只在 bsp_board.c 一处，
+    其余认串口的地方（分发表、回调、组件目录、.ioc 引脚）都必须跟它一致。
+    """
     header = read("Driver/Inc/drv_optical_flow.h")
     board = read("BSP/Src/bsp_board.c")
+    events = read("BSP/Src/bsp_uart_events.c")
+    bsp_flow = read("BSP/Src/bsp_optical_flow.c")
+    catalog = read("BSP/Src/bsp_component_catalog.c")
+    ioc = read("drone-H743.ioc")
 
     assert "uint32_t timeout_ms;" in header
     assert "void (*delay_ms)(uint32_t ms);" in header
-    assert "optical_flow_bus.huart = &huart2;" in board
+    assert "optical_flow_bus.huart = &huart4;" in board
     assert "optical_flow_bus.timeout_ms = 100U;" in board
     assert "optical_flow_bus.delay_ms = BSP_DelayMs;" in board
     assert "optical_flow_bus.baud_rate = DRV_OPTICAL_FLOW_BAUD_RATE;" in board
+
+    # 从板级绑定推出外设名，再核对其余各处：huart1/2/3/6 是 USARTx，4/5/7/8 是 UARTx。
+    index = re.search(r"optical_flow_bus\.huart = &huart(\d+);", board).group(1)
+    peripheral = f"USART{index}" if index in {"1", "2", "3", "6"} else f"UART{index}"
+    assert peripheral == "UART4"
+    assert f"#define BSP_UART_EVENTS_FLOW_INSTANCE      {peripheral}" in events
+    assert f'case DRV_COMPONENT_FLOW:return "{peripheral}";' in catalog
+    assert "PA0.Signal=UART4_TX" in ioc and "PA1.Signal=UART4_RX" in ioc
+
+    # 三个回调按板级绑定认串口，不再写死实例名（迁移前写死的是 USART2）。
+    assert "BSP_Board_GetOpticalFlowBus()" in bsp_flow
+    assert "huart->Instance == bus->huart->Instance" in bsp_flow
+    for hardcoded in ("USART1", "USART2", "USART3", "UART4", "USART6", "UART7", "UART8"):
+        assert f"Instance != {hardcoded}" not in bsp_flow
