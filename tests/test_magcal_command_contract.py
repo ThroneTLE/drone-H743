@@ -43,6 +43,7 @@ typedef void *osThreadId_t;
 
 HARNESS = r"""
 #include "app_magcal.h"
+#include "app_magxy.h"
 #include "app_control_internal.h"
 #include "app_stabilizer.h"
 #include "drv_frame_contract.h"
@@ -129,6 +130,14 @@ void APP_Stabilizer_GetMagFusionStatus(APP_Stabilizer_MagFusionStatus *out)
     if (out != NULL) {
         memset(out, 0, sizeof(*out));
     }
+}
+
+/* MAGXY has a separate real-module harness; legacy MAGCAL behaviour stays
+ * isolated here so its command ABI can be compared unchanged. */
+uint8_t APP_MagXY_HandleCommand(char **tokens, uint32_t count)
+{
+    (void)tokens; (void)count;
+    return 0U;
 }
 
 /* ---- helpers ---- */
@@ -351,6 +360,7 @@ def test_magcal_command_family(tmp_path: Path) -> None:
             f"-I{ROOT / 'App' / 'Inc'}",
             f"-I{ROOT / 'Driver' / 'Inc'}",
             f"-I{ROOT / 'BSP' / 'Inc'}",
+            f"-I{ROOT / 'Services' / 'Inc'}",
             str(ROOT / "App" / "Src" / "app_cmd_magcal.c"),
             str(ROOT / "Driver" / "Src" / "drv_mag_calibration.c"),
             str(harness),

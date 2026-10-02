@@ -5,7 +5,7 @@
 void DRV_Battery_Init(DRV_BatteryState *state)
 {
     memset(state,0,sizeof(*state));
-    state->config=(DRV_BatteryConfig){3U,3500U,3600U};
+    state->config=(DRV_BatteryConfig){3U,DRV_BATTERY_DEFAULT_LOW_CELL_MV,DRV_BATTERY_DEFAULT_RECOVER_CELL_MV};
     state->low=1U;state->adc_status=1U;
 }
 uint8_t DRV_Battery_Configure(DRV_BatteryState *state, DRV_BatteryConfig config)

@@ -66,6 +66,8 @@ MOTOR_REASON_NAMES = {
     7: "imu_invalid_direct",
     8: "attitude_debug",
     9: "prop_spin_test",
+    10: "landed_idle",
+    11: "spoolup",
 }
 
 LEGACY_PARAM_NAMES = [
@@ -351,12 +353,35 @@ V10_RECORD_SIZE = V10_RECORD_STRUCT.size
 DSHOT_NAMES = ("dshot_present", "dshot_enabled_mask", "dshot_busy", "dshot_fault",
                "dshot_code_ch1", "dshot_code_ch2", "dshot_submitted", "dshot_completed",
                "dshot_busy_rejected", "dshot_errors", "dshot_cancelled", "dshot_timer_clock_hz")
-RECORD_STRUCT = struct.Struct(V10_RECORD_STRUCT.format[:-1] + "4B2H6II")
+V11_RECORD_STRUCT = struct.Struct(V10_RECORD_STRUCT.format[:-1] + "4B2H6II")
+V11_RECORD_SIZE = V11_RECORD_STRUCT.size
+# v12 在 DShot 块与记录 CRC 之间加 36 字节「导航/电池」尾块（app_flight_log_nav.h）。
+NAV_NAMES = (
+    "nav_ekf_accel_bias_x_m_s2", "nav_ekf_accel_bias_y_m_s2",
+    "nav_ekf_innovation_x_m_s", "nav_ekf_innovation_y_m_s",
+    "nav_ekf_nis", "nav_ekf_flow_update_count", "nav_ekf_flow_reject_count",
+    "nav_flow_filtered_x", "nav_flow_filtered_y",
+    "nav_battery_mv", "nav_flags",
+)
+# nav_flags 位定义，与 APP_FLIGHT_LOG_NAV_FLAG_* 一一对应；展开成独立 0/1 列方便直接画图/筛选。
+NAV_FLAG_BITS = (
+    ("nav_velocity_valid", 0), ("nav_flow_filter_ready", 1), ("nav_ekf_initialized", 2),
+    ("nav_battery_valid", 3), ("nav_battery_low", 4), ("nav_battery_can_arm", 5),
+    ("nav_battery_saturated", 6), ("nav_range_height_valid", 8),
+    ("nav_position_valid", 9), ("nav_horiz_vel_valid", 10),
+    ("nav_accel_valid", 11), ("nav_attitude_debug", 12),
+)
+NAV_COLUMNS = NAV_NAMES + tuple(name for name, _ in NAV_FLAG_BITS)
+RECORD_STRUCT = struct.Struct(V11_RECORD_STRUCT.format[:-1] + "2f2ffIIhhHH" + "I")
 RECORD_SIZE = RECORD_STRUCT.size
 
 
 class FlightLogError(RuntimeError):
     pass
+
+
+class FlightLogUnsupported(FlightLogError):
+    """固件不认这条导出命令（旧固件回 ERR unknown cmd）。"""
 
 
 @dataclass
@@ -472,12 +497,33 @@ def parse_end_line(line: str) -> ExportEnd:
     return ExportEnd(fields=parse_key_values(line))
 
 
-def read_until_begin(port: BinaryIO, log: callable | None = None) -> ExportBegin:
+# 只导最近一次时，固件要先往回读扇区头找起点，BEGIN 可能比全量慢，等待放宽。
+LAST_RUN_BEGIN_WAIT_S = 12.0
+LAST_RUN_COMMAND = b"FLOGDUMP LAST\r\n"
+ALL_RUNS_COMMAND = b"FLOG DUMP\r\n"
+UNKNOWN_LAST_RUN_MARKER = "ERR unknown cmd FLOGDUMP"
+
+
+def read_until_begin(
+    port: BinaryIO,
+    log: callable | None = None,
+    wait_s: float = 0.0,
+    reject_marker: str | None = None,
+) -> ExportBegin:
+    """读到 FLOG BEGIN。wait_s>0 时读超时（空行）不立刻失败，直到总等待超过 wait_s。
+
+    reject_marker 出现在某行里就抛 FlightLogUnsupported，供调用方回退到旧命令。
+    """
+    deadline = time.monotonic() + wait_s
     while True:
         line = port.readline()
         if not line:
+            if time.monotonic() < deadline:
+                continue
             raise FlightLogError("timeout waiting for FLOG BEGIN")
         text = line.decode("ascii", errors="replace").strip()
+        if reject_marker is not None and reject_marker in text:
+            raise FlightLogUnsupported(text)
         error_line = find_status_line(text, "FLOG ERROR")
         if error_line is not None:
             log_text_line(log, error_line)
@@ -717,9 +763,9 @@ def parse_sector_header(data: bytes, offset: int) -> dict[str, object] | None:
                 FRAME_PROVENANCE_STRUCT.unpack_from(header, offset_provenance),
             )
         )
-    # Only the tagged V10/V11 extension defines ESC protocol; never infer it from the host.
+    # Only the tagged V10/V11/V12 extension defines ESC protocol; never infer it from the host.
     esc_protocol = "legacy_unspecified"
-    if int(prefix[1]) in (10, 11) and header[252:254] == b"\xd5\x01" and header[255] == 0:
+    if int(prefix[1]) in (10, 11, 12) and header[252:254] == b"\xd5\x01" and header[255] == 0:
         # 3 = DSHOT300_BIDIR（2026-09-21 起）。两档 DShot 分开编码：线上是不同的
         # 协议（极性取反、校验取反），事后复盘油门与转速时分不清档位，就分不清
         # "电调没执行"和"帧格式对不上"。旧值 1/2 含义一字未动，老日志照旧可读。
@@ -857,14 +903,26 @@ def parse_record(record_bytes: bytes) -> dict[str, object] | None:
         row = _parse_record_v3(record_bytes)
         if row is not None:
             row.update(dict.fromkeys(DSHOT_NAMES))
+            row.update(dict.fromkeys(NAV_COLUMNS))
         return row
     has_v6_diagnostics = False
     has_v7_z_integral = False
     has_v9_layout = False
     has_v10_layout = False
     has_v11_layout = False
+    has_v12_layout = False
     if len(record_bytes) == RECORD_SIZE:
         record_struct = RECORD_STRUCT
+        has_v11_layout = True
+        has_v12_layout = True
+        has_servo_feedback = True
+        has_ident_att = True
+        has_v6_diagnostics = True
+        has_v7_z_integral = True
+        has_v9_layout = True
+        has_v10_layout = True
+    elif len(record_bytes) == V11_RECORD_SIZE:
+        record_struct = V11_RECORD_STRUCT
         has_v11_layout = True
         has_servo_feedback = True
         has_ident_att = True
@@ -915,7 +973,9 @@ def parse_record(record_bytes: bytes) -> dict[str, object] | None:
     values = record_struct.unpack(record_bytes)
     if values[0] != RECORD_MAGIC or values[2] != len(record_bytes):
         return None
-    if (has_v11_layout and values[1] != 11) or (has_v10_layout and not has_v11_layout and values[1] != 10):
+    if ((has_v12_layout and values[1] != 12) or
+            (has_v11_layout and not has_v12_layout and values[1] != 11) or
+            (has_v10_layout and not has_v11_layout and values[1] != 10)):
         return None
     saved_crc = values[-1]
     check = bytearray(record_bytes)
@@ -1220,6 +1280,12 @@ def parse_record(record_bytes: bytes) -> dict[str, object] | None:
                    (dshot["dshot_code_ch1"], dshot["dshot_code_ch2"])):
                 return None
             row.update(dshot)
+    row.update(dict.fromkeys(NAV_COLUMNS))
+    if has_v12_layout:
+        nav_start = i + len(DSHOT_NAMES)
+        row.update(dict(zip(NAV_NAMES, values[nav_start:nav_start + len(NAV_NAMES)])))
+        for name, bit in NAV_FLAG_BITS:
+            row[name] = (row["nav_flags"] >> bit) & 1
     row["record_crc32"] = saved_crc
     return row
 
@@ -1244,6 +1310,7 @@ def parse_flash_image(data: bytes) -> tuple[list[dict[str, object]], list[dict[s
                 continue
             if record_size not in (
                 RECORD_SIZE,
+                V11_RECORD_SIZE,
                 V10_RECORD_SIZE,
                 V9_RECORD_SIZE,
                 V8_RECORD_SIZE,
@@ -1268,8 +1335,8 @@ def parse_flash_image(data: bytes) -> tuple[list[dict[str, object]], list[dict[s
                 record["esc_protocol"] = sector["esc_protocol"]
                 record["motor_command_unit"] = sector["motor_command_unit"]
                 records.append(record)
-            elif sector["version"] == 11:
-                errors.append(f"invalid V11 record at image offset {pos}")
+            elif sector["version"] in (11, 12):
+                errors.append(f"invalid V{sector['version']} record at image offset {pos}")
             pos += record_size
     return sectors, records, errors
 
@@ -1309,12 +1376,37 @@ def write_csv(path: Path, records: list[dict[str, object]]) -> None:
         writer.writerows(records)
 
 
+def request_export_begin(
+    port: BinaryIO,
+    all_runs: bool = False,
+    log: callable | None = None,
+) -> ExportBegin:
+    """发导出命令并读到 BEGIN。默认只导最近一次；all_runs=True 导全量。
+
+    旧固件不认 FLOGDUMP，回退为 FLOG DUMP（全量），并在日志里说明。
+    """
+    if all_runs:
+        port.write(ALL_RUNS_COMMAND)
+        return read_until_begin(port, log)
+    port.write(LAST_RUN_COMMAND)
+    try:
+        return read_until_begin(
+            port, log, wait_s=LAST_RUN_BEGIN_WAIT_S, reject_marker=UNKNOWN_LAST_RUN_MARKER
+        )
+    except FlightLogUnsupported:
+        if log:
+            log("固件不支持只导最近一次，回退为全量导出（FLOG DUMP）")
+        port.write(ALL_RUNS_COMMAND)
+        return read_until_begin(port, log)
+
+
 def receive_dump(
     port: BinaryIO,
     output_dir: Path,
     log: callable | None = None,
     progress: callable | None = None,
     should_cancel: callable | None = None,
+    all_runs: bool = False,
 ) -> ReceiveResult:
     output_dir.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -1329,9 +1421,7 @@ def receive_dump(
     reset_input_buffer(port)
     port.write(b"Sensor_Data:0\r\n")
     time.sleep(0.05)
-    port.write(b"FLOG DUMP\r\n")
-
-    begin = read_until_begin(port, log)
+    begin = request_export_begin(port, all_runs=all_runs, log=log)
     total = begin.total
     image = bytearray(b"\xFF" * total)
     coverage = bytearray(total)
@@ -1386,6 +1476,8 @@ def receive_dump(
     complete = (end is not None) and (good_bytes == total) and (len(missing) == 0)
     meta = {
         "begin": begin.fields,
+        "scope": begin.fields.get("scope", "all"),
+        "requested_scope": "all" if all_runs else "last",
         "end": end.fields if end is not None else None,
         "complete": complete,
         "total_bytes": total,
@@ -1571,6 +1663,11 @@ def main() -> int:
     parser.add_argument("--port", default=None, help="serial port; if given, dump to files and exit (headless CLI)")
     parser.add_argument("--baud", type=int, default=DEFAULT_BAUD, help=f"serial baud rate, default {DEFAULT_BAUD}")
     parser.add_argument("--out-dir", type=Path, default=DEFAULT_OUT_DIR, help="output directory for bin/csv/json")
+    parser.add_argument(
+        "--all",
+        action="store_true",
+        help="export every sector in the ring (FLOG DUMP); default is only the most recent recording run (FLOGDUMP LAST)",
+    )
     args = parser.parse_args()
 
     if args.port is None:
@@ -1588,7 +1685,7 @@ def main() -> int:
     output_dir.mkdir(parents=True, exist_ok=True)
     try:
         with serial.Serial(args.port, baudrate=args.baud, timeout=DEFAULT_TIMEOUT_S, write_timeout=2.0) as port:
-            result = receive_dump(port, output_dir)
+            result = receive_dump(port, output_dir, all_runs=args.all)
     except Exception as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1

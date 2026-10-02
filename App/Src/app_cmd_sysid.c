@@ -18,15 +18,22 @@
  *   SYSID RIG [psi_deg= axis_off_m= imu_off_m=]
  *   SYSID EXC [profile= amp= dur_ms= hold_ms= repeat= ramp_ms= f0= f1= bit_ms= seed=
  *              servo_tilt_mrad=]          servo_tilt_mrad 只用于 SERVO 模式（10..262）
- *   SYSID MODE FF|RATE|ANGLE|SERVO|ALT [deg]  也认 0..4；SERVO = 电机不转、只动舵机；
- *                                       ALT = 光杆台架高度辨识（app_sysid_alt.h）
- *   SYSID ALT [inject=force|vel|pos mass_g= win_mm= lift_mm=]  高度辨识配置，只回一行
+ *   SYSID MODE FF|RATE|ANGLE|SERVO|ALT|XY|YAW [deg]  也认 0..6；SERVO = 电机不转、只动舵机；
+ *                                       ALT = 光杆台架高度辨识（app_sysid_alt.h）；
+ *                                       XY = 水平槽速度/位置辨识（app_sysid_xy.h）；
+ *                                       YAW = 吊绳偏航辨识（app_sysid_yaw.h）
+ *   SYSID ALT [inject=break|vel|pos mass_g= win_mm= lift_mm= bottom_mm= top_mm=]
+ *             高度辨识配置，只回一行
+ *   SYSID XY [inject=tilt|vel|pos win_mm= mass_g=]
+ *             水平槽 XY 辨识配置，只回一行
+ *   SYSID YAW [inject=diff|rate thrust_mn=<mN> twist_deg=<90..1440>]
+ *             吊绳偏航辨识配置，只回一行
  *   SYSID RATE <hz>                     线上采样率（控制拍恒为 500 Hz）
  *   SYSID INERTIA <kg*m^2>              前馈用的假定惯量；不给则取 airframe.ixx
  *   SYSID LIMIT [angle_deg= resid_dps=]
  *   SYSID THROTTLE [target_n= max_pct=]  自动油门；target_n=0 为遥控器手动给油门
  *   SYSID THR?                          只回一行 SYSID THR（轮询解锁/油门杆/阶段）
- *   SYSID PARAM coax.<rate_*|att_*|pos_z_kp|vel_z_*> <v>
+ *   SYSID PARAM coax.<rate_*|att_*|pos_z_kp|vel_z_*|pos_x_kp|vel_x_*> <v>
  *                                       只写 RAM 的增益试用（不排自动保存；别处触发的保存
  *                                       也存试用前的值，见 app_param_trial.h）
  *   SYSID PARAM | SYSID PARAM ?         列出试用中的名字（SYSID TRIAL 行）
@@ -38,6 +45,8 @@
 
 #include "app_sysid.h"
 #include "app_sysid_alt.h"
+#include "app_sysid_xy.h"
+#include "app_sysid_yaw.h"
 
 #include "app_control.h"
 #include "app_control_internal.h"
@@ -222,36 +231,41 @@ static void sysid_cmd_throttle(char **tokens, uint32_t count)
 }
 
 /*
- * SYSID ALT [inject=force|vel|pos] [mass_g=<g>] [win_mm=<mm>] [lift_mm=<mm>]：高度辨识配置。
+ * SYSID ALT [inject=break|vel|pos] [mass_g=<g>] [win_mm=<mm>] [lift_mm=<mm>]
+ *           [bottom_mm=<TOF mm>] [top_mm=<TOF mm>]：高度辨识配置。
  * 带不带参数都只回一行 SYSID ALT（上位机逐项核对它），不刷整份状态报告；拒绝回
  * `SYSID ALT event=rejected reason=running|range|usage`，整条不生效。不带参数是读回，
  * 运行中也可以读。
  */
 static void sysid_cmd_alt(char **tokens, uint32_t count)
 {
-    static const char *const keys[] = { "inject=", "mass_g=", "win_mm=", "lift_mm=" };
+    static const char *const keys[] = {
+        "inject=", "mass_g=", "win_mm=", "lift_mm=", "bottom_mm=", "top_mm="
+    };
     APP_SysIdAltConfig config;
-    uint16_t *numbers[3];
+    uint16_t *numbers[5];
     const char *reason = NULL;
 
     APP_SysIdAlt_GetConfig(&config);
     numbers[0] = &config.mass_g;
     numbers[1] = &config.win_mm;
     numbers[2] = &config.lift_mm;
+    numbers[3] = &config.bottom_mm;
+    numbers[4] = &config.top_mm;
     for (uint32_t i = 2U; (i < count) && (reason == NULL); ++i) {
         uint32_t key = 0U;
         uint32_t value = 0U;
 
-        while ((key < 4U) && (strncmp(tokens[i], keys[key], strlen(keys[key])) != 0)) {
+        while ((key < 6U) && (strncmp(tokens[i], keys[key], strlen(keys[key])) != 0)) {
             key++;
         }
         if (key == 0U) {
             if (APP_SysIdAlt_InjectFromName(tokens[i] + strlen(keys[0]), &config.inject) == 0U) {
                 reason = "usage";
             }
-        } else if ((key >= 4U) || (app_control_parse_u32(tokens[i] + strlen(keys[key]), &value) == 0U)) {
+        } else if ((key >= 6U) || (app_control_parse_u32(tokens[i] + strlen(keys[key]), &value) == 0U)) {
             reason = "usage";
-        } else if (value > 65535U) {
+        } else if (value > ((key >= 4U) ? APP_SYSID_ALT_ENDPOINT_MAX_MM : 65535U)) {
             reason = "range";
         } else {
             *numbers[key - 1U] = (uint16_t)value;
@@ -266,6 +280,95 @@ static void sysid_cmd_alt(char **tokens, uint32_t count)
         return;
     }
     APP_SysIdAlt_ReportConfig();
+}
+
+/*
+ * SYSID XY [inject=tilt|vel|pos] [win_mm=<mm>] [mass_g=<g>]：水平槽 XY 辨识配置。
+ * 带不带参数都只回一行 SYSID XY；拒绝回 `SYSID XY event=rejected reason=running|range|usage`，
+ * 整条不生效。不带参数是读回，运行中也可以读。
+ */
+static void sysid_cmd_xy(char **tokens, uint32_t count)
+{
+    static const char *const keys[] = { "inject=", "win_mm=", "mass_g=" };
+    APP_SysIdXyConfig config;
+    uint16_t *numbers[2];
+    const char *reason = NULL;
+
+    APP_SysIdXy_GetConfig(&config);
+    numbers[0] = &config.win_mm;
+    numbers[1] = &config.mass_g;
+    for (uint32_t i = 2U; (i < count) && (reason == NULL); ++i) {
+        uint32_t key = 0U;
+        uint32_t value = 0U;
+
+        while ((key < 3U) && (strncmp(tokens[i], keys[key], strlen(keys[key])) != 0)) {
+            key++;
+        }
+        if (key == 0U) {
+            if (APP_SysIdXy_InjectFromName(tokens[i] + strlen(keys[0]), &config.inject) == 0U) {
+                reason = "usage";
+            }
+        } else if ((key >= 3U) || (app_control_parse_u32(tokens[i] + strlen(keys[key]), &value) == 0U)) {
+            reason = "usage";
+        } else if (value > 65535U) {
+            reason = "range";
+        } else {
+            *numbers[key - 1U] = (uint16_t)value;
+        }
+    }
+    if ((reason == NULL) && (count > 2U)) {
+        reason = (APP_SysId_IsRunning() != 0U) ? "running" :
+                 (APP_SysIdXy_SetConfig(&config) == 0U) ? "range" : NULL;
+    }
+    if (reason != NULL) {
+        APP_Control_QueueText("SYSID XY event=rejected reason=%s\r\n", reason);
+        return;
+    }
+    APP_SysIdXy_ReportConfig();
+}
+
+/*
+ * SYSID YAW [inject=diff|rate] [thrust_mn=<mN>] [twist_deg=<deg>]：吊绳偏航辨识配置。
+ * 带不带参数都只回一行 SYSID YAW；拒绝回 `SYSID YAW event=rejected reason=running|range|lift|usage`，
+ * 整条不生效。不带参数是读回，运行中也可以读。
+ */
+static void sysid_cmd_yaw(char **tokens, uint32_t count)
+{
+    static const char *const keys[] = { "inject=", "thrust_mn=", "twist_deg=" };
+    APP_SysIdYawConfig config;
+    uint16_t *numbers[2];
+    const char *reason = NULL;
+
+    APP_SysIdYaw_GetConfig(&config);
+    numbers[0] = &config.thrust_mn;
+    numbers[1] = &config.twist_deg;
+    for (uint32_t i = 2U; (i < count) && (reason == NULL); ++i) {
+        uint32_t key = 0U;
+        uint32_t value = 0U;
+
+        while ((key < 3U) && (strncmp(tokens[i], keys[key], strlen(keys[key])) != 0)) {
+            key++;
+        }
+        if (key == 0U) {
+            if (APP_SysIdYaw_InjectFromName(tokens[i] + strlen(keys[0]), &config.inject) == 0U) {
+                reason = "usage";
+            }
+        } else if ((key >= 3U) || (app_control_parse_u32(tokens[i] + strlen(keys[key]), &value) == 0U)) {
+            reason = "usage";
+        } else if (value > 65535U) {
+            reason = "range";
+        } else {
+            *numbers[key - 1U] = (uint16_t)value;
+        }
+    }
+    if ((reason == NULL) && (count > 2U)) {
+        reason = (APP_SysId_IsRunning() != 0U) ? "running" : APP_SysIdYaw_SetConfig(&config);
+    }
+    if (reason != NULL) {
+        APP_Control_QueueText("SYSID YAW event=rejected reason=%s\r\n", reason);
+        return;
+    }
+    APP_SysIdYaw_ReportConfig();
 }
 
 uint8_t app_control_handle_sysid(char **tokens, uint32_t count)
@@ -307,10 +410,12 @@ uint8_t app_control_handle_sysid(char **tokens, uint32_t count)
             (strcmp(tokens[2], "ANGLE") == 0 || strcmp(tokens[2], "2") == 0) ? APP_SYSID_ANGLE :
             (strcmp(tokens[2], "SERVO") == 0 || strcmp(tokens[2], "3") == 0) ? APP_SYSID_SERVO :
             (strcmp(tokens[2], "ALT") == 0 || strcmp(tokens[2], "4") == 0) ? APP_SYSID_ALT :
+            (strcmp(tokens[2], "XY") == 0 || strcmp(tokens[2], "5") == 0) ? APP_SYSID_XY :
+            (strcmp(tokens[2], "YAW") == 0 || strcmp(tokens[2], "6") == 0) ? APP_SYSID_YAW :
             (APP_SysIdMode)99;
         if ((count > 3U && !app_control_parse_f32(tokens[3], &angle)) ||
             !APP_SysId_SetMode(mode, angle * 0.01745329252f)) {
-            APP_Control_QueueText("ERR sysid mode: MODE FF|RATE|ANGLE|SERVO|ALT [0<deg<=15], idle only\r\n");
+            APP_Control_QueueText("ERR sysid mode: MODE FF|RATE|ANGLE|SERVO|ALT|XY|YAW [0<deg<=15], idle only\r\n");
         } else { APP_SysId_ReportStatus(); }
         return 1U;
     }
@@ -335,6 +440,14 @@ uint8_t app_control_handle_sysid(char **tokens, uint32_t count)
         sysid_cmd_alt(tokens, count);
         return 1U;
     }
+    if (strcmp(sub, "XY") == 0) {
+        sysid_cmd_xy(tokens, count);
+        return 1U;
+    }
+    if (strcmp(sub, "YAW") == 0) {
+        sysid_cmd_yaw(tokens, count);
+        return 1U;
+    }
     if (strcmp(sub, "LIMIT") == 0) {
         sysid_cmd_limit(tokens, count);
         return 1U;
@@ -354,7 +467,8 @@ uint8_t app_control_handle_sysid(char **tokens, uint32_t count)
          * 所以不走 PARAM SET 那条写入口（它等于显式持久写，会结束试用），而走试用记录：
          * 记下试用前的值，任何保存都换回它。
          *
-         * 高度环 z 通道的 coax.pos_z_kp / coax.vel_z_*（R-ALTID-1）同样只写 RAM，供 ALT 验证。
+         * 高度环 z 通道的 coax.pos_z_kp / coax.vel_z_*（R-ALTID-1）同样只写 RAM，供 ALT 验证；
+         * 水平 x 通道的 coax.pos_x_kp / coax.vel_x_*（R-XYID-1）同理，供水平槽 XY 验证。
          */
         float value;
         const char *name = (count >= 4U) ? tokens[2] : NULL;
@@ -364,12 +478,13 @@ uint8_t app_control_handle_sysid(char **tokens, uint32_t count)
             return 1U;
         }
         if ((name == NULL) || (app_control_parse_f32(tokens[3], &value) == 0U)) {
-            APP_Control_QueueText("ERR usage SYSID PARAM coax.<rate_*|att_*|pos_z_kp|vel_z_*> <value>\r\n");
+            APP_Control_QueueText("ERR usage SYSID PARAM coax.<rate_*|att_*|pos_z_kp|vel_z_*|pos_x_kp|vel_x_*> <value>\r\n");
             return 1U;
         }
         if ((strncmp(name, "coax.rate_", 10U) != 0) && (strncmp(name, "coax.att_", 9U) != 0) &&
-            (strcmp(name, "coax.pos_z_kp") != 0) && (strncmp(name, "coax.vel_z_", 11U) != 0)) {
-            APP_Control_QueueText("ERR sysid param only coax.rate_* / coax.att_* / coax.pos_z_kp / coax.vel_z_*\r\n");
+            (strcmp(name, "coax.pos_z_kp") != 0) && (strncmp(name, "coax.vel_z_", 11U) != 0) &&
+            (strcmp(name, "coax.pos_x_kp") != 0) && (strncmp(name, "coax.vel_x_", 11U) != 0)) {
+            APP_Control_QueueText("ERR sysid param only coax.rate_* / coax.att_* / coax.pos_z_kp / coax.vel_z_* / coax.pos_x_kp / coax.vel_x_*\r\n");
             return 1U;
         }
         switch (APP_ParamTrial_Apply(name, value, &value)) {

@@ -1007,9 +1007,13 @@ def _check_app_control_step_d2(tmp_path: Path) -> None:
     # 读取器里那一处。
     # 11 = v24（指令整形/出口陷波块，2026-09-28）新增的 config_read_v23 读取器里那一处。
     # 12 = v25（整形块追加第二级出口陷波，2026-09-28 晚）新增的 config_read_v24 读取器里那一处。
+    # 13 = v26（机体块追加光流安装两项，2026-09-29，R-FLOWMOUNT-1）新增的 config_read_v25 读取器里那一处。
+    # 14 = v27（近水平 XY 磁航向块）新增的 config_read_v26 读取器里那一处。
+    # 15 = v28（Z 通道悬停推力/速度融合块，2026-09-30）新增的 config_read_v27 读取器里那一处。
+    # 16 = v29（飞行限幅块，2026-10-01）新增的 config_read_v28 读取器里那一处。
     # 这个计数的意义是"每条迁移路径都显式处理了遥控映射"，加一条迁移路径
     # 就该加一处调用——数字不动反而说明新路径漏了。
-    assert (legacy + config_store).count("app_cmd_rcmap_apply_config(") == 12
+    assert (legacy + config_store).count("app_cmd_rcmap_apply_config(") == 16
     assert (legacy + config_store).count("app_cmd_rcmap_config()") == 1
     assert "app_control_report_rc_live();" in legacy
     assert "app_control_handle_rc_map(tokens, count);" in legacy

@@ -73,6 +73,27 @@ typedef struct {
     float rate_out_notch2_q;
 } APP_ControlCoaxShapingParams;
 
+/*
+ * 竖直通道块（CFG V28，R-ALTID-1）：coax.hover_thrust_n（悬停推力，推力查补表口径 N，0 = 关）
+ * 与 coax.z_vel_fusion（竖直速度融合 IMU 加速度，0/1）。v27 及更早没有这一块，读取器落回驱动
+ * 默认（悬停推力 0、融合开）。布局冻结，以后加字段另起一块。
+ */
+typedef struct {
+    float hover_thrust_n;
+    float z_vel_fusion;
+} APP_ControlZChannelParams;
+
+/*
+ * 飞行限幅块（CFG V29）：coax.alt_max_m、coax.manual_tilt_max_rad、coax.yaw_stick_rate_rad_s。
+ * 作者 2026-10-01："飞机限速/加速度等参数让我可以在上位机可以随意配置"。v28 及更早没有这一块，
+ * 读取器落回驱动默认（0.40 m、20°、1.0472 rad/s，即原写死值）。布局冻结，以后加字段另起一块。
+ */
+typedef struct {
+    float alt_max_m;
+    float manual_tilt_max_rad;
+    float yaw_stick_rate_rad_s;
+} APP_ControlFlightLimitParams;
+
 /* V24 = 当前整形块减掉第二级陷波。冻结它是为了让 v24 记录按原字节布局校验。 */
 typedef struct {
     float rate_out_notch_hz;
@@ -175,5 +196,19 @@ uint8_t APP_ControlConfigCompat_V15ToCurrent(
 uint8_t APP_ControlConfigCompat_ShapingV24ToCurrent(
     const APP_ControlCoaxShapingParamsV24 *legacy,
     APP_ControlCoaxShapingParams *current);
+
+/*
+ * CFG V20～V25 的机体块 = DRV_Airframe_Params 追加光流安装两项（V26，R-FLOWMOUNT-1）
+ * 之前的布局：36 个 float，顺序与当前结构体的前 36 项逐一相同（从 board_mass_g 到
+ * derived_auto，含两个 retired_ 字段）。当前结构体就是它 + 尾部两项，所以这里只冻结
+ * 大小、不重抄字段名——字段名只有一份，app_control_config_store.c 用静态断言钉住
+ * "它恰好是当前结构体的前缀"，并在那里做 v25 → 当前的转换（安装两项落回 0/0）。
+ * 转换不放在本模块：本模块不碰机体模型的任何东西（见 tests/test_control_config_v19.py）。
+ */
+#define APP_CONTROL_AIRFRAME_V25_FLOAT_COUNT 36U
+
+typedef struct {
+    float field[APP_CONTROL_AIRFRAME_V25_FLOAT_COUNT];
+} APP_ControlAirframeParamsV25;
 
 #endif /* APP_CONTROL_CONFIG_COMPAT_H */

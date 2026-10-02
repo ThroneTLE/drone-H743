@@ -313,12 +313,16 @@ def test_nav_gravity_compensation_uses_absolute_attitude_not_boot_zero() -> None
     freertos = read("Core/Src/freertos.c") + read("App/Src/app_stabilizer.c")
 
     # 纯 IMU 积分通路（drv_imu_nav）已删除：其速度输出是不可靠的实验数据。
-    # 水平加速度只剩喂 EKF 的这一路，
-    # 它必须继续用零点补偿后的姿态，而不是原始角。
+    # 水平加速度只剩喂 EKF 的这一路，它必须用 Fusion 绝对姿态转平（与 2026-05-28
+    # 本测试初版一致）。2026-09-04 归零重构曾把它改成零点补偿后的 *_control，
+    # 结果开机倾角整份留成 g·sin(零位) 的假加速度；2026-10-01 台架实测零位
+    # 1.9°/1.3° → 0.2~0.4 m/s²，导航静止漂移。
     assert "DRV_IMU_NAV_" not in freertos
     assert "nav_input" not in freertos
-    assert "ctx->roll_control * STABILIZER_DEG_TO_RAD," in freertos
-    assert "ctx->pitch_control * STABILIZER_DEG_TO_RAD," in freertos
+    call = freertos.split("stabilizer_compensated_imu_accel_level_xy(\n", 1)[1].split(");", 1)[0]
+    assert "ctx->roll * STABILIZER_DEG_TO_RAD," in call
+    assert "ctx->pitch * STABILIZER_DEG_TO_RAD," in call
+    assert "roll_control" not in call and "pitch_control" not in call
     # yaw 不再传进这个适配器：加速度只转平到机头对齐的本地水平系，好和同一拍
     # 的光流速度同系。见 tests/test_flu_nav_frame_alignment.py。
     assert "stabilizer_compensated_imu_accel_level_xy(" in freertos

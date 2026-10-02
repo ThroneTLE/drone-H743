@@ -1,5 +1,6 @@
 #include "app_control_config_store.h"
 #include "app_led_config.h"
+#include "app_magxy.h"
 
 #include "app_control_config_compat.h"
 #include "app_control_internal.h"
@@ -50,7 +51,8 @@ typedef struct {
         uint32_t checksum; \
     } name
 
-APP_CONTROL_RECORD_TYPE(APP_ControlFlashRecord,
+/* v26 layout remains frozen for migration and A/B slot sequence checks. */
+APP_CONTROL_RECORD_TYPE(APP_ControlFlashRecordV26,
                         APP_ControlCoaxTunableParams,
                         APP_RcConfig rc_config;,
                         DRV_Airframe_Params airframe;,
@@ -58,20 +60,84 @@ APP_CONTROL_RECORD_TYPE(APP_ControlFlashRecord,
                         DRV_PropMap prop;,
                         DRV_MAG_Calibration mag;,
                         APP_ControlCoaxShapingParams shaping;);
-/* v24 = 当前形态，但整形块是冻结的 v24 块（没有第二级出口陷波）。 */
+/* v27 appends XY after shaping, before checksum. Older layouts never move. */
+typedef struct {
+    uint32_t magic;
+    uint16_t version;
+    uint16_t size;
+    APP_ControlConfig config;
+    APP_ControlCoaxTunableParams coax_tunables;
+    APP_RcConfig rc_config;
+    DRV_Airframe_Params airframe;
+    APP_LedConfig led;
+    DRV_PropMap prop;
+    DRV_MAG_Calibration mag;
+    APP_ControlCoaxShapingParams shaping;
+    APP_MagXY_Persisted magxy;
+    uint32_t checksum;
+} APP_ControlFlashRecordV27;
+/* v28 appends the vertical-channel block (hover thrust, z fusion) after XY, before checksum. */
+typedef struct {
+    uint32_t magic;
+    uint16_t version;
+    uint16_t size;
+    APP_ControlConfig config;
+    APP_ControlCoaxTunableParams coax_tunables;
+    APP_RcConfig rc_config;
+    DRV_Airframe_Params airframe;
+    APP_LedConfig led;
+    DRV_PropMap prop;
+    DRV_MAG_Calibration mag;
+    APP_ControlCoaxShapingParams shaping;
+    APP_MagXY_Persisted magxy;
+    APP_ControlZChannelParams zchan;
+    uint32_t checksum;
+} APP_ControlFlashRecordV28;
+/* v29 appends the flight-limit block (alt max, manual tilt max, yaw stick rate) before checksum. */
+typedef struct {
+    uint32_t magic;
+    uint16_t version;
+    uint16_t size;
+    APP_ControlConfig config;
+    APP_ControlCoaxTunableParams coax_tunables;
+    APP_RcConfig rc_config;
+    DRV_Airframe_Params airframe;
+    APP_LedConfig led;
+    DRV_PropMap prop;
+    DRV_MAG_Calibration mag;
+    APP_ControlCoaxShapingParams shaping;
+    APP_MagXY_Persisted magxy;
+    APP_ControlZChannelParams zchan;
+    APP_ControlFlightLimitParams flightlim;
+    uint32_t checksum;
+} APP_ControlFlashRecord;
+/*
+ * v25 = v26 形态，但机体块是冻结的 v25 块（没有光流安装两项）。
+ * v20～v24 的机体块同样是这份冻结布局：DRV_Airframe_Params 在 v26 才第一次变长，
+ * 旧记录必须按它们写下时的字节布局校验。
+ */
+APP_CONTROL_RECORD_TYPE(APP_ControlFlashRecordV25,
+                        APP_ControlCoaxTunableParams,
+                        APP_RcConfig rc_config;,
+                        APP_ControlAirframeParamsV25 airframe;,
+                        APP_LedConfig led;,
+                        DRV_PropMap prop;,
+                        DRV_MAG_Calibration mag;,
+                        APP_ControlCoaxShapingParams shaping;);
+/* v24 = v25 形态，但整形块是冻结的 v24 块（没有第二级出口陷波）。 */
 APP_CONTROL_RECORD_TYPE(APP_ControlFlashRecordV24,
                         APP_ControlCoaxTunableParams,
                         APP_RcConfig rc_config;,
-                        DRV_Airframe_Params airframe;,
+                        APP_ControlAirframeParamsV25 airframe;,
                         APP_LedConfig led;,
                         DRV_PropMap prop;,
                         DRV_MAG_Calibration mag;,
                         APP_ControlCoaxShapingParamsV24 shaping;);
-/* v23 = 当前形态减掉指令整形/出口陷波块。冻结它是为了让迁移读取器按原字节布局校验。 */
+/* v23 = v24 形态减掉指令整形/出口陷波块。冻结它是为了让迁移读取器按原字节布局校验。 */
 APP_CONTROL_RECORD_TYPE(APP_ControlFlashRecordV23,
                         APP_ControlCoaxTunableParams,
                         APP_RcConfig rc_config;,
-                        DRV_Airframe_Params airframe;,
+                        APP_ControlAirframeParamsV25 airframe;,
                         APP_LedConfig led;,
                         DRV_PropMap prop;,
                         DRV_MAG_Calibration mag;, );
@@ -79,20 +145,20 @@ APP_CONTROL_RECORD_TYPE(APP_ControlFlashRecordV23,
 APP_CONTROL_RECORD_TYPE(APP_ControlFlashRecordV22,
                         APP_ControlCoaxTunableParams,
                         APP_RcConfig rc_config;,
-                        DRV_Airframe_Params airframe;,
+                        APP_ControlAirframeParamsV25 airframe;,
                         APP_LedConfig led;,
                         DRV_PropMap prop;, , );
 /* v21 = 再减掉桨叶标定块。 */
 APP_CONTROL_RECORD_TYPE(APP_ControlFlashRecordV21,
                         APP_ControlCoaxTunableParams,
                         APP_RcConfig rc_config;,
-                        DRV_Airframe_Params airframe;,
+                        APP_ControlAirframeParamsV25 airframe;,
                         APP_LedConfig led;, , , );
 /* v20 = 再减掉 LED 块。 */
 APP_CONTROL_RECORD_TYPE(APP_ControlFlashRecordV20,
                         APP_ControlCoaxTunableParams,
                         APP_RcConfig rc_config;,
-                        DRV_Airframe_Params airframe;, , , , );
+                        APP_ControlAirframeParamsV25 airframe;, , , , );
 APP_CONTROL_RECORD_TYPE(APP_ControlFlashRecordV19,
                         APP_ControlCoaxTunableParams,
                         APP_RcConfig rc_config;, , , , , );
@@ -122,9 +188,14 @@ static const uint32_t config_slots[APP_CONTROL_CFG_SLOT_COUNT] = {
  * 片内 Flash 一次擦除后每个 word 只能编程一次，主体和提交字压在同一个 word 上
  * 会让第二次编程直接报 ECC 错。这里按 32 字节上取整。
  */
-#define APP_CONTROL_CFG_COMMIT_OFFSET                                       \
-    (((sizeof(APP_ControlFlashRecord) + APP_CONTROL_CFG_FLASH_WORD - 1U) /  \
+/* 一条 record_bytes 字节的记录之后，第一个 32 字节 flash word 的起点。 */
+#define APP_CONTROL_CFG_COMMIT_OFFSET_OF(record_bytes)                          \
+    (((((uint32_t)(record_bytes)) + APP_CONTROL_CFG_FLASH_WORD - 1U) /          \
       APP_CONTROL_CFG_FLASH_WORD) * APP_CONTROL_CFG_FLASH_WORD)
+
+/* 本版固件写提交字的位置。读取时用 config_commit_offset()，见下面那段说明。 */
+#define APP_CONTROL_CFG_COMMIT_OFFSET \
+    APP_CONTROL_CFG_COMMIT_OFFSET_OF(sizeof(APP_ControlFlashRecord))
 
 _Static_assert((APP_CONTROL_CFG_COMMIT_OFFSET % APP_CONTROL_CFG_FLASH_WORD) == 0U,
                "commit word must start on a 32-byte flash word");
@@ -133,15 +204,82 @@ _Static_assert((APP_CONTROL_CFG_COMMIT_OFFSET + sizeof(APP_ControlConfigCommit))
                "record plus commit word must fit inside one logical slot");
 _Static_assert(APP_CONTROL_CFG_SLOT_A != APP_CONTROL_CFG_SLOT_B,
                "the two config slots must be distinct sectors");
+
 /*
- * 提交字的位置按**当前**记录大小算。升版本时它若挪了，上一版写下的提交字就找不到，两个槽
- * 都退成"无提交字的旧格式"，分不出哪个新，可能读回旧的那份。v24 → v25 只多 8 字节，
- * 仍落在同一个 32 字节 word 里（两版都是 800），这里钉住。
+ * 提交字的位置随记录大小走，**升版本时它会挪**。
+ *
+ * v24 → v25 只多 8 字节，恰好还落在同一个 32 字节 word 里（两版都是 800）。v25 → v26
+ * 机体块尾部又多 8 字节（光流安装两项），记录变成 808 字节，提交字挪到 832。
+ *
+ * 以前读取时一律按**当前**记录大小去找提交字。那样升级后第一次上电，会到 832 去找
+ * v25 记录的提交字——找不到，两个槽都退成"无提交字的旧格式"（序号都是 1），分不出
+ * 哪个新，按槽 A 优先可能读回较旧的那一份：用户存过的最近一次修改就这么悄悄丢了，
+ * 之后第一次保存还会把它盖掉。
+ *
+ * 所以读取时按**那条记录自己头里的 size** 算提交字位置（config_commit_offset）。每一版
+ * 固件写提交字用的都是"它那一版记录的大小上取整到 32 字节"，而记录大小 = 8 字节头 +
+ * size + 4 字节校验和——下面对每一版记录类型钉住"中间和尾部没有填充"，所以按 size
+ * 反推出的位置与当年写下的位置逐字节相同。不维护"哪一版在哪"的第二张表。
+ * v26 → v27 在记录尾部加 20 字节 XY 块，记录 808 → 828 字节，提交字仍在 832。
+ * v27 → v28 再加 8 字节竖直通道块，记录 828 → 836 字节，提交字挪到 864。
+ * v28 → v29 再加 12 字节飞行限幅块，记录 836 → 848 字节，提交字仍在 864。
  */
-_Static_assert(APP_CONTROL_CFG_COMMIT_OFFSET ==
-                   (((sizeof(APP_ControlFlashRecordV24) + APP_CONTROL_CFG_FLASH_WORD - 1U) /
-                     APP_CONTROL_CFG_FLASH_WORD) * APP_CONTROL_CFG_FLASH_WORD),
-               "v25 must keep the v24 commit word offset");
+#define APP_CONTROL_CFG_ASSERT_RECORD_LAYOUT(type)                                   \
+    _Static_assert((offsetof(type, config) == sizeof(APP_ControlFlashHeader)) &&    \
+                       (sizeof(type) == (offsetof(type, checksum) + sizeof(uint32_t))) && \
+                       (sizeof(type) <= sizeof(APP_ControlFlashRecord)),              \
+                   #type ": header + body + checksum, no padding, never larger than current")
+APP_CONTROL_CFG_ASSERT_RECORD_LAYOUT(APP_ControlFlashRecord);
+APP_CONTROL_CFG_ASSERT_RECORD_LAYOUT(APP_ControlFlashRecordV28);
+APP_CONTROL_CFG_ASSERT_RECORD_LAYOUT(APP_ControlFlashRecordV27);
+APP_CONTROL_CFG_ASSERT_RECORD_LAYOUT(APP_ControlFlashRecordV26);
+APP_CONTROL_CFG_ASSERT_RECORD_LAYOUT(APP_ControlFlashRecordV25);
+APP_CONTROL_CFG_ASSERT_RECORD_LAYOUT(APP_ControlFlashRecordV24);
+APP_CONTROL_CFG_ASSERT_RECORD_LAYOUT(APP_ControlFlashRecordV23);
+APP_CONTROL_CFG_ASSERT_RECORD_LAYOUT(APP_ControlFlashRecordV22);
+APP_CONTROL_CFG_ASSERT_RECORD_LAYOUT(APP_ControlFlashRecordV21);
+APP_CONTROL_CFG_ASSERT_RECORD_LAYOUT(APP_ControlFlashRecordV20);
+APP_CONTROL_CFG_ASSERT_RECORD_LAYOUT(APP_ControlFlashRecordV19);
+APP_CONTROL_CFG_ASSERT_RECORD_LAYOUT(APP_ControlFlashRecordV18);
+APP_CONTROL_CFG_ASSERT_RECORD_LAYOUT(APP_ControlFlashRecordV17);
+APP_CONTROL_CFG_ASSERT_RECORD_LAYOUT(APP_ControlFlashRecordV16);
+APP_CONTROL_CFG_ASSERT_RECORD_LAYOUT(APP_ControlFlashRecordV15);
+/* v26 与 v25 记录只差机体块尾部那两个 float。 */
+_Static_assert(sizeof(APP_ControlFlashRecordV26) ==
+                   sizeof(APP_ControlFlashRecordV25) + (2U * sizeof(float)),
+               "v26 record = v25 record + the two flow mount fields");
+_Static_assert(sizeof(APP_ControlFlashRecordV27) ==
+                   sizeof(APP_ControlFlashRecordV26) + sizeof(APP_MagXY_Persisted),
+               "v27 record = v26 record + independent MAGXY block");
+_Static_assert(sizeof(APP_ControlFlashRecordV28) ==
+                   sizeof(APP_ControlFlashRecordV27) + sizeof(APP_ControlZChannelParams),
+               "v28 record = v27 record + vertical-channel block");
+_Static_assert(sizeof(APP_ControlFlashRecord) ==
+                   sizeof(APP_ControlFlashRecordV28) + sizeof(APP_ControlFlightLimitParams),
+               "v29 record = v28 record + flight-limit block");
+_Static_assert(sizeof(APP_ControlFlightLimitParams) == (3U * sizeof(float)),
+               "flight-limit block is exactly alt_max_m + manual_tilt_max_rad + yaw_stick_rate_rad_s");
+_Static_assert(APP_CONTROL_CFG_COMMIT_OFFSET_OF(sizeof(APP_ControlFlashRecord)) ==
+                   APP_CONTROL_CFG_COMMIT_OFFSET_OF(sizeof(APP_ControlFlashRecordV28)),
+               "v29 kept the v28 commit word offset");
+_Static_assert(sizeof(APP_ControlZChannelParams) == (2U * sizeof(float)),
+               "vertical-channel block is exactly hover_thrust_n + z_vel_fusion");
+_Static_assert(APP_CONTROL_CFG_COMMIT_OFFSET_OF(sizeof(APP_ControlFlashRecordV25)) ==
+                   APP_CONTROL_CFG_COMMIT_OFFSET_OF(sizeof(APP_ControlFlashRecordV24)),
+               "v25 kept the v24 commit word offset");
+
+/* 当前版本记录主体（config 起到 checksum 前）的字节数，任何一版的 size 都不会比它大。 */
+#define APP_CONTROL_CFG_MAX_BODY_SIZE                                          \
+    ((uint32_t)(sizeof(APP_ControlFlashRecord) - sizeof(APP_ControlFlashHeader) - \
+                sizeof(uint32_t)))
+
+/* 头里写着 body_size 的那条记录，当年写提交字的位置。 */
+static uint32_t config_commit_offset(uint16_t body_size)
+{
+    return APP_CONTROL_CFG_COMMIT_OFFSET_OF((uint32_t)sizeof(APP_ControlFlashHeader) +
+                                            (uint32_t)body_size +
+                                            (uint32_t)sizeof(uint32_t));
+}
 
 static uint32_t config_checksum(const uint8_t *data, uint32_t length);
 
@@ -168,8 +306,16 @@ static uint32_t config_slot_sequence(uint32_t slot)
     if (header.magic != APP_CONTROL_CFG_MAGIC) {
         return 0U;
     }
+    /*
+     * 记录只增不减，size 比当前版本的主体还大就不可能是任何一版写下的；按它去找
+     * 提交字、算校验和都会越过下面这个 record 读出界。
+     */
+    if ((uint32_t)header.size > APP_CONTROL_CFG_MAX_BODY_SIZE) {
+        return 0U;
+    }
 
-    if (APP_FlashService_ReadData(slot + APP_CONTROL_CFG_COMMIT_OFFSET,
+    /* 提交字按这条记录自己的大小找——升版本后旧记录的提交字不在当前版本的位置上。 */
+    if (APP_FlashService_ReadData(slot + config_commit_offset(header.size),
                                   (uint8_t *)&commit,
                                   sizeof(commit)) != APP_FLASH_SERVICE_OK) {
         return 1U;
@@ -182,7 +328,7 @@ static uint32_t config_slot_sequence(uint32_t slot)
                                   sizeof(record)) != APP_FLASH_SERVICE_OK) {
         return 0U;
     }
-    if (config_checksum((const uint8_t *)&record.config, record.size) !=
+    if (config_checksum((const uint8_t *)&record.config, header.size) !=
         commit.body_checksum) {
         return 0U;
     }
@@ -372,6 +518,59 @@ static void config_apply_shaping(const APP_ControlCoaxShapingParams *in)
     DRV_COAX_CTRL_SetParams(&params);
 }
 
+/*
+ * 竖直通道块（v28 起）。NULL = 记录里没有这一块：落回驱动默认（悬停推力 0 = 关、融合开）。
+ * 存的那份过不了参数校验时 SetParams 整份拒收，保持之前刚装好的值，同整形块。
+ */
+static void config_capture_zchan(APP_ControlZChannelParams *out)
+{
+    DRV_COAX_CTRL_Params params;
+
+    DRV_COAX_CTRL_GetParams(&params);
+    out->hover_thrust_n = params.hover_thrust_n;
+    out->z_vel_fusion = params.z_vel_fusion;
+}
+
+static void config_apply_zchan(const APP_ControlZChannelParams *in)
+{
+    DRV_COAX_CTRL_Params defaults;
+    DRV_COAX_CTRL_Params params;
+
+    DRV_COAX_CTRL_GetDefaultParams(&defaults);
+    DRV_COAX_CTRL_GetParams(&params);
+    params.hover_thrust_n = (in != NULL) ? in->hover_thrust_n : defaults.hover_thrust_n;
+    params.z_vel_fusion = (in != NULL) ? in->z_vel_fusion : defaults.z_vel_fusion;
+    DRV_COAX_CTRL_SetParams(&params);
+}
+
+/*
+ * 飞行限幅块（v29 起）。NULL = 记录里没有这一块：落回驱动默认（原写死值），同竖直通道块。
+ */
+static void config_capture_flightlim(APP_ControlFlightLimitParams *out)
+{
+    DRV_COAX_CTRL_Params params;
+
+    DRV_COAX_CTRL_GetParams(&params);
+    out->alt_max_m = params.alt_max_m;
+    out->manual_tilt_max_rad = params.manual_tilt_max_rad;
+    out->yaw_stick_rate_rad_s = params.yaw_stick_rate_rad_s;
+}
+
+static void config_apply_flightlim(const APP_ControlFlightLimitParams *in)
+{
+    DRV_COAX_CTRL_Params defaults;
+    DRV_COAX_CTRL_Params params;
+
+    DRV_COAX_CTRL_GetDefaultParams(&defaults);
+    DRV_COAX_CTRL_GetParams(&params);
+    params.alt_max_m = (in != NULL) ? in->alt_max_m : defaults.alt_max_m;
+    params.manual_tilt_max_rad =
+        (in != NULL) ? in->manual_tilt_max_rad : defaults.manual_tilt_max_rad;
+    params.yaw_stick_rate_rad_s =
+        (in != NULL) ? in->yaw_stick_rate_rad_s : defaults.yaw_stick_rate_rad_s;
+    DRV_COAX_CTRL_SetParams(&params);
+}
+
 /* v24 的整形块：前四项照读，第二级陷波落回默认（compat 里定死：关、Q 1.0）。 */
 static void config_apply_shaping_v24(const APP_ControlCoaxShapingParamsV24 *in)
 {
@@ -379,6 +578,36 @@ static void config_apply_shaping_v24(const APP_ControlCoaxShapingParamsV24 *in)
 
     (void)APP_ControlConfigCompat_ShapingV24ToCurrent(in, &current);
     config_apply_shaping(&current);
+}
+
+/*
+ * v20～v25 的机体块：前 36 项照读，光流安装两项落回 0/0（恒等变换，就是旧固件的实际
+ * 行为）。与增益块迁移一样是确定的函数，不读运行时的值。
+ *
+ * 冻结块就是当前结构体的前缀（下面的静态断言），按字节拷过来而不逐字段抄：逐字段抄
+ * 会多出第二份字段清单，而漏抄一项的后果是那一项读回来是 0——对机体模型来说那是
+ * "禁止解锁"或更糟的"力臂符号反了"。转成当前结构体后走同一个 DRV_Airframe_SetParams，
+ * 派生重算与体检一样不少。
+ */
+_Static_assert(sizeof(APP_ControlAirframeParamsV25) ==
+                   offsetof(DRV_Airframe_Params, flow_mount_yaw_deg),
+               "v25 airframe block must be exactly the prefix before the flow mount fields");
+_Static_assert(sizeof(DRV_Airframe_Params) ==
+                   sizeof(APP_ControlAirframeParamsV25) + (2U * sizeof(float)),
+               "v26 airframe block = v25 block + the two flow mount fields, nothing else");
+_Static_assert(offsetof(DRV_Airframe_Params, flow_mount_mirror) ==
+                   offsetof(DRV_Airframe_Params, flow_mount_yaw_deg) + sizeof(float),
+               "the two flow mount fields must be contiguous at the tail");
+
+static void config_apply_airframe_v25(const APP_ControlAirframeParamsV25 *in)
+{
+    DRV_Airframe_Params current;
+
+    memset(&current, 0, sizeof(current));
+    memcpy(&current, in, sizeof(*in));
+    current.flow_mount_yaw_deg = 0.0f;
+    current.flow_mount_mirror = 0.0f;
+    DRV_Airframe_SetParams(&current);
 }
 
 /*
@@ -397,7 +626,9 @@ static void config_apply_shaping_v24(const APP_ControlCoaxShapingParamsV24 *in)
                 sizeof(((APP_ControlFlashRecord *)0)->led) +             \
                 sizeof(((APP_ControlFlashRecord *)0)->prop) +            \
                 sizeof(((APP_ControlFlashRecord *)0)->mag) +             \
-                sizeof(((APP_ControlFlashRecord *)0)->shaping)))
+                sizeof(((APP_ControlFlashRecord *)0)->shaping) +          \
+                sizeof(((APP_ControlFlashRecord *)0)->magxy) +            \
+                sizeof(((APP_ControlFlashRecord *)0)->zchan) +                            sizeof(((APP_ControlFlashRecord *)0)->flightlim)))
 
 _Static_assert(APP_CONTROL_CFG_CURRENT_SIZE ==
                    (uint16_t)(offsetof(APP_ControlFlashRecord, checksum) -
@@ -426,6 +657,9 @@ static uint8_t config_read_slot(uint32_t slot, APP_ControlConfig *config)
     app_cmd_propcal_apply_config(&record.prop);
     app_cmd_magcal_apply_config(&record.mag);
     config_apply_shaping(&record.shaping);
+    APP_MagXY_ApplyPersisted(&record.magxy);
+    config_apply_zchan(&record.zchan);
+    config_apply_flightlim(&record.flightlim);
     return 1U;
 }
 
@@ -471,12 +705,59 @@ static uint8_t config_read_current(APP_ControlConfig *config)
         return 1U; \
     }
 
+APP_CONTROL_DEFINE_LEGACY_READER(config_read_v28, APP_ControlFlashRecordV28,
+                                 APP_CONTROL_CFG_VERSION_V28,
+                                 APP_ControlConfigCompat_CurrentPassthrough,
+                                 do {
+                                     app_cmd_rcmap_apply_config(&record.rc_config);
+                                     DRV_Airframe_SetParams(&record.airframe);
+                                     app_cmd_ledmap_apply_config(&record.led);
+                                     app_cmd_propcal_apply_config(&record.prop);
+                                     app_cmd_magcal_apply_config(&record.mag);
+                                     config_apply_shaping(&record.shaping);
+                                     APP_MagXY_ApplyPersisted(&record.magxy);
+                                     config_apply_zchan(&record.zchan);
+                                 } while (0))
+APP_CONTROL_DEFINE_LEGACY_READER(config_read_v27, APP_ControlFlashRecordV27,
+                                 APP_CONTROL_CFG_VERSION_V27,
+                                 APP_ControlConfigCompat_CurrentPassthrough,
+                                 do {
+                                     app_cmd_rcmap_apply_config(&record.rc_config);
+                                     DRV_Airframe_SetParams(&record.airframe);
+                                     app_cmd_ledmap_apply_config(&record.led);
+                                     app_cmd_propcal_apply_config(&record.prop);
+                                     app_cmd_magcal_apply_config(&record.mag);
+                                     config_apply_shaping(&record.shaping);
+                                     APP_MagXY_ApplyPersisted(&record.magxy);
+                                 } while (0))
+APP_CONTROL_DEFINE_LEGACY_READER(config_read_v26, APP_ControlFlashRecordV26,
+                                 APP_CONTROL_CFG_VERSION_V26,
+                                 APP_ControlConfigCompat_CurrentPassthrough,
+                                 do {
+                                     app_cmd_rcmap_apply_config(&record.rc_config);
+                                     DRV_Airframe_SetParams(&record.airframe);
+                                     app_cmd_ledmap_apply_config(&record.led);
+                                     app_cmd_propcal_apply_config(&record.prop);
+                                     app_cmd_magcal_apply_config(&record.mag);
+                                     config_apply_shaping(&record.shaping);
+                                 } while (0))
+APP_CONTROL_DEFINE_LEGACY_READER(config_read_v25, APP_ControlFlashRecordV25,
+                                 APP_CONTROL_CFG_VERSION_V25,
+                                 APP_ControlConfigCompat_CurrentPassthrough,
+                                 do {
+                                     app_cmd_rcmap_apply_config(&record.rc_config);
+                                     config_apply_airframe_v25(&record.airframe);
+                                     app_cmd_ledmap_apply_config(&record.led);
+                                     app_cmd_propcal_apply_config(&record.prop);
+                                     app_cmd_magcal_apply_config(&record.mag);
+                                     config_apply_shaping(&record.shaping);
+                                 } while (0))
 APP_CONTROL_DEFINE_LEGACY_READER(config_read_v24, APP_ControlFlashRecordV24,
                                  APP_CONTROL_CFG_VERSION_V24,
                                  APP_ControlConfigCompat_CurrentPassthrough,
                                  do {
                                      app_cmd_rcmap_apply_config(&record.rc_config);
-                                     DRV_Airframe_SetParams(&record.airframe);
+                                     config_apply_airframe_v25(&record.airframe);
                                      app_cmd_ledmap_apply_config(&record.led);
                                      app_cmd_propcal_apply_config(&record.prop);
                                      app_cmd_magcal_apply_config(&record.mag);
@@ -487,7 +768,7 @@ APP_CONTROL_DEFINE_LEGACY_READER(config_read_v23, APP_ControlFlashRecordV23,
                                  APP_ControlConfigCompat_CurrentPassthrough,
                                  do {
                                      app_cmd_rcmap_apply_config(&record.rc_config);
-                                     DRV_Airframe_SetParams(&record.airframe);
+                                     config_apply_airframe_v25(&record.airframe);
                                      app_cmd_ledmap_apply_config(&record.led);
                                      app_cmd_propcal_apply_config(&record.prop);
                                      app_cmd_magcal_apply_config(&record.mag);
@@ -498,7 +779,7 @@ APP_CONTROL_DEFINE_LEGACY_READER(config_read_v22, APP_ControlFlashRecordV22,
                                  APP_ControlConfigCompat_CurrentPassthrough,
                                  do {
                                      app_cmd_rcmap_apply_config(&record.rc_config);
-                                     DRV_Airframe_SetParams(&record.airframe);
+                                     config_apply_airframe_v25(&record.airframe);
                                      app_cmd_ledmap_apply_config(&record.led);
                                      app_cmd_propcal_apply_config(&record.prop);
                                      app_cmd_magcal_apply_config(NULL);
@@ -509,7 +790,7 @@ APP_CONTROL_DEFINE_LEGACY_READER(config_read_v21, APP_ControlFlashRecordV21,
                                  APP_ControlConfigCompat_CurrentPassthrough,
                                  do {
                                      app_cmd_rcmap_apply_config(&record.rc_config);
-                                     DRV_Airframe_SetParams(&record.airframe);
+                                     config_apply_airframe_v25(&record.airframe);
                                      app_cmd_ledmap_apply_config(&record.led);
                                      app_cmd_propcal_apply_config(NULL);
                                      app_cmd_magcal_apply_config(NULL);
@@ -520,7 +801,7 @@ APP_CONTROL_DEFINE_LEGACY_READER(config_read_v20, APP_ControlFlashRecordV20,
                                  APP_ControlConfigCompat_CurrentPassthrough,
                                  do {
                                      app_cmd_rcmap_apply_config(&record.rc_config);
-                                     DRV_Airframe_SetParams(&record.airframe);
+                                     config_apply_airframe_v25(&record.airframe);
                                      app_cmd_ledmap_apply_config(NULL);
                                      app_cmd_propcal_apply_config(NULL);
                                      app_cmd_magcal_apply_config(NULL);
@@ -597,6 +878,18 @@ APP_FlashService_Status APP_ControlConfigStore_Load(APP_ControlConfig *config)
     case APP_CONTROL_CFG_VERSION:
         if (config_read_current(config) == 0U) return APP_FLASH_SERVICE_ERROR;
         break;
+    case APP_CONTROL_CFG_VERSION_V28:
+        if (config_read_v28(config) == 0U) return APP_FLASH_SERVICE_ERROR;
+        break;
+    case APP_CONTROL_CFG_VERSION_V27:
+        if (config_read_v27(config) == 0U) return APP_FLASH_SERVICE_ERROR;
+        break;
+    case APP_CONTROL_CFG_VERSION_V26:
+        if (config_read_v26(config) == 0U) return APP_FLASH_SERVICE_ERROR;
+        break;
+    case APP_CONTROL_CFG_VERSION_V25:
+        if (config_read_v25(config) == 0U) return APP_FLASH_SERVICE_ERROR;
+        break;
     case APP_CONTROL_CFG_VERSION_V24:
         if (config_read_v24(config) == 0U) return APP_FLASH_SERVICE_ERROR;
         break;
@@ -629,6 +922,21 @@ APP_FlashService_Status APP_ControlConfigStore_Load(APP_ControlConfig *config)
         break;
     default:
         return APP_FLASH_SERVICE_BAD_ID;
+    }
+    /* Records older than v27 have no independent XY axis proof. Explicitly clear any
+     * previous RAM candidate so reload cannot retain a stale active aid. v27 carries
+     * the XY block (config_read_v27 applied it) — clearing on "!= current" would wipe
+     * it on the first boot after the v28 upgrade. */
+    if (header.version < APP_CONTROL_CFG_VERSION_V27) {
+        APP_MagXY_ApplyPersisted(NULL);
+    }
+    /* v27 及更早没有竖直通道块（v28 起有）：显式落回驱动默认，不留 RAM 里上一次的值。 */
+    if (header.version < APP_CONTROL_CFG_VERSION_V28) {
+        config_apply_zchan(NULL);
+    }
+    /* v28 及更早没有飞行限幅块（v29 起有）：同上。 */
+    if (header.version != APP_CONTROL_CFG_VERSION) {
+        config_apply_flightlim(NULL);
     }
     /* RAM 里的增益已整份换成 Flash 里的值：试用全部结束（app_param_trial.h 契约 5）。 */
     APP_ParamTrial_ClearAll();
@@ -678,6 +986,9 @@ APP_FlashService_Status APP_ControlConfigStore_Save(const APP_ControlConfig *con
     record.prop = *(const DRV_PropMap *)app_cmd_propcal_config();
     record.mag = *(const DRV_MAG_Calibration *)app_cmd_magcal_config();
     config_capture_shaping(&record.shaping);
+    APP_MagXY_GetPersisted(&record.magxy);
+    config_capture_zchan(&record.zchan);
+    config_capture_flightlim(&record.flightlim);
     /* 两块捕获的都是 RAM；SYSID PARAM 试用中的名字换回试用前的值再存（app_param_trial.h）。 */
     APP_ParamTrial_RestorePersistent(&record.coax_tunables, &record.shaping);
     record.checksum = config_checksum((const uint8_t *)&record.config,

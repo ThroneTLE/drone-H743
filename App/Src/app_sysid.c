@@ -20,6 +20,8 @@
 
 #include "app_control.h"
 #include "app_sysid_alt.h"
+#include "app_sysid_xy.h"
+#include "app_sysid_yaw.h"
 #include "app_diag_binary.h"
 #include "app_esc_command.h"
 #include "app_ident.h"
@@ -103,6 +105,17 @@ typedef struct {
     uint16_t motor_pulse_us;
     uint8_t motor_capped;
     float excite_angle0_rad;     /* 激励开始时的自然平衡角；ANGLE 模式以它为零点 */
+    /*
+     * ALT（槽式台架）双轴保持：杆两端在槽里可以一高一低（绕水平且垂直于杆的轴倾斜），只管绕杆
+     * 一个轴会"一边起来一边没起来"（2026-09-30 作者实测）。开跑那一拍记下压在槽底时的横滚/俯仰，
+     * 整轮用生产姿态环把两轴都保持在它上面；力矩两个分量都下发，不再只投影到杆轴。
+     */
+    float alt_att0_rad[2];       /* [0] 横滚、[1] 俯仰 */
+    float alt_moment_xy[2];      /* 本拍角速度环给的机体 x/y 力矩（ALT/XY 用） */
+    /* XY（水平槽）在 ALT 的两轴保持上叠加的目标倾角偏置（横滚、俯仰），由 app_sysid_xy.c 每拍给。 */
+    float xy_bias_rad[2];
+    uint16_t yaw_upper_us;       /* YAW：上/下桨脉宽（两者不等；其余模式不用） */
+    uint16_t yaw_lower_us;
     uint8_t preroll_started;     /* 稳定段末尾的零激励前导已开始采样 */
     uint8_t phase_notice;        /* 阶段变化待报（控制拍不打字，排空拍打） */
     uint16_t phase_notice_pulse;
@@ -111,6 +124,8 @@ typedef struct {
     /* 最近一拍的遥控器状态，供 START 在命令任务里先行拒绝。 */
     volatile uint8_t last_armed;
     volatile uint8_t last_thr_low;
+    /* 最近一拍的电池电压（稳定环电池快照，不新鲜时 0），THR 行报给辨识页做低压提示。 */
+    volatile float last_vbat_v;
 
     uint16_t run_id;
     /*
@@ -179,6 +194,25 @@ static float sysid_finite_or(float value, float fallback)
     return (isfinite(value) != 0) ? value : fallback;
 }
 
+/* 台架类辨识（ALT 竖直槽、XY 水平槽、YAW 吊绳）：全程采样、安全中止不当作完成（ALT/XY 另有两轴姿态保持）。 */
+static uint8_t sysid_is_bench_mode(void)
+{
+    return ((sysid.mode == APP_SYSID_ALT) || (sysid.mode == APP_SYSID_XY) ||
+            (sysid.mode == APP_SYSID_YAW)) ? 1U : 0U;
+}
+
+/*
+ * 本轮是否由辨识接管油门。ALT/XY 与旧模式看 SYSID THROTTLE 的 target_n；YAW 的总推力在 SYSID YAW
+ * 的 thrust_mn 里，本身就是自动油门（SYSID THROTTLE 只借用它的最高油门 % 封顶）。SERVO 永远不碰电机。
+ */
+static uint8_t sysid_auto_throttle(void)
+{
+    if (sysid.mode == APP_SYSID_SERVO) {
+        return 0U;
+    }
+    return ((sysid.mode == APP_SYSID_YAW) || (sysid.throttle_target_n > 0.0f)) ? 1U : 0U;
+}
+
 static void sysid_center_servos(void)
 {
     DRV_COAX_CTRL_ServoCalibration calibration;
@@ -221,7 +255,7 @@ static void sysid_ring_push(const DRV_SysIdSample *sample, uint32_t t_us,
     sysid.ring[index].t_us = t_us;
     sysid.ring[index].gap_before = sysid.gap_pending;
     sysid.ring[index].erpm_valid = erpm_valid;
-    sysid.ring[index].capped = (sysid.mode == APP_SYSID_ALT) ? sysid.motor_capped : 0U;
+    sysid.ring[index].capped = sysid_is_bench_mode() ? sysid.motor_capped : 0U;
     sysid.gap_pending = 0U;
     BSP_Critical_MemoryBarrier();
     sysid.head = sysid.head + 1U;
@@ -311,15 +345,37 @@ APP_SysIdPhase APP_SysId_GetPhase(void)
     return (sysid.state == APP_SYSID_STATE_RUNNING) ? sysid.phase : APP_SYSID_PHASE_IDLE;
 }
 
+void APP_SysId_GetBenchAtt0(float *roll_rad, float *pitch_rad)
+{
+    if (roll_rad != NULL) { *roll_rad = sysid.alt_att0_rad[0]; }
+    if (pitch_rad != NULL) { *pitch_rad = sysid.alt_att0_rad[1]; }
+}
+
 uint8_t APP_SysId_GetMotorPulse(uint16_t *pulse_us)
 {
     /* SERVO 模式电机一拍都不碰：自动油门设置即使还留着也不生效。 */
-    if ((sysid.state != APP_SYSID_STATE_RUNNING) || (sysid.throttle_target_n <= 0.0f) ||
-        (sysid.mode == APP_SYSID_SERVO) ||
+    if ((sysid.state != APP_SYSID_STATE_RUNNING) || (sysid_auto_throttle() == 0U) ||
         (sysid.phase == APP_SYSID_PHASE_IDLE) || (pulse_us == NULL)) {
         return 0U;
     }
     *pulse_us = sysid.motor_pulse_us;
+    return 1U;
+}
+
+uint8_t APP_SysId_GetMotorPulsePair(uint16_t *upper_us, uint16_t *lower_us)
+{
+    uint16_t common_us;
+
+    if ((upper_us == NULL) || (lower_us == NULL) || (APP_SysId_GetMotorPulse(&common_us) == 0U)) {
+        return 0U;
+    }
+    if (sysid.mode == APP_SYSID_YAW) {
+        *upper_us = sysid.yaw_upper_us;
+        *lower_us = sysid.yaw_lower_us;
+    } else {
+        *upper_us = common_us;
+        *lower_us = common_us;
+    }
     return 1U;
 }
 
@@ -433,7 +489,7 @@ float APP_SysId_GetResidualLimit(void) { APP_SysId_Init(); return sysid.residual
 uint8_t APP_SysId_SetMode(APP_SysIdMode mode, float angle_amplitude_rad)
 {
     APP_SysId_Init();
-    if (mode > APP_SYSID_ALT || mode < APP_SYSID_FEEDFORWARD ||
+    if (mode > APP_SYSID_YAW || mode < APP_SYSID_FEEDFORWARD ||
         !isfinite(angle_amplitude_rad) || angle_amplitude_rad <= 0.0f ||
         angle_amplitude_rad > 0.2617993878f) { return 0U; }
     uint32_t lock = BSP_Critical_Enter();
@@ -512,7 +568,8 @@ void APP_SysId_Stop(const char *reason)
         BSP_Critical_Exit(lock);
         return;
     }
-    if (sysid.phase == APP_SYSID_PHASE_RAMP_DOWN) {
+    if ((sysid.phase == APP_SYSID_PHASE_RAMP_DOWN) &&
+        (sysid_is_bench_mode() == 0U)) {
         /* 数据已经完整收尾，回落中被停只是提前交还油门，不作废这一轮。 */
         sysid_finish(APP_SYSID_STATE_DONE, "complete");
     } else {
@@ -568,7 +625,7 @@ uint8_t APP_SysId_Start(void)
             APP_Control_QueueText("ERR sysid servo mode %s\r\n", busy);
             return 0U;
         }
-    } else if (sysid.throttle_target_n > 0.0f) {
+    } else if (sysid_auto_throttle() != 0U) {
         /* 先在这里拒，而不是开跑后第一拍再 abort：没解锁就点开始是最常见的误操作，
          * 一条能看懂的 ERR 比一个空的中止轮次有用得多。第一拍的安全门仍会再判一次。 */
         if (sysid.last_armed == 0U) {
@@ -583,9 +640,27 @@ uint8_t APP_SysId_Start(void)
     if (sysid.mode == APP_SYSID_ALT) {
         /* 高度辨识：要自动油门、按注入类型的幅值上限、测高有效（app_sysid_alt.h）。 */
         const char *alt_refusal = APP_SysIdAlt_Precheck(sysid.throttle_target_n,
-                                                         sysid.spec.amplitude_rad_s);
+                                                         &sysid.spec);
         if (alt_refusal != NULL) {
             APP_Control_QueueText("ERR sysid alt %s\r\n", alt_refusal);
+            return 0U;
+        }
+    }
+
+    if (sysid.mode == APP_SYSID_XY) {
+        /* 水平槽辨识：要自动油门、幅值上限、光流与测距有效（app_sysid_xy.h）。 */
+        const char *xy_refusal = APP_SysIdXy_Precheck(sysid.throttle_target_n, &sysid.spec);
+        if (xy_refusal != NULL) {
+            APP_Control_QueueText("ERR sysid xy %s\r\n", xy_refusal);
+            return 0U;
+        }
+    }
+
+    if (sysid.mode == APP_SYSID_YAW) {
+        /* 吊绳偏航辨识：总推力 < 0.8×机重、幅值上限、偏航极性与桨位已标定（app_sysid_yaw.h）。 */
+        const char *yaw_refusal = APP_SysIdYaw_Precheck(&sysid.spec);
+        if (yaw_refusal != NULL) {
+            APP_Control_QueueText("ERR sysid yaw %s\r\n", yaw_refusal);
             return 0U;
         }
     }
@@ -633,11 +708,20 @@ uint8_t APP_SysId_Start(void)
     sysid.run_flags = (sysid.mode == APP_SYSID_RATE) ? DRV_SYSID_FLAG_RATE :
                       (sysid.mode == APP_SYSID_ANGLE) ? DRV_SYSID_FLAG_ANGLE :
                       (sysid.mode == APP_SYSID_SERVO) ? DRV_SYSID_FLAG_SERVO :
-                      (sysid.mode == APP_SYSID_ALT) ? DRV_SYSID_FLAG_ALT : 0U;
+                      (sysid.mode == APP_SYSID_ALT) ? DRV_SYSID_FLAG_ALT :
+                      (sysid.mode == APP_SYSID_XY) ? DRV_SYSID_FLAG_XY :
+                      (sysid.mode == APP_SYSID_YAW) ? DRV_SYSID_FLAG_YAW : 0U;
     sysid_ring_reset();
     sysid_center_servos();
     if (sysid.mode == APP_SYSID_ALT) {
-        APP_SysIdAlt_Begin(&sysid.spec, sysid.throttle_max_pct);
+        APP_SysIdAlt_Begin(&sysid.spec, sysid.throttle_target_n, sysid.throttle_max_pct);
+    } else if (sysid.mode == APP_SYSID_XY) {
+        APP_SysIdXy_Begin(&sysid.spec, sysid.throttle_target_n, sysid.throttle_max_pct,
+                          sysid.rig.azimuth_rad);
+    } else if (sysid.mode == APP_SYSID_YAW) {
+        APP_SysIdYaw_Begin(&sysid.spec, sysid.throttle_max_pct);
+        sysid.yaw_upper_us = 0U;
+        sysid.yaw_lower_us = 0U;
     }
     sysid.state = APP_SYSID_STATE_RUNNING; /* publish after initialization */
     BSP_Critical_Exit(lock);
@@ -666,8 +750,9 @@ uint8_t APP_SysId_Start(void)
         (unsigned long)sysid.sample_rate_hz,
         (long)(sysid.inertia_kg_m2 * 1000000.0f),
         (long)(sysid.rig.azimuth_rad * 1000.0f),
-        (unsigned int)((sysid.throttle_target_n > 0.0f) && (sysid.mode != APP_SYSID_SERVO)),
-        (long)(sysid.throttle_target_n * 100.0f),
+        (unsigned int)sysid_auto_throttle(),
+        (long)lroundf(((sysid.mode == APP_SYSID_YAW) ? APP_SysIdYaw_ThrustN() :
+                                                       sysid.throttle_target_n) * 100.0f),
         (long)lroundf(shaping[0] * 1000.0f),
         (long)lroundf(shaping[1] * 1000.0f),
         (long)lroundf(shaping[2] * 1000.0f),
@@ -677,6 +762,10 @@ uint8_t APP_SysId_Start(void)
     if (sysid.mode == APP_SYSID_ALT) {
         /* 上一行最宽已约 246 字符，ALT 溯源另起紧跟的一行（SYSID ALTSTART）。 */
         APP_SysIdAlt_ReportStart(sysid.run_id);
+    } else if (sysid.mode == APP_SYSID_XY) {
+        APP_SysIdXy_ReportStart(sysid.run_id);   /* 同样另起一行（SYSID XYSTART） */
+    } else if (sysid.mode == APP_SYSID_YAW) {
+        APP_SysIdYaw_ReportStart(sysid.run_id);  /* 同样另起一行（SYSID YAWSTART） */
     }
     return 1U;
 }
@@ -724,8 +813,7 @@ static const char *sysid_gate(const APP_SysIdObserve *obs,
         return "rc_disarm";
     }
     /* 自动油门期间飞手一推杆就交还：这是飞手手上最直接的"我来接管"。 */
-    if ((sysid.throttle_target_n > 0.0f) && (sysid.mode != APP_SYSID_SERVO) &&
-        (obs->rc_throttle_low == 0U)) {
+    if ((sysid_auto_throttle() != 0U) && (obs->rc_throttle_low == 0U)) {
         return "rc_throttle_override";
     }
     if (obs->imu_valid == 0U) {
@@ -753,10 +841,11 @@ static const char *sysid_gate(const APP_SysIdObserve *obs,
     return NULL;
 }
 
-/* 回落阶段数据已经完整，此时的任何停机理由都只是"提前交还油门"。 */
+/* 非槽式台架的旧模式回落可提前完成；ALT 须落地确认、XY 须走完回落，安全中止不能伪装为完成。 */
 static void sysid_stop_on(const char *reason)
 {
-    if (sysid.phase == APP_SYSID_PHASE_RAMP_DOWN) {
+    if ((sysid.phase == APP_SYSID_PHASE_RAMP_DOWN) &&
+        (sysid_is_bench_mode() == 0U)) {
         sysid_finish(APP_SYSID_STATE_DONE, "complete");
     } else {
         sysid_finish(APP_SYSID_STATE_ABORTED, reason);
@@ -955,6 +1044,22 @@ static void sysid_rotation(const float n[3], float theta, float r[3][3])
     }
 }
 
+/* 机体到世界的倾斜姿态 R = Ry(pitch)·Rx(roll)（FLU、右手，与 APP_SysIdAlt_VerticalAccel 同一个旋转）。 */
+static void sysid_tilt_rotation(float roll, float pitch, float r[3][3])
+{
+    static const float x_axis[3] = { 1.0f, 0.0f, 0.0f };
+    static const float y_axis[3] = { 0.0f, 1.0f, 0.0f };
+    float rx[3][3], ry[3][3];
+
+    sysid_rotation(x_axis, roll, rx);
+    sysid_rotation(y_axis, pitch, ry);
+    for (unsigned i = 0; i < 3; ++i) {
+        for (unsigned j = 0; j < 3; ++j) {
+            r[i][j] = ry[i][0]*rx[0][j] + ry[i][1]*rx[1][j] + ry[i][2]*rx[2][j];
+        }
+    }
+}
+
 /*
  * ANGLE 的参考模型：与在飞同一个 DRV_AttRef（参数 coax.att_ref_wr_rad_s / _delay_ms），
  * 标量走杆轴（只用第 0 轴）。关着（ωr = 0）返回 0，调用方照旧直接用 angle_sp。
@@ -1000,8 +1105,23 @@ static uint8_t sysid_closed_loop(const APP_SysIdObserve *obs, float angle,
         in.inertia[i] = sysid.inertia_kg_m2;
         in.saturation_positive[i] = 3.0f; in.saturation_negative[i] = -3.0f;
     }
-    if ((sysid.mode == APP_SYSID_ANGLE) || (sysid.mode == APP_SYSID_ALT)) {
-        /* ALT 走同一条角度环，激励恒为 0 → 目标恒为杆轴角 0。 */
+    if (sysid_is_bench_mode() != 0U) {
+        /* ALT/XY：同一个生产姿态环，但实际/目标都是完整的横滚+俯仰（目标 = 开跑时压在槽底的姿态），
+         * 两个水平轴都保持；偏航由杆约束，不管。XY 在 att0 上叠加目标倾角偏置，angle_sp 记它在杆轴上的分量。 */
+        DRV_AttitudeControl_Input att = {0};
+        DRV_AttitudeControl_Output target;
+        const float bias_roll = (sysid.mode == APP_SYSID_XY) ? sysid.xy_bias_rad[0] : 0.0f;
+        const float bias_pitch = (sysid.mode == APP_SYSID_XY) ? sysid.xy_bias_rad[1] : 0.0f;
+
+        *angle_sp = (bias_roll * n[0]) + (bias_pitch * n[1]);
+        sysid_tilt_rotation(obs->roll_rad, obs->pitch_rad, att.actual_rotation);
+        sysid_tilt_rotation(sysid.alt_att0_rad[0] + bias_roll, sysid.alt_att0_rad[1] + bias_pitch,
+                            att.desired_rotation);
+        if (!DRV_AttitudeControl_Step(&params.attitude, &att, &target)) { return 0U; }
+        memcpy(in.omega_sp, target.omega_sp, sizeof(in.omega_sp));
+        in.omega_sp[2] = 0.0f;                 /* 偏航不控（杆约束），只保两个水平轴 */
+        exc->omega_sp_rad_s = target.omega_sp[0]*n[0] + target.omega_sp[1]*n[1];
+    } else if (sysid.mode == APP_SYSID_ANGLE) {
         DRV_AttitudeControl_Input att = {0};
         DRV_AttitudeControl_Output target;
         float ref_angle, ref_rate = 0.0f, ref_accel = 0.0f;
@@ -1041,6 +1161,8 @@ static uint8_t sysid_closed_loop(const APP_SysIdObserve *obs, float angle,
         DRV_MomentNotch_Commit(&sysid_shaping.notch2);
     }
     *moment = out.moment_cmd[0]*n[0] + out.moment_cmd[1]*n[1];
+    sysid.alt_moment_xy[0] = out.moment_cmd[0];
+    sysid.alt_moment_xy[1] = out.moment_cmd[1];
     return 1U;
 }
 
@@ -1154,7 +1276,11 @@ static const char *sysid_moment_chain(const APP_SysIdObserve *obs, float angle_r
         return "controller";
     }
     if (excitation->finished) { moment_n = 0.0f; } /* final record matches centered output */
-    if (DRV_SysIdRig_MomentAboutAxis(&sysid.rig, moment_n, moment_body) != DRV_SYSID_RIG_OK) {
+    if (sysid_is_bench_mode() != 0U) {
+        /* 两个水平轴都下发（见 alt_att0_rad）；记录的 torque 仍是它在杆轴上的分量。 */
+        moment_body[0] = sysid.alt_moment_xy[0];
+        moment_body[1] = sysid.alt_moment_xy[1];
+    } else if (DRV_SysIdRig_MomentAboutAxis(&sysid.rig, moment_n, moment_body) != DRV_SYSID_RIG_OK) {
         return "rig";
     }
     if (DRV_COAX_CTRL_SolveBodyTiltFromMoment(moment_body, thrust_n,
@@ -1183,15 +1309,21 @@ static const char *sysid_moment_chain(const APP_SysIdObserve *obs, float angle_r
         }
         sysid.saturation_pulses[0] = sysid.alpha_us;
         sysid.saturation_pulses[1] = sysid.beta_us;
+        if ((sysid_is_bench_mode() != 0U) && (achieved_valid != 0U)) {
+            /* ALT 的姿态保持只护着机体，不是辨识数据：脉宽已按机构极限夹紧，照样下发、继续跑。
+             * 当拍中止会在半空断电——2026-09-30 alt_053452 高度环振荡时舵机甩到约 23° 饱和，
+             * 从槽顶附近直接摔下。 */
+            return NULL;
+        }
         return "actuator_saturated";
     }
     return NULL;
 }
 
 /*
- * 高度辨识（ALT）的一拍。序列、高度环与注入在 app_sysid_alt.c；这里只把它接到本模块的
- * 安全门（遥控/IMU/杆轴等排在高度门之前，先报根本原因）、力矩链（同 ANGLE，目标恒为
- * 杆轴角 0，起升/回落舵机回中）、采样网格（全程采样）与油门出口上。
+ * 高度辨识（ALT）的一拍。离地/滑落阈值实验及闭环候选验证在 app_sysid_alt.c；这里只把它接到本模块的
+ * 安全门（遥控/IMU 等排在高度门之前、先报根本原因；杆轴残差/角度走软着陆）、力矩链（同 ANGLE，目标恒为
+ * 杆轴角 0，推力足够时保持姿态）、采样网格（全程采样）与油门出口上。
  */
 static void sysid_alt_step(const APP_SysIdObserve *obs, float angle_rad, float residual_rad_s,
                            float dt_s)
@@ -1203,8 +1335,21 @@ static void sysid_alt_step(const APP_SysIdObserve *obs, float angle_rad, float r
     float angle_sp = 0.0f, body_x = 0.0f, body_y = 0.0f, dir[2];
     float achieved[3] = { 0.0f, 0.0f, 0.0f };
 
+    if (sysid.phase == APP_SYSID_PHASE_IDLE) {
+        /* 开跑第一拍：机体压在槽底，记下此刻的横滚/俯仰作为整轮的保持目标。 */
+        sysid.alt_att0_rad[0] = obs->roll_rad;
+        sysid.alt_att0_rad[1] = obs->pitch_rad;
+    }
+    /* 残差/角度超限先软着陆（APP_SYSID_ALT_RESIDUAL_MIN_RAD_S）；遥控/上锁/IMU 等仍由下面的门当拍交还。 */
+    reason = (residual_rad_s > fmaxf(sysid.residual_limit_rad_s, APP_SYSID_ALT_RESIDUAL_MIN_RAD_S)) ?
+             "axis_residual" : ((fabsf(angle_rad) > sysid.angle_limit_rad) ? "angle_limit" : NULL);
+    if ((reason != NULL) && (APP_SysIdAlt_BeginSoftLanding(obs, reason) == 0U)) {
+        const char *root = sysid_gate(obs, 0.0f, 0.0f, 0.0f, 0U);
+        sysid_stop_on((root != NULL) ? root : reason);
+        return;
+    }
     APP_SysIdAlt_Step(obs, sysid.phase, obs->now_ms - sysid.phase_start_ms, dt_s, &alt);
-    reason = sysid_gate(obs, angle_rad, residual_rad_s, alt.thrust_n, alt.check_thrust);
+    reason = sysid_gate(obs, 0.0f, 0.0f, alt.thrust_n, alt.check_thrust);
     if ((reason != NULL) || (alt.abort_reason != NULL)) {
         sysid_stop_on((reason != NULL) ? reason : alt.abort_reason);
         return;
@@ -1248,6 +1393,136 @@ static void sysid_alt_step(const APP_SysIdObserve *obs, float angle_rad, float r
     }
 }
 
+/*
+ * 水平槽 XY 辨识的一拍。阶段、倾角偏置（开环 tilt / 位置速度环 vel|pos）、光流门与软停在 app_sysid_xy.c；
+ * 这里把它接到本模块的安全门（遥控/IMU 等先报根本原因、当拍交还；杆轴残差/角度走软停）、力矩链
+ * （同 ALT：目标 = att0 + 倾角偏置，推力足够时保持姿态）、采样网格（全程采样）与油门出口上。
+ */
+static void sysid_xy_step(const APP_SysIdObserve *obs, float angle_rad, float residual_rad_s,
+                          float dt_s)
+{
+    APP_SysIdXyOutput xyo;
+    DRV_SysIdExcSample level = { 0.0f, 0.0f, 0U };
+    DRV_SysIdSample sample;
+    const char *reason;
+    float angle_sp = 0.0f, body_x = 0.0f, body_y = 0.0f, dir[2];
+    float achieved[3] = { 0.0f, 0.0f, 0.0f };
+
+    if (sysid.phase == APP_SYSID_PHASE_IDLE) {
+        /*
+         * 开跑第一拍：记下此刻的横滚/俯仰作为整轮的保持目标 att0。绕杆轴 n 的分量改成重力
+         * 水平——机体挂在杆上的悬挂角不是水平，保持它等于推力一直偏一个角，浮起推力下摩擦
+         * 很小，机体会自己沿槽溜走（2026-09-30 台架：悬挂 +2.2°，激励前溜 11 cm）。
+         * 绕 u 的分量被杆挡住，仍保持开跑姿态，免得和台架约束较劲。
+         */
+        float n[3];
+        sysid.alt_att0_rad[0] = obs->roll_rad;
+        sysid.alt_att0_rad[1] = obs->pitch_rad;
+        if ((obs->level_valid != 0U) && (DRV_SysIdRig_Axis(&sysid.rig, n) == DRV_SYSID_RIG_OK)) {
+            const float shift = ((obs->level_roll_rad - obs->roll_rad) * n[0]) +
+                                ((obs->level_pitch_rad - obs->pitch_rad) * n[1]);
+            sysid.alt_att0_rad[0] += shift * n[0];
+            sysid.alt_att0_rad[1] += shift * n[1];
+        }
+    }
+    reason = (residual_rad_s > fmaxf(sysid.residual_limit_rad_s, APP_SYSID_ALT_RESIDUAL_MIN_RAD_S)) ?
+             "axis_residual" : ((fabsf(angle_rad) > sysid.angle_limit_rad) ? "angle_limit" : NULL);
+    if ((reason != NULL) && (APP_SysIdXy_BeginSoftStop(obs, reason) == 0U)) {
+        const char *root = sysid_gate(obs, 0.0f, 0.0f, 0.0f, 0U);
+        sysid_stop_on((root != NULL) ? root : reason);
+        return;
+    }
+    APP_SysIdXy_Step(obs, sysid.phase, obs->now_ms - sysid.phase_start_ms, dt_s, &xyo);
+    reason = sysid_gate(obs, 0.0f, 0.0f, xyo.thrust_n, xyo.check_thrust);
+    if ((reason != NULL) || (xyo.abort_reason != NULL)) {
+        sysid_stop_on((reason != NULL) ? reason : xyo.abort_reason);
+        return;
+    }
+    sysid.motor_pulse_us = xyo.motor_pulse_us;
+    sysid.motor_capped = xyo.capped;
+    sysid.xy_bias_rad[0] = xyo.tilt_bias_rad[0];
+    sysid.xy_bias_rad[1] = xyo.tilt_bias_rad[1];
+    if (xyo.phase != sysid.phase) {
+        sysid_enter_phase(xyo.phase, obs->now_ms, xyo.thrust_n);
+    }
+    if (xyo.hold_attitude == 0U) {
+        sysid_center_servos();
+    } else {
+        reason = sysid_moment_chain(obs, angle_rad, dt_s, xyo.thrust_n, &level, &angle_sp,
+                                    &body_x, &body_y, achieved);
+        if (reason != NULL) {
+            sysid_finish(APP_SYSID_STATE_ABORTED, reason);
+            return;
+        }
+    }
+    if (sysid.preroll_started == 0U) {
+        sysid.preroll_started = 1U;
+        sysid.next_sample_us = obs->now_us;   /* 从第一拍起就采（含起升） */
+    }
+    if (sysid_sample_due(obs->now_us, xyo.finished) != 0U) {
+        const uint8_t erpm_valid = sysid_sample_measurements(&sample, obs, angle_rad);
+
+        sample.omega_sp_rad_s = level.omega_sp_rad_s;   /* 姿态环给出的杆轴角速度指令 */
+        sample.angle_sp_rad = angle_sp;                 /* 目标倾角偏置在杆轴上的分量 */
+        sample.tilt_cmd_x_rad = body_x;
+        sample.tilt_cmd_y_rad = body_y;
+        sample.thrust_n = xyo.thrust_n;                 /* 封顶后实际下发脉宽对应的推力 */
+        sample.torque_n_m = achieved[0]*cosf(sysid.rig.azimuth_rad) + achieved[1]*sinf(sysid.rig.azimuth_rad);
+        (void)sysid_rod_tilt_direction(dir);
+        sample.servo_tilt_rad = sysid_servo_tilt_of(body_x, body_y, dir);
+        APP_SysIdXy_FillSample(&sample, obs);
+        if (sysid_push_if_running(&sample, obs->now_us, erpm_valid) == 0U) {
+            return;   /* STOP 插进了本拍 */
+        }
+    }
+    if (xyo.finished != 0U) {
+        sysid_complete(obs->now_ms, xyo.thrust_n, 0U);
+    }
+}
+
+/*
+ * 吊绳偏航辨识（YAW）的一拍。阶段、ΔT/角速度环、差动分配、软停在 app_sysid_yaw.c；这里把它接到本模块的
+ * 安全门（遥控/IMU/推力来源等当拍交还、先报根本原因；超速/绞角由模块自己软停）、采样网格（全程采样）与
+ * 油门出口上。舵机全程中位、不跑任何姿态环；杆轴残差/角度门不适用（吊绳上没有杆），传 0。
+ */
+static void sysid_yaw_step(const APP_SysIdObserve *obs, float dt_s)
+{
+    APP_SysIdYawOutput yo;
+    DRV_SysIdSample sample;
+    const char *reason;
+
+    APP_SysIdYaw_Step(obs, sysid.phase, obs->now_ms - sysid.phase_start_ms, dt_s, &yo);
+    reason = sysid_gate(obs, 0.0f, 0.0f, yo.thrust_n, yo.check_thrust);
+    if ((reason != NULL) || (yo.abort_reason != NULL)) {
+        sysid_stop_on((reason != NULL) ? reason : yo.abort_reason);
+        return;
+    }
+    sysid.yaw_upper_us = yo.upper_us;
+    sysid.yaw_lower_us = yo.lower_us;
+    sysid.motor_pulse_us = (uint16_t)(((uint32_t)yo.upper_us + (uint32_t)yo.lower_us) / 2U);
+    sysid.motor_capped = yo.capped;
+    if (yo.phase != sysid.phase) {
+        sysid_enter_phase(yo.phase, obs->now_ms, yo.thrust_n);
+    }
+    sysid_center_servos();
+    if (sysid.preroll_started == 0U) {
+        sysid.preroll_started = 1U;
+        sysid.next_sample_us = obs->now_us;   /* 从第一拍起就采（含起升） */
+    }
+    if (sysid_sample_due(obs->now_us, yo.finished) != 0U) {
+        /* 通用量（陀螺、上/下桨转速）照旧；杆轴角度、倾转、servo_tilt 在本模式恒 0。 */
+        const uint8_t erpm_valid = sysid_sample_measurements(&sample, obs, 0.0f);
+
+        APP_SysIdYaw_FillSample(&sample, obs);
+        if (sysid_push_if_running(&sample, obs->now_us, erpm_valid) == 0U) {
+            return;   /* STOP 插进了本拍 */
+        }
+    }
+    if (yo.finished != 0U) {
+        sysid_complete(obs->now_ms, yo.thrust_n, 0U);
+    }
+}
+
 void APP_SysId_Update(const APP_SysIdObserve *obs)
 {
     DRV_SysIdExcSample excitation;
@@ -1266,13 +1541,15 @@ void APP_SysId_Update(const APP_SysIdObserve *obs)
 
     if (obs == NULL) { return; }
     APP_SysIdAlt_Observe(obs);   /* 最近测高：ALT 开跑检查与状态行用 */
+    APP_SysIdXy_Observe(obs, sysid.rig.azimuth_rad);   /* 最近光流：XY 开跑检查、起点与状态行用 */
     sysid.last_armed = obs->rc_armed;
     sysid.last_thr_low = obs->rc_throttle_low;
+    sysid.last_vbat_v = obs->vbat_v;
     if (!obs->rc_armed && sysid.state != APP_SYSID_STATE_RUNNING) { sysid.engaged = 0U; }
     if (sysid.state != APP_SYSID_STATE_RUNNING) {
         return;
     }
-    auto_throttle = (sysid.throttle_target_n > 0.0f) ? 1U : 0U;
+    auto_throttle = sysid_auto_throttle();
 
     if (sysid.started == 0U) {
         sysid.started = 1U;
@@ -1300,6 +1577,14 @@ void APP_SysId_Update(const APP_SysIdObserve *obs)
     }
     if (sysid.mode == APP_SYSID_ALT) {
         sysid_alt_step(obs, axis_angle_rad, residual_rad_s, dt_s);
+        return;
+    }
+    if (sysid.mode == APP_SYSID_XY) {
+        sysid_xy_step(obs, axis_angle_rad, residual_rad_s, dt_s);
+        return;
+    }
+    if (sysid.mode == APP_SYSID_YAW) {
+        sysid_yaw_step(obs, dt_s);
         return;
     }
 
@@ -1632,16 +1917,20 @@ void APP_SysId_ReportSchema(void)
 void APP_SysId_ReportThrottle(void)
 {
     float alt_h_m = 0.0f, alt_sp_m = 0.0f;
-    uint8_t alt_h_ok = 0U;
+    float xy_pos_m = 0.0f, xy_vel_m_s = 0.0f;
+    uint8_t alt_h_ok = 0U, xy_ok = 0U;
 
     APP_SysId_Init();
     /* 行尾三项给高度辨识看：最近测高（每拍都更新）、是否有效、ALT 在跑时的高度参考（否则 0）。 */
     APP_SysIdAlt_GetLive(&alt_h_m, &alt_h_ok, &alt_sp_m);
     if (!((sysid.mode == APP_SYSID_ALT) && APP_SysId_IsRunning())) { alt_sp_m = 0.0f; }
+    /* 再追加三项给水平槽辨识看：沿槽相对最近一次起点的位置/速度、光流+测距是否新鲜（非 XY 模式也报）。 */
+    APP_SysIdXy_GetLive(&xy_pos_m, &xy_vel_m_s, &xy_ok);
     APP_Control_QueueText(
         "SYSID THR auto=%u target_cn=%ld max_pct_x10=%ld phase=%s pulse_us=%u "
-        "armed=%u thr_low=%u capped=%u alt_h_mm=%ld alt_h_ok=%u alt_sp_mm=%ld\r\n",
-        (unsigned int)(sysid.throttle_target_n > 0.0f),
+        "armed=%u thr_low=%u capped=%u alt_h_mm=%ld alt_h_ok=%u alt_sp_mm=%ld "
+        "xy_pos_mm=%ld xy_vel_mms=%ld xy_ok=%u xy_yaw_mrad=%ld vbat_mv=%u\r\n",
+        (unsigned int)sysid_auto_throttle(),
         (long)(sysid.throttle_target_n * 100.0f + 0.5f),
         (long)(sysid.throttle_max_pct * 10.0f + 0.5f),
         sysid_phase_name(APP_SysId_GetPhase()),
@@ -1650,7 +1939,11 @@ void APP_SysId_ReportThrottle(void)
         (unsigned int)sysid.last_thr_low,
         (unsigned int)sysid.motor_capped,
         (long)lroundf(alt_h_m * 1000.0f), (unsigned int)alt_h_ok,
-        (long)lroundf(alt_sp_m * 1000.0f));
+        (long)lroundf(alt_sp_m * 1000.0f),
+        (long)lroundf(xy_pos_m * 1000.0f), (long)lroundf(xy_vel_m_s * 1000.0f),
+        (unsigned int)xy_ok, (long)lroundf(APP_SysIdXy_GetYawRad() * 1000.0f),
+        /* 无符号、夹在 0..65535：最宽写法刚好不超过文本缓冲（255）。 */
+        (unsigned int)fminf(fmaxf(sysid.last_vbat_v * 1000.0f + 0.5f, 0.0f), 65535.0f));
 }
 
 void APP_SysId_ReportStatus(void)

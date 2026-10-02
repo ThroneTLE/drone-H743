@@ -72,11 +72,20 @@ extern "C" {
 #define SVC_FLOW_NAV_VELOCITY_LPF_ALPHA       0.20f
 #define SVC_FLOW_NAV_MAX_HEIGHT_M             12.0f
 #define SVC_FLOW_NAV_MAX_HEIGHT_STEP_M        0.18f
+/* 跳变门的参照窗口与真跳变确认（2026-10-01 自由飞：测距先爬到 0.87 m、停约 90 ms 后报 5.88 m，
+ * 正好落在"超 100 ms 没样本 → height_valid 清零"的空档里绕过了门）。门以最近一次接受的高度为参照，
+ * 只要它在 HOLD 窗口内就照查，不看 height_valid；连续 CONFIRM 个彼此一致（差 ≤ STEP）、且持续
+ * ≥ CONFIRM_MS 的跳变样本才改认新高度（飞过台阶/桌面这类真跳变）。 */
+#define SVC_FLOW_NAV_HEIGHT_GATE_HOLD_MS      1000U
+#define SVC_FLOW_NAV_HEIGHT_JUMP_CONFIRM      3U
+#define SVC_FLOW_NAV_HEIGHT_JUMP_CONFIRM_MS   150U   /* 且候选高度要稳住这么久（尖峰常连报几帧同值） */
 #define SVC_FLOW_NAV_MAX_VERTICAL_VEL_M_S     5.0f
 
 /* 光流中值窗与传感器系速度合理性 */
 #define SVC_FLOW_NAV_MEDIAN_WINDOW            5U
 #define SVC_FLOW_NAV_MEDIAN_MIN_SAMPLES       3U
+/* 窗口内偏离中值超过它的帧按中值算（剔毛刺），其余取平均；单位同 flow_vel（cm/s@1m）。 */
+#define SVC_FLOW_NAV_SPIKE_COUNTS             100
 #define SVC_FLOW_NAV_FILTER_RESET_MS          250U
 #define SVC_FLOW_NAV_MAX_SPEED_M_S            2.50f
 #define SVC_FLOW_NAV_MAX_SPEED_STEP_M_S       1.20f
@@ -268,6 +277,12 @@ void SVC_FlowNav_GetPosition(float *x_m, float *y_m);
  * 也不随控制模式切换归零。轴约定同 SVC_FlowNav_GetPosition()。
  */
 void SVC_FlowNav_GetDisplacement(float *dx_m, float *dy_m);
+/*
+ * 诊断里程计（2026-10-01 台架尺度排查）：不经 EKF、零速钳位与转动补偿，按每个被采纳样本的
+ * 传感器时间步长累计——raw 用该帧原始计数（规范 FLU）×0.01×高度，filt 用中值滤波后的同一换算。
+ * 与 GetDisplacement（EKF 速度累计）对照，可分出尺度丢在哪一层。只增不清（上电从 0 起）。
+ */
+void SVC_FlowNav_GetDiagOdometer(float raw_m[2], float filt_m[2], uint32_t *steps);
 uint32_t SVC_FlowNav_GetIntegratedStepCount(void);
 uint32_t SVC_FlowNav_GetLastIntegrationDtUs(void);
 /*

@@ -185,8 +185,9 @@ class PowerPage(ttk.Frame):
         config = ttk.LabelFrame(parent, text="本次运行配置（重启恢复默认）", padding=10)
         config.pack(fill=tk.X, pady=6)
         self.cells = tk.IntVar(self, value=3)
-        self.low = tk.IntVar(self, value=3500)
-        self.recover = tk.IntVar(self, value=3600)
+        # 与固件默认一致（DRV_BATTERY_DEFAULT_*，2026-10-01：3S 11.4 V 判低、11.45 V 恢复）。
+        self.low = tk.IntVar(self, value=3800)
+        self.recover = tk.IntVar(self, value=3817)
         for row, (label, var, lo, hi) in enumerate((
                 ("串数", self.cells, 1, 12),
                 ("每节告警 mV", self.low, 2500, 4100),

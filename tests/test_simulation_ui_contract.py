@@ -28,6 +28,7 @@ def view():
     yield app
     app._close()
 
+@pytest.mark.slow_ui  # 真面板尺寸/缩放矩阵，慢；默认只在界面文件有改动时跑（tests/conftest.py）
 @pytest.mark.parametrize("size", ["1100x740", "1320x820", "1500x960"])
 @pytest.mark.parametrize("scaling", [1.0, 1.25, 1.5])
 def test_controls_and_five_chart_rows_fit(view, size, scaling):

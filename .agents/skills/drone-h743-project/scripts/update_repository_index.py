@@ -22,7 +22,7 @@ INDEX_PREFIX = ".agents/skills/drone-h743-project/references/repository-index/"
 
 ROOT_LIMIT = 8 * 1024
 SHARD_LIMIT = 32 * 1024
-TOTAL_LIMIT = 96 * 1024
+TOTAL_LIMIT = 128 * 1024  # 2026-10-01 作者：“总上限放宽很多就行”（原 96 KiB，当夜为塞新功能把测试摘要削到 22 字）
 
 SHARDS = (
     "firmware-app-services.md",
@@ -162,7 +162,14 @@ def read_text(path: str) -> str:
 # 限内），再按既定顺序压摘要 54 → 44（95.2 KiB，余约 3 KB，一次留够）；路由项与符号一个不减。
 # 2026-09-27 夜（R-BACKLASH-1）：舵机回差补偿新增驱动/策略/命令模块与四个测试文件后到 99137 B，
 # 超 833 B。按既定顺序压摘要 44 → 38（95.7 KiB，余约 2.6 KB，一次留够）；路由项与符号一个不减。
-def compact(text: str, limit: int = 38) -> str:
+# 2026-09-29（MAGXY RAM 试验）：新增磁航向服务/命令/实录测试后索引 98325 B，
+# 超总限 21 B。仍只压用途散文 38 → 34，保留文件和精确符号入口，并留出
+# 下一批模块的余量；不提高 96 KiB 上限。
+# 2026-09-30（R-ALTID-1 / R-AIBRIDGE-1）：竖直估计器、悬停推力估计、地面站 AI 接口及其测试后 98643 B，
+# 超 339 B。按既定顺序压摘要 34 → 32（97247 B，余约 1 KB）；路由项与符号一个不减，不提高上限。
+# 2026-09-30 晚（R-XYID-1 / R-MAGXY-1 漂移量化）：XY 辨识固件/页面模块、磁航向倾斜回归测试后 98332 B，
+# 超 28 B。按既定顺序压摘要 32 → 30；路由项与符号一个不减，不提高上限。
+def compact(text: str, limit: int = 32) -> str:
     text = re.sub(r"\s+", " ", text).strip(" .:-\t\r\n")
     text = text.replace("|", "/")
     if len(text) > limit:
@@ -338,7 +345,10 @@ def individual_row(path: str, kind: str) -> str:
         # 2026-09-07 新增 PWM 帧率与光流方言边界契约后到 33123 B，压到 1。
         # 这里优先保 purpose 而不是保函数名：本仓库测试函数名很长且基本是 purpose
         # 的复述，砍它损失最小。真到 1 也不够时，该拆分片而不是继续砍。
-        return f"| `{path}` | {compact(purpose)} | {symbol_cell(symbols, limit=1)} |"
+        # 2026-10-01 夜：为塞进旧的 96 KiB 总量曾把测试摘要一路削到 22 字；作者随即“总上限放宽很多就行”，
+        # 总量改 128 KiB、默认摘要回 32 字；测试摘要取 29 字是受“固件测试分片 32 KiB”单分片上限约束
+        # （同时把归错的地面站页面/界面/主机工具测试挪到主机分片）。
+        return f"| `{path}` | {compact(purpose, 29)} | {symbol_cell(symbols, limit=1)} |"
     return f"| `{path}` | {compact(purpose)} | {symbol_cell(symbols)} |"
 
 
@@ -459,7 +469,23 @@ def build_outputs(files: list[str]) -> dict[str, str]:
                      "tests/test_sysid_amplitude_scale", "tests/test_sysid_lever_units",
                      "tests/test_sysid_servo_only", "tests/test_sysid_rig_stiffness",
                      "tests/test_sysid_vibration", "tests/test_sysid_pendulum_fit",
-                     "tests/test_sysid_real_runs", "tests/test_sysid_host_core")
+                     "tests/test_sysid_real_runs", "tests/test_sysid_host_core",
+                     # 2026-10-01：固件分片到 33011 B 超 32 KB；XY 页面（含流程彩排）、AI 接口、电源页
+                     # 测的都是上位机，按同一条线归上位机，不压摘要。
+                     "tests/test_sysid_xy_page", "tests/test_ai_bridge", "tests/test_power_page",
+                     # 2026-10-01 夜：再超（33018 B）；USB 断开切蓝牙、辨识页 IMU 重标定按钮都是上位机。
+                     "tests/test_link_failover", "tests/test_sysid_imuzero_button",
+                     # 2026-10-01 作者放宽总上限后：把归错到固件分片的地面站页面/界面/主机工具测试挪过来，
+                     # 让测试摘要恢复到与源码条目同长（固件分片仍受 32 KiB 单分片上限约束）。
+                     "tests/test_airframe_page", "tests/test_component_overview_layout",
+                     "tests/test_flight_log_receive", "tests/test_flight_log_sysid_ui",
+                     "tests/test_flight_log_waveform_ui", "tests/test_flight_log_workbench",
+                     "tests/test_flow_monitor_page", "tests/test_flow_mount_page", "tests/test_imu_vibration_ui",
+                     "tests/test_led_map_page", "tests/test_mag_cal_page", "tests/test_prop_map_page",
+                     "tests/test_servo_debug_page_contract", "tests/test_servo_type_panel_contract",
+                     "tests/test_shared_log_transfer", "tests/test_sysid_backlash_panel",
+                     "tests/test_sysid_yaw_page", "tests/test_telem_stream_decoder",
+                     "tests/test_thrust_bench_ui", "tests/test_yaw_analysis")
     host_paths = [path for path in test_paths if path.startswith(host_prefixes)]
     firmware_paths = [path for path in test_paths if path not in set(host_paths)]
 

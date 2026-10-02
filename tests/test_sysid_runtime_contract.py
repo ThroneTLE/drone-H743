@@ -30,6 +30,8 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCES = [
     "App/Src/app_sysid.c",
     "App/Src/app_sysid_alt.c",
+    "App/Src/app_sysid_xy.c",
+    "App/Src/app_sysid_yaw.c",
     "Driver/Src/drv_sysid_rig.c",
     "Driver/Src/drv_sysid_record.c",
     "Driver/Src/drv_sysid_excitation.c",
@@ -57,6 +59,9 @@ AIRFRAME_FIELDS = [
     "mass_kg", "cg_z_m", "weight_n", "thrust_point_to_cg_z_m",
     "tether_attach_to_cg_m", "tether_rod_to_cg_m", "max_total_force_n",
     "hover_thrust_percent", "servo_us_per_deg", "derived_auto",
+    # CFG v26（2026-09-29，R-FLOWMOUNT-1）：尾部追加的光流安装两项。少了它们 ctypes 结构
+    # 比 C 结构短 8 字节，C 侧整体读写会越过 Python 分配的缓冲。
+    "flow_mount_yaw_deg", "flow_mount_mirror",
 ]
 
 PROFILE_STEP, PROFILE_DOUBLET, PROFILE_CHIRP, PROFILE_PRBS = 0, 1, 2, 3
@@ -115,11 +120,21 @@ class Observe(ctypes.Structure):
         ("gyro_ctrl_rad_s", ctypes.c_float * 3),   # 控制用（转速陷波后），闭环 PID 读它
         # 高度辨识（ALT，R-ALTID-1）：稳定环每拍都填，非 ALT 轮辨识不读。
         ("height_valid", ctypes.c_uint8),
+        ("height_sample_ms", ctypes.c_uint32),
         ("height_m", ctypes.c_float),
         ("height_raw_m", ctypes.c_float),
         ("vz_m_s", ctypes.c_float),
         ("az_m_s2", ctypes.c_float),
         ("vbat_v", ctypes.c_float),
+        # 水平槽 XY 辨识（R-XYID-1）：光流有效位、样本时刻、速度与位置（规范 FLU x/y）。
+        ("flow_valid", ctypes.c_uint8),
+        ("flow_sample_ms", ctypes.c_uint32),
+        ("flow_vel_m_s", ctypes.c_float * 2),
+        ("flow_pos_m", ctypes.c_float * 2),
+        # 重力水平在控制角坐标里的位置（−开机零点）；XY 绕杆轴保持目标用它。
+        ("level_valid", ctypes.c_uint8),
+        ("level_roll_rad", ctypes.c_float),
+        ("level_pitch_rad", ctypes.c_float),
     ]
 
 
@@ -764,16 +779,19 @@ def test_the_identification_module_never_touches_the_esc_directly():
     """自动油门（作者 2026-09-26 授权）只算脉宽；写电调的仍是稳定环里
     "已解锁 + 链路正常"那一支，上锁与失联分支里辨识根本够不着电机。"""
     for path in ("App/Src/app_sysid.c", "App/Src/app_cmd_sysid.c",
-                 "App/Inc/app_sysid.h", "App/Src/app_sysid_alt.c", "App/Inc/app_sysid_alt.h"):
+                 "App/Inc/app_sysid.h", "App/Src/app_sysid_alt.c", "App/Inc/app_sysid_alt.h",
+                 "App/Src/app_sysid_yaw.c", "App/Inc/app_sysid_yaw.h"):
         code = strip_c_comments((ROOT / path).read_text(encoding="utf-8"))
         assert "DRV_Motor" not in code, path
         assert "BSP_PWM_SetEscPulse" not in code, path
         assert "BSP_PWM_SetEscPercent" not in code, path
     stabilizer = strip_c_comments((ROOT / "App/Src/app_stabilizer.c").read_text(encoding="utf-8"))
-    assert stabilizer.count("APP_SysId_GetMotorPulse(") == 1
+    # 吊绳偏航辨识（YAW）上下桨脉宽不同，稳定环取的是 GetMotorPulsePair（其余模式两路逐位相同）。
+    assert stabilizer.count("APP_SysId_GetMotorPulsePair(") == 1
+    assert "APP_SysId_GetMotorPulse(" not in stabilizer
     armed_branch = stabilizer.split("((frame->rc_link_ok != 0U) && (frame->rc_armed != 0U))", 1)[1]
     armed_branch = armed_branch.split("} else if ((frame->rc_link_ok != 0U) || (frame->rc_link_seen == 0U))", 1)[0]
-    assert "APP_SysId_GetMotorPulse(" in armed_branch
+    assert "APP_SysId_GetMotorPulsePair(" in armed_branch
 
 
 def test_the_identification_module_never_writes_flash():

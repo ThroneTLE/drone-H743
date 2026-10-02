@@ -68,7 +68,10 @@ void DRV_NAV_EKF_DefaultConfig(DRV_NAV_EKF_Config *config)
     config->initial_bias_variance = 0.50f;
     config->max_dt_sec = 0.02f;
     config->max_velocity_m_s = 2.50f;
-    config->predict_leak_hz = 1.50f;
+    /* 默认不泄漏：泄漏不在协方差模型里，光流正常时它只会把速度往 0 拉。
+     * 2026-10-01 钢尺实测原为 1.5 Hz 时导航位移只有真值 0.75~0.8；光流丢失的
+     * 收敛由 svc_flow_nav 的 decay 分支负责，不靠这里。机制保留供 A/B。 */
+    config->predict_leak_hz = 0.0f;
 }
 
 void DRV_NAV_EKF_Reset(DRV_NAV_EKF_State *state,

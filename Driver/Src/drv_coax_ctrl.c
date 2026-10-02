@@ -3,6 +3,7 @@
 #include "bsp_pwm.h"
 #include "drv_airframe_params.h"
 #include "drv_att_reference.h"
+#include "drv_hover_adapt.h"
 #include "drv_moment_notch.h"
 #include "drv_prop_map.h"
 
@@ -62,6 +63,13 @@
 /* ════════════════════════════════════════════════════════════════════════ */
 
 #define DRV_COAX_CTRL_FORCE_EPS_N          1.0e-4f
+/*
+ * 总推力给偏航留的差速余量 [N]：合推力不超过 2·T单max − 此值，任何时候上下桨都还有 ±一半可差。
+ * 2026-10-01 自由飞（receive_lok1zuby 72.8 s）：大倾角掉高、两桨顶满 1940 µs，偏航余量归零，下桨反扭矩
+ * 偏大的那部分没人抵（悬停时积分常驻约 0.0014 N·m ≈ 0.28 N 差速），机身转到 −170 °/s，光流因转速判无效，
+ * 高度环随之冻结在最大推力上冲到 1.7 m。0.8 N 约为该偏差的 1.4 倍，代价是满油门少约 5%。
+ */
+#define DRV_COAX_CTRL_YAW_RESERVE_N        0.8f
 #define DRV_COAX_CTRL_RATE_SCALE_EPS       1.0e-6f
 #define DRV_COAX_CTRL_SERVO_ANGLE_TOL_RAD  8.0e-4f
 /*
@@ -91,7 +99,8 @@
  * k/I_zz 这个比值——控制律真正需要的也只是这个比值。
  */
 #define DRV_COAX_CTRL_PROP9047_YAW_M_PER_N 0.005f
-#define DRV_COAX_CTRL_SINGLE_MAX_THRUST_N 10.2f
+#define DRV_COAX_CTRL_SINGLE_MAX_THRUST_N 10.2f   /* 封顶；实际可用值见 coax_ctrl_single_max_thrust_n() */
+#define DRV_COAX_CTRL_SINGLE_MAX_THRUST_MIN_N 2.0f /* 映射给出低于此值视为电压未知，退回封顶 */
 #define DRV_COAX_CTRL_THRUST_TABLE_POINTS  21U
 #define DRV_COAX_CTRL_GRAMS_PER_NEWTON     101.971621f
 /*
@@ -247,6 +256,8 @@ static const DRV_COAX_CTRL_ThrustMap *volatile coax_ctrl_thrust_map;
 static DRV_COAX_CTRL_ServoCalibration coax_ctrl_servo_calibration;
 static DRV_COAX_CTRL_Debug coax_ctrl_last_debug;
 static DRV_COAX_CTRL_State coax_ctrl_state;
+/* 悬停推力运行时覆盖（自适应学习结果，只在 RAM），0 = 用 coax.hover_thrust_n / m·g。见 drv_hover_adapt.h。 */
+static float coax_ctrl_hover_adapt_n = 0.0f;
 static DRV_COAX_CTRL_Shaping coax_ctrl_shaping;
 COAX_CTRL_AXI_NOINIT static DRV_AttRef coax_ctrl_att_ref;
 
@@ -309,6 +320,11 @@ static const DRV_COAX_CTRL_ParamEntry coax_ctrl_param_table[] = {
     DRV_COAX_CTRL_PARAM_ENTRY(rate_out_notch2_q),
     DRV_COAX_CTRL_PARAM_ENTRY(att_ref_wr_rad_s),
     DRV_COAX_CTRL_PARAM_ENTRY(att_ref_delay_ms),
+    DRV_COAX_CTRL_PARAM_ENTRY(hover_thrust_n),
+    DRV_COAX_CTRL_PARAM_ENTRY(z_vel_fusion),
+    DRV_COAX_CTRL_PARAM_ENTRY(alt_max_m),
+    DRV_COAX_CTRL_PARAM_ENTRY(manual_tilt_max_rad),
+    DRV_COAX_CTRL_PARAM_ENTRY(yaw_stick_rate_rad_s),
 };
 
 static const uint32_t coax_ctrl_param_count =
@@ -620,14 +636,53 @@ static void coax_ctrl_rotation_to_rpy(const float rotation[3][3],
 }
 
 /*
+ * 单桨"此刻真能出"的最大推力：推力映射在当前电量电压下把 ESC 满行程换成两桨合推力，取一半；
+ * 写死的 motor_single_max_thrust_n（10.2 N）只作封顶。2026-10-01 推力表满油门两桨合计约
+ * 16 N@12 V（单桨约 8 N），悬停已占 14.25 N——按 10.2 N 算，分配器以为还有 6 N 差速余量，
+ * 偏航上限算成 0.031 N·m（实际约 0.01），推力早已顶满还在按"未饱和"分配。映射缺失或电压
+ * 未知（结果不合理）时退回封顶值，即旧行为。
+ */
+static float coax_ctrl_single_max_thrust_n(void)
+{
+    const float cap = coax_ctrl_params.motor_single_max_thrust_n;
+    const DRV_COAX_CTRL_ThrustMap *map = coax_ctrl_thrust_map;
+
+    if ((map != NULL) && (map->total_thrust_for_pulse != NULL)) {
+        const float half = 0.5f * map->total_thrust_for_pulse(BSP_PWM_ESC_MAX_US);
+        if (isfinite(half) && (half >= DRV_COAX_CTRL_SINGLE_MAX_THRUST_MIN_N)) {
+            return fminf(half, cap);
+        }
+    }
+    return cap;
+}
+
+float DRV_COAX_CTRL_SingleMaxThrustN(void)
+{
+    DRV_COAX_CTRL_Init();
+    return coax_ctrl_single_max_thrust_n();
+}
+
+/*
  * 差动推力能提供的偏航力矩上限，与 coax_ctrl_allocate_motor_thrust 的
  * 钳位边界严格对偶：任一路推力越界都会让指令被静默削掉。
  */
+/* 合推力上限：机体参数的总推力上限与"给偏航留余量"的 2·T单max − YAW_RESERVE 取小；机体无效（≤0）原样返回。 */
+static float coax_ctrl_force_cap_n(float max_total_force_n)
+{
+    const float yaw_cap_n = (2.0f * coax_ctrl_single_max_thrust_n()) - DRV_COAX_CTRL_YAW_RESERVE_N;
+
+    if ((max_total_force_n > 0.0f) && (yaw_cap_n > DRV_COAX_CTRL_FORCE_EPS_N) &&
+        (yaw_cap_n < max_total_force_n)) {
+        return yaw_cap_n;
+    }
+    return max_total_force_n;
+}
+
 static float coax_ctrl_yaw_limit_moment(float total_force_n)
 {
     const float ku = coax_ctrl_params.yaw_torque_upper_m_per_n;
     const float kl = coax_ctrl_params.yaw_torque_lower_m_per_n;
-    const float span = (ku + kl) * coax_ctrl_params.motor_single_max_thrust_n;
+    const float span = (ku + kl) * coax_ctrl_single_max_thrust_n();
     float limit = fminf(kl * total_force_n, ku * total_force_n);
 
     limit = fminf(limit, span - (ku * total_force_n));
@@ -683,8 +738,24 @@ static uint8_t coax_ctrl_param_value_valid(const DRV_COAX_CTRL_ParamEntry *entry
                 (value <= DRV_COAX_CTRL_TILT_LIMIT_RAD)) ? 1U : 0U;
     }
 
-    if (entry->offset == offsetof(DRV_COAX_CTRL_Params, vel_loop_enable)) {
+    if ((entry->offset == offsetof(DRV_COAX_CTRL_Params, vel_loop_enable)) ||
+        (entry->offset == offsetof(DRV_COAX_CTRL_Params, z_vel_fusion))) {
         return ((value >= 0.0f) && (value <= 1.0f)) ? 1U : 0U;
+    }
+    if (entry->offset == offsetof(DRV_COAX_CTRL_Params, hover_thrust_n)) {
+        return ((value == 0.0f) ||
+                ((value >= DRV_COAX_CTRL_HOVER_THRUST_MIN_N) &&
+                 (value <= DRV_COAX_CTRL_HOVER_THRUST_MAX_N))) ? 1U : 0U;
+    }
+    /* 飞行限幅（v29）：范围见 drv_coax_ctrl.h。 */
+    if (entry->offset == offsetof(DRV_COAX_CTRL_Params, alt_max_m)) {
+        return ((value >= 0.1f) && (value <= 20.0f)) ? 1U : 0U;
+    }
+    if (entry->offset == offsetof(DRV_COAX_CTRL_Params, manual_tilt_max_rad)) {
+        return ((value >= 0.05f) && (value <= 0.785f)) ? 1U : 0U;
+    }
+    if (entry->offset == offsetof(DRV_COAX_CTRL_Params, yaw_stick_rate_rad_s)) {
+        return ((value >= 0.1f) && (value <= 6.0f)) ? 1U : 0U;
     }
     if ((entry->offset == offsetof(DRV_COAX_CTRL_Params,
                                    attitude.rate_limit_rad_s[0])) ||
@@ -795,13 +866,27 @@ static void coax_ctrl_compute_accel_cmd(
         position_input.position_meas_m[0] = attitude->x_m;
         position_input.position_meas_m[1] = attitude->y_m;
         position_input.position_meas_m[2] = attitude->z_m;
+        if (reference->split_axis_validity != 0U) {
+            /* 分轴：无效轴把测量换成目标（位置误差 0，只剩速度前馈），见 drv_coax_ctrl.h。 */
+            if (reference->navigation_position_valid == 0U) {
+                position_input.position_meas_m[0] = reference->x_m;
+                position_input.position_meas_m[1] = reference->y_m;
+            }
+            if (reference->vertical_measurement_valid == 0U) {
+                position_input.position_meas_m[2] = reference->z_m;
+            }
+        }
         position_input.direct_velocity_m_s[0] = reference->vx_m_s;
         position_input.direct_velocity_m_s[1] = reference->vy_m_s;
         position_input.direct_velocity_m_s[2] = reference->vz_m_s;
         memcpy(position_input.velocity_ff_m_s, velocity_ff,
                sizeof(position_input.velocity_ff_m_s));
         position_input.dt_sec = schedule->position_dt_s;
-        position_input.measurement_valid = reference->navigation_position_valid;
+        position_input.measurement_valid =
+            (reference->split_axis_validity != 0U) ?
+                (uint8_t)((reference->navigation_position_valid != 0U) ||
+                          (reference->vertical_measurement_valid != 0U)) :
+                reference->navigation_position_valid;
         position_input.position_bypass = reference->position_control_bypass;
         DRV_POSITION_CONTROL_PositionStep(&coax_ctrl_params.position,
                                           &position_input,
@@ -825,6 +910,24 @@ static void coax_ctrl_compute_accel_cmd(
         velocity_input.measurement_valid =
             (reference->navigation_velocity_valid != 0U) &&
             (attitude->acceleration_valid != 0U);
+        if (reference->split_axis_validity != 0U) {
+            /* 分轴：任一通道有效就闭环；无效轴速度测量换成目标（误差 0，积分保持配平）。
+             * 加速度测量只喂 D 项低通，无效时给 0。 */
+            velocity_input.measurement_valid =
+                (uint8_t)((reference->navigation_velocity_valid != 0U) ||
+                          (reference->vertical_measurement_valid != 0U));
+            if (reference->navigation_velocity_valid == 0U) {
+                velocity_input.velocity_meas_m_s[0] = velocity_input.velocity_sp_m_s[0];
+                velocity_input.velocity_meas_m_s[1] = velocity_input.velocity_sp_m_s[1];
+            }
+            if (reference->vertical_measurement_valid == 0U) {
+                velocity_input.velocity_meas_m_s[2] = velocity_input.velocity_sp_m_s[2];
+            }
+            if (attitude->acceleration_valid == 0U) {
+                memset(velocity_input.measured_accel_m_s2, 0,
+                       sizeof(velocity_input.measured_accel_m_s2));
+            }
+        }
         velocity_input.integrator_enable = schedule->integrator_enable;
         velocity_input.integrator_freeze = schedule->integrator_freeze;
         velocity_input.integrator_reset = schedule->integrator_reset;
@@ -939,6 +1042,17 @@ static void coax_ctrl_shape_attitude_target(
     if (!(coax_ctrl_params.att_ref_wr_rad_s > 0.0f)) {
         return;
     }
+    if (source != 2U) {
+        /*
+         * 位置/速度环给的姿态目标不过参考模型（同 PX4：位置控制器的姿态设定值不再整形）。
+         * 参考模型为遥控阶跃设计，放进速度环里等于多一节约 0.22 s 的滞后：2026-10-01 自由飞
+         * 定点 2.4 s 持续振荡（日志 receive_fgdfdpto，加速度指令→期望姿态互相关峰 210–220 ms），
+         * 拟合对象仿真去掉它后现增益即充分阻尼（data/analysis/flight-position-loop/2026-10-01/）。
+         * 记下来源，切回直接姿态时照常从实测角重新起步。
+         */
+        coax_ctrl_shaping.ref_source = source;
+        return;
+    }
     if (coax_ctrl_shaping.ref_source != source) {
         /* 目标来源切换（直接姿态 ↔ 位置/速度环）：从当前姿态重新起步，不带旧速度。 */
         DRV_AttRef_Reset(&coax_ctrl_att_ref);
@@ -1044,12 +1158,13 @@ static void coax_ctrl_compute_balance_solution(
     float roll_utilization;
     float pitch_utilization;
     float yaw_utilization;
+    const float mass_eff_kg = DRV_COAX_CTRL_EffectiveMassKg(coax_ctrl_params.mass_kg);
 
     memset(solution, 0, sizeof(*solution));
     solution->desired_force_local_n[0] =
-        coax_ctrl_params.mass_kg * debug->accel_out_m_s2[0];
+        mass_eff_kg * debug->accel_out_m_s2[0];
     solution->desired_force_local_n[1] =
-        coax_ctrl_params.mass_kg * debug->accel_out_m_s2[1];
+        mass_eff_kg * debug->accel_out_m_s2[1];
     if (reference->manual_total_force_valid != 0U) {
         solution->desired_force_local_n[2] =
             coax_ctrl_clamp_f32(reference->manual_total_force_n,
@@ -1064,7 +1179,7 @@ static void coax_ctrl_compute_balance_solution(
          * sign convention.)
          */
         solution->desired_force_local_n[2] =
-            coax_ctrl_params.mass_kg *
+            mass_eff_kg *
             (coax_ctrl_params.gravity_m_s2 + debug->accel_out_m_s2[2]);
         if (solution->desired_force_local_n[2] < DRV_COAX_CTRL_FORCE_EPS_N) {
             solution->desired_force_local_n[2] = DRV_COAX_CTRL_FORCE_EPS_N;
@@ -1077,8 +1192,8 @@ static void coax_ctrl_compute_balance_solution(
         ? (solution->raw_total_force_n / max_total_force_n)
         : 0.0f;
     if ((max_total_force_n > 0.0f) &&
-        (solution->raw_total_force_n > max_total_force_n)) {
-        force_scale = max_total_force_n /
+        (solution->raw_total_force_n > coax_ctrl_force_cap_n(max_total_force_n))) {
+        force_scale = coax_ctrl_force_cap_n(max_total_force_n) /
                       solution->raw_total_force_n;
         for (uint32_t axis = 0U; axis < 3U; ++axis) {
             solution->desired_force_local_n[axis] *= force_scale;
@@ -1101,12 +1216,8 @@ static void coax_ctrl_compute_balance_solution(
                                 -coax_ctrl_params.tilt_limit_rad,
                                  coax_ctrl_params.tilt_limit_rad);
     } else {
-        target_pitch_rad =
-            atan2f(solution->desired_force_local_n[0],
-                   solution->desired_force_local_n[2]);
-        target_roll_rad =
-            -atan2f(solution->desired_force_local_n[1] * cosf(target_pitch_rad),
-                    solution->desired_force_local_n[2]);
+        DRV_COAX_CTRL_TiltFromForce(solution->desired_force_local_n,
+                                    &target_roll_rad, &target_pitch_rad);
     }
     /* 指令留作调试；参考模型开启时角度环跟的是整形后的延后参考。 */
     command_rp_rad[0] = target_roll_rad;
@@ -1434,6 +1545,7 @@ static void coax_ctrl_allocate_motor_thrust(float total_force_n,
 {
     const float ku = coax_ctrl_params.yaw_torque_upper_m_per_n;
     const float kl = coax_ctrl_params.yaw_torque_lower_m_per_n;
+    const float single_max_n = coax_ctrl_single_max_thrust_n();
     float denom = ku + kl;
 
     if (denom < DRV_COAX_CTRL_RATE_SCALE_EPS) {
@@ -1452,10 +1564,8 @@ static void coax_ctrl_allocate_motor_thrust(float total_force_n,
     *upper_n = upper_raw;
     *lower_n = lower_raw;
 
-    *upper_n = coax_ctrl_clamp_f32(*upper_n, 0.0f,
-                                   coax_ctrl_params.motor_single_max_thrust_n);
-    *lower_n = coax_ctrl_clamp_f32(*lower_n, 0.0f,
-                                   coax_ctrl_params.motor_single_max_thrust_n);
+    *upper_n = coax_ctrl_clamp_f32(*upper_n, 0.0f, single_max_n);
+    *lower_n = coax_ctrl_clamp_f32(*lower_n, 0.0f, single_max_n);
     if (upper_saturated != NULL) {
         *upper_saturated = (fabsf(*upper_n - upper_raw) >
                             DRV_COAX_CTRL_RATE_SCALE_EPS) ? 1U : 0U;
@@ -1464,6 +1574,39 @@ static void coax_ctrl_allocate_motor_thrust(float total_force_n,
         *lower_saturated = (fabsf(*lower_n - lower_raw) >
                             DRV_COAX_CTRL_RATE_SCALE_EPS) ? 1U : 0U;
     }
+}
+
+/*
+ * 吊绳偏航辨识（SYSID MODE YAW，doc/sysid-yaw-contract.md）用的公开入口：
+ * 与生产偏航通道同一套分配（含偏航极性 P 与单桨推力上限钳位），不改任何行为，只包一层。
+ */
+void DRV_COAX_CTRL_AllocateYawPair(float total_force_n, float yaw_moment_n_m,
+                                   float *upper_n, float *lower_n, uint8_t *saturated)
+{
+    float upper = 0.0f;
+    float lower = 0.0f;
+    uint8_t upper_saturated = 0U;
+    uint8_t lower_saturated = 0U;
+
+    DRV_COAX_CTRL_Init();
+    coax_ctrl_allocate_motor_thrust(total_force_n, yaw_moment_n_m, &upper, &lower,
+                                    &upper_saturated, &lower_saturated);
+    if (upper_n != NULL) { *upper_n = upper; }
+    if (lower_n != NULL) { *lower_n = lower; }
+    if (saturated != NULL) { *saturated = ((upper_saturated | lower_saturated) != 0U) ? 1U : 0U; }
+}
+
+void DRV_COAX_CTRL_GetYawTorqueCoefficients(float *upper_m_per_n, float *lower_m_per_n)
+{
+    DRV_COAX_CTRL_Init();
+    if (upper_m_per_n != NULL) { *upper_m_per_n = coax_ctrl_params.yaw_torque_upper_m_per_n; }
+    if (lower_m_per_n != NULL) { *lower_m_per_n = coax_ctrl_params.yaw_torque_lower_m_per_n; }
+}
+
+float DRV_COAX_CTRL_YawLimitMomentNm(float total_force_n)
+{
+    DRV_COAX_CTRL_Init();
+    return coax_ctrl_yaw_limit_moment(total_force_n);
 }
 
 void DRV_COAX_CTRL_Init(void)
@@ -1666,6 +1809,13 @@ void DRV_COAX_CTRL_GetDefaultParams(DRV_COAX_CTRL_Params *params)
     params->rate_out_notch2_q = 1.0f;
     params->att_ref_wr_rad_s = 0.0f;
     params->att_ref_delay_ms = 45.0f;
+    params->hover_thrust_n = 0.0f;
+    /* 默认开（2026-09-30 台架验证）：高度环 3/8/3 在融合关（vz 滞后约 92 ms）时位置环 PM 为负。 */
+    params->z_vel_fusion = 1.0f;
+    /* 飞行限幅默认 = 原写死常量：0.40 m、20°、60°/s（约 1.0472 rad/s）。 */
+    params->alt_max_m = 0.40f;
+    params->manual_tilt_max_rad = 0.349065850f;
+    params->yaw_stick_rate_rad_s = 1.04719758f;
     coax_ctrl_apply_fixed_model_params(params);
 }
 
@@ -1981,8 +2131,7 @@ uint16_t DRV_COAX_CTRL_ThrustToMotorPulse(float thrust_n)
 
     DRV_COAX_CTRL_Init();
 
-    thrust_n = coax_ctrl_clamp_f32(thrust_n, 0.0f,
-                                   coax_ctrl_params.motor_single_max_thrust_n);
+    thrust_n = coax_ctrl_clamp_f32(thrust_n, 0.0f, coax_ctrl_single_max_thrust_n());
     if ((map != NULL) && (map->pulse_for_motor_thrust != NULL)) {
         return coax_ctrl_clamp_u16((int32_t)map->pulse_for_motor_thrust(thrust_n),
                                    BSP_PWM_ESC_MIN_US,
@@ -2013,6 +2162,70 @@ uint16_t DRV_COAX_CTRL_ThrustToMotorPulse(float thrust_n)
     return BSP_PWM_ESC_MAX_US;
 }
 
+void DRV_COAX_CTRL_TiltFromForce(const float force_n[3], float *roll_rad, float *pitch_rad)
+{
+    /* 两行公式原样从 coax_ctrl_solve_force 搬来（运算顺序不变，生产输出逐位不变）。 */
+    const float pitch = atan2f(force_n[0], force_n[2]);
+    const float roll = -atan2f(force_n[1] * cosf(pitch), force_n[2]);
+
+    if (roll_rad != NULL) {
+        *roll_rad = roll;
+    }
+    if (pitch_rad != NULL) {
+        *pitch_rad = pitch;
+    }
+}
+
+float DRV_COAX_CTRL_EffectiveMassKg(float nominal_mass_kg)
+{
+    const float g = coax_ctrl_params.gravity_m_s2;
+
+    if ((coax_ctrl_hover_adapt_n > 0.0f) && (g > 0.0f)) {
+        return coax_ctrl_hover_adapt_n / g;
+    }
+    if ((coax_ctrl_params.hover_thrust_n > 0.0f) && (g > 0.0f)) {
+        return coax_ctrl_params.hover_thrust_n / g;
+    }
+    return nominal_mass_kg;
+}
+
+float DRV_COAX_CTRL_ConfiguredHoverThrustN(void)
+{
+    if (coax_ctrl_params.hover_thrust_n > 0.0f) {
+        return coax_ctrl_params.hover_thrust_n;
+    }
+    return coax_ctrl_params.mass_kg * coax_ctrl_params.gravity_m_s2;
+}
+
+float DRV_COAX_CTRL_GetHoverThrustAdapt(void)
+{
+    return coax_ctrl_hover_adapt_n;
+}
+
+void DRV_COAX_CTRL_SetHoverThrustAdapt(float hover_n)
+{
+    const float g = coax_ctrl_params.gravity_m_s2;
+    const float old_n = DRV_COAX_CTRL_EffectiveMassKg(coax_ctrl_params.mass_kg) * g;
+    float new_n;
+    float *integ = &coax_ctrl_state.position.velocity_integrator_m_s2[2];
+    const float limit = coax_ctrl_params.position.vel_integrator_limit[2];
+
+    if (!(hover_n >= DRV_COAX_CTRL_HOVER_THRUST_MIN_N) ||
+        !(hover_n <= DRV_COAX_CTRL_HOVER_THRUST_MAX_N)) {
+        hover_n = 0.0f;
+    }
+    coax_ctrl_hover_adapt_n = hover_n;
+    new_n = DRV_COAX_CTRL_EffectiveMassKg(coax_ctrl_params.mass_kg) * g;
+    if ((old_n > 0.0f) && (new_n > 0.0f) && (old_n != new_n)) {
+        /* 无扰切换：竖直速度积分反向挪同样的推力，当拍合推力不变（drv_hover_adapt.h）。 */
+        *integ += DRV_HoverAdapt_IntegratorShift(
+            old_n, new_n, g, coax_ctrl_state.velocity_output.accel_sat_m_s2[2]);
+        if (limit > 0.0f) {
+            *integ = coax_ctrl_clamp_f32(*integ, -limit, limit);
+        }
+    }
+}
+
 float DRV_COAX_CTRL_MotorPulseToTotalThrust(uint16_t pulse_us)
 {
     float thrust_g;
@@ -2023,7 +2236,7 @@ float DRV_COAX_CTRL_MotorPulseToTotalThrust(uint16_t pulse_us)
     if ((map != NULL) && (map->total_thrust_for_pulse != NULL)) {
         return coax_ctrl_clamp_f32(map->total_thrust_for_pulse(pulse_us),
                                    0.0f,
-                                   2.0f * coax_ctrl_params.motor_single_max_thrust_n);
+                                   2.0f * coax_ctrl_single_max_thrust_n());
     }
 
     if (pulse_us <= coax_ctrl_dual_pwm_us[0]) {
@@ -2043,7 +2256,7 @@ float DRV_COAX_CTRL_MotorPulseToTotalThrust(uint16_t pulse_us)
             return coax_ctrl_clamp_f32(
                 thrust_g / DRV_COAX_CTRL_GRAMS_PER_NEWTON,
                 0.0f,
-                2.0f * coax_ctrl_params.motor_single_max_thrust_n);
+                2.0f * coax_ctrl_single_max_thrust_n());
         }
     }
 
@@ -2175,7 +2388,7 @@ void DRV_COAX_CTRL_RunScheduled(const DRV_COAX_CTRL_AttitudeInput *attitude,
     output->yaw_differential_saturated =
         output->saturation_positive[2] || output->saturation_negative[2];
     output->thrust_saturated =
-        (solution.raw_total_force_n > DRV_Airframe_Get()->max_total_force_n) ||
+        (solution.raw_total_force_n > coax_ctrl_force_cap_n(DRV_Airframe_Get()->max_total_force_n)) ||
         (fabsf((output->thrust_upper_n + output->thrust_lower_n) -
                debug.total_force_n) > DRV_COAX_CTRL_RATE_SCALE_EPS);
     memcpy(debug.moment_achieved_n_m, output->moment_achieved_n_m,

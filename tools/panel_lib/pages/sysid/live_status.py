@@ -47,6 +47,12 @@ class LiveStatus:
         return (version is not None and version < 3) or not self.workflow.thr_poll_allowed()
 
     def refresh_banner(self) -> None:
+        if hasattr(self, "refresh_alt_height"):
+            self.refresh_alt_height()         # 「Z 高度」页的实时测距跟着 THR 回报与每秒轮询刷新
+        if hasattr(self, "refresh_xy_live"):
+            self.refresh_xy_live()            # XY 页的实时位置/速度同理
+        if hasattr(self, "refresh_yaw_live"):
+            self.refresh_yaw_live()           # 偏航页的实时偏航角速度/偏航角（最近一个记录样本）
         if not hasattr(self, "banner_detail_label"):
             return
         if hasattr(self, "refresh_notch_controls"):
@@ -54,28 +60,38 @@ class LiveStatus:
         if hasattr(self, "refresh_backlash_controls"):
             self.refresh_backlash_controls()  # 回差补偿开关同上
         w = self.workflow
+        active_control = ((w.snapshot or {}).get("alt_request") or {}).get("control")
+        alt_control = active_control if (w.run_id is not None or w.awaiting == "SYSID START") else (
+            "breakaway" if self.mode_var.get() == "ALT" and self.alt_inject_var.get() == "break"
+            else "closed_loop" if self.mode_var.get() == "ALT" else None)
         transport = getattr(self.panel, "transport", None)
+        alt = self.alt_run_active() if hasattr(self, "alt_run_active") else False
+        xy = self.xy_run_active() if hasattr(self, "xy_run_active") else False
+        yaw = self.yaw_run_active() if hasattr(self, "yaw_run_active") else False
         state = BannerInput(
             connected=bool(transport is not None and getattr(transport, "is_connected", False)),
-            manual=bool(self.manual_throttle_var.get()),
+            # 高度 / 水平槽辨识总是程序油门：内环页的手动油门勾选对它们不起作用。
+            manual=bool(self.manual_throttle_var.get()) and not (alt or xy or yaw),
             config_busy=bool(w.awaiting) and w.awaiting != "SYSID START",
             start_pending=w.awaiting == "SYSID START",
             stopping=self.stopping,
             run_active=w.run_id is not None and w.end is None,
             phase=self.phase, samples=len(self.samples), end=w.end,
-            analysis=self.analysis_note, notice=w.notice,
+            analysis=self.analysis_note, data_error=w.data_error, notice=w.notice,
             thr=self._current_thr(), fw_outdated=self.firmware_outdated(),
             mode=(w.snapshot or {}).get("mode"), servo=self.servo_mode_active(),
             amp_warning=self.amp_swing_warning() if hasattr(self, "amp_swing_warning") else "",
-            alt=self.alt_run_active() if hasattr(self, "alt_run_active") else False)
+            alt=alt, alt_control=alt_control, xy=xy, yaw=yaw)
         title, detail, tone = describe(state)
-        shown = (title, detail, tone, rc_summary(state.thr))
+        shown = (title, detail, tone, rc_summary(state.thr, alt_control))
         if shown == self._banner_shown:
             return
         self._banner_shown = shown
         self.banner_var.set(title)
         self.banner_detail_var.set(detail)
-        self.banner_detail_label.configure(style=TONE_STYLES.get(tone, "TLabel"))
+        # 「Z 高度」页、XY 页挂着同一组状态文字（altitude.py、horizontal.py），颜色一起跟。
+        for label in (self.banner_detail_label, *getattr(self, "extra_banner_detail_labels", ())):
+            label.configure(style=TONE_STYLES.get(tone, "TLabel"))
         self.rc_var.set(shown[3])
 
     def servo_mode_active(self) -> bool:
@@ -86,6 +102,7 @@ class LiveStatus:
         return self.mode_var.get() == "SERVO"
 
     def refresh_thrust_hint(self) -> None:
+        """内环页程序油门的灰字；高度页的合推力提示在 `alt_section.refresh_alt_hint`。"""
         text = self.target_thrust_var.get().strip()
         if text:
             self.thrust_hint_var.set(f"将使用 {text} N（清空则用机重）")
@@ -204,23 +221,35 @@ class LiveStatus:
         self.refresh_banner()
 
     def throttle_settings(self) -> tuple[bool, float | None, float]:
-        """`(手动?, 目标合推力或 None=机重, 最高油门%)`；填错抛 ValueError（中文）。"""
+        """`(手动?, 目标合推力或 None=机重, 最高油门%)`；填错抛 ValueError（中文）。
+
+        ALT 读「Z 高度」页自己的合推力与最高油门，而且总是程序油门（手动 = False）。
+        """
+        if self.mode_var.get() == "YAW" and hasattr(self, "yaw_throttle_settings"):
+            return self.yaw_throttle_settings()     # 偏航页：总推力 + 固定最高油门，总是程序油门
+        alt = self.mode_var.get() == "ALT"
+        xy = self.mode_var.get() == "XY"
+        breakaway = alt and self.alt_inject_var.get() == "break"
+        target_name = ("离地搜索上限" if breakaway else "托住推力" if xy else "目标合推力")
+        fallback = ("" if breakaway else "，或留空用飞控悬停推力参数" if xy else "，或留空用机重")
+        max_var = self.alt_max_pct_var if alt else self.xy_max_pct_var if xy else self.max_pct_var
         try:
-            max_pct = float(self.max_pct_var.get())
+            max_pct = float(max_var.get())
         except ValueError:
             raise ValueError("最高油门要填数字（10～95）") from None
         if not (math.isfinite(max_pct) and 10.0 <= max_pct <= 95.0):
             raise ValueError("最高油门要在 10%～95% 之间")
-        text = self.target_thrust_var.get().strip()
+        text = (self.alt_target_var if alt else self.xy_target_var if xy
+                else self.target_thrust_var).get().strip()
         target = None
         if text:
             try:
                 target = float(text)
             except ValueError:
-                raise ValueError("目标合推力要填数字（单位 N），或留空用机重") from None
+                raise ValueError(f"{target_name}要填数字（单位 N）{fallback}") from None
             if not (math.isfinite(target) and target > 0):
-                raise ValueError("目标合推力要填正数（单位 N），或留空用机重")
-        return bool(self.manual_throttle_var.get()), target, max_pct
+                raise ValueError(f"{target_name}要填正数（单位 N）{fallback}")
+        return bool(self.manual_throttle_var.get()) and not (alt or xy), target, max_pct
 
     def _schedule_poll(self) -> None:
         if self.workflow.closed:
@@ -241,6 +270,8 @@ class LiveStatus:
                 self.notch_poll_idle()
             if hasattr(self, "backlash_poll_idle"):
                 self.backlash_poll_idle()
+            if hasattr(self, "yaw_poll_idle"):
+                self.yaw_poll_idle()          # 偏航页在前台：隔几秒读一次单桨最大推力（THRMODE?）
             self.refresh_banner()
         finally:
             self._schedule_poll()
@@ -249,8 +280,12 @@ class LiveStatus:
         transport = getattr(self.panel, "transport", None)
         if transport is None or not getattr(transport, "is_connected", False):
             return False
+        # 内环页、「Z 高度」页或 XY 页任一在前台都要轮询：几页共用这一个事务与顶部状态。
+        views = [getattr(self, "alt_view", None), getattr(self, "xy_view", None),
+                 getattr(self, "yaw_view", None)]
         try:
-            return bool(self.parent.winfo_viewable())
+            return bool(self.parent.winfo_viewable() or
+                        any(view is not None and view.parent.winfo_viewable() for view in views))
         except tk.TclError:
             return False
 

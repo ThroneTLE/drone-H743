@@ -10,6 +10,7 @@ from datetime import datetime
 from tkinter import messagebox, ttk
 
 from ..proto import PROTO_REQ_IMU, parse_kv, safe_float, safe_int
+from .flow_mount import FlowMountPanelMixin
 
 try:
     from ...ground_calibration import (
@@ -66,16 +67,16 @@ FLOW_CALIBRATION_STAGES = {
 }
 
 
-class FlowRangingPageMixin:
+class FlowRangingPageMixin(FlowMountPanelMixin):
     def _build_flow_range_calibration_page(self, parent: ttk.Frame) -> None:
-        ttk.Label(parent, text="FLOW / RANGE  /  只读地面采样", style="Eyebrow.TLabel").pack(anchor=tk.W)
+        ttk.Label(parent, text="FLOW / RANGE  /  地面采样与安装方向写回", style="Eyebrow.TLabel").pack(anchor=tk.W)
         ttk.Label(parent, text="光流与组合测距坐标、比例和零偏", style="PageTitle.TLabel").pack(anchor=tk.W)
         ttk.Label(
             parent,
             text=(
                 "依次做静止、机头方向 +X、机体左侧 +Y、近/远两点测距和原地偏航。"
                 "飞行高度来自光流模块内的组合测距。"
-                "分析结果先保存为证据，不会直接改飞控参数。"
+                "分析结果先保存为证据；只有光流安装方向可在 +X/+Y 两步之后确认写入飞控（需上锁）。"
             ),
             style="Muted.TLabel", wraplength=1120,
         ).pack(fill=tk.X, pady=(4, 10))
@@ -157,6 +158,7 @@ class FlowRangingPageMixin:
             evidence, textvariable=self.flow_cal_result_var,
             font=("Consolas", 9), wraplength=1080, justify=tk.LEFT,
         ).pack(fill=tk.X, pady=(7, 0))
+        self._build_flow_mount_panel(evidence)
         save_row = ttk.Frame(evidence)
         save_row.pack(fill=tk.X, pady=(7, 0))
         ttk.Button(
@@ -190,6 +192,7 @@ class FlowRangingPageMixin:
         self.flow_cal_status_var.set(
             f"正在采集“{FLOW_CALIBRATION_STAGES[stage]}”：按页面提示完成动作后点击停止并分析"
         )
+        self._flow_mount_on_stage_start(stage)
 
     def _flow_cal_stop(self) -> None:
         if not self.flow_cal_collecting or self.flow_cal_active_stage is None:
@@ -206,6 +209,7 @@ class FlowRangingPageMixin:
             self._flow_cal_refresh_tree(stage, f"证据不足：{exc}")
             return
         self.flow_cal_results[stage] = result
+        self._flow_mount_on_stage_result(stage, result)
         rendered = json.dumps(result, ensure_ascii=False, sort_keys=True)
         self.flow_cal_result_var.set(rendered)
         self.flow_cal_status_var.set(f"“{FLOW_CALIBRATION_STAGES[stage]}”分析完成；结果尚未写入飞控")
@@ -307,6 +311,8 @@ class FlowRangingPageMixin:
             ),
             "flight_release": False,
         }
+        # 安装方向写入过才为真，并附写入前后值与依据（flow_mount.py）。
+        report.update(self._flow_mount_evidence())
         try:
             path.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         except OSError as exc:
@@ -346,6 +352,8 @@ class FlowRangingPageMixin:
             f"v=({self.flow_diag_values.get('vx_mm_s', '-')},{self.flow_diag_values.get('vy_mm_s', '-')})mm/s "
             f"comp_flu=({self.flow_diag_values.get('corr_vx_mm_s', '-')},{self.flow_diag_values.get('corr_vy_mm_s', '-')})mm/s "
             f"orientation={self.flow_diag_values.get('orientation', '-')} "
+            f"mount_yaw={self.flow_diag_values.get('mount_yaw', '-')} "
+            f"mount_mirror={self.flow_diag_values.get('mount_mirror', '-')} "
             f"height_raw={self.flow_diag_values.get('height_raw_mm', '-')}mm "
             f"height={self.flow_diag_values.get('height_mm', '-')}mm"
         )

@@ -150,9 +150,11 @@ HOST_STUBS_C = r"""
 #include "app_led_config.h"
 #include "app_rc_config.h"
 #include "app_stabilizer.h"
+#include "app_magxy.h"
 #include "drv_airframe_params.h"
 #include "drv_coax_ctrl.h"
 #include "drv_mag_calibration.h"
+#include "drv_frame_contract.h"
 #include "drv_prop_map.h"
 #include "bsp_dshot.h"
 #include "bsp_dshot_rx.h"
@@ -279,6 +281,12 @@ void APP_Stabilizer_GetMagFusionStatus(APP_Stabilizer_MagFusionStatus *out)
     if (out != NULL) {
         memset(out, 0, sizeof(*out));
     }
+}
+
+/* Only the runtime status reader is stubbed. MAGXY config/persistence is real. */
+void APP_Stabilizer_GetMagXYStatus(APP_Stabilizer_MagXYStatus *out)
+{
+    if (out != NULL) { memset(out, 0, sizeof(*out)); }
 }
 """
 
@@ -686,6 +694,58 @@ static void check_a_corrupt_mag_block_does_not_take_the_record_down(void)
     CHECK(mag_now()->calibrated == 0U, 160);
 }
 
+static void check_magxy_v27_roundtrip_and_fail_closed(void)
+{
+    APP_ControlConfig config, loaded;
+    APP_MagXY_Persisted xy = {0};
+    SVC_MAG_HeadingConfig active;
+
+    fake_flash_reset();
+    memset(&config, 0, sizeof(config));
+    load_airframe(75.0f);
+    xy.bias_x_mgauss = -3.725f;
+    xy.bias_y_mgauss = 135.432f;
+    xy.radius_xy_mgauss = 268.292f;
+    xy.frame_contract_version = DRV_FRAME_CONTRACT_VERSION;
+    xy.axis_verified = 1U;
+    xy.enabled_default = 1U;
+    APP_MagXY_ApplyPersisted(&xy);
+    CHECK(APP_ControlConfigStore_Save(&config) == APP_FLASH_SERVICE_OK, 170);
+
+    APP_MagXY_ApplyPersisted(NULL);
+    APP_MagXY_GetConfig(&active);
+    CHECK(active.enabled == 0U, 171);
+    CHECK(APP_ControlConfigStore_Load(&loaded) == APP_FLASH_SERVICE_OK, 172);
+    APP_MagXY_GetConfig(&active);
+    CHECK(active.enabled == 1U && active.axis_verified == 1U, 173);
+    CHECK(active.bias_x_mgauss == xy.bias_x_mgauss, 174);
+    CHECK(active.bias_y_mgauss == xy.bias_y_mgauss, 175);
+    CHECK(airframe_board_mass() == 75.0f, 176);
+
+    /* A torn v27 update must retain the prior enabled slot. */
+    xy.enabled_default = 0U;
+    APP_MagXY_ApplyPersisted(&xy);
+    fake_flash_cut_power_after(3U);
+    CHECK(APP_ControlConfigStore_Save(&config) != APP_FLASH_SERVICE_OK, 179);
+    fake_flash_cut_power_after(0U);
+    APP_MagXY_ApplyPersisted(NULL);
+    CHECK(APP_ControlConfigStore_Load(&loaded) == APP_FLASH_SERVICE_OK, 180);
+    APP_MagXY_GetConfig(&active);
+    CHECK(active.enabled == 1U, 181);
+
+    /* Contract changes invalidate the old physical-axis proof. */
+    xy.enabled_default = 1U;
+    xy.frame_contract_version = DRV_FRAME_CONTRACT_VERSION + 1U;
+    APP_MagXY_ApplyPersisted(&xy);
+    APP_MagXY_GetConfig(&active);
+    CHECK(active.enabled == 0U, 177);
+    xy.frame_contract_version = DRV_FRAME_CONTRACT_VERSION;
+    xy.radius_xy_mgauss = 0.0f;
+    APP_MagXY_ApplyPersisted(&xy);
+    APP_MagXY_GetConfig(&active);
+    CHECK(active.enabled == 0U && active.axis_verified == 0U, 178);
+}
+
 int main(void)
 {
     DRV_COAX_CTRL_Init();
@@ -699,6 +759,7 @@ int main(void)
     check_roundtrip_carries_the_mag_block();
     check_a_record_without_the_mag_block_is_uncalibrated();
     check_a_corrupt_mag_block_does_not_take_the_record_down();
+    check_magxy_v27_roundtrip_and_fail_closed();
     check_saves_alternate_between_the_two_slots();
     check_power_loss_keeps_the_previous_record();
     check_body_without_commit_word_is_rejected();
@@ -733,6 +794,8 @@ typedef struct { int unused; } GPIO_TypeDef;
 # 参与编译的真实源码（tests/test_param_trial.py 复用同一份）。
 SOURCES = [
     ROOT / "App" / "Src" / "app_control_config_store.c",
+    ROOT / "App" / "Src" / "app_magxy.c",
+    ROOT / "Services" / "Src" / "svc_mag_heading.c",
     ROOT / "App" / "Src" / "app_control_config_compat.c",
     ROOT / "App" / "Src" / "app_param_trial.c",
     ROOT / "App" / "Src" / "app_led_config.c",

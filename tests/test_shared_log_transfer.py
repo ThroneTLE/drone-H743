@@ -39,7 +39,7 @@ class Port:
 
     def write(self, data):
         self.writes.append(data)
-        if data == b"FLOG DUMP\r\n":
+        if data in (b"FLOG DUMP\r\n", b"FLOGDUMP LAST\r\n"):
             self.incoming.put(self.stream)
         return len(data)
 

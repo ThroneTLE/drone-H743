@@ -43,13 +43,13 @@ PIPELINE 收尾修改后定向跑 `python -m pytest tests/test_pipeline_contract
 
 ## 验证与索引
 
-验证范围的唯一流程定义见 [validation-policy.md](references/validation-policy.md)：**小改动定向验证，较大改动和阶段交审才全量**。纯文档不跑固件构建；每项行为有有效覆盖，已有测试足够时复用，不为数量新增空泛测试。
+验证范围的唯一流程定义见 [validation-policy.md](references/validation-policy.md)：**默认定向验证；只有特别大的架构改动或作者当次明确要求才做全量回归**。阶段交审、准备烧录、协议或配置升版本身不触发全量。纯文档不跑固件构建；每项行为有有效覆盖，已有测试足够时复用，不为数量新增空泛测试。
 缺陷先固定证据，按 [工作模式](references/work-modes.md) 最小修复；指定类别读对应模式。类别文件保存专属技术判据，不另加逐人全量流程。
 多 Agent 的工作树/分支/文件归属/公共资源由主控分配；子任务完成不代表整批验证完成。
 
 定位文件优先使用 [索引入口](references/repository-index/README.md) 的最小相关分片，再读头文件、测试及必要实现。任务卡已有准确路径时可直达；索引无匹配或过期时用窄范围 `rg` 核实，不扫描整个源码/数据/供应商树。
 索引由主控在合并和文档收尾后统一生成：`python .agents/skills/drone-h743-project/scripts/update_repository_index.py`，随后 `--check`。子 Agent 不提交各自的生成索引。
-普通任务只执行生成器，不读其源码；生成页不手改。保持入口 8 KiB、单分片 32 KiB、总计 96 KiB 上限，超限优先改善摘要。
+普通任务只执行生成器，不读其源码；生成页不手改。保持入口 8 KiB、单分片 32 KiB、总计 128 KiB 上限（2026-10-01 作者“总上限放宽很多就行”，原 96 KiB），超限优先改善摘要。
 
 ## Canonical FLU Body Frame
 

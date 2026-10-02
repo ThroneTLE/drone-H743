@@ -18,9 +18,16 @@
 * 「高级设置」里的「陷波（桨叶振动）」看状态、开/关固件的转速陷波（`notch_panel.py`，只改 RAM）；
   每轮开跑时的陷波配置随 conditions.json 存档，并写在结果抬头。「舵机回差补偿」同样
   （`backlash_panel.py`，conditions 的 backlash）。
-* 「高度」（ALT，槽式台架）：电机会转、机体沿槽上下移动；设置在「准备」页「高度」分区
-  （`alt_section.py`），开跑前多下发并核对一行 `SYSID ALT`（`alt_config.py`）。只存档、画高度，
-  页面不拟合，分析离线进行。
+* 「高度」（ALT，槽式台架）的控件在「Z 高度」页（`altitude.py`），本页「本轮做」不列 ALT；
+  但固件同一时间只跑一轮 SYSID，所以状态、事务、收数据仍是本对象这一份（`alt_section.py`、
+  `alt_config.py`）。高度轮存档、画在高度页；break 轮当场算离地/滑落阈值（`alt_breakaway.py`），
+  vel/pos 轮页面不拟合，分析离线进行。
+* 「XY 速度 / 位置环」（XY，水平槽台架）同理：控件在 `horizontal.py`，状态与事务仍是本对象这一份
+  （`xy_section.py`、`xy_config.py`）；XY 轮存档到 data/identification/xy，页面当场分析
+  （`xy_result.py` → `tools/sysid/xy_analysis.py`）。
+* 「偏航（吊绳）」（YAW，吊绳台架）同理：控件在 `yaw_view.py`，状态与事务仍是本对象这一份
+  （`yaw_section.py`、`yaw_config.py`）；YAW 轮存档到 data/identification/yaw，页面当场分析
+  （`yaw_result.py` → `tools/sysid/yaw_analysis.py`）。
 * 本页没有写 Flash 的路径；是否永久保存由作者验证后在参数页单独决定。
 
 发的是**期望角速度**而不是舵机脉宽，由固件用在飞的那个分配器反解成倾角。
@@ -35,8 +42,15 @@ from tkinter import ttk
 
 from ...board_line_hooks import register_board_line_hook
 from ...proto import parse_kv
-from .alt_config import ALT_MODE_CODE, OFFLINE_NOTE, provenance_text as alt_provenance_text
+from .alt_breakaway import alt_result_text, is_breakaway
+from .alt_config import ALT_MODE_CODE
 from .alt_section import AltSection
+from .xy_config import XY_FOREIGN_FLAGS, XY_MODE_CODE
+from .xy_result import xy_result_text
+from .xy_section import XySection
+from .yaw_config import YAW_FOREIGN_FLAGS, YAW_MODE_CODE
+from .yaw_result import yaw_result_text
+from .yaw_section import YawSection
 from .amplitude_hint import AmplitudeHint
 from .common import SysIdPageBase
 from .stiffness_panel import StiffnessPanel
@@ -45,6 +59,7 @@ from .reasons import cannot_analyse, explain_end
 from .joint import JointPanel
 from .backlash_panel import BacklashPanel, backlash_provenance_text
 from .notch_panel import NotchPanel, notch_provenance_text
+from .imuzero_panel import ImuZeroPanel
 from .results import (advice_for, card_blocks, fit_passes, gains_card, quality_problems,
                       tracking_summary, vibration_summary)
 from . import settings_store
@@ -64,8 +79,14 @@ MODE_HINTS = {
     "ANGLE": "验证角度跟踪（幅值在「高级设置」，从 3° 开始）",
     "SERVO": "舵机单独（电机不转，需上锁）：量舵机甩动的反作用、舵机响应和延迟，摆幅在「准备」页",
     "ALT": "高度（槽式台架）：电机会转、机体会沿槽上下移动——先确认槽的上下限位与测距下方地面；"
-           "设置在「准备」页「高度」分区，只存档、离线分析",
+           "break 慢升/慢降找离地与滑落阈值，vel/pos 用生产高度环验证",
+    "XY": "水平槽（XY）：电机会转、机体会沿水平槽平移——先确认槽两端的挡块与出窗余量；"
+          "tilt 测倾角→加速度增益与摩擦，vel/pos 用生产位置/速度环验证",
+    "YAW": "吊绳偏航（YAW）：电机会转、机体会绕绳偏航——先确认绳子绷紧、周围没有会被桨扫到的东西；"
+           "diff 差速测偏航对象并给偏航环建议增益，rate 用生产偏航环验证",
 }
+#: 内环页「本轮做」的选项：ALT / XY / YAW 只从各自的子页开（固件编号仍按 settings_store.MODES）。
+INNER_MODES = tuple(mode for mode in settings_store.MODES if mode not in ("ALT", "XY", "YAW"))
 
 #: 批量帧 flags 里的模式位按本轮模式应有的取值（drv_sysid_record.h：0x20 RATE / 0x40 ANGLE /
 #: 0x80 SERVO；FF 三位都不置）。
@@ -79,8 +100,9 @@ ALT_FOREIGN_FLAGS = (0x20, 0x40, 0x80)
 MAX_SAMPLES = 40000
 
 
-class SysIdInnerLoopPage(PageSections, AltSection, WaveformView, LiveStatus, JointPanel,
-                         StiffnessPanel, NotchPanel, BacklashPanel, AmplitudeHint, SysIdPageBase):
+class SysIdInnerLoopPage(PageSections, AltSection, XySection, YawSection, WaveformView, LiveStatus, JointPanel,
+                         StiffnessPanel, NotchPanel, BacklashPanel, ImuZeroPanel, AmplitudeHint,
+                         SysIdPageBase):
     def __init__(self, panel, parent: ttk.Frame) -> None:
         super().__init__(panel, parent)
         self.status_var.set("")   # 顶部大字状态负责"连没连上"，这一行只写最近一次动作的结果
@@ -127,6 +149,7 @@ class SysIdInnerLoopPage(PageSections, AltSection, WaveformView, LiveStatus, Joi
 
         # 程序油门
         self.target_thrust_var = tk.StringVar(value="")
+        self.thrust_label_var = tk.StringVar(value="目标合推力 [N]")
         self.max_pct_var = tk.StringVar(value="75")
         self.manual_throttle_var = tk.BooleanVar(value=False)
         self.thrust_hint_var = tk.StringVar(value="")
@@ -168,9 +191,12 @@ class SysIdInnerLoopPage(PageSections, AltSection, WaveformView, LiveStatus, Joi
         self.servo_tilt_var = tk.StringVar(value="5")     # 舵机单独的摆幅 [deg]，5° = 87 mrad
         self._init_stiffness_vars()
         self._init_notch_vars()
+        self._init_imuzero_vars()
         self._init_backlash_vars()
         self._init_amp_hint_vars()
         self._init_alt_vars()
+        self._init_xy_vars()
+        self._init_yaw_vars()
         self.workflow = Workflow(self)
         self.command_preview_var = tk.StringVar(value="")
         self._build(parent)
@@ -214,7 +240,6 @@ class SysIdInnerLoopPage(PageSections, AltSection, WaveformView, LiveStatus, Joi
         self._build_throttle(prepare)
         self._build_rig(prepare)
         self._build_servo(prepare)
-        self._build_alt(prepare)
         self._build_stiffness(prepare)
         self._build_plot(observe)
         self._build_result(results)
@@ -230,15 +255,16 @@ class SysIdInnerLoopPage(PageSections, AltSection, WaveformView, LiveStatus, Joi
         box = ttk.Frame(parent)
         box.pack(fill=tk.X, pady=(0, 4))
         self.start_button = ttk.Button(box, text="开始辨识", style="Primary.TButton",
-                                       command=self.start_run)
+                                       command=self.start_inner_run)
         self.start_button.pack(side=tk.LEFT)
         self.stop_button = ttk.Button(box, text=STOP_TEXT_AUTO, style="Danger.TButton",
                                       command=self.stop_run)
         self.stop_button.pack(side=tk.LEFT, padx=(8, 0))
+        self.build_imuzero_button(box)
         modes = ttk.Frame(parent)
         modes.pack(fill=tk.X, pady=(0, 4))
         ttk.Label(modes, text="本轮做").pack(side=tk.LEFT)
-        ttk.Combobox(modes, textvariable=self.mode_var, values=settings_store.MODES,
+        ttk.Combobox(modes, textvariable=self.mode_var, values=INNER_MODES,
                      state="readonly", width=7).pack(side=tk.LEFT, padx=6)
         ttk.Label(modes, textvariable=self.mode_hint_var, style="Muted.TLabel",
                   wraplength=520).pack(side=tk.LEFT)
@@ -401,6 +427,8 @@ class SysIdInnerLoopPage(PageSections, AltSection, WaveformView, LiveStatus, Joi
             self.fw_ver_generation = self.workflow.generation()
         if text.startswith(("SYSID THR ", "SYSID PHASE ")):
             self._note_throttle(text)
+        if self.imuzero_handle_line(text):
+            return                       # IMU 重新标定的回复（imuzero_panel.py）
         if self.notch_handle_line(text):
             return                       # 陷波的回复（含旧固件不认它的 ERR）不属于辨识事务
         if self.backlash_handle_line(text):
@@ -408,8 +436,15 @@ class SysIdInnerLoopPage(PageSections, AltSection, WaveformView, LiveStatus, Joi
         self.workflow.on_line(text)
         if text.startswith("SYSID READY "):
             self.refresh_thrust_hint()
-        if text.startswith(("SYSID READY ", "PARAM name=airframe.mass_kg ")):
+        if text.startswith("HOVER "):
+            self.xy_handle_hover(text)   # 「读取学到的悬停推力」的回复
+        if text.startswith("THRMODE "):
+            self.yaw_handle_thrmode(text)  # 偏航页的差速上限要单桨最大推力 tmax_mn
+        if text.startswith(("SYSID READY ", "PARAM name=airframe.mass_kg ",
+                            "PARAM name=coax.hover_thrust_n ")):
             self.refresh_alt_hint()      # 高度分区的合计质量 = 机体质量 + 附加质量
+            self.refresh_xy_hint()       # 水平槽分区同理（另有托住推力的默认值）
+            self.refresh_yaw_hint()      # 偏航分区同理（机重、0.5×悬停推力）
         if text.startswith(("SYSID", "ERR", "OK sysid", "PARAM ", "OK param ")):
             # 机体参数或事务状态变了：重估舵机摆幅（空闲时可能自动换幅值），顺带刷新顶部状态。
             self.refresh_amp_hint()
@@ -480,6 +515,8 @@ class SysIdInnerLoopPage(PageSections, AltSection, WaveformView, LiveStatus, Joi
         if w.snapshot is not None:
             mode_code, bits = int(w.snapshot.get("mode", "0")), batch.flags & MODE_FLAG_BITS
             if (bits in ALT_FOREIGN_FLAGS if mode_code == ALT_MODE_CODE
+                    else bits in XY_FOREIGN_FLAGS if mode_code == XY_MODE_CODE
+                    else bits in YAW_FOREIGN_FLAGS if mode_code == YAW_MODE_CODE
                     else bits not in MODE_FLAGS.get(mode_code, ())):
                 w.data_fail("采样模式与本轮快照不符")
                 return
@@ -523,8 +560,17 @@ class SysIdInnerLoopPage(PageSections, AltSection, WaveformView, LiveStatus, Joi
         self.phase = None
         self.stopping = False
         self.analysis_note = ""
-        self.fit_var.set("正在采集；高度辨识轮跑完只存档，分析离线进行。" if self.alt_run_active()
-                         else "正在采集；跑完后自动分析。")
+        if self.alt_run_active():
+            self.alt_result("正在采集；break 轮跑完在这里给离地/滑落阈值，vel/pos 轮只存档、离线分析。")
+            self.alt_show("observe")
+        elif self.xy_run_active():
+            self.xy_result("正在采集；跑完在这里给本轮分析（tilt：增益/静摩擦门槛角/光流滞后；vel、pos：阶跃指标）。")
+            self.xy_show("observe")
+        elif self.yaw_run_active():
+            self.yaw_result("正在采集；跑完在这里给本轮分析（diff：b、k 倍数、阻尼、扭转刚度、延迟与建议增益；rate：阶跃指标）。")
+            self.yaw_show("observe")
+        else:
+            self.fit_var.set("正在采集；跑完后自动分析。")
 
     def alt_run_active(self) -> bool:
         """正在跑（或刚结束）的是高度辨识轮，或还没开始时「本轮做」选了 ALT。"""
@@ -534,28 +580,67 @@ class SysIdInnerLoopPage(PageSections, AltSection, WaveformView, LiveStatus, Joi
         return self.alt_mode_selected()
 
     def on_run_finished(self, end: dict, mode: str) -> None:
+        if mode == str(ALT_MODE_CODE):
+            self.workflow.alt_finish_validation(end, self.gap_count, self.batches)
+        if mode == str(XY_MODE_CODE):
+            self.workflow.xy_finish_validation(end, self.gap_count, self.batches)
+        if mode == str(YAW_MODE_CODE):
+            self.workflow.yaw_finish_validation(end, self.gap_count, self.batches)
         self.phase = None
         self.stopping = False
         self.vibration_text = (vibration_summary(self._timestamps(), self.samples)
                                if end.get("state") == "done" else "")
+        alt = mode == str(ALT_MODE_CODE)
+        xy = mode == str(XY_MODE_CODE)
+        yaw = mode == str(YAW_MODE_CODE)
         if end.get("state") != "done":
             self.analysis_note = ""
-            self.fit_var.set(cannot_analyse(end.get("reason"), mode))
-            self.gain_var.set("")
-            self.steps_notebook.select(self.observe_tab)
+            if alt:
+                self.alt_result(cannot_analyse(end.get("reason"), mode))
+                self.alt_show("observe")
+            elif xy:
+                self.xy_result(cannot_analyse(end.get("reason"), mode))
+                self.xy_show("observe")
+            elif yaw:
+                self.yaw_result(cannot_analyse(end.get("reason"), mode))
+                self.yaw_show("observe")
+            else:
+                self.fit_var.set(cannot_analyse(end.get("reason"), mode))
+                self.gain_var.set("")
+                self.steps_notebook.select(self.observe_tab)
             what, _step = explain_end(end.get("reason"), mode)
             self.status_var.set(f"本轮中止：{what}（原因代码 {end.get('reason')}）")
         elif mode in ("0", "3"):
             self.analysis_note = "正在保存数据并自动分析…"
-        elif mode == str(ALT_MODE_CODE):
-            # 高度辨识轮不在页面上拟合（姿态拟合对它没有意义）：只存档，结果区写明离线分析。
+        elif alt:
+            # 高度辨识轮不跑姿态拟合：break 轮当场算离地/滑落阈值，结果写在「Z 高度」页。
             self._commands = None
-            self.fit_var.set("\n".join((alt_provenance_text(self.workflow.snapshot), OFFLINE_NOTE)))
-            self.fit_ref_var.set(self.vibration_text)
-            self.plant_var.set("")
-            self.gain_var.set("")
-            self.analysis_note = "高度辨识轮完成：数据正在存档，页面不拟合，分析离线进行。"
-            self.steps_notebook.select(self.results_tab)
+            w = self.workflow
+            self.alt_result(alt_result_text(w.snapshot, self._timestamps(), self.samples,
+                                            w.alt_quality_note(), self.vibration_text))
+            self.analysis_note = (w.alt_quality_note() if w.data_error else
+                                  "break 轮完成：离地/滑落阈值见「3 · 结果」，原始记录正在存档。"
+                                  if is_breakaway(w.snapshot) else
+                                  "高度辨识轮完成：数据正在存档，页面不拟合，分析离线进行。")
+            self.alt_show("results")
+        elif xy:
+            # 水平槽轮不跑姿态拟合：tilt 当场分析增益/门槛角/滞后，vel/pos 给阶跃指标。
+            self._commands = None
+            w = self.workflow
+            self.xy_result(xy_result_text(w.snapshot, self._timestamps(), self.samples,
+                                          w.xy_quality_note(), self.vibration_text))
+            self.analysis_note = (w.xy_quality_note() if w.data_error else
+                                  "水平槽辨识轮完成：分析见「3 · 结果」，原始记录正在存档。")
+            self.xy_show("results")
+        elif yaw:
+            # 吊绳偏航轮不跑姿态拟合：diff 当场拟合偏航对象并给建议增益，rate 给阶跃指标。
+            self._commands = None
+            w = self.workflow
+            self.yaw_result(yaw_result_text(w.snapshot, self._timestamps(), self.samples,
+                                            w.yaw_quality_note(), self.vibration_text))
+            self.analysis_note = (w.yaw_quality_note() if w.data_error else
+                                  "吊绳偏航辨识轮完成：分析见「3 · 结果」，原始记录正在存档。")
+            self.yaw_show("results")
         else:
             snapshot = self.workflow.snapshot or {}
             psi = float(snapshot.get("psi_mrad", 0.0))*1e-3
@@ -575,6 +660,7 @@ class SysIdInnerLoopPage(PageSections, AltSection, WaveformView, LiveStatus, Joi
             self.gain_var.set("")
             self.analysis_note = "验证轮完成。" + summary.splitlines()[0] + "。详情在「3 · 结果」。"
             self.steps_notebook.select(self.results_tab)
+        self.sync_mode_to_view()      # 跑的时候切过标签页：现在按前台那一页对齐「本轮做」
         self.refresh_banner()
 
     def _group_crossover_hz(self, snapshot: dict) -> float | None:
@@ -698,6 +784,14 @@ class SysIdInnerLoopPage(PageSections, AltSection, WaveformView, LiveStatus, Joi
         alt_run = str((self.workflow.snapshot or {}).get("mode")) == str(ALT_MODE_CODE)
         if alt_run and not getattr(self, "_commands", None):
             self.status_var.set("高度辨识轮页面不给候选参数：高度环参数由离线分析脚本经 SYSID PARAM 试用。")
+            return
+        xy_run = str((self.workflow.snapshot or {}).get("mode")) == str(XY_MODE_CODE)
+        if xy_run and not getattr(self, "_commands", None):
+            self.status_var.set("水平槽辨识轮页面不给候选参数：位置/速度环参数按分析结果离线整定后经 SYSID PARAM 试用。")
+            return
+        yaw_run = str((self.workflow.snapshot or {}).get("mode")) == str(YAW_MODE_CODE)
+        if yaw_run and not getattr(self, "_commands", None):
+            self.status_var.set("吊绳偏航辨识轮页面不写飞控：偏航角速度环建议增益见「结果」，经 SYSID PARAM 试用。")
             return
         """按所选比例（默认 50%）临时应用：只缩放 kp/ki（含姿态 P），kd 本来就是 0。"""
         try:

@@ -30,7 +30,7 @@ def test_repository_index_has_hard_context_limits() -> None:
     assert root_size <= 8 * 1024
     assert shard_sizes
     assert max(shard_sizes) <= 32 * 1024
-    assert root_size + sum(shard_sizes) <= 96 * 1024
+    assert root_size + sum(shard_sizes) <= 128 * 1024  # 2026-10-01 作者放宽（原 96 KiB）
 
 
 def test_large_vendor_and_data_trees_are_aggregated() -> None:

@@ -12,12 +12,90 @@
 
 刻意验证护栏的测试自己开一层 `hardware_guards()`，命中记在那一层的 log 里，不会
 进全局计数——所以下面的"尝试次数"为非零时，一定是意外触碰，判整个 session 失败。
+
+并行（2026-09-29 作者："你做成并行的"）：`python -m pytest -n auto tests` 用 pytest-xdist 按**文件**分发
+（`--dist loadfile`：同一文件的用例在同一进程里按原顺序跑）。护栏在每个工作进程里各装一份；
+工作进程结束时把自己的计数交回（`workeroutput`），主进程汇总后再显示、再判失败——否则主进程
+自己的计数永远是 0，真出了意外触碰也看不见。
+
+慢界面测试（`@pytest.mark.slow_ui`，如"几种窗口尺寸 × 几种缩放"的真面板布局矩阵）：默认
+`--slow-ui=auto`，只有工作区里界面相关文件（UI_PATHS）相对 HEAD 有改动（含未跟踪文件）时才跑，
+否则跳过并写明原因；`--slow-ui=on` 强制跑、`--slow-ui=off` 强制跳过。git 不可用时按"要跑"处理。
 """
+
+import os
+import subprocess
 
 import pytest
 
+#: 界面相关文件：这些有改动时才跑 slow_ui 测试。
+UI_PATHS = ("tools/panel_lib/", "tools/drone_tcp_panel.py", "tools/panel_qa/")
+
+#: `-n auto` 的工作进程上限。2026-09-29 两次教训：按 20 核开 20 个进程，作者电脑"卡到爆炸"；降到 6 个低优先级
+#: 进程（那一轮强制跑了开真窗口的慢界面测试）仍然卡死，作者杀掉测试后立刻流畅——真窗口的负担落在窗口系统/显卡上，
+#: 进程优先级管不到；每个现场编译的测试程序还会被 Windows Defender 扫描。所以默认只开 2 个；
+#: 要更多须作者当次同意并选在不用电脑的时候，显式 `-n 6`（或环境变量 PYTEST_XDIST_AUTO_NUM_WORKERS）。
+AUTO_WORKERS_MAX = 2
+
+
+@pytest.hookimpl(optionalhook=True)
+def pytest_xdist_auto_num_workers(config):
+    return max(1, min(AUTO_WORKERS_MAX, (os.cpu_count() or 2) // 3))
+
+
+def _lower_own_priority() -> None:
+    """并行的工作进程降到"低于正常"优先级：桌面和作者手上的程序永远先跑。
+    Windows 上 BELOW_NORMAL 会被子进程继承，所以测试里调起的 gcc 也一起降。"""
+    try:
+        if os.name == "nt":
+            import ctypes
+            BELOW_NORMAL_PRIORITY_CLASS = 0x00004000
+            kernel32 = ctypes.windll.kernel32
+            kernel32.SetPriorityClass(kernel32.GetCurrentProcess(), BELOW_NORMAL_PRIORITY_CLASS)
+        else:
+            os.nice(10)
+    except Exception:                            # pragma: no cover - 降不了就照常跑
+        pass
+
+
+def pytest_addoption(parser):
+    parser.addoption(
+        "--slow-ui", choices=("auto", "on", "off"), default="auto",
+        help="慢界面测试（slow_ui）：auto = 界面文件有改动才跑（默认），on = 总跑，off = 总跳过")
+
+
+def _ui_files_changed(rootdir) -> bool:
+    """工作区里界面相关文件相对 HEAD 有没有改动（含未跟踪）。git 出错时返回 True（宁可多跑）。"""
+    try:
+        out = subprocess.run(
+            ["git", "status", "--porcelain", "--untracked-files=all", "--", *UI_PATHS],
+            cwd=str(rootdir), capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        return True
+    if out.returncode != 0:
+        return True
+    return any(line.strip() for line in out.stdout.splitlines())
+
+
+def pytest_collection_modifyitems(config, items):
+    mode = config.getoption("--slow-ui")
+    slow = [item for item in items if item.get_closest_marker("slow_ui") is not None]
+    if not slow or mode == "on":
+        return
+    if mode == "auto" and _ui_files_changed(config.rootpath):
+        return
+    reason = ("slow_ui：界面文件没有改动，跳过慢界面布局测试（要跑用 --slow-ui=on）"
+              if mode == "auto" else "slow_ui：--slow-ui=off")
+    for item in slow:
+        item.add_marker(pytest.mark.skip(reason=reason))
+
 
 def pytest_configure(config):
+    config.addinivalue_line(
+        "markers", "slow_ui: 慢界面布局测试（真面板尺寸×缩放矩阵等），默认只在界面文件有改动时跑")
+    if hasattr(config, "workerinput"):           # xdist 工作进程
+        _lower_own_priority()
+
     from tools.panel_qa.guards import install_hardware_guards
     from tools.panel_qa.harness import display_available
 
@@ -76,6 +154,7 @@ def isolate_panel_defaults(tmp_path_factory):
     进入时机是 session fixture 而不是 `pytest_configure`：收集阶段已经把所有测试
     模块（连带它们 import 的 `tools.*`）拉进来了，此时扫描才扫得全。之后才 import
     的模块从 `tools.project_paths` 现取，取到的也是改指后的值，两头都盖住。
+    并行时每个工作进程各有一个 session，各自一棵临时根，互不相干。
     """
     from tools import drone_tcp_panel as panel
     from tools.panel_qa.isolation import isolated_environment
@@ -99,9 +178,36 @@ def isolate_panel_defaults(tmp_path_factory):
     patch.undo()
 
 
+def _local_guard_summary(config) -> dict:
+    log = config._hardware_guard_log
+    return dict(serial=len(log.serial_opens), flash=len(log.flash_invocations),
+                attempts=[f"{d.kind}: {d.detail}" for d in log.attempts],
+                tk_roots=getattr(config, "_tk_root_count", 0))
+
+
+@pytest.hookimpl(optionalhook=True)
+def pytest_testnodedown(node, error):
+    """xdist 主进程：收下一个工作进程交回的护栏计数。"""
+    summary = getattr(node, "workeroutput", {}).get("hardware_guard")
+    if summary is None:
+        return
+    totals = node.config.__dict__.setdefault(
+        "_worker_guard_totals", dict(serial=0, flash=0, attempts=[], tk_roots=0, workers=0))
+    for key in ("serial", "flash", "tk_roots"):
+        totals[key] += summary[key]
+    totals["attempts"].extend(summary["attempts"])
+    totals["workers"] += 1
+
+
 def pytest_sessionfinish(session, exitstatus):
-    log = getattr(session.config, "_hardware_guard_log", None)
-    if log is not None and not log.clean:
+    config = session.config
+    log = getattr(config, "_hardware_guard_log", None)
+    if log is None:
+        return
+    if hasattr(config, "workeroutput"):          # xdist 工作进程：计数交回主进程
+        config.workeroutput["hardware_guard"] = _local_guard_summary(config)
+    totals = getattr(config, "_worker_guard_totals", None)
+    if (not log.clean) or (totals is not None and totals["attempts"]):
         session.exitstatus = pytest.ExitCode.TESTS_FAILED
 
 
@@ -109,18 +215,21 @@ def pytest_terminal_summary(terminalreporter, config):
     log = getattr(config, "_hardware_guard_log", None)
     if log is None:                              # pragma: no cover - configure 失败
         return
-    terminalreporter.write_line(
-        f"Physical serial open attempts: {len(log.serial_opens)}"
-    )
-    terminalreporter.write_line(
-        f"Flashing/probe tool invocation attempts: {len(log.flash_invocations)}"
-    )
+    summary = _local_guard_summary(config)
+    totals = getattr(config, "_worker_guard_totals", None)
+    if totals is not None:                       # 并行：主进程本身不跑测试，显示各工作进程之和
+        summary = dict(serial=summary["serial"] + totals["serial"],
+                       flash=summary["flash"] + totals["flash"],
+                       attempts=summary["attempts"] + totals["attempts"],
+                       tk_roots=totals["tk_roots"])
+    terminalreporter.write_line(f"Physical serial open attempts: {summary['serial']}")
+    terminalreporter.write_line(f"Flashing/probe tool invocation attempts: {summary['flash']}")
     terminalreporter.write_line(
         f"Tk display available at session start: {getattr(config, '_display_available', '?')}"
-        f"; Tk roots created: {getattr(config, '_tk_root_count', '?')}"
-    )
-    for detail in log.attempts:
-        terminalreporter.write_line(f"  blocked {detail.kind}: {detail.detail}")
+        f"; Tk roots created: {summary['tk_roots']}"
+        + (f" (summed over {totals['workers']} workers)" if totals is not None else ""))
+    for detail in summary["attempts"]:
+        terminalreporter.write_line(f"  blocked {detail}")
 
 
 def pytest_unconfigure(config):

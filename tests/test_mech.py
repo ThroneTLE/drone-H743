@@ -35,14 +35,16 @@ METHOD_AST_SHA256 = {
 }
 
 FLOW_AST_SHA256 = {
-    "_build_flow_range_calibration_page": "b82cfc6332ac43ec89dcea660fc61a76080e7bd4fe203c1ad7a9d18fcbd7b448",
+    # R-FLOWMOUNT-1（2026-09-29）：光流安装方向挂进标定页，下面四个方法有意改动后重钉；
+    # 改了什么见 tests/test_panel_flow_page_extraction.py 的同名说明。
+    "_build_flow_range_calibration_page": "1167a5e700a9d6685ad7f01983e5720d4255ec2dc633be87a0f6cc5d8c98dcf6",
     "_flow_range_request_once": "2ff7e3a41f240d644b4e729c14f68ef8f563784a0157d7f5c9908cb0c61c3428",
-    "_flow_cal_start": "59f98967d8d888edbfb924652470a982f9428b45711c45c93ecc8329fbe30147",
-    "_flow_cal_stop": "7f0514ad7a8b81f308c642468e4cfe6f8191b833ea4779a5aa0e292104355d9a",
+    "_flow_cal_start": "32aa4592565d667b0612e72aa125a313ec357a7749096c787a43bbef64cec556",
+    "_flow_cal_stop": "88dd7b33827268f34ff4b61a7bf2b15d5f97a2b81452b3c2bc80547882aad7e3",
     "_flow_cal_analyze_stage": "49fd8a48b303597d37b42694f58ddd861e1232b1af6ef6708676bd0357f1db69",
     "_flow_cal_result_summary": "7af89dde1f64b009dc2bba0988b26211734ed9e533ba1b1832e2bb639fe84f72",
     "_flow_cal_refresh_tree": "08aa97e663548e84313924767a17b976c148e61974fce1e58f5225a5f268e747",
-    "_flow_cal_save_report": "5796e238f117707a1272c649853af1973dacaa8a9fdfd45d2da775c5432054f0",
+    "_flow_cal_save_report": "5e89a65dbd66e141f34917108733de34d75e7ed7cd5499229adefd909076fb59",
 }
 
 

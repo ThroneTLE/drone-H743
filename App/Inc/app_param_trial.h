@@ -24,7 +24,8 @@
  *          SYSID TRIAL name=<n> ram=<v> saved=<v>      （每条一行，六位小数）
  *   7. 容量 = 可试用名单长度（驱动具名表里全部 coax.rate_* / coax.att_*，含 v24 的
  *      coax.rate_out_notch_* / coax.att_ref_* 与 v25 的 coax.rate_out_notch2_*；外加高度环
- *      z 通道 coax.pos_z_kp / coax.vel_z_kp / _ki / _kd / _i_limit_m_s2），每个都放得下；
+ *      z 通道 coax.pos_z_kp / coax.vel_z_kp / _ki / _kd / _i_limit_m_s2，以及水平槽用的 x 通道
+ *      coax.pos_x_kp / coax.vel_x_kp / _ki / _kd / _i_limit_m_s2），每个都放得下；
  *      真满了就拒绝新的试用（ERR，不写 RAM），绝不静默丢记录。
  */
 

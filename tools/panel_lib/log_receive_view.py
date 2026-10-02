@@ -15,6 +15,7 @@ except ImportError:
     import flight_log_receive as receive
     from project_paths import FLIGHT_LOG_DIR, dated_directory
 
+from . import log_export_scope
 from .telem_subscription import TELEM_EXCLUSIVE_FLIGHT_LOG
 from .theme import UI_PALETTE
 
@@ -46,6 +47,9 @@ class ReceiverView(ttk.Frame):
         self.receive_btn.pack(side="left")
         self.cancel_btn = ttk.Button(actions, text="取消接收", command=self._cancel, state="disabled")
         self.cancel_btn.pack(side="left", padx=8)
+        self.export_all_var = tk.BooleanVar(master=self, value=log_export_scope.load_export_all(panel))
+        ttk.Checkbutton(actions, text="导出全部（默认只导最近一次）", variable=self.export_all_var,
+                        command=self._remember_scope).pack(side="left", padx=8)
         ttk.Progressbar(self, variable=self.progress_var, maximum=100).pack(fill="x", pady=6)
         ttk.Label(self, textvariable=self.progress_text, wraplength=700).pack(fill="x", pady=6)
         log_box = ttk.Frame(self)
@@ -71,6 +75,9 @@ class ReceiverView(ttk.Frame):
         if active:
             return hook(TELEM_EXCLUSIVE_FLIGHT_LOG, "日志导出独占当前串口")
         return hook(TELEM_EXCLUSIVE_FLIGHT_LOG)
+
+    def _remember_scope(self):
+        log_export_scope.save_export_all(self.export_all_var.get(), self.panel)
 
     def _browse(self):
         directory = filedialog.askdirectory(parent=self, title="选择日志保存位置")
@@ -113,11 +120,13 @@ class ReceiverView(ttk.Frame):
         self.receive_btn.configure(state="disabled")
         self.cancel_btn.configure(state="normal")
         self._append_log(f"使用当前连接 {lease.port_name} @ {lease.baudrate}；连接保持打开。")
+        all_runs = bool(self.export_all_var.get())
+        self._append_log("导出范围：全部" if all_runs else "导出范围：最近一次记录")
         self.worker = threading.Thread(target=self._worker,
-                                       args=(lease, Path(self.dir_var.get())), daemon=True)
+                                       args=(lease, Path(self.dir_var.get()), all_runs), daemon=True)
         self.worker.start()
 
-    def _worker(self, lease, output_dir):
+    def _worker(self, lease, output_dir, all_runs=False):
         result, error = None, None
         try:
             output_dir.mkdir(parents=True, exist_ok=True)
@@ -125,7 +134,8 @@ class ReceiverView(ttk.Frame):
             lease.write(b"TELEM STREAM off\r\n")
             result = receive.receive_dump(
                 lease, directory, log=lambda text: self.events.put(("log", text)),
-                progress=self._progress, should_cancel=lambda: self.cancel_requested)
+                progress=self._progress, should_cancel=lambda: self.cancel_requested,
+                all_runs=all_runs)
             meta = json.loads(result.meta_path.read_text(encoding="utf-8"))
             meta["baud"] = lease.baudrate
             meta["host_connection"] = {"port": lease.port_name, "baud": lease.baudrate,

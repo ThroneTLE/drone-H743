@@ -66,6 +66,12 @@ static const ParamTrialField param_trial_fields[] = {
     PARAM_TRIAL_GAIN(vel_z_ki),
     PARAM_TRIAL_GAIN(vel_z_kd),
     PARAM_TRIAL_GAIN(vel_z_i_limit_m_s2),
+    /* 水平 x 通道（R-XYID-1，水平槽 XY 辨识只跑 x 通道），同在增益块里；y 通道不开放。 */
+    PARAM_TRIAL_GAIN(pos_x_kp),
+    PARAM_TRIAL_GAIN(vel_x_kp),
+    PARAM_TRIAL_GAIN(vel_x_ki),
+    PARAM_TRIAL_GAIN(vel_x_kd),
+    PARAM_TRIAL_GAIN(vel_x_i_limit_m_s2),
     PARAM_TRIAL_SHAPING(rate_out_notch_hz),
     PARAM_TRIAL_SHAPING(rate_out_notch_q),
     PARAM_TRIAL_SHAPING(rate_out_notch2_hz),

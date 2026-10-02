@@ -41,6 +41,11 @@ def test_controller_uses_named_rc_channels_for_references() -> None:
     assert "#define STABILIZER_RC_THROTTLE_ARM_LOW_PERCENT 10U" in freertos
     assert "#define STABILIZER_RC_LOSS_TIMEOUT_MS  500U" in freertos
     assert "#define STABILIZER_XY_VEL_REF_MAX_M_S  0.40f" in freertos
+    # 满杆速度取 coax.pos_xy_vel_max_m_s（作者 2026-10-01："给速度提高到正常水平"），0.40 只作参数无效时的兜底。
+    assert 'DRV_COAX_CTRL_GetParam("coax.pos_xy_vel_max_m_s", &xy_speed_param)' in freertos
+    assert "frame->rc.norm[APP_RC_FUNC_PITCH], xy_stick_max_m_s);" in freertos
+    assert "frame->rc.norm[APP_RC_FUNC_ROLL], xy_stick_max_m_s);" in freertos
+    assert "#define STABILIZER_XY_VEL_STICK_MIN_M_S 0.10f" in freertos
     assert "#define STABILIZER_Z_REF_RATE_MAX_M_S  0.30f" in freertos
     assert "#define STABILIZER_Z_REF_MAX_M         0.40f" in freertos
     assert "#define STABILIZER_XY_POS_ERR_MAX_M    0.50f" in freertos
@@ -66,7 +71,9 @@ def test_controller_uses_named_rc_channels_for_references() -> None:
     # R-F6-2 (2026-09-06): +Z is up, no negation.
     assert "frame->attitude.z_m = frame->relative_height_m;" in freertos
     assert "ctx->height_ref_m = frame->relative_height_m;" in freertos
-    assert "ctx->height_ref_m +=\n          stabilizer_rc_throttle_height_rate_m_s(" in freertos
+    # 飞行油门模式（方案 B）后爬升率有两个来源：FLIGHT 用状态机爬升率，LEGACY/旁路仍是旧的杆位换算。
+    assert "stabilizer_rc_throttle_height_rate_m_s(" in freertos
+    assert "frame->ft_climb_rate_m_s :" in freertos
     # R-F6-2 (2026-09-06): +Z is up, no negation.
     assert "ctx->position_ref_z_m = ctx->height_ref_m;" in freertos
     assert "frame->reference.az_m_s2 = 0.0f;" in freertos
@@ -87,7 +94,8 @@ def test_ch6_selects_true_attitude_debug_mode_with_twenty_degree_limit() -> None
     assert "(frame->rc_use_stabilized_motor_mix != 0U) &&" in freertos
     assert "frame->rc.us[APP_RC_FUNC_MODE],\n" \
            "        STABILIZER_RC_SWITCH_HIGH_PERCENT" in freertos
-    assert "if (frame->rc_attitude_debug_mode != 0U)" in freertos
+    # SPOOLUP 与角度模式共用"直接姿态目标 + 手动总推力"这一支（方案 B）。
+    assert "if ((frame->rc_attitude_debug_mode != 0U) || (frame->ft_spoolup != 0U))" in freertos
     assert "frame->reference.direct_attitude_target_valid = 1U;" in freertos
     assert "frame->reference.manual_total_force_valid = 1U;" in freertos
     assert "frame->reference.manual_total_force_n =" in freertos
@@ -146,9 +154,10 @@ def test_arm_switch_gates_motor_output_but_not_controller_reference() -> None:
     assert "uint16_t DRV_COAX_CTRL_ThrustToMotorPulse(float thrust_n);" in header
     # 直通油门默认就是遥控器油门；只有辨识在跑且自动油门给出脉宽时才被替换
     # （R-SYSID-1 自动油门，作者 2026-09-26 授权），其余一律原样下发遥控器油门。
+    # 2026-10-01 吊绳偏航辨识起改为取上下桨一对脉宽（YAW 差速时两路不同，其余模式相同）。
     assert "uint16_t direct_us = frame->rc_throttle_motor_us;" in freertos
-    assert ("if ((frame->sysid_running != 0U) && "
-            "(APP_SysId_GetMotorPulse(&sysid_motor_us) != 0U)) {") in freertos
+    assert ("if ((frame->sysid_running != 0U) &&\n"
+            "          (APP_SysId_GetMotorPulsePair(&sysid_upper_us, &sysid_lower_us) != 0U)) {") in freertos
     assert "BSP_PWM_SetEscPulse(1, direct_us);" in freertos
     assert "BSP_PWM_SetEscPulse(2, direct_us);" in freertos
     assert "BSP_PWM_SetEscPulse(1, BSP_PWM_ESC_MIN_US);" in freertos

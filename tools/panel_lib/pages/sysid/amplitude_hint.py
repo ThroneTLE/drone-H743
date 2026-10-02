@@ -26,6 +26,9 @@ AMP_HINT_BY_MODE = {
     "ANGLE": "上限 5 rad/s；ANGLE 验证的摆动由「ANGLE 角度幅值」决定，这里只定波形",
     # 高度辨识：幅值是推力/速度/高度（单位随注入类型，页面上由 alt_section.alt_amp_hint 细化）。
     "ALT": "高度辨识（ALT）：幅值单位随注入类型（N / m/s / m），不估算舵机摆幅、不自动改幅值",
+    "XY": "水平槽辨识（XY）：幅值单位随注入类型（rad / m/s / m），不估算舵机摆幅、不自动改幅值",
+    # 吊绳偏航：幅值是差速推力 N 或偏航角速度 rad/s，舵机锁中位（页面上由 yaw_section.yaw_amp_hint 细化）。
+    "YAW": "吊绳偏航辨识（YAW）：幅值单位随注入类型（N / rad/s），舵机锁中位，不估算舵机摆幅、不自动改幅值",
 }
 #: 实验类型预设里的幅值：输入框里还是它们就算作者没动过。
 PRESET_AMPS = frozenset(preset["amp"] for _key, preset in EXPERIMENTS.values())
@@ -135,6 +138,10 @@ class AmplitudeHint:
     def _amp_hint_text(self) -> str:
         if self.mode_var.get() == "ALT" and hasattr(self, "alt_amp_hint"):
             return self.alt_amp_hint()
+        if self.mode_var.get() == "XY" and hasattr(self, "xy_amp_hint"):
+            return self.xy_amp_hint()
+        if self.mode_var.get() == "YAW" and hasattr(self, "yaw_amp_hint"):
+            return self.yaw_amp_hint()
         mode_text = AMP_HINT_BY_MODE.get(self.mode_var.get())
         if mode_text:
             return mode_text

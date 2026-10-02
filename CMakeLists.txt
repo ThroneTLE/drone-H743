@@ -111,8 +111,11 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Driver/Src/drv_airframe_params.c
     Driver/Src/drv_prop_map.c
     Driver/Src/drv_coax_ctrl.c
+    Driver/Src/drv_flight_throttle.c
     Driver/Src/drv_thrust_lut.c
     Driver/Src/drv_position_control.c
+    Driver/Src/drv_z_estimator.c
+    Driver/Src/drv_hover_thrust_est.c
     Driver/Src/drv_attitude_control.c
     Driver/Src/drv_rate_control.c
     Driver/Src/drv_rpm_notch.c
@@ -122,9 +125,11 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     ThirdParty/Fusion/FusionAhrs.c
     # Services layer
     Services/Src/svc_flow_nav.c
+    Services/Src/svc_flow_capture.c
     Services/Src/svc_led.c
     Services/Src/svc_imu.c
     Services/Src/svc_mag.c
+    Services/Src/svc_mag_heading.c
     Services/Src/svc_param.c
     Services/Src/svc_timestamp.c
     # BSP layer
@@ -184,13 +189,25 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     App/Src/app_cmd_propcal.c
     App/Src/app_cmd_thrust_bench.c
     App/Src/app_cmd_magcal.c
+    App/Src/app_magxy.c
     App/Src/app_cmd_currprobe.c
+    App/Src/app_cmd_hover.c
+    App/Src/app_cmd_imuzero.c
+    App/Src/app_rc_aux.c
+    App/Src/app_hover_adapt.c
+    App/Src/app_cmd_flograte.c
+    App/Src/app_cmd_flogdump.c
+    App/Src/app_cmd_thrmode.c
+    App/Src/app_cmd_flowcap.c
+    App/Src/app_hover_thrust.c
     App/Src/app_cmd_esc_edt.c
     App/Src/app_cmd_esc_kv.c
     App/Src/app_esc_command.c
     App/Src/app_cmd_sysid.c
     App/Src/app_sysid.c
     App/Src/app_sysid_alt.c
+    App/Src/app_sysid_xy.c
+    App/Src/app_sysid_yaw.c
     App/Src/app_prop_spin.c
     App/Src/app_thrust_bench.c
     App/Src/app_thrust_lut.c
@@ -205,6 +222,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     App/Src/app_firmware_identity.c
     App/Src/app_flight_calibration.c
     App/Src/app_flight_log.c
+    App/Src/app_flight_log_nav.c
     App/Src/app_imu_capture.c
     App/Src/app_imu_health.c
     App/Src/app_flash_service.c

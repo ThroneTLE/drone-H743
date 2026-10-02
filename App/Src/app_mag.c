@@ -59,6 +59,9 @@ static void app_mag_update_snapshot(const BSP_MAG_ScaledData *scaled)
                                              corrected_mgauss);
 
     lock = BSP_Critical_Enter();
+    app_mag_ctx.snapshot.raw_field_flu_mgauss[0] = raw_flu_mgauss[0];
+    app_mag_ctx.snapshot.raw_field_flu_mgauss[1] = raw_flu_mgauss[1];
+    app_mag_ctx.snapshot.raw_field_flu_mgauss[2] = raw_flu_mgauss[2];
     if (apply_status == DRV_MAG_CAL_VALID) {
         app_mag_ctx.snapshot.field_flu_mgauss[0] = corrected_mgauss[0];
         app_mag_ctx.snapshot.field_flu_mgauss[1] = corrected_mgauss[1];

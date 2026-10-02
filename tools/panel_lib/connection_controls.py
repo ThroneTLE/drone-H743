@@ -4,6 +4,7 @@ from tkinter import ttk, messagebox
 from . import transport as _panel_transport
 from .transport import serial_port_identity, match_remembered_serial_port, TransportBase
 from .proto import PROTO_REQ_PING
+from . import link_failover as _link_failover
 from .bluetooth_channel import BluetoothChannelMixin, channel_mode
 
 DEFAULT_HOST = "0.0.0.0"
@@ -257,6 +258,13 @@ class ConnectionControlsMixin(BluetoothChannelMixin):
             utility,
             text="启动自动重连",
             variable=self.auto_connect_var,
+            command=self._save_panel_state,
+        ).pack(side=tk.LEFT, padx=(10, 2))
+        _link_failover.install(self)
+        ttk.Checkbutton(
+            utility,
+            text="USB断开自动切蓝牙",
+            variable=self.usb_failover_var,
             command=self._save_panel_state,
         ).pack(side=tk.LEFT, padx=(10, 2))
         ttk.Label(utility, text="链路").pack(side=tk.LEFT, padx=(18, 4))

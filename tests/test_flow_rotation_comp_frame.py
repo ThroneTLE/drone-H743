@@ -98,77 +98,85 @@ def test_stale_second_order_note_is_gone() -> None:
 
 
 # --------------------------------------------------------------------------
-# 数值复现：为什么只有 Y 死、且只在圆周飞行时死
+# 补偿公式的物理（2026-09-30 台架实测后改正）
 # --------------------------------------------------------------------------
+#
+# 光流把"地面点在像里的运动"报成载具速度：读数 = v_传感器 + ω × r_地面，
+# r_地面 = (0, 0, -h)（FLU，地面在下方）；v_传感器 = v_重心 + ω × r_安装。
+# 所以 v_重心 = 读数 - ω × (r_安装 + r_地面)。
+#
+# 旧写法（2026-09-07 只修了方言边界）把光学伪像当成"读数里少了的那份"又加了一遍，
+# 安装偏置 Z 也按 Z 朝下写成 +0.22。水平槽台架手摆（纯绕杆转动）实测：原始读数与旧
+# 补偿项 12/12 同号、幅值比约 1.18 =(h+杆下约 8 cm)/h；若旧写法正确，二者应反号。
+# 旧写法每弧度漏进约 1 m 假位移，tilt 激励（0.07 rad/100 ms 斜坡）会造成约 0.6 m/s
+# 假速度。证据：data/analysis/sysid-rig-params/2026-09-30/xy_rock_check_*.txt。
 
-def _simulate(circle_period_s: float, radius_m: float, height_m: float,
-              buggy: bool) -> tuple[float, float]:
-    """半径 R、周期 T 的匀速圆周飞行，返回补偿后 X/Y 速度幅值。
-
-    FLU 下 v = RΩ(-sin Ωt, cos Ωt)，a = -RΩ²(cos Ωt, sin Ωt)。
-    小角近似 a_y = -g·φ、a_x = +g·θ，于是
-        ω_x = dφ/dt = +RΩ³cos(Ωt)/g   与 v_y 同相  ← 这就是 Y 被抵消的原因
-        ω_y = dθ/dt = +RΩ³sin(Ωt)/g   与 v_x 反相
-    """
-    omega = 2.0 * math.pi / circle_period_s
-    lever = (GAIN * height_m) + OFFSET_Z
-    xs: list[float] = []
-    ys: list[float] = []
-
-    for step in range(400):
-        phase = omega * (circle_period_s * step / 400.0)
-        v_x_flu = -radius_m * omega * math.sin(phase)
-        v_y_flu = radius_m * omega * math.cos(phase)
-        gyro_x = radius_m * (omega ** 3) * math.cos(phase) / GRAVITY
-        gyro_y = radius_m * (omega ** 3) * math.sin(phase) / GRAVITY
-
-        # 传感器原始读数含旋转伪像，且以 FRD 报出（Y 朝右）。
-        artifact_x = -lever * gyro_y
-        artifact_y = lever * gyro_x
-        raw_frd_x = v_x_flu - artifact_x
-        raw_frd_y = -(v_y_flu - artifact_y)
-
-        if buggy:
-            # 修复前：FLU 补偿加在 FRD 速度上，末尾再整体翻 Y。
-            xs.append(raw_frd_x + artifact_x)
-            ys.append(-(raw_frd_y + artifact_y))
-        else:
-            # 修复后：采集边界先转 FLU，补偿项本来就是 FLU。
-            xs.append(raw_frd_x + artifact_x)
-            ys.append(-raw_frd_y + artifact_y)
-
-    return (max(map(abs, xs)), max(map(abs, ys)))
+OFFSET_X = _macro("STABILIZER_FLOW_SENSOR_OFFSET_X_M")
+OFFSET_Y = _macro("STABILIZER_FLOW_SENSOR_OFFSET_Y_M")
 
 
-def test_bug_cancels_lateral_velocity_while_forward_survives() -> None:
-    """复现实测：约 2.9 s 一圈时 Y 被抵消殆尽，X 完好。"""
-    radius_m = 0.5
-    truth = 2.0 * math.pi / 2.9 * radius_m
-
-    bad_x, bad_y = _simulate(2.9, radius_m, 1.0, buggy=True)
-    good_x, good_y = _simulate(2.9, radius_m, 1.0, buggy=False)
-
-    # 修复后两轴都还原成真实速度幅值。
-    assert math.isclose(good_x, truth, rel_tol=1e-6)
-    assert math.isclose(good_y, truth, rel_tol=1e-6)
-
-    # 修复前 X 也是对的——所以这个缺陷单看 X 完全看不出来。
-    assert math.isclose(bad_x, truth, rel_tol=1e-6)
-
-    # 而 Y 只剩两成不到，正是"仿佛被抑制了"。
-    assert bad_y < 0.2 * truth, f"expected Y suppressed, got {bad_y:.3f}/{truth:.3f}"
+def _cross(a, b):
+    return (a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0])
 
 
-def test_suppression_ratio_follows_the_closed_form() -> None:
-    """误差/信号 = 2(GAIN·h + offset_z)Ω²/g。
+def _sensor_reading(v_cg, omega, height_m):
+    """物理：传感器读数（FLU，已过方言边界）。"""
+    r_mount = (OFFSET_X, OFFSET_Y, OFFSET_Z)
+    v_sensor = [v_cg[k] + _cross(omega, r_mount)[k] for k in range(2)]
+    artifact = _cross(omega, (0.0, 0.0, -height_m))
+    return (v_sensor[0] + artifact[0], v_sensor[1] + artifact[1])
 
-    抵消点随圈速与高度移动：飞得慢或飞得低时这个缺陷会自己"变轻"，很容易被误判成
-    已经修好了——所以判据钉的是闭式解，不是某一次实测的幅值。
-    """
-    radius_m = 0.5
-    for period_s, height_m in ((2.0, 1.0), (4.0, 1.0), (3.0, 0.6)):
-        omega = 2.0 * math.pi / period_s
-        lever = (GAIN * height_m) + OFFSET_Z
-        predicted = abs(1.0 - (2.0 * lever * omega * omega / GRAVITY))
-        _, bad_y = _simulate(period_s, radius_m, height_m, buggy=True)
-        assert math.isclose(bad_y / (omega * radius_m), predicted, rel_tol=1e-6)
+
+def _firmware_compensate(raw, omega, height_m):
+    """逐项照抄 stabilizer_compensate_flow_rotation（下面的源码断言把两边钉在一起）。"""
+    gx, gy, gz = omega
+    opt = (GAIN * height_m * gy, -GAIN * height_m * gx)
+    off = (-((gy * OFFSET_Z) - (gz * OFFSET_Y)), -((gz * OFFSET_X) - (gx * OFFSET_Z)))
+    return (raw[0] + opt[0] + off[0], raw[1] + opt[1] + off[1])
+
+
+def test_python_mirror_matches_the_firmware_formula() -> None:
+    fn = STABILIZER.split("static void stabilizer_compensate_flow_rotation")[1].split("\n  }\n")[0]
+    compact = " ".join(fn.split())
+    assert "debug->optical_rot_comp_m_s[0] = STABILIZER_FLOW_ROT_COMP_GAIN * height_m * gyro_y_rad_s;" in compact
+    assert "debug->optical_rot_comp_m_s[1] = -STABILIZER_FLOW_ROT_COMP_GAIN * height_m * gyro_x_rad_s;" in compact
+    assert ("debug->offset_rot_comp_m_s[0] = -((gyro_y_rad_s * STABILIZER_FLOW_SENSOR_OFFSET_Z_M) - "
+            "(gyro_z_rad_s * STABILIZER_FLOW_SENSOR_OFFSET_Y_M));") in compact
+    assert ("debug->offset_rot_comp_m_s[1] = -((gyro_z_rad_s * STABILIZER_FLOW_SENSOR_OFFSET_X_M) - "
+            "(gyro_x_rad_s * STABILIZER_FLOW_SENSOR_OFFSET_Z_M));") in compact
+    assert OFFSET_Z < 0.0, "FLU Z 朝上：光流模块在重心下方，安装偏置 Z 必须为负"
+    assert GAIN == 1.0
+
+
+def test_pure_rotation_leaves_no_phantom_velocity() -> None:
+    """静止的重心、任意角速度：补偿后速度为 0（台架手摆的情形）。"""
+    for omega in ((0.8, 0.0, 0.0), (0.0, -1.2, 0.0), (0.5, 0.7, 0.3), (-0.9, 0.4, -0.6)):
+        for height_m in (0.3, 0.47, 1.5):
+            raw = _sensor_reading((0.0, 0.0), omega, height_m)
+            corrected = _firmware_compensate(raw, omega, height_m)
+            assert abs(corrected[0]) < 1e-9 and abs(corrected[1]) < 1e-9, (omega, height_m, corrected)
+
+
+def test_circle_flight_recovers_both_axes() -> None:
+    """2026-09-07 的场景（靠滚转做圆周，ω_x 与 v_y 同相）：补偿后两轴都等于真值。"""
+    radius_m, period_s, height_m = 0.5, 2.9, 1.0
+    omega_c = 2.0 * math.pi / period_s
+    for step in range(200):
+        phase = omega_c * period_s * step / 200.0
+        v = (-radius_m * omega_c * math.sin(phase), radius_m * omega_c * math.cos(phase))
+        rates = (radius_m * omega_c ** 3 * math.cos(phase) / GRAVITY,
+                 radius_m * omega_c ** 3 * math.sin(phase) / GRAVITY, 0.0)
+        corrected = _firmware_compensate(_sensor_reading(v, rates, height_m), rates, height_m)
+        assert math.isclose(corrected[0], v[0], abs_tol=1e-9)
+        assert math.isclose(corrected[1], v[1], abs_tol=1e-9)
+
+
+def test_bench_rocking_signature_rules_out_the_old_sign() -> None:
+    """台架判据：纯转动时原始读数与光学补偿项必须反号（旧写法同号，实测 12/12 同号）。"""
+    height_m = 0.47
+    for omega in ((0.6, 0.0, 0.0), (0.0, 0.6, 0.0), (-0.4, 0.4, 0.0)):
+        raw = _sensor_reading((0.0, 0.0), omega, height_m)
+        opt = (GAIN * height_m * omega[1], -GAIN * height_m * omega[0])
+        for k in range(2):
+            if abs(raw[k]) > 1e-6:
+                assert raw[k] * opt[k] < 0.0, (omega, raw, opt)

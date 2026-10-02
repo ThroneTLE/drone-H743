@@ -172,6 +172,7 @@ def test_cascade_quick_editor_preserves_draft_and_does_not_send_offline(app) -> 
     assert app.param_states[name].draft == "0.2"
 
 
+@pytest.mark.slow_ui  # 真面板尺寸/缩放矩阵，慢；默认只在界面文件有改动时跑（tests/conftest.py）
 @pytest.mark.parametrize("scale", panel_qa.SCALES)
 def test_cascade_editor_layout_at_three_sizes(scale, tmp_path):
     from tools.panel_qa.geometry import collect_clipped_controls

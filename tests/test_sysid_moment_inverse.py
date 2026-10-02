@@ -39,6 +39,9 @@ AIRFRAME_FIELDS = [
     "mass_kg", "cg_z_m", "weight_n", "thrust_point_to_cg_z_m",
     "tether_attach_to_cg_m", "tether_rod_to_cg_m", "max_total_force_n",
     "hover_thrust_percent", "servo_us_per_deg", "derived_auto",
+    # CFG v26（2026-09-29，R-FLOWMOUNT-1）：尾部追加的光流安装两项。少了它们 ctypes 结构
+    # 比 C 结构短 8 字节，C 侧整体读写会越过 Python 分配的缓冲。
+    "flow_mount_yaw_deg", "flow_mount_mirror",
 ]
 
 

@@ -1,0 +1,364 @@
+{
+  "ver": "3",
+  "mode": "4",
+  "angle_amp_mrad": "52",
+  "mass_mg": "1145300",
+  "imu_off_um": "21800",
+  "thrust": "lut",
+  "engaged": "0",
+  "psi_mrad": "-785",
+  "axis_off_um": "61800",
+  "profile": "0",
+  "amp_mrad_s": "500",
+  "dur_ms": "300",
+  "hold_ms": "100",
+  "repeat": "1",
+  "ramp_ms": "100",
+  "f0_mhz": "300",
+  "f1_mhz": "6000",
+  "bit_ms": "40",
+  "seed": "1",
+  "total_ms": "300",
+  "servo_tilt_mrad": "87",
+  "auto": "1",
+  "target_cn": "1461",
+  "max_pct_x10": "950",
+  "phase": "idle",
+  "pulse_us": "0",
+  "armed": "1",
+  "thr_low": "1",
+  "capped": "0",
+  "alt_h_mm": "479",
+  "alt_h_ok": "1",
+  "alt_sp_mm": "0",
+  "rate_hz": "250",
+  "I_ugm2": "34300",
+  "angle_mrad": "349",
+  "resid_mrad_s": "523",
+  "min_thrust_cn": "200",
+  "parameter_echo": {
+    "coax.pos_x_kp": "0.900000",
+    "coax.pos_y_kp": "0.900000",
+    "coax.pos_z_kp": "5.000000",
+    "coax.pos_xy_vel_max_m_s": "1.500000",
+    "coax.pos_z_vel_up_max_m_s": "0.300000",
+    "coax.pos_z_vel_down_max_m_s": "0.300000",
+    "coax.vel_x_kp": "2.000000",
+    "coax.vel_y_kp": "2.000000",
+    "coax.vel_z_kp": "8.000000",
+    "coax.vel_x_ki": "0.600000",
+    "coax.vel_y_ki": "0.600000",
+    "coax.vel_z_ki": "5.000000",
+    "coax.vel_x_kd": "0.000000",
+    "coax.vel_y_kd": "0.000000",
+    "coax.vel_z_kd": "0.000000",
+    "coax.vel_x_i_limit_m_s2": "1.500000",
+    "coax.vel_y_i_limit_m_s2": "1.500000",
+    "coax.vel_z_i_limit_m_s2": "1.500000",
+    "coax.accel_lpf_cutoff_hz": "20.000000",
+    "coax.accel_xy_max_m_s2": "3.700000",
+    "coax.accel_z_up_max_m_s2": "3.700000",
+    "coax.accel_z_down_max_m_s2": "3.700000",
+    "coax.att_roll_kp": "2.143600",
+    "coax.att_pitch_kp": "2.015900",
+    "coax.att_yaw_kp": "6.666667",
+    "coax.roll_rate_limit_rad_s": "3.490659",
+    "coax.pitch_rate_limit_rad_s": "3.490659",
+    "coax.yaw_rate_limit_rad_s": "3.490659",
+    "coax.rate_roll_kp": "0.344700",
+    "coax.rate_pitch_kp": "0.345300",
+    "coax.rate_yaw_kp": "0.000000",
+    "coax.rate_roll_ki": "0.723300",
+    "coax.rate_pitch_ki": "0.683400",
+    "coax.rate_yaw_ki": "0.000000",
+    "coax.rate_roll_kd": "0.000000",
+    "coax.rate_pitch_kd": "0.000000",
+    "coax.rate_yaw_kd": "0.000000",
+    "coax.rate_roll_i_limit_n_m": "0.050000",
+    "coax.rate_pitch_i_limit_n_m": "0.050000",
+    "coax.rate_yaw_i_limit_n_m": "0.000200",
+    "coax.angular_accel_lpf_cutoff_rad_s": "18.849556",
+    "coax.rate_roll_ff": "1.000000",
+    "coax.rate_pitch_ff": "1.000000",
+    "coax.rate_yaw_ff": "1.000000",
+    "coax.vel_loop_enable": "1.000000",
+    "coax.tilt_limit_rad": "0.488692",
+    "coax.rate_out_notch_hz": "6.000000",
+    "coax.rate_out_notch_q": "1.600000",
+    "coax.rate_out_notch2_hz": "16.000000",
+    "coax.rate_out_notch2_q": "1.000000",
+    "coax.att_ref_wr_rad_s": "10.000000",
+    "coax.att_ref_delay_ms": "35.000000",
+    "airframe.board_mass_g": "75.000000",
+    "airframe.battery_mass_g": "232.000000",
+    "airframe.base_mass_g": "99.000000",
+    "airframe.servo_motor_mass_g": "348.600000",
+    "airframe.board_cg_z_m": "0.000000",
+    "airframe.battery_cg_z_m": "0.109000",
+    "airframe.base_cg_z_m": "-0.117000",
+    "airframe.servo_motor_cg_z_m": "-0.244000",
+    "airframe.imu_z_m": "0.000000",
+    "airframe.prop_plane_d_m": "0.000000",
+    "airframe.roll_axis_to_prop_plane_m": "0.000000",
+    "airframe.pitch_axis_to_prop_plane_m": "0.000000",
+    "airframe.servo1_axis_z_m": "-0.130000",
+    "airframe.servo2_axis_z_m": "-0.130000",
+    "airframe.thrust_point_z_m": "-0.295500",
+    "airframe.tether_attach_z_m": "0.156300",
+    "airframe.tether_rope_m": "0.640000",
+    "airframe.ixx_kgm2": "0.034300",
+    "airframe.iyy_kgm2": "0.035900",
+    "airframe.izz_kgm2": "0.005000",
+    "airframe.gravity_m_s2": "9.810000",
+    "airframe.max_total_thrust_g": "1595.342080",
+    "airframe.servo_deg_per_us": "0.090000",
+    "airframe.mass_kg": "1.145300",
+    "airframe.cg_z_m": "-0.021800",
+    "airframe.weight_n": "11.235394",
+    "airframe.thrust_point_to_cg_z_m": "-0.273700",
+    "airframe.tether_attach_to_cg_m": "0.178100",
+    "airframe.tether_rod_to_cg_m": "0.818100",
+    "airframe.max_total_force_n": "15.650306",
+    "airframe.hover_thrust_percent": "71.790248",
+    "airframe.servo_us_per_deg": "11.111112",
+    "airframe.derived_auto": "0.000000",
+    "airframe.flow_mount_yaw_deg": "270.000000",
+    "airframe.flow_mount_mirror": "0.000000"
+  },
+  "schema": {
+    "fields": [
+      {
+        "name": "gx",
+        "unit": "rad/s",
+        "scale": 0.001,
+        "type": 0
+      },
+      {
+        "name": "gy",
+        "unit": "rad/s",
+        "scale": 0.001,
+        "type": 0
+      },
+      {
+        "name": "gz",
+        "unit": "rad/s",
+        "scale": 0.001,
+        "type": 0
+      },
+      {
+        "name": "omega_sp",
+        "unit": "rad/s",
+        "scale": 0.001,
+        "type": 0
+      },
+      {
+        "name": "alpha_ff",
+        "unit": "rad/s^2",
+        "scale": 0.01,
+        "type": 0
+      },
+      {
+        "name": "tilt_x",
+        "unit": "rad",
+        "scale": 0.0001,
+        "type": 0
+      },
+      {
+        "name": "tilt_y",
+        "unit": "rad",
+        "scale": 0.0001,
+        "type": 0
+      },
+      {
+        "name": "thrust",
+        "unit": "N",
+        "scale": 0.01,
+        "type": 0
+      },
+      {
+        "name": "angle",
+        "unit": "rad",
+        "scale": 0.0001,
+        "type": 0
+      },
+      {
+        "name": "erpm",
+        "unit": "rpm",
+        "scale": 4.0,
+        "type": 1
+      },
+      {
+        "name": "torque",
+        "unit": "N*m",
+        "scale": 0.0001,
+        "type": 0
+      },
+      {
+        "name": "angle_sp",
+        "unit": "rad",
+        "scale": 0.0001,
+        "type": 0
+      },
+      {
+        "name": "offset_us",
+        "unit": "us",
+        "scale": 1.0,
+        "type": 1
+      },
+      {
+        "name": "erpm_lower",
+        "unit": "rpm",
+        "scale": 4.0,
+        "type": 1
+      },
+      {
+        "name": "servo_tilt",
+        "unit": "rad",
+        "scale": 0.0001,
+        "type": 0
+      },
+      {
+        "name": "height",
+        "unit": "m",
+        "scale": 0.0001,
+        "type": 0
+      },
+      {
+        "name": "height_raw",
+        "unit": "m",
+        "scale": 0.0001,
+        "type": 0
+      },
+      {
+        "name": "height_sp",
+        "unit": "m",
+        "scale": 0.0001,
+        "type": 0
+      },
+      {
+        "name": "vz",
+        "unit": "m/s",
+        "scale": 0.001,
+        "type": 0
+      },
+      {
+        "name": "vz_sp",
+        "unit": "m/s",
+        "scale": 0.001,
+        "type": 0
+      },
+      {
+        "name": "az",
+        "unit": "m/s^2",
+        "scale": 0.001,
+        "type": 0
+      },
+      {
+        "name": "vbat",
+        "unit": "V",
+        "scale": 0.001,
+        "type": 1
+      }
+    ],
+    "hash": 2514176085,
+    "version": 3
+  },
+  "roll_pivot_to_cg_z_m": -0.1082,
+  "pitch_pivot_to_cg_z_m": -0.1082,
+  "pivot_to_fc_input_m": {
+    "roll": -0.13,
+    "pitch": -0.13
+  },
+  "alt_request": {
+    "inject": "break",
+    "extra_mass_g": 38.8,
+    "win_mm": 70,
+    "lift_mm": 50,
+    "bottom_mm": 465,
+    "top_mm": 646,
+    "airframe_mass_g": 1145.3,
+    "mass_g": 1184,
+    "control": "breakaway",
+    "target_cn": 1461
+  },
+  "start": {
+    "run": "4",
+    "profile": "0",
+    "amp_mrad_s": "500",
+    "dur_ms": "300",
+    "rate_hz": "250",
+    "I": "34300",
+    "psi_mrad": "-785",
+    "auto": "1",
+    "target_cn": "1461",
+    "ref_wr_mrad_s": "10000",
+    "ref_td_us": "35000",
+    "onotch_mhz": "6000",
+    "onotch_q_milli": "1600",
+    "onotch2_mhz": "16000",
+    "onotch2_q_milli": "1000"
+  },
+  "alt": {
+    "run": "4",
+    "alt_inject": "break",
+    "alt_mass_g": "1184",
+    "alt_win_mm": "70",
+    "alt_lift_mm": "50",
+    "alt_h0_mm": "478",
+    "alt_control": "breakaway",
+    "alt_target_cn": "1461",
+    "alt_bottom_mm": "465",
+    "alt_top_mm": "646"
+  },
+  "rpm_notch": {
+    "run": "4",
+    "en": "1",
+    "state": "idle",
+    "src": "bidir",
+    "pp": "7",
+    "harm": "1",
+    "q_x100": "300",
+    "min_hz": "50",
+    "fade_hz": "20",
+    "fs_x10": "9993"
+  },
+  "backlash": {
+    "run": "4",
+    "en": "1",
+    "alpha_mrad": "20",
+    "beta_mrad": "20",
+    "thr_mrad": "5",
+    "servo_hz": "333"
+  },
+  "alt_phases": [
+    {
+      "run": "4",
+      "phase": "ramp_up",
+      "pulse_us": "1100",
+      "thrust_cn": "0"
+    },
+    {
+      "run": "4",
+      "phase": "settle",
+      "pulse_us": "1643",
+      "thrust_cn": "824"
+    },
+    {
+      "run": "4",
+      "phase": "ramp_down",
+      "pulse_us": "1635",
+      "thrust_cn": "813"
+    }
+  ],
+  "alt_thrust_capped_batches": 0,
+  "alt_thrust_capped_flag": false,
+  "end": {
+    "run": "4",
+    "state": "done",
+    "reason": "complete",
+    "dropped": "0"
+  },
+  "data_error": "",
+  "last_message": "",
+  "run_id": 4
+}

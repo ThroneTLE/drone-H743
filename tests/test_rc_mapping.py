@@ -497,7 +497,11 @@ def test_flash_record_migrates_instead_of_discarding_old_config() -> None:
     # 2026-09-20（R-MAG-1）：v23 在记录尾部追加磁力计校准块，当前版本号随之
     # 推进到 23；v22 → v23 的覆盖见下一条测试。
     # 2026-09-28：v24 追加指令整形/出口陷波块；同日晚 v25 在该块尾部追加第二级出口陷波。
-    assert "#define APP_CONTROL_CFG_VERSION     25U" in control
+    # 2026-09-29（R-FLOWMOUNT-1）：v26 在机体块尾部追加光流安装两项，v25 由 config_read_v25 读取、两项落回 0/0。
+    # 2026-09-30：v28 在记录尾部追加 Z 通道块（悬停推力、速度融合开关），v27 由 config_read_v27 读取。
+    assert "#define APP_CONTROL_CFG_VERSION     29U" in control
+    assert "#define APP_CONTROL_CFG_VERSION_V27 27U" in control
+    assert "#define APP_CONTROL_CFG_VERSION_V26 26U" in control
     assert "#define APP_CONTROL_CFG_VERSION_V19 19U" in control
     assert "#define APP_CONTROL_CFG_VERSION_V16 16U" in control
     assert "APP_ControlFlashRecordV16" in control

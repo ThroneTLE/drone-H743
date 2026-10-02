@@ -27,6 +27,7 @@
 #include "app_current_format.h"
 #include "app_flash_service.h"
 #include "app_magcal.h"
+#include "app_magxy.h"
 #include "app_stabilizer.h"
 #include "bsp_critical.h"
 #include "drv_frame_contract.h"
@@ -381,6 +382,9 @@ uint8_t app_control_handle_magcal(char **tokens, uint32_t count)
 {
     if ((tokens == NULL) || (count == 0U)) {
         return 0U;
+    }
+    if (APP_MagXY_HandleCommand(tokens, count) != 0U) {
+        return 1U;
     }
     if ((strcmp(tokens[0], "MAGCAL") == 0) ||
         (strcmp(tokens[0], "MAGCAL?") == 0)) {

@@ -116,6 +116,7 @@ def test_async_driver_open_can_be_cancelled(monkeypatch):
     assert not session.is_connected and session.active_port is None
 
 
+@pytest.mark.slow_ui  # 真面板尺寸/缩放矩阵，慢；默认只在界面文件有改动时跑（tests/conftest.py）
 @pytest.mark.parametrize('scale',SCALES)
 def test_bluetooth_controls_layout(scale,monkeypatch):
     monkeypatch.setattr(ui,'discover_devices',lambda:candidates())

@@ -152,7 +152,8 @@ def test_the_sysid_closed_loop_reads_the_control_gyro_and_logs_the_raw_one():
     assert [line.split()[-1] for line in tail.splitlines()
             if line.strip().startswith(("float", "uint8_t"))] == [
         "gyro_ctrl_rad_s[3];", "height_valid;", "height_m;", "height_raw_m;", "vz_m_s;",
-        "az_m_s2;", "vbat_v;"]
+        "az_m_s2;", "vbat_v;", "flow_valid;", "flow_vel_m_s[2];", "flow_pos_m[2];",
+        "level_valid;", "level_roll_rad;", "level_pitch_rad;"]
 
 
 # ---------------------------------------------------------------- 命令与构建

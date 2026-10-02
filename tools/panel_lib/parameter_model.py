@@ -38,6 +38,9 @@ class ParameterCapability:
     minimum_exclusive: bool = False
     value_kind: str = "float"
     storage: str = "RAM；Flash 持久化需单独确认"
+    # 离散取值集合（固件只收这几个数，例如光流安装转角 0/90/180/270）。
+    # None = 连续量，只按上下界校验。
+    choices: tuple[float, ...] | None = None
 
 
 @dataclass
@@ -137,6 +140,11 @@ _CAPABILITY_ROWS = (
     ("rate_out_notch2_q", "Q"),
     ("att_ref_wr_rad_s", "rad/s"),
     ("att_ref_delay_ms", "ms"),
+    ("hover_thrust_n", "N"),
+    ("z_vel_fusion", "bool", "bool"),
+    ("alt_max_m", "m"),
+    ("manual_tilt_max_rad", "rad"),
+    ("yaw_stick_rate_rad_s", "rad/s"),
 )
 
 
@@ -171,6 +179,18 @@ COAX_SHAPING_RANGES: dict[str, tuple[float, float]] = {
     "att_ref_delay_ms": (0.0, 80.0),
 }
 
+# 悬停推力（推力表口径）：0 = 关（按 mass·g），否则 [1, 40] N（drv_coax_ctrl.h 的 HOVER_THRUST_MIN/MAX）。
+# 与 z_vel_fusion（默认 1）一起存在配置 v28 的竖直通道块里。
+COAX_HOVER_THRUST_RANGE_N = (0.0, 40.0)
+
+# 飞行限幅（配置 v29 飞行限幅块；作者 2026-10-01 要求上位机可配）：范围镜像
+# coax_ctrl_param_value_valid() 里 alt_max_m / manual_tilt_max_rad / yaw_stick_rate_rad_s 三条。
+COAX_FLIGHT_LIMIT_RANGES: dict[str, tuple[float, float]] = {
+    "alt_max_m": (0.1, 20.0),
+    "manual_tilt_max_rad": (0.05, 0.785),
+    "yaw_stick_rate_rad_s": (0.1, 6.0),
+}
+
 PARAMETER_CAPABILITIES: dict[str, ParameterCapability] = {}
 for _row in _CAPABILITY_ROWS:
     _name, _unit = _row[:2]
@@ -179,6 +199,10 @@ for _row in _CAPABILITY_ROWS:
         _minimum, _maximum, _exclusive = 0.0, 1.0, False
     elif _name == "tilt_limit_rad":
         _minimum, _maximum, _exclusive = 0.0, COAX_TILT_LIMIT_RAD, True
+    elif _name == "hover_thrust_n":
+        (_minimum, _maximum), _exclusive = COAX_HOVER_THRUST_RANGE_N, False
+    elif _name in COAX_FLIGHT_LIMIT_RANGES:
+        (_minimum, _maximum), _exclusive = COAX_FLIGHT_LIMIT_RANGES[_name], False
     elif _name in COAX_SHAPING_RANGES:
         (_minimum, _maximum), _exclusive = COAX_SHAPING_RANGES[_name], False
     else:
@@ -210,9 +234,19 @@ for _row in _CAPABILITY_ROWS:
 _AIRFRAME_ABS_LIMIT = 10000.0
 
 try:  # 直接跑 tools/drone_tcp_panel.py 时没有包上下文。
-    from .airframe_model import AIRFRAME_FIELDS, DERIVED_AUTO_FIELD
+    from .airframe_model import (
+        AIRFRAME_FIELDS,
+        DERIVED_AUTO_FIELD,
+        FLOW_MOUNT_MIRROR_FIELD,
+        FLOW_MOUNT_YAW_FIELD,
+    )
 except ImportError:  # pragma: no cover - 仅在扁平 sys.path 下走到
-    from airframe_model import AIRFRAME_FIELDS, DERIVED_AUTO_FIELD
+    from airframe_model import (
+        AIRFRAME_FIELDS,
+        DERIVED_AUTO_FIELD,
+        FLOW_MOUNT_MIRROR_FIELD,
+        FLOW_MOUNT_YAW_FIELD,
+    )
 
 for _field in (*AIRFRAME_FIELDS, DERIVED_AUTO_FIELD):
     PARAMETER_CAPABILITIES[_field.name] = ParameterCapability(
@@ -224,6 +258,26 @@ for _field in (*AIRFRAME_FIELDS, DERIVED_AUTO_FIELD):
         value_kind="float",
         storage="Flash：机体模型是唯一来源，写入后需 SAVE",
     )
+
+# 光流安装方向（R-FLOWMOUNT-1）：与机体模型同表同 Flash 块，但固件**只收离散值**
+# （drv_airframe_params.c 的 airframe_flow_mount_value_ok），这里照抄那两个集合，
+# 让上位机在发出去之前就拦住 45° 这种飞控必然 ERR 的值。
+PARAMETER_CAPABILITIES[FLOW_MOUNT_YAW_FIELD.name] = ParameterCapability(
+    name=FLOW_MOUNT_YAW_FIELD.name,
+    unit=FLOW_MOUNT_YAW_FIELD.unit,
+    minimum=0.0,
+    maximum=270.0,
+    choices=(0.0, 90.0, 180.0, 270.0),
+    storage="Flash：写入后飞控自动保存",
+)
+PARAMETER_CAPABILITIES[FLOW_MOUNT_MIRROR_FIELD.name] = ParameterCapability(
+    name=FLOW_MOUNT_MIRROR_FIELD.name,
+    unit=FLOW_MOUNT_MIRROR_FIELD.unit,
+    minimum=0.0,
+    maximum=1.0,
+    choices=(0.0, 1.0),
+    storage="Flash：写入后飞控自动保存",
+)
 
 
 def canonical_parameter_name(name: str) -> str:
@@ -264,6 +318,9 @@ def validate_parameter_text(
             return False, f"不能小于 {capability.minimum:g} {capability.unit}"
     if capability.maximum is not None and parsed > capability.maximum:
         return False, f"不能大于 {capability.maximum:g} {capability.unit}"
+    if capability.choices is not None and parsed not in capability.choices:
+        allowed = "/".join(f"{choice:g}" for choice in capability.choices)
+        return False, f"只能是 {allowed}"
     return True, ""
 
 

@@ -35,10 +35,10 @@ def test_rate_and_trigger_divider_is_exact_125hz_quadrature() -> None:
     assert divider_lines[0] < observe_calls[0]
 
 
-def test_queue_capacity_is_64_and_record_queue_storage_matches() -> None:
+def test_queue_capacity_is_128_and_record_queue_storage_matches() -> None:
     source = read("App/Src/app_flight_log.c")
 
-    assert "#define APP_FLIGHT_LOG_QUEUE_CAPACITY     64U" in source
+    assert "#define APP_FLIGHT_LOG_QUEUE_CAPACITY     128U" in source
     assert "static APP_FlightLogRecord flight_log_queue[APP_FLIGHT_LOG_QUEUE_CAPACITY];" in source
 
 
@@ -90,8 +90,8 @@ def test_sector_geometry_and_region_safety_contracts_stay_4k_friendly() -> None:
 
     assert "#define APP_FLIGHT_LOG_SECTOR_HEADER_SIZE 256U" in header
     assert "#define APP_FLIGHT_LOG_RATE_HZ            125U" in header
-    assert "#define APP_FLIGHT_LOG_VERSION            11U" in source
-    assert "_Static_assert(sizeof(APP_FlightLogRecord) == 808U" in source
+    assert "#define APP_FLIGHT_LOG_VERSION            12U" in source
+    assert "_Static_assert(sizeof(APP_FlightLogRecord) == 844U" in source
     assert "header->sector_size = APP_FLASH_SERVICE_SECTOR_SIZE;" in source
     assert "#define APP_FLASH_SERVICE_SECTOR_SIZE           DRV_GD25Q32_SECTOR_SIZE" in app_service
     assert "#define DRV_GD25Q32_SECTOR_SIZE           4096U" in flash_driver

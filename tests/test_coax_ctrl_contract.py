@@ -222,7 +222,9 @@ def test_controller_wrapper_exposes_velocity_first_vector_control_inputs() -> No
     assert "STABILIZER_Z_THRUST_BIAS_MAX_M_S2" not in freertos
     assert "frame->reference.ax_m_s2 =" in freertos
     assert "frame->reference.az_m_s2 = 0.0f;" in freertos
-    assert "ctx->height_ref_m +=\n          stabilizer_rc_throttle_height_rate_m_s(" in freertos
+    # 飞行油门模式（doc/flight-throttle-contract.md）后爬升率分 FLIGHT（状态机）与 LEGACY 两个来源。
+    assert "ctx->height_ref_m +=\n          ((frame->ft_active_mode != 0U) ?\n             frame->ft_climb_rate_m_s :\n" \
+           "             stabilizer_rc_throttle_height_rate_m_s(" in freertos
     assert "StabilizerVelocityPidState" not in freertos
     assert "stabilizer_velocity_pid_step" not in freertos
     assert "frame->reference.dt_sec = frame->ctrl_dt_sec;" in freertos
@@ -337,8 +339,12 @@ def test_nonlinear_balance_controller_uses_so3_error_and_realtime_moment_arm_inv
     assert "DRV_COAX_CTRL_BALANCE_ITERATIONS" not in wrapper
     assert "thrust_frame_r" not in wrapper
     assert "Horizontal outer loop owns acceleration only" in solve
-    assert "atan2f(solution->desired_force_local_n[0]," in solve
-    assert "-atan2f(solution->desired_force_local_n[1] * cosf(target_pitch_rad)," in solve
+    # 力 → 目标横滚/俯仰的两行公式抽成了公共纯函数 DRV_COAX_CTRL_TiltFromForce（水平槽 XY 辨识共用），
+    # 生产路径调它；公式本身原样在函数里（逐位对照见 tests/test_sysid_xy.py）。
+    assert "DRV_COAX_CTRL_TiltFromForce(solution->desired_force_local_n," in solve
+    tilt = wrapper.split("void DRV_COAX_CTRL_TiltFromForce", 1)[1].split("float DRV_COAX_CTRL_EffectiveMassKg", 1)[0]
+    assert "atan2f(force_n[0], force_n[2])" in tilt
+    assert "-atan2f(force_n[1] * cosf(pitch)," in tilt
     assert (
         "coax_ctrl_rpy_matrix(target_roll_rad,\n"
         "                         target_pitch_rad,"

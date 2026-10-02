@@ -647,4 +647,4 @@ def test_mode_accepts_names_and_numbers(lib, token, mode):
 def test_mode_rejects_unknown_names(lib):
     reset(lib)
     assert command(lib, "SYSID MODE MOTOR") == \
-        ["ERR sysid mode: MODE FF|RATE|ANGLE|SERVO|ALT [0<deg<=15], idle only\r\n"]
+        ["ERR sysid mode: MODE FF|RATE|ANGLE|SERVO|ALT|XY|YAW [0<deg<=15], idle only\r\n"]

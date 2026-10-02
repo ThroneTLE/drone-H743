@@ -59,6 +59,7 @@ typedef void *osThreadId_t;
 # at the end, delimited by an "@@@ <command>" marker line per command.
 HARNESS = r"""
 #include "app_magcal.h"
+#include "app_magxy.h"
 #include "app_control_internal.h"
 #include "app_stabilizer.h"
 #include "drv_frame_contract.h"
@@ -129,6 +130,12 @@ void APP_Stabilizer_GetMagFusionStatus(APP_Stabilizer_MagFusionStatus *out)
         out->recovery = 1U;
         out->error_deg = 3.75f;
     }
+}
+
+uint8_t APP_MagXY_HandleCommand(char **tokens, uint32_t count)
+{
+    (void)tokens; (void)count;
+    return 0U;
 }
 
 static uint8_t run(const char *line)
@@ -214,6 +221,7 @@ def transcript() -> list[tuple[str, list[str]]]:
                 f"-I{ROOT / 'App' / 'Inc'}",
                 f"-I{ROOT / 'Driver' / 'Inc'}",
                 f"-I{ROOT / 'BSP' / 'Inc'}",
+                f"-I{ROOT / 'Services' / 'Inc'}",
                 str(ROOT / "App" / "Src" / "app_cmd_magcal.c"),
                 str(ROOT / "Driver" / "Src" / "drv_mag_calibration.c"),
                 str(harness), "-lm", "-o", str(executable),

@@ -118,7 +118,13 @@ def test_cfg_v19_store_is_extracted_and_backward_compatible() -> None:
     # 2026-09-28：v24 在记录尾部追加横滚/俯仰指令整形与出口陷波块（默认关），
     # v23 → v24 由 config_read_v23 读取、新块落回"关"（tests/test_attitude_shaping.py 实跑覆盖）。
     # 同日晚 v25 在整形块尾部追加第二级出口陷波，v24 由 config_read_v24 读取、第二级落回"关"。
-    assert "APP_CONTROL_CFG_VERSION     25U" in header
+    # 2026-09-29（R-FLOWMOUNT-1）：v26 在机体块尾部追加光流安装两项，v25 由 config_read_v25 读取、两项落回 0/0。
+    # 2026-09-30（R-ALTID-1）：v28 在 XY 块后追加竖直通道块，v27 由 config_read_v27 读取。
+    assert "APP_CONTROL_CFG_VERSION     29U" in header
+    assert "APP_CONTROL_CFG_VERSION_V27 27U" in header
+    assert "APP_CONTROL_CFG_VERSION_V26 26U" in header
+    assert "APP_CONTROL_CFG_VERSION_V25 25U" in header
+    assert "config_read_v25" in store
     assert "APP_CONTROL_CFG_VERSION_V24 24U" in header
     assert "APP_CONTROL_CFG_VERSION_V23 23U" in header
     assert "config_read_v24" in store
@@ -149,7 +155,8 @@ def test_cfg_v22_migrates_into_v23_keeping_old_blocks_and_defaulting_the_new_mag
     reader = reader[:reader.index("APP_CONTROL_DEFINE_LEGACY_READER(config_read_v21")]
 
     assert "app_cmd_rcmap_apply_config(&record.rc_config);" in reader
-    assert "DRV_Airframe_SetParams(&record.airframe);" in reader
+    # v26 起机体块按冻结的 v25 布局读，转换后仍整块交给 DRV_Airframe_SetParams。
+    assert "config_apply_airframe_v25(&record.airframe);" in reader
     assert "app_cmd_ledmap_apply_config(&record.led);" in reader
     assert "app_cmd_propcal_apply_config(&record.prop);" in reader
     assert "app_cmd_magcal_apply_config(NULL);" in reader

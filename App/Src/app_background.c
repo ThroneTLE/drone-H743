@@ -104,7 +104,7 @@ void APP_Background_Step(void)
     if (osMessageQueueGet(backgroundReqQueueHandle,
                           &request,
                           NULL,
-                          APP_FLIGHT_LOG_BACKGROUND_IDLE_MS) != osOK) {
+                          APP_FlightLog_BackgroundWaitMs(APP_FLIGHT_LOG_BACKGROUND_IDLE_MS)) != osOK) {
         return;
     }
 

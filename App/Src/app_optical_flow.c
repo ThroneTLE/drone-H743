@@ -2,7 +2,9 @@
 
 #include "app_control.h"
 #include "bsp_optical_flow.h"
+#include "drv_airframe_params.h"
 #include "drv_optical_flow.h"
+#include "svc_flow_capture.h"
 #include "svc_flow_nav.h"
 
 #include "svc_timestamp.h"
@@ -77,7 +79,60 @@ static void app_optical_flow_try_init(uint32_t now_ms)
  *
  * 例外：flow_vel_x/y 的**原始**计数照旧出现在 APP_OPTICAL_FLOW_Status 里（传感器
  * 页显示用），那是"芯片原话"，不带坐标系语义，不要顺手把它也转了。
+ *
+ * ── 安装方向（R-FLOWMOUNT-1，2026-09-29）──
+ * 上面的 FRD→FLU 是按**最初的安装**推出来的。模块换了安装位置之后，它算出的只是
+ * "按旧安装换算出的 FLU 读数"。airframe.flow_mount_yaw_deg / flow_mount_mirror
+ * 是把它纠正到真实机体 FLU 的变换：先按 mirror 翻 Y，再绕 +Z（向上）逆时针转 yaw：
+ *     0   → ( x,  y)      90  → (-y,  x)
+ *     180 → (-x, -y)      270 → ( y, -x)
+ * 它仍然属于"芯片原话变成载具量测"这一步，所以同样只在这里做、同样在混入任何
+ * 机体量之前（理由同上：下游的旋转补偿用的是 FLU 陀螺）。默认 0/0 是恒等变换，
+ * 与加入这两项之前逐位相同。参数由地面标定页按 +X/+Y 两步推荐并写入
+ * （tools/ground_calibration.py 的 recommend_flow_mount）。
  */
+
+/* 整数取负。INT16_MIN 取负会溢出，照 FRD→FLU 那一行的做法钳到 INT16_MAX。 */
+static int16_t app_flow_negate_i16(int16_t value)
+{
+    return (value == INT16_MIN) ? INT16_MAX : (int16_t)(-value);
+}
+
+/*
+ * 只被 app_flow_fill_sample() 调用。每帧直接读机体参数的只读视图（两个 float 字段
+ * 与几次比较），不查名字表。参数由 PARAM SET 在别的任务里改，32 位对齐的 float
+ * 读写在 M7 上是原子的，最坏只有改参数那一帧两项新旧各半——页面只在上锁时写入。
+ */
+static void app_flow_apply_mount(int16_t *flow_x, int16_t *flow_y)
+{
+    const DRV_Airframe_Params *airframe = DRV_Airframe_Get();
+    const uint16_t yaw_deg = DRV_Airframe_FlowMountYawDeg(airframe);
+    const int16_t x = *flow_x;
+    int16_t y = *flow_y;
+
+    if (DRV_Airframe_FlowMountMirror(airframe) != 0U) {
+        y = app_flow_negate_i16(y);
+    }
+    switch (yaw_deg) {
+    case 90U:
+        *flow_x = app_flow_negate_i16(y);
+        *flow_y = x;
+        break;
+    case 180U:
+        *flow_x = app_flow_negate_i16(x);
+        *flow_y = app_flow_negate_i16(y);
+        break;
+    case 270U:
+        *flow_x = y;
+        *flow_y = app_flow_negate_i16(x);
+        break;
+    default:
+        *flow_x = x;
+        *flow_y = y;
+        break;
+    }
+}
+
 static void app_flow_fill_sample(const BSP_OPTICAL_FLOW_Frame *frame,
                                  SVC_FLOW_NAV_Sample *sample)
 {
@@ -99,6 +154,8 @@ static void app_flow_fill_sample(const BSP_OPTICAL_FLOW_Frame *frame,
     sample->flow_vel_x = frame->flow_vel_x;
     sample->flow_vel_y = (frame->flow_vel_y == INT16_MIN) ?
                          INT16_MAX : (int16_t)(-frame->flow_vel_y);
+    /* 再按安装方向纠正到真实机体 FLU（默认 0/0 = 不动）。 */
+    app_flow_apply_mount(&sample->flow_vel_x, &sample->flow_vel_y);
     sample->flow_quality = frame->flow_quality;
 }
 
@@ -130,6 +187,7 @@ void APP_OpticalFlow_Step(void)
     BSP_OPTICAL_FLOW_Service();
     BSP_OPTICAL_FLOW_GetStatus(&flow_ctx.bsp_status);
     app_flow_fill_sample(&flow_ctx.bsp_status.latest, &sample);
+    SVC_FlowCapture_Push(&sample);   /* 诊断抓帧，未 Arm 时直接返回 */
 
     SVC_FlowNav_Age(now);
     result = SVC_FlowNav_PushSample(&sample, now);
@@ -340,7 +398,13 @@ void APP_OpticalFlow_Report(void)
     vz_mm_s = (int32_t)(status.vertical_velocity_m_s * 1000.0f);
     vx_mm_s = (int32_t)(status.vx_m_s * 1000.0f);
     vy_mm_s = (int32_t)(status.vy_m_s * 1000.0f);
-    APP_Control_QueueText("FLOW ok=%u init=%ld health=%u attempts=%lu recover=%lu vel_rej=%lu baud=%lu bytes=%lu frames=%lu valid=%u age_ms=%lu source=%s vel_valid=%u height_valid=%u\r\n",
+    /*
+     * 行尾的 mount_yaw / mount_mirror 是光流安装方向参数的**实际生效值**（R-FLOWMOUNT-1）。
+     * 纯追加在状态行末尾：键名与其余各行不撞，上位机各页按 key=value 解析，旧键不受影响。
+     * 每个 %u 都按 255、%lu/%ld 按 10/11 位算，整行（含回车换行）最坏 252 字符，在
+     * APP_UART_TX_TEXT_SIZE（256）以内；tests/test_flow_mount.py 用真实格式串核对。
+     */
+    APP_Control_QueueText("FLOW ok=%u init=%ld health=%u attempts=%lu recover=%lu vel_rej=%lu baud=%lu bytes=%lu frames=%lu valid=%u age_ms=%lu source=%s vel_valid=%u height_valid=%u mount_yaw=%u mount_mirror=%u\r\n",
                           (unsigned int)status.initialized,
                           (long)status.init_status,
                           (unsigned int)status.health,
@@ -354,7 +418,9 @@ void APP_OpticalFlow_Report(void)
                           (unsigned long)status.age_ms,
                           APP_OpticalFlow_VelSourceName(status.velocity_source),
                           (unsigned int)status.velocity_valid,
-                          (unsigned int)status.height_valid);
+                          (unsigned int)status.height_valid,
+                          (unsigned int)DRV_Airframe_FlowMountYawDeg(DRV_Airframe_Get()),
+                          (unsigned int)DRV_Airframe_FlowMountMirror(DRV_Airframe_Get()));
     APP_Control_QueueText("FLOW mico dev=0x%02X sys=0x%02X msg=0x%02X seq=%u t_ms=%lu dist_mm=%lu dist_valid=%u range_q=%u dist_age=%lu flow_vx=%d flow_vy=%d filt_vx=%d filt_vy=%d filt_ready=%u quality=%u min_q=%u flow_st=%u flow_age=%lu sample_us=%u\r\n",
                           (unsigned int)status.device_id,
                           (unsigned int)status.system_id,
@@ -426,5 +492,17 @@ void APP_OpticalFlow_Report(void)
                               (long)(vel_y_m_s * 1000.0f),
                               (unsigned long)SVC_FlowNav_GetIntegratedStepCount(),
                               (unsigned long)SVC_FlowNav_GetLastIntegrationDtUs());
+    }
+    {
+        /* 诊断里程计：原始计数 / 中值滤波后，不经 EKF 与零速钳位（尺度排查用，见 svc_flow_nav.h）。 */
+        float raw_m[2];
+        float filt_m[2];
+        uint32_t steps;
+
+        SVC_FlowNav_GetDiagOdometer(raw_m, filt_m, &steps);
+        APP_Control_QueueText("FLOW odo raw_x_mm=%ld raw_y_mm=%ld filt_x_mm=%ld filt_y_mm=%ld steps=%lu\r\n",
+                              (long)(raw_m[0] * 1000.0f), (long)(raw_m[1] * 1000.0f),
+                              (long)(filt_m[0] * 1000.0f), (long)(filt_m[1] * 1000.0f),
+                              (unsigned long)steps);
     }
 }

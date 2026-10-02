@@ -73,6 +73,12 @@ static const DRV_Airframe_Entry airframe_table[] = {
     AIRFRAME_DERIVED(servo_us_per_deg),
     /* 开关本身也可读写，上位机据此显示"自动/手动" */
     AIRFRAME_ENTRY(derived_auto),
+    /*
+     * 光流安装方向（R-FLOWMOUNT-1）。排在表尾：PARAM? 的既有顺序一行不动，
+     * 上位机按行对齐的显示不会漂。取值集合见 airframe_flow_mount_value_ok()。
+     */
+    AIRFRAME_ENTRY(flow_mount_yaw_deg),
+    AIRFRAME_ENTRY(flow_mount_mirror),
 };
 
 static const uint32_t airframe_table_count =
@@ -225,6 +231,80 @@ static void airframe_revalidate(void)
     airframe_valid = (DRV_Airframe_FirstInvalidName() == NULL) ? 1U : 0U;
 }
 
+/* ─────────────────────────────────────────────────────── 光流安装方向 */
+
+/*
+ * 两项都是离散量，存成 float 只是为了和整张表同一种访问方式。允许集合写死在这里：
+ * 转角只能是 90° 的整数倍（光流模块只可能正装、侧装或反装，没有"斜 30°"这回事，
+ * 也没有需要连续标定的量），镜像只能开/关。别的值在写入口当场拒绝，而不是
+ * 就近取整——"写了 45 却按 0 生效"正是 D5-3 说的撒谎。
+ */
+#define AIRFRAME_FLOW_MOUNT_YAW_OFFSET \
+    ((uint16_t)offsetof(DRV_Airframe_Params, flow_mount_yaw_deg))
+#define AIRFRAME_FLOW_MOUNT_MIRROR_OFFSET \
+    ((uint16_t)offsetof(DRV_Airframe_Params, flow_mount_mirror))
+
+static uint8_t airframe_flow_mount_yaw_ok(float value)
+{
+    return ((value == 0.0f) || (value == 90.0f) ||
+            (value == 180.0f) || (value == 270.0f)) ? 1U : 0U;
+}
+
+static uint8_t airframe_flow_mount_mirror_ok(float value)
+{
+    return ((value == 0.0f) || (value == 1.0f)) ? 1U : 0U;
+}
+
+/*
+ * 写入口的取值检查。其余字段一律放行（机体数据是量出来的事实，不设限，见
+ * parameter_model.py 的说明）；只有这两项有离散集合。
+ * 返回 1 时 *value 已规范化（-0 写成 +0，读回来不会是 "-0.000000"）。
+ */
+static uint8_t airframe_flow_mount_value_ok(uint16_t offset, float *value)
+{
+    if (offset == AIRFRAME_FLOW_MOUNT_YAW_OFFSET) {
+        if (airframe_flow_mount_yaw_ok(*value) == 0U) { return 0U; }
+    } else if (offset == AIRFRAME_FLOW_MOUNT_MIRROR_OFFSET) {
+        if (airframe_flow_mount_mirror_ok(*value) == 0U) { return 0U; }
+    } else {
+        return 1U;
+    }
+    if (*value == 0.0f) {
+        *value = 0.0f;   /* -0.0f 与 0.0f 相等，写成字面量 +0 */
+    }
+    return 1U;
+}
+
+/*
+ * 整体写入（Flash 加载）时的兜底。经 SetParam 写进 Flash 的值不会越界，校验和也
+ * 挡住了位翻转；能走到这里的只有绕过写入口的调用方。落回 0 = 恒等变换 = 加入这两项
+ * 之前的行为，并且 PARAM? / FLOW? 报的就是实际生效的值。
+ */
+static void airframe_sanitize_flow_mount(DRV_Airframe_Params *p)
+{
+    if (airframe_flow_mount_yaw_ok(p->flow_mount_yaw_deg) == 0U) {
+        p->flow_mount_yaw_deg = 0.0f;
+    }
+    if (airframe_flow_mount_mirror_ok(p->flow_mount_mirror) == 0U) {
+        p->flow_mount_mirror = 0.0f;
+    }
+    if (p->flow_mount_yaw_deg == 0.0f) { p->flow_mount_yaw_deg = 0.0f; }
+    if (p->flow_mount_mirror == 0.0f) { p->flow_mount_mirror = 0.0f; }
+}
+
+uint16_t DRV_Airframe_FlowMountYawDeg(const DRV_Airframe_Params *p)
+{
+    if ((p == NULL) || (airframe_flow_mount_yaw_ok(p->flow_mount_yaw_deg) == 0U)) {
+        return 0U;
+    }
+    return (uint16_t)p->flow_mount_yaw_deg;
+}
+
+uint8_t DRV_Airframe_FlowMountMirror(const DRV_Airframe_Params *p)
+{
+    return ((p != NULL) && (p->flow_mount_mirror == 1.0f)) ? 1U : 0U;
+}
+
 /* derived_auto 是 float 字段（Flash ABI），按 |v| > 0.5 判"自动"。 */
 static uint8_t airframe_derived_auto_on(const DRV_Airframe_Params *p)
 {
@@ -298,8 +378,9 @@ void DRV_Airframe_ComputeDerived(const DRV_Airframe_Params *in,
  * 数：单独的"力臂"会像退役的 retired_*_thrust_lever_arm_m 那样，机体换了、
  * 重心动了，它还停在旧值上，谁也不报错。写成减法之后，想改它只能重新量飞机。
  *
- * 不存成派生字段是因为 DRV_Airframe_Params 是 Flash ABI，不能加字段；每次现算
- * 只是一次减法。手动派生档下 cg_z_m 是写入值，这里照用——与控制律用的是同一个数。
+ * 不存成派生字段是因为 DRV_Airframe_Params 是 Flash ABI，加字段就要升 CFG 版本并
+ * 冻结旧布局（v26 的光流安装两项就是这么加的）；每次现算只是一次减法，不值得。
+ * 手动派生档下 cg_z_m 是写入值，这里照用——与控制律用的是同一个数。
  */
 float DRV_Airframe_RollTiltAxisToCgZ(const DRV_Airframe_Params *p)
 {
@@ -334,6 +415,7 @@ void DRV_Airframe_SetParams(const DRV_Airframe_Params *in)
     if (in == NULL) { return; }
 
     airframe_params = *in;
+    airframe_sanitize_flow_mount(&airframe_params);
     if (airframe_derived_auto_on(&airframe_params) != 0U) {
         DRV_Airframe_ComputeDerived(&airframe_params, &airframe_params);
     }
@@ -362,6 +444,11 @@ uint8_t DRV_Airframe_SetParam(const char *name, float value)
      */
     if ((entry->derived != 0U) &&
         (airframe_derived_auto_on(&airframe_params) != 0U)) {
+        return 0U;
+    }
+
+    /* 光流安装两项只收离散集合；不合格当场拒绝，原值不动。 */
+    if (airframe_flow_mount_value_ok(entry->offset, &value) == 0U) {
         return 0U;
     }
 

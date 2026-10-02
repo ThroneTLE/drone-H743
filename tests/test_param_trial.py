@@ -54,10 +54,13 @@ def strip_c_comments(source: str) -> str:
 
 # 高度环 z 通道（R-ALTID-1）：光杆台架高度辨识用 SYSID PARAM 只写 RAM 试用。
 Z_LOOP_NAMES = {"pos_z_kp", "vel_z_kp", "vel_z_ki", "vel_z_kd", "vel_z_i_limit_m_s2"}
+# 水平 x 通道（R-XYID-1）：水平槽 XY 辨识只跑 x 通道，同样只写 RAM 试用；y 通道不开放。
+X_LOOP_NAMES = {"pos_x_kp", "vel_x_kp", "vel_x_ki", "vel_x_kd", "vel_x_i_limit_m_s2"}
+LOOP_NAMES = Z_LOOP_NAMES | X_LOOP_NAMES
 
 
 def test_the_trial_list_is_exactly_the_driver_rate_and_att_names() -> None:
-    """可试用名单 = 驱动具名表里全部 coax.rate_* / coax.att_* + 高度环 z 通道五项（契约 7：每个都放得下）。
+    """可试用名单 = 驱动具名表里全部 coax.rate_* / coax.att_* + 高度环 z 通道五项 + 水平 x 通道五项（契约 7：每个都放得下）。
 
     名单外的名字会被拒绝试用，名单里多出驱动没有的名字则永远用不上——两边从源码里抓，
     不手抄。容量默认就是名单长度。z 通道五项必须既在驱动具名表里、也是 Flash 增益块
@@ -71,10 +74,10 @@ def test_the_trial_list_is_exactly_the_driver_rate_and_att_names() -> None:
     named = set(re.findall(r'DRV_COAX_CTRL_NAMED_PARAM_ENTRY\("(\w+)"', driver_source))
     tunables = read("App/Inc/app_control_config_compat.h")
     tunables = tunables[:tunables.index("} APP_ControlCoaxTunableParams;")]
-    for name in Z_LOOP_NAMES:
+    for name in LOOP_NAMES:
         assert name in named, name
         assert f"    float {name};" in tunables, name
-    driver |= Z_LOOP_NAMES
+    driver |= LOOP_NAMES
     trial_source = read("App/Src/app_param_trial.c")
     trial = re.findall(r"^\s*PARAM_TRIAL_(?:GAIN|SHAPING)\((\w+)\),", trial_source, flags=re.M)
 
@@ -188,7 +191,7 @@ static void fresh(void)
     param_set("coax.rate_pitch_kp", 0.2914f);
     param_set("coax.rate_pitch_i_limit_n_m", 0.01f);
     param_set("coax.att_pitch_kp", 1.632f);
-    param_set("coax.pos_x_kp", 0.7f);
+    param_set("coax.pos_y_kp", 0.7f);
     save();
     CHECK(APP_ParamTrial_Count() == 0U, 904);
 }
@@ -204,7 +207,12 @@ static uint8_t trialable(const char *name)
              (strcmp(name, "coax.vel_z_kp") == 0) ||
              (strcmp(name, "coax.vel_z_ki") == 0) ||
              (strcmp(name, "coax.vel_z_kd") == 0) ||
-             (strcmp(name, "coax.vel_z_i_limit_m_s2") == 0))) ? 1U : 0U;
+             (strcmp(name, "coax.vel_z_i_limit_m_s2") == 0) ||
+             (strcmp(name, "coax.pos_x_kp") == 0) ||
+             (strcmp(name, "coax.vel_x_kp") == 0) ||
+             (strcmp(name, "coax.vel_x_ki") == 0) ||
+             (strcmp(name, "coax.vel_x_kd") == 0) ||
+             (strcmp(name, "coax.vel_x_i_limit_m_s2") == 0))) ? 1U : 0U;
 }
 
 /* 2026-09-27 实机那一幕原样重放。 */
@@ -321,7 +329,7 @@ static void check_every_trialable_name_round_trips(void)
         }
     }
     CHECK(APP_ParamTrial_Count() == n, 62);   /* 每个名字都放得下 */
-    param_set("coax.pos_x_kp", 0.9f);         /* 名单外的照常按 RAM 存 */
+    param_set("coax.pos_y_kp", 0.9f);         /* 名单外的照常按 RAM 存 */
     save();
 
     n = 0U;
@@ -341,14 +349,14 @@ static void check_every_trialable_name_round_trips(void)
             n++;
         }
     }
-    CHECK(ram("coax.pos_x_kp") == 0.9f, 65);
+    CHECK(ram("coax.pos_y_kp") == 0.9f, 65);
 }
 
 static void check_refused_trials_leave_ram_and_records_alone(void)
 {
     fresh();
-    CHECK(trial("coax.pos_x_kp", 1.5f) == APP_PARAM_TRIAL_NOT_TRIALABLE, 70);
-    CHECK(ram("coax.pos_x_kp") == 0.7f, 71);
+    CHECK(trial("coax.pos_y_kp", 1.5f) == APP_PARAM_TRIAL_NOT_TRIALABLE, 70);
+    CHECK(ram("coax.pos_y_kp") == 0.7f, 71);
     CHECK(trial("coax.rate_bogus", 1.0f) == APP_PARAM_TRIAL_NOT_TRIALABLE, 72);
     CHECK(trial(NULL, 1.0f) == APP_PARAM_TRIAL_NOT_TRIALABLE, 73);
     CHECK(trial("coax.rate_pitch_kp", -1.0f) == APP_PARAM_TRIAL_REJECTED, 74);
@@ -541,25 +549,28 @@ def test_sysid_param_reports_the_trials_and_forgets_a_written_back_original(tria
 def test_sysid_param_refusals_do_not_touch_ram(trial_cmd_lib) -> None:
     lib = trial_cmd_lib
     saved = baseline(lib)
-    assert command(lib, "SYSID PARAM coax.pos_x_kp 1") == [
-        "ERR sysid param only coax.rate_* / coax.att_* / coax.pos_z_kp / coax.vel_z_*\r\n"]
+    only = ("ERR sysid param only coax.rate_* / coax.att_* / coax.pos_z_kp / coax.vel_z_* / "
+            "coax.pos_x_kp / coax.vel_x_*\r\n")
+    # 水平槽只开放 x 通道；y 通道照样拒绝、不写 RAM。
+    assert command(lib, "SYSID PARAM coax.pos_y_kp 1") == [only]
+    assert command(lib, "SYSID PARAM coax.vel_y_kp 1") == [only]
     # z 通道里只有增益与积分限幅可试用；限速这类不在名单里的照样拒绝、不写 RAM。
-    assert command(lib, "SYSID PARAM coax.pos_z_vel_up_max_m_s 1") == [
-        "ERR sysid param only coax.rate_* / coax.att_* / coax.pos_z_kp / coax.vel_z_*\r\n"]
+    assert command(lib, "SYSID PARAM coax.pos_z_vel_up_max_m_s 1") == [only]
+    assert command(lib, "SYSID PARAM coax.pos_xy_vel_max_m_s 1") == [only]
     assert command(lib, "SYSID PARAM coax.rate_bogus 1") == ["ERR sysid param coax.rate_bogus\r\n"]
     assert command(lib, "SYSID PARAM coax.rate_pitch_kp -1") == [
         "ERR sysid param coax.rate_pitch_kp\r\n"]
     assert command(lib, "SYSID PARAM coax.rate_pitch_kp") == [
-        "ERR usage SYSID PARAM coax.<rate_*|att_*|pos_z_kp|vel_z_*> <value>\r\n"]
+        "ERR usage SYSID PARAM coax.<rate_*|att_*|pos_z_kp|vel_z_*|pos_x_kp|vel_x_*> <value>\r\n"]
     assert ram(lib, "coax.rate_pitch_kp") == saved["coax.rate_pitch_kp"]
     assert lib.APP_ParamTrial_Count() == 0
 
 
 def test_sysid_param_trials_the_height_loop_names_in_ram_only(trial_cmd_lib) -> None:
-    """高度环 z 通道五项走同一条试用路径：写 RAM、进试用记录（保存时换回原值），写回原值即结束。"""
+    """高度环 z 通道与水平 x 通道各五项走同一条试用路径：写 RAM、进试用记录（保存时换回原值），写回原值即结束。"""
     lib = trial_cmd_lib
     lib.APP_ParamTrial_ClearAll()
-    for name in sorted(Z_LOOP_NAMES):
+    for name in sorted(LOOP_NAMES):
         original = ram(lib, f"coax.{name}")
         trial = original + 0.25
         assert command(lib, f"SYSID PARAM coax.{name} {fmt6(trial)}") == [

@@ -57,7 +57,7 @@
 ## 验证分工
 
 执行者定向运行 `tests/test_flu_frame_contract.py` 及所负责 seam 的实际测试文件（展开文件名后交给 pytest），附同源数据对拍。
-坐标运行时迁移属于关键改动；最终合并版本由主控按 [验证策略](../validation-policy.md) 跑全量与所需 Debug 构建，物理方向证据仍单独要求，不由主机测试替代。
+坐标运行时迁移属于关键改动；最终合并版本由主控按 [验证策略](../validation-policy.md) 跑受影响的坐标、门控及回归测试与所需 Debug 构建。仅特别大的跨核心架构重组或作者当次明确要求才跑全量；物理方向证据仍单独要求，不由主机测试替代。
 
 改了契约头本身时，`drv_frame_contract.h`、`flu-coordinate-contract.md`、
 SKILL.md 的路由段、`test_flu_frame_contract.py` 必须在**同一个任务**里改齐。

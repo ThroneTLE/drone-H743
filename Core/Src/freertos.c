@@ -558,6 +558,10 @@ void Sensor_Task(void *argument)
      */
     {
       float g[3] = {scaled.gyro_x_dps, scaled.gyro_y_dps, scaled.gyro_z_dps};
+      if (APP_Sensor_TakeGyroRecalRequest() != 0U) {
+        /* IMUZERO：台架上重启时舵机一动机体就绕杆摆，摆动会被当成零偏；静下来后重新采样。 */
+        gyro_bias = (APP_Sensor_GyroBias){0};
+      }
       if (APP_Sensor_CalibrateGyroBias(g[0], g[1], g[2], &gyro_bias)) {
         /* 校准刚完成，第一次减零偏自然生效 */
       }

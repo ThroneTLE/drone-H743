@@ -263,6 +263,7 @@ def test_manual_axis_edit_and_custom_keep_single_angle_source(page):
     assert page.panel.transport.lines == []
 
 
+@pytest.mark.slow_ui  # 真面板尺寸/缩放矩阵，慢；默认只在界面文件有改动时跑（tests/conftest.py）
 @pytest.mark.parametrize("scale", [1.0, 1.25, 1.5])
 @pytest.mark.parametrize("size", [(1080, 700), (1366, 768), (1500, 900)])
 def test_axis_selector_in_real_panel(size, scale):
@@ -498,17 +499,13 @@ def test_fitting_without_the_assumed_inertia_refuses_instead_of_guessing(page):
 # ---------------------------------------------------------------- 占位页
 
 
-@pytest.mark.parametrize("module,marker", [
-    ("tools/panel_lib/pages/sysid/horizontal.py", "动不了位置"),
-    ("tools/panel_lib/pages/sysid/altitude.py", "总推力"),
-])
-def test_the_unimplemented_pages_explain_themselves(module, marker):
-    source = read(module)
+def test_the_xy_page_is_a_real_view_not_a_placeholder():
+    """「Z 高度」页与「XY 速度 / 位置环」页 2026-09-30 起都是真页面（tests/test_sysid_altitude_mode.py、
+    tests/test_sysid_xy_page.py）：占位页的「本页尚未实现」帮手留在 common.py 给以后的占位用。"""
+    source = read("tools/panel_lib/pages/sysid/horizontal.py")
     assert "本页尚未实现" in read("tools/panel_lib/pages/sysid/common.py")
-    assert marker in source
-    # 不放假按钮：点了没反应会让人以为是飞控的问题。
-    assert "ttk.Button" not in source
-    assert "send" not in source
+    assert "not_implemented_frame" not in source
+    assert "开始水平槽辨识" in source
 
 
 def test_the_altitude_page_says_why_it_cannot_share_the_horizontal_model():

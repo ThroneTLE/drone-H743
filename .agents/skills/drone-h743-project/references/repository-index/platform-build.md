@@ -4,56 +4,56 @@
 
 Read this shard only when the task touches CubeMX output, pins/clocks/peripherals, startup/linker layout, USB, build configuration, HAL, FreeRTOS internals, or vendor code.
 
-Source snapshot: `06b452194d96`; aggregate snapshot: `0bfa96281d41`. Covered files: 1449.
+Source snapshot: `4d0686d8266e`; aggregate snapshot: `f7e494ba2648`. Covered files: 1449.
 
 | File/module or scope | Content outline | Key entry points / size |
 |---|---|---|
-| `Core/Inc/FreeRTOSConfig.h` | CubeMX/HAL platform module for FreeRT… | — |
-| `Core/Inc/adc.h`<br>`Core/Src/adc.c` | CubeMX/HAL platform module for adc | `MX_ADC1_Init` |
-| `Core/Inc/dma.h`<br>`Core/Src/dma.c` | CubeMX/HAL platform module for dma | `MX_DMA_Init` |
-| `Core/Src/freertos.c` | CubeMX-owned FreeRTOS objects and tas… | `BSP_IMU_Init`, `APP_IMU_ReadDataReadyTimestamp` (+5) |
-| `Core/Inc/gpio.h`<br>`Core/Src/gpio.c` | CubeMX/HAL platform module for gpio | `MX_GPIO_Init` |
-| `Core/Inc/i2c.h`<br>`Core/Src/i2c.c` | CubeMX/HAL platform module for i2c | `MX_I2C1_Init`, `MX_I2C2_Init` |
-| `Core/Inc/main.h`<br>`Core/Src/main.c` | CubeMX-owned board pin names and shar… | `Error_Handler` |
-| `Core/Inc/rtos_objects.h` | Public handles and types for CubeMX-c… | — |
-| `Core/Inc/sdmmc.h`<br>`Core/Src/sdmmc.c` | CubeMX/HAL platform module for sdmmc | `MX_SDMMC1_SD_Init` |
-| `Core/Inc/spi.h`<br>`Core/Src/spi.c` | CubeMX/HAL platform module for spi | `MX_SPI1_Init`, `MX_SPI2_Init` (+1) |
-| `Core/Inc/stm32h7xx_hal_conf.h` | CubeMX/HAL platform module for stm32h… | — |
-| `Core/Src/stm32h7xx_hal_msp.c` | CubeMX/HAL platform module for stm32h… | `HAL_MspInit` |
-| `Core/Src/stm32h7xx_hal_timebase_tim.c` | CubeMX/HAL platform module for stm32h… | `HAL_Init`, `HAL_TIM_Base_Init` (+2) |
-| `Core/Inc/stm32h7xx_it.h`<br>`Core/Src/stm32h7xx_it.c` | CubeMX/HAL platform module for stm32h… | — |
-| `Core/Src/syscalls.c` | CubeMX/HAL platform module for syscal… | — |
-| `Core/Src/sysmem.c` | CubeMX/HAL platform module for sysmem | — |
-| `Core/Src/system_stm32h7xx.c` | CubeMX/HAL platform module for system… | — |
-| `Core/Inc/tim.h`<br>`Core/Src/tim.c` | CubeMX/HAL platform module for tim | `MX_TIM1_Init`, `MX_TIM4_Init` (+2) |
-| `Core/Inc/usart.h`<br>`Core/Src/usart.c` | CubeMX/HAL platform module for usart | `MX_UART4_Init`, `MX_UART7_Init` (+5) |
-| `USB_DEVICE/App/usb_device.h`<br>`USB_DEVICE/App/usb_device.c` | CubeMX USB device integration for usb… | `MX_USB_DEVICE_Init` |
-| `USB_DEVICE/App/usbd_cdc_if.h`<br>`USB_DEVICE/App/usbd_cdc_if.c` | CubeMX USB device integration for usb… | — |
-| `USB_DEVICE/Target/usbd_conf.h`<br>`USB_DEVICE/Target/usbd_conf.c` | CubeMX USB device integration for usb… | — |
-| `USB_DEVICE/App/usbd_desc.h`<br>`USB_DEVICE/App/usbd_desc.c` | CubeMX USB device integration for usb… | — |
-| `.clangd` | clangd compile database and indexing… | — |
-| `.gitignore` | Repository ignore policy for generate… | — |
-| `.mcp.json` | Repository-local MCP server configura… | — |
+| `Core/Inc/FreeRTOSConfig.h` | CubeMX/HAL platform module for… | — |
+| `Core/Inc/adc.h`<br>`Core/Src/adc.c` | CubeMX/HAL platform module for… | `MX_ADC1_Init` |
+| `Core/Inc/dma.h`<br>`Core/Src/dma.c` | CubeMX/HAL platform module for… | `MX_DMA_Init` |
+| `Core/Src/freertos.c` | CubeMX-owned FreeRTOS objects a… | `BSP_IMU_Init`, `APP_IMU_ReadDataReadyTimestamp` (+6) |
+| `Core/Inc/gpio.h`<br>`Core/Src/gpio.c` | CubeMX/HAL platform module for… | `MX_GPIO_Init` |
+| `Core/Inc/i2c.h`<br>`Core/Src/i2c.c` | CubeMX/HAL platform module for… | `MX_I2C1_Init`, `MX_I2C2_Init` |
+| `Core/Inc/main.h`<br>`Core/Src/main.c` | CubeMX-owned board pin names an… | `Error_Handler` |
+| `Core/Inc/rtos_objects.h` | Public handles and types for Cu… | — |
+| `Core/Inc/sdmmc.h`<br>`Core/Src/sdmmc.c` | CubeMX/HAL platform module for… | `MX_SDMMC1_SD_Init` |
+| `Core/Inc/spi.h`<br>`Core/Src/spi.c` | CubeMX/HAL platform module for… | `MX_SPI1_Init`, `MX_SPI2_Init` (+1) |
+| `Core/Inc/stm32h7xx_hal_conf.h` | CubeMX/HAL platform module for… | — |
+| `Core/Src/stm32h7xx_hal_msp.c` | CubeMX/HAL platform module for… | `HAL_MspInit` |
+| `Core/Src/stm32h7xx_hal_timebase_tim.c` | CubeMX/HAL platform module for… | `HAL_Init`, `HAL_TIM_Base_Init` (+2) |
+| `Core/Inc/stm32h7xx_it.h`<br>`Core/Src/stm32h7xx_it.c` | CubeMX/HAL platform module for… | — |
+| `Core/Src/syscalls.c` | CubeMX/HAL platform module for… | — |
+| `Core/Src/sysmem.c` | CubeMX/HAL platform module for… | — |
+| `Core/Src/system_stm32h7xx.c` | CubeMX/HAL platform module for… | — |
+| `Core/Inc/tim.h`<br>`Core/Src/tim.c` | CubeMX/HAL platform module for… | `MX_TIM1_Init`, `MX_TIM4_Init` (+2) |
+| `Core/Inc/usart.h`<br>`Core/Src/usart.c` | CubeMX/HAL platform module for… | `MX_UART4_Init`, `MX_UART7_Init` (+5) |
+| `USB_DEVICE/App/usb_device.h`<br>`USB_DEVICE/App/usb_device.c` | CubeMX USB device integration f… | `MX_USB_DEVICE_Init` |
+| `USB_DEVICE/App/usbd_cdc_if.h`<br>`USB_DEVICE/App/usbd_cdc_if.c` | CubeMX USB device integration f… | — |
+| `USB_DEVICE/Target/usbd_conf.h`<br>`USB_DEVICE/Target/usbd_conf.c` | CubeMX USB device integration f… | — |
+| `USB_DEVICE/App/usbd_desc.h`<br>`USB_DEVICE/App/usbd_desc.c` | CubeMX USB device integration f… | — |
+| `.clangd` | clangd compile database and ind… | — |
+| `.gitignore` | Repository ignore policy for ge… | — |
+| `.mcp.json` | Repository-local MCP server con… | — |
 | `AGENTS.md` | drone-H743 Agent 入口 | — |
 | `CLAUDE.md` | drone-H743 Claude 入口 | — |
-| `cmake/gcc-arm-none-eabi.cmake` | Project configuration for gcc arm non… | — |
-| `cmake/starm-clang.cmake` | Project configuration for starm clang | — |
-| `cmake/stm32cubemx/CMakeLists.txt` | Project configuration for CMakeLists | — |
-| `CMakeLists.txt` | Top-level firmware build targets and… | — |
-| `CMakePresets.json` | Named CMake configure/build presets | — |
-| `drone-H743.ioc` | CubeMX hardware and generated-configu… | — |
-| `MDK-ARM/drone-H743.uvoptx` | Project configuration for drone H743 | — |
-| `MDK-ARM/drone-H743.uvprojx` | Project configuration for drone H743 | — |
-| `MDK-ARM/startup_stm32h743xx.s` | Project configuration for startup stm… | — |
+| `cmake/gcc-arm-none-eabi.cmake` | Project configuration for gcc a… | — |
+| `cmake/starm-clang.cmake` | Project configuration for starm… | — |
+| `cmake/stm32cubemx/CMakeLists.txt` | Project configuration for CMake… | — |
+| `CMakeLists.txt` | Top-level firmware build target… | — |
+| `CMakePresets.json` | Named CMake configure/build pre… | — |
+| `drone-H743.ioc` | CubeMX hardware and generated-c… | — |
+| `MDK-ARM/drone-H743.uvoptx` | Project configuration for drone… | — |
+| `MDK-ARM/drone-H743.uvprojx` | Project configuration for drone… | — |
+| `MDK-ARM/startup_stm32h743xx.s` | Project configuration for start… | — |
 | `PIPELINE.md` | drone-H743 归零检查 Pipeline | `状态定义`, `主线、副线与当前状态` (+5) |
 | `README.md` | drone-H743 | `当前事实从哪里读`, `常用命令` |
-| `startup_stm32h743xx.s` | GCC startup, vector table, and reset… | — |
-| `STM32H743XX_FLASH.ld` | STM32H743 flash/RAM regions and linke… | — |
-| `temp_sizecheck.c` | Project configuration for temp sizech… | — |
-| `root generated leftovers` | Compiler, disassembly, or operating-s… | 2 files / 14.0 KiB / (none)×2 |
-| `Drivers/` | STM32 CMSIS and HAL vendor sources; r… | 125 files / 11.7 MiB / .h×89, .c×33, .txt×3 |
-| `Middlewares/` | FreeRTOS and STM32 USB middleware; ve… | 48 files / 1.6 MiB / .h×30, .c×15, (none)×2, .txt×1 |
-| `ThirdParty/` | Third-party algorithm sources and lic… | 5 files / 37.8 KiB / .h×3, .c×1, .md×1 |
-| `driver_doc/` | Generated vendor API documentation; s… | 1213 files / 151.8 MiB / .h×589, .c×486, .pdf×20, .administrator×13, .s×12 |
+| `startup_stm32h743xx.s` | GCC startup, vector table, and… | — |
+| `STM32H743XX_FLASH.ld` | STM32H743 flash/RAM regions and… | — |
+| `temp_sizecheck.c` | Project configuration for temp… | — |
+| `root generated leftovers` | Compiler, disassembly, or opera… | 2 files / 14.0 KiB / (none)×2 |
+| `Drivers/` | STM32 CMSIS and HAL vendor sour… | 125 files / 11.7 MiB / .h×89, .c×33, .txt×3 |
+| `Middlewares/` | FreeRTOS and STM32 USB middlewa… | 48 files / 1.6 MiB / .h×30, .c×15, (none)×2, .txt×1 |
+| `ThirdParty/` | Third-party algorithm sources a… | 5 files / 37.8 KiB / .h×3, .c×1, .md×1 |
+| `driver_doc/` | Generated vendor API documentat… | 1213 files / 151.8 MiB / .h×589, .c×486, .pdf×20, .administrator×13, .s×12 |
 
 CubeMX-owned files are routing targets, not authorization to hand-edit generated configuration.

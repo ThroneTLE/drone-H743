@@ -23,6 +23,9 @@ typedef struct {
     uint32_t height_sample_ms;
     float    previous_height_m;
     uint32_t previous_height_sample_ms;
+    float    height_jump_candidate_m;   /* 被门拦下的跳变样本（等确认） */
+    uint8_t  height_jump_count;         /* 连续一致的跳变样本数 */
+    uint32_t height_jump_since_ms;      /* 候选高度第一次出现的时刻 */
 
     /* --- 传感器系速度 --- */
     int16_t  flow_vel_x_window[SVC_FLOW_NAV_MEDIAN_WINDOW];
@@ -57,6 +60,9 @@ typedef struct {
     /* --- 位置与累计位移 --- */
     float    position_m[2];
     float    displacement_m[2];
+    float    diag_raw_m[2];      /* 诊断里程计：原始计数×0.01×高度×dt 累计 */
+    float    diag_filt_m[2];     /* 诊断里程计：中值滤波后同一换算累计 */
+    uint32_t diag_steps;
 } SVC_FlowNav_Context;
 
 static SVC_FlowNav_Context flow_nav_ctx;
@@ -152,6 +158,36 @@ static int16_t flow_nav_median_i16(const int16_t *values, uint8_t count)
     return sorted[count / 2U];
 }
 
+/*
+ * 窗口滤波输出：先取中值，偏离中值超过 SPIKE 的帧按中值算（剔毛刺），再取平均（四舍五入）。
+ * 不直接输出中值：MTF-02P 每 10 ms 只报整像素位移（20 计数步进），低速时多数帧是 0，中值会把
+ * 速度往 0 取整。2026-10-01 逐帧抓取（FLOWCAP）实测：慢推中值积分只剩原始的 73%、快推 95%，
+ * 悬停 5 cm/s 以下的慢漂几乎全被抹成 0；平均对整像素数据无偏，延迟与中值相同（约 20 ms）。
+ */
+static int16_t flow_nav_gated_mean_i16(const int16_t *values, uint8_t count)
+{
+    int32_t median;
+    int32_t sum = 0;
+
+    if ((values == NULL) || (count == 0U)) {
+        return 0;
+    }
+    if (count > SVC_FLOW_NAV_MEDIAN_WINDOW) {
+        count = SVC_FLOW_NAV_MEDIAN_WINDOW;
+    }
+    median = flow_nav_median_i16(values, count);
+    for (uint8_t i = 0U; i < count; ++i) {
+        int32_t value = values[i];
+        if ((value - median > SVC_FLOW_NAV_SPIKE_COUNTS) ||
+            (median - value > SVC_FLOW_NAV_SPIKE_COUNTS)) {
+            value = median;
+        }
+        sum += value;
+    }
+    return (int16_t)((sum >= 0) ? ((sum + (int32_t)(count / 2U)) / (int32_t)count)
+                                : -((-sum + (int32_t)(count / 2U)) / (int32_t)count));
+}
+
 static void flow_nav_update_median_filter(const SVC_FLOW_NAV_Sample *sample)
 {
     if (sample == NULL) {
@@ -172,11 +208,11 @@ static void flow_nav_update_median_filter(const SVC_FLOW_NAV_Sample *sample)
     }
 
     flow_nav_ctx.filtered_flow_vel_x =
-        flow_nav_median_i16(flow_nav_ctx.flow_vel_x_window,
-                            flow_nav_ctx.flow_median_count);
+        flow_nav_gated_mean_i16(flow_nav_ctx.flow_vel_x_window,
+                                flow_nav_ctx.flow_median_count);
     flow_nav_ctx.filtered_flow_vel_y =
-        flow_nav_median_i16(flow_nav_ctx.flow_vel_y_window,
-                            flow_nav_ctx.flow_median_count);
+        flow_nav_gated_mean_i16(flow_nav_ctx.flow_vel_y_window,
+                                flow_nav_ctx.flow_median_count);
     flow_nav_ctx.flow_filter_ready =
         (flow_nav_ctx.flow_median_count >= SVC_FLOW_NAV_MEDIAN_MIN_SAMPLES) ?
         1U : 0U;
@@ -221,10 +257,31 @@ static void flow_nav_update_height(const SVC_FLOW_NAV_Sample *sample)
     if ((raw_height_m <= 0.0f) || (raw_height_m > SVC_FLOW_NAV_MAX_HEIGHT_M)) {
         return;
     }
-    if ((flow_nav_ctx.height_valid != 0U) &&
+    if ((flow_nav_ctx.previous_height_sample_ms != 0U) &&
+        ((sample->distance_received_ms - flow_nav_ctx.previous_height_sample_ms) <=
+         SVC_FLOW_NAV_HEIGHT_GATE_HOLD_MS) &&
         (fabsf(raw_height_m - flow_nav_ctx.height_m) >
          SVC_FLOW_NAV_MAX_HEIGHT_STEP_M)) {
-        return;
+        /* 跳变门（参照最近一次接受的高度，不看 height_valid，见头文件）。 */
+        if ((flow_nav_ctx.height_jump_count != 0U) &&
+            (fabsf(raw_height_m - flow_nav_ctx.height_jump_candidate_m) <=
+             SVC_FLOW_NAV_MAX_HEIGHT_STEP_M)) {
+            flow_nav_ctx.height_jump_count++;
+        } else {
+            flow_nav_ctx.height_jump_count = 1U;
+            flow_nav_ctx.height_jump_since_ms = sample->distance_received_ms;
+        }
+        flow_nav_ctx.height_jump_candidate_m = raw_height_m;
+        if ((flow_nav_ctx.height_jump_count < SVC_FLOW_NAV_HEIGHT_JUMP_CONFIRM) ||
+            ((sample->distance_received_ms - flow_nav_ctx.height_jump_since_ms) <
+             SVC_FLOW_NAV_HEIGHT_JUMP_CONFIRM_MS)) {
+            return;
+        }
+        /* 真跳变已确认：从新高度重新起步，不让低通与微分把台阶拖成一串假垂直速度。 */
+        flow_nav_ctx.height_jump_count = 0U;
+        flow_nav_ctx.previous_height_sample_ms = 0U;
+    } else {
+        flow_nav_ctx.height_jump_count = 0U;
     }
 
     if (flow_nav_ctx.previous_height_sample_ms == 0U) {
@@ -335,6 +392,20 @@ static void flow_nav_estimator_zero_horizontal(void)
     flow_nav_ctx.ekf.vel_m_s[1] = 0.0f;
     flow_nav_ctx.ekf.accel_bias_m_s2[0] = 0.0f;
     flow_nav_ctx.ekf.accel_bias_m_s2[1] = 0.0f;
+}
+
+/*
+ * 零速钳位只清速度，保留已学到的加速度计零偏。零偏是慢变量，静止恰恰是它最好学的
+ * 时候；连它一起清，|零偏| 落在 ZERO_ACCEL 门限以下时会被每 80 ms 抹一次、永远学
+ * 不到，静止也按 ~1 cm/s 漂（2026-10-01 仿真：0.17 m/s² 零偏 20 s 漂 19 cm）。
+ */
+static void flow_nav_estimator_zero_velocity(void)
+{
+    flow_nav_ctx.vel_m_s[0] = 0.0f;
+    flow_nav_ctx.vel_m_s[1] = 0.0f;
+    flow_nav_ctx.zero_flow_count = 0U;
+    flow_nav_ctx.ekf.vel_m_s[0] = 0.0f;
+    flow_nav_ctx.ekf.vel_m_s[1] = 0.0f;
 }
 
 static float flow_nav_noise_from_quality(uint8_t quality)
@@ -455,6 +526,9 @@ void SVC_FlowNav_Reset(void)
     flow_nav_ctx.height_sample_ms = 0U;
     flow_nav_ctx.previous_height_m = 0.0f;
     flow_nav_ctx.previous_height_sample_ms = 0U;
+    flow_nav_ctx.height_jump_candidate_m = 0.0f;
+    flow_nav_ctx.height_jump_count = 0U;
+    flow_nav_ctx.height_jump_since_ms = 0U;
     flow_nav_reset_median_filter();
     flow_nav_clear_velocity_sample();
     flow_nav_ctx.processed_flow_ms = 0U;
@@ -546,6 +620,16 @@ SVC_FLOW_NAV_SampleResult SVC_FlowNav_PushSample(
     }
 
     dt_us = flow_nav_integration_dt_us(sample);
+    if (dt_us != 0UL) {
+        const float dt_s = (float)dt_us * 1.0e-6f;
+        flow_nav_ctx.diag_raw_m[0] +=
+            (float)sample->flow_vel_x * 0.01f * flow_nav_ctx.height_m * dt_s;
+        flow_nav_ctx.diag_raw_m[1] +=
+            (float)sample->flow_vel_y * 0.01f * flow_nav_ctx.height_m * dt_s;
+        flow_nav_ctx.diag_filt_m[0] += sensor_vx_m_s * dt_s;
+        flow_nav_ctx.diag_filt_m[1] += sensor_vy_m_s * dt_s;
+        flow_nav_ctx.diag_steps++;
+    }
     flow_nav_ctx.vx_m_s = sensor_vx_m_s;
     flow_nav_ctx.vy_m_s = sensor_vy_m_s;
     flow_nav_ctx.velocity_valid = 1U;
@@ -758,7 +842,7 @@ uint8_t SVC_FlowNav_Fuse(const SVC_FLOW_NAV_FuseInput *input)
         }
         if (flow_nav_ctx.zero_flow_count >=
             SVC_FLOW_NAV_EKF_ZERO_FLOW_COUNT) {
-            flow_nav_estimator_zero_horizontal();
+            flow_nav_estimator_zero_velocity();
             DRV_NAV_EKF_GetDiagnostics(&flow_nav_ctx.ekf,
                                        &flow_nav_ctx.diagnostics);
         }
@@ -802,6 +886,21 @@ void SVC_FlowNav_GetDisplacement(float *dx_m, float *dy_m)
     }
     if (dy_m != NULL) {
         *dy_m = flow_nav_ctx.displacement_m[1];
+    }
+}
+
+void SVC_FlowNav_GetDiagOdometer(float raw_m[2], float filt_m[2], uint32_t *steps)
+{
+    if (raw_m != NULL) {
+        raw_m[0] = flow_nav_ctx.diag_raw_m[0];
+        raw_m[1] = flow_nav_ctx.diag_raw_m[1];
+    }
+    if (filt_m != NULL) {
+        filt_m[0] = flow_nav_ctx.diag_filt_m[0];
+        filt_m[1] = flow_nav_ctx.diag_filt_m[1];
+    }
+    if (steps != NULL) {
+        *steps = flow_nav_ctx.diag_steps;
     }
 }
 

@@ -69,7 +69,8 @@ def test_nav_ekf_exposes_industry_consistency_metrics() -> None:
     assert "covariance_diag" in header
     assert "config->flow_gate_nis = 9.21f;" in source
     assert "config->max_velocity_m_s = 2.50f;" in source
-    assert "config->predict_leak_hz = 1.50f;" in source
+    # 2026-10-01 钢尺实测：1.5 Hz 泄漏让导航位移只剩真值 0.75~0.8，默认改 0。
+    assert "config->predict_leak_hz = 0.0f;" in source
     assert "nis > state->config.flow_gate_nis" in source
     assert "state->flow_reject_count++;" in source
     assert "state->flow_skip_count++;" in source
@@ -100,6 +101,12 @@ def test_velocity_control_uses_flow_ekf_with_limited_compensated_imu_bridge() ->
     assert "config.flow_gate_nis = 0.0f;" in service_c
     assert "uint8_t  zero_flow_count;" in service_c
     assert "flow_nav_estimator_zero_horizontal();" in service_c
+    # 零速钳位只清速度、保留零偏（清零偏会让门限以下的零偏永远学不到）。
+    zero_branch = service_c.split("flow_nav_ctx.zero_flow_count >=", 1)[1].split("} else if", 1)[0]
+    assert "flow_nav_estimator_zero_velocity();" in zero_branch
+    assert "zero_horizontal" not in zero_branch
+    zero_vel = service_c.split("static void flow_nav_estimator_zero_velocity(void)", 1)[1].split("}", 1)[0]
+    assert "accel_bias" not in zero_vel
     assert "flow_age_ms > SVC_FLOW_NAV_EKF_FLOW_STALE_RESET_MS" in service_c
     assert "flow_age_ms > SVC_FLOW_NAV_EKF_FLOW_SOFT_HOLD_MS" in service_c
     assert "decay_hz = SVC_FLOW_NAV_EKF_FLOW_STALE_DECAY_HZ;" in service_c
@@ -121,12 +128,16 @@ def test_velocity_control_uses_flow_ekf_with_limited_compensated_imu_bridge() ->
     assert "alpha_norm / STABILIZER_IMU_ALPHA_WEIGHT_SOFT_RAD_S2" in freertos
     assert "last_gyro_ready = 0U;" in freertos
     assert "#define STABILIZER_FLOW_ROT_COMP_ENABLE 1U" in freertos
-    assert "#define STABILIZER_FLOW_SENSOR_OFFSET_X_M 0.20f" in freertos
-    assert "#define STABILIZER_FLOW_SENSOR_OFFSET_Z_M 0.22f" in freertos
+    # 作者实测：模块相对飞控板 (0, −16, −16) cm，重心在板下 2.2 cm。
+    assert "#define STABILIZER_FLOW_SENSOR_OFFSET_X_M 0.0f" in freertos
+    assert "#define STABILIZER_FLOW_SENSOR_OFFSET_Y_M -0.16f" in freertos
+    # 2026-09-30：FLU 下模块在重心下方，Z 为负；光学转动伪像 ω×r_地面 要减掉（见 test_flow_rotation_comp_frame.py）。
+    assert "#define STABILIZER_FLOW_SENSOR_OFFSET_Z_M -0.138f" in freertos
     assert "stabilizer_compensate_flow_rotation(" in freertos
-    assert "-STABILIZER_FLOW_ROT_COMP_GAIN * height_m * gyro_y_rad_s;" in freertos
+    assert " STABILIZER_FLOW_ROT_COMP_GAIN * height_m * gyro_y_rad_s;" in freertos
+    assert "-STABILIZER_FLOW_ROT_COMP_GAIN * height_m * gyro_y_rad_s;" not in freertos
     assert "body_vx_m_s += debug->optical_rot_comp_m_s[0] +" in freertos
-    assert "STABILIZER_FLOW_ROT_COMP_GAIN * height_m * gyro_x_rad_s;" in freertos
+    assert "-STABILIZER_FLOW_ROT_COMP_GAIN * height_m * gyro_x_rad_s;" in freertos
     assert "body_vy_m_s += debug->optical_rot_comp_m_s[1] +" in freertos
     assert "gyro_y_rad_s * STABILIZER_FLOW_SENSOR_OFFSET_Z_M" in freertos
     assert "gyro_x_rad_s * STABILIZER_FLOW_SENSOR_OFFSET_Z_M" in freertos

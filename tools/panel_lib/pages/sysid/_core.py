@@ -31,6 +31,9 @@ from sysid.rig_stiffness import (  # noqa: E402
     ASSUMPTIONS as STIFFNESS_ASSUMPTIONS, StiffnessEstimate, extra_stiffness, hanging_sides,
     implied_pivot_m, reading_axis, weight_test_stiffness,
 )
+from sysid import breakaway as _breakaway  # noqa: E402  纯 Python，导入不拉起 numpy
+from sysid import xy_analysis as _xy  # noqa: E402  同上
+from sysid import yaw_analysis as _yaw  # noqa: E402  同上（纯 Python，不依赖 numpy）
 
 if TYPE_CHECKING:  # 拟合模块会拉起 numpy/scipy，只在真正拟合时才导入
     from sysid.fit import ModelFit
@@ -43,7 +46,9 @@ __all__ = [
     "torque_model_signature", "firmware_tilt_levers", "fit_servo_only",
     "vibration_report", "STIFFNESS_ASSUMPTIONS", "StiffnessEstimate", "extra_stiffness",
     "implied_pivot_m", "weight_test_stiffness", "RECORD_VERSIONS", "hanging_sides",
-    "reading_axis",
+    "reading_axis", "breakaway_analysis", "breakaway_summary",
+    "xy_analysis", "xy_summary", "xy_rename_samples",
+    "yaw_analysis", "yaw_summary", "yaw_rename_samples", "yaw_integrate_psi",
 ]
 
 #: 页面接受的 SYSID 记录版本：v2（13 字段）与 v3（再加 erpm_lower、servo_tilt，舵机单独模式要它）。
@@ -299,6 +304,19 @@ def fit_servo_only(times_s, samples, *, azimuth_rad: float, mass_kg: float,
     return result
 
 
+def breakaway_analysis(times_s, samples, conditions) -> dict:
+    """槽式台架 break 轮（ALT）的离地/滑落阈值：`sysid.breakaway.analyse_conditions`。
+
+    `conditions` 是本轮快照（要 alt_phases 与移动质量）；输入不成立抛中文 ValueError。
+    """
+    return _breakaway.analyse_conditions(times_s, samples, conditions)
+
+
+def breakaway_summary(result: dict) -> str:
+    """阈值结果的中文摘要（`sysid.breakaway.summary_text`）。"""
+    return _breakaway.summary_text(result)
+
+
 def vibration_report(times_s, samples):
     """有真实 eRPM 时的振动主频与 eRPM→振动比（`sysid.vibration.VibrationReport`），否则 None。"""
     from sysid.vibration import erpm_vibration_report
@@ -364,3 +382,37 @@ def synthesise_gains(result, *, azimuth_rad: float | None = None):
     gains = Gains(rate_kp=rate.kp, rate_ki=rate.ki, rate_kd=rate.kd,
                   att_kp=attitude.kp)
     return rate, attitude, gains.param_commands(axes=axes)
+
+
+def xy_rename_samples(samples):
+    """`xy_analysis.rename_samples`：XY 轮的尾字段改成 XY 含义的名字（页面上不出现 height）。"""
+    return _xy.rename_samples(samples)
+
+
+def xy_analysis(times_s, samples, conditions: dict) -> dict:
+    """`xy_analysis.analyse_conditions`：按本轮注入类型分析；输入不成立抛中文 ValueError。"""
+    return _xy.analyse_conditions(times_s, samples, conditions)
+
+
+def xy_summary(result: dict) -> str:
+    return _xy.summary_text(result)
+
+
+def yaw_rename_samples(samples, times_s=None):
+    """`yaw_analysis.rename_samples`：YAW 轮的尾字段改成 YAW 含义的名字（页面上不出现 height）；
+    给了时间轴就补一列由陀螺 z 积分得到的偏航角 psi。"""
+    return _yaw.rename_samples(samples, times_s)
+
+
+def yaw_integrate_psi(times_s, omega):
+    """`yaw_analysis.integrate_psi`：陀螺 z 对时间的梯形积分（开跑清零）。"""
+    return _yaw.integrate_psi(times_s, omega)
+
+
+def yaw_analysis(times_s, samples, conditions: dict) -> dict:
+    """`yaw_analysis.analyse_conditions`：按本轮注入类型分析；输入不成立抛中文 ValueError。"""
+    return _yaw.analyse_conditions(times_s, samples, conditions)
+
+
+def yaw_summary(result: dict) -> str:
+    return _yaw.summary_text(result)

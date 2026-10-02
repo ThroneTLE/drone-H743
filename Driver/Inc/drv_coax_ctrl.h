@@ -75,6 +75,14 @@ typedef struct {
     uint8_t position_control_bypass;
     uint8_t direct_attitude_target_valid;
     uint8_t manual_total_force_valid;
+    /*
+     * 分轴测量有效性（2026-10-01 自由飞：光流因机身快速自旋判无效 1.7 s，位置/速度环——连带高度——
+     * 整个冻结在最大推力上冲到 1.7 m）。置 1 时：水平用 navigation_position/velocity_valid（光流），
+     * 竖直用 vertical_measurement_valid（测距/竖直估计）；某轴无效时该轴误差按 0 处理（保持积分配平，
+     * 不拿陈旧测量），另一轴照常闭环。0 = 旧语义（三轴共用 navigation_* 两个标志）。
+     */
+    uint8_t split_axis_validity;
+    uint8_t vertical_measurement_valid;
     float target_roll_rad;
     float target_pitch_rad;
     float manual_total_force_n;
@@ -262,6 +270,26 @@ typedef struct {
     float rate_out_notch2_q;
     float att_ref_wr_rad_s;
     float att_ref_delay_ms;
+    /*
+     * 悬停推力 [N]（推力查补表口径）：0 = 关，合力 = mass·(a + g)（原样）；> 0 时合力 =
+     * hover_thrust_n/g·(a + g)，即按"托住机体实际要多少表推力"换算有效质量（PX4 MPC_THR_HOVER
+     * 同理）。2026-09-30 槽式台架实测每 1 N 表推力给 0.683 m/s²，正是 g/14.25，比 1/m 小约 20%：
+     * 按 m·g 前馈时积分要背约 2.2 m/s² 而限幅只有 1.5。三轴同乘有效质量，倾角不变。
+     * 存 Flash（配置 v28 竖直通道块）。
+     */
+    float hover_thrust_n;
+    /* 垂直速度/高度用 IMU 竖直加速度 + 测距融合（1，默认）还是测距差分（0，旧行为）。存 Flash（v28）。 */
+    float z_vel_fusion;
+    /*
+     * 飞行限幅（配置 v29 飞行限幅块）。作者 2026-10-01："飞机限速/加速度等参数让我可以在上位机
+     * 可以随意配置"。三项原先写死在 app_stabilizer.c，现在是参数，默认值 = 原常量（行为不变）：
+     *   alt_max_m              高度参考上限 [m]，合法 0.1–20
+     *   manual_tilt_max_rad    角度档满杆倾角 [rad]，合法 0.05–0.785（使用时再夹到 ≤ tilt_limit_rad）
+     *   yaw_stick_rate_rad_s   偏航满杆转速 [rad/s]，合法 0.1–6
+     */
+    float alt_max_m;
+    float manual_tilt_max_rad;
+    float yaw_stick_rate_rad_s;
 } DRV_COAX_CTRL_Params;
 
 /*
@@ -316,6 +344,35 @@ void DRV_COAX_CTRL_BodyTiltRadToServoPulses(float body_x_tilt_rad,
                                             uint16_t *servo_beta_us);
 uint16_t DRV_COAX_CTRL_ThrustToMotorPulse(float thrust_n);
 float DRV_COAX_CTRL_MotorPulseToTotalThrust(uint16_t pulse_us);
+/* 单桨此刻可用最大推力 [N]：推力映射按当前电量电压换 ESC 满行程，封顶 motor_single_max_thrust_n。 */
+float DRV_COAX_CTRL_SingleMaxThrustN(void);
+/*
+ * 偏航差动分配（生产同一函数 coax_ctrl_allocate_motor_thrust 的公开包装，含偏航极性与单桨上限钳位）：
+ * 给定总推力与偏航力矩，得上/下桨推力；*saturated = 任一路被钳。供吊绳偏航辨识（SYSID MODE YAW）。
+ */
+void DRV_COAX_CTRL_AllocateYawPair(float total_force_n, float yaw_moment_n_m,
+                                   float *upper_n, float *lower_n, uint8_t *saturated);
+/* 上/下桨偏航反扭矩系数 [N*m per N]，只读。 */
+void DRV_COAX_CTRL_GetYawTorqueCoefficients(float *upper_m_per_n, float *lower_m_per_n);
+/* 总推力下差动能给的偏航力矩上限 [N*m]（生产角速度环抗饱和用的同一个值）。 */
+float DRV_COAX_CTRL_YawLimitMomentNm(float total_force_n);
+
+/* coax.hover_thrust_n 的取值范围 [N]（0 = 关另算）。 */
+#define DRV_COAX_CTRL_HOVER_THRUST_MIN_N  1.0f
+#define DRV_COAX_CTRL_HOVER_THRUST_MAX_N 40.0f
+/* 合力换算用的有效质量：hover_thrust_n > 0 时 = hover_thrust_n / g，否则原样返回 nominal_mass_kg。 */
+float DRV_COAX_CTRL_EffectiveMassKg(float nominal_mass_kg);
+/* 悬停推力自适应（drv_hover_adapt.h）：配置值 = coax.hover_thrust_n，未设则 m·g；
+ * 运行时覆盖只在 RAM，0 = 不覆盖；改动时竖直速度积分做无扰补偿。只在控制任务里调。 */
+float DRV_COAX_CTRL_ConfiguredHoverThrustN(void);
+float DRV_COAX_CTRL_GetHoverThrustAdapt(void);
+void DRV_COAX_CTRL_SetHoverThrustAdapt(float hover_n);
+/*
+ * 期望合力（机体系 FLU，牛顿）→ 目标横滚/俯仰：生产路径与水平槽辨识（SYSID MODE XY）共用的纯函数。
+ *   pitch = atan2(Fx, Fz)，roll = −atan2(Fy·cos pitch, Fz)
+ * force_n[2] 为正才有物理意义；不做限幅，调用方自己夹倾角上限。
+ */
+void DRV_COAX_CTRL_TiltFromForce(const float force_n[3], float *roll_rad, float *pitch_rad);
 
 /*
  * 推力 <-> 电机脉宽的换算可由上层注入：App 启动时装推力台查补表（带电池电压补偿，

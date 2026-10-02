@@ -180,6 +180,11 @@ typedef struct {
 uint8_t APP_Sensor_CalibrateGyroBias(float gx, float gy, float gz,
                                      APP_Sensor_GyroBias *cal);
 
+/* 软件重新标定（`IMUZERO` 命令，app_cmd_imuzero.c）：命令任务置请求，SensorTask 每拍取一次，
+ * 取到就把零偏累计清零、按上电同一规则重新静止采样。单写单读，取走即清。 */
+void APP_Sensor_RequestGyroRecal(void);
+uint8_t APP_Sensor_TakeGyroRecalRequest(void);
+
 typedef struct {
     uint64_t window_start_us;
     uint32_t window_start_count;

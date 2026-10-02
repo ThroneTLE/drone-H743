@@ -45,10 +45,11 @@ int main(void){
         frame_locked=imu_blocked=0;airframe_valid=1;
         assert(!stabilizer_rc_update_armed(1,1,1));edge();assert(stabilizer_rc_update_armed(1,1,1));
     }
-    edge();voltage(10400);assert(!APP_Battery_CanArm());
+    /* 2026-10-02 默认门限：11.2 V 判低、11.25 V 恢复（DRV_BATTERY_DEFAULT_*，10-01 为 11.4/11.45）。 */
+    edge();voltage(11100);assert(!APP_Battery_CanArm());
     assert(!stabilizer_rc_update_armed(1,1,1));
-    voltage(10700);assert(!APP_Battery_CanArm());
-    voltage(11000);assert(APP_Battery_CanArm());assert(!stabilizer_rc_update_armed(1,1,1));
+    voltage(11220);assert(!APP_Battery_CanArm());
+    voltage(11300);assert(APP_Battery_CanArm());assert(!stabilizer_rc_update_armed(1,1,1));
     edge();assert(stabilizer_rc_update_armed(1,1,1));edge();now+=251;
     assert(!stabilizer_rc_update_armed(1,1,1));
     puts("actual arming: voltage missing/low/stale refuse; fresh switch edge required; flight and legacy gates preserved");

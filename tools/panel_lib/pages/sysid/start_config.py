@@ -9,10 +9,21 @@
 `servo_tilt_mrad=<舵机摆幅>`，回显逐项核对。
 
 **高度（ALT，槽式台架）。** 要程序油门（手动油门直接拒绝）；激励幅值按注入类型的单位与上限
-检查（`alt_config.check_amplitude`），不套用按角速度给的幅值建议。`SYSID MODE ALT` 之后多发一条
-`SYSID ALT inject=.. mass_g=.. win_mm=.. lift_mm=..`：mass_g = 读回的机体质量 + 台架随动附加质量，
-轮到它时才生成（要等机体参数回来），回显只有一行，由 `AltWorkflow.alt_handle_line` 逐项核对。
+检查（`alt_config.check_amplitude`；break 的幅值是慢升/慢降速率），break 还要求显式的离地搜索上限，
+不套用按角速度给的幅值建议。`SYSID MODE ALT` 之后多发一条
+`SYSID ALT inject=.. mass_g=.. win_mm=.. lift_mm=.. bottom_mm=.. top_mm=..`：mass_g = 读回的机体质量 +
+台架随动附加质量，轮到它时才生成（要等机体参数回来；break 的搜索上限这时按重力核对），回显只有一行，
+由 `AltWorkflow.alt_handle_line` 逐项核对。
 非 ALT 轮不发这条。
+
+**水平槽（XY）。** 同 ALT 的形状：要程序油门，激励幅值按注入类型检查（`xy_config.check_amplitude`），
+`SYSID MODE XY` 之后多发一条 `SYSID XY inject=.. win_mm=.. mass_g=..`（轮到它时才生成，回显一行由
+`XyWorkflow.xy_handle_line` 逐项核对）；托住推力留空时在这一步取飞控参数 coax.hover_thrust_n。
+
+**吊绳偏航（YAW）。** `SYSID MODE YAW` 之后多发一条
+`SYSID YAW inject=.. thrust_mn=.. twist_deg=..`（`YawWorkflow`，回显一行逐项核对；总推力留空 = 0.5×飞控
+悬停推力）；固件不读 SYSID THROTTLE 的 target_n，所以 YAW 轮不发 `SYSID THROTTLE`；台架几何不需要杆距，
+没填按 0 下发。
 """
 from __future__ import annotations
 
@@ -85,10 +96,13 @@ class StartConfig:
                 # 固件在非 USB 链路上拒绝 >100 Hz；本轮自动降，不改你在高级设置里填的值。
                 rate = 100
                 self.run_note = "（当前不是 USB 连接，本轮线上采样率自动降到 100 Hz）"
-            self.rig_request = (psi,) + p.geometry_inputs()
+            # 吊绳偏航不需要杆到质心的距离（内环页没填也不挡）：yaw_geometry_inputs 缺了按 0。
+            self.rig_request = (psi,) + (p.yaw_geometry_inputs() if mode == "YAW" else p.geometry_inputs())
             self.pivot_request = p.pivot_inputs()
             self.throttle = (True, None, 75.0) if servo else p.throttle_settings()
             alt = self.alt_prepare(p, spec)
+            xy = self.xy_prepare(p, spec)
+            yaw = self.yaw_prepare(p, spec)
             self.expected = dict(mode=MODES.index(mode), rate_hz=rate,
                 psi_mrad=int(math.radians(psi)*1000),
                 angle_mrad=int(math.radians(angle)*1000),
@@ -114,7 +128,8 @@ class StartConfig:
                 f"SYSID RATE {rate}", f"SYSID INERTIA {inertia:g}",
                 f"SYSID LIMIT angle_deg={angle:g} resid_dps={resid:g}",
                 f"SYSID MODE {mode} {amp:g}"] + ([self._alt_command] if alt else [])
-                + [self._rig_command] + ([] if servo else [self._throttle_command]), "start")
+                + ([self._xy_command] if xy else []) + ([self._yaw_command] if yaw else [])
+                + [self._rig_command] + ([] if servo or yaw else [self._throttle_command]), "start")
         except (ValueError, OverflowError) as error:
             self.notice = str(error)
             self.fail(str(error))

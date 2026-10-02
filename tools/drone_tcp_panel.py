@@ -19,7 +19,7 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
 try:
-    from .panel_lib import evidence as _panel_evidence
+    from .panel_lib import arm_banner as _panel_arm_banner, evidence as _panel_evidence
     from .panel_lib.pages import acceptance_v2 as _panel_acceptance_v2
     from .panel_lib.pages import drift as _panel_drift
     from .panel_lib.pages import dashboard as _panel_dashboard, flow_monitor as _panel_flow_monitor

@@ -137,6 +137,34 @@ def test_receiving_reuses_current_serial_and_preserves_auto_reconnect(workspace,
         page.panel.transport = page.panel.serial_transport = previous
 
 
+@pytest.mark.parametrize("export_all, command", [(False, b"FLOGDUMP LAST\r\n"), (True, b"FLOG DUMP\r\n")])
+def test_receive_scope_checkbox_selects_command_and_persists(workspace, tmp_path, monkeypatch, export_all, command):
+    from tools import project_paths
+    root, page = workspace
+    monkeypatch.setattr(project_paths, "PANEL_STATE_PATH", tmp_path / "panel_state.json")
+    fixture = runpy.run_path(str(Path(__file__).with_name("test_shared_log_transfer.py")))
+    _, stream = fixture["make_stream"]()
+    port = fixture["Port"](stream)
+    link, _ = fixture["connect"](monkeypatch, port)
+    previous = page.panel.transport
+    try:
+        page.panel.transport = page.panel.serial_transport = link
+        page.receiver.dir_var.set(str(tmp_path))
+        page.receiver.export_all_var.set(export_all)
+        page.receiver._remember_scope()
+        page.receiver._start_receive()
+        wait(root, lambda: not page.receiver.busy())
+        page.receiver._poll_events()
+        assert command in port.writes
+        other = b"FLOG DUMP\r\n" if command == b"FLOGDUMP LAST\r\n" else b"FLOGDUMP LAST\r\n"
+        assert other not in port.writes
+        assert "flight_log_export_all" in (tmp_path / "panel_state.json").read_text(encoding="utf-8")
+    finally:
+        link.stop()
+        page.panel.transport = page.panel.serial_transport = previous
+        page.receiver.export_all_var.set(False)
+
+
 def test_partial_receive_is_not_silently_loaded(workspace, tmp_path):
     _, page = workspace
     page.current_csv = None

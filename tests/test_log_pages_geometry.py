@@ -6,6 +6,7 @@ import sys
 import pytest
 
 
+@pytest.mark.slow_ui  # 真面板尺寸/缩放矩阵，慢；默认只在界面文件有改动时跑（tests/conftest.py）
 @pytest.mark.parametrize("scale", [1.0, 1.25, 1.5])
 def test_log_controls_remain_reachable(scale):
     script = '''

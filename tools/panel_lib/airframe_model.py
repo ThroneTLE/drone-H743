@@ -123,6 +123,21 @@ DERIVED_AUTO_FIELD = AirframeField(
          "覆盖，上位机会以为写成功了，下次读回来又变了，找不到原因",
 )
 
+# ── 光流安装方向（R-FLOWMOUNT-1，CFG v26）────────────────────────────────
+# 它们住在飞控的 airframe.* 表里（与机体模型同一块 Flash），但**不是**机体模型：
+# 不进质量/重心/力臂的任何公式，也不进解锁闸门。所以不放进 AIRFRAME_FIELDS——
+# 机体参数页的表单、辨识档案的机体快照都按那张表走，混进去会让"改光流方向"
+# 看起来像"改了机体模型"。写入口在「光流与测距」标定页（pages/flow_mount.py）。
+FLOW_MOUNT_YAW_FIELD = AirframeField(
+    "flow_mount_yaw_deg", "光流安装转角", "deg", "光流安装方向", "advanced",
+    note="只收 0/90/180/270：把按旧安装换算出的 FLU 读数绕 +Z 逆时针转这么多度",
+)
+FLOW_MOUNT_MIRROR_FIELD = AirframeField(
+    "flow_mount_mirror", "光流安装镜像", "0/1", "光流安装方向", "advanced",
+    note="只收 0/1：0 = 不镜像，1 = 旋转之前先把 Y 取反",
+)
+FLOW_MOUNT_FIELDS = (FLOW_MOUNT_YAW_FIELD, FLOW_MOUNT_MIRROR_FIELD)
+
 AIRFRAME_FIELD_BY_NAME = {field.name: field for field in AIRFRAME_FIELDS}
 AIRFRAME_FIELD_BY_NAME[DERIVED_AUTO_FIELD.name] = DERIVED_AUTO_FIELD
 
@@ -269,6 +284,9 @@ __all__ = [
     "AirframeField",
     "DERIVED_AUTO_FIELD",
     "DERIVED_FIELDS",
+    "FLOW_MOUNT_FIELDS",
+    "FLOW_MOUNT_MIRROR_FIELD",
+    "FLOW_MOUNT_YAW_FIELD",
     "INPUT_FIELDS",
     "INVALID_REASON_TEXT",
     "REQUIRED_NONZERO",

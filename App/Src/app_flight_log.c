@@ -38,7 +38,9 @@ _Static_assert(APP_FLIGHT_LOG_REGION_END_EXCL ==
  */
 #include "bsp_esc_protocol.h"
 
-#define APP_FLIGHT_LOG_VERSION            11U
+#define APP_FLIGHT_LOG_VERSION            12U
+#define APP_FLIGHT_LOG_VERSION_V11        11U
+#define APP_FLIGHT_LOG_V11_RECORD_SIZE     808U
 #define APP_FLIGHT_LOG_VERSION_V10        10U
 #define APP_FLIGHT_LOG_V10_RECORD_SIZE     776U
 #define APP_FLIGHT_LOG_VERSION_V9         9U
@@ -53,7 +55,13 @@ _Static_assert(APP_FLIGHT_LOG_REGION_END_EXCL ==
     (APP_FLIGHT_LOG_REGION_END_EXCL - APP_FLIGHT_LOG_REGION_START)
 #define APP_FLIGHT_LOG_SECTOR_COUNT \
     (APP_FLIGHT_LOG_REGION_SIZE / APP_FLASH_SERVICE_SECTOR_SIZE)
-#define APP_FLIGHT_LOG_QUEUE_CAPACITY     64U
+/*
+ * 记录队列深度。2026-10-01 实录（data/flight_logs/2026-10-01/receive_spzpuwso）：
+ * 开机后第一次记录前 64 条入队、随后连续 45 条被丢，写入侧首次开扇区整整卡了约 1.75 s
+ * （固件镜像 CRC 首算 + 擦除 + SD 逐块轮询写）。62.5 Hz 下 64 条只够缓冲约 1 s。
+ * 翻倍到 128（约 108 KB，落在 .ram_d1_noinit，不占 DTCM），并配合空闲预热/预擦。
+ */
+#define APP_FLIGHT_LOG_QUEUE_CAPACITY     128U
 #define APP_FLIGHT_LOG_BLOCK32K_HEAD_FRINGE_SECTORS  6U
 #define APP_FLIGHT_LOG_BLOCK32K_TAIL_FRINGE_SECTORS  4U
 #define APP_FLIGHT_LOG_BLOCK32K_SECTOR_COUNT \
@@ -64,6 +72,9 @@ _Static_assert(APP_FLIGHT_LOG_REGION_END_EXCL ==
 #define APP_FLIGHT_LOG_EXPORT_FLAG_LAST   0x0001U
 #define APP_FLIGHT_LOG_TESTFILL_MAX_SECTORS 64U
 #define APP_FLIGHT_LOG_EXPORT_BLOCK_GAP_MS 40U
+/* USB 导出每个服务周期连续发块的时间预算；到点让出，参数保存等同任务活不被饿死。 */
+#define APP_FLIGHT_LOG_USB_EXPORT_BUDGET_MS 5U
+#define APP_FLIGHT_LOG_BACKGROUND_BUSY_WAIT_MS 1U
 #define APP_FLIGHT_LOG_USB_TX_TIMEOUT_MS 200U
 #define APP_FLIGHT_LOG_RAM_D1_NOINIT \
     __attribute__((section(".ram_d1_noinit"), aligned(32)))
@@ -183,6 +194,7 @@ typedef struct __attribute__((packed)) {
     uint32_t servo_feedback_uart_error_count;
     uint32_t servo_feedback_busy_count;
     APP_EscLog dshot;
+    APP_FlightLogNavTail nav;
     uint32_t record_crc32;
 } APP_FlightLogRecord;
 
@@ -203,7 +215,9 @@ _Static_assert(sizeof(APP_FlightLogSectorHeader) == APP_FLIGHT_LOG_SECTOR_HEADER
                "flight log sector header must stay 256 bytes");
 _Static_assert(offsetof(APP_FlightLogRecord, dshot) == 772U,
                "V10 payload offsets must not change");
-_Static_assert(sizeof(APP_FlightLogRecord) == 808U,
+_Static_assert(offsetof(APP_FlightLogRecord, nav) == 804U,
+               "V12 nav tail sits between dshot and the CRC");
+_Static_assert(sizeof(APP_FlightLogRecord) == 844U,
                "flight log record must match tools/flight_log_receive.py");
 _Static_assert(sizeof(APP_FlightLogExportBlockHeader) == 24U,
                "flight log export header must match tools/flight_log_receive.py");
@@ -219,6 +233,8 @@ _Static_assert((64U + (APP_FLIGHT_LOG_UART_EXPORT_PAYLOAD_MAX * 2U)) <=
                "UART text flight log block must fit the USART1 TX queue frame");
 
 static APP_FlightLogStatus flight_log_status;
+/* 子分频 N：实际记录频率 125/N Hz。只存 RAM，上电回默认。 */
+static uint8_t flight_log_subdiv = APP_FLIGHT_LOG_SUBDIV_DEFAULT;
 APP_FLIGHT_LOG_RAM_D1_NOINIT
 static APP_FlightLogRecord flight_log_queue[APP_FLIGHT_LOG_QUEUE_CAPACITY];
 static uint32_t flight_log_queue_head;
@@ -252,6 +268,16 @@ static uint32_t flight_log_export_seq;
 static uint32_t flight_log_export_next_ms;
 static APP_FlightLogExportTransport flight_log_export_transport;
 static uint8_t flight_log_flush_requested;
+/*
+ * “一次记录”边界：Observe 看到 recording 0->1 就置 pending，后台写入侧据此另开新扇区，
+ * 并把扇区头 reserved[3] 记为 1（仅标记，不改版本/布局）。FLOGDUMP LAST 以此找起点。
+ */
+static uint8_t flight_log_new_run_pending;
+static uint8_t flight_log_run_start_valid;
+static uint32_t flight_log_run_start_seq;
+static APP_FlightLogExportScope flight_log_export_scope_request;
+static uint8_t flight_log_prewarm_crc_done;
+static uint32_t flight_log_preerase_tried_sector = 0xFFFFFFFFUL;
 
 /*
  * 最近一帧快照带来的坐标溯源。扇区头在后台任务里填充，与控制环不同步，
@@ -275,14 +301,19 @@ static char flight_log_export_text_frame[APP_UART_TX_TEXT_SIZE];
 
 static uint32_t flight_log_crc32(const uint8_t *data, uint32_t length)
 {
+    /* 半字节查表（多项式 0xEDB88320，结果与逐位算法一致）；导出每 KiB 要算一次，逐位太慢。 */
+    static const uint32_t nibble_table[16] = {
+        0x00000000UL, 0x1DB71064UL, 0x3B6E20C8UL, 0x26D930ACUL,
+        0x76DC4190UL, 0x6B6B51F4UL, 0x4DB26158UL, 0x5005713CUL,
+        0xEDB88320UL, 0xF00F9344UL, 0xD6D6A3E8UL, 0xCB61B38CUL,
+        0x9B64C2B0UL, 0x86D3D2D4UL, 0xA00AE278UL, 0xBDBDF21CUL,
+    };
     uint32_t crc = 0xFFFFFFFFUL;
 
     while (length-- > 0U) {
         crc ^= (uint32_t)(*data++);
-        for (uint32_t bit = 0U; bit < 8U; ++bit) {
-            uint32_t mask = 0UL - (crc & 1UL);
-            crc = (crc >> 1U) ^ (0xEDB88320UL & mask);
-        }
+        crc = (crc >> 4U) ^ nibble_table[crc & 0x0FU];
+        crc = (crc >> 4U) ^ nibble_table[crc & 0x0FU];
     }
 
     return ~crc;
@@ -407,6 +438,9 @@ static uint8_t flight_log_sector_header_valid(APP_FlightLogSectorHeader *header)
     layout_valid =
         (((header->version == APP_FLIGHT_LOG_VERSION) &&
           (header->record_size == sizeof(APP_FlightLogRecord)) &&
+          (header->params_size == sizeof(header->params))) ||
+         ((header->version == APP_FLIGHT_LOG_VERSION_V11) &&
+          (header->record_size == APP_FLIGHT_LOG_V11_RECORD_SIZE) &&
           (header->params_size == sizeof(header->params))) ||
          ((header->version == APP_FLIGHT_LOG_VERSION_V10) &&
           (header->record_size == APP_FLIGHT_LOG_V10_RECORD_SIZE) &&
@@ -590,6 +624,8 @@ static void flight_log_fill_sector_header(APP_FlightLogSectorHeader *header,
 #else
     header->reserved[2] = 1U;
 #endif
+    /* 本扇区是新一次“开始记录”的首扇区（FLOGDUMP LAST 的起点标记）。 */
+    header->reserved[3] = (flight_log_new_run_pending != 0U) ? 1U : 0U;
     header->magic = APP_FLIGHT_LOG_SECTOR_MAGIC;
     header->version = APP_FLIGHT_LOG_VERSION;
     header->header_size = APP_FLIGHT_LOG_SECTOR_HEADER_SIZE;
@@ -598,7 +634,8 @@ static void flight_log_fill_sector_header(APP_FlightLogSectorHeader *header,
     header->session_id = flight_log_status.session_id;
     header->sector_seq = flight_log_status.sector_seq;
     header->sector_index = sector_index;
-    header->log_rate_hz = APP_FLIGHT_LOG_RATE_HZ;
+    /* 写实际频率的整数部分（125/N 向下取整，N=2 时 62.5 记 62）；时间轴以每条记录的 timestamp_us 为准，不要用它推时间。 */
+    header->log_rate_hz = APP_FLIGHT_LOG_RATE_HZ / (uint32_t)flight_log_subdiv;
     header->region_start = APP_FLIGHT_LOG_REGION_START;
     header->region_end_excl = APP_FLIGHT_LOG_REGION_END_EXCL;
     header->created_us = SVC_Timestamp_Us();
@@ -625,10 +662,13 @@ static void flight_log_fill_sector_header(APP_FlightLogSectorHeader *header,
                                             sizeof(*header));
 }
 
-static uint8_t flight_log_open_sector(void)
+/*
+ * 让 sector 所在的擦除单元就绪：块擦除候选走 32K，失败回退单扇区；已在预擦窗口内则什么都不做。
+ * open_sector 在写入路径上调它（兜底），空闲预擦也调它（把耗时挪到没人等的时候）。
+ * 成功返回 1。
+ */
+static uint8_t flight_log_prepare_erase(uint32_t sector)
 {
-    APP_FlightLogSectorHeader header;
-    uint32_t sector = flight_log_next_sector_index;
     uint32_t address = flight_log_sector_address(sector);
     APP_FlashService_Status st;
 
@@ -664,6 +704,20 @@ static uint8_t flight_log_open_sector(void)
         }
     }
 
+    return 1U;
+}
+
+static uint8_t flight_log_open_sector(void)
+{
+    APP_FlightLogSectorHeader header;
+    uint32_t sector = flight_log_next_sector_index;
+    uint32_t address = flight_log_sector_address(sector);
+    APP_FlashService_Status st;
+
+    if (flight_log_prepare_erase(sector) == 0U) {
+        return 0U;
+    }
+
     flight_log_fill_sector_header(&header, sector);
     st = APP_FlashService_WriteData(address, (const uint8_t *)&header, sizeof(header));
     flight_log_status.last_flash_status = (uint32_t)st;
@@ -673,12 +727,74 @@ static uint8_t flight_log_open_sector(void)
 
     flight_log_order_remove_sector(sector);
     flight_log_order_insert((uint16_t)sector, flight_log_status.sector_seq);
+    if (flight_log_new_run_pending != 0U) {
+        flight_log_run_start_valid = 1U;
+        flight_log_run_start_seq = flight_log_status.sector_seq;
+        flight_log_new_run_pending = 0U;
+    }
     flight_log_status.sector_seq++;
     flight_log_current_sector_index = sector;
     flight_log_next_sector_index = (sector + 1U) % APP_FLIGHT_LOG_SECTOR_COUNT;
     flight_log_sector_write_offset = APP_FLIGHT_LOG_SECTOR_HEADER_SIZE;
     flight_log_status.sector_open = 1U;
     return 1U;
+}
+
+/* 块内每个扇区开头 16 字节都是 0xFF 即视为已擦（头是扇区的第一笔写入，写过必不为 FF）。 */
+static uint8_t flight_log_block_is_blank(uint32_t sector)
+{
+    uint8_t probe[16];
+
+    for (uint32_t k = 0U; k < APP_FLIGHT_LOG_BLOCK32K_SECTOR_COUNT; ++k) {
+        if (APP_FlashService_ReadData(flight_log_sector_address(sector + k),
+                                      probe, sizeof(probe)) != APP_FLASH_SERVICE_OK) {
+            return 0U;
+        }
+        for (uint32_t i = 0U; i < sizeof(probe); ++i) {
+            if (probe[i] != 0xFFU) {
+                return 0U;
+            }
+        }
+    }
+    return 1U;
+}
+
+/*
+ * 空闲预热。第一次开扇区要现算固件镜像 CRC（整镜像）、再擦块，实录里整整卡 1.75 s，
+ * 64 条队列被灌满后连丢 45 条。这些活都在没有记录、队列空、没导出时提前做：
+ * 先算一次 CRC（缓存），再把“下一个要写的扇区”所在的 32K 块擦好（已是空白则只标记）。
+ * 同一个目标扇区只试一次，失败不会在后台反复占用 SD。
+ */
+static void flight_log_prewarm_step(void)
+{
+    uint32_t sector;
+
+    if ((flight_log_status.recording != 0U) || (flight_log_queue_count != 0U) ||
+        (flight_log_flush_requested != 0U) || (flight_log_export_pending != 0U) ||
+        (flight_log_status.export_active != 0U)) {
+        return;
+    }
+
+    if (flight_log_prewarm_crc_done == 0U) {
+        flight_log_prewarm_crc_done = 1U;
+        (void)APP_FirmwareIdentity_GetCrc32();
+        return;
+    }
+
+    sector = flight_log_next_sector_index;
+    if ((flight_log_sector_in_prepared_block(sector) != 0U) ||
+        (flight_log_is_block32k_candidate(sector) == 0U) ||
+        (flight_log_preerase_tried_sector == sector)) {
+        return;
+    }
+
+    flight_log_preerase_tried_sector = sector;
+    if (flight_log_block_is_blank(sector) != 0U) {
+        flight_log_prepared_block_ready = 1U;
+        flight_log_prepared_block_sector = sector;
+        return;
+    }
+    (void)flight_log_prepare_erase(sector);
 }
 
 static void flight_log_record_from_snapshot(APP_FlightLogRecord *record,
@@ -780,6 +896,7 @@ static void flight_log_record_from_snapshot(APP_FlightLogRecord *record,
         snapshot->servo_feedback_uart_error_count;
     record->servo_feedback_busy_count = snapshot->servo_feedback_busy_count;
     record->dshot = APP_EscLog_Capture();
+    record->nav = snapshot->nav;
     record->record_crc32 = 0U;
     record->record_crc32 = flight_log_crc32((const uint8_t *)record, sizeof(*record));
 }
@@ -829,6 +946,11 @@ static uint8_t flight_log_write_records(void)
         (flight_log_flush_requested == 0U) &&
         (flight_log_queue_count < APP_FLIGHT_LOG_WRITE_BATCH_RECORDS)) {
         return 1U;
+    }
+
+    /* 新一次“开始记录”必须落在新扇区的开头，否则按扇区头找不到这次的起点。 */
+    if ((flight_log_new_run_pending != 0U) && (flight_log_status.sector_open != 0U)) {
+        flight_log_status.sector_open = 0U;
     }
 
     if ((flight_log_status.sector_open == 0U) ||
@@ -921,13 +1043,71 @@ static uint8_t flight_log_export_finish(const char *reason)
     return 1U;
 }
 
+/*
+ * 最近一次“开始记录”在 flight_log_sector_order[] 里的起点下标（按 sector_seq 升序）。
+ * 本次上电已经开过新记录就直接用 RAM 里的起点序号；否则（重启后）从最新扇区往回读扇区头：
+ * 遇到起点标记、sector_seq 不连续、或 session_id 变了就停。读失败则保守地从当前位置导出。
+ */
+static uint32_t flight_log_find_last_run_first_pos(void)
+{
+    APP_FlightLogSectorHeader header;
+    uint32_t used = flight_log_status.used_sectors;
+    uint32_t pos;
+    uint32_t session;
+
+    if (used == 0U) {
+        return 0U;
+    }
+    pos = used - 1U;
+
+    if (flight_log_run_start_valid != 0U) {
+        while ((pos > 0U) && (flight_log_sector_order_seq[pos] > flight_log_run_start_seq)) {
+            --pos;
+        }
+        if ((flight_log_sector_order_seq[pos] < flight_log_run_start_seq) &&
+            ((pos + 1U) < used)) {
+            ++pos;
+        }
+        return pos;
+    }
+
+    if ((APP_FlashService_ReadData(flight_log_sector_address(flight_log_sector_order[pos]),
+                                   (uint8_t *)&header, sizeof(header)) != APP_FLASH_SERVICE_OK) ||
+        (flight_log_sector_header_valid(&header) == 0U)) {
+        return pos;
+    }
+    session = header.session_id;
+
+    for (;;) {
+        if ((header.reserved[0] == 0xD5U) && (header.reserved[3] == 1U)) {
+            return pos;
+        }
+        if ((pos == 0U) ||
+            ((flight_log_sector_order_seq[pos - 1U] + 1U) != flight_log_sector_order_seq[pos])) {
+            return pos;
+        }
+        if ((APP_FlashService_ReadData(flight_log_sector_address(flight_log_sector_order[pos - 1U]),
+                                       (uint8_t *)&header, sizeof(header)) != APP_FLASH_SERVICE_OK) ||
+            (flight_log_sector_header_valid(&header) == 0U) ||
+            (header.session_id != session)) {
+            return pos;
+        }
+        --pos;
+    }
+}
+
 static APP_FlightLogCommandStatus flight_log_start_export_from_background(void)
 {
+    uint32_t first_pos = 0U;
+
     flight_log_status.used_bytes = flight_log_used_bytes();
+    if (flight_log_export_scope_request == APP_FLIGHT_LOG_EXPORT_SCOPE_LAST_RUN) {
+        first_pos = flight_log_find_last_run_first_pos();
+    }
     flight_log_status.export_total_bytes =
-        flight_log_status.used_sectors * APP_FLASH_SERVICE_SECTOR_SIZE;
+        (flight_log_status.used_sectors - first_pos) * APP_FLASH_SERVICE_SECTOR_SIZE;
     flight_log_status.export_bytes_sent = 0U;
-    flight_log_export_sector_pos = 0U;
+    flight_log_export_sector_pos = first_pos;
     flight_log_export_sector_offset = 0U;
     flight_log_export_seq = 0U;
     flight_log_export_next_ms = 0U;
@@ -937,7 +1117,7 @@ static APP_FlightLogCommandStatus flight_log_start_export_from_background(void)
     if (flight_log_queue_printf("FLOG BEGIN version=%u block_magic=0x%08lX "
                                 "transport=%s encoding=%s total=%lu "
                                 "sectors=%lu sector_size=%u header_size=%u "
-                                "record_size=%u log_rate=%u baud=%u session=%lu payload=%u\r\n",
+                                "record_size=%u log_rate=%u baud=%u session=%lu payload=%u scope=%s\r\n",
                                 (unsigned int)APP_FLIGHT_LOG_EXPORT_VERSION,
                                 (unsigned long)APP_FLIGHT_LOG_EXPORT_BLOCK_MAGIC,
                                 (flight_log_export_transport ==
@@ -945,14 +1125,16 @@ static APP_FlightLogCommandStatus flight_log_start_export_from_background(void)
                                 (flight_log_export_transport ==
                                  APP_FLIGHT_LOG_EXPORT_USB_CDC_BINARY) ? "binary" : "xorhex",
                                 (unsigned long)flight_log_status.export_total_bytes,
-                                (unsigned long)flight_log_status.used_sectors,
+                                (unsigned long)(flight_log_status.used_sectors - first_pos),
                                 (unsigned int)APP_FLASH_SERVICE_SECTOR_SIZE,
                                 (unsigned int)APP_FLIGHT_LOG_SECTOR_HEADER_SIZE,
                                 (unsigned int)sizeof(APP_FlightLogRecord),
-                                (unsigned int)APP_FLIGHT_LOG_RATE_HZ,
+                                (unsigned int)(APP_FLIGHT_LOG_RATE_HZ / (uint32_t)flight_log_subdiv),
                                 (unsigned int)APP_FLIGHT_LOG_EXPORT_BAUD,
                                 (unsigned long)flight_log_status.session_id,
-                                (unsigned int)flight_log_export_payload_max()) == 0U) {
+                                (unsigned int)flight_log_export_payload_max(),
+                                (flight_log_export_scope_request ==
+                                 APP_FLIGHT_LOG_EXPORT_SCOPE_LAST_RUN) ? "last" : "all") == 0U) {
         return APP_FLIGHT_LOG_CMD_BUSY;
     }
 
@@ -962,7 +1144,8 @@ static APP_FlightLogCommandStatus flight_log_start_export_from_background(void)
     return APP_FLIGHT_LOG_CMD_OK;
 }
 
-static void flight_log_export_step(void)
+/* 发一块。成功发出且导出仍在继续返回 1；结束/出错/链路忙/节拍未到返回 0。 */
+static uint8_t flight_log_export_block_step(void)
 {
     uint8_t *payload = flight_log_export_payload;
     char *frame = flight_log_export_text_frame;
@@ -978,28 +1161,28 @@ static void flight_log_export_step(void)
     APP_FlashService_Status st;
 
     if (flight_log_status.export_active == 0U) {
-        return;
+        return 0U;
     }
 
     if (flight_log_export_cancel_requested != 0U) {
         (void)flight_log_export_finish("cancel");
-        return;
+        return 0U;
     }
 
     if (flight_log_status.export_bytes_sent >=
         flight_log_status.export_total_bytes) {
         (void)flight_log_export_finish("done");
-        return;
+        return 0U;
     }
 
     if ((flight_log_export_transport == APP_FLIGHT_LOG_EXPORT_UART_TEXT) &&
         (uartTxQueueHandle != NULL) &&
         (osMessageQueueGetSpace(uartTxQueueHandle) == 0U)) {
-        return;
+        return 0U;
     }
     if ((flight_log_export_next_ms != 0U) &&
         ((int32_t)(SVC_Timestamp_Ms() - flight_log_export_next_ms) < 0)) {
-        return;
+        return 0U;
     }
 
     while (flight_log_export_sector_offset >= APP_FLASH_SERVICE_SECTOR_SIZE) {
@@ -1009,7 +1192,7 @@ static void flight_log_export_step(void)
 
     if (flight_log_export_sector_pos >= flight_log_status.used_sectors) {
         (void)flight_log_export_finish("short");
-        return;
+        return 0U;
     }
 
     physical_sector = flight_log_sector_order[flight_log_export_sector_pos];
@@ -1038,7 +1221,7 @@ static void flight_log_export_step(void)
                                       (unsigned long)st,
                                       (unsigned long)flight_log_status.export_bytes_sent);
         (void)flight_log_export_finish("error");
-        return;
+        return 0U;
     }
 
     payload_crc = flight_log_crc32(payload, chunk);
@@ -1052,7 +1235,7 @@ static void flight_log_export_step(void)
 
         if (APP_USB_CDC_IsReady() == 0U) {
             (void)flight_log_export_finish("usb_lost");
-            return;
+            return 0U;
         }
 
         header->magic = APP_FLIGHT_LOG_EXPORT_BLOCK_MAGIC;
@@ -1071,7 +1254,7 @@ static void flight_log_export_step(void)
                               (uint16_t)(sizeof(APP_FlightLogExportBlockHeader) +
                                          chunk),
                               APP_FLIGHT_LOG_USB_TX_TIMEOUT_MS) == 0U) {
-            return;
+            return 0U;
         }
     } else {
         /*
@@ -1088,7 +1271,7 @@ static void flight_log_export_step(void)
                            (unsigned long)payload_crc);
         if ((written <= 0) || ((uint32_t)written >= APP_UART_TX_TEXT_SIZE)) {
             (void)flight_log_export_finish("format");
-            return;
+            return 0U;
         }
         used = (uint16_t)written;
         written = (int)flight_log_hex_encode(&frame[used],
@@ -1099,14 +1282,14 @@ static void flight_log_export_step(void)
                                              flight_log_status.export_bytes_sent);
         if (written <= 0) {
             (void)flight_log_export_finish("format");
-            return;
+            return 0U;
         }
         used = (uint16_t)(used + (uint16_t)written);
         frame[used++] = '\r';
         frame[used++] = '\n';
 
         if (flight_log_queue_message((const uint8_t *)frame, used) == 0U) {
-            return;
+            return 0U;
         }
     }
 
@@ -1116,6 +1299,29 @@ static void flight_log_export_step(void)
     flight_log_export_next_ms =
         (flight_log_export_transport == APP_FLIGHT_LOG_EXPORT_USB_CDC_BINARY) ?
         0U : (SVC_Timestamp_Ms() + APP_FLIGHT_LOG_EXPORT_BLOCK_GAP_MS);
+    return 1U;
+}
+
+/*
+ * USB 导出：一个服务周期里在时间预算内连续发多块，直到预算用完、导出结束或 CDC 忙。
+ * 以前每周期只发 1 KiB，外加后台任务在队列上空等 5 ms，实测只有约 60 KiB/s。
+ * UART 路径保持原样（每周期一块，块间隔 40 ms）。
+ */
+static void flight_log_export_step(void)
+{
+    uint32_t start_ms;
+
+    if (flight_log_export_transport != APP_FLIGHT_LOG_EXPORT_USB_CDC_BINARY) {
+        (void)flight_log_export_block_step();
+        return;
+    }
+
+    start_ms = SVC_Timestamp_Ms();
+    while (flight_log_export_block_step() != 0U) {
+        if ((uint32_t)(SVC_Timestamp_Ms() - start_ms) >= APP_FLIGHT_LOG_USB_EXPORT_BUDGET_MS) {
+            break;
+        }
+    }
 }
 
 void APP_FlightLog_Init(void)
@@ -1166,6 +1372,22 @@ void APP_FlightLog_BackgroundStep(void)
         flight_log_flush_requested = 0U;
     }
     flight_log_status.used_bytes = flight_log_used_bytes();
+    flight_log_prewarm_step();
+}
+
+uint32_t APP_FlightLog_BackgroundWaitMs(uint32_t idle_ms)
+{
+    if ((flight_log_status.export_active != 0U) &&
+        (flight_log_export_transport == APP_FLIGHT_LOG_EXPORT_USB_CDC_BINARY)) {
+        /* USB 导出的块里自带 osDelay(1) 让出，不必再在队列上空等。 */
+        return 0U;
+    }
+    if ((flight_log_queue_count >= APP_FLIGHT_LOG_WRITE_BATCH_RECORDS) ||
+        (flight_log_flush_requested != 0U)) {
+        /* 还有整批待写：别空等 5 ms，只让出一个节拍给同级/更低任务。 */
+        return APP_FLIGHT_LOG_BACKGROUND_BUSY_WAIT_MS;
+    }
+    return idle_ms;
 }
 
 void APP_FlightLog_Observe(const APP_FlightLogSnapshot *snapshot,
@@ -1196,6 +1418,9 @@ void APP_FlightLog_Observe(const APP_FlightLogSnapshot *snapshot,
         return;
     }
 
+    if (flight_log_status.recording == 0U) {
+        flight_log_new_run_pending = 1U;
+    }
     flight_log_status.recording = 1U;
     flight_log_record_from_snapshot(&record, snapshot);
 
@@ -1230,6 +1455,11 @@ void APP_FlightLog_GetStatus(APP_FlightLogStatus *status)
 
 APP_FlightLogCommandStatus APP_FlightLog_StartDump(void)
 {
+    return APP_FlightLog_StartDumpScope(APP_FLIGHT_LOG_EXPORT_SCOPE_ALL);
+}
+
+APP_FlightLogCommandStatus APP_FlightLog_StartDumpScope(APP_FlightLogExportScope scope)
+{
     if (flight_log_status.initialized == 0U) {
         APP_FlightLog_Init();
     }
@@ -1243,6 +1473,8 @@ APP_FlightLogCommandStatus APP_FlightLog_StartDump(void)
     }
 
     flight_log_flush_requested = 1U;
+    flight_log_export_scope_request = (scope == APP_FLIGHT_LOG_EXPORT_SCOPE_LAST_RUN) ?
+        APP_FLIGHT_LOG_EXPORT_SCOPE_LAST_RUN : APP_FLIGHT_LOG_EXPORT_SCOPE_ALL;
     flight_log_export_transport = (APP_USB_CDC_IsReady() != 0U) ?
         APP_FLIGHT_LOG_EXPORT_USB_CDC_BINARY :
         APP_FLIGHT_LOG_EXPORT_UART_TEXT;
@@ -1270,6 +1502,35 @@ APP_FlightLogCommandStatus APP_FlightLog_CancelDump(void)
 
     flight_log_export_cancel_requested = 1U;
     return APP_FLIGHT_LOG_CMD_OK;
+}
+
+uint8_t APP_FlightLog_GetSubdiv(void)
+{
+    return flight_log_subdiv;
+}
+
+uint32_t APP_FlightLog_RateHz(void)
+{
+    return APP_FLIGHT_LOG_RATE_HZ / (uint32_t)APP_FlightLog_GetSubdiv();
+}
+
+uint8_t APP_FlightLog_SetSubdiv(uint8_t subdiv)
+{
+    if ((subdiv < 1U) || (subdiv > APP_FLIGHT_LOG_SUBDIV_MAX) ||
+        (flight_log_status.recording != 0U) ||
+        (flight_log_status.export_active != 0U) ||
+        (flight_log_export_pending != 0U)) {
+        return 0U;
+    }
+    flight_log_subdiv = subdiv;
+    return 1U;
+}
+
+uint32_t APP_FlightLog_GetCapacityRecords(void)
+{
+    return (uint32_t)APP_FLIGHT_LOG_SECTOR_COUNT *
+           ((APP_FLASH_SERVICE_SECTOR_SIZE - APP_FLIGHT_LOG_SECTOR_HEADER_SIZE) /
+            sizeof(APP_FlightLogRecord));
 }
 
 APP_FlightLogCommandStatus APP_FlightLog_TestFill(uint32_t sectors)
@@ -1311,6 +1572,8 @@ APP_FlightLogCommandStatus APP_FlightLog_TestFill(uint32_t sectors)
     flight_log_status.sector_seq = 1U;
     flight_log_record_sequence = 0U;
     flight_log_prepared_block_ready = 0U;
+    flight_log_run_start_valid = 0U;
+    flight_log_new_run_pending = 0U;
     flight_log_status.session_id =
         (uint32_t)(SVC_Timestamp_Ms() ^ (uint32_t)SVC_Timestamp_Us() ^ 0xF10A7E57UL);
 

@@ -1,5 +1,5 @@
 """台架设置的持久化：杆轴方向、杆到飞控板距离、程序油门、模式、舵机摆幅、挂砝码试验、
-高度（ALT）分区——下次打开不用重填。
+高度（ALT）分区、水平槽（XY）分区——下次打开不用重填。
 
 * 存在 `data/identification/attitude/rig_settings.json`（`project_paths.ATTITUDE_IDENT_DIR`），
   UTF-8 JSON，带 `"version": 1`。
@@ -17,16 +17,28 @@ import os
 from pathlib import Path
 from uuid import uuid4
 
-from .alt_config import EXTRA_MASS_RANGE_G, INJECTS, LIFT_RANGE_MM, WIN_RANGE_MM
+from .alt_config import EXTRA_MASS_RANGE_G, INJECTS, LIFT_RANGE_MM, SLOT_RANGE_MM, WIN_RANGE_MM
+from .xy_config import INJECTS as XY_INJECTS
 from .geometry import LENGTH_LIMIT_M
 
 SETTINGS_VERSION = 1
 FILENAME = "rig_settings.json"
-#: 顺序就是固件的模式编号（FF 0 … SERVO 3、ALT 4），只许在末尾追加；旧文件里的模式照样认。
-MODES = ("FF", "RATE", "ANGLE", "SERVO", "ALT")
+#: 顺序就是固件的模式编号（FF 0 … SERVO 3、ALT 4、XY 5、YAW 6），只许在末尾追加；旧文件里的模式照样认。
+MODES = ("FF", "RATE", "ANGLE", "SERVO", "ALT", "XY", "YAW")
 #: 高度（ALT）分区的数值项 -> 页面变量名（都可空，空就不记）。
 _ALT_VARS = dict(alt_extra_mass_g="alt_extra_mass_var", alt_win_mm="alt_win_var",
                  alt_lift_mm="alt_lift_var")
+#: 槽底/槽顶测距读数（2026-09-30 起）：可空，空就记 null、读回来还是空（还没量）。
+_ALT_SLOT_VARS = dict(alt_bottom_mm="alt_bottom_var", alt_top_mm="alt_top_var")
+#: 2026-09-30 前的开环注入 force 已删除：旧文件里的它悄悄回落默认（break），不算坏项。
+_RETIRED_INJECTS = ("force",)
+#: 「Z 高度」页的程序油门 -> 页面变量名（合推力可空 = 机重 / break 必填，开跑时再查）。
+_ALT_THROTTLE_VARS = dict(alt_target_thrust_n="alt_target_var",
+                          alt_max_throttle_pct="alt_max_pct_var")
+#: 水平槽（XY）分区的数值项 -> 页面变量名（2026-09-30 起；旧文件没有这些键，回落默认值）。
+_XY_VARS = dict(xy_extra_mass_g="xy_extra_mass_var", xy_win_mm="xy_win_var")
+#: XY 页自己的程序油门（托住推力可空 = 用飞控悬停推力参数）。
+_XY_THROTTLE_VARS = dict(xy_target_thrust_n="xy_target_var", xy_max_throttle_pct="xy_max_pct_var")
 #: 挂砝码试验的五项（都可空）：砝码 g、水平距离 m、挂两侧/不挂时的姿态读数 deg（按杆轴方位
 #: 读俯仰或横滚，键名沿用 front/back）。
 STIFFNESS_KEYS = ("stiffness_weight_g", "stiffness_distance_m", "stiffness_front_deg",
@@ -101,6 +113,17 @@ _CHECKS = {
     "alt_extra_mass_g": lambda v: _number(v, *EXTRA_MASS_RANGE_G),
     "alt_win_mm": lambda v: _number(v, *WIN_RANGE_MM),
     "alt_lift_mm": lambda v: _number(v, *LIFT_RANGE_MM),
+    "alt_bottom_mm": lambda v: _number(v, *SLOT_RANGE_MM, allow_none=True),
+    "alt_top_mm": lambda v: _number(v, *SLOT_RANGE_MM, allow_none=True),
+    # 「Z 高度」页自己的程序油门（2026-09-30 起与内环页分开存）。
+    "alt_target_thrust_n": lambda v: _number(v, 0.0, 1000.0, allow_none=True, open_low=True),
+    "alt_max_throttle_pct": lambda v: _number(v, 10.0, 95.0),
+    # 水平槽（XY）分区。
+    "xy_inject": lambda v: v if v in XY_INJECTS else _reject(),
+    "xy_extra_mass_g": lambda v: _number(v, *EXTRA_MASS_RANGE_G),
+    "xy_win_mm": lambda v: _number(v, *WIN_RANGE_MM),
+    "xy_target_thrust_n": lambda v: _number(v, 0.0, 1000.0, allow_none=True, open_low=True),
+    "xy_max_throttle_pct": lambda v: _number(v, 10.0, 95.0),
 }
 
 
@@ -121,7 +144,7 @@ def load(path: Path | None = None) -> tuple[dict, str]:
         return {}, "台架设置文件损坏或版本不对，已用默认值；下次开始辨识时会重新保存。"
     values, rejected = {}, []
     for key, check in _CHECKS.items():
-        if key not in data:
+        if key not in data or (key == "alt_inject" and data[key] in _RETIRED_INJECTS):
             continue
         try:
             values[key] = check(data[key])
@@ -181,12 +204,41 @@ def apply_to_page(page, values: dict) -> None:
             getattr(page, name).set(_text(values[key]))
     if "alt_inject" in values and hasattr(page, "alt_inject_var"):
         page.alt_inject_var.set(values["alt_inject"])
-    for key, name in _ALT_VARS.items():
+    for key, name in {**_ALT_VARS, **_ALT_SLOT_VARS}.items():
         if key in values and hasattr(page, name):
             getattr(page, name).set(_text(values[key]))
-    # 上面的「实验类型」会把角速度预设写进激励编排；ALT 轮要换回所选注入类型的默认激励。
+    _apply_alt_throttle(page, values)
+    if "xy_inject" in values and hasattr(page, "xy_inject_var"):
+        page.xy_inject_var.set(values["xy_inject"])
+    for key, name in {**_XY_VARS, **_XY_THROTTLE_VARS}.items():
+        if key in values and hasattr(page, name):
+            getattr(page, name).set(_text(values[key]))
+    # 上面的「实验类型」会把角速度预设写进激励编排；ALT / XY 轮要换回所选注入类型的默认激励。
     if values.get("mode") == "ALT" and hasattr(page, "apply_alt_inject"):
         page.apply_alt_inject()
+    if values.get("mode") == "XY" and hasattr(page, "apply_xy_inject"):
+        page.apply_xy_inject()
+
+
+def _apply_alt_throttle(page, values: dict) -> None:
+    """高度页的合推力/最高油门。旧文件（2026-09-30 前）两页共用一份：上次存的是 ALT 就归给
+    高度页，内环页回到「留空 = 机重、最高 75%」，免得内环轮沿用高度的搜索上限。"""
+    if not hasattr(page, "alt_target_var"):
+        return
+    if "alt_target_thrust_n" in values or "alt_max_throttle_pct" in values:
+        if "alt_target_thrust_n" in values:
+            page.alt_target_var.set(_text(values["alt_target_thrust_n"]))
+        if "alt_max_throttle_pct" in values:
+            page.alt_max_pct_var.set(_text(values["alt_max_throttle_pct"]))
+        return
+    if values.get("mode") != "ALT":
+        return
+    if "target_thrust_n" in values:
+        page.alt_target_var.set(_text(values["target_thrust_n"]))
+        page.target_thrust_var.set("")
+    if "max_throttle_pct" in values:
+        page.alt_max_pct_var.set(_text(values["max_throttle_pct"]))
+        page.max_pct_var.set("75")
 
 
 def collect_from_page(page) -> dict:
@@ -207,8 +259,10 @@ def collect_from_page(page) -> dict:
         "mode": page.mode_var.get(),
         "angle_amp_deg": float(page.angle_amp_var.get()),
         "experiment": page.experiment_key(),
-        **_lenient(page, {"servo_tilt_deg": "servo_tilt_var", **_STIFFNESS_VARS, **_ALT_VARS}),
+        **_lenient(page, {"servo_tilt_deg": "servo_tilt_var", **_STIFFNESS_VARS, **_ALT_VARS,
+                          **_ALT_SLOT_VARS, **_ALT_THROTTLE_VARS, **_XY_VARS, **_XY_THROTTLE_VARS}),
         **_alt_inject(page),
+        **_xy_inject(page),
     }
 
 
@@ -216,6 +270,12 @@ def _alt_inject(page) -> dict:
     variable = getattr(page, "alt_inject_var", None)
     value = variable.get() if variable is not None else None
     return {"alt_inject": value} if value in INJECTS else {}
+
+
+def _xy_inject(page) -> dict:
+    variable = getattr(page, "xy_inject_var", None)
+    value = variable.get() if variable is not None else None
+    return {"xy_inject": value} if value in XY_INJECTS else {}
 
 
 def _lenient(page, names: dict) -> dict:
@@ -230,7 +290,8 @@ def _lenient(page, names: dict) -> dict:
             out[key] = _CHECKS[key](float(text)) if text else None
         except ValueError:
             continue
-    for key in ("servo_tilt_deg", *_ALT_VARS):     # 这几项读的时候不认 null：空就不记
+    for key in ("servo_tilt_deg", *_ALT_VARS, "alt_max_throttle_pct", *_XY_VARS,
+                "xy_max_throttle_pct"):   # 读时不认 null：空就不记
         if key in out and out[key] is None:
             del out[key]
     return out

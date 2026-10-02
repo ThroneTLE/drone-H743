@@ -4,7 +4,8 @@
 #include "bsp_current.h"
 #include "bsp_critical.h"
 #include "svc_timestamp.h"
-static DRV_BatteryState state={.config={3U,3500U,3600U},.low=1U,.adc_status=1U};
+static DRV_BatteryState state={.config={3U,DRV_BATTERY_DEFAULT_LOW_CELL_MV,DRV_BATTERY_DEFAULT_RECOVER_CELL_MV},
+                              .low=1U,.adc_status=1U};
 static uint32_t last_sequence;
 static uint8_t initialized;
 

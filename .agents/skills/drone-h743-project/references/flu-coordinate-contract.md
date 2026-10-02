@@ -43,7 +43,8 @@ are recorded.
 Known legacy boundaries include:
 
 - `App/Src/app_sensor.c`: IMU chip axes to the current intermediate axes.
-- `App/Src/app_stabilizer.c`: Fusion input signs, startup attitude zero, and controller input assembly. Optical-flow mounting is converted exactly once, at the exit of `stabilizer_compensate_flow_rotation`; nothing downstream may re-adapt it. RC intent no longer lives here — see `App/Src/app_rc_intent.c`.
+- `App/Src/app_stabilizer.c`: Fusion input signs, startup attitude zero, and controller input assembly. Optical-flow mounting is no longer converted here. RC intent no longer lives here — see `App/Src/app_rc_intent.c`.
+- `App/Src/app_optical_flow.c`: the only optical-flow mounting Adapter (`app_flow_fill_sample`): chip FRD to FLU, then the runtime mount `airframe.flow_mount_yaw_deg` (0/90/180/270) and `airframe.flow_mount_mirror` (0/1, R-FLOWMOUNT-1, written by the ground-calibration page after the +X/+Y steps). Everything downstream (Service, EKF, controller, telemetry, host) is canonical FLU and may not re-adapt it.
 - `App/Src/app_rc_intent.c`: the only stick-to-FLU Adapter. Each sign is derived from the calibration wizard's physical prompt (`RC_WIZARD_STEPS`) plus this contract, not from bench trial and error.
 - `Core/Src/freertos.c`: current sensor-task alignment and legacy NED/FRD comments; this file remains CubeMX-owned.
 - `Driver/Src/drv_attitude_fusion.c`: x-io Fusion NED convention.

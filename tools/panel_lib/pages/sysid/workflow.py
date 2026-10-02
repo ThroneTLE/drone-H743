@@ -14,7 +14,10 @@
 
 **自动分析。** FF 轮正常结束 → 先存档 → 存档落盘后自动拟合 → 质量够就自动算候选参数。
 舵机单独轮（SERVO，电机不转、全程上锁）同样自动存档、自动拟合，只报舵机与反作用，不给参数。
-高度轮（ALT，槽式台架）只存档（目录名 alt_ 开头），页面不拟合，分析离线进行（`alt_config.py`）。
+高度轮（ALT，槽式台架）存档（目录名 alt_ 开头），不跑姿态拟合；break 轮页面当场算离地/滑落阈值，
+vel/pos 轮分析离线进行（`alt_config.py`、`alt_breakaway.py`）。
+水平槽轮（XY）存档到 data/identification/xy（目录名 xy_ 开头），同样不跑姿态拟合（`xy_config.py`）。
+吊绳偏航轮（YAW）存档到 data/identification/yaw（目录名 yaw_ 开头），同样不跑姿态拟合（`yaw_config.py`）。
 写 RAM 永远要人点；本文件没有任何写 Flash 的路径。
 """
 from __future__ import annotations
@@ -31,6 +34,10 @@ from ...proto import parse_kv
 from ._core import RECORD_VERSIONS
 from .alt_config import ALT_MODE_CODE, AltWorkflow, schema_has_height
 from .alt_config import UNSUPPORTED_SCHEMA as ALT_UNSUPPORTED_SCHEMA
+from .xy_config import UNSUPPORTED_SCHEMA as XY_UNSUPPORTED_SCHEMA
+from .xy_config import XY_MODE_CODE, XyWorkflow, schema_has_xy
+from .yaw_config import UNSUPPORTED_SCHEMA as YAW_UNSUPPORTED_SCHEMA
+from .yaw_config import YAW_MODE_CODE, YawWorkflow, schema_has_yaw
 from .analysis import Analysis
 from .ram_params import RamParams
 from .reasons import explain_error
@@ -58,6 +65,28 @@ def _attitude_directory():
     return dated_directory(ATTITUDE_IDENT_DIR)
 
 
+def _xy_directory():
+    try:
+        from ....project_paths import IDENTIFICATION_ROOT, dated_directory
+    except ImportError:
+        try:
+            from tools.project_paths import IDENTIFICATION_ROOT, dated_directory
+        except ImportError:
+            from project_paths import IDENTIFICATION_ROOT, dated_directory
+    return dated_directory(IDENTIFICATION_ROOT / "xy")
+
+
+def _yaw_directory():
+    try:
+        from ....project_paths import IDENTIFICATION_ROOT, dated_directory
+    except ImportError:
+        try:
+            from tools.project_paths import IDENTIFICATION_ROOT, dated_directory
+        except ImportError:
+            from project_paths import IDENTIFICATION_ROOT, dated_directory
+    return dated_directory(IDENTIFICATION_ROOT / "yaw")
+
+
 def produces_report(text: str) -> bool:
     if text == "SYSID?":
         return True
@@ -65,7 +94,7 @@ def produces_report(text: str) -> bool:
     return len(parts) >= 2 and parts[0] == "SYSID" and parts[1] in REPORT_SUBCOMMANDS
 
 
-class Workflow(AltWorkflow, StartConfig, RamParams, Analysis):
+class Workflow(AltWorkflow, XyWorkflow, YawWorkflow, StartConfig, RamParams, Analysis):
     def __init__(self, page):
         self.page = page
         self.pending = []
@@ -153,6 +182,8 @@ class Workflow(AltWorkflow, StartConfig, RamParams, Analysis):
 
     def note_sent(self, text):
         """页面每成功发出一条命令都来这里报到；事务自己的命令不记账。"""
+        self.xy_note_sent(text)
+        self.yaw_note_sent(text)
         if text == THR_POLL:
             self.thr_polls.append(time.monotonic() + STALE_REPORT_S)
         elif text != self.awaiting and produces_report(text):
@@ -238,6 +269,10 @@ class Workflow(AltWorkflow, StartConfig, RamParams, Analysis):
             problem = "舵机单独模式需要 SYSID 记录 v3 的固件（记录里要有 servo_tilt）：请更新固件后重试。"
         elif self.expected.get("mode") == ALT_MODE_CODE and not schema_has_height(schema):
             problem = ALT_UNSUPPORTED_SCHEMA
+        elif self.expected.get("mode") == XY_MODE_CODE and not schema_has_xy(schema):
+            problem = XY_UNSUPPORTED_SCHEMA
+        elif self.expected.get("mode") == YAW_MODE_CODE and not schema_has_yaw(schema):
+            problem = YAW_UNSUPPORTED_SCHEMA
         elif not servo and self.status.get("thrust") != "lut":
             problem = "飞控仍在使用旧推力曲线：请先在推力页选择当前查补表（LUT）后重试。"
         if problem:
@@ -252,6 +287,8 @@ class Workflow(AltWorkflow, StartConfig, RamParams, Analysis):
         self.snapshot.update(roll_pivot_to_cg_z_m=roll, pitch_pivot_to_cg_z_m=pitch,
                              pivot_to_fc_input_m=dict(zip(("roll", "pitch"), self.pivot_request)))
         self.alt_snapshot()
+        self.xy_snapshot()
+        self.yaw_snapshot()
         self.end = None
         self.run_id = None
         self.saved = None
@@ -316,6 +353,10 @@ class Workflow(AltWorkflow, StartConfig, RamParams, Analysis):
             return
         if self.alt_handle_line(line, values):
             return                        # SYSID ALT 回显/拒绝、SYSID ALTSTART 溯源（alt_config.py）
+        if self.xy_handle_line(line, values):
+            return                        # SYSID XY 回显/拒绝、SYSID XYSTART 溯源（xy_config.py）
+        if self.yaw_handle_line(line, values):
+            return                        # SYSID YAW 回显/拒绝、SYSID YAWSTART 溯源（yaw_config.py）
         if line.startswith("PARAM ") or line.startswith("OK param "):
             name, value = values.get("name"), values.get("value")
             if name and value:
@@ -340,7 +381,7 @@ class Workflow(AltWorkflow, StartConfig, RamParams, Analysis):
             # SYSID ALT 的回显是它自己的一行（alt_config），整份报告的结尾不能冒充它。
             if (not belongs_elsewhere and self.awaiting and self.awaiting.startswith("SYSID")
                     and self.awaiting not in ("SYSID SCHEMA", "SYSID START")
-                    and not self.awaiting.startswith("SYSID ALT ")):
+                    and not self.awaiting.startswith(("SYSID ALT ", "SYSID XY ", "SYSID YAW "))):
                 if not self.pending and not self._verify():
                     return
                 self.advance()
@@ -441,8 +482,13 @@ class Workflow(AltWorkflow, StartConfig, RamParams, Analysis):
 
     def archive_directory(self):
         # 高度轮目录用 alt_ 开头：联合分析/舵机对照只扫 rod_*，也方便离线脚本挑出来。
-        prefix = "alt" if str((self.snapshot or {}).get("mode")) == str(ALT_MODE_CODE) else "rod"
-        return _attitude_directory() / (datetime.now().strftime(f"{prefix}_%H%M%S_") + uuid4().hex[:8])
+        # 水平槽轮单独放 data/identification/xy/<日期>/xy_*，吊绳偏航轮放 data/identification/yaw/<日期>/yaw_*。
+        mode = str((self.snapshot or {}).get("mode"))
+        prefix = ("alt" if mode == str(ALT_MODE_CODE) else "xy" if mode == str(XY_MODE_CODE)
+                  else "yaw" if mode == str(YAW_MODE_CODE) else "rod")
+        root = (_xy_directory() if prefix == "xy" else _yaw_directory() if prefix == "yaw"
+                else _attitude_directory())
+        return root / (datetime.now().strftime(f"{prefix}_%H%M%S_") + uuid4().hex[:8])
 
     def archive(self):
         if self.saved or not self.page.batches or self.snapshot is None:

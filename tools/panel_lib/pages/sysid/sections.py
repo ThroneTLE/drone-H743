@@ -71,6 +71,9 @@ class PageSections:
     def apply_experiment(self) -> None:
         """把所选实验类型的激励预设写进「高级设置」的激励参数。"""
         _key, preset = EXPERIMENTS.get(self.experiment_var.get(), EXPERIMENTS[DEFAULT_EXPERIMENT])
+        if getattr(self, "sub_view_mode_selected", lambda: False)():
+            self.store_inner_excitation(preset)      # 高度 / XY 页在前台：记给内环，回内环时还原
+            return
         for field, value in preset.items():
             getattr(self, _EXPERIMENT_VARS[field]).set(value)
         self._refresh_preview()
@@ -94,7 +97,7 @@ class PageSections:
         grid = ttk.Frame(box)
         grid.pack(fill=tk.X, pady=(6, 0))
         labelled_entry(grid, 0, "目标合推力 [N]", self.target_thrust_var,
-                       hint_var=self.thrust_hint_var)
+                       hint_var=self.thrust_hint_var, label_var=self.thrust_label_var)
         labelled_entry(grid, 1, "最高油门 [%]", self.max_pct_var,
                        hint="程序推油门不会超过这个百分比（10～95）")
         ttk.Checkbutton(box, text="遥控器手动给油门（旧方式）",

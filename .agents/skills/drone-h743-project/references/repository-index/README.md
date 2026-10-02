@@ -2,7 +2,7 @@
 
 # drone-H743 Repository Index
 
-Snapshot: `d186237fdc48`. Covered non-index working files: 8599. Scope: Git-tracked plus non-ignored untracked files; ignored build outputs, caches, and local logs are intentionally excluded.
+Snapshot: `e638a572d8f0`. Covered non-index working files: 8833. Scope: Git-tracked plus non-ignored untracked files; ignored build outputs, caches, and local logs are intentionally excluded.
 
 ## Use this index
 
@@ -17,13 +17,13 @@ Freshness check: `python .agents/skills/drone-h743-project/scripts/update_reposi
 
 | Read this shard | When it matches | Covered files |
 |---|---|---:|
-| [firmware-app-services.md](firmware-app-services.md) | App behavior, tasks, control, commands, diagnostics, application services | 173 |
-| [firmware-driver-bsp.md](firmware-driver-bsp.md) | Device/algorithm drivers, buses, GPIO, DMA callbacks, cache or board binding | 152 |
+| [firmware-app-services.md](firmware-app-services.md) | App behavior, tasks, control, commands, diagnostics, application services | 197 |
+| [firmware-driver-bsp.md](firmware-driver-bsp.md) | Device/algorithm drivers, buses, GPIO, DMA callbacks, cache or board binding | 159 |
 | [platform-build.md](platform-build.md) | CubeMX/Core, pins/clocks/peripherals, RTOS objects, linker/startup, USB, build, HAL/vendor internals | 1449 |
-| [tests-firmware.md](tests-firmware.md) | Firmware regression/contract coverage and focused test selection | 222 |
-| [tests-host.md](tests-host.md) | Ground-station/tooling regression coverage | 56 |
-| [host-tools.md](host-tools.md) | Serial/TCP tools, capture, calibration, identification, log analysis and desktop UIs | 5474 |
-| [docs-data.md](docs-data.md) | Architecture/controller documents, agent references, datasets, captures and experimental evidence | 1073 |
+| [tests-firmware.md](tests-firmware.md) | Firmware regression/contract coverage and focused test selection | 234 |
+| [tests-host.md](tests-host.md) | Ground-station/tooling regression coverage | 83 |
+| [host-tools.md](host-tools.md) | Serial/TCP tools, capture, calibration, identification, log analysis and desktop UIs | 5496 |
+| [docs-data.md](docs-data.md) | Architecture/controller documents, agent references, datasets, captures and experimental evidence | 1215 |
 
 ## Ownership map
 

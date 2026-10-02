@@ -67,10 +67,13 @@ def test_stabilizer_reads_the_mag_snapshot_with_the_three_app_side_gates() -> No
     assert "mag_snapshot.axis_verified != 0U" in body
     assert "mag_age_us <= APP_MAG_SNAPSHOT_MAX_AGE_US" in body
     assert "fusion_input.magnetometer_valid = 1U" in body
-    # magnetometer_valid must default to 0 (struct is zero-initialised) and
-    # only ever be set inside the gated branch -- never assigned
-    # unconditionally.
-    assert body.count("fusion_input.magnetometer_valid = 1U") == 1
+    # The original full-3D branch and the independent RAM-only XY branch may
+    # each set valid, but only inside their explicit gates. Default remains 0.
+    assert body.count("fusion_input.magnetometer_valid = 1U") == 2
+    assert "magxy_config.axis_verified != 0U" in body
+    assert "magxy_config.frame_contract_version ==" in body
+    assert "SVC_MAG_HeadingUpdate(&magxy_config" in body
+    assert "result == SVC_MAG_HEADING_READY" in body
     assert "fusion_input.magnetometer_valid = 0U" not in body
 
 
@@ -116,7 +119,9 @@ def test_cmake_lists_the_stage_and_upstream_new_sources() -> None:
     for path in (
         "Driver/Src/drv_mag_calibration.c",
         "Services/Src/svc_mag.c",
+        "Services/Src/svc_mag_heading.c",
         "App/Src/app_cmd_magcal.c",
+        "App/Src/app_magxy.c",
     ):
         assert path in source, f"{path} must be built into the firmware target"
 

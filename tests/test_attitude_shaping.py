@@ -1428,9 +1428,14 @@ def test_reference_aligns_on_reset_and_source_switch_without_jumping(ctrl):
         assert desired[tick] == pytest.approx(expect, abs=2e-6), tick
     assert desired[296] < 0.05
     assert np.max(np.abs(np.diff(desired[:300]))) < 2e-3
-    # ResetState 之后、来源切换（直接 ↔ 力矢量）之后，都从当时的实测角起步。
-    for start, value in ((300, -0.05), (600, -0.02), (900, 0.03)):
+    # ResetState 之后、从力矢量切回直接姿态之后，都从当时的实测角起步。
+    for start, value in ((300, -0.05), (900, 0.03)):
         assert np.all(np.abs(desired[start:start + 50] - value) < 1e-6), start
+    # 力矢量（位置/速度环）来源不过参考模型：期望姿态就是原始目标，不从实测角慢慢走
+    # （2026-10-01 自由飞定点 2.4 s 振荡，参考模型在速度环里多约 0.22 s 滞后）。
+    target = rows[:, 3]
+    assert np.array_equal(desired[600:900], target[600:900])
+    assert np.all(np.abs(desired[600:650] - (-0.02)) > 1e-3)
 
 
 @pytest.mark.parametrize("reset_each_tick", [1, 0])
@@ -1589,6 +1594,7 @@ def test_defaults_keep_every_switch_off(ctrl):
 
 STORE_HARNESS = r"""
 #include "app_control_config_store.h"
+#include "app_magxy.h"
 #include "drv_coax_ctrl.h"
 
 extern void fake_flash_reset(void);
@@ -1619,6 +1625,7 @@ static uint32_t checksum(const uint8_t *data, uint32_t length)
     return sum;
 }
 
+static uint8_t current[16384];
 static uint8_t saved[16384];
 static uint8_t forged[16384];
 
@@ -1634,8 +1641,8 @@ static void plant(uint32_t length)
 int main(void)
 {
     APP_ControlConfig cfg, loaded;
-    uint16_t size25, size24, size23;
-    uint32_t total25;
+    uint16_t size27, size26, size25, size24, size23;
+    uint32_t total27, total25;
     const uint32_t shaping_size = (uint32_t)sizeof(APP_ControlCoaxShapingParams);
     const uint32_t shaping_v24_size = (uint32_t)sizeof(APP_ControlCoaxShapingParamsV24);
 
@@ -1682,13 +1689,39 @@ int main(void)
     CHECK(get("coax.rate_out_notch2_q") == 0.9f, 18);
 
     /* 刚存的那条在槽 B（两个槽都空时活动槽是 A，写对面）。 */
-    CHECK(APP_FlashService_ReadData(APP_CONTROL_CFG_SLOT_B, saved, 8U) == APP_FLASH_SERVICE_OK, 20);
-    memcpy(&size25, &saved[6], sizeof(size25));
-    total25 = 8U + size25 + 4U;
-    CHECK(total25 <= sizeof(saved), 21);
-    CHECK(APP_FlashService_ReadData(APP_CONTROL_CFG_SLOT_B, saved, total25) ==
+    CHECK(APP_FlashService_ReadData(APP_CONTROL_CFG_SLOT_B, current, 8U) == APP_FLASH_SERVICE_OK, 20);
+    memcpy(&size27, &current[6], sizeof(size27));
+    total27 = 8U + size27 + 4U;
+    CHECK(total27 <= sizeof(current), 21);
+    CHECK(APP_FlashService_ReadData(APP_CONTROL_CFG_SLOT_B, current, total27) ==
           APP_FLASH_SERVICE_OK, 22);
-    CHECK(saved[4] == 25U && saved[5] == 0U, 23);
+    CHECK(current[4] == APP_CONTROL_CFG_VERSION && current[5] == 0U, 23);   /* 当前版本（v28） */
+
+    /*
+     * 2026-09-29（R-FLOWMOUNT-1）：v26 在机体块尾部追加了光流安装两项（8 字节）。下面这些
+     * 旧记录仍按各自当年的字节布局拼，所以先把那 8 字节去掉，得到一条 v25 记录（整形块
+     * 仍在记录尾部，下面"去掉尾部字节"的拼法照旧成立）。
+     */
+    {
+        const uint32_t af_tail = 8U + (uint32_t)sizeof(APP_ControlConfig) +
+                                 (uint32_t)sizeof(APP_ControlCoaxTunableParams) +
+                                 (uint32_t)sizeof(APP_RcConfig) +
+                                 (uint32_t)sizeof(APP_ControlAirframeParamsV25);
+        size26 = (uint16_t)(size27 - sizeof(APP_MagXY_Persisted) -
+                            sizeof(APP_ControlZChannelParams) -
+                            sizeof(APP_ControlFlightLimitParams));   /* 去掉 v27 XY、v28 竖直通道块、v29 飞行限幅块 */
+        size25 = (uint16_t)(size26 - 8U);
+        memcpy(saved, current, af_tail);
+        memcpy(&saved[af_tail], &current[af_tail + 8U], size26 - af_tail);
+        saved[4] = 25U;
+        saved[5] = 0U;
+        memcpy(&saved[6], &size25, sizeof(size25));
+        {
+            const uint32_t sum = checksum(&saved[8], size25);
+            memcpy(&saved[8U + size25], &sum, sizeof(sum));
+        }
+        total25 = 8U + size25 + 4U;
+    }
 
     /* 拼一条 v24 记录：同样的字节去掉整形块尾部的第二级，版本 24，重算校验和。 */
     size24 = (uint16_t)(size25 - (shaping_size - shaping_v24_size));

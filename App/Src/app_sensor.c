@@ -252,6 +252,20 @@ void APP_Sensor_LpfApply3f(APP_Sensor_Lpf lpf[3],
 /*  静止采集 APP_SENSOR_GYRO_BIAS_SAMPLES(1000) 个样本做均值 = 零偏        */
 /* ════════════════════════════════════════════════════════════════════════ */
 
+static volatile uint8_t app_sensor_gyro_recal_request;
+
+void APP_Sensor_RequestGyroRecal(void)
+{
+    app_sensor_gyro_recal_request = 1U;
+}
+
+uint8_t APP_Sensor_TakeGyroRecalRequest(void)
+{
+    if (app_sensor_gyro_recal_request == 0U) return 0U;
+    app_sensor_gyro_recal_request = 0U;
+    return 1U;
+}
+
 uint8_t APP_Sensor_CalibrateGyroBias(float gx, float gy, float gz,
                                      APP_Sensor_GyroBias *cal)
 {

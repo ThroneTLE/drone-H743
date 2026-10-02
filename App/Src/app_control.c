@@ -1024,7 +1024,7 @@ static void app_control_handle_flight_log(char **tokens, uint32_t count)
                               (unsigned long)status.last_flash_status,
                               (unsigned long)APP_FLIGHT_LOG_REGION_START,
                               (unsigned long)APP_FLIGHT_LOG_REGION_END_EXCL,
-                              (unsigned int)APP_FLIGHT_LOG_RATE_HZ,
+                              (unsigned int)APP_FlightLog_RateHz(),
                               (unsigned int)APP_FLIGHT_LOG_EXPORT_BAUD);
         return;
     }

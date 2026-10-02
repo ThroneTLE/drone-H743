@@ -141,6 +141,29 @@ UART 由 `BSP/Src/bsp_uart.c` 一处绑定（本板是 UART8）。
   退化成了阻塞发送）、水位与峰值、以及队列满丢包 / 遥测帧丢包 / 文本丢包三类
   各自的计数。三类分开记，是因为它们的处置完全不同。
 
+### `MAGXY` 近水平相对航向命令
+
+`MAGXY` 是独立于持久化三维 `MAGCAL`/`MAGFRAME` 的纯文本命令族；不新增 `$X`
+function ID、不改变遥测 schema 或二进制帧。所有状态文本走发起命令的维护链路。
+
+```text
+MAGXY?
+MAGXY SET <bias_x_mG> <bias_y_mG> <radius_xy_mG>
+MAGXY VERIFY CONFIRM
+MAGXY ENABLE 0|1
+MAGXY CLEAR
+MAGXY COMMIT
+```
+
+`SET` 只写 RAM 候选并保持关闭；`VERIFY CONFIRM` 标记本模式的独立轴向实物
+确认并在 RAM 开启纠偏，绝不设置旧三维 `MAGFRAME` 位；未配置、未验证或坐标
+契约版本不符时 `ENABLE 1` 返回可见拒绝。所有写命令在已解锁时拒绝。
+`COMMIT` 通过既有 A/B 配置槽写入 CFG v27；保存有效校准和轴向证明后，上电默认
+恢复启用状态。v26 及更早记录没有 XY 块，迁移时关闭；大倾角、新鲜度或现有场强/
+磁方向门拒绝时无磁修正。`MAGXY?` 返回 `configured/enabled/axis_effective/generation`、
+XY 零偏、半径、`cfg_version=27`，以及运行期 `ready/tilt/z_mean_mgauss/last` 诊断。详细使用范围见
+[mag-xy-heading-aid.md](mag-xy-heading-aid.md)。
+
 ## Dashboard 契约
 
 - 通道按名称绑定，不能按固定数组位置硬编码。

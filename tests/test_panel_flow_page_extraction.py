@@ -28,16 +28,21 @@ PARENT_COMMIT = "925356ba"
 
 # 前八个是增量1 起就钉住的旧哈希，原样沿用；后两个是本次新搬的两个遥测行处理器，
 # 哈希取自父提交的 DronePanel，未作任何改动。
+# 2026-09-29（R-FLOWMOUNT-1）：光流安装方向的推荐/写入挂进本页，有意改了五个方法——
+# 建页（挂安装方向面板）、开始/停止一步（记下采样期间的安装参数）、存证据（并入写入记录）、
+# 实时行（显示 mount_yaw/mount_mirror）——这五个哈希按改后的源码重钉；逻辑本体在
+# pages/flow_mount.py，本类只多了这几处一行挂钩。其余四个方法仍是搬家前的原字节。
+# 同日主控又把建页里的小标题「只读地面采样」改成「地面采样与安装方向写回」（页面已能写回飞控），建页哈希再重钉一次。
 METHOD_AST_SHA256 = {
-    "_build_flow_range_calibration_page": "b82cfc6332ac43ec89dcea660fc61a76080e7bd4fe203c1ad7a9d18fcbd7b448",
+    "_build_flow_range_calibration_page": "cd5fe5c90e8a2590080428296ea59959724ef104a675436086f978f0149d0ac4",
     "_flow_range_request_once": "2ff7e3a41f240d644b4e729c14f68ef8f563784a0157d7f5c9908cb0c61c3428",
-    "_flow_cal_start": "59f98967d8d888edbfb924652470a982f9428b45711c45c93ecc8329fbe30147",
-    "_flow_cal_stop": "7f0514ad7a8b81f308c642468e4cfe6f8191b833ea4779a5aa0e292104355d9a",
+    "_flow_cal_start": "32aa4592565d667b0612e72aa125a313ec357a7749096c787a43bbef64cec556",
+    "_flow_cal_stop": "88dd7b33827268f34ff4b61a7bf2b15d5f97a2b81452b3c2bc80547882aad7e3",
     "_flow_cal_analyze_stage": "49fd8a48b303597d37b42694f58ddd861e1232b1af6ef6708676bd0357f1db69",
     "_flow_cal_result_summary": "7af89dde1f64b009dc2bba0988b26211734ed9e533ba1b1832e2bb639fe84f72",
     "_flow_cal_refresh_tree": "08aa97e663548e84313924767a17b976c148e61974fce1e58f5225a5f268e747",
-    "_flow_cal_save_report": "5796e238f117707a1272c649853af1973dacaa8a9fdfd45d2da775c5432054f0",
-    "_update_flow_line": "3193096cf39f571ea02ffc5f44fb46405c287e279a4386d66b6763cf75fead44",
+    "_flow_cal_save_report": "5e89a65dbd66e141f34917108733de34d75e7ed7cd5499229adefd909076fb59",
+    "_update_flow_line": "ae7214d78960b071ee09ddb4e812438290870c44d37ac938b394280a9be4b2b1",
 }
 
 

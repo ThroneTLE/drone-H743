@@ -92,6 +92,12 @@ def test_matplotlib_pages_share_the_dark_chart_theme(qa):
         "baro_figure": getattr(qa.panel, "baro_figure", None),
         "gps_figure": getattr(qa.panel, "gps_figure", None),
         "sysid_figure": getattr(getattr(qa.panel, "sysid_page", None), "figure", None),
+        # 2026-09-30：高度辨识搬到「Z 高度」页，有自己的一张图。
+        "sysid_altitude_figure": getattr(getattr(getattr(qa.panel, "sysid_page", None),
+                                                 "alt_plot", None), "figure", None),
+        # 2026-09-30：水平槽辨识（XY）页同样有自己的一张图。
+        "sysid_xy_figure": getattr(getattr(getattr(qa.panel, "sysid_page", None),
+                                           "xy_plot", None), "figure", None),
     }
     for figure_name, figure in figures.items():
         if figure is None:
@@ -103,9 +109,9 @@ def test_matplotlib_pages_share_the_dark_chart_theme(qa):
         assert figure.axes
         assert figure.axes[0].get_facecolor() == figure.get_facecolor()
         checked += 1
-    # 三张图全是 None 时这个循环一条断言都不跑，会静默变绿——本批一直在打的
+    # 图全是 None 时这个循环一条断言都不跑，会静默变绿——本批一直在打的
     # 就是这个形态，别在自己的新测试里再造一遍。
-    assert checked == 3, f"只核到 {checked} 张图，应当三张都在"
+    assert checked == 5, f"只核到 {checked} 张图，应当五张都在"
 
 
 def test_viewports_route_wheel_locally_and_support_keyboard(qa):
@@ -130,6 +136,7 @@ def test_viewports_route_wheel_locally_and_support_keyboard(qa):
     assert dashboard.canvas.yview()[0] == pytest.approx(0.0)
 
 
+@pytest.mark.slow_ui  # 真面板尺寸/缩放矩阵，慢；默认只在界面文件有改动时跑（tests/conftest.py）
 @pytest.mark.parametrize("scale", SCALES)
 def test_every_leaf_page_has_reachable_interactive_controls(tmp_path, scale):
     # Windows Tcl can retain a just-destroyed interpreter's library handle for

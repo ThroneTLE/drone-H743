@@ -6,6 +6,7 @@ from tools.panel_qa.geometry import SCALES, WINDOW_SIZES
 from tools.panel_lib.component_registry import Component, Field
 
 
+@pytest.mark.slow_ui  # 真面板尺寸/缩放矩阵，慢；默认只在界面文件有改动时跑（tests/conftest.py）
 @pytest.mark.parametrize('scale',SCALES)
 def test_overview_matrix_and_one_shot(scale):
     qa=OfflinePanel.launch(scale=scale)

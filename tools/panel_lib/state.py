@@ -47,6 +47,8 @@ class PanelStateMixin:
         state = dict(self._panel_state)
         state["transport"] = channel_mode(self)
         state["auto_connect"] = bool(self.auto_connect_var.get())
+        if hasattr(self, "usb_failover_var"):
+            state["usb_failover_bluetooth"] = bool(self.usb_failover_var.get())
         if self.transport is self.serial_transport:
             device = self.serial_transport.active_port or ""
             identity = self._serial_port_identity.get(device) or {}

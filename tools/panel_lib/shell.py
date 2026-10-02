@@ -3,6 +3,7 @@ import tkinter as tk
 from tkinter import ttk
 from .viewport import VerticalScrolledFrame, FixedActionViewport
 from .arm_banner import mount_arm_banner
+from .ai_bridge_ui import mount_ai_bridge
 from .pages.airframe import mount_airframe
 from .pages.led_map import mount_led_map
 from .pages.mag_cal import MAG_CAL_TAB_TEXT, mount_mag_cal
@@ -18,6 +19,7 @@ def build_ui(self):
     root.pack(fill=tk.BOTH, expand=True)
 
     self._build_connection_bar(root)
+    mount_ai_bridge(self, root)
     # 主窗口最上方留给解锁状态：这是每次上机都要先看一眼的东西。
     # 仿真启动栏原来占着这个位置，已搬进「仿真」栏目。
     mount_arm_banner(self, root)

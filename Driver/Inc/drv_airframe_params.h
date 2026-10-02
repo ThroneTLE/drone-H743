@@ -143,6 +143,29 @@ typedef struct {
 
     /* 派生值是否自动重算。1 = 自动（推荐），0 = 保持写入值。 */
     float derived_auto;
+
+    /*
+     * ──────── 输入：光流模块安装方向（CFG v26 起，R-FLOWMOUNT-1）
+     *
+     * 光流"芯片坐标 → 机体 FLU"的换算在 app_optical_flow.c 的 app_flow_fill_sample()
+     * 里写死成 FRD→FLU（X 同号、Y 取负），那是按**最初的安装**推出来的。模块换了
+     * 安装位置（转了 90° 之类）以后，那条换算得到的已经不是真机体 FLU。
+     *
+     * 这两项就是把"按旧安装换算出的 FLU 读数"纠正到真实机体 FLU 的变换：
+     * 先按 mirror 翻 Y，再绕 +Z（向上）逆时针转 yaw。
+     *   flow_mount_yaw_deg：只接受 0 / 90 / 180 / 270；
+     *   flow_mount_mirror ：只接受 0 / 1。
+     * 默认（及从 v25 及更早迁移来的记录）都是 0/0，即恒等变换——光流链与加入
+     * 这两项之前逐位相同。
+     *
+     * 用 float 存只是为了和整张参数表同一种访问方式（按偏移读写 float），不代表
+     * 它是连续量：PARAM SET 写别的值会被拒（见 DRV_Airframe_SetParam）。
+     * 它们只影响光流方向，**不进解锁闸门**（DRV_Airframe_FirstInvalidName 不看）。
+     * 追加在结构体尾部是 Flash ABI 的要求：前面 36 项原位不动，v20～v25 记录的机体
+     * 块就是它的前缀（冻结布局见 app_control_config_compat.h）。
+     */
+    float flow_mount_yaw_deg;
+    float flow_mount_mirror;
 } DRV_Airframe_Params;
 
 /*
@@ -194,12 +217,24 @@ void DRV_Airframe_GetParams(DRV_Airframe_Params *out);
 /*
  * 整体写入（持久化层加载 Flash 记录时调用）。写入后自动体检并更新 valid；
  * derived_auto 非零时顺便重算派生值，保证存进去的和算出来的一致。
+ * 光流安装两项不在允许集合里时落回 0（恒等），读回的就是实际生效的。
  */
 void DRV_Airframe_SetParams(const DRV_Airframe_Params *in);
 
 /*
+ * 光流安装方向的规范读取（给热路径用，不查字符串表）。
+ * 返回值只可能是 0/90/180/270 与 0/1；结构体里若是别的数（只可能来自绕过
+ * DRV_Airframe_SetParam 的整体写入）一律按 0 处理——即恒等变换，与没有这两项
+ * 之前的行为相同。p 为 NULL 同样返回 0。
+ */
+uint16_t DRV_Airframe_FlowMountYawDeg(const DRV_Airframe_Params *p);
+uint8_t DRV_Airframe_FlowMountMirror(const DRV_Airframe_Params *p);
+
+/*
  * 具名读写，名字形如 "airframe.battery_mass_g"。
  * 返回 0 表示名字不认识；写派生值且 derived_auto 为 1 时同样返回 0（拒绝）。
+ * airframe.flow_mount_yaw_deg 只收 0/90/180/270、airframe.flow_mount_mirror 只收
+ * 0/1，其他值返回 0（拒绝），原值不动。
  * 写入后按**新的** derived_auto 决定是否重算：把 derived_auto 从 0 写成 1
  * 当场重算全部派生值（含重心，也就含倾转力臂），不等重启。
  */

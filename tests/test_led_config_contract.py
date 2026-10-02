@@ -661,7 +661,11 @@ def test_the_config_version_moved_and_kept_a_reader_for_the_old_one() -> None:
     # 2026-09-20（R-MAG-1）：v23 在记录尾部追加磁力计校准块，当前版本号随之
     # 推进到 23；v20 的读取器与本条断言的关系不受影响。
     # 2026-09-28：v24 追加指令整形/出口陷波块；同日晚 v25 在该块尾部追加第二级出口陷波。
-    assert "#define APP_CONTROL_CFG_VERSION     25U" in header
+    # 2026-09-29（R-FLOWMOUNT-1）：v26 在机体块尾部追加光流安装两项，v25 由 config_read_v25 读取、两项落回 0/0。
+    # 2026-09-30（R-ALTID-1）：v28 在 XY 块后追加竖直通道块，v27 由 config_read_v27 读取。
+    assert "#define APP_CONTROL_CFG_VERSION     29U" in header
+    assert "#define APP_CONTROL_CFG_VERSION_V27 27U" in header
+    assert "#define APP_CONTROL_CFG_VERSION_V26 26U" in header
     assert "#define APP_CONTROL_CFG_VERSION_V20 20U" in header
     assert "APP_ControlFlashRecordV20" in store
     assert "config_read_v20" in store

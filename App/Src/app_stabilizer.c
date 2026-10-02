@@ -29,6 +29,7 @@
 #include "app_elrs.h"
 #include "app_flight_calibration.h"
 #include "app_flight_log.h"
+#include "app_flight_log_nav.h"
 #include "app_ident.h"
 #include "app_sysid.h"
 #include "app_sysid_alt.h"
@@ -37,6 +38,7 @@
 #include "app_imu_health.h"
 #include "app_led.h"
 #include "app_mag.h"
+#include "app_magxy.h"
 #include "app_nav_estimator.h"
 #include "app_optical_flow.h"
 #include "app_esc_command.h"
@@ -44,6 +46,8 @@
 #include "app_rpm_notch.h"
 #include "app_servo_backlash.h"
 #include "app_thrust_bench.h"
+#include "app_hover_adapt.h"
+#include "app_rc_aux.h"
 #include "app_rc_config.h"
 #include "app_rc_intent.h"
 #include "app_sensor.h"
@@ -62,10 +66,14 @@
 #include "drv_airframe_params.h"
 #include "drv_attitude_fusion.h"
 #include "drv_coax_ctrl.h"
+#include "drv_flight_throttle.h"
 #include "drv_frame_contract.h"
 #include "drv_imu_calibration.h"
 #include "drv_prop_map.h"
+#include "drv_z_estimator.h"
+#include "app_hover_thrust.h"
 #include "svc_flow_nav.h"
+#include "svc_mag_heading.h"
 #include "svc_timestamp.h"
 #include "drv_servo.h"
 
@@ -76,9 +84,13 @@
 /* 速度估计的全部整定量已归 Services/Inc/svc_flow_nav.h，此处不留副本。 */
 #define STABILIZER_FLOW_ROT_COMP_ENABLE 1U
 #define STABILIZER_FLOW_ROT_COMP_GAIN 1.0f
-#define STABILIZER_FLOW_SENSOR_OFFSET_X_M 0.20f
-#define STABILIZER_FLOW_SENSOR_OFFSET_Y_M 0.0f
-#define STABILIZER_FLOW_SENSOR_OFFSET_Z_M 0.22f
+/*
+ * 光流模块相对重心的安装位置，规范 FLU（X 前、Y 左、Z 上）。作者实测：相对飞控板
+ * (0, −16, −16) cm（Y 负半轴下方）；重心在板下 2.2 cm，故 Z = −0.16 + 0.022。
+ */
+#define STABILIZER_FLOW_SENSOR_OFFSET_X_M 0.0f
+#define STABILIZER_FLOW_SENSOR_OFFSET_Y_M -0.16f
+#define STABILIZER_FLOW_SENSOR_OFFSET_Z_M -0.138f
 #define STABILIZER_IMU_LEVER_ARM_X_M 0.0f
 #define STABILIZER_IMU_LEVER_ARM_Y_M 0.0f
 #define STABILIZER_IMU_LEVER_ARM_Z_M (-0.10f)
@@ -114,10 +126,15 @@
 #define STABILIZER_DEG_TO_RAD          0.0174532925f /* 度 → 弧度  (π/180)            */
 #define STABILIZER_USE_DIRECT_ANGLE_SERVO 0U     /* 1=角度直驱舵机, 0=同轴控制器(永久) */
 #define STABILIZER_YAW_RATE_REF_MAX_RAD_S 1.04719758f /* CH4 偏航参考累加最大速率 [rad/s] */
-#define STABILIZER_XY_VEL_REF_MAX_M_S  0.40f     /* CH1/CH2 水平速度目标最大值 [m/s]    */
+#define STABILIZER_XY_VEL_REF_MAX_M_S  0.40f     /* CH1/CH2 满杆速度的兜底值 [m/s]（正常取 coax.pos_xy_vel_max_m_s） */
+#define STABILIZER_XY_VEL_STICK_MIN_M_S 0.10f    /* 参数可接受范围：低于/高于则退回兜底值 */
+#define STABILIZER_XY_VEL_STICK_MAX_M_S 5.00f
 #define STABILIZER_XY_POS_ERR_MAX_M    0.50f     /* 水平位置外环单次误差限幅 [m]        */
-#define STABILIZER_Z_REF_RATE_MAX_M_S  0.30f     /* CH3 满杆高度目标积分速度 [m/s]       */
+/* 定点档松杆"先刹停再锁位"（同 PX4 手动定点）：速度降到此值以下才锁当前位置；刹车最长这么久后强制锁。 */
+#define STABILIZER_XY_LOCK_SPEED_M_S   0.15f
+#define STABILIZER_XY_BRAKE_MAX_S      2.0f
 #define STABILIZER_Z_REF_MAX_M         0.40f     /* 上电光流测高基准以上高度上限 [m]     */
+#define STABILIZER_Z_REF_RATE_MAX_M_S  0.30f     /* CH3 满杆高度目标积分速度 [m/s]       */
 #define STABILIZER_Z_POS_ERR_MAX_M     0.35f     /* Z 位置 PID 单次位置误差限幅 [m]      */
 /* 摇杆死区已移入 APP_RcConfig.deadband_us（可标定），此处不再定义。 */
 
@@ -149,7 +166,7 @@
 #define STABILIZER_RC_THROTTLE_ARM_LOW_PERCENT 10U
 #define STABILIZER_RC_STABILIZE_MIN_PERCENT 70U
 #define STABILIZER_RC_LOSS_TIMEOUT_MS  500U
-#define STABILIZER_FLIGHT_LOG_TAIL_RECORDS 125U /* 125 Hz log tail, about 1 s */
+#define STABILIZER_FLIGHT_LOG_TAIL_RECORDS 125U /* 以 125 Hz 计的 1 s 尾巴条数；实际按子分频折算，见 flight_log_tail_for_subdiv */
 #define STABILIZER_USE_RC_DIRECT_TILT_SERVO 0U   /* 0=自稳定控制器(永久), 1=CH1/CH2直控舵机调试 */
 #define STABILIZER_RC_ATTITUDE_TARGET_LIMIT_RAD 0.349065850f /* CH6 姿态调试最大 ±20° */
 /*
@@ -185,6 +202,11 @@
   static uint8_t stabilizer_rc_arm_latched = 0U;
   static uint8_t stabilizer_rc_switch_seen_low = 0U;
   static uint8_t stabilizer_rc_switch_prev_high = 0U;
+  /* 飞行油门模式：上一控制拍的相对高度/垂直速度，供本拍状态机做落地判定（约 16 字节）。 */
+  static uint8_t stabilizer_ft_fb_valid = 0U;
+  static uint32_t stabilizer_ft_last_ms = 0U;
+  static float stabilizer_ft_fb_height_m = 0.0f;
+  static float stabilizer_ft_fb_vz_m_s = 0.0f;
 
   static void stabilizer_latch_imu_fault(StabilizerImuFaultReason reason)
   {
@@ -260,10 +282,44 @@
     return angle_rad;
   }
 
+  /*
+   * 飞行限幅取参数（作者 2026-10-01："飞机限速/加速度等参数让我可以在上位机可以随意配置"）：
+   * 读 coax.* 参数，缺失或超出 [lo, hi] 时退回原写死常量 fallback（照 coax.pos_xy_vel_max_m_s 先例）。
+   */
+  static float stabilizer_flight_limit(const char *name, float fallback, float lo, float hi)
+  {
+    float value = 0.0f;
+
+    if ((DRV_COAX_CTRL_GetParam(name, &value) != 0U) && (value >= lo) && (value <= hi)) {
+      return value;
+    }
+    return fallback;
+  }
+
+  static float stabilizer_alt_max_m(void)
+  {
+    return stabilizer_flight_limit("coax.alt_max_m", STABILIZER_Z_REF_MAX_M, 0.1f, 20.0f);
+  }
+
+  /* 角度档满杆倾角：≤ 参数 coax.tilt_limit_rad（控制器总倾角限幅），不会比控制器肯给的更大。 */
+  static float stabilizer_manual_tilt_max_rad(void)
+  {
+    float tilt = stabilizer_flight_limit("coax.manual_tilt_max_rad",
+                                         STABILIZER_RC_ATTITUDE_TARGET_LIMIT_RAD, 0.05f, 0.785f);
+    float limit = 0.0f;
+
+    if ((DRV_COAX_CTRL_GetParam("coax.tilt_limit_rad", &limit) != 0U) && (limit > 0.0f) &&
+        (tilt > limit)) {
+      tilt = limit;
+    }
+    return tilt;
+  }
+
   static float stabilizer_rc_yaw_rate_rad_s(float yaw_norm)
   {
     return APP_RcIntent_YawRateLeft(yaw_norm,
-                                    STABILIZER_YAW_RATE_REF_MAX_RAD_S);
+        stabilizer_flight_limit("coax.yaw_stick_rate_rad_s",
+                                STABILIZER_YAW_RATE_REF_MAX_RAD_S, 0.1f, 6.0f));
   }
 
   static uint16_t stabilizer_motor_pulse_clamp(int32_t pulse_us)
@@ -523,6 +579,7 @@
    * 和 stabilizer_capture_armed 同一个理由：跨任务只读快照，全是标量，不加锁。
    */
   static volatile APP_Stabilizer_MagFusionStatus stabilizer_mag_fusion_mirror;
+  static volatile APP_Stabilizer_MagXYStatus stabilizer_magxy_mirror;
   static uint32_t stabilizer_last_servo_send_ms;
   static uint32_t stabilizer_last_servo_command_frame_ms = 0xFFFFFFFFUL;
 
@@ -615,13 +672,20 @@
     debug->sensor_velocity_m_s[1] = body_vy_m_s;
 
     if (height_m > 0.0f) {
-      /* 视线旋转伪像 = ω × r_地面，FLU 下 r_地面 = (0, 0, -h)。 */
+      /*
+       * 光流把"地面点在像里的运动"报成载具速度：读数 = v_传感器 + ω × r_地面，
+       * FLU 下 r_地面 = (0, 0, -h)。转动伪像 ω × r_地面 = (-hω_y, +hω_x)，补偿要减掉它。
+       *
+       * 2026-09-30 水平槽台架手摆实测：纯绕杆摆动时原始读数与旧补偿项 12/12 同号、
+       * 幅值比约 1.18（=(h+杆下 8 cm)/h），即旧写法把伪像加了第二遍，每弧度漏进约 1 m
+       * 假位移（data/analysis/sysid-rig-params/2026-09-30/xy_rock_check_*.txt）。
+       */
       debug->optical_rot_comp_m_s[0] =
-        -STABILIZER_FLOW_ROT_COMP_GAIN * height_m * gyro_y_rad_s;
+         STABILIZER_FLOW_ROT_COMP_GAIN * height_m * gyro_y_rad_s;
       debug->optical_rot_comp_m_s[1] =
-         STABILIZER_FLOW_ROT_COMP_GAIN * height_m * gyro_x_rad_s;
+        -STABILIZER_FLOW_ROT_COMP_GAIN * height_m * gyro_x_rad_s;
 
-      /* 传感器相对 CG 的安装偏置：-(ω × r_安装)，偏置常量同样按 FLU 定义。 */
+      /* 传感器相对 CG 的安装偏置：-(ω × r_安装)，偏置常量同样按 FLU 定义（Z 向下为负）。 */
       debug->offset_rot_comp_m_s[0] =
         -((gyro_y_rad_s * STABILIZER_FLOW_SENSOR_OFFSET_Z_M) -
           (gyro_z_rad_s * STABILIZER_FLOW_SENSOR_OFFSET_Y_M));
@@ -736,9 +800,12 @@ typedef struct
   uint32_t last_out_ms;
   uint8_t has_imu_sample;
   DRV_AttitudeFusionOutput attitude_fusion;
+  SVC_MAG_HeadingState magxy_state;
   float position_ref_x_m;
   float position_ref_y_m;
   uint8_t position_ref_xy_ready;
+  uint8_t xy_brake_pending;        /* 定点档松杆后刹车中，尚未锁位 */
+  float xy_brake_elapsed_s;
   float position_ref_z_m;
   uint8_t position_ref_z_ready;
   float height_ref_m;
@@ -753,6 +820,7 @@ typedef struct
   StabilizerVofaDebug vofa_debug;
   APP_ControlSchedulerState control_scheduler;
   uint8_t flight_log_divider;
+  uint8_t flight_log_subdiv_count; /* 四分之一相位上的子分频计数，见 stabilizer_flight_log_subdiv_due */
   uint16_t flight_log_tail_records;
   float last_gyro_rad_s[3];
   float gyro_ctrl_rad_s[3]; /* notched copy for control loops only; bitwise == gyro_rad_s when bypassed */
@@ -781,6 +849,16 @@ typedef struct
   uint8_t rc_use_stabilized_motor_mix;
   uint8_t rc_attitude_debug_mode;
   uint8_t rc_control_motor_mix_allowed;
+  /* 飞行油门模式（FLIGHT 且未旁路）才为 1；0 = 旧语义，下面几项全部不用。 */
+  uint8_t ft_active_mode;
+  uint8_t ft_spoolup;
+  uint8_t ft_landed_idle;
+  float ft_climb_rate_m_s;
+  float ft_manual_force_n;   /* 状态机给的手动总推力：SPOOLUP 斜坡，或角度档 FLYING 的手控油门 */
+  uint8_t ft_manual_integrate; /* 角度档推力够大（≥0.8·hover）：速率环积分照常工作 */
+  float ft_hover_n;
+  float ft_ground_spin_01;
+  uint8_t ft_xy_velocity_hold; /* CH6 中位：水平只做速度闭环（杆给速度，回中=0），不跑位置 P */
   uint8_t rc_arm_switch_high;
   uint8_t rc_arm_throttle_low;
   uint8_t range_height_valid;
@@ -807,6 +885,13 @@ typedef struct
   uint8_t servo_cal_active;
   /* 这一拍舵机脉宽是谁算的（APP_ServoBacklashSource），在算出脉宽的那一支里填；0 = 不补回差。 */
   uint8_t servo_source;
+  /* 竖直通道估计器本拍输出；z_fusion = coax.z_vel_fusion ≥ 0.5 且估计有效，才替换测距量。 */
+  DRV_ZEstOutput z_est;
+  uint8_t z_fusion;
+  /* 悬停推力在线学习（app_hover_thrust.h）的输入：准备阶段记下竖直加速度与原始测距。 */
+  float az_up_m_s2;
+  uint8_t range_raw_valid;
+  float range_raw_m;
 } StabilizerControlFrame;
 
 /* 任务句柄（由 APP_Stabilizer_Run 参数注入） */
@@ -826,6 +911,8 @@ static volatile StabilizerValidationImuSnapshot
   stabilizer_validation_imu_snapshot;
 /* 解锁状态快照（published=0 表示控制环还没跑过一圈）。写者只有控制环。 */
 static APP_Stabilizer_ArmStatus stabilizer_arm_status;
+/* 竖直通道估计器（IMU 竖直加速度 + 原始测距，drv_z_estimator.h）。写者只有控制环。 */
+static DRV_ZEst stabilizer_z_est;
 
 static volatile uint8_t stabilizer_imu_calibration_candidate_arm_lock;
 static volatile uint8_t stabilizer_servo_calibration_candidate_arm_lock;
@@ -1005,6 +1092,20 @@ uint8_t APP_Stabilizer_IsArmed(void)
   return stabilizer_capture_armed;
 }
 
+/* IMUZERO：命令任务置请求，稳定任务在姿态零点逻辑里取走、清零重新采样。 */
+static volatile uint8_t stabilizer_rezero_request;
+static volatile uint8_t stabilizer_attitude_zero_ready_mirror;
+
+void APP_Stabilizer_RequestAttitudeRezero(void)
+{
+  stabilizer_rezero_request = 1U;
+}
+
+uint8_t APP_Stabilizer_IsAttitudeZeroReady(void)
+{
+  return stabilizer_attitude_zero_ready_mirror;
+}
+
 void APP_Stabilizer_GetMagFusionStatus(APP_Stabilizer_MagFusionStatus *out)
 {
   if (out == NULL) {
@@ -1016,6 +1117,18 @@ void APP_Stabilizer_GetMagFusionStatus(APP_Stabilizer_MagFusionStatus *out)
   out->ignored = stabilizer_mag_fusion_mirror.ignored;
   out->recovery = stabilizer_mag_fusion_mirror.recovery;
   out->error_deg = stabilizer_mag_fusion_mirror.error_deg;
+}
+
+void APP_Stabilizer_GetMagXYStatus(APP_Stabilizer_MagXYStatus *out)
+{
+  if (out == NULL) {
+    return;
+  }
+  out->ready_count = stabilizer_magxy_mirror.ready_count;
+  out->tilt_count = stabilizer_magxy_mirror.tilt_count;
+  out->z_mean_mgauss = stabilizer_magxy_mirror.z_mean_mgauss;
+  out->enabled = stabilizer_magxy_mirror.enabled;
+  out->last_result = stabilizer_magxy_mirror.last_result;
 }
 
 /*
@@ -1078,6 +1191,8 @@ static void stabilizer_init(StabilizerContext *ctx)
   SVC_FlowNav_ResetEstimator();
   DRV_COAX_CTRL_ResetState();
   APP_ControlScheduler_Reset(&ctx->control_scheduler);
+  (void)DRV_ZEst_Init(&stabilizer_z_est, NULL);
+  APP_HoverThrust_Init();
 }
 
 static void stabilizer_reset_for_imu_frame(
@@ -1106,10 +1221,13 @@ static void stabilizer_reset_for_imu_frame(
   ctx->last_imu_timestamp_us = 0ULL;
   ctx->has_imu_sample = 0U;
   memset(&ctx->attitude_fusion, 0, sizeof(ctx->attitude_fusion));
+  SVC_MAG_HeadingReset(&ctx->magxy_state);
   SVC_FlowNav_ResetEstimator();
   ctx->position_ref_x_m = 0.0f;
   ctx->position_ref_y_m = 0.0f;
   ctx->position_ref_xy_ready = 0U;
+  ctx->xy_brake_pending = 0U;
+  ctx->xy_brake_elapsed_s = 0.0f;
   ctx->position_ref_z_m = 0.0f;
   ctx->position_ref_z_ready = 0U;
   ctx->height_ref_m = 0.0f;
@@ -1131,6 +1249,8 @@ static void stabilizer_reset_for_imu_frame(
   SVC_FlowNav_ResetEstimator();
   DRV_COAX_CTRL_ResetState();
   APP_ControlScheduler_Reset(&ctx->control_scheduler);
+  DRV_ZEst_Reset(&stabilizer_z_est);   /* 加速度轴向换了，学到的零偏不再算数 */
+  APP_HoverThrust_RequestReset();      /* 同理：按旧轴向学的悬停推力作废 */
   stabilizer_rc_arm_latched = 0U;
   stabilizer_validation_imu_reset();
 }
@@ -1275,27 +1395,72 @@ static void stabilizer_imu_step(StabilizerContext *ctx,
       fusion_input.accelerometer_g[2] = -msg->imu.accel_z_g;
     }
 
-    /*
-     * 磁力计喂最新缓存值即可：20Hz 采样、500Hz 控制环，节拍差两个数量级。
-     * APP_MAG_GetSnapshot() 只做临界区拷贝，不做 I/O，不阻塞（decoupling-spec
-     * D2-2）。门控前三条（校准、轴向验证、样本新鲜）在这里判定并折叠成一个
-     * magnetometer_valid 标志；第四条（场强合理性）留给 Driver 层——那边复用
-     * DRV_MAG_FieldMagnitude_InRange()，物理判据不该跨层重复实现。
+    /* The default 3-D MAGCAL branch is unchanged. The explicitly enabled
+     * XY mode uses a separate physical axis proof, the pre-MAGCAL
+     * FLU vector and only one Fusion update per fresh 20-Hz magnetic sample.
+     * Snapshot/config reads are bounded critical-section copies, no I/O.
+     * The fourth (field-magnitude) gate remains in drv_attitude_fusion.
      */
     {
       APP_MAG_Snapshot mag_snapshot;
+      SVC_MAG_HeadingConfig magxy_config;
       uint64_t mag_now_us;
       uint64_t mag_age_us;
 
       APP_MAG_GetSnapshot(&mag_snapshot);
+      APP_MagXY_GetConfig(&magxy_config);
       mag_now_us = SVC_Timestamp_Us();
       mag_age_us = (mag_now_us >= mag_snapshot.timestamp_us) ?
         (mag_now_us - mag_snapshot.timestamp_us) : 0ULL;
 
-      if ((mag_snapshot.calibrated != 0U) &&
-          (mag_snapshot.axis_verified != 0U) &&
-          (mag_snapshot.timestamp_us != 0ULL) &&
-          (mag_age_us <= APP_MAG_SNAPSHOT_MAX_AGE_US)) {
+      stabilizer_magxy_mirror.enabled = magxy_config.enabled;
+      if (magxy_config.enabled != 0U) {
+        if ((magxy_config.axis_verified != 0U) &&
+            (magxy_config.frame_contract_version ==
+             (uint32_t)DRV_FRAME_CONTRACT_VERSION) &&
+            (mag_snapshot.sensor_healthy != 0U) &&
+            (mag_snapshot.timestamp_us != 0ULL) &&
+            (mag_age_us <= APP_MAG_SNAPSHOT_MAX_AGE_US)) {
+          SVC_MAG_HeadingInput magxy_input;
+          SVC_MAG_HeadingResult result;
+          float corrected_flu_mgauss[3];
+
+          magxy_input.timestamp_us = mag_snapshot.timestamp_us;
+          magxy_input.raw_flu_mgauss[0] =
+            mag_snapshot.raw_field_flu_mgauss[0];
+          magxy_input.raw_flu_mgauss[1] =
+            mag_snapshot.raw_field_flu_mgauss[1];
+          magxy_input.raw_flu_mgauss[2] =
+            mag_snapshot.raw_field_flu_mgauss[2];
+          magxy_input.roll_deg = ctx->roll;
+          magxy_input.pitch_deg = ctx->pitch;
+          magxy_input.yaw_deg = ctx->yaw;
+          result = SVC_MAG_HeadingUpdate(&magxy_config, &ctx->magxy_state,
+                                         &magxy_input,
+                                         corrected_flu_mgauss);
+          if (result != SVC_MAG_HEADING_REPEATED) {
+            stabilizer_magxy_mirror.last_result = (uint8_t)result;
+          }
+          stabilizer_magxy_mirror.ready_count =
+            ctx->magxy_state.ready_count;
+          stabilizer_magxy_mirror.tilt_count =
+            ctx->magxy_state.tilt_count;
+          stabilizer_magxy_mirror.z_mean_mgauss =
+            ctx->magxy_state.last_z_mean_mgauss;
+          if (result == SVC_MAG_HEADING_READY) {
+            fusion_input.magnetometer_mgauss[0] = corrected_flu_mgauss[0];
+            fusion_input.magnetometer_mgauss[1] = corrected_flu_mgauss[1];
+            fusion_input.magnetometer_mgauss[2] = corrected_flu_mgauss[2];
+            fusion_input.magnetometer_valid = 1U;
+          }
+        } else {
+          stabilizer_magxy_mirror.last_result =
+            (uint8_t)SVC_MAG_HEADING_INVALID;
+        }
+      } else if ((mag_snapshot.calibrated != 0U) &&
+           (mag_snapshot.axis_verified != 0U) &&
+           (mag_snapshot.timestamp_us != 0ULL) &&
+           (mag_age_us <= APP_MAG_SNAPSHOT_MAX_AGE_US)) {
         fusion_input.magnetometer_mgauss[0] = mag_snapshot.field_flu_mgauss[0];
         fusion_input.magnetometer_mgauss[1] = mag_snapshot.field_flu_mgauss[1];
         fusion_input.magnetometer_mgauss[2] = mag_snapshot.field_flu_mgauss[2];
@@ -1408,6 +1573,15 @@ static void stabilizer_imu_step(StabilizerContext *ctx,
   msg->attitude_debug.alpha = 1.0f;
   msg->attitude_debug.dt_ms = dt_sec * 1000.0f;
 
+  if (stabilizer_rezero_request != 0U) {
+    stabilizer_rezero_request = 0U;
+    ctx->attitude_zero_ready = 0U;
+    ctx->attitude_zero_start_ms = 0U;
+    ctx->attitude_zero_count = 0U;
+    ctx->roll_zero_sum = 0.0f;
+    ctx->pitch_zero_sum = 0.0f;
+    ctx->yaw_zero_sum = 0.0f;
+  }
   if ((ctx->attitude_zero_ready == 0U) &&
       (msg->gyro_bias_ready != 0U) &&
       (ctx->attitude_fusion.initialized != 0U) &&
@@ -1449,6 +1623,7 @@ static void stabilizer_imu_step(StabilizerContext *ctx,
     ctx->pitch_zero_sum = 0.0f;
     ctx->yaw_zero_sum = 0.0f;
   }
+  stabilizer_attitude_zero_ready_mirror = ctx->attitude_zero_ready;
 
   if (ctx->attitude_zero_ready != 0U) {
     ctx->roll_control = ctx->roll - ctx->roll_zero;
@@ -1485,12 +1660,16 @@ static void stabilizer_imu_step(StabilizerContext *ctx,
       memset(&flow_status, 0, sizeof(flow_status));
       APP_OpticalFlow_GetStatus(&flow_status);
       if (ctx->attitude_zero_ready != 0U) {
+        /* 转平用 Fusion 绝对姿态，不用减过开机零位的 *_control：比力和 Fusion 姿态出自同一只
+         * 加速度计，只有两者配对才能把重力扣干净。用零位姿态会把开机倾角（地面不平、IMU 装歪、
+         * 加速度计零偏）留成 g·sin(零位) 的假水平加速度——2026-10-01 台架实测零位约 1.9°/1.3°，
+         * 合 0.2~0.4 m/s²，正卡在零速判定门限附近。 */
         stabilizer_compensated_imu_accel_level_xy(
           msg->imu.accel_x_g,
           msg->imu.accel_y_g,
           msg->imu.accel_z_g,
-          ctx->roll_control * STABILIZER_DEG_TO_RAD,
-          ctx->pitch_control * STABILIZER_DEG_TO_RAD,
+          ctx->roll * STABILIZER_DEG_TO_RAD,
+          ctx->pitch * STABILIZER_DEG_TO_RAD,
           gyro_rad_s,
           alpha_rad_s2,
           alpha_valid,
@@ -1580,6 +1759,32 @@ static void stabilizer_imu_step(StabilizerContext *ctx,
   }
 }
 
+/*
+ * 竖直通道估计器的一拍（drv_z_estimator.h）。每个控制拍都跑，coax.z_vel_fusion 只决定下游
+ * 用不用——切换时估计早已收敛，下游不跳；开关为 0 时下游拿到的仍是原来的测距量。
+ * 加速度由调用处给（与 ALT 观测同一个值）；测距用服务里未平滑的原始值及其到达时刻，
+ * 与 frame->now_ms 同一个 ms 钟。
+ */
+static void stabilizer_z_estimator_step(StabilizerControlFrame *frame,
+                                        const SVC_FLOW_NAV_State *nav,
+                                        float a_up_m_s2)
+{
+  DRV_ZEstTickInput in;
+  float z_vel_fusion = 0.0f;
+
+  in.now_us = frame->now_us;
+  in.now_ms = frame->now_ms;
+  in.a_up_m_s2 = a_up_m_s2;
+  in.accel_valid = frame->imu_control_valid;
+  in.range_valid = nav->height_valid;
+  in.range_m = nav->height_raw_m;
+  in.range_sample_ms = nav->height_sample_ms;
+  (void)DRV_ZEst_Tick(&stabilizer_z_est, &in);
+  DRV_ZEst_GetOutput(&stabilizer_z_est, &frame->z_est);
+  (void)DRV_COAX_CTRL_GetParam("coax.z_vel_fusion", &z_vel_fusion);
+  frame->z_fusion = ((z_vel_fusion >= 0.5f) && (frame->z_est.valid != 0U)) ? 1U : 0U;
+}
+
 static void stabilizer_control_prepare(StabilizerContext *ctx,
                                        StabilizerControlFrame *frame)
 {
@@ -1607,6 +1812,7 @@ static void stabilizer_control_prepare(StabilizerContext *ctx,
                                                frame->rc_arm_throttle_low,
                                                frame->rc_link_ok);
   stabilizer_capture_armed = frame->rc_armed;
+  APP_RcAux_Update(frame->now_ms, frame->ch, frame->rc_link_ok, frame->rc_armed); /* CH9 手动 IMU 归零 */
   frame->rc_throttle_motor_us =
     stabilizer_rc_throttle_to_motor_pulse(frame->rc.throttle_01);
   frame->rc_use_stabilized_motor_mix =
@@ -1670,8 +1876,13 @@ static void stabilizer_control_prepare(StabilizerContext *ctx,
     uint32_t sysid_height_ms = 0U;
     const uint8_t sysid_height_ok =
       APP_OpticalFlow_GetHeightSample(&sysid_height_m, &sysid_vz_m_s, &sysid_height_ms);
+    float sysid_flow_vel_m_s[2] = { 0.0f, 0.0f };
+    float sysid_flow_pos_m[2] = { 0.0f, 0.0f };
 
     SVC_FlowNav_GetState(&sysid_nav);
+    /* 水平槽 XY 辨识的光流观测（只读，与生产位置环同一份 Service 成品估计，规范 FLU）。 */
+    SVC_FlowNav_GetVelocity(&sysid_flow_vel_m_s[0], &sysid_flow_vel_m_s[1]);
+    SVC_FlowNav_GetPosition(&sysid_flow_pos_m[0], &sysid_flow_pos_m[1]);
     APP_Battery_GetSnapshot(&sysid_battery);
     APP_SysIdObserve sysid_obs = {
       .now_ms = frame->now_ms,
@@ -1696,6 +1907,7 @@ static void stabilizer_control_prepare(StabilizerContext *ctx,
         ctx->gyro_ctrl_rad_s[0], ctx->gyro_ctrl_rad_s[1], ctx->gyro_ctrl_rad_s[2],
       },
       .height_valid = sysid_height_ok,
+      .height_sample_ms = sysid_height_ms,
       .height_m = sysid_height_m,
       .height_raw_m = sysid_nav.height_raw_m,
       .vz_m_s = sysid_vz_m_s,
@@ -1705,12 +1917,91 @@ static void stabilizer_control_prepare(StabilizerContext *ctx,
         DRV_Airframe_Get()->gravity_m_s2),
       .vbat_v = (sysid_battery.state.valid != 0U) ?
                 ((float)sysid_battery.state.voltage_mv * 0.001f) : 0.0f,
+      /* 生产导航位置有效的同一判据：光流速度有效且测距有效；样本时刻取光流速度样本的 ms token。 */
+      .flow_valid = ((sysid_nav.velocity_valid != 0U) && (sysid_height_ok != 0U)) ? 1U : 0U,
+      .flow_sample_ms = sysid_nav.velocity_sample_ms,
+      /* 控制角 = 融合角 − 开机零点，所以重力水平在控制角里是 −零点。 */
+      .level_valid = ctx->attitude_zero_ready,
+      .level_roll_rad = -ctx->roll_zero * STABILIZER_DEG_TO_RAD,
+      .level_pitch_rad = -ctx->pitch_zero * STABILIZER_DEG_TO_RAD,
+      .flow_vel_m_s = { sysid_flow_vel_m_s[0], sysid_flow_vel_m_s[1] },
+      .flow_pos_m = { sysid_flow_pos_m[0], sysid_flow_pos_m[1] },
     };
+    /* 竖直通道估计器：加速度就用这份观测里的 az，测距用同一份服务快照。 */
+    stabilizer_z_estimator_step(frame, &sysid_nav, sysid_obs.az_m_s2);
+    frame->az_up_m_s2 = sysid_obs.az_m_s2;             /* 悬停推力学习用同一份加速度与原始测距 */
+    frame->range_raw_valid = sysid_nav.height_valid;
+    frame->range_raw_m = sysid_nav.height_raw_m;
+    if (frame->z_fusion != 0U) {
+      sysid_obs.height_m = frame->z_est.z_m;   /* 原始测距与样本时刻不动 */
+      sysid_obs.vz_m_s = frame->z_est.vz_m_s;
+    }
     APP_SysId_Update(&sysid_obs);
   }
   frame->sysid_running = APP_SysId_IsEngaged();
   frame->ident_running =
     ((APP_Ident_IsRunning() != 0U) || (frame->sysid_running != 0U)) ? 1U : 0U;
+  {
+    /*
+     * 飞行油门模式（doc/flight-throttle-contract.md）。FLIGHT 且未被旁路时用状态机结果
+     * 覆盖上面按 70% 门限算出的三个标志；LEGACY 或旁路（辨识/推力台/旋向/舵机标定）
+     * 时一个字都不动，保持旧行为。
+     */
+    DRV_FlightThrottleInput ft_in;
+    DRV_FlightThrottleOutput ft_out;
+    const DRV_Airframe_Params *ft_airframe = DRV_Airframe_Get();
+
+    memset(&ft_in, 0, sizeof(ft_in));
+    ft_in.dt_s = (stabilizer_ft_last_ms == 0U) ? 0.0f :
+      (float)(frame->now_ms - stabilizer_ft_last_ms) * 0.001f;
+    stabilizer_ft_last_ms = frame->now_ms;
+    ft_in.armed = frame->rc_armed;
+    ft_in.link_ok = frame->rc_link_ok;
+    ft_in.throttle_01 = frame->rc.throttle_01;
+    /* CH6 三段拨码的开关量；未绑定时给 0（定点），与旧"未绑定=低位"一致。 */
+    ft_in.mode_switch_01 =
+      ((frame->rc.bound_mask & (uint8_t)(1U << APP_RC_FUNC_MODE)) != 0U) ?
+        0.5f * (frame->rc.norm[APP_RC_FUNC_MODE] + 1.0f) : 0.0f;
+    ft_in.height_valid = stabilizer_ft_fb_valid;
+    ft_in.height_m = stabilizer_ft_fb_height_m;
+    ft_in.vz_m_s = stabilizer_ft_fb_vz_m_s;
+    ft_in.imu_valid = frame->imu_control_valid;
+    ft_in.bypass =
+      ((frame->ident_running != 0U) || (frame->servo_cal_active != 0U) ||
+       (APP_ThrustBench_IsActive() != 0U) || (APP_PropSpin_IsActive() != 0U)) ? 1U : 0U;
+    frame->ft_hover_n = DRV_COAX_CTRL_EffectiveMassKg(ft_airframe->mass_kg) *
+                        ft_airframe->gravity_m_s2;
+    ft_in.hover_thrust_n = frame->ft_hover_n;
+    /* 定高档满杆升/降速度 = 位置环竖直限速参数（读不到则保持 0 → 驱动退回 0.30/0.20 常量）。 */
+    (void)DRV_COAX_CTRL_GetParam("coax.pos_z_vel_up_max_m_s", &ft_in.v_up_m_s);
+    (void)DRV_COAX_CTRL_GetParam("coax.pos_z_vel_down_max_m_s", &ft_in.v_dn_m_s);
+    ft_in.spool_start_force_n = DRV_COAX_CTRL_MotorPulseToTotalThrust(
+      stabilizer_rc_throttle_to_motor_pulse(DRV_FLIGHT_THROTTLE_GROUND_MAX_01));
+    ft_in.max_thrust_n = DRV_COAX_CTRL_MotorPulseToTotalThrust(BSP_PWM_ESC_MAX_US);
+    /* 反馈量只用一拍：本拍的控制计算会重新写入，没跑到就当无效。 */
+    stabilizer_ft_fb_valid = 0U;
+    DRV_FlightThrottle_Update(&ft_in, &ft_out);
+    if (ft_out.legacy_semantics == 0U) {
+      frame->ft_active_mode = 1U;
+      frame->rc_use_stabilized_motor_mix = ft_out.active;
+      frame->rc_control_motor_mix_allowed = ft_out.active;
+      frame->ft_spoolup =
+        (ft_out.state == DRV_FLIGHT_THROTTLE_STATE_SPOOLUP) ? 1U : 0U;
+      frame->rc_attitude_debug_mode =
+        ((frame->rc_link_ok != 0U) &&
+         (ft_out.state == DRV_FLIGHT_THROTTLE_STATE_FLYING) &&
+         (ft_out.xy_mode == DRV_FLIGHT_THROTTLE_XY_ANGLE)) ? 1U : 0U;
+      frame->ft_xy_velocity_hold =
+        (ft_out.xy_mode == DRV_FLIGHT_THROTTLE_XY_VELOCITY) ? 1U : 0U;
+      /* LANDED：直通分支里电机必须是 ESC 最小，绝不能把杆位当油门。 */
+      frame->ft_landed_idle =
+        (ft_out.state == DRV_FLIGHT_THROTTLE_STATE_LANDED) ? 1U : 0U;
+      frame->ft_climb_rate_m_s = ft_out.climb_rate_m_s;
+      frame->ft_manual_force_n = ft_out.manual_force_n;
+      frame->ft_manual_integrate = ft_out.manual_integrate;
+      frame->ft_ground_spin_01 = ft_out.ground_spin_01;
+    }
+  }
   {
     APP_IdentAttObserve ident_att_obs = {0};
 
@@ -1898,6 +2189,10 @@ static void stabilizer_control_compute(StabilizerContext *ctx,
         ctx->height_origin_ready = 1U;
       }
       frame->relative_height_m = frame->range_height_m - ctx->height_origin_m;
+      if (frame->z_fusion != 0U) {
+        /* 融合开：换成估计器高度，原点照旧（首次有效测距锁存的那个）。 */
+        frame->relative_height_m = frame->z_est.z_m - ctx->height_origin_m;
+      }
       if (frame->relative_height_m < 0.0f) {
         frame->relative_height_m = 0.0f;
       }
@@ -1944,31 +2239,68 @@ static void stabilizer_control_compute(StabilizerContext *ctx,
       frame->attitude.acceleration_valid =
         ((nav_state.velocity_valid != 0U) &&
          (ctx->vertical_accel_ready != 0U)) ? 1U : 0U;
+      if (frame->z_fusion != 0U) {
+        /*
+         * 融合开：垂直速度换成估计器输出（测距无效时仍按上面清零）；速度环 D 项的测量
+         * 加速度改用 a_up − 零偏（IMU），不再对测距速度差分。
+         */
+        if (frame->range_height_valid != 0U) {
+          frame->attitude.vz_m_s = frame->z_est.vz_m_s;
+        }
+        frame->attitude.accel_m_s2[2] = frame->z_est.accel_m_s2;
+        frame->attitude.acceleration_valid =
+          ((nav_state.velocity_valid != 0U) && (frame->z_est.accel_valid != 0U)) ? 1U : 0U;
+      }
+
+      stabilizer_ft_fb_valid = frame->range_height_valid;
+      stabilizer_ft_fb_height_m = frame->relative_height_m;
+      stabilizer_ft_fb_vz_m_s = frame->attitude.vz_m_s;
 
       (void)DRV_COAX_CTRL_GetParam("coax.vel_loop_enable", &vel_loop_enable);
       velocity_loop_enabled = (vel_loop_enable >= 0.5f) ? 1U : 0U;
-      if (frame->rc_attitude_debug_mode != 0U) {
+      if ((frame->rc_attitude_debug_mode != 0U) || (frame->ft_spoolup != 0U)) {
         frame->reference.vx_m_s = 0.0f;
         frame->reference.vy_m_s = 0.0f;
         frame->reference.direct_attitude_target_valid = 1U;
         frame->reference.manual_total_force_valid = 1U;
-        frame->reference.manual_total_force_n =
-          DRV_COAX_CTRL_MotorPulseToTotalThrust(frame->rc_throttle_motor_us);
-        frame->reference.target_pitch_rad =
-          APP_RcIntent_TargetPitch(
-            frame->rc.norm[APP_RC_FUNC_PITCH],
-            STABILIZER_RC_ATTITUDE_TARGET_LIMIT_RAD);
-        frame->reference.target_roll_rad =
-          APP_RcIntent_TargetRoll(
-            frame->rc.norm[APP_RC_FUNC_ROLL],
-            STABILIZER_RC_ATTITUDE_TARGET_LIMIT_RAD);
+        if (frame->ft_spoolup != 0U) {
+          /* SPOOLUP：水平姿态目标 0/0，总推力走斜坡，速度环不跑。 */
+          frame->reference.manual_total_force_n = frame->ft_manual_force_n;
+          frame->reference.target_pitch_rad = 0.0f;
+          frame->reference.target_roll_rad = 0.0f;
+        } else {
+          frame->reference.manual_total_force_n =
+            (frame->ft_active_mode != 0U) ?
+              frame->ft_manual_force_n :    /* 角度档手控油门：状态机按杆算好（空中保底不停桨） */
+              DRV_COAX_CTRL_MotorPulseToTotalThrust(frame->rc_throttle_motor_us);
+          frame->reference.target_pitch_rad =
+            APP_RcIntent_TargetPitch(
+              frame->rc.norm[APP_RC_FUNC_PITCH],
+              stabilizer_manual_tilt_max_rad());
+          frame->reference.target_roll_rad =
+            APP_RcIntent_TargetRoll(
+              frame->rc.norm[APP_RC_FUNC_ROLL],
+              stabilizer_manual_tilt_max_rad());
+        }
         frame->reference.horizontal_velocity_valid = 0U;
         velocity_loop_enabled = 0U;
       } else {
+        /*
+         * 满杆速度 = 位置/速度环的水平限速 coax.pos_xy_vel_max_m_s：一个参数同时管"杆推到底多快"和
+         * "控制器最多给多快"，地面站参数页就能改，不用刷固件。作者 2026-10-01 自由飞后："速度保持那个
+         * 杆子推到底跑的还是很慢……目前可以飞了可以给速度提高到正常水平"（原为写死 0.40 m/s）。
+         */
+        float xy_stick_max_m_s = STABILIZER_XY_VEL_REF_MAX_M_S;
+        float xy_speed_param = 0.0f;
+        if ((DRV_COAX_CTRL_GetParam("coax.pos_xy_vel_max_m_s", &xy_speed_param) != 0U) &&
+            (xy_speed_param >= STABILIZER_XY_VEL_STICK_MIN_M_S) &&
+            (xy_speed_param <= STABILIZER_XY_VEL_STICK_MAX_M_S)) {
+          xy_stick_max_m_s = xy_speed_param;
+        }
         frame->reference.vx_m_s = APP_RcIntent_ForwardVelocity(
-          frame->rc.norm[APP_RC_FUNC_PITCH], STABILIZER_XY_VEL_REF_MAX_M_S);
+          frame->rc.norm[APP_RC_FUNC_PITCH], xy_stick_max_m_s);
         frame->reference.vy_m_s = APP_RcIntent_LeftVelocity(
-          frame->rc.norm[APP_RC_FUNC_ROLL], STABILIZER_XY_VEL_REF_MAX_M_S);
+          frame->rc.norm[APP_RC_FUNC_ROLL], xy_stick_max_m_s);
         frame->reference.horizontal_velocity_valid =
           ((velocity_loop_enabled != 0U) &&
            (nav_state.velocity_valid != 0U)) ? 1U : 0U;
@@ -1977,13 +2309,50 @@ static void stabilizer_control_compute(StabilizerContext *ctx,
       frame->reference.navigation_position_valid =
         ((nav_state.velocity_valid != 0U) &&
          (frame->range_height_valid != 0U)) ? 1U : 0U;
+      /* 分轴：水平看光流（上两项），竖直只看测距——光流失效时高度照常闭环。 */
+      frame->reference.split_axis_validity = 1U;
+      frame->reference.vertical_measurement_valid = frame->range_height_valid;
       frame->reference.position_control_bypass = 0U;
       frame->reference.vz_m_s = 0.0f;
       frame->reference.ax_m_s2 = 0.0f;
       frame->reference.ay_m_s2 = 0.0f;
       frame->reference.dt_sec = frame->ctrl_dt_sec;
 
-      if (velocity_loop_enabled != 0U) {
+      if ((velocity_loop_enabled != 0U) && (frame->ft_xy_velocity_hold != 0U)) {
+        /*
+         * 速度保持（CH6 中位）：位置参考每拍跟到当前估计，位置误差恒为 0，位置环只剩杆给的
+         * 速度前馈——即"速度为 0 闭环、没有位置 P"。ready 清零，切回定点时从切换那一刻的位置起锁。
+         */
+        ctx->position_ref_x_m = position_state_x_m;
+        ctx->position_ref_y_m = position_state_y_m;
+        ctx->position_ref_xy_ready = 0U;
+        ctx->xy_brake_pending = 1U;          /* 切到定点档时先刹停再锁位，不在运动中锁住再被拉回 */
+        ctx->xy_brake_elapsed_s = 0.0f;
+      } else if ((velocity_loop_enabled != 0U) &&
+                 ((frame->reference.vx_m_s != 0.0f) || (frame->reference.vy_m_s != 0.0f) ||
+                  (ctx->xy_brake_pending != 0U))) {
+        /*
+         * 定点档（CH6 低）打杆与松杆刹车：打杆时同速度保持（位置参考跟到估计，杆直接给速度）；
+         * 松杆后速度目标为 0 刹车，速度降到 LOCK_SPEED 以下（或刹满 BRAKE_MAX）才在当时位置锁位。
+         * 旧做法让位置参考按杆速一直往前积分，松杆时参考已跑到前面、机体带着约 0.25 s 滞后冲过去
+         * 再被拉回（2026-10-01 自由飞数据仿真松杆过冲约 0.35 m）；作者"要定点就能定点，要移动就最快响应"。
+         */
+        if ((frame->reference.vx_m_s != 0.0f) || (frame->reference.vy_m_s != 0.0f)) {
+          ctx->xy_brake_pending = 1U;
+          ctx->xy_brake_elapsed_s = 0.0f;
+        } else {
+          ctx->xy_brake_elapsed_s += frame->ctrl_dt_sec;
+          if (((frame->attitude.vx_m_s * frame->attitude.vx_m_s) +
+               (frame->attitude.vy_m_s * frame->attitude.vy_m_s) <
+               (STABILIZER_XY_LOCK_SPEED_M_S * STABILIZER_XY_LOCK_SPEED_M_S)) ||
+              (ctx->xy_brake_elapsed_s >= STABILIZER_XY_BRAKE_MAX_S)) {
+            ctx->xy_brake_pending = 0U;      /* 下一拍走锁位分支，从那时的位置起锁 */
+          }
+        }
+        ctx->position_ref_x_m = position_state_x_m;
+        ctx->position_ref_y_m = position_state_y_m;
+        ctx->position_ref_xy_ready = 0U;
+      } else if (velocity_loop_enabled != 0U) {
         if (ctx->position_ref_xy_ready == 0U) {
           ctx->position_ref_x_m = position_state_x_m;
           ctx->position_ref_y_m = position_state_y_m;
@@ -2011,6 +2380,7 @@ static void stabilizer_control_compute(StabilizerContext *ctx,
         ctx->position_ref_x_m = position_state_x_m;
         ctx->position_ref_y_m = position_state_y_m;
         ctx->position_ref_xy_ready = 0U;
+        ctx->xy_brake_pending = 0U;
       }
 
       frame->attitude.x_m = position_state_x_m;
@@ -2027,7 +2397,7 @@ static void stabilizer_control_compute(StabilizerContext *ctx,
         (velocity_loop_enabled != 0U) ? 1.0f : 0.0f;
     }
     frame->reference.az_m_s2 = 0.0f;
-    if (frame->rc_attitude_debug_mode != 0U) {
+    if ((frame->rc_attitude_debug_mode != 0U) || (frame->ft_spoolup != 0U)) {
       frame->reference.z_m = frame->attitude.z_m;
       frame->reference.vz_m_s = frame->attitude.vz_m_s;
       ctx->height_ref_m = frame->relative_height_m;
@@ -2044,7 +2414,7 @@ static void stabilizer_control_compute(StabilizerContext *ctx,
         ctx->height_ref_m =
           stabilizer_clamp_f32(ctx->height_ref_m,
                                0.0f,
-                               STABILIZER_Z_REF_MAX_M);
+                               stabilizer_alt_max_m());
         ctx->position_ref_z_m = ctx->height_ref_m;
         ctx->position_ref_z_ready = 1U;
       } else {
@@ -2053,16 +2423,18 @@ static void stabilizer_control_compute(StabilizerContext *ctx,
           ctx->height_ref_m =
             stabilizer_clamp_f32(ctx->height_ref_m,
                                  0.0f,
-                                 STABILIZER_Z_REF_MAX_M);
+                                 stabilizer_alt_max_m());
           ctx->position_ref_z_ready = 1U;
         }
         ctx->height_ref_m +=
-          stabilizer_rc_throttle_height_rate_m_s(
-            frame->rc.norm[APP_RC_FUNC_THROTTLE]) * frame->ctrl_dt_sec;
+          ((frame->ft_active_mode != 0U) ?
+             frame->ft_climb_rate_m_s :
+             stabilizer_rc_throttle_height_rate_m_s(
+               frame->rc.norm[APP_RC_FUNC_THROTTLE])) * frame->ctrl_dt_sec;
         ctx->height_ref_m =
           stabilizer_clamp_f32(ctx->height_ref_m,
                                0.0f,
-                               STABILIZER_Z_REF_MAX_M);
+                               stabilizer_alt_max_m());
         ctx->position_ref_z_m = ctx->height_ref_m;
       }
       if ((frame->range_height_valid == 0U) ||
@@ -2105,11 +2477,14 @@ static void stabilizer_control_compute(StabilizerContext *ctx,
       schedule.velocity_dt_s = frame->cascade_schedule.velocity_dt_s;
       schedule.attitude_dt_s = frame->cascade_schedule.attitude_dt_s;
       schedule.rate_dt_s = frame->cascade_schedule.rate_dt_s;
+      /* 角度档手控油门（PX4 自稳式）在推力够大时也积分；SPOOLUP 与旧调试档仍每拍清。 */
       schedule.integrator_enable =
         ((frame->rc_armed != 0U) && (frame->rc_link_ok != 0U) &&
          (frame->imu_control_valid != 0U) &&
-         (frame->reference.direct_attitude_target_valid == 0U) &&
-         (frame->reference.manual_total_force_valid == 0U)) ? 1U : 0U;
+         (((frame->reference.direct_attitude_target_valid == 0U) &&
+           (frame->reference.manual_total_force_valid == 0U)) ||
+          ((frame->rc_attitude_debug_mode != 0U) &&
+           (frame->ft_manual_integrate != 0U)))) ? 1U : 0U;
       schedule.integrator_freeze =
         (schedule.integrator_enable == 0U) ? 1U : 0U;
       schedule.integrator_reset =
@@ -2240,6 +2615,101 @@ static uint16_t stabilizer_rotor_pulse_readback(uint8_t role,
   const uint8_t channel = DRV_PropMap_EscChannelForRole(role);
 
   return BSP_PWM_GetEscPulse((channel != 0U) ? channel : fallback_channel);
+}
+
+/*
+ * 悬停推力在线学习的一拍（app_hover_thrust.h）。不回写 coax.hover_thrust_n；学到的值由紧随其后的 APP_HoverAdapt_Update 接进控制器。
+ *
+ * 放在电机仲裁之后、从 BSP 回读"这一拍实际发出去的脉宽"：生产的稳定混控、辨识自动油门
+ * （ALT/SYSID）和遥控直通油门三条路径提交后都落在同一处，取的是同一个口径，不必在仲裁
+ * 分支里各埋一份。推力 = 上下桨脉宽各按"同脉宽合推力"换算的平均（共轴互扰不计，差速幅度小）。
+ * 只有 motor_output_reason 属于"已解锁 + 链路正常"那一支时才算有下发推力。
+ * 封顶：生产路径看 ctrl_out.thrust_saturated；自动油门路径 app_sysid 的封顶标志不对外，
+ * 按它同一个公式（脉宽 ≥ 最高油门 % 对应的封顶脉宽）判。
+ */
+/*
+ * 飞行日志子分频：500 Hz 环每 4 拍取一次四分之一相位（125 Hz），再每 N 次记 1 次（125/N Hz）。
+ * 返回 0 的拍整个日志块都不执行，也不调用 APP_FlightLog_Observe——
+ * Observe(NULL) 会把 recording 清零并请求 flush，跳拍调用会反复触发 flush。
+ */
+static uint8_t stabilizer_flight_log_subdiv_due(StabilizerContext *ctx)
+{
+  uint8_t subdiv = APP_FlightLog_GetSubdiv();
+
+  ctx->flight_log_subdiv_count++;
+  if (ctx->flight_log_subdiv_count >= subdiv) {
+    ctx->flight_log_subdiv_count = 0U;
+    return 1U;
+  }
+  return 0U;
+}
+
+/* 上锁后尾巴按实际记录频率保持约 1 s（125/N 条）。 */
+static uint16_t stabilizer_flight_log_tail_records(void)
+{
+  return (uint16_t)(STABILIZER_FLIGHT_LOG_TAIL_RECORDS / APP_FlightLog_GetSubdiv());
+}
+
+static void stabilizer_hover_thrust_step(const StabilizerContext *ctx,
+                                         const StabilizerControlFrame *frame)
+{
+  APP_HoverThrustInput in;
+  const DRV_Airframe_Params *airframe = DRV_Airframe_Get();
+  const APP_FlightLogMotorOutputReason reason = frame->motor_output_reason;
+  const uint8_t production_mix =
+    ((reason == APP_FLIGHT_LOG_MOTOR_REASON_STABILIZED_MIX) ||
+     (reason == APP_FLIGHT_LOG_MOTOR_REASON_ATTITUDE_DEBUG)) ? 1U : 0U;
+  const uint8_t flight_branch =
+    ((production_mix != 0U) ||
+     (reason == APP_FLIGHT_LOG_MOTOR_REASON_IDENT_DIRECT) ||
+     (reason == APP_FLIGHT_LOG_MOTOR_REASON_IMU_INVALID_DIRECT) ||
+     (reason == APP_FLIGHT_LOG_MOTOR_REASON_DIRECT_THROTTLE)) ? 1U : 0U;
+  float hover_cfg_n = 0.0f;
+  uint8_t saturated = 0U;
+
+  in.thrust_n = 0.0f;
+  if (flight_branch != 0U) {
+    const uint16_t upper_us =
+      stabilizer_rotor_pulse_readback((uint8_t)DRV_PROP_ROLE_UPPER, 1U);
+    const uint16_t lower_us =
+      stabilizer_rotor_pulse_readback((uint8_t)DRV_PROP_ROLE_LOWER, 2U);
+
+    in.thrust_n = 0.5f * (DRV_COAX_CTRL_MotorPulseToTotalThrust(upper_us) +
+                          DRV_COAX_CTRL_MotorPulseToTotalThrust(lower_us));
+    if (production_mix != 0U) {
+      saturated = frame->ctrl_out.thrust_saturated;
+    } else if (frame->sysid_running != 0U) {
+      float sysid_target_n = 0.0f;
+      float sysid_max_pct = 100.0f;
+      const float span = (float)(BSP_PWM_ESC_MAX_US - BSP_PWM_ESC_MIN_US);
+
+      APP_SysId_GetThrottle(&sysid_target_n, &sysid_max_pct);
+      saturated = (upper_us >= (uint16_t)((float)BSP_PWM_ESC_MIN_US +
+                                          (sysid_max_pct * span / 100.0f) + 0.5f)) ? 1U : 0U;
+    }
+  }
+  (void)DRV_COAX_CTRL_GetParam("coax.hover_thrust_n", &hover_cfg_n);
+  in.now_ms = frame->now_ms;
+  in.dt_s = frame->ctrl_dt_sec;
+  /* 上锁时电机输出也走这几支（怠速脉宽），只看 flight_branch 会恒判"已解锁"——2026-09-30 首次上板
+   * 上锁状态下 HOVER? gate 的解锁位是 1，支撑面高度因此不会在上锁时重锁存。必须叠加真实解锁。 */
+  in.armed = ((frame->rc_armed != 0U) && (flight_branch != 0U)) ? 1U : 0U;
+  in.thrust_valid = flight_branch;
+  in.saturated = saturated;
+  in.roll_rad = ctx->roll_control * STABILIZER_DEG_TO_RAD;
+  in.pitch_rad = ctx->pitch_control * STABILIZER_DEG_TO_RAD;
+  in.a_up_m_s2 = frame->az_up_m_s2;
+  in.accel_valid = frame->imu_control_valid;
+  in.range_valid = frame->range_raw_valid;
+  in.range_m = frame->range_raw_m;
+  in.gravity_m_s2 = airframe->gravity_m_s2;
+  in.hover_cfg_n = hover_cfg_n;
+  in.mass_kg = (DRV_Airframe_IsValid() != 0U) ? airframe->mass_kg : 0.0f;
+  APP_HoverThrust_Step(&in);
+  /* 学到的悬停推力接进控制器（收敛才用、±15%、慢过渡、每次解锁重学；app_hover_adapt.h），下一拍生效。 */
+  APP_HoverAdapt_Update(frame->ctrl_dt_sec, frame->rc_armed,
+                        ((frame->ident_running != 0U) || (frame->servo_cal_active != 0U) ||
+                         (APP_ThrustBench_IsActive() != 0U) || (APP_PropSpin_IsActive() != 0U)) ? 1U : 0U);
 }
 
 static void stabilizer_control_commit(StabilizerContext *ctx,
@@ -2412,20 +2882,40 @@ static void stabilizer_control_commit(StabilizerContext *ctx,
         (frame->imu_control_valid != 0U)) {
       stabilizer_commit_rotor_pulses(frame->ctrl_out.motor_upper_us,
                                      frame->ctrl_out.motor_lower_us);
-      frame->motor_output_reason = (frame->rc_attitude_debug_mode != 0U) ?
-        APP_FLIGHT_LOG_MOTOR_REASON_ATTITUDE_DEBUG :
-        APP_FLIGHT_LOG_MOTOR_REASON_STABILIZED_MIX;
+      frame->motor_output_reason = (frame->ft_spoolup != 0U) ?
+        APP_FLIGHT_LOG_MOTOR_REASON_SPOOLUP :
+        ((frame->rc_attitude_debug_mode != 0U) ?
+          APP_FLIGHT_LOG_MOTOR_REASON_ATTITUDE_DEBUG :
+          APP_FLIGHT_LOG_MOTOR_REASON_STABILIZED_MIX);
     } else {
       uint16_t direct_us = frame->rc_throttle_motor_us;
-      uint16_t sysid_motor_us;
+      uint16_t direct_lower_us;
+      uint16_t sysid_upper_us;
+      uint16_t sysid_lower_us;
 
-      /* 光杆辨识的自动油门只在这一支（已解锁 + 链路正常）生效；上锁/失联走下面的分支。 */
-      if ((frame->sysid_running != 0U) && (APP_SysId_GetMotorPulse(&sysid_motor_us) != 0U)) {
-        direct_us = sysid_motor_us;
+      direct_lower_us = direct_us;
+      /* 光杆辨识的自动油门只在这一支（已解锁 + 链路正常）生效；上锁/失联走下面的分支。
+       * 吊绳偏航辨识（YAW）上下桨脉宽不同（差速出偏航力矩），其余模式两路相同。 */
+      if ((frame->sysid_running != 0U) &&
+          (APP_SysId_GetMotorPulsePair(&sysid_upper_us, &sysid_lower_us) != 0U)) {
+        direct_us = sysid_upper_us;
+        direct_lower_us = sysid_lower_us;
       }
-      BSP_PWM_SetEscPulse(1, direct_us);
-      BSP_PWM_SetEscPulse(2, direct_us);
-      if (frame->ident_running != 0U) {
+      if (frame->ft_landed_idle != 0U) {
+        /* 飞行油门模式 LANDED：地面跟杆慢转（上限 GROUND_MAX，飞不起来），杆位不直接当油门 */
+        direct_us = stabilizer_rc_throttle_to_motor_pulse(frame->ft_ground_spin_01);
+        direct_lower_us = direct_us;
+      }
+      if (direct_us == direct_lower_us) {
+        BSP_PWM_SetEscPulse(1, direct_us);
+        BSP_PWM_SetEscPulse(2, direct_us);
+      } else {
+        /* 差速只发生在辨识 YAW：按桨位标定把上/下桨脉宽送到各自的 ESC 通道。 */
+        stabilizer_commit_rotor_pulses(direct_us, direct_lower_us);
+      }
+      if (frame->ft_landed_idle != 0U) {
+        frame->motor_output_reason = APP_FLIGHT_LOG_MOTOR_REASON_LANDED_IDLE;
+      } else if (frame->ident_running != 0U) {
         frame->motor_output_reason = APP_FLIGHT_LOG_MOTOR_REASON_IDENT_DIRECT;
       } else if ((frame->rc_control_motor_mix_allowed != 0U) &&
                  (frame->imu_control_valid == 0U)) {
@@ -2525,7 +3015,9 @@ static void stabilizer_control_commit(StabilizerContext *ctx,
     APP_Acceptance_PublishObservation(&observation);
   }
 
-  if ((ctx->flight_log_divider & 0x03U) == 0U) {
+  stabilizer_hover_thrust_step(ctx, frame);
+
+  if (((ctx->flight_log_divider & 0x03U) == 0U) && (stabilizer_flight_log_subdiv_due(ctx) != 0U)) {
     APP_FlightLogSnapshot flog_snapshot;
     APP_ServoFeedbackLogSample servo_feedback_sample;
     APP_OPTICAL_FLOW_Status flow_status;
@@ -2679,9 +3171,23 @@ static void stabilizer_control_commit(StabilizerContext *ctx,
     DRV_COAX_CTRL_GetLastDebug(&flog_snapshot.ctrl_debug);
     flog_snapshot.z_ref_m = ctx->vofa_debug.altitude_ref_m;
     flog_snapshot.ident_att = frame->ident_att_log;
+    /* v12 尾块：低字节标志由模块取，高字节是本拍稳定器自己的有效位。 */
+    APP_FlightLogNav_Capture(
+      &flog_snapshot.nav,
+      (uint16_t)(
+        ((frame->range_height_valid != 0U) ?
+           APP_FLIGHT_LOG_NAV_FLAG_RANGE_HEIGHT_VALID : 0U) |
+        ((frame->reference.navigation_position_valid != 0U) ?
+           APP_FLIGHT_LOG_NAV_FLAG_POSITION_VALID : 0U) |
+        ((frame->reference.horizontal_velocity_valid != 0U) ?
+           APP_FLIGHT_LOG_NAV_FLAG_HORIZ_VEL_VALID : 0U) |
+        ((frame->attitude.acceleration_valid != 0U) ?
+           APP_FLIGHT_LOG_NAV_FLAG_ACCEL_VALID : 0U) |
+        ((frame->rc_attitude_debug_mode != 0U) ?
+           APP_FLIGHT_LOG_NAV_FLAG_ATTITUDE_DEBUG : 0U)));
 
     if (flight_log_active != 0U) {
-      ctx->flight_log_tail_records = STABILIZER_FLIGHT_LOG_TAIL_RECORDS;
+      ctx->flight_log_tail_records = stabilizer_flight_log_tail_records();
     } else if (ctx->flight_log_tail_records > 0U) {
       ctx->flight_log_tail_records--;
       flight_log_should_record = 1U;
@@ -2703,10 +3209,17 @@ static void stabilizer_control_step(StabilizerContext *ctx)
   frame.now_us = SVC_Timestamp_Us();
   frame.now_ms = SVC_Timestamp_Ms();
   SVC_FlowNav_GetState(&navigation_state);
+  /*
+   * 位置/速度环（含高度）在光流速度或测距任一有新样本时推进：令牌把两个样本时刻拼在一起，任一变化即"新"。
+   * 2026-10-01 自由飞：机身快速自旋时光流速度判无效 1.7 s，旧令牌只认光流，高度环随之冻结在最大推力上
+   * 冲到 1.7 m；分轴有效性见 DRV_COAX_CTRL_Reference.split_axis_validity。
+   */
   APP_ControlScheduler_Step(&ctx->control_scheduler,
                             frame.now_us,
-                            (uint64_t)navigation_state.velocity_sample_ms,
-                            navigation_state.velocity_valid,
+                            (((uint64_t)navigation_state.height_sample_ms) << 32) |
+                              (uint64_t)navigation_state.velocity_sample_ms,
+                            ((navigation_state.velocity_valid != 0U) ||
+                             (navigation_state.height_valid != 0U)) ? 1U : 0U,
                             &frame.cascade_schedule);
 
   if (frame.cascade_schedule.rate_due != 0U) {

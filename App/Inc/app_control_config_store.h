@@ -44,7 +44,29 @@
  * 从 v24 迁移过来时按冻结的 v24 块读前四项，第二级落回默认（notch2_hz = 0 关、
  * notch2_q = 1.0，APP_ControlConfigCompat_ShapingV24ToCurrent）；v23 及更早整块落回默认。
  */
-#define APP_CONTROL_CFG_VERSION     25U
+/*
+ * v26（R-FLOWMOUNT-1）：机体块尾部追加光流安装方向两项（airframe.flow_mount_yaw_deg /
+ * flow_mount_mirror），前 36 项原位不动。v20～v25 的记录按冻结的 v25 机体块
+ * （APP_ControlAirframeParamsV25）读，这两项落回 0/0（恒等变换，就是旧固件的行为），
+ * 其余参数原样保留（app_control_config_store.c 的 config_apply_airframe_v25）。
+ * 记录因此从 800 字节变成 808 字节，提交字的位置跟着从 800 挪到 832——所以读取时
+ * 提交字位置按**那条记录自己的 size** 算，见 app_control_config_store.c 的
+ * config_commit_offset()。
+ */
+/* v27: 末尾追加独立的近水平 XY 磁航向块；v26 及更早无此块，上电落回关闭。 */
+/*
+ * v28（R-ALTID-1）：XY 块之后追加竖直通道块（APP_ControlZChannelParams：悬停推力与竖直速度
+ * 融合开关），记录 828 → 836 字节，提交字 832 → 864。v27 及更早落回驱动默认（悬停推力 0、融合开）。
+ */
+/*
+ * v29：竖直通道块之后追加飞行限幅块（APP_ControlFlightLimitParams：高度上限、角度档满杆倾角、
+ * 偏航满杆转速），记录 836 → 848 字节，提交字仍在 864。v28 及更早落回驱动默认（= 原写死值）。
+ */
+#define APP_CONTROL_CFG_VERSION     29U
+#define APP_CONTROL_CFG_VERSION_V28 28U
+#define APP_CONTROL_CFG_VERSION_V27 27U
+#define APP_CONTROL_CFG_VERSION_V26 26U
+#define APP_CONTROL_CFG_VERSION_V25 25U
 #define APP_CONTROL_CFG_VERSION_V24 24U
 #define APP_CONTROL_CFG_VERSION_V23 23U
 #define APP_CONTROL_CFG_VERSION_V22 22U

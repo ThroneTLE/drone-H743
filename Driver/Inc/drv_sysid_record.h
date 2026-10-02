@@ -72,6 +72,16 @@ typedef enum {
  * 封顶时 thrust 记的是封顶后实际下发脉宽对应的推力，不是高度环要的那个值。
  */
 #define DRV_SYSID_FLAG_THRUST_CAPPED 0x0200U
+/*
+ * 水平槽 XY 辨识（SYSID MODE XY，模式 5）：推力恒为托住机体的 target_n，输入是沿槽的倾角偏置；
+ * 尾部 7 个字段含义见 doc/sysid-xy-contract.md（height=沿槽位置、vz=沿槽速度等）。
+ */
+#define DRV_SYSID_FLAG_XY           0x0400U
+/*
+ * 吊绳偏航辨识（SYSID MODE YAW，模式 6）：推力恒为配置的总推力 F（< 机重），输入是上下桨差速（ΔT）或偏航角速度参考；
+ * 尾部 7 个字段含义见 doc/sysid-yaw-contract.md（height=ψ、vz=陀螺 z、vz_sp=r、az=ΔT 等）。
+ */
+#define DRV_SYSID_FLAG_YAW          0x0800U
 
 /*
  * 物理量形态的一条样本。打包时按各字段的固定缩放转成定点，**饱和而不是回绕**：

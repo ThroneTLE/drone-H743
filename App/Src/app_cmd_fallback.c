@@ -58,6 +58,12 @@ void app_control_handle_unclaimed(char **tokens, uint32_t count)
     if (app_control_handle_esc_edt(tokens, count) != 0U) {
         return;
     }
+    if (app_control_handle_hover(tokens, count) != 0U) { return; }
+    if (app_control_handle_imuzero(tokens, count) != 0U) { return; }
+    if (app_control_handle_flograte(tokens, count) != 0U) { return; }
+    if (app_control_handle_flogdump(tokens, count) != 0U) { return; }
+    if (app_control_handle_thrmode(tokens, count) != 0U) { return; }
+    if (app_control_handle_flowcap(tokens, count) != 0U) { return; }
     if (APP_RpmNotch_Command(tokens, count) != 0U) { return; }
     if (APP_ServoHz_Command(tokens, count) != 0U) { return; }
     if (APP_ServoBacklash_Command(tokens, count) != 0U) { return; }

@@ -160,7 +160,13 @@ def test_flash_config_preserves_current_record_and_migrates_v15_coax_tunables() 
     # 2026-09-20（R-MAG-1）：v23 在记录尾部追加磁力计校准块，当前版本号随之
     # 推进到 23；v22 → v23 的覆盖见下一条测试。
     # 2026-09-28：v24 追加指令整形/出口陷波块；同日晚 v25 在该块尾部追加第二级出口陷波。
-    assert "#define APP_CONTROL_CFG_VERSION     25U" in source
+    # 2026-09-29（R-FLOWMOUNT-1）：v26 在机体块尾部追加光流安装两项，v25 由 config_read_v25 读取、两项落回 0/0。
+    # 2026-09-30（R-ALTID-1）：v28 在 XY 块后追加竖直通道块，v27 由 config_read_v27 读取。
+    assert "#define APP_CONTROL_CFG_VERSION     29U" in source
+    assert "#define APP_CONTROL_CFG_VERSION_V28 28U" in source
+    assert "#define APP_CONTROL_CFG_VERSION_V27 27U" in source
+    assert "#define APP_CONTROL_CFG_VERSION_V26 26U" in source
+    assert "#define APP_CONTROL_CFG_VERSION_V25 25U" in source
     assert "#define APP_CONTROL_CFG_VERSION_V24 24U" in source
     assert "#define APP_CONTROL_CFG_VERSION_V23 23U" in source
     assert "#define APP_CONTROL_CFG_VERSION_V19 19U" in source
@@ -173,7 +179,8 @@ def test_flash_config_preserves_current_record_and_migrates_v15_coax_tunables() 
     assert "case APP_CONTROL_CFG_VERSION:" in source
     assert "case APP_CONTROL_CFG_VERSION_V16:" in source
     assert "case APP_CONTROL_CFG_VERSION_V15:" in source
-    assert "APP_CONTROL_RECORD_TYPE(APP_ControlFlashRecord," in source
+    assert "APP_CONTROL_RECORD_TYPE(APP_ControlFlashRecordV26," in source
+    assert "} APP_ControlFlashRecord;" in source
     assert "float vel_z_ki;" in source
     assert "current->vel_z_ki" not in source
     assert "APP_ControlConfigStore_CaptureTunables(&record.coax_tunables);" in source
@@ -215,7 +222,9 @@ def test_the_v22_reader_keeps_the_airframe_block_and_defaults_the_new_mag_block(
     reader = source[source.index("APP_CONTROL_DEFINE_LEGACY_READER(config_read_v22"):]
     reader = reader[:reader.index("APP_CONTROL_DEFINE_LEGACY_READER(config_read_v21")]
 
-    assert "DRV_Airframe_SetParams(&record.airframe);" in reader
+    # v26 起旧记录的机体块是冻结的 v25 布局，经 config_apply_airframe_v25 转成当前结构体后
+    # 同样整块交给 DRV_Airframe_SetParams（光流安装两项落回 0/0）。
+    assert "config_apply_airframe_v25(&record.airframe);" in reader
     assert "app_cmd_magcal_apply_config(NULL);" in reader
 
 

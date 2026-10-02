@@ -46,6 +46,9 @@ typedef struct {
 typedef struct {
     /* SVC_Timestamp_Us() 在本次采样时刻的值；0 = 从未成功采样过。 */
     uint64_t timestamp_us;
+    /* 芯片贴装变换后、三维 MAGCAL 之前的原始机体 FLU 磁场；仅供
+     * 独立的近水平 XY RAM 试验模式使用，不能冒充已校准三维数据。 */
+    float raw_field_flu_mgauss[3];
     /* 机体 FLU，毫高斯；calibrated==0 时是恒等变换后的原始贴装值。 */
     float field_flu_mgauss[3];
     /* 本次（或最近一次）BSP 读取是否健康。 */

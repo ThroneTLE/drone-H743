@@ -63,16 +63,17 @@
  *
  * ──────────────── 高度辨识（ALT，模式 4，R-ALTID-1，2026-09-29） ────────────────
  *
- * 杆轴装在竖直槽里，机体连杆一起上下动。序列、高度环（生产 drv_position_control 的 z 通道、
- * 生产参数）与三种注入（force/vel/pos）都在 app_sysid_alt.h/.c；本模块只把它接到已有的
- * 安全门、姿态链（与 ANGLE 同一条，目标恒为 0）、采样网格和油门出口上。要求自动油门
- * （target_n>0 只作开关）；全程采样，含起升与回落。
+ * 杆轴装在竖直槽里，机体连杆一起上下动。force 开环对象辨识、vel/pos 生产 Z 高度环
+ * 候选验证的序列都在 app_sysid_alt.h/.c；本模块只把它接到已有的
+ * 安全门、姿态链（与 ANGLE 同一条，目标恒为 0）、采样网格和油门出口上。force 使用
+ * target_n 作离底搜索合推力上限，离底后锁存已下发的 LUT 推力作短激励基线；vel/pos
+ * 保留生产 Z 闭环。全程采样，含起升与回落。
  *
  * 上/下桨 eRPM 在采样拍从双向 DShot 回包快照里取（与推力查补表同一份数据、同一
  * 新鲜度），桨位由桨叶标定（drv_prop_map）按角色查通道。它只进记录、不进任何
  * 判据，所以不占稳定环填的观测结构。
  *
- * 不写 Flash。整定出来的候选增益由上位机经 `PARAM SET` 写 RAM 实时验证，
+ * 不写 Flash。整定出来的候选增益由上位机经 `SYSID PARAM` 只写 RAM 实时验证，
  * 是否落盘是作者事后的单独动作。
  */
 
@@ -112,7 +113,9 @@ typedef enum {
     APP_SYSID_RATE,
     APP_SYSID_ANGLE,
     APP_SYSID_SERVO,         /* 3：电机不转，只动舵机（见文件头） */
-    APP_SYSID_ALT            /* 4：光杆台架高度辨识（见文件头与 app_sysid_alt.h） */
+    APP_SYSID_ALT,           /* 4：光杆台架高度辨识（见文件头与 app_sysid_alt.h） */
+    APP_SYSID_XY,            /* 5：水平槽 XY 速度/位置辨识（app_sysid_xy.h） */
+    APP_SYSID_YAW            /* 6：吊绳偏航辨识（app_sysid_yaw.h）：上下桨差速，舵机全程中位 */
 } APP_SysIdMode;
 uint8_t APP_SysId_SetMode(APP_SysIdMode mode, float angle_amplitude_rad);
 
@@ -138,7 +141,11 @@ void    APP_SysId_GetThrottle(float *target_n, float *max_pct);
 /* 本拍辨识是否接管电机；是则给出两路共用的脉宽。只由稳定环的"已解锁+链路正常"分支调用。
  * SERVO 模式恒返回 0。 */
 uint8_t APP_SysId_GetMotorPulse(uint16_t *pulse_us);
+/* 同上，但分上/下桨给：YAW 模式两桨脉宽不同（差速出偏航力矩），其余模式两者逐位相同（= GetMotorPulse）。 */
+uint8_t APP_SysId_GetMotorPulsePair(uint16_t *upper_us, uint16_t *lower_us);
 APP_SysIdPhase APP_SysId_GetPhase(void);
+/* ALT/XY 台架模式本轮的姿态保持目标 att0（控制角坐标，rad）；诊断与主机测试用。 */
+void APP_SysId_GetBenchAtt0(float *roll_rad, float *pitch_rad);
 
 /* 一个控制拍交给辨识的全部外界信息。调用方（稳定环）负责填，本模块不自己取数。 */
 typedef struct {
@@ -164,15 +171,37 @@ typedef struct {
      * 高度辨识（ALT）用，稳定环每拍都填；非 ALT 轮本模块一概不读（记录里那 7 个字段填 0）。
      * height_m 是 SVC_FlowNav 滤波后的 TOF 高度——生产 relative_height 减上电原点之前的
      * 那个量（ALT 全程以开跑高度为基准，原点常数不影响控制）；height_raw_m 是滤波前的
-     * 原始测距；vz_m_s 与生产高度环同源。az_m_s2 的来源见 APP_SysIdAlt_VerticalAccel。
+     * 原始测距；vz_m_s 与生产高度环同源。height_sample_ms 是独立测距样本的 HAL ms
+     * 更新 token（不是当前控制拍时刻），用来判断新样本及 100 ms 新鲜度。
+     * az_m_s2 的来源见 APP_SysIdAlt_VerticalAccel。
      * vbat_v 取电池快照（不新鲜时 0）。
      */
     uint8_t  height_valid;
+    uint32_t height_sample_ms;
     float    height_m;
     float    height_raw_m;
     float    vz_m_s;
     float    az_m_s2;
     float    vbat_v;
+    /*
+     * 水平槽 XY 辨识用（app_sysid_xy.h），稳定环每拍只读填写，非 XY 轮本模块一概不读。
+     * flow_valid = 光流速度有效且测距有效（导航位置有效的同一判据）；flow_sample_ms 是光流速度
+     * 样本的 HAL ms 更新 token（不是控制拍时刻），用来判断 200 ms 新鲜度；速度取 EKF 融合后的
+     * 水平速度、位置取其限幅累计（SVC_FlowNav_GetVelocity/GetPosition），规范 FLU（x 前 / y 左）。
+     */
+    uint8_t  flow_valid;
+    uint32_t flow_sample_ms;
+    float    flow_vel_m_s[2];
+    float    flow_pos_m[2];
+    /*
+     * 重力水平在 roll_rad/pitch_rad 这套坐标里的位置（= −开机姿态零点）。roll_rad/pitch_rad
+     * 是扣过开机零点的控制角，开机时机体挂在台架上就把悬挂姿态当成了 0。XY 绕杆轴的保持目标
+     * 要用真水平，否则推力一直偏一个悬挂角（2026-09-30 台架：+2.2°，浮起推力下自己溜 11 cm）。
+     * level_valid=0（零点未就绪）时 XY 退回开跑姿态。
+     */
+    uint8_t  level_valid;
+    float    level_roll_rad;
+    float    level_pitch_rad;
 } APP_SysIdObserve;
 
 /* 采样率档位。500 Hz 是控制拍本身，再高没有意义（没有新样本）。 */

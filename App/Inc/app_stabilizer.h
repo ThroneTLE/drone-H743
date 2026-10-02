@@ -106,6 +106,9 @@ uint8_t APP_Stabilizer_ReadFlowCompensationSnapshot(
 uint8_t APP_Stabilizer_IsImuFrameArmLocked(void);
 /* Latest armed state as seen by the control loop; used to gate config writes. */
 uint8_t APP_Stabilizer_IsArmed(void);
+/* IMUZERO：请求姿态零点清零重新采样（静止 1.5 s，需陀螺零偏已就绪、融合误差 ≤3°）。 */
+void APP_Stabilizer_RequestAttitudeRezero(void);
+uint8_t APP_Stabilizer_IsAttitudeZeroReady(void);
 
 /*
  * 解锁状态快照，供上位机在主页面显眼处显示"能不能解锁、为什么不能"。
@@ -160,6 +163,18 @@ typedef struct {
 } APP_Stabilizer_MagFusionStatus;
 
 void APP_Stabilizer_GetMagFusionStatus(APP_Stabilizer_MagFusionStatus *out);
+
+/* RAM-only XY aid diagnosis. Counters count fresh magnetic samples, not
+ * high-rate control updates that may read the same snapshot repeatedly. */
+typedef struct {
+  uint32_t ready_count;
+  uint32_t tilt_count;
+  float z_mean_mgauss;
+  uint8_t enabled;
+  uint8_t last_result;
+} APP_Stabilizer_MagXYStatus;
+
+void APP_Stabilizer_GetMagXYStatus(APP_Stabilizer_MagXYStatus *out);
 
 void APP_Stabilizer_Run(osSemaphoreId_t imu_ready_sem,
                         osMessageQueueId_t sensor_sample_q,

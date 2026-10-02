@@ -139,6 +139,15 @@ uint8_t app_control_handle_magcal(char **tokens, uint32_t count);
  */
 uint8_t app_control_handle_currprobe(char **tokens, uint32_t count);
 
+/* `HOVER?` / `HOVER RESET`：悬停推力在线估计（见 App/Src/app_cmd_hover.c）。 */
+uint8_t app_control_handle_hover(char **tokens, uint32_t count);
+uint8_t app_control_handle_imuzero(char **tokens, uint32_t count);
+uint8_t app_control_handle_flograte(char **tokens, uint32_t count);
+uint8_t app_control_handle_flogdump(char **tokens, uint32_t count);
+uint8_t app_control_handle_thrmode(char **tokens, uint32_t count);
+/* `FLOWCAP START|?|DUMP`：光流逐帧抓取诊断（见 App/Src/app_cmd_flowcap.c）。 */
+uint8_t app_control_handle_flowcap(char **tokens, uint32_t count);
+
 /*
  * `ESC EDT ON|OFF` / `ESC ?`：打开电调扩展遥测（见 App/Src/app_cmd_esc_edt.c）。
  * 逐路电流属于 EDT，而 EDT 只能由飞控发 DShot 特殊命令打开。解锁状态下拒绝。

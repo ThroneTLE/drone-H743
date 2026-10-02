@@ -389,7 +389,7 @@ def test_parse_v5_record_without_flow_and_bus_diagnostics() -> None:
 
 
 def make_sector_header(
-    *, version: int = 11, record_size: int = flog.RECORD_SIZE,
+    *, version: int = 12, record_size: int = flog.RECORD_SIZE,
     params_struct=flog.PARAMS_STRUCT, param_names=flog.PARAM_NAMES,
 ) -> bytes:
     params = [float(i) for i in range(len(param_names))]
@@ -550,7 +550,7 @@ def test_receive_dump_writes_bin_csv_and_meta(tmp_path) -> None:
         b"Sensor_Data:0\r\n",
         b"FLOG CANCEL\r\n",
         b"Sensor_Data:0\r\n",
-        b"FLOG DUMP\r\n",
+        b"FLOGDUMP LAST\r\n",
     ]
     assert result.total_bytes == flog.SECTOR_SIZE
     assert result.good_bytes == flog.SECTOR_SIZE
@@ -674,7 +674,7 @@ def test_receive_dump_cancel_sends_flog_cancel(tmp_path) -> None:
         b"Sensor_Data:0\r\n",
         b"FLOG CANCEL\r\n",
         b"Sensor_Data:0\r\n",
-        b"FLOG DUMP\r\n",
+        b"FLOGDUMP LAST\r\n",
         b"FLOG CANCEL\r\n",
     ]
 

@@ -4,6 +4,7 @@
 #include "drv_coax_ctrl.h"
 #include "drv_imu.h"
 #include "app_ident.h"
+#include "app_flight_log_nav.h"
 
 #include <stdint.h>
 
@@ -22,7 +23,10 @@ extern "C" {
  */
 #define APP_FLIGHT_LOG_REGION_START       0x00002000UL
 #define APP_FLIGHT_LOG_REGION_END_EXCL    0x003FB000UL
+/* 基准相位频率（500 Hz 环四分频）；实际记录频率 = 125 / 子分频 N，见 APP_FlightLog_GetSubdiv。 */
 #define APP_FLIGHT_LOG_RATE_HZ            125U
+#define APP_FLIGHT_LOG_SUBDIV_DEFAULT     2U
+#define APP_FLIGHT_LOG_SUBDIV_MAX         5U
 #define APP_FLIGHT_LOG_SECTOR_HEADER_SIZE 256U
 #define APP_FLIGHT_LOG_EXPORT_BAUD        57600U
 #define APP_FLIGHT_LOG_BACKGROUND_IDLE_MS 5U
@@ -34,6 +38,12 @@ typedef enum {
     APP_FLIGHT_LOG_CMD_NOT_EXPORTING,
     APP_FLIGHT_LOG_CMD_ERROR,
 } APP_FlightLogCommandStatus;
+
+/* 导出范围：ALL = 环形区里全部有效扇区；LAST_RUN = 只导最近一次“开始记录”以来的扇区。 */
+typedef enum {
+    APP_FLIGHT_LOG_EXPORT_SCOPE_ALL = 0,
+    APP_FLIGHT_LOG_EXPORT_SCOPE_LAST_RUN = 1,
+} APP_FlightLogExportScope;
 
 typedef enum {
     APP_FLIGHT_LOG_MOTOR_REASON_UNKNOWN = 0,
@@ -49,6 +59,9 @@ typedef enum {
      * 单独一个值而不是复用 direct_throttle：这些样本里只有一路在转，
      * 拿去做辨识或当成"直接油门"读会得出完全错的结论。 */
     APP_FLIGHT_LOG_MOTOR_REASON_PROP_SPIN_TEST = 9,
+    /* 飞行油门模式（方案 B）：LANDED 电机停转 / SPOOLUP 推力斜坡。 */
+    APP_FLIGHT_LOG_MOTOR_REASON_LANDED_IDLE = 10,
+    APP_FLIGHT_LOG_MOTOR_REASON_SPOOLUP = 11,
 } APP_FlightLogMotorOutputReason;
 
 typedef struct {
@@ -133,6 +146,8 @@ typedef struct {
     uint32_t servo_feedback_parse_error_count;
     uint32_t servo_feedback_uart_error_count;
     uint32_t servo_feedback_busy_count;
+    /* v12 起：EKF 零偏/新息、去毛刺光流计数、电池电压与状态位（app_flight_log_nav.h）。 */
+    APP_FlightLogNavTail nav;
 } APP_FlightLogSnapshot;
 
 typedef struct {
@@ -159,9 +174,19 @@ void APP_FlightLog_Observe(const APP_FlightLogSnapshot *snapshot,
                            uint8_t should_record);
 void APP_FlightLog_GetStatus(APP_FlightLogStatus *status);
 APP_FlightLogCommandStatus APP_FlightLog_StartDump(void);
+APP_FlightLogCommandStatus APP_FlightLog_StartDumpScope(APP_FlightLogExportScope scope);
+/* 后台任务在请求队列上等待的毫秒数：USB 导出中 0，仍有整批待写 1，其余 idle_ms（调用方传 APP_FLIGHT_LOG_BACKGROUND_IDLE_MS）。 */
+uint32_t APP_FlightLog_BackgroundWaitMs(uint32_t idle_ms);
 APP_FlightLogCommandStatus APP_FlightLog_CancelDump(void);
 APP_FlightLogCommandStatus APP_FlightLog_TestFill(uint32_t sectors);
 uint8_t APP_FlightLog_IsExportActive(void);
+/* 子分频 N（1..5，记录频率 125/N Hz）。仅存 RAM，上电回默认。Set 在记录中/导出中/越界时返回 0，成功返回 1。 */
+uint8_t APP_FlightLog_GetSubdiv(void);
+/* 实际记录频率 [Hz] = APP_FLIGHT_LOG_RATE_HZ / 子分频（FLOG? 报给上位机）。 */
+uint32_t APP_FlightLog_RateHz(void);
+uint8_t APP_FlightLog_SetSubdiv(uint8_t subdiv);
+/* 环形区总容量（条数）。 */
+uint32_t APP_FlightLog_GetCapacityRecords(void);
 const char *APP_FlightLog_CommandStatusText(APP_FlightLogCommandStatus status);
 
 #ifdef __cplusplus

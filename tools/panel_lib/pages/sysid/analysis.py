@@ -4,7 +4,7 @@
 后台线程不碰任何控件。几何一律取**「1 · 准备」页当前填写的值**（杆到飞控、倾转轴到飞控、
 挂砝码试验），飞控到质心取那一轮的快照——这样作者补量倾转轴或台架刚度之后，已采的轮次
 直接重算，不用重跑。舵机单独轮（mode=3）走 `fit_servo_only`，只出对象特性，不出参数。
-高度轮（mode=4）页面不拟合，只说明离线分析。
+高度轮（mode=4）不跑拟合：break 轮重算离地/滑落阈值（`alt_breakaway.py`），vel/pos 轮只说明离线分析。
 
 候选参数的力矩单位随拟合一起带走（`context["source"]`，录制那轮参数回显的倾转力臂），
 「临时应用」时按当前飞控的力臂换算（见 `lever_units.py`）。
@@ -18,7 +18,8 @@ import threading
 from dataclasses import asdict, is_dataclass
 
 from ._core import fit_inner_loop, fit_inner_loop_multi, fit_servo_only
-from .alt_config import ALT_MODE_CODE, OFFLINE_NOTE, provenance_text as alt_provenance_text
+from .alt_breakaway import alt_result_text
+from .alt_config import ALT_MODE_CODE
 from .axis_check import axis_warning, perpendicular_ratio
 from .joint import read_samples
 from .lever_units import torque_record
@@ -85,9 +86,10 @@ class Analysis:
                 raise ValueError(cannot_analyse(self.end.get("reason"),
                                                 (self.snapshot or {}).get("mode")))
             if str((self.snapshot or {}).get("mode")) == str(ALT_MODE_CODE):
-                # 高度轮不在页面上拟合（姿态拟合对它没有意义），说明一下就返回。
-                p.fit_var.set("\n".join((alt_provenance_text(self.snapshot), OFFLINE_NOTE)))
-                p.analysis_note = "高度辨识轮页面不拟合：数据已存档，分析离线进行。"
+                # 高度轮不跑姿态拟合：break 轮重算离地/滑落阈值，写在「Z 高度」页就返回。
+                p.alt_result(alt_result_text(self.snapshot, p._timestamps(), p.samples,
+                                             self.alt_quality_note()))
+                p.analysis_note = self.alt_quality_note()
                 p.refresh_banner()
                 return
             if self.data_error or p.gap_count or int(self.end.get("dropped", 0)):

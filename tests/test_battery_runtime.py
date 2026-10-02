@@ -60,6 +60,9 @@ int main(int argc,char **argv){
     assert(calibrations==1&&starts==2&&stops==1);
     assert(c.reading.raw==12000&&b.state.raw==11283&&b.state.voltage_mv>=11998&&b.state.voltage_mv<=12001);
     assert(b.state.valid&&b.can_arm&&b.state.samples==1);
+    /* 2026-10-02 起默认 11.2/11.25 V（10-01 为 11.4/11.45）；归档黄金帧录于旧默认 3500/3600，帧前显式配回以核对线格式。 */
+    assert(b.state.config.low_cell_mv==3733&&b.state.config.recover_cell_mv==3750);
+    assert(APP_Battery_Configure((DRV_BatteryConfig){3,3500,3600}));
     APP_Battery_Step();APP_Battery_GetSnapshot(&b);assert(b.state.samples==1);
     char *query[]={"BATTERY?","42"};assert(APP_Battery_Command(query,2));
     FILE *f=fopen(argv[1],"wb");assert(f);fwrite(packet,1,packet_size,f);fclose(f);
